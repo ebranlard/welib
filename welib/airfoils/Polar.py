@@ -630,7 +630,7 @@ class Polar(object):
         if UserWindow:
             nMin = len(alpha) # using full window
         else:
-            nMin = max(3,round(0.6*len(alpha))) # optimizing between length and linear error  
+            nMin = max(3,int(round(0.6*len(alpha)))) # optimizing between length and linear error  
         slope,off,iStart,iEnd = find_linear_region(alpha,cl,nMin,alpha0)
 
         # Slope around alpha 0

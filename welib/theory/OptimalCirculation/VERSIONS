@@ -1,0 +1,9 @@
+v00 : a bit smarter than thesis
+     reviewing of implementation of Okulov and Sorensen/Okulov (debugging paper mistakes ), two papers from 2007
+
+v01: smarter Goldstein function computation (no loop on blades)
+     Used matlab coder with upper bound of 3000 points for fast Goldstein computation   
+    Seem to fail though for really small h (if I recall right)
+
+v01_nomex not really a version but avoid using the mex
+

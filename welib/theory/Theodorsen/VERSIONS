@@ -1,0 +1,5 @@
+v01: original
+
+v02: 
+    added more comments and try to make things easier to understand in this big mess
+    Also inplement the iterative procedure in expansion using the fTheodorsenFarWakeParams
