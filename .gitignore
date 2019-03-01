@@ -22,7 +22,8 @@ welib/airfoils/data/AD_5_63-214_mod.dat
 welib/airfoils/data/Cylinder1.dat
 welib/airfoils/data/Cylinder_coords.txt
 welib/airfoils/data/DTU_10MW_RWT_pc.dat
-
+welib/BEM/DWM_main_BEM.py
+welib/BEM/VESTAS.py
 welib/theory/FarWakeParameters/
 welib/theory/OptimalCirculation/Mathematica/Derivations.nb
 welib/theory/OptimalCirculation/Mathematica/GoldStein.nb
