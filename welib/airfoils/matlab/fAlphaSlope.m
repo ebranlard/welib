@@ -1,5 +1,5 @@
 function [slope]=fAlphaSlope(alpha0,alpha,Cl)
-% returns the slope dCl/dalpha
+% returns the slope dCl/dalpha using two points around alpha0
 [~,i]=min(abs((alpha-alpha0)));
 if i==1
     kbd

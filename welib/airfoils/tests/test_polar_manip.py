@@ -157,6 +157,18 @@ class TestPolarManip(unittest.TestCase):
         # Close to singularity, should be not far from cl/2
         np.testing.assert_almost_equal(cl_fs[64],P.cl[64]/2*1.004,decimal=4)
         np.testing.assert_almost_equal(cl_fs[62],P.cl[62]/2*0.998,decimal=4)
+    
+        # TODO TODO TODO Ensure harmony between f_st if computed with slope that is not max
+        #P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True)
+        #cl_fs,f_st0=P.cl_fully_separated()
+        #f_st=(P.cl-cl_fs)/(P.cl_inv-cl_fs);
+
+        #import matplotlib.pyplot as plt
+        #fig=plt.figure()
+        #ax = fig.add_subplot(111)
+        #ax.plot(P.alpha  , f_st0 )
+        #ax.plot(P.alpha  , f_st )
+        #plt.show()
 
         #import matplotlib.pyplot as plt
         #fig=plt.figure()

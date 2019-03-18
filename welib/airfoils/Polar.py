@@ -15,7 +15,7 @@ class Polar(object):
 
     """
 
-    def __init__(self, Re, alpha, cl, cd, cm):
+    def __init__(self, Re, alpha, cl, cd, cm, compute_params=False):
         """Constructor
 
         Parameters
@@ -37,9 +37,38 @@ class Polar(object):
         self.cl = np.array(cl)
         self.cd = np.array(cd)
         self.cm = np.array(cm)
+        self.f_st          = None # separation function
+        self.cl_fs         = None # cl_fully separated
+        self._linear_slope = None
+        self._alpha0       = None
+
+        # NOTE: method needs to be in harmony for linear_slope and the one used in cl_fully_separated
+        if compute_params:
+            self._linear_slope,self._alpha0,_,_=self.cl_linear_slope(method='max') 
+            self.cl_fully_separated()
+            self.cl_inv = self._linear_slope*(self.alpha - self._alpha0)
+
+    def cl_interp(self,alpha):
+        return np.interp(alpha, self.alpha, self.cl)
+    def cd_interp(self,alpha):
+        return np.interp(alpha, self.alpha, self.cd)
+    def cd_interp(self,alpha):
+        return np.interp(alpha, self.alpha, self.cm)
+    def f_st_interp(self,alpha):
+        if self.f_st is None:
+            self.cl_fully_separated()
+        return np.interp(alpha, self.alpha, self.f_st)
+    def cl_fs_interp(self,alpha):
+        if self.cl_fs is None:
+            self.cl_fully_separated()
+        return np.interp(alpha, self.alpha, self.cl_fs)
+    def cl_inv_interp(self,alpha):
+        if (self._linear_slope is None) and (self._alpha0 is None):
+            self._linear_slope,self._alpha0,_,_=self.cl_linear_slope()
+        return self._linear_slope*(alpha-self._alpha0)
 
     @classmethod
-    def fromfile(cls,filename,fformat='delimited'):
+    def fromfile(cls,filename,fformat='delimited',compute_params=False):
         """Constructor based on a filename"""
         if fformat=='delimited':
             if not os.path.exists(filename):
@@ -52,7 +81,7 @@ class Polar(object):
             cd    = M[:,2]
             cm    = M[:,3]
             Re    = np.nan
-            return cls(Re,alpha,cl,cd,cm,)
+            return cls(Re,alpha,cl,cd,cm,compute_params)
         else:
             raise NotImplementedError('Format not implemented: {}'.format(fformat))
 
@@ -669,8 +698,26 @@ class Polar(object):
             iLow=np.ma.argmin( np.ma.MaskedArray(f_st,self.alpha>alpha0) );
             cl_fs[0:iLow+1]  = self.cl[0:iLow+1]
             cl_fs[iHig+1:-1] = self.cl[iHig+1:-1]
-            print(iLow,iHig)
+            #print(iLow,iHig)
+
+        # Ensuring everything is in harmony 
+        cl_inv = cla*(self.alpha - alpha0)
+        f_st=(self.cl-cl_fs)/(cl_inv-cl_fs);
+        # Storing
+        self.f_st  = f_st
+        self.cl_fs = cl_fs
         return cl_fs,f_st
+
+    def dynaStallOye_DiscreteStep(self,alpha_t,tau,fs_prev,dt):
+        # compute aerodynamical force from aerodynamic data
+        # interpolation from data
+        f_st  = self.f_st_interp  (alpha_t) 
+        Clinv = self.cl_inv_interp(alpha_t) 
+        Clfs  = self.cl_fs_interp (alpha_t) 
+        # dynamic stall model
+        fs = f_st + (fs_prev-f_st)*np.exp(-dt/tau)
+        Cl = fs*Clinv+(1-f_st)*Clfs               
+        return Cl,fs
 
 
 def _find_linear_region(x,y,nMin,x0=None):
