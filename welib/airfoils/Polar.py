@@ -543,8 +543,16 @@ class Polar(object):
         alpha0=alpha_zc[0]
         return alpha0
 
-    def cl_linear_slope(self,window=None):
+
+    def cl_linear_slope(self,window=None,method='optim',radians=False):
         """ Find slope of linear region """
+
+        def myret(sl,a0,WinLin,WinSearch):
+            # wrapper funciton to return degrees or radians
+            if radians:
+                return np.rad2deg(sl), np.deg2rad(a0),np.deg2rad(WinLin),np.deg2rad(WinSearch)
+            else:
+                return sl, a0, WinLin, WinSearch
 
         # finding our alpha0 is possible
         alpha0 = self.alpha0()
@@ -555,7 +563,7 @@ class Polar(object):
 
         # Constant case or only one value
         if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
-            return 0,alpha0,[self.alpha[0],self.alpha[-1]],[self.alpha[0],self.alpha[-1]]
+            return myret(0,alpha0,[self.alpha[0],self.alpha[-1]],[self.alpha[0],self.alpha[-1]])
 
 
         if window is None:
@@ -582,82 +590,125 @@ class Polar(object):
         if len(cl)<=0:
             raise Exception('Cannot find Cl slope')
         elif len(cl)<4:
-            if alpha0 is not None:
-                sl=np.linalg.lstsq(alpha.reshape((-1,1))-alpha0,cl.reshape((-1,1)),rcond=None)[0][0]
-                return sl[0],alpha0,[alpha[0],alpha[-1]],[alpha[0],alpha[-1]]
+            if method=='optim':
+                if alpha0 is not None:
+                    sl=np.linalg.lstsq(alpha.reshape((-1,1))-alpha0,cl.reshape((-1,1)),rcond=None)[0][0]
+                    return myret(sl[0],alpha0,[alpha[0],alpha[-1]],[alpha[0],alpha[-1]])
+                else:
+                    p = np.polyfit(alpha, cl, 1)
+                    return myret(p[0],p[1],[alpha[0],alpha[-1]],[alpha[0],alpha[-1]])
+            elif method=='max':
+                if alpha0 is None:
+                    raise Exception('Alpha 0 need to be set to use the `max` method')
+                I=np.nonzero(alpha-alpha0)
+                slope = max(cl[I]/(alpha[I]-alpha0)) 
+                off = alpha0
+                iStart,iEnd = 0, len(alpha)-1
+                LinWindow    = [alpha[iStart],alpha[iEnd]]
+                SearchWindow = [alpha[0],alpha[-1]]
+                return myret(slope,off,LinWindow,SearchWindow)
             else:
-                p = np.polyfit(alpha, cl, 1)
-                return p[0],p[1],[alpha[0],alpha[-1]],[alpha[0],alpha[-1]]
+                raise NotImplementedError('')
 
-        def find_linear_region(x,y,nMin,x0=None):
-            """ Find a linear region by computing all possible slopes
-                The objective function tries to minimize the error with the linear slope
-                and maximize the length of the linear region.
-                If x0 is provided, the function a*(x-x0) is fitted
-            """
-            if x0 is not None:
-                x = x.reshape((-1,1))-x0
-                y = y.reshape((-1,1))
-            n=len(x)-nMin+1
-            err = np.zeros((n,n))*np.nan
-            slp = np.zeros((n,n))*np.nan
-            off = np.zeros((n,n))*np.nan
-            spn = np.zeros((n,n))*np.nan
-            for iStart in range(n):
-                for j in range(iStart,n):
-                    iEnd=j+nMin
-                    if x0 is not None:
-                        sl=np.linalg.lstsq(x[iStart:iEnd],y[iStart:iEnd],rcond=None)[0][0]
-                        slp[iStart,j]= sl
-                        off[iStart,j]= alpha0
-                        y_lin = x[iStart:iEnd] * sl
-                    else:
-                        coefs = np.polyfit(x[iStart:iEnd],y[iStart:iEnd],1)
-                        slp[iStart,j]= coefs[0]
-                        off[iStart,j]= -coefs[1]/coefs[0]
-                        y_lin = x[iStart:iEnd] * coefs[0] + coefs[1]
-                    err[iStart,j]= np.mean((y[iStart:iEnd]-y_lin)**2)
-                    spn[iStart,j]= iEnd-iStart
-            spn=1/(spn-nMin+1)
-            err=(err)/(np.nanmax(err)) 
-            obj = np.multiply(spn,err) 
-            obj=err
-            (iStart,j) = np.unravel_index(np.nanargmin(obj), obj.shape)
-            iEnd=j+nMin-1 # note -1 since we return the index here
-            return slp[iStart,j],off[iStart,j],iStart,iEnd
+        if method=='optim':
+            # Performing minimization of slope
+            if UserWindow:
+                nMin = len(alpha) # using full window
+            else:
+                nMin = max(3,int(round(0.6*len(alpha)))) # optimizing between length and linear error  
+            slope,off,iStart,iEnd = _find_linear_region(alpha,cl,nMin,alpha0)
 
-        # Performing minimization of slope
-        if UserWindow:
-            nMin = len(alpha) # using full window
-        else:
-            nMin = max(3,int(round(0.6*len(alpha)))) # optimizing between length and linear error  
-        slope,off,iStart,iEnd = find_linear_region(alpha,cl,nMin,alpha0)
+            # Slope around alpha 0
+            if alpha0 is not None:
+                ia0 = (np.abs(alpha-alpha0)).argmin()
+                slope_0 = (cl[ia0+1]-cl[ia0-1])/(alpha[ia0+1]-alpha[ia0-1])
+                if abs(slope-slope_0)/slope_0*100>20:
+                    print('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_0,window[0],window[-1]))
 
-        # Slope around alpha 0
-        if alpha0 is not None:
-            ia0 = (np.abs(alpha-alpha0)).argmin()
-            slope_0 = (cl[ia0+1]-cl[ia0-1])/(alpha[ia0+1]-alpha[ia0-1])
-            if abs(slope-slope_0)/slope_0*100>20:
-                print('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_0,window[0],window[-1]))
-
-#             print('slope0',slope_0)
 #         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
+            # Making sure the linear fit is bigger than ClMax
+            DeltaAlpha=alpha[iEnd]-alpha[iStart]
+            DeltaClMax = ((alpha[-1]-off)*slope)-cl[-1]
+            if DeltaClMax<0:
+                print('NEED TO ADJUST SLOPE FOR CL MAX',DeltaClMax) 
 
-        p = np.polyfit(alpha, cl, 1)
-#         print('slpol ',p[0],p[1],alpha0)
+        elif method=='max':
+            if alpha0 is None:
+                raise Exception('Alpha 0 need to be set to use the `max` method')
+            I=np.nonzero(alpha-alpha0)
+            slope = max(cl[I]/(alpha[I]-alpha0)) 
+            off = alpha0
+            iStart,iEnd = 0, len(alpha)-1
+        else:
+            raise Exception('Method unknown for lift slope determination: {}'.format(method))
 
 
-        # Making sure the linear fit is bigger than ClMax
-        DeltaAlpha=alpha[iEnd]-alpha[iStart]
-        DeltaClMax = ((alpha[-1]-off)*slope)-cl[-1]
-        if DeltaClMax<0:
-            print('NEED TO ADJUST SLOPE FOR CL MAX',DeltaClMax) 
 
         LinWindow    = [alpha[iStart],alpha[iEnd]]
         SearchWindow = [alpha[0],alpha[-1]]
 
-        return slope,off,LinWindow,SearchWindow
+        return myret(slope,off,LinWindow,SearchWindow)
 
+    def cl_fully_separated(self): 
+        alpha0 = self.alpha0()
+        cla,_,_,_ = self.cl_linear_slope(method='max')
+        if cla==0:
+            cl_fs    = self.cl # when f_st ==1
+            f_st     = self.cl*0 
+        else:
+            cl_ratio = self.cl / ( cla*(self.alpha-alpha0))
+            cl_ratio[ np.where(cl_ratio<0)]=0
+            f_st = ( 2 *np.sqrt(cl_ratio)-1)**2
+            # Initialize to linear region (in fact only at singularity, where f_st=1)
+            cl_fs    = self.cl/2.0 # when f_st ==1
+            # Region where f_st<1, merge
+            I=np.where(f_st<1)
+            cl_fs[I] =(self.cl[I] - cla* (self.alpha[I]-alpha0)*f_st[I])/(1.-f_st[I]) # when f_st<1, otherwise not safe
+            # Outside region
+            iHig=np.ma.argmin( np.ma.MaskedArray(f_st,self.alpha<alpha0) );
+            iLow=np.ma.argmin( np.ma.MaskedArray(f_st,self.alpha>alpha0) );
+            cl_fs[0:iLow+1]  = self.cl[0:iLow+1]
+            cl_fs[iHig+1:-1] = self.cl[iHig+1:-1]
+            print(iLow,iHig)
+        return cl_fs,f_st
+
+
+def _find_linear_region(x,y,nMin,x0=None):
+    """ Find a linear region by computing all possible slopes
+        The objective function tries to minimize the error with the linear slope
+        and maximize the length of the linear region.
+        If x0 is provided, the function a*(x-x0) is fitted
+    """
+    if x0 is not None:
+        x = x.reshape((-1,1))-x0
+        y = y.reshape((-1,1))
+    n=len(x)-nMin+1
+    err = np.zeros((n,n))*np.nan
+    slp = np.zeros((n,n))*np.nan
+    off = np.zeros((n,n))*np.nan
+    spn = np.zeros((n,n))*np.nan
+    for iStart in range(n):
+        for j in range(iStart,n):
+            iEnd=j+nMin
+            if x0 is not None:
+                sl=np.linalg.lstsq(x[iStart:iEnd],y[iStart:iEnd],rcond=None)[0][0]
+                slp[iStart,j]= sl
+                off[iStart,j]= x0
+                y_lin = x[iStart:iEnd] * sl
+            else:
+                coefs = np.polyfit(x[iStart:iEnd],y[iStart:iEnd],1)
+                slp[iStart,j]= coefs[0]
+                off[iStart,j]= -coefs[1]/coefs[0]
+                y_lin = x[iStart:iEnd] * coefs[0] + coefs[1]
+            err[iStart,j]= np.mean((y[iStart:iEnd]-y_lin)**2)
+            spn[iStart,j]= iEnd-iStart
+    spn=1/(spn-nMin+1)
+    err=(err)/(np.nanmax(err)) 
+    obj = np.multiply(spn,err) 
+    obj=err
+    (iStart,j) = np.unravel_index(np.nanargmin(obj), obj.shape)
+    iEnd=j+nMin-1 # note -1 since we return the index here
+    return slp[iStart,j],off[iStart,j],iStart,iEnd
 
 def _zero_crossings(y,x=None,direction=None):
     """
