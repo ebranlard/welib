@@ -9,8 +9,14 @@ end
 
 [alpha0, ~, alpha0_rad]=fAlpha0(alpha,Cl);
 
-Cl_inv_2pi     = 2*pi*(alpha_rad-alpha0_rad);
-Cl_inv_2pi_sin = 2*pi*sin(alpha_rad-alpha0_rad);
+slope=fAlphaSlope(alpha0_rad,alpha_rad,Cl);
+
+% if abs(slope-2*pi)>pi/4
+%     keyboard
+%     error('Slope far from 2pi!')
+% end
+Cl_inv_2pi     = slope*(alpha_rad-alpha0_rad);
+Cl_inv_2pi_sin = slope*sin(alpha_rad-alpha0_rad);
 
 
 
