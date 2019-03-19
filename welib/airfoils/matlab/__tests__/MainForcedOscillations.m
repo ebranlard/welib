@@ -25,7 +25,7 @@ t_max=1.3*(2*pi)/omega % simulation length
 % tau=4 * chord / Vrel;
 tau=0.08;
 % tau=0.8;
-bAnimate=true;
+bAnimate=false;
 
 
 

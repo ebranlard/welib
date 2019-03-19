@@ -11,6 +11,7 @@ Clfs  = interp1 ( Polar.alpha , Polar.Cl_fs  , alpha_t )  ;
 fs=f_st + (fs_prev-f_st )*exp(-dt/tau);
 
 
-Cl=fs*Clinv+(1-f_st)*Clfs;
+%Cl=fs*Clinv+(1-f_st)*Clfs; 
+Cl=fs*Clinv+(1-fs)*Clfs; % N
 % Cl  = interp1 ( Polar.alpha , Polar.Cl  , alpha_t )  ; 
 

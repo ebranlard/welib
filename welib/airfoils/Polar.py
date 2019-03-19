@@ -68,7 +68,7 @@ class Polar(object):
         return self._linear_slope*(alpha-self._alpha0)
 
     @classmethod
-    def fromfile(cls,filename,fformat='delimited',compute_params=False):
+    def fromfile(cls,filename,fformat='delimited',compute_params=False, to_radians=False):
         """Constructor based on a filename"""
         if fformat=='delimited':
             if not os.path.exists(filename):
@@ -77,6 +77,8 @@ class Polar(object):
             if M.shape[1]!=4:
                 raise Exception('Only reading delimited files with 4 columns : alpha cl cd cm')
             alpha = M[:,0]
+            if to_radians:
+                alpha=alpha*np.pi/180
             cl    = M[:,1]
             cd    = M[:,2]
             cm    = M[:,3]
@@ -716,7 +718,7 @@ class Polar(object):
         Clfs  = self.cl_fs_interp (alpha_t) 
         # dynamic stall model
         fs = f_st + (fs_prev-f_st)*np.exp(-dt/tau)
-        Cl = fs*Clinv+(1-f_st)*Clfs               
+        Cl = fs*Clinv+(1-fs)*Clfs               
         return Cl,fs
 
 

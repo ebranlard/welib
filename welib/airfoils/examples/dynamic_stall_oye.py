@@ -47,10 +47,9 @@ def prescribed_oscillations():
         sol = solve_ivp(dyna_stall_oye, t_span=[0, t_max], y0=[fs_prev], t_eval=vt)
         for it,fs in enumerate(sol.y[0,:]):
             alpha_t = valpha_t[ia,it]
-            f_st    = P.f_st_interp  (alpha_t) 
             Clinv   = P.cl_inv_interp(alpha_t)
             Clfs    = P.cl_fs_interp (alpha_t)
-            Cl_num[ia,it]=fs*Clinv+(1-f_st)*Clfs               
+            Cl_num[ia,it]=fs*Clinv+(1-fs)*Clfs               
 
         # Simple discrete integration
         for it,alpha_t in enumerate(valpha_t[ia,:]):
