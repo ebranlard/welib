@@ -3,6 +3,7 @@
 *.zip
 *.pyc
 __pycache*
+*.egg-info*
 _IGNORE
 
 welib/airfoils/data/63-214.txt
@@ -22,8 +23,25 @@ welib/airfoils/data/AD_5_63-214_mod.dat
 welib/airfoils/data/Cylinder1.dat
 welib/airfoils/data/Cylinder_coords.txt
 welib/airfoils/data/DTU_10MW_RWT_pc.dat
+welib/airfoils/clcdmodificationcodes/
+welib/airfoils/data/Cylinder1_coords.txt
+welib/airfoils/data/Cylinder2.dat
+welib/airfoils/data/Cylinder2_coords.txt
+welib/airfoils/data/DU21_A17.dat
+welib/airfoils/data/DU21_A17_coords.txt
+welib/airfoils/data/DU25_A17.dat
+welib/airfoils/data/DU25_A17_coords.txt
+welib/airfoils/data/DU30_A17.dat
+welib/airfoils/data/DU30_A17_coords.txt
+welib/airfoils/data/DU35_A17.dat
+welib/airfoils/data/DU35_A17_coords.txt
+welib/airfoils/data/DU40_A17.dat
+welib/airfoils/data/DU40_A17_coords.txt
+welib/airfoils/data/NACA64_A17.dat
+welib/airfoils/data/NACA64_A17_coords.txt
+welib/airfoils/matlab/__tests__/Jabus/
 welib/BEM/DWM_main_BEM.py
-welib/BEM/VESTAS.py
+welib/BEM/TODO.py
 welib/theory/FarWakeParameters/
 welib/theory/OptimalCirculation/Mathematica/Derivations.nb
 welib/theory/OptimalCirculation/Mathematica/GoldStein.nb

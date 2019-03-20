@@ -1,5 +1,5 @@
 import numpy as np
-from Polar import Polar as Pol
+from .Polar import Polar as Pol
 
 
 # --------------------------------------------------------------------------------}

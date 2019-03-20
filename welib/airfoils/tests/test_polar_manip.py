@@ -1,11 +1,8 @@
 import unittest
-import sys
-import os
 import numpy as np
+import os
 MyDir=os.path.dirname(__file__)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-
-from Polar import * 
+from welib.airfoils.Polar import * 
 
 # --------------------------------------------------------------------------------}
 # ---  

@@ -1,13 +1,12 @@
 import unittest
-import sys
-import os
 import numpy as np
+import os
 MyDir=os.path.dirname(__file__)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-from Polar import * 
-from DynamicStall import * 
 from scipy.integrate import solve_ivp
+
+from welib.airfoils.Polar import * 
+from welib.airfoils.DynamicStall import * 
 
 # --------------------------------------------------------------------------------}
 # ---  

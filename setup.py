@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='welib',
@@ -8,6 +8,6 @@ setup(
     author='Emmanuel Branlard',
     author_email='lastname@gmail.com',
     license='MIT',
-    packages=['welib'],
+    packages=find_packages(),
     zip_safe=False
 )
