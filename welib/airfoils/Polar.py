@@ -15,7 +15,7 @@ class Polar(object):
 
     """
 
-    def __init__(self, Re, alpha, cl, cd, cm, compute_params=False):
+    def __init__(self, Re, alpha, cl, cd, cm, compute_params=False, radians=None):
         """Constructor
 
         Parameters
@@ -41,6 +41,11 @@ class Polar(object):
         self.cl_fs         = None # cl_fully separated
         self._linear_slope = None
         self._alpha0       = None
+        if radians is None:
+            # If the max alpha is above pi, most likely we are in degrees
+            self._radians = np.max(np.abs(self.alpha))>np.pi
+        else:
+            self._radians = radians
 
         # NOTE: method needs to be in harmony for linear_slope and the one used in cl_fully_separated
         if compute_params:
@@ -50,18 +55,23 @@ class Polar(object):
 
     def cl_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cl)
+
     def cd_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cd)
-    def cd_interp(self,alpha):
+
+    def cm_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cm)
+
     def f_st_interp(self,alpha):
         if self.f_st is None:
             self.cl_fully_separated()
         return np.interp(alpha, self.alpha, self.f_st)
+
     def cl_fs_interp(self,alpha):
         if self.cl_fs is None:
             self.cl_fully_separated()
         return np.interp(alpha, self.alpha, self.cl_fs)
+
     def cl_inv_interp(self,alpha):
         if (self._linear_slope is None) and (self._alpha0 is None):
             self._linear_slope,self._alpha0,_,_=self.cl_linear_slope()
@@ -83,7 +93,7 @@ class Polar(object):
             cd    = M[:,2]
             cm    = M[:,3]
             Re    = np.nan
-            return cls(Re,alpha,cl,cd,cm,compute_params)
+            return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
         else:
             raise NotImplementedError('Format not implemented: {}'.format(fformat))
 
