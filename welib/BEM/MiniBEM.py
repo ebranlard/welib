@@ -81,6 +81,7 @@ def fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
     bHigh = a > ac
     fg = 0.25*(5.-3.*a[bHigh])
     a[bHigh] = Ct[bHigh]/(4.*F[bHigh]*(1.-fg*a[bHigh]))
+    #a_high=0.5*(2+K*(1-2*ac)-sqrt((K*(1-2*ac)+2)^2+4*(K*ac^2-1)));
     # --- Relaxation
     a = a*relaxation + (1.-relaxation)*a_last
 
@@ -164,12 +165,16 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
         Ftip = np.ones((len(r)))
         Fhub = np.ones((len(r)))
         IOK=sin(phi)>0.01
-        if bTipLoss:
-            # Glauert tip correction
-            Ftip[IOK] = 2/pi*arccos(exp(-nB/2*(R-r)/(r*sin(phi))))
-        if bHubLoss:
-            # Prandtl hub loss correction
-            Fhub[IOK] = 2/pi*arccos(exp(-nB/2*(r-rhub)/(rhub*sin(phi))));
+        try:
+            if bTipLoss:
+                # Glauert tip correction
+                Ftip[IOK] = 2/pi*arccos(exp(-nB/2*(R-r[IOK])/(r[IOK]*sin(phi[IOK]))))
+            if bHubLoss:
+                # Prandtl hub loss correction
+                Fhub[IOK] = 2/pi*arccos(exp(-nB/2*(r[IOK]-rhub)/(rhub*sin(phi[IOK]))));
+        except:
+            raise
+#             pdb.set_trace()
         F=Ftip*Fhub;
         F[F<=0]=0.5 # To avoid singularities
         # --------------------------------------------------------------------------------
@@ -245,6 +250,7 @@ def WriteRadialFile(BEM,filename):
 
 
 def FASTFile2MiniBEM(FASTFileName):
+    import weio
     F=weio.FASTInputDeck(FASTFileName,readlist=['Aero','ED'])
 
     rho     = F.Aero['AirDens']
