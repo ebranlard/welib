@@ -9,8 +9,9 @@ import pdb
 MyDir=os.path.dirname(__file__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-from Polar import * 
-from DynamicStall import * 
+import welib.airfoils
+from welib.airfoils.Polar import * 
+from welib.airfoils.DynamicStall import * 
 
 # Wagner - R.T Jones approximation (Jones 1938)
 #Cl_wag_Jones=1-0.165*npexp(-0.0455*tau_t)-0.335*np.exp(-0.3*tau_t);
@@ -150,7 +151,7 @@ def prescribed_oscillations_ris_r_1792():
     # Loop on alpham and time 
     for ia,alpham in enumerate(valpha_mean):
         valpha_t[ia,:]   = (alpham+DeltaAlpha*np.sin(omega*vt))*deg_scale
-        valpha_dot_t     = (2*omega*np.cos(omega*vt) )*deg_scale # <<<<<<<<<<<<<<<<<<<<<
+        valpha_dot_t     = (2*omega*np.cos(omega*vt) )*deg_scale 
         fs_prev = P.f_st_interp(alpham*deg_scale)# init with steady value
 
         # Oye's Parameters and Inputs
@@ -228,7 +229,8 @@ def prescribed_oscillations_ris_r_1792():
 def prescribed_oscillations():
     radians=True
     #FFA-W3-241 airfoil Dyna Stall
-    P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
+#     P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
+    P=Polar.fromfile(os.path.join(MyDir,'../data/DU21_A17.csv'),compute_params=True,to_radians=radians)
 
     if radians:
         deg_scale=np.pi/180
@@ -246,11 +248,12 @@ def prescribed_oscillations():
     #T           = 20
     tau         = 0.08
     tau_oye     = 4 * chord/U0
-    valpha_mean = [5,10,15,20,25,30,35]
+    valpha_mean = [5,10,15,20,25,30,35,50,60,80,100,110,130,150]
     #valpha_mean = [20]
     t_max       = 1.3*T                  # simulation length
     dt          = 0.01                   # time step
     XLIM        = np.array([0,40])
+    XLIM        = np.array([0,180])
 
 
     # Derived params
@@ -344,7 +347,7 @@ def prescribed_oscillations():
     plt.legend()
 
 if __name__ == '__main__':
-    prescribed_oscillations_ris_r_1792()
+    #prescribed_oscillations_ris_r_1792()
     prescribed_oscillations()
-    step_change()
+    #step_change()
     plt.show()

@@ -40,6 +40,10 @@ class Polar(object):
         self.f_st          = None # separation function
         self.cl_fs         = None # cl_fully separated
         self._linear_slope = None
+        self._alpha_linear_region= None
+        self._cl_linear_region= None
+        self._cl_max       = None
+        self._alpha_cl_max = None
         self._alpha0       = None
         if radians is None:
             # If the max alpha is above pi, most likely we are in degrees
@@ -49,9 +53,12 @@ class Polar(object):
 
         # NOTE: method needs to be in harmony for linear_slope and the one used in cl_fully_separated
         if compute_params:
-            self._linear_slope,self._alpha0,_,_=self.cl_linear_slope(method='max') 
+            self._linear_slope,self._alpha0,self._alpha_linear_region,_=self.cl_linear_slope(method='max') 
             self.cl_fully_separated()
             self.cl_inv = self._linear_slope*(self.alpha - self._alpha0)
+
+            self._cl_linear_region = self.cl_interp(self._alpha_linear_region)
+            self._cl_max           = self.cl_interp(self._alpha_cl_max)
 
     def cl_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cl)
@@ -584,16 +591,54 @@ class Polar(object):
         alpha0=alpha_zc[0]
         return alpha0
 
+    def cl_max(self,window=[-40,40]):
+        """ Finds cl_max , returns (Cl_max,alpha_max) """
+        # Constant case or only one value
+        if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
+            return self.cl, self.alpha
+
+        # Ensuring window is within our alpha values
+        window = self._alpha_window_in_bounds(window)
+        
+        # Finding max within window
+        iwindow=np.where((self.alpha>=window[0]) & (self.alpha<=window[1]))
+        alpha = self.alpha[iwindow]
+        cl    = self.cl[iwindow]
+        i_max  = np.argmax(cl)
+        if i_max==len(iwindow):
+            raise Exception('Max cl is at the window boundary ([{};{}]), increase window (TODO automatically)'.format(window[0],window[1]))
+            pass
+        cl_max       = cl[i_max]
+        alpha_cl_max = alpha[i_max]
+#         alpha_zc,i_zc = _zero_crossings(x=alpha,y=cl,direction='up')
+#         if len(alpha_zc)>1:
+#             raise Exception('Cannot find alpha0, {} zero crossings of Cl in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
+#         elif len(alpha_zc)==0:
+#             raise Exception('Cannot find alpha0, no zero crossing of Cl in the range of alpha values: [{} {}] '.format(window[0],window[1]))
+# 
+#         alpha0=alpha_zc[0]
+        return cl_max, alpha_cl_max
+
 
     def cl_linear_slope(self,window=None,method='optim',radians=False):
-        """ Find slope of linear region """
-
+        """ Find slope of linear region 
+        Outputs: a 4-tuplet of:  
+           slope (in inverse units of alpha, or in radians-1 if radians=True)
+           alpha_0 (idem)
+           WinLin    : window where the linear region is valid
+           WinSearch : window where the linear region was searched for
+        """
+        # --- Return function
         def myret(sl,a0,WinLin,WinSearch):
             # wrapper funciton to return degrees or radians
             if radians:
                 return np.rad2deg(sl), np.deg2rad(a0),np.deg2rad(WinLin),np.deg2rad(WinSearch)
             else:
                 return sl, a0, WinLin, WinSearch
+        # --- helper function
+        def _find_linear_extent(x):
+            Igood=np.where(np.abs(x)<0.02)[0] # TODO this is absolute
+            return Igood[0],Igood[-1]
 
         # finding our alpha0 is possible
         alpha0 = self.alpha0()
@@ -613,7 +658,7 @@ class Polar(object):
                 window =[self.alpha[0],self.alpha[-1]]
             else:
                 # define a window around alpha0
-                window = [alpha0-5, alpha0+20];
+                window = [alpha0-20, alpha0+30];
         else:
             UserWindow=True
 
@@ -628,6 +673,7 @@ class Polar(object):
             imin=np.where(cl==np.min(cl))[0][-1]
             idx = np.arange(imin,np.argmax(cl)+1)
             cl, alpha = cl[idx], alpha[idx]
+
         if len(cl)<=0:
             raise Exception('Cannot find Cl slope')
         elif len(cl)<4:
@@ -644,7 +690,7 @@ class Polar(object):
                 I=np.nonzero(alpha-alpha0)
                 slope = max(cl[I]/(alpha[I]-alpha0)) 
                 off = alpha0
-                iStart,iEnd = 0, len(alpha)-1
+                iStart,iEnd = _find_linear_extent(cl-slope*(alpha-alpha0))
                 LinWindow    = [alpha[iStart],alpha[iEnd]]
                 SearchWindow = [alpha[0],alpha[-1]]
                 return myret(slope,off,LinWindow,SearchWindow)
@@ -659,7 +705,7 @@ class Polar(object):
                 nMin = max(3,int(round(0.6*len(alpha)))) # optimizing between length and linear error  
             slope,off,iStart,iEnd = _find_linear_region(alpha,cl,nMin,alpha0)
 
-            # Slope around alpha 0
+            # --- Safety check Looking at slope around alpha 0 to see if we are too far off
             if alpha0 is not None:
                 ia0 = (np.abs(alpha-alpha0)).argmin()
                 slope_0 = (cl[ia0+1]-cl[ia0-1])/(alpha[ia0+1]-alpha[ia0-1])
@@ -679,7 +725,7 @@ class Polar(object):
             I=np.nonzero(alpha-alpha0)
             slope = max(cl[I]/(alpha[I]-alpha0)) 
             off = alpha0
-            iStart,iEnd = 0, len(alpha)-1
+            iStart,iEnd = _find_linear_extent(cl-slope*(alpha-alpha0))
         else:
             raise Exception('Method unknown for lift slope determination: {}'.format(method))
 
@@ -687,6 +733,7 @@ class Polar(object):
 
         LinWindow    = [alpha[iStart],alpha[iEnd]]
         SearchWindow = [alpha[0],alpha[-1]]
+        print('Search Window',SearchWindow)
 
         return myret(slope,off,LinWindow,SearchWindow)
 
@@ -700,6 +747,7 @@ class Polar(object):
             cl_ratio = self.cl / ( cla*(self.alpha-alpha0))
             cl_ratio[ np.where(cl_ratio<0)]=0
             f_st = ( 2 *np.sqrt(cl_ratio)-1)**2
+            f_st[np.where(f_st<1e-15)] = 0
             # Initialize to linear region (in fact only at singularity, where f_st=1)
             cl_fs    = self.cl/2.0 # when f_st ==1
             # Region where f_st<1, merge
@@ -715,6 +763,7 @@ class Polar(object):
         # Ensuring everything is in harmony 
         cl_inv = cla*(self.alpha - alpha0)
         f_st=(self.cl-cl_fs)/(cl_inv-cl_fs);
+        f_st[np.where(f_st<1e-15)] = 0
         # Storing
         self.f_st  = f_st
         self.cl_fs = cl_fs

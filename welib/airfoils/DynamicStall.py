@@ -77,6 +77,13 @@ def dynstall_mhh_dxdt(t,x,u,p):
     Clp     = Cla * (alphaE-alpha0) + np.pi * Tu * alpha_dot # Eq. 13
     alphaF  = x3/Cla+alpha0                                  # p. 13
     fs_aF   = F_st(alphaF)                                    # p. 13
+    if(fs_aF<0):
+        print('Problematic fs:',fs_aF)
+    # Constraining x4 between 0 and 1 increases numerical stability
+    if(x4<1e-16):
+        x4=0.0
+    elif(x4>1):
+        x4=1.0
 
     # State equation
     xdot = [0]*4
@@ -84,6 +91,7 @@ def dynstall_mhh_dxdt(t,x,u,p):
     xdot[1] = -1/Tu * (b2 + c * U_dot/(2*U**2)) * x2 + b2 * A2 / Tu * alpha_34
     xdot[2] = -1/Tp                             * x3 + 1/Tp * Clp
     xdot[3] = -1/Tf                             * x4 + 1/Tf * fs_aF
+#     print(t,xdot[3],fs_aF,x4)
     return xdot
 
 def dynstall_mhh_steady(t,u,p):
@@ -113,7 +121,7 @@ def dynstall_mhh_steady(t,u,p):
     x4     = F_st(alphaF)
     return [x1,x2,x3,x4]
 
-def dynstall_mhh_outputs(t,x,u,p):
+def dynstall_mhh_outputs(t,x,u,p,more=False):
     # States
     x1=x[0] # Downwash memory term 1
     x2=x[1] # Downwash memory term 2
@@ -147,7 +155,11 @@ def dynstall_mhh_outputs(t,x,u,p):
     Tu     = c/(2*U)                                      # Eq. 23
     # Variables derived from states
     alphaE = alpha_34*(1-A1-A2)+ x1 + x2                  # Eq. 12
-    faE = F_st(alphaE)
+    faE = F_st(alphaE) 
+    if(x4<0):
+        x4=0
+    elif(x4>1):
+        x4=1
     DeltaCdfpp = (np.sqrt(faE)-np.sqrt(x4))/2 - (faE-x4)/4
     #ast_x4  = (fCm(x4)  - fCm(alpha0))/Cl(x4)
     #ast_faE = (fCm(faE) - fCm(alpha0))/Cl(faE)
@@ -157,7 +169,15 @@ def dynstall_mhh_outputs(t,x,u,p):
     Cl_dyn =  Cla * (alphaE-alpha0)*x4 + Cl_fs(alphaE)*(1-x4) + np.pi*Tu*alpha_dot  # <<< ADDED ALPHA0?
     Cd_dyn =  Cd(alphaE) + (alpha-alphaE)*Cl_dyn + (Cd(alphaE)-Cd(alpha0))*DeltaCdfpp
     Cm_dyn =  Cm(alphaE) + Cl_dyn*DeltaCmfpp - np.pi/2*Tu*alpha_dot
-    return Cl_dyn, Cd_dyn, Cm_dyn
+#     if Cl_dyn>4:
+#         import pdb 
+#         pdb.set_trace()
+#         print(Cl_dyn)
+#         print(x4#         print(alphaE)
+    if more:
+        return Cl_dyn, Cd_dyn, Cm_dyn, alphaE
+    else:
+        return Cl_dyn, Cd_dyn, Cm_dyn
 
 
 # --------------------------------------------------------------------------------}
