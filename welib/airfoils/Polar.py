@@ -1,10 +1,11 @@
-#!/usr/bin/env python
-from __future__ import print_function
-from math import pi, sin, cos, radians, degrees, tan, ceil, floor
+from __future__ import print_function, division
 import numpy as np
-import copy
 import os
-# from scipy.interpolate import RectBivariateSpline
+""" This module contains: 
+  - Polar: class to represent a polar (computes steady/unsteady parameters, corrections etc.)
+  - blend: function to blend two polars
+  - thicknessinterp_from_one_set: interpolate polars at different thickeness based on one set of polars 
+"""
 
 
 
@@ -12,7 +13,23 @@ class Polar(object):
     """
     Defines section lift, drag, and pitching moment coefficients as a
     function of angle of attack at a particular Reynolds number.
+    Different parameters may be computed and different corrections applied.
 
+    Available routines:
+        - cl_interp         : cl at given alpha values
+        - cd_interp         : cd at given alpha values
+        - cm_interp         : cm at given alpha values
+        - f_st_interp       : separation function (compared to fully separated polar)
+        - cl_fs_interp      : cl fully separated at given alpha values
+        - fromfile          : reads of polar from csv of FAST AD15 file
+        - correction3D      : apply 3D rotatational correction
+        - extrapolate       : extend polar data set using Viterna's method
+        - unsteadyparam     : computes unsteady params e.g. needed by AeroDyn15
+        - plot              : plot's the polar
+        - alpha0            : computes and return alpha0, also stored in _alpha0
+        - cl_max            : cl_max
+        - cl_linear_slope   : linear slope and the linear region
+        - cl_fully_separated: fully separated cl
     """
 
     def __init__(self, Re, alpha, cl, cd, cm, compute_params=False, radians=None):
@@ -85,66 +102,44 @@ class Polar(object):
         return self._linear_slope*(alpha-self._alpha0)
 
     @classmethod
-    def fromfile(cls,filename,fformat='delimited',compute_params=False, to_radians=False):
+    def fromfile(cls,filename,fformat='auto',compute_params=False, to_radians=False):
         """Constructor based on a filename"""
+        if not os.path.exists(filename):
+            raise Exception('File not found:',filename)
+        try: 
+            import weio
+        except:
+            print('[WARN] Module `weio` not present, only delimited file format supported ')
+            fformat='delimited'
         if fformat=='delimited':
-            if not os.path.exists(filename):
-                raise Exception('File not found:',filename)
-            M=np.loadtxt(filename,comments=['#','!'])
-            if M.shape[1]!=4:
-                raise Exception('Only reading delimited files with 4 columns : alpha cl cd cm')
-            alpha = M[:,0]
-            if to_radians:
-                alpha=alpha*np.pi/180
-            cl    = M[:,1]
-            cd    = M[:,2]
-            cm    = M[:,3]
+            try:
+                M=np.loadtxt(filename,comments=['#','!'])
+            except:
+                # Trying an AD15 file
+                M=pd.read_csv(filename, skiprows = 53, header=None, delim_whitespace=True, names=['Alpha','Cl','Cd','Cm']).values
             Re    = np.nan
-            return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
+        elif fformat=='auto':
+            try:
+                M = weio.CSVFile(filename).toDataFrame().values
+            except:
+                df = weio.read(filename).toDataFrame()
+                if type(df) is dict:
+                    M=df[list(df.keys())[0]].values
+                else:
+                    M=df.values
         else:
             raise NotImplementedError('Format not implemented: {}'.format(fformat))
 
-    def blend(self, other, weight):
-        """Blend this polar with another one with the specified weighting
-
-        Parameters
-        ----------
-        other : Polar
-            another Polar object to blend with
-        weight : float
-            blending parameter between 0 and 1.  0 returns self, whereas 1 returns other.
-
-        Returns
-        -------
-        polar : Polar
-            a blended Polar
-
-        """
-
-        # generate merged set of angles of attack - get unique values
-        alpha = np.union1d(self.alpha, other.alpha)
-
-        # truncate (TODO: could also have option to just use one of the polars for values out of range)
-        min_alpha = max(self.alpha.min(), other.alpha.min())
-        max_alpha = min(self.alpha.max(), other.alpha.max())
-        alpha = alpha[np.logical_and(alpha >= min_alpha, alpha <= max_alpha)]
-        # alpha = np.array([a for a in alpha if a >= min_alpha and a <= max_alpha])
-
-        # interpolate to new alpha
-        cl1 = np.interp(alpha, self.alpha, self.cl)
-        cl2 = np.interp(alpha, other.alpha, other.cl)
-        cd1 = np.interp(alpha, self.alpha, self.cd)
-        cd2 = np.interp(alpha, other.alpha, other.cd)
-        cm1 = np.interp(alpha, self.alpha, self.cm)
-        cm2 = np.interp(alpha, other.alpha, other.cm)
-
-        # linearly blend
-        Re = self.Re + weight*(other.Re-self.Re)
-        cl = cl1 + weight*(cl2-cl1)
-        cd = cd1 + weight*(cd2-cd1)
-        cm = cm1 + weight*(cm2-cm1)
-
-        return type(self)(Re, alpha, cl, cd, cm)
+        if M.shape[1]!=4:
+            raise Exception('Only supporting polars with 4 columns: alpha cl cd cm')
+        alpha = M[:,0]
+        cl    = M[:,1]
+        cd    = M[:,2]
+        cm    = M[:,3]
+        Re    = np.nan
+        if to_radians:
+            alpha=alpha*np.pi/180
+        return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
 
 
 
@@ -184,9 +179,9 @@ class Polar(object):
         alpha = np.radians(self.alpha)
         cl_2d = self.cl
         cd_2d = self.cd
-        alpha_max_corr = radians(alpha_max_corr)
-        alpha_linear_min = radians(alpha_linear_min)
-        alpha_linear_max = radians(alpha_linear_max)
+        alpha_max_corr   = np.radians(alpha_max_corr)
+        alpha_linear_min = np.radians(alpha_linear_min)
+        alpha_linear_max = np.radians(alpha_linear_max)
 
         # parameters in Du-Selig model
         a = 1
@@ -206,7 +201,7 @@ class Polar(object):
         fcl = 1.0/m*(1.6*chord_over_r/0.1267*(a-chord_over_r**expon)/(b+chord_over_r**expon)-1)
 
         # not sure where this adjustment comes from (besides AirfoilPrep spreadsheet of course)
-        adj = ((pi/2-alpha)/(pi/2-alpha_max_corr))**2
+        adj = ((np.pi/2-alpha)/(np.pi/2-alpha_max_corr))**2
         adj[alpha <= alpha_max_corr] = 1.0
 
         # Du-Selig correction for lift
@@ -269,43 +264,43 @@ class Polar(object):
         self.cdmax = max(max(self.cd), cdmax)
 
         # extract matching info from ends
-        alpha_high = radians(self.alpha[-1])
+        alpha_high = np.radians(self.alpha[-1])
         cl_high = self.cl[-1]
         cd_high = self.cd[-1]
         cm_high = self.cm[-1]
 
-        alpha_low = radians(self.alpha[0])
+        alpha_low = np.radians(self.alpha[0])
         cl_low = self.cl[0]
         cd_low = self.cd[0]
 
-        if alpha_high > pi/2:
+        if alpha_high > np.pi/2:
             raise Exception('alpha[-1] > pi/2')
             return self
-        if alpha_low < -pi/2:
+        if alpha_low < -np.pi/2:
             raise Exception('alpha[0] < -pi/2')
             return self
 
         # parameters used in model
-        sa = sin(alpha_high)
-        ca = cos(alpha_high)
+        sa = np.sin(alpha_high)
+        ca = np.cos(alpha_high)
         self.A = (cl_high - self.cdmax*sa*ca)*sa/ca**2
         self.B = (cd_high - self.cdmax*sa*sa)/ca
 
         # alpha_high <-> 90
-        alpha1 = np.linspace(alpha_high, pi/2, nalpha)
+        alpha1 = np.linspace(alpha_high, np.pi/2, nalpha)
         alpha1 = alpha1[1:]  # remove first element so as not to duplicate when concatenating
         cl1, cd1 = self.__Viterna(alpha1, 1.0)
 
         # 90 <-> 180-alpha_high
-        alpha2 = np.linspace(pi/2, pi-alpha_high, nalpha)
+        alpha2 = np.linspace(np.pi/2, np.pi-alpha_high, nalpha)
         alpha2 = alpha2[1:]
-        cl2, cd2 = self.__Viterna(pi-alpha2, -cl_adj)
+        cl2, cd2 = self.__Viterna(np.pi-alpha2, -cl_adj)
 
         # 180-alpha_high <-> 180
-        alpha3 = np.linspace(pi-alpha_high, pi, nalpha)
+        alpha3 = np.linspace(np.pi-alpha_high, np.pi, nalpha)
         alpha3 = alpha3[1:]
-        cl3, cd3 = self.__Viterna(pi-alpha3, 1.0)
-        cl3 = (alpha3-pi)/alpha_high*cl_high*cl_adj  # override with linear variation
+        cl3, cd3 = self.__Viterna(np.pi-alpha3, 1.0)
+        cl3 = (alpha3-np.pi)/alpha_high*cl_high*cl_adj  # override with linear variation
 
         if alpha_low <= -alpha_high:
             alpha4 = []
@@ -322,19 +317,19 @@ class Polar(object):
             alpha5max = -alpha_high
 
         # -90 <-> -alpha_high
-        alpha5 = np.linspace(-pi/2, alpha5max, nalpha)
+        alpha5 = np.linspace(-np.pi/2, alpha5max, nalpha)
         alpha5 = alpha5[1:]
         cl5, cd5 = self.__Viterna(-alpha5, -cl_adj)
 
         # -180+alpha_high <-> -90
-        alpha6 = np.linspace(-pi+alpha_high, -pi/2, nalpha)
+        alpha6 = np.linspace(-np.pi+alpha_high, -np.pi/2, nalpha)
         alpha6 = alpha6[1:]
-        cl6, cd6 = self.__Viterna(alpha6+pi, cl_adj)
+        cl6, cd6 = self.__Viterna(alpha6+np.pi, cl_adj)
 
         # -180 <-> -180 + alpha_high
-        alpha7 = np.linspace(-pi, -pi+alpha_high, nalpha)
-        cl7, cd7 = self.__Viterna(alpha7+pi, 1.0)
-        cl7 = (alpha7+pi)/alpha_high*cl_high*cl_adj  # linear variation
+        alpha7 = np.linspace(-np.pi, -np.pi+alpha_high, nalpha)
+        cl7, cd7 = self.__Viterna(alpha7+np.pi, 1.0)
+        cl7 = (alpha7+np.pi)/alpha_high*cl_high*cl_adj  # linear variation
 
         alpha = np.concatenate((alpha7, alpha6, alpha5, alpha4, np.radians(self.alpha), alpha1, alpha2, alpha3))
         cl = np.concatenate((cl7, cl6, cl5, cl4, self.cl, cl1, cl2, cl3))
@@ -344,8 +339,8 @@ class Polar(object):
 
 
         # Setup alpha and cm to be used in extrapolation
-        cm1_alpha = floor(self.alpha[0] / 10.0) * 10.0
-        cm2_alpha = ceil(self.alpha[-1] / 10.0) * 10.0
+        cm1_alpha = np.floor(self.alpha[0] / 10.0) * 10.0
+        cm2_alpha = np.ceil(self.alpha[-1] / 10.0) * 10.0
         alpha_num = abs(int((-180.0-cm1_alpha)/10.0 - 1))
         alpha_cm1 = np.linspace(-180.0, cm1_alpha, alpha_num)
         alpha_cm2 = np.linspace(cm2_alpha, 180.0, int((180.0-cm2_alpha)/10.0 + 1))
@@ -399,9 +394,9 @@ class Polar(object):
             p = -self.cl[0] / (self.cl[1] - self.cl[0])
             cm0 = self.cm[0] + p * (self.cm[1] - self.cm[0])
         self.cm0 = cm0
-        alpha_high = radians(self.alpha[-1])
-        XM = (-cm_high + cm0) / (cl_high * cos(alpha_high) + cd_high * sin(alpha_high))
-        cmCoef = (XM - 0.25) / tan((alpha_high - pi/2))
+        alpha_high = np.radians(self.alpha[-1])
+        XM = (-cm_high + cm0) / (cl_high * cos(alpha_high) + cd_high * np.sin(alpha_high))
+        cmCoef = (XM - 0.25) / np.tan((alpha_high - np.pi/2))
         return cmCoef
 
     def __getCM(self, i, cmCoef, alpha, cl_ext, cd_ext, alpha_low_deg, alpha_high_deg):
@@ -415,11 +410,11 @@ class Polar(object):
                 cm_new = self.cm0
             else:
                 if alpha[i] > 0:
-                    x = cmCoef * tan(radians(alpha[i]) - pi/2) + 0.25
-                    cm_new = self.cm0 - x * (cl_ext[i] * cos(radians(alpha[i])) + cd_ext[i] * sin(radians(alpha[i])))
+                    x = cmCoef * np.tan(np.radians(alpha[i]) - np.pi/2) + 0.25
+                    cm_new = self.cm0 - x * (cl_ext[i] * np.cos(np.radians(alpha[i])) + cd_ext[i] * np.sin(np.radians(alpha[i])))
                 else:
-                    x = cmCoef * tan(-radians(alpha[i]) - pi/2) + 0.25
-                    cm_new = -(self.cm0 - x * (-cl_ext[i] * cos(-radians(alpha[i])) + cd_ext[i] * sin(-radians(alpha[i]))))
+                    x = cmCoef * np.tan(-np.radians(alpha[i]) - np.pi/2) + 0.25
+                    cm_new = -(self.cm0 - x * (-cl_ext[i] * np.cos(-np.radians(alpha[i])) + cd_ext[i] * np.sin(-np.radians(alpha[i]))))
         else:
             if alpha[i] == 165:
                 cm_new = -0.4
@@ -464,8 +459,8 @@ class Polar(object):
         cl = self.cl
         cd = self.cd
 
-        alpha_linear_min = radians(alpha_linear_min)
-        alpha_linear_max = radians(alpha_linear_max)
+        alpha_linear_min = np.radians(alpha_linear_min)
+        alpha_linear_max = np.radians(alpha_linear_max)
 
         cn = cl*np.cos(alpha) + cd*np.sin(alpha)
 
@@ -503,7 +498,7 @@ class Polar(object):
 
         # return: control setting, stall angle, alpha for 0 cn, cn slope,
         #         cn at stall+, cn at stall-, alpha for min CD, min(CD)
-        return (0.0, degrees(alphaU), degrees(alpha0), m,
+        return (0.0, np.degrees(alphaU), np.degrees(alpha0), m,
                 cnStallUpper, cnStallLower, alpha[minIdx], cd[minIdx])
 
     def plot(self):
@@ -733,7 +728,7 @@ class Polar(object):
 
         LinWindow    = [alpha[iStart],alpha[iEnd]]
         SearchWindow = [alpha[0],alpha[-1]]
-        print('Search Window',SearchWindow)
+        #print('Search Window',SearchWindow)
 
         return myret(slope,off,LinWindow,SearchWindow)
 
@@ -780,6 +775,118 @@ class Polar(object):
         Cl = fs*Clinv+(1-fs)*Clfs               
         return Cl,fs
 
+
+def blend(pol1, pol2, weight):
+    """Blend this polar with another one with the specified weighting
+
+    Parameters
+    ----------
+    pol1:  (class Polar or array) first polar
+    pol2:  (class Polar or array) second polar
+    weight: (float)  blending parameter between 0 (first polar) and 1 (second polar)
+
+    Returns
+    -------
+    polar : (class Polar or array) a blended Polar
+    """
+    bReturnObject=False
+    if hasattr(pol1,'cl'):
+        bReturnObject=True
+        alpha1=pol1.alpha
+        M1    = np.zeros((len(alpha1),4))
+        M1[:,0]=pol1.alpha
+        M1[:,1]=pol1.cl
+        M1[:,2]=pol1.cd
+        M1[:,3]=pol1.cm
+    else:
+        alpha1 = pol1[:,0]
+        M1     = pol1
+    if hasattr(pol2,'cl'):
+        bReturnObject=True
+        alpha2=pol2.alpha
+        M2    = np.zeros((len(alpha2),4))
+        M2[:,0]=pol2.alpha
+        M2[:,1]=pol2.cl
+        M2[:,2]=pol2.cd
+        M2[:,3]=pol2.cm
+    else:
+        alpha2 = pol2[:,0]
+        M2     = pol2
+    # Define range of alpha, merged values and truncate if one set beyond the other range
+    alpha = np.union1d(alpha1, alpha2)
+    min_alpha = max(alpha1.min(), alpha2.min())
+    max_alpha = min(alpha1.max(), alpha2.max())
+    alpha = alpha[np.logical_and(alpha >= min_alpha, alpha <= max_alpha)]
+    # alpha = np.array([a for a in alpha if a >= min_alpha and a <= max_alpha])
+
+    # Creating new output matrix to store polar
+    M= np.zeros((len(alpha),M1.shape[1]))
+    M[:,0] = alpha
+
+    # interpolate to new alpha and linearly blend
+    for j in np.arange(1,M.shape[1]):
+        v1 = np.interp(alpha, alpha1, M1[:,j])
+        v2 = np.interp(alpha, alpha2, M2[:,j])
+        M[:,j] = (1-weight)*v1 + weight*v2
+    if hasattr(pol1,'Re'):
+        Re = pol1.Re + weight*(pol2.Re-pol1.Re)
+    else:
+        Re = np.nan
+
+    if bReturnObject:
+        return type(pol1)(Re, M[:,0], M[:,1], M[:,2], M[:,3])
+    else:
+        return M
+
+
+def thicknessinterp_from_one_set(thickness, polarList, polarThickness):
+    """ Returns a set of interpolated polars from one set of polars at known thicknesses and a list of thickness
+    The nearest polar is used when the thickness is beyond the range of values of the input polars.
+    """
+    thickness      = np.asarray(thickness)
+    polarThickness = np.asarray(polarThickness)
+    polarList     = np.asarray(polarList)
+    tmax_in  = np.max(thickness)
+    tmax_pol = np.max(polarThickness)
+    if (tmax_in>1.2 and tmax_pol<=1.2) or (tmax_in<=1.2 and tmax_pol>1.2):
+        raise Exception('Thicknesses of polars and input thickness need to be both in percent ([0-120]) or in fraction ([0-1.2])')
+
+    # sorting thickness 
+    Isort          = np.argsort(polarThickness)
+    print(Isort)
+    polarThickness = polarThickness[Isort]
+    polarList      = polarList[Isort]
+    
+    polars = []
+    for it,t in enumerate(thickness):
+        ihigh =  len(polarThickness)-1
+        for ip,tp in enumerate(polarThickness):
+            if tp>t:
+                ihigh=ip
+                break
+        ilow=0
+        for ip,tp in reversed(list(enumerate(polarThickness))):
+            if tp<t:
+                ilow=ip
+                break
+        
+        weight=(t-polarThickness[ilow])/(polarThickness[ihigh]-polarThickness[ilow])
+        print(polarThickness[ilow],'<',t,'<',polarThickness[ihigh],'Weight',weight)
+        if ihigh==ilow:
+            polars.append(polarThickness[ihigh])
+            print('[WARN] Using nearest polar for section {},   t={} , t_near={}'.format(it,t,polarThickness[ihigh]))
+        else:
+            if (polarThickness[ilow]>t) or (polarThickness[ihigh]<t): 
+                raise Exception('Implementation Error')
+            pol=blend(polarList[ilow],polarList[ihigh],weight)
+            polars.append(pol)
+            # import matplotlib.pyplot as plt
+            # fig=plt.figure()
+            # plt.plot(polarList[ilow][: ,0],polarList[ilow][: ,2],'b',label='thick'+str(polarThickness[ilow]))
+            # plt.plot(pol[:,0],pol[:,2],'k--',label='thick'+str(t))
+            # plt.plot(polarList[ihigh][:,0],polarList[ihigh][:,2],'r',label='thick'+str(polarThickness[ihigh]))
+            # plt.legend()
+            # plt.show()
 
 def _find_linear_region(x,y,nMin,x0=None):
     """ Find a linear region by computing all possible slopes
@@ -871,3 +978,4 @@ def _zero_crossings(y,x=None,direction=None):
 
 if __name__ == '__main__':
     pass
+
