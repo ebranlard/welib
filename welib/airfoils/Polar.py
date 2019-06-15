@@ -778,7 +778,7 @@ class Polar(object):
                 window =[self.alpha[0],self.alpha[-1]]
             else:
                 # define a window around alpha0
-                window = [alpha0-20, alpha0+30];
+                window = [alpha0-5, alpha0+20];
         else:
             UserWindow=True
 

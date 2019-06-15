@@ -51,33 +51,33 @@ class TestPolarManip(unittest.TestCase):
     def test_slope(self):
         # --- Polar with two points
         P=Polar([],[-1,1],[-1,1],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar three points lin
         P=Polar([],[-1,0,1],[-1,0,1],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar three points cst
         P=Polar([],[-1,0,1],[1,1,1],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,0.0)
         # --- Polar with sine shape
         P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-1,0,1,0,0],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar sine with plateaux 
         P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-2,-1,0,1,1],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar sine-line  -  Difficult to evaluate
         P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2.1,-2,-1.1,0,1.1,1.2],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0,decimal=1)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0,decimal=1)
@@ -89,7 +89,7 @@ class TestPolarManip(unittest.TestCase):
         np.testing.assert_almost_equal(sl,2.0)
         # --- Polar step function
         P=Polar([],[-3,-2,-1,0,1,2,3],[-.5,-.5,-.5,-.5,.5,.5,.5],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
@@ -102,25 +102,27 @@ class TestPolarManip(unittest.TestCase):
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(window=[-10,10],method='max')
         np.testing.assert_almost_equal(sl,1.0, decimal=2)
         # --- Real Polars
-        print('>>>> TODO TODO test_polar_manip slope is broken!')
         P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope(radians=True)
-        #np.testing.assert_almost_equal(sl,7.034, decimal=3)
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(radians=True, method='optim')
+        np.testing.assert_almost_equal(sl,7.034, decimal=3)
 
-        #sl,a0,WinLin,WinSearch=P.cl_linear_slope()
-        #np.testing.assert_almost_equal(sl,0.123, decimal=3)
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
+        np.testing.assert_almost_equal(sl,0.123, decimal=3)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,0.13, decimal=3)
-        # --- Real Polars
-        #P=Polar.fromfile(os.path.join(MyDir,'../data/63-235.csv'))
-        #sl,a0,WinLin,WinSearch=P.cl_linear_slope()
-        #np.testing.assert_almost_equal(sl,0.099, decimal=3)
-        #sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
-        #np.testing.assert_almost_equal(sl,0.113, decimal=3)
         # --- Cylinder
-        #P=Polar.fromfile(os.path.join(MyDir,'../data/Cylinder.csv'))
-        #sl,a0,WinLin,WinSearch=P.cl_linear_slope()
-        #self.assertEqual(sl,0.0)
+        P=Polar.fromfile(os.path.join(MyDir,'../data/Cylinder.csv'))
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
+        self.assertEqual(sl,0.0)
+        # --- Real Polars
+        P=Polar.fromfile(os.path.join(MyDir,'../data/63-235.csv'))
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
+        np.testing.assert_almost_equal(sl,0.099, decimal=3)
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
+        np.testing.assert_almost_equal(sl,0.113, decimal=3)
+        # --- Default method (NOTE: Might change in the future!)
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        np.testing.assert_almost_equal(sl,0.099, decimal=3)
 
         ##print(sl,a0,WinLin,WinSearch)
         #import matplotlib.pyplot as plt
