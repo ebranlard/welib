@@ -64,7 +64,7 @@ class Polar(object):
         self._alpha0       = None
         if radians is None:
             # If the max alpha is above pi, most likely we are in degrees
-            self._radians = np.max(np.abs(self.alpha))>np.pi
+            self._radians = np.max(np.abs(self.alpha))<=np.pi
         else:
             self._radians = radians
 
@@ -86,6 +86,9 @@ class Polar(object):
     def cm_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cm)
 
+    def cn_interp(self,alpha):
+        return np.interp(alpha, self.alpha, self.cn)
+
     def f_st_interp(self,alpha):
         if self.f_st is None:
             self.cl_fully_separated()
@@ -100,6 +103,17 @@ class Polar(object):
         if (self._linear_slope is None) and (self._alpha0 is None):
             self._linear_slope,self._alpha0,_,_=self.cl_linear_slope()
         return self._linear_slope*(alpha-self._alpha0)
+
+    @property
+    def cn(self):
+        """ returns  : Cl cos(alpha) +  Cd      sin(alpha)  
+                  NOT: Cl cos(alpha) + (Cd-Cd0) sin(alpha) 
+        """ 
+        if self._radians:
+            return self.cl*np.cos(self.alpha) + self.cd*np.sin(self.alpha)
+        else:
+            return self.cl*np.cos(self.alpha*np.pi/180) + self.cd*np.sin(self.alpha*np.pi/180)
+
 
     @classmethod
     def fromfile(cls,filename,fformat='auto',compute_params=False, to_radians=False):
@@ -132,13 +146,13 @@ class Polar(object):
 
         if M.shape[1]!=4:
             raise Exception('Only supporting polars with 4 columns: alpha cl cd cm')
+        if to_radians:
+            M[:,0]=M[:,0]*np.pi/180
         alpha = M[:,0]
         cl    = M[:,1]
         cd    = M[:,2]
         cm    = M[:,3]
         Re    = np.nan
-        if to_radians:
-            alpha=alpha*np.pi/180
         return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
 
 
@@ -437,6 +451,155 @@ class Polar(object):
                       "(near +/-180 deg). Program will stop.")
         return cm_new
 
+    def unsteadyParams(self, window_offset=None):
+        """compute unsteady aero parameters used in AeroDyn input file
+
+        TODO Questions to solve:
+          - Is alpha 0 defined at zero lift or zero Cn?
+          - Are Cn1 and Cn2 the stall points of Cn or the regions where Cn deviates from the linear region?
+          - Is Cd0 Cdmin?
+          - Should Cd0 be used in cn?
+          - Should the TSE points be used? 
+          - If so, should we use the linear points or the points on the cn-curve
+          - Should we prescribe alpha0cn when determining the slope?
+        NOTE:
+          alpha0Cl and alpha0Cn are usually within 0.005 deg of each other, less thatn 0.3% difference, with alpha0Cn > alpha0Cl. The difference increase thought towards the root of the blade
+
+          Using the f=0.7 points doesnot change much for the lower point
+                    but it has quite an impact on the upper point
+%
+
+        Parameters
+        ----------
+        window_dalpha0: the linear region will be looked for in the region alpha+window_offset
+
+        Returns
+        -------
+        alpha0   : lift or 0 cn (TODO TODO) angle of attack (deg)
+        alpha1   : angle of attack at f=0.7 (approximately the stall angle) for AOA>alpha0 (deg)
+        alpha2   : angle of attack at f=0.7 (approximately the stall angle) for AOA<alpha0 (deg)
+        cnSlope  : slope of 2D normal force coefficient curve (1/rad)
+        Cn1      : Critical value of C0n at leading edge separation. It should be extracted from airfoil data at a given Mach and Reynolds number. It can be calculated from the static value of Cn at either the break in the pitching moment or the loss of chord force at the onset of stall. It is close to the condition of maximum lift of the airfoil at low Mach numbers.
+        Cn2      : As Cn1 for negative AOAs.
+        Cd0      : Drag coefficient at zero lift TODO
+        Cm0      : Moment coefficient at zero lift TODO
+
+
+        """
+        if window_offset is None:
+            dwin = np.array([-5,10])
+            if self._radians:
+                dwin = np.radians(dwin)
+        cl = self.cl
+        cd = self.cd
+        alpha = self.alpha
+
+        if self._radians:
+            cn = cl*np.cos(alpha) + cd*np.sin(alpha)
+        else:
+            cn = cl*np.cos(alpha*np.pi/180) + cd*np.sin(alpha*np.pi/180)
+
+        # --- Zero lift
+        alpha0 = self.alpha0()
+        cd0    = self.cd_interp(alpha0)
+        cm0    = self.cm_interp(alpha0)
+
+        # --- Zero cn
+        alpha0cn = _find_alpha0(alpha,cn)
+
+        # checks for inppropriate data (like cylinders)
+        if len(np.unique(cl))==1:
+            return (alpha0,0.0,0.0,0.0,0.0,0.0,cd0,cm0)
+
+        # --- cn "inflection" or "Max" points
+        # These point are detected from slope changes of cn, positive of negative inflections 
+        # The upper stall point is the first point after alpha0 with a "hat" inflection
+        # The lower stall point is the first point below alpha0 with a "v" inflection
+        a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha,cn,alpha0,method='inflections')
+
+        # --- cn slope
+        # Different method may be used. The max method ensures the the curve is always below its tangent
+        # Leastsquare fit in the region alpha0cn+window_offset
+        cnSlope_poly,a0cn_poly = _find_slope(alpha, cn, window=alpha0cn+dwin, method='leastsquare', x0=alpha0cn)
+        cnSlope_poly,a0cn_poly = _find_slope(alpha, cn, window=alpha0cn+dwin, method='leastsquare')
+        # Max (KEEP ME)
+        #cnSlope_max,a0cn_max = _find_slope(alpha, cn, window=[alpha0cn,a_StallUpp], method='max', xi=alpha0cn)
+        # Optim
+        #cnSlope_optim,a0cn_optim = _find_slope(alpha, cn, window=[alpha0-5,alpha0+20], method='optim', x0=alpha0cn)
+        ## FiniteDiff
+        #cnSlope_FD,a0cn_FD = _find_slope(alpha, cn, method='finitediff_1c', xi=alpha0cn)
+        # slopesRel=np.array([cnSlope_poly,cnSlope_max,cnSlope_optim,cnSlope_FD])*180/np.pi/(2*np.pi)
+        cnSlope = cnSlope_poly
+
+        # --- cn at "stall onset" (Trailling Edge Separation) locations, when cn deviates from the linear region
+        a_TSEUpp, cn_TSEUpp, cn_TSEUpp_lin, a_TSELow, cn_TSELow, cn_TSELow_lin = _find_TSE_points(alpha,cn,cnSlope,alpha0cn,deviation=0.05)
+
+        # --- cn at points where f=0.7
+        cn_f  = cnSlope* (alpha - alpha0cn)*((1+np.sqrt(0.7))/2)**2;
+        xInter,_ = _intersections(alpha,cn_f,alpha,cn)
+        if len(xInter)==3:
+           a_f07_Upp = xInter[2]
+           a_f07_Low = xInter[0]
+        else:
+           raise Exception('cn_f does not ntersect cn 3 times.')
+           #alpha1 =  abs(xInter[0]) 
+           #alpha2 = -abs(xInter[0])
+
+        # --- DEBUG plot
+#         import matplotlib.pyplot as plt
+#         plt.plot(alpha, cn,label='cn')
+#         plt.xlim([-50,50])
+#         plt.ylim([-3,3])
+#         plt.plot([alpha0-5,alpha0-5]  ,[-3,3],'k--')
+#         plt.plot([alpha0+10,alpha0+10],[-3,3],'k--')
+#         plt.plot([alpha0,alpha0],[-3,3],'r-')
+#         plt.plot([alpha0cn,alpha0cn],[-3,3],'b-')
+# 
+#         plt.plot(alpha, cn_f,label='cn_f')
+#         plt.plot(a_f07_Upp,self.cn_interp(a_f07_Upp),'d',label='Cn f07 Up')
+#         plt.plot(a_f07_Low,self.cn_interp(a_f07_Low),'d',label='Cn f07 Low')
+#         plt.plot(a_TSEUpp,cn_TSEUpp,'o',label='Cn TSEUp')
+#         plt.plot(a_TSELow,cn_TSELow,'o',label='Cn TSELow')
+#         plt.plot(a_TSEUpp,cn_TSEUpp_lin,'+',label='Cn TSEUp lin')
+#         plt.plot(a_TSELow,cn_TSELow_lin,'+',label='Cn TSELow lin')
+#         plt.plot(alpha,cnSlope *(alpha-alpha0cn),'--',  label ='Linear')
+# #         plt.plot(a_MaxUpp,cnMaxUpp,'o',label='Cn MaxUp')
+# #         plt.plot(a_MaxLow,cnMaxLow,'o',label='Cn MaxLow')
+# #         plt.plot(alpha,cnSlope_poly *(alpha-a0cn_poly),'--',  label ='Polyfit   '+sSlopes[0])
+# #         plt.plot(alpha,cnSlope_max  *(alpha-a0cn_max),'--',   label ='Max       '+sSlopes[1])
+# #         plt.plot(alpha,cnSlope_optim*(alpha-a0cn_optim),'--', label ='Optim     '+sSlopes[2])
+# #         plt.plot(alpha,cnSlope_FD   *(alpha-a0cn_FD),'--',    label ='FiniteDiff'+sSlopes[3])
+# # #         plt.plot(alpha      , np.pi/180*cnSlope*(alpha-alpha0),label='cn lin')
+# # #         plt.plot(alpha1, np.pi/180*cnSlope*(alpha1-alpha0),'o',label='cn Stall')
+# # #         plt.plot(alpha2, np.pi/180*cnSlope*(alpha2-alpha0),'o',label='cn Stall')
+#         plt.legend()
+#         mng=plt.get_current_fig_manager()
+#         mng.full_screen_toggle()
+#         plt.show()
+#         raise Exception()
+
+        # --- Deciding what we return
+        # Critical value of C0n at leading edge separation
+#         cn1   = cn_TSEUpp_lin
+#         cn2   = cn_TSELow_lin
+        cn1   = cn_MaxUpp
+        cn2   = cn_MaxLow
+        # Alpha at f=0.7
+#         alpha1= a_TSEUpp
+#         alpha2= a_TSELow
+        alpha1= a_f07_Upp
+        alpha2= a_f07_Low
+
+        # 
+        if self._radians:
+            alpha0  = np.degrees(alpha0)
+            alpha1  = np.degrees(alpha1)
+            alpha2  = np.degrees(alpha2)
+            cnSlope = cnSlope
+        else:
+            cnSlope = cnSlope*180/np.pi
+        return (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)
+
     def unsteadyparam(self, alpha_linear_min=-5, alpha_linear_max=5):
         """compute unsteady aero parameters used in AeroDyn input file
 
@@ -470,21 +633,21 @@ class Polar(object):
 
         # checks for inppropriate data (like cylinders)
         if len(idx) < 10 or len(np.unique(cl)) < 10:
-            return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0
 
         # linear fit
         p = np.polyfit(alpha[idx], cn[idx], 1)
         m = p[0]
         alpha0 = -p[1]/m
 
-        # find cn at stall locations
-        alphaUpper = np.radians(np.arange(40.0))
-        alphaLower = np.radians(np.arange(5.0, -40.0, -1))
-        cnUpper = np.interp(alphaUpper, alpha, cn)
-        cnLower = np.interp(alphaLower, alpha, cn)
+        # find cn at "stall onset" locations, when cn deviates from the linear region
+        alphaUpper    = np.radians(np.arange(40.0))
+        alphaLower    = np.radians(np.arange(5.0, -40.0, -1))
+        cnUpper       = np.interp(alphaUpper, alpha, cn)
+        cnLower       = np.interp(alphaLower, alpha, cn)
         cnLinearUpper = m*(alphaUpper - alpha0)
         cnLinearLower = m*(alphaLower - alpha0)
-        deviation = 0.05  # threshold for cl in detecting stall
+        deviation     = 0.05                  # threshold for cl in detecting stall
 
         alphaU = np.interp(deviation, cnLinearUpper-cnUpper, alphaUpper)
         alphaL = np.interp(deviation, cnLower-cnLinearLower, alphaLower)
@@ -544,47 +707,9 @@ class Polar(object):
 
         return figs
 
-
-    def _alpha_window_in_bounds(self,window):
-        """ Ensures that the window of alpha values is within the bounds of alpha"""
-        IBef=np.where(self.alpha<=window[0])[0]
-        if len(IBef)>0:
-            im=IBef[-1]
-        else:
-            im=0
-        IAft=np.where(self.alpha>=window[1])[0]
-        if len(IAft)>0:
-            ip=IAft[0]
-        else:
-            ip=len(self.alpha)-1
-        window=[self.alpha[im], self.alpha[ip]]
-        return window
-
-
     def alpha0(self,window=[-20,20]):
         """ Finds alpha0, angle of zero lift """
-        # Constant case or only one value
-        if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
-            if self.cl[0]==0:
-                return 0
-            else:
-                return np.nan
-
-        # Ensuring window is within our alpha values
-        window = self._alpha_window_in_bounds(window)
-        
-        # Finding zero up-crossing within window
-        iwindow=np.where((self.alpha>=window[0]) & (self.alpha<=window[1]))
-        alpha = self.alpha[iwindow]
-        cl    = self.cl[iwindow]
-        alpha_zc,i_zc = _zero_crossings(x=alpha,y=cl,direction='up')
-        if len(alpha_zc)>1:
-            raise Exception('Cannot find alpha0, {} zero crossings of Cl in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
-        elif len(alpha_zc)==0:
-            raise Exception('Cannot find alpha0, no zero crossing of Cl in the range of alpha values: [{} {}] '.format(window[0],window[1]))
-
-        alpha0=alpha_zc[0]
-        return alpha0
+        return _find_alpha0(self.alpha,self.cl,window)
 
     def cl_max(self,window=[-40,40]):
         """ Finds cl_max , returns (Cl_max,alpha_max) """
@@ -593,7 +718,7 @@ class Polar(object):
             return self.cl, self.alpha
 
         # Ensuring window is within our alpha values
-        window = self._alpha_window_in_bounds(window)
+        window = _alpha_window_in_bounds(alpha,window)
         
         # Finding max within window
         iwindow=np.where((self.alpha>=window[0]) & (self.alpha<=window[1]))
@@ -658,7 +783,7 @@ class Polar(object):
             UserWindow=True
 
         # Ensuring window is within our alpha values
-        window = self._alpha_window_in_bounds(window)
+        window = _alpha_window_in_bounds(self.alpha,window)
 
         # Selecting range of values within window
         idx = np.where((self.alpha >= window[0]) & (self.alpha <= window[1]) & ~np.isnan(self.cl))[0]
@@ -853,7 +978,6 @@ def thicknessinterp_from_one_set(thickness, polarList, polarThickness):
 
     # sorting thickness 
     Isort          = np.argsort(polarThickness)
-    print(Isort)
     polarThickness = polarThickness[Isort]
     polarList      = polarList[Isort]
     
@@ -871,9 +995,9 @@ def thicknessinterp_from_one_set(thickness, polarList, polarThickness):
                 break
         
         weight=(t-polarThickness[ilow])/(polarThickness[ihigh]-polarThickness[ilow])
-        print(polarThickness[ilow],'<',t,'<',polarThickness[ihigh],'Weight',weight)
+        #print(polarThickness[ilow],'<',t,'<',polarThickness[ihigh],'Weight',weight)
         if ihigh==ilow:
-            polars.append(polarThickness[ihigh])
+            polars.append(polarList[ihigh])
             print('[WARN] Using nearest polar for section {},   t={} , t_near={}'.format(it,t,polarThickness[ihigh]))
         else:
             if (polarThickness[ilow]>t) or (polarThickness[ihigh]<t): 
@@ -887,12 +1011,185 @@ def thicknessinterp_from_one_set(thickness, polarList, polarThickness):
             # plt.plot(polarList[ihigh][:,0],polarList[ihigh][:,2],'r',label='thick'+str(polarThickness[ihigh]))
             # plt.legend()
             # plt.show()
+    return polars
+
+
+def _alpha_window_in_bounds(alpha,window):
+    """ Ensures that the window of alpha values is within the bounds of alpha
+    Example: alpha in [-30,30], window=[-20,20] => window=[-20,20]
+    Example: alpha in [-10,10], window=[-20,20] => window=[-10,10]
+    Example: alpha in [-30,30], window=[-40,10] => window=[-40,10]
+    """
+    IBef=np.where(alpha<=window[0])[0]
+    if len(IBef)>0:
+        im=IBef[-1]
+    else:
+        im=0
+    IAft=np.where(alpha>=window[1])[0]
+    if len(IAft)>0:
+        ip=IAft[0]
+    else:
+        ip=len(alpha)-1
+    window=[alpha[im], alpha[ip]]
+    return window
+
+def _find_alpha0(alpha,coeff,window=[-20,20]):
+    """ Finds the point where coeff(alpha)==0 using interpolation.
+    The search is narrowed to a window that can be specified by the user. The default window is yet enough for cases that make physical sense.
+    The angle alpha0 is found by looking at a zero up crossing in this window, and interpolation is used to find the exact location.
+    """
+    # Constant case or only one value
+    if np.all(coeff == coeff[0]) or len(coeff)==1:
+        if coeff[0]==0:
+            return 0
+        else:
+            return np.nan
+    # Ensuring window is within our alpha values
+    window = _alpha_window_in_bounds(alpha,window)
+    
+    # Finding zero up-crossing within window
+    iwindow=np.where((alpha>=window[0]) & (alpha<=window[1]))
+    alpha = alpha[iwindow]
+    coeff  = coeff[iwindow]
+    alpha_zc,i_zc = _zero_crossings(x=alpha,y=coeff,direction='up')
+    if len(alpha_zc)>1:
+        raise Exception('Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
+    elif len(alpha_zc)==0:
+        raise Exception('Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(window[0],window[1]))
+
+    alpha0=alpha_zc[0]
+    return alpha0
+
+
+def _find_TSE_points(alpha, coeff, slope, alpha0, deviation):
+    """ Find the Trailing Edge Separation points, when the coefficient separates from its linear region
+    These points are defined as the points where the difference is equal to +/- `deviation`
+    Typically deviation is about 0.05 (absolute value)
+    The linear region is defined as coeff_lin = slope (alpha-alpha0)
+
+    returns:
+       a_TSE, c_TSE, c_TSE_lin: values of alpha, coeff, and coeff_lin at the TSE point (upper and lower)
+    
+    """
+    # How off are we from the linear region
+    DeltaLin = slope*(alpha - alpha0)  - coeff
+
+    # Upper and lower regions
+    bUpp = alpha>=alpha0
+    bLow = alpha<=alpha0
+
+    # Finding the point where the delta is equal to `deviation`
+    a_TSEUpp     = np.interp(  deviation, DeltaLin[bUpp], alpha[bUpp])
+    a_TSELow     = np.interp(- deviation, DeltaLin[bLow], alpha[bLow])
+
+    c_TSEUpp_lin = slope*(a_TSEUpp-alpha0)
+    c_TSELow_lin = slope*(a_TSELow-alpha0)
+    c_TSEUpp     = np.interp(a_TSEUpp, alpha, coeff)
+    c_TSELow     = np.interp(a_TSELow, alpha, coeff)
+    return a_TSEUpp, c_TSEUpp, c_TSEUpp_lin, a_TSELow, c_TSELow, c_TSELow_lin
+
+
+def _find_max_points(alpha, coeff, alpha0, method='inflections'):
+    """ Find upper and lower max points in `coeff` vector.
+    if `method` is "inflection":
+       These point are detected from slope changes of `coeff`, positive of negative inflections 
+       The upper stall point is the first point after alpha0 with a "hat" inflection
+       The lower stall point is the first point below alpha0 with a "v" inflection
+    """
+    if method=='inflections':
+        dC = np.diff(coeff)
+        IHatInflections = np.where(np.logical_and.reduce((dC[1:]<0, dC[0:-1]>0, alpha[1:-1]>alpha0)))[0]
+        IVeeInflections = np.where(np.logical_and.reduce((dC[1:]>0, dC[0:-1]<0, alpha[1:-1]<alpha0)))[0]
+        if len(IHatInflections)<=0: 
+            raise Exception('Not able to detect upper stall point of curve')
+        if len(IVeeInflections)<=0: 
+            raise Exception('Not able to detect lower stall point of curve')
+        a_MaxUpp = alpha[IHatInflections[0]+1]
+        c_MaxUpp = coeff[IHatInflections[0]+1]
+        a_MaxLow = alpha[IVeeInflections[-1]+1]
+        c_MaxLow = coeff[IVeeInflections[-1]+1]
+    else:
+        raise NotImplementedError()
+    return (a_MaxUpp,c_MaxUpp,a_MaxLow,c_MaxLow)
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Generic curve handling functions
+# --------------------------------------------------------------------------------{
+def _find_slope(x,y,xi=None,x0=None,window=None,method='max'):
+    """ Find the slope of a curve at x=xi based on a given method.
+    INPUTS: 
+    x: array of x values 
+    y: array of y values 
+    xi: point where the slope is to be computed
+    x0: point where y(x0)=0 
+        if provided the constraint y(x0)=0 is added.
+    window: 
+        If a `window` is provided the search is restrained to this region of x values. 
+        Typical windows for airfoils are: window=[alpha0,Clmax], or window=[-5,5]+alpha0
+        If window is None,  the whole extent is used (window=[min(x),max(x)])
+
+    The methods available are:
+        'max'    : returns the maximum slope within the window. Needs `xi`
+        'leastsquare': use leastsquare (or polyfit), to fit the curve within the window 
+        'finitediff_1c': first order centered finite difference. Needs `xi`
+        'optim': find the slope by looking at all possible slope values, and try to find an optimal where the length of linear region is maximized.
+
+    returns:
+        (a,x0): such that the slope is a(x-x0)
+                (x0=-b/a where y=ax+b)
+    """
+    if window is not None:
+        I = np.where(np.logical_and(x>=window[0],x<=window[1]))
+        x = x[I]
+        y = y[I]
+
+    if method=='max':
+        if xi is not None:
+            I=np.nonzero(x-xi)
+            yi = np.interp(xi,x,y)
+            a  = max((y[I]-yi)/(x[I]-xi)) 
+            x0 = xi - yi/a
+        else:
+            raise Exception('For now xi needs to be set to find a slope with the max method')
+
+    elif method=='finitediff_1c':
+        # First order centered finite difference
+        if xi is not None:
+            im = np.where(x<xi)[0][-1]
+            a = (y[im+1]-y[im-1])/(x[im+1]-x[im-1])
+            yi = np.interp(xi,x,y)
+            x0 = xi - yi/a
+        else:
+            raise Exception('For now xi needs to be set to find a slope with the finite diff method')
+
+    elif method=='leastsquare':
+        if x0 is not None:
+            a = np.linalg.lstsq((x-x0).reshape((-1,1)),y.reshape((-1,1)),rcond = None)[0][0][0]
+        else:
+            p      = np.polyfit(x, y, 1)
+            a  =  p[0]
+            x0 = -p[1]/a
+    elif method=='optim':
+        nMin=int(len(x)/2)
+        a,x0,iStart,iEnd = _find_linear_region(x,y,nMin,x0)
+    else:
+        raise NotImplementedError()
+    return a, x0
 
 def _find_linear_region(x,y,nMin,x0=None):
-    """ Find a linear region by computing all possible slopes
+    """ Find a linear region by computing all possible slopes for all possible extent.
         The objective function tries to minimize the error with the linear slope
         and maximize the length of the linear region.
+        nMin is the mimum number of points to be present in the region
         If x0 is provided, the function a*(x-x0) is fitted
+
+        returns: 
+            slope :
+            offset:
+            iStart: index of start of linear region
+            iEnd  : index of end of linear region
     """
     if x0 is not None:
         x = x.reshape((-1,1))-x0
@@ -926,6 +1223,7 @@ def _find_linear_region(x,y,nMin,x0=None):
     return slp[iStart,j],off[iStart,j],iStart,iEnd
 
 def _zero_crossings(y,x=None,direction=None):
+
     """
       Find zero-crossing points in a discrete vector, using linear interpolation.
 
@@ -976,6 +1274,91 @@ def _zero_crossings(y,x=None,direction=None):
     return xzc, iBef, sign
 
 
+def _intersections(x1,y1,x2,y2):
+    """
+   INTERSECTIONS Intersections of curves.
+   Computes the (x,y) locations where two curves intersect.  The curves
+   can be broken with NaNs or have vertical segments.
+
+   Written by: Sukhbinder, https://github.com/sukhbinder/intersection
+   License: MIT
+   usage:
+       x,y=intersection(x1,y1,x2,y2)
+
+    Example:
+    a, b = 1, 2
+    phi = np.linspace(3, 10, 100)
+    x1 = a*phi - b*np.sin(phi)
+    y1 = a - b*np.cos(phi)
+
+    x2=phi
+    y2=np.sin(phi)+2
+    x,y=intersection(x1,y1,x2,y2)
+
+    plt.plot(x1,y1,c='r')
+    plt.plot(x2,y2,c='g')
+    plt.plot(x,y,'*k')
+    plt.show()
+
+    """
+    def _rect_inter_inner(x1,x2):
+        n1=x1.shape[0]-1
+        n2=x2.shape[0]-1
+        X1=np.c_[x1[:-1],x1[1:]]
+        X2=np.c_[x2[:-1],x2[1:]]
+        S1=np.tile(X1.min(axis=1),(n2,1)).T
+        S2=np.tile(X2.max(axis=1),(n1,1))
+        S3=np.tile(X1.max(axis=1),(n2,1)).T
+        S4=np.tile(X2.min(axis=1),(n1,1))
+        return S1,S2,S3,S4
+
+    def _rectangle_intersection_(x1,y1,x2,y2):
+        S1,S2,S3,S4=_rect_inter_inner(x1,x2)
+        S5,S6,S7,S8=_rect_inter_inner(y1,y2)
+
+        C1=np.less_equal(S1,S2)
+        C2=np.greater_equal(S3,S4)
+        C3=np.less_equal(S5,S6)
+        C4=np.greater_equal(S7,S8)
+
+        ii,jj=np.nonzero(C1 & C2 & C3 & C4)
+        return ii,jj
+    ii,jj=_rectangle_intersection_(x1,y1,x2,y2)
+    n=len(ii)
+
+    dxy1=np.diff(np.c_[x1,y1],axis=0)
+    dxy2=np.diff(np.c_[x2,y2],axis=0)
+
+    T=np.zeros((4,n))
+    AA=np.zeros((4,4,n))
+    AA[0:2,2,:]=-1
+    AA[2:4,3,:]=-1
+    AA[0::2,0,:]=dxy1[ii,:].T
+    AA[1::2,1,:]=dxy2[jj,:].T
+
+    BB=np.zeros((4,n))
+    BB[0,:]=-x1[ii].ravel()
+    BB[1,:]=-x2[jj].ravel()
+    BB[2,:]=-y1[ii].ravel()
+    BB[3,:]=-y2[jj].ravel()
+
+    for i in range(n):
+        try:
+            T[:,i]=np.linalg.solve(AA[:,:,i],BB[:,i])
+        except:
+            T[:,i]=np.NaN
+
+
+    in_range= (T[0,:] >=0) & (T[1,:] >=0) & (T[0,:] <=1) & (T[1,:] <=1)
+
+    xy0=T[2:,in_range]
+    xy0=xy0.T
+    return xy0[:,0],xy0[:,1]
+
+
 if __name__ == '__main__':
     pass
+
+
+
 
