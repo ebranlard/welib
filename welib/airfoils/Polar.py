@@ -24,7 +24,8 @@ class Polar(object):
         - fromfile          : reads of polar from csv of FAST AD15 file
         - correction3D      : apply 3D rotatational correction
         - extrapolate       : extend polar data set using Viterna's method
-        - unsteadyparam     : computes unsteady params e.g. needed by AeroDyn15
+        - unsteadyParams    : computes unsteady params e.g. needed by AeroDyn15
+        - unsteadyparam     : same but (old)
         - plot              : plot's the polar
         - alpha0            : computes and return alpha0, also stored in _alpha0
         - cl_max            : cl_max
@@ -762,10 +763,6 @@ class Polar(object):
 
         # finding our alpha0 is possible
         alpha0 = self.alpha0()
-        try:
-            alpha0 = self.alpha0()
-        except:
-            alpha0=None
 
         # Constant case or only one value
         if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
@@ -778,82 +775,67 @@ class Polar(object):
                 window =[self.alpha[0],self.alpha[-1]]
             else:
                 # define a window around alpha0
-                window = [alpha0-5, alpha0+20];
+                window = [alpha0-5, alpha0+20]; # <<<<< RADIANS!!!!
         else:
             UserWindow=True
 
         # Ensuring window is within our alpha values
         window = _alpha_window_in_bounds(self.alpha,window)
 
-        # Selecting range of values within window
-        idx = np.where((self.alpha >= window[0]) & (self.alpha <= window[1]) & ~np.isnan(self.cl))[0]
-        cl, alpha = self.cl[idx], self.alpha[idx]
-        if not UserWindow:
-            # Selecting within the min and max of this window
-            imin=np.where(cl==np.min(cl))[0][-1]
-            idx = np.arange(imin,np.argmax(cl)+1)
-            cl, alpha = cl[idx], alpha[idx]
-
-        if len(cl)<=0:
-            raise Exception('Cannot find Cl slope')
-        elif len(cl)<4:
-            if method=='optim':
-                if alpha0 is not None:
-                    sl=np.linalg.lstsq(alpha.reshape((-1,1))-alpha0,cl.reshape((-1,1)),rcond=None)[0][0]
-                    return myret(sl[0],alpha0,[alpha[0],alpha[-1]],[alpha[0],alpha[-1]])
-                else:
-                    p = np.polyfit(alpha, cl, 1)
-                    return myret(p[0],p[1],[alpha[0],alpha[-1]],[alpha[0],alpha[-1]])
-            elif method=='max':
-                if alpha0 is None:
-                    raise Exception('Alpha 0 need to be set to use the `max` method')
-                I=np.nonzero(alpha-alpha0)
-                slope = max(cl[I]/(alpha[I]-alpha0)) 
-                off = alpha0
-                iStart,iEnd = _find_linear_extent(cl-slope*(alpha-alpha0))
-                LinWindow    = [alpha[iStart],alpha[iEnd]]
-                SearchWindow = [alpha[0],alpha[-1]]
-                return myret(slope,off,LinWindow,SearchWindow)
-            else:
-                raise NotImplementedError('')
-
-        if method=='optim':
+        if method=='max':
+            slope,off =  _find_slope(self.alpha,self.cl,xi=alpha0,window=window,method='max')
+            iStart,iEnd = _find_linear_extent(self.cl-slope*(self.alpha-alpha0))
+            LinWindow    = [self.alpha[iStart],self.alpha[iEnd]]
+            SearchWindow = window
+        elif method=='leastsquare':
+            #slope,off =  _find_slope(self.alpha,self.cl,window=window,method='leastsquare')
+            raise NotImplementedError()
+            # TODO
+        elif method=='leastsquare_constraint':
+            #slope,off =  _find_slope(self.alpha,self.cl,x0=alpha0,window=window,method='leastsquare')
+            raise NotImplementedError()
+            # TODO
+        elif method=='optim':
+            # Selecting range of values within window
+            idx = np.where((self.alpha >= window[0]) & (self.alpha <= window[1]) & ~np.isnan(self.cl))[0]
+            cl, alpha = self.cl[idx], self.alpha[idx]
+            if not UserWindow:
+                # Selecting within the min and max of this window
+                imin=np.where(cl==np.min(cl))[0][-1]
+                idx = np.arange(imin,np.argmax(cl)+1)
+                cl, alpha = cl[idx], alpha[idx]
             # Performing minimization of slope
             if UserWindow:
                 nMin = len(alpha) # using full window
             else:
                 nMin = max(3,int(round(0.6*len(alpha)))) # optimizing between length and linear error  
-            slope,off,iStart,iEnd = _find_linear_region(alpha,cl,nMin,alpha0)
+            opts={'nMin':nMin}
+            slope,off =  _find_slope(alpha,cl,x0=alpha0,window=None,method='optim',opts=opts)
+
+            iStart,iEnd = _find_linear_extent(self.cl-slope*(self.alpha-alpha0))
+            LinWindow    = [self.alpha[iStart],self.alpha[iEnd]]
+            SearchWindow = window
 
             # --- Safety check Looking at slope around alpha 0 to see if we are too far off
-            if alpha0 is not None:
-                ia0 = (np.abs(alpha-alpha0)).argmin()
-                slope_0 = (cl[ia0+1]-cl[ia0-1])/(alpha[ia0+1]-alpha[ia0-1])
-                if abs(slope-slope_0)/slope_0*100>20:
-                    print('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_0,window[0],window[-1]))
-
-#         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
-            # Making sure the linear fit is bigger than ClMax
-            DeltaAlpha=alpha[iEnd]-alpha[iStart]
-            DeltaClMax = ((alpha[-1]-off)*slope)-cl[-1]
-            if DeltaClMax<0:
-                print('NEED TO ADJUST SLOPE FOR CL MAX',DeltaClMax) 
-
-        elif method=='max':
-            if alpha0 is None:
-                raise Exception('Alpha 0 need to be set to use the `max` method')
-            I=np.nonzero(alpha-alpha0)
-            slope = max(cl[I]/(alpha[I]-alpha0)) 
-            off = alpha0
-            iStart,iEnd = _find_linear_extent(cl-slope*(alpha-alpha0))
+#             if alpha0 is not None:
+#                 ia0 = (np.abs(alpha-alpha0)).argmin()
+#                 slope_0 = (cl[ia0+1]-cl[ia0-1])/(alpha[ia0+1]-alpha[ia0-1])
+#                 if abs(slope-slope_0)/slope_0*100>20:
+#                     print('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_0,window[0],window[-1]))
+# 
+# #         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
+#             # Making sure the linear fit is bigger than ClMax
+#             DeltaAlpha=alpha[iEnd]-alpha[iStart]
+#             DeltaClMax = ((alpha[-1]-off)*slope)-cl[-1]
+#             if DeltaClMax<0:
+#                 print('NEED TO ADJUST SLOPE FOR CL MAX',DeltaClMax) 
+# 
+#             LinWindow    = [alpha[iStart],alpha[iEnd]]
+#             SearchWindow = [alpha[0],alpha[-1]]
+        #print('Search Window',SearchWindow)
         else:
             raise Exception('Method unknown for lift slope determination: {}'.format(method))
 
-
-
-        LinWindow    = [alpha[iStart],alpha[iEnd]]
-        SearchWindow = [alpha[0],alpha[-1]]
-        #print('Search Window',SearchWindow)
 
         return myret(slope,off,LinWindow,SearchWindow)
 
@@ -1117,7 +1099,7 @@ def _find_max_points(alpha, coeff, alpha0, method='inflections'):
 # --------------------------------------------------------------------------------}
 # --- Generic curve handling functions
 # --------------------------------------------------------------------------------{
-def _find_slope(x,y,xi=None,x0=None,window=None,method='max'):
+def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
     """ Find the slope of a curve at x=xi based on a given method.
     INPUTS: 
     x: array of x values 
@@ -1144,6 +1126,15 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max'):
         I = np.where(np.logical_and(x>=window[0],x<=window[1]))
         x = x[I]
         y = y[I]
+
+    if len(y)<=0:
+        raise Exception('Cannot find slope, no data in y (after window selection)')
+
+
+    if len(y)<4 and method=='optim':
+        method='leastsquare'
+        print('[WARN] Not enougth data to find slope with optim method, using leastsquare')
+
 
     if method=='max':
         if xi is not None:
@@ -1172,8 +1163,13 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max'):
             a  =  p[0]
             x0 = -p[1]/a
     elif method=='optim':
-        nMin=int(len(x)/2)
+        if opts is None:
+            nMin=int(len(x)/2)
+        else:
+            nMin = opts['nMin']
         a,x0,iStart,iEnd = _find_linear_region(x,y,nMin,x0)
+
+
     else:
         raise NotImplementedError()
     return a, x0
