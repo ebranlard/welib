@@ -70,7 +70,8 @@ class TestPolarManip(unittest.TestCase):
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar sine with plateaux 
-        P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-2,-1,0,1,1],[],[])
+        P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-2,-1,0,1,1],[],[],radians=False)
+        P.alpha0()
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
@@ -83,7 +84,7 @@ class TestPolarManip(unittest.TestCase):
         np.testing.assert_almost_equal(sl,1.0,decimal=1)
         # --- Polar with a kink - Difficult
         P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-2,-2,0,1,1],[],[])
-        sl,a0,WinLin,WinSearch=P.cl_linear_slope()
+        sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.5,decimal=1)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,2.0)
@@ -104,8 +105,7 @@ class TestPolarManip(unittest.TestCase):
         # --- Real Polars
         P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(radians=True, method='optim')
-        np.testing.assert_almost_equal(sl,7.034, decimal=3)
-
+        np.testing.assert_almost_equal(sl,7.091, decimal=3)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,0.123, decimal=3)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
@@ -117,12 +117,12 @@ class TestPolarManip(unittest.TestCase):
         # --- Real Polars
         P=Polar.fromfile(os.path.join(MyDir,'../data/63-235.csv'))
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='optim')
-        np.testing.assert_almost_equal(sl,0.099, decimal=3)
+        np.testing.assert_almost_equal(sl,0.102, decimal=3)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,0.113, decimal=3)
         # --- Default method (NOTE: Might change in the future!)
         sl,a0,WinLin,WinSearch=P.cl_linear_slope()
-        np.testing.assert_almost_equal(sl,0.099, decimal=3)
+        np.testing.assert_almost_equal(sl,0.102, decimal=3)
 
         ##print(sl,a0,WinLin,WinSearch)
         #import matplotlib.pyplot as plt

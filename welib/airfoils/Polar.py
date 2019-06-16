@@ -65,7 +65,7 @@ class Polar(object):
         self._alpha0       = None
         if radians is None:
             # If the max alpha is above pi, most likely we are in degrees
-            self._radians = np.max(np.abs(self.alpha))<=np.pi
+            self._radians = np.mean(np.abs(self.alpha))<=np.pi/2
         else:
             self._radians = radians
 
@@ -506,7 +506,11 @@ class Polar(object):
         cm0    = self.cm_interp(alpha0)
 
         # --- Zero cn
-        alpha0cn = _find_alpha0(alpha,cn)
+        if self._radians:
+            window=[np.radians(-20),np.radians(20)]
+        else:
+            window=[-20,20]
+        alpha0cn = _find_alpha0(alpha,cn,window)
 
         # checks for inppropriate data (like cylinders)
         if len(np.unique(cl))==1:
@@ -708,12 +712,30 @@ class Polar(object):
 
         return figs
 
-    def alpha0(self,window=[-20,20]):
+    def alpha0(self,window=None):
         """ Finds alpha0, angle of zero lift """
+        if window is None:
+            if self._radians:
+                window=[np.radians(-20),np.radians(20)]
+            else:
+                window=[-20,20]
+        window = _alpha_window_in_bounds(self.alpha,window)
+        #print(window)
+        #print(self.alpha)
+        #print(self._radians)
+        #print(self.cl)
+        #print(window)
+
         return _find_alpha0(self.alpha,self.cl,window)
 
-    def cl_max(self,window=[-40,40]):
+    def cl_max(self,window=None):
         """ Finds cl_max , returns (Cl_max,alpha_max) """
+        if window is None:
+            if self._radians:
+                window=[np.radians(-40),np.radians(40)]
+            else:
+                window=[-40,40]
+
         # Constant case or only one value
         if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
             return self.cl, self.alpha
@@ -751,91 +773,65 @@ class Polar(object):
         """
         # --- Return function
         def myret(sl,a0,WinLin,WinSearch):
-            # wrapper funciton to return degrees or radians
+            # wrapper function to return degrees or radians
             if radians:
                 return np.rad2deg(sl), np.deg2rad(a0),np.deg2rad(WinLin),np.deg2rad(WinSearch)
             else:
                 return sl, a0, WinLin, WinSearch
-        # --- helper function
-        def _find_linear_extent(x):
-            Igood=np.where(np.abs(x)<0.02)[0] # TODO this is absolute
-            return Igood[0],Igood[-1]
 
-        # finding our alpha0 is possible
+        # finding our alpha0
         alpha0 = self.alpha0()
 
         # Constant case or only one value
         if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
             return myret(0,alpha0,[self.alpha[0],self.alpha[-1]],[self.alpha[0],self.alpha[-1]])
 
-
         if window is None:
-            UserWindow=False
-            if np.nanmin(self.cl)>0 or np.nanmax(self.cl)<0 or alpha0 is None:
+            if np.nanmin(self.cl)>0 or np.nanmax(self.cl)<0:
                 window =[self.alpha[0],self.alpha[-1]]
             else:
                 # define a window around alpha0
-                window = [alpha0-5, alpha0+20]; # <<<<< RADIANS!!!!
-        else:
-            UserWindow=True
+                if self._radians:
+                    window = alpha0 + np.radians(np.array([-5, +20]))
+                else:
+                    window = alpha0 +            np.array([-5, +20])
 
         # Ensuring window is within our alpha values
         window = _alpha_window_in_bounds(self.alpha,window)
 
         if method=='max':
             slope,off =  _find_slope(self.alpha,self.cl,xi=alpha0,window=window,method='max')
-            iStart,iEnd = _find_linear_extent(self.cl-slope*(self.alpha-alpha0))
-            LinWindow    = [self.alpha[iStart],self.alpha[iEnd]]
-            SearchWindow = window
         elif method=='leastsquare':
-            #slope,off =  _find_slope(self.alpha,self.cl,window=window,method='leastsquare')
-            raise NotImplementedError()
-            # TODO
+            slope,off =  _find_slope(self.alpha,self.cl,xi=alpha0,window=window,method='leastsquare')
         elif method=='leastsquare_constraint':
-            #slope,off =  _find_slope(self.alpha,self.cl,x0=alpha0,window=window,method='leastsquare')
-            raise NotImplementedError()
-            # TODO
+            slope,off =  _find_slope(self.alpha,self.cl,x0=alpha0,window=window,method='leastsquare')
         elif method=='optim':
             # Selecting range of values within window
             idx = np.where((self.alpha >= window[0]) & (self.alpha <= window[1]) & ~np.isnan(self.cl))[0]
             cl, alpha = self.cl[idx], self.alpha[idx]
-            if not UserWindow:
-                # Selecting within the min and max of this window
-                imin=np.where(cl==np.min(cl))[0][-1]
-                idx = np.arange(imin,np.argmax(cl)+1)
-                cl, alpha = cl[idx], alpha[idx]
+            # Selecting within the min and max of this window to improve accuracy
+            imin=np.where(cl==np.min(cl))[0][-1]
+            idx = np.arange(imin,np.argmax(cl)+1)
+            window = [alpha[imin], alpha[np.argmax(cl)]]
+            cl, alpha = cl[idx], alpha[idx]
             # Performing minimization of slope
-            if UserWindow:
-                nMin = len(alpha) # using full window
-            else:
-                nMin = max(3,int(round(0.6*len(alpha)))) # optimizing between length and linear error  
-            opts={'nMin':nMin}
-            slope,off =  _find_slope(alpha,cl,x0=alpha0,window=None,method='optim',opts=opts)
+            slope,off =  _find_slope(alpha,cl,x0=alpha0,window=None,method='optim')
 
-            iStart,iEnd = _find_linear_extent(self.cl-slope*(self.alpha-alpha0))
-            LinWindow    = [self.alpha[iStart],self.alpha[iEnd]]
-            SearchWindow = window
-
-            # --- Safety check Looking at slope around alpha 0 to see if we are too far off
-#             if alpha0 is not None:
-#                 ia0 = (np.abs(alpha-alpha0)).argmin()
-#                 slope_0 = (cl[ia0+1]-cl[ia0-1])/(alpha[ia0+1]-alpha[ia0-1])
-#                 if abs(slope-slope_0)/slope_0*100>20:
-#                     print('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_0,window[0],window[-1]))
-# 
-# #         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
-#             # Making sure the linear fit is bigger than ClMax
-#             DeltaAlpha=alpha[iEnd]-alpha[iStart]
-#             DeltaClMax = ((alpha[-1]-off)*slope)-cl[-1]
-#             if DeltaClMax<0:
-#                 print('NEED TO ADJUST SLOPE FOR CL MAX',DeltaClMax) 
-# 
-#             LinWindow    = [alpha[iStart],alpha[iEnd]]
-#             SearchWindow = [alpha[0],alpha[-1]]
-        #print('Search Window',SearchWindow)
         else:
             raise Exception('Method unknown for lift slope determination: {}'.format(method))
 
+        # --- Safety checks
+        if len(self.cl)>10:
+            # Looking at slope around alpha 0 to see if we are too far off
+            slope_FD,off_FD =  _find_slope(self.alpha,self.cl,xi=alpha0,window=window,method='finitediff_1c')
+            if abs(slope-slope_FD)/slope_FD*100>20:
+                raise Exception('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
+#         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
+
+        # --- Linear extent
+        a_TSEUpp,_,_,a_TSELow,_,_ = _find_TSE_points(self.alpha,self.cl,slope,alpha0,deviation=0.05)
+        LinWindow    = [a_TSEUpp,a_TSELow]
+        SearchWindow = window
 
         return myret(slope,off,LinWindow,SearchWindow)
 
@@ -1015,7 +1011,7 @@ def _alpha_window_in_bounds(alpha,window):
     window=[alpha[im], alpha[ip]]
     return window
 
-def _find_alpha0(alpha,coeff,window=[-20,20]):
+def _find_alpha0(alpha,coeff,window):
     """ Finds the point where coeff(alpha)==0 using interpolation.
     The search is narrowed to a window that can be specified by the user. The default window is yet enough for cases that make physical sense.
     The angle alpha0 is found by looking at a zero up crossing in this window, and interpolation is used to find the exact location.
@@ -1133,7 +1129,7 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
 
     if len(y)<4 and method=='optim':
         method='leastsquare'
-        print('[WARN] Not enougth data to find slope with optim method, using leastsquare')
+        #print('[WARN] Not enought data to find slope with optim method, using leastsquare')
 
 
     if method=='max':
@@ -1149,9 +1145,14 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
         # First order centered finite difference
         if xi is not None:
             im = np.where(x<xi)[0][-1]
-            a = (y[im+1]-y[im-1])/(x[im+1]-x[im-1])
-            yi = np.interp(xi,x,y)
-            x0 = xi - yi/a
+            dx=(x[im+1]-x[im-1])
+            if np.abs(dx)>1e-7:
+                a = (y[im+1]-y[im-1])/dx
+                yi = np.interp(xi,x,y)
+                x0 = xi - yi/a
+            else:
+                a=np.inf
+                x0 = xi
         else:
             raise Exception('For now xi needs to be set to find a slope with the finite diff method')
 
@@ -1164,9 +1165,10 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
             x0 = -p[1]/a
     elif method=='optim':
         if opts is None:
-            nMin=int(len(x)/2)
+            nMin=max(3, int(len(x)/2))
         else:
             nMin = opts['nMin']
+
         a,x0,iStart,iEnd = _find_linear_region(x,y,nMin,x0)
 
 
