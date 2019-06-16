@@ -58,10 +58,6 @@ class Polar(object):
         self.f_st          = None # separation function
         self.cl_fs         = None # cl_fully separated
         self._linear_slope = None
-        self._alpha_linear_region= None
-        self._cl_linear_region= None
-        self._cl_max       = None
-        self._alpha_cl_max = None
         self._alpha0       = None
         if radians is None:
             # If the max alpha is above pi, most likely we are in degrees
@@ -71,12 +67,9 @@ class Polar(object):
 
         # NOTE: method needs to be in harmony for linear_slope and the one used in cl_fully_separated
         if compute_params:
-            self._linear_slope,self._alpha0,self._alpha_linear_region,_=self.cl_linear_slope(method='max') 
+            self._linear_slope,self._alpha0=self.cl_linear_slope(method='max') 
             self.cl_fully_separated()
             self.cl_inv = self._linear_slope*(self.alpha - self._alpha0)
-
-            self._cl_linear_region = self.cl_interp(self._alpha_linear_region)
-            self._cl_max           = self.cl_interp(self._alpha_cl_max)
 
     def cl_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cl)
@@ -102,7 +95,7 @@ class Polar(object):
 
     def cl_inv_interp(self,alpha):
         if (self._linear_slope is None) and (self._alpha0 is None):
-            self._linear_slope,self._alpha0,_,_=self.cl_linear_slope()
+            self._linear_slope,self._alpha0=self.cl_linear_slope()
         return self._linear_slope*(alpha-self._alpha0)
 
     @property
@@ -155,8 +148,6 @@ class Polar(object):
         cm    = M[:,3]
         Re    = np.nan
         return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
-
-
 
     def correction3D(self, r_over_R, chord_over_r, tsr, alpha_max_corr=30,
                      alpha_linear_min=-5, alpha_linear_max=5):
@@ -537,7 +528,11 @@ class Polar(object):
         cnSlope = cnSlope_poly
 
         # --- cn at "stall onset" (Trailling Edge Separation) locations, when cn deviates from the linear region
-        a_TSEUpp, cn_TSEUpp, cn_TSEUpp_lin, a_TSELow, cn_TSELow, cn_TSELow_lin = _find_TSE_points(alpha,cn,cnSlope,alpha0cn,deviation=0.05)
+        a_TSELow, a_TSEUpp = _find_TSE_region(alpha,cn,cnSlope,alpha0cn,deviation=0.05)
+        cn_TSEUpp_lin = cnSlope*(a_TSEUpp-alpha0cn)
+        cn_TSELow_lin = cnSlope*(a_TSELow-alpha0cn)
+        cn_TSEUpp     = np.interp(a_TSEUpp, alpha, cn)
+        cn_TSELow     = np.interp(a_TSELow, alpha, cn)
 
         # --- cn at points where f=0.7
         cn_f  = cnSlope* (alpha - alpha0cn)*((1+np.sqrt(0.7))/2)**2;
@@ -728,6 +723,12 @@ class Polar(object):
 
         return _find_alpha0(self.alpha,self.cl,window)
 
+    def linear_region(self):
+        slope, alpha0 = self.cl_linear_slope()
+        alpha_linear_region = np.asarray(_find_TSE_region(self.alpha,self.cl, slope, alpha0, deviation=0.05))
+        cl_linear_region = (alpha_linear_region-alpha0)*slope
+        return alpha_linear_region, cl_linear_region, slope, alpha0
+
     def cl_max(self,window=None):
         """ Finds cl_max , returns (Cl_max,alpha_max) """
         if window is None:
@@ -765,26 +766,24 @@ class Polar(object):
 
     def cl_linear_slope(self,window=None,method='optim',radians=False):
         """ Find slope of linear region 
-        Outputs: a 4-tuplet of:  
+        Outputs: a 2-tuplet of:  
            slope (in inverse units of alpha, or in radians-1 if radians=True)
-           alpha_0 (idem)
-           WinLin    : window where the linear region is valid
-           WinSearch : window where the linear region was searched for
+           alpha_0 in the same unit as alpha, or in radians if radians=True
         """
         # --- Return function
-        def myret(sl,a0,WinLin,WinSearch):
+        def myret(sl,a0):
             # wrapper function to return degrees or radians
             if radians:
-                return np.rad2deg(sl), np.deg2rad(a0),np.deg2rad(WinLin),np.deg2rad(WinSearch)
+                return np.rad2deg(sl), np.deg2rad(a0)
             else:
-                return sl, a0, WinLin, WinSearch
+                return sl, a0
 
         # finding our alpha0
         alpha0 = self.alpha0()
 
         # Constant case or only one value
         if np.all(self.cl == self.cl[0]) or len(self.cl)==1:
-            return myret(0,alpha0,[self.alpha[0],self.alpha[-1]],[self.alpha[0],self.alpha[-1]])
+            return myret(0,alpha0)
 
         if window is None:
             if np.nanmin(self.cl)>0 or np.nanmax(self.cl)<0:
@@ -828,16 +827,11 @@ class Polar(object):
                 raise Exception('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
 #         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
 
-        # --- Linear extent
-        a_TSEUpp,_,_,a_TSELow,_,_ = _find_TSE_points(self.alpha,self.cl,slope,alpha0,deviation=0.05)
-        LinWindow    = [a_TSEUpp,a_TSELow]
-        SearchWindow = window
-
-        return myret(slope,off,LinWindow,SearchWindow)
+        return myret(slope,off)
 
     def cl_fully_separated(self): 
         alpha0 = self.alpha0()
-        cla,_,_,_ = self.cl_linear_slope(method='max')
+        cla,_, = self.cl_linear_slope(method='max')
         if cla==0:
             cl_fs    = self.cl # when f_st ==1
             f_st     = self.cl*0 
@@ -972,14 +966,14 @@ def thicknessinterp_from_one_set(thickness, polarList, polarThickness):
                 ilow=ip
                 break
         
-        weight=(t-polarThickness[ilow])/(polarThickness[ihigh]-polarThickness[ilow])
-        #print(polarThickness[ilow],'<',t,'<',polarThickness[ihigh],'Weight',weight)
         if ihigh==ilow:
             polars.append(polarList[ihigh])
             print('[WARN] Using nearest polar for section {},   t={} , t_near={}'.format(it,t,polarThickness[ihigh]))
         else:
             if (polarThickness[ilow]>t) or (polarThickness[ihigh]<t): 
                 raise Exception('Implementation Error')
+            weight=(t-polarThickness[ilow])/(polarThickness[ihigh]-polarThickness[ilow])
+            #print(polarThickness[ilow],'<',t,'<',polarThickness[ihigh],'Weight',weight)
             pol=blend(polarList[ilow],polarList[ihigh],weight)
             polars.append(pol)
             # import matplotlib.pyplot as plt
@@ -1039,14 +1033,14 @@ def _find_alpha0(alpha,coeff,window):
     return alpha0
 
 
-def _find_TSE_points(alpha, coeff, slope, alpha0, deviation):
+def _find_TSE_region(alpha, coeff, slope, alpha0, deviation):
     """ Find the Trailing Edge Separation points, when the coefficient separates from its linear region
     These points are defined as the points where the difference is equal to +/- `deviation`
     Typically deviation is about 0.05 (absolute value)
     The linear region is defined as coeff_lin = slope (alpha-alpha0)
 
     returns:
-       a_TSE, c_TSE, c_TSE_lin: values of alpha, coeff, and coeff_lin at the TSE point (upper and lower)
+       a_TSE: values of alpha at the TSE point (upper and lower)
     
     """
     # How off are we from the linear region
@@ -1059,12 +1053,9 @@ def _find_TSE_points(alpha, coeff, slope, alpha0, deviation):
     # Finding the point where the delta is equal to `deviation`
     a_TSEUpp     = np.interp(  deviation, DeltaLin[bUpp], alpha[bUpp])
     a_TSELow     = np.interp(- deviation, DeltaLin[bLow], alpha[bLow])
+    return a_TSELow, a_TSEUpp
 
-    c_TSEUpp_lin = slope*(a_TSEUpp-alpha0)
-    c_TSELow_lin = slope*(a_TSELow-alpha0)
-    c_TSEUpp     = np.interp(a_TSEUpp, alpha, coeff)
-    c_TSELow     = np.interp(a_TSELow, alpha, coeff)
-    return a_TSEUpp, c_TSEUpp, c_TSEUpp_lin, a_TSELow, c_TSELow, c_TSELow_lin
+
 
 
 def _find_max_points(alpha, coeff, alpha0, method='inflections'):
