@@ -844,13 +844,12 @@ class Polar(object):
             cl_fs    = self.cl/2.0 # when f_st ==1
             # Region where f_st<1, merge
             I=np.where(f_st<1)
-            cl_fs[I] =(self.cl[I] - cla* (self.alpha[I]-alpha0)*f_st[I])/(1.-f_st[I]) # when f_st<1, otherwise not safe
-            # Outside region
+            cl_fs[I] =(self.cl[I] - cla* (self.alpha[I]-alpha0)*f_st[I])/(1.-f_st[I])
+            # Outside region, use steady data
             iHig=np.ma.argmin( np.ma.MaskedArray(f_st,self.alpha<alpha0) );
             iLow=np.ma.argmin( np.ma.MaskedArray(f_st,self.alpha>alpha0) );
             cl_fs[0:iLow+1]  = self.cl[0:iLow+1]
             cl_fs[iHig+1:-1] = self.cl[iHig+1:-1]
-            #print(iLow,iHig)
 
         # Ensuring everything is in harmony 
         cl_inv = cla*(self.alpha - alpha0)
