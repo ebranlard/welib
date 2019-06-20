@@ -342,7 +342,7 @@ def averagePostPro(outFiles,TimeAvgWindow=10,ColMap=None,ColKeep=None,ColSort=No
         time = df['Time_[s]'].values
         # Column mapping
         if ColMap is not None:
-            out.rename(columns=renameCol,inplace=True)
+            df.rename(columns=renameCol,inplace=True)
         if ColKeep is not None:
             df=df[ColKeep]
         ## Defining a window for stats (start time and end time)
@@ -421,6 +421,7 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
         BaseDict = paramsSteadyAero(BaseDict)
 
     # --- Creating set of parameters to be changed
+    # TODO: verify that RtAeroCp and RtAeroCt are present in AeroDyn outlist
     PARAMS,naming = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,BaseDict=BaseDict, FlatInputs=True)
 
     # --- Generating all files in a workdir
