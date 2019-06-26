@@ -401,7 +401,7 @@ class Polar(object):
             cm0 = self.cm[0] + p * (self.cm[1] - self.cm[0])
         self.cm0 = cm0
         alpha_high = np.radians(self.alpha[-1])
-        XM = (-cm_high + cm0) / (cl_high * cos(alpha_high) + cd_high * np.sin(alpha_high))
+        XM = (-cm_high + cm0) / (cl_high * np.cos(alpha_high) + cd_high * np.sin(alpha_high))
         cmCoef = (XM - 0.25) / np.tan((alpha_high - np.pi/2))
         return cmCoef
 
@@ -1214,16 +1214,14 @@ def _zero_crossings(y,x=None,direction=None):
 
     """
       Find zero-crossing points in a discrete vector, using linear interpolation.
-
       direction: 'up' or 'down', to select only up-crossings or down-crossings
-
-      returns: 
+      Returns: 
           x values xzc such that y(yzc)==0
           indexes izc, such that the zero is between y[izc] (excluded) and y[izc+1] (included)
-
       if direction is not provided, also returns:
               sign, equal to 1 for up crossing
     """
+    y=np.asarray(y)
     if x is None:
         x=np.arange(len(y))
 
