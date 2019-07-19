@@ -9,11 +9,13 @@ import glob
 import pandas as pd
 import numpy as np
 import distutils.dir_util
-from shutil import copytree, ignore_patterns, rmtree, copyfile
+import shutil 
+import stat
 
 # --- External library for io
 import weio
     
+
 
 FAST_EXE='openfast'
 
@@ -58,8 +60,23 @@ def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tm
 # --- START cmd.py
 def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, ShowCommand=True): 
     """ Run a set of simple commands of the form `exe input_file`
-        By default, the commands are run in parallel
+    By default, the commands are run in "parallel" (though the method needs to be improved)
+    The stdout and stderr may be displayed on screen (`ShowOutputs`) or hidden. 
+    A better handling is yet required.
     """
+    Failed=[]
+    def _report(p):
+        if p.returncode==0:
+            print('[ OK ] Input    : ',p.input_file)
+        else:
+            Failed.append(p)
+            print('[FAIL] Input    : ',p.input_file)
+            print('       Directory: '+os.getcwd())
+            print('       Command  : '+p.cmd)
+            print('       Use `ShowOutputs=True` to debug, or run the command above.')
+            #out, err = p.communicate()
+            #print('StdOut:\n'+out)
+            #print('StdErr:\n'+err)
     ps=[]
     iProcess=0
     if nCores is None:
@@ -71,21 +88,39 @@ def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, Show
         ps.append(run_cmd(f, exe, wait=(not parallel), ShowOutputs=ShowOutputs, ShowCommand=ShowCommand))
         iProcess += 1
         # waiting once we've filled the number of cores
+        # TODO: smarter method with proper queue, here processes are run by chunks
         if parallel:
             if iProcess==nCores:
                 for p in ps:
                     p.wait()
+                for p in ps:
+                    _report(p)
                 ps=[]
                 iProcess=0
+    # Extra process if not multiptle of nCores (TODO, smarter method)
     for p in ps:
         p.wait()
+    for p in ps:
+        _report(p)
+    # --- Giving a summary
+    if len(Failed)==0:
+        print('[ OK ] All simulations run successfully.')
+        return True
+    else:
+        print('[FAIL] {}/{} simulations failed:'.format(len(Failed),len(inputfiles)))
+        for p in Failed:
+            print('      ',p.input_file)
+        return False
+
 def run_cmd(input_file, exe, wait=True, ShowOutputs=False, ShowCommand=True):
     """ Run a simple command of the form `exe input_file`  """
-    # TODO TODO TODO capture Exit code!
+    # TODO Better capture STDOUT
     if not os.path.isabs(input_file):
-        input_file=os.path.abspath(input_file)
+        input_file_abs=os.path.abspath(input_file)
+    else:
+        input_file_abs=input_file
     if not os.path.exists(exe):
-        raise Exception('FAST Executable not found: {}'.format(exe))
+        raise Exception('Executable not found: {}'.format(exe))
     args= [exe,input_file]
     #args = 'cd '+workdir+' && '+ exe +' '+basename
     shell=False
@@ -99,18 +134,33 @@ def run_cmd(input_file, exe, wait=True, ShowOutputs=False, ShowCommand=True):
         p=subprocess.call(args , stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
     else:
         p=subprocess.Popen(args, stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
+    # Storing some info into the process
+    p.cmd            = ' '.join(args)
+    p.args           = args
+    p.input_file     = input_file
+    p.input_file_abs = input_file_abs
+    p.exe            = exe
     return p
 # --- END cmd.py
 
 def run_fastfiles(fastfiles, fastExe=None, parallel=True, ShowOutputs=True, nCores=None, ShowCommand=True):
     if fastExe is None:
         fastExe=FAST_EXE
-    run_cmds(fastfiles, fastExe, parallel=parallel, ShowOutputs=ShowOutputs, nCores=nCores, ShowCommand=ShowCommand)
+    return run_cmds(fastfiles, fastExe, parallel=parallel, ShowOutputs=ShowOutputs, nCores=nCores, ShowCommand=ShowCommand)
 
 def run_fast(input_file, fastExe=None, wait=True, ShowOutputs=False, ShowCommand=True):
     if fastExe is None:
         fastExe=FAST_EXE
     return run_cmd(input_file, fastExe, wait=wait, ShowOutputs=ShowOutputs, ShowCommand=ShowCommand)
+
+
+def writeBatch(batchfile, fastfiles, fastExe=None):
+    if fastExe is None:
+        fastExe=FAST_EXE
+    with open(batchfile,'w') as f:
+        for l in [fastExe + ' '+ os.path.basename(f) for f in fastfiles]:
+            f.write("%s\n" % l)
+
 
 def removeFASTOuputs(workdir):
     # Cleaning folder
@@ -127,6 +177,64 @@ def removeFASTOuputs(workdir):
 # --------------------------------------------------------------------------------}
 # --- Template replace 
 # --------------------------------------------------------------------------------{
+def handleRemoveReadonlyWin(func, path, exc_info):
+    """
+    Error handler for ``shutil.rmtree``.
+    If the error is due to an access error (read only file)
+    it attempts to add write permission and then retries.
+    Usage : ``shutil.rmtree(path, onerror=onerror)``
+    """
+    if not os.access(path, os.W_OK):
+        # Is the error an access error ?
+        os.chmod(path, stat.S_IWUSR)
+        func(path)
+    else:
+        raise
+
+
+def copyTree(src, dst):
+    """ 
+    Copy a directory to another one, overwritting files if necessary.
+    copy_tree from distutils and copytree from shutil fail on Windows (in particular on git files)
+    """
+    def forceMergeFlatDir(srcDir, dstDir):
+        if not os.path.exists(dstDir):
+            os.makedirs(dstDir)
+        for item in os.listdir(srcDir):
+            srcFile = os.path.join(srcDir, item)
+            dstFile = os.path.join(dstDir, item)
+            forceCopyFile(srcFile, dstFile)
+
+    def forceCopyFile (sfile, dfile):
+        # ---- Handling error due to wrong mod
+        if os.path.isfile(dfile):
+            if not os.access(dfile, os.W_OK):
+                os.chmod(dfile, stat.S_IWUSR)
+        #print(sfile, ' > ', dfile)
+        shutil.copy2(sfile, dfile)
+
+    def isAFlatDir(sDir):
+        for item in os.listdir(sDir):
+            sItem = os.path.join(sDir, item)
+            if os.path.isdir(sItem):
+                return False
+        return True
+
+    for item in os.listdir(src):
+        s = os.path.join(src, item)
+        d = os.path.join(dst, item)
+        if os.path.isfile(s):
+            if not os.path.exists(dst):
+                os.makedirs(dst)
+            forceCopyFile(s,d)
+        if os.path.isdir(s):
+            isRecursive = not isAFlatDir(s)
+            if isRecursive:
+                copyTree(s, d)
+            else:
+                forceMergeFlatDir(s, d)
+
+
 def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_function=None, RemoveAllowed=False, RemoveRefSubFiles=False):
     """ Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
         'FAST|DT', 'EDFile|GBRatio', 'ServoFile|GenEff'
@@ -141,6 +249,9 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
     def rebase_rel(s,sid):
         split = os.path.splitext(s)
         return os.path.join(workdir,split[0]+sid+split[1])
+    # --- Saafety checks
+    if not os.path.exists(template_dir):
+        raise Exception('Template directory does not exist: '+template_dir)
 
     # Default value of workdir if not provided
     if template_dir[-1]=='/'  or template_dir[-1]=='\\' :
@@ -150,9 +261,11 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
 
     # Copying template folder to workdir
     if os.path.exists(workdir) and RemoveAllowed:
-        rmtree(workdir)
-    distutils.dir_util.copy_tree(template_dir, workdir)
-    #copytree(template_dir, workdir, ignore=ignore_patterns('.git'))
+        shutil.rmtree(workdir, ignore_errors=False, onerror=handleRemoveReadonlyWin)
+#     distutils.dir_util.copy_tree(template_dir, workdir)
+    #distutils.dir_util.copy_tree(template_dir, workdir)
+    #shutil.copytree(template_dir, workdir, ignore=ignore_patterns('.git'))
+    copyTree(template_dir, workdir)
     if RemoveAllowed:
         removeFASTOuputs(workdir)
 
@@ -174,13 +287,19 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
     # TODO: Recursive loop splitting at the pipes '|', for now only 1 level supported...
     for p in PARAMS:
         if name_function is None:
-            raise NotImplementedError('')
-        strID =name_function(p)
-        FileTypes = set([fileID(k) for k in list(p.keys()) if k!='__index__'])
+            if '__name__' in p.keys():
+                strID=p['__name__']
+            else:
+                raise Exception('When calling `templateReplace`, either provide a naming function or profile the key `__name_` in the parameter dictionaries')
+        else:
+            strID =name_function(p)
+        FileTypes = set([fileID(k) for k in list(p.keys()) if (k!='__index__' and k!='__name__')])
+        FileTypes = set(list(FileTypes)+['FAST']) # Enforcing FAST in list, so the main fst file is written
 
         # ---Copying main file and reading it
-        fst_full = rebase(main_file,strID)
-        copyfile(main_file, fst_full )
+        #fst_full = rebase(main_file,strID)
+        fst_full = os.path.join(workdir,strID+'.fst')
+        shutil.copyfile(main_file, fst_full )
         Files=dict()
         Files['FAST']=weio.FASTInFile(fst_full)
         # --- Looping through required files and opening them
@@ -191,15 +310,15 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
                 continue
             org_filename   = Files['FAST'][t].strip('"')
             org_filename_full =os.path.join(workdir,org_filename)
-            new_filename_full = rebase_rel(org_filename,strID)
+            new_filename_full = rebase_rel(org_filename,'_'+strID)
             new_filename      = os.path.relpath(new_filename_full,workdir)
-            copyfile(org_filename_full, new_filename_full)
+            shutil.copyfile(org_filename_full, new_filename_full)
             Files['FAST'][t] = '"'+new_filename+'"'
             # Reading files
             Files[t]=weio.FASTInFile(new_filename_full)
         # --- Replacing in files
         for k,v in p.items():
-            if k =='__index__':
+            if k =='__index__' or k=='__name__':
                 continue
             t,kk=k.split('|')
             Files[t][kk]=v
@@ -229,6 +348,7 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
 # --------------------------------------------------------------------------------{
 def paramsSteadyAero(p=dict()):
     p['AeroFile|AFAeroMod']=1 # remove dynamic effects dynamic
+    #p['AeroFile|TwrPotent']=0 # remove tower shadow
     return p
 
 def paramsNoGen(p=dict()):
@@ -303,6 +423,7 @@ def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
         p['EDFile|BlPitch(3)']     = pitch
 
         p['__index__']  = i
+        p['__name__']   = default_naming(p)
         i=i+1
         PARAMS.append(p)
     return PARAMS, default_naming
@@ -311,13 +432,60 @@ def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
 # --------------------------------------------------------------------------------}
 # --- Tools for PostProcessing several simulations
 # --------------------------------------------------------------------------------{
-def averagePostPro(outFiles,TimeAvgWindow=10,ColMap=None,ColKeep=None,ColSort=None):
+def _zero_crossings(y,x=None,direction=None):
+    """
+      Find zero-crossing points in a discrete vector, using linear interpolation.
+      direction: 'up' or 'down', to select only up-crossings or down-crossings
+      Returns: 
+          x values xzc such that y(yzc)==0
+          indexes izc, such that the zero is between y[izc] (excluded) and y[izc+1] (included)
+      if direction is not provided, also returns:
+              sign, equal to 1 for up crossing
+    """
+    y=np.asarray(y)
+    if x is None:
+        x=np.arange(len(y))
+
+    if np.any((x[1:] - x[0:-1]) <= 0.0):
+        raise Exception('x values need to be in ascending order')
+
+    # Indices before zero-crossing
+    iBef = np.where(y[1:]*y[0:-1] < 0.0)[0]
+    
+    # Find the zero crossing by linear interpolation
+    xzc = x[iBef] - y[iBef] * (x[iBef+1] - x[iBef]) / (y[iBef+1] - y[iBef])
+    
+    # Selecting points that are exactly 0 and where neighbor change sign
+    iZero = np.where(y == 0.0)[0]
+    iZero = iZero[np.where((iZero > 0) & (iZero < x.size-1))]
+    iZero = iZero[np.where(y[iZero-1]*y[iZero+1] < 0.0)]
+
+    # Concatenate 
+    xzc  = np.concatenate((xzc, x[iZero]))
+    iBef = np.concatenate((iBef, iZero))
+
+    # Sort
+    iSort = np.argsort(xzc)
+    xzc, iBef = xzc[iSort], iBef[iSort]
+
+    # Return up-crossing, down crossing or both
+    sign = np.sign(y[iBef+1]-y[iBef])
+    if direction == 'up':
+        I= np.where(sign==1)[0]
+        return xzc[I],iBef[I]
+    elif direction == 'down':
+        I= np.where(sign==-1)[0]
+        return xzc[I],iBef[I]
+    elif direction is not None:
+        raise Exception('Direction should be either `up` or `down`')
+    return xzc, iBef, sign
+
+
+def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
     """ Opens a list of FAST output files, perform average of its signals and return a panda dataframe
-    For now, the scripts only computes the mean between the End of the simulation time and End-TimeAvgWindow . In the future more options will be provided.
+    For now, the scripts only computes the mean within a time window which may be a constant or a time that is a function of the rotational speed (see `avgMethod`).
     The script only computes the mean for now. Other stats will be added
 
-    `TimeAvgWindow`: Time used to perform an average of the value. 
-                     The average is done between the last time step tEnd, and tEnd-TimeAvgWindow
     `ColMap` :  dictionary where the key is the new column name, and v the old column name.
                 Default: None, output is not sorted
                 NOTE: the mapping is done before sorting and `ColKeep` is applied
@@ -326,9 +494,15 @@ def averagePostPro(outFiles,TimeAvgWindow=10,ColMap=None,ColKeep=None,ColSort=No
                 Default: None, all columns are analysed
                 Example: ColKeep=['RotSpeed_[rpm]','BldPitch1_[deg]','RtAeroCp_[-]']
                      or: ColKeep=list(ColMap.keys())
-    `ColSort` : string 
-                Default: None, output is not sorted
-                Example:  ColSort='RotSpeed_[rpm]'
+    `avgMethod` : string defining the method used to determine the extent of the averaging window:
+                - 'periods': use a number of periods(`avgParam`), determined by the azimuth. 
+                - 'periods_omega': use a number of periods(`avgParam`), determined by the mean RPM
+                - 'constantwindow': the averaging window is constant (defined by `avgParam`).
+    `avgParam`: based on `avgMethod` it is either
+                - for 'periods_*': the number of revolutions for the window. 
+                   Default: None, as many period as possible are used
+                - for 'constantwindow': the number of seconds for the window
+                   Default: None, full simulation length is used
     """
     def renameCol(x):
         for k,v in ColMap.items():
@@ -337,7 +511,7 @@ def averagePostPro(outFiles,TimeAvgWindow=10,ColMap=None,ColKeep=None,ColSort=No
         return x
     result=None
     for i,f in enumerate(outFiles):
-        df=weio.FASTOutFile(f).toDataFrame()
+        df=weio.read(f).toDataFrame()
         # Before doing the colomn map we store the time
         time = df['Time_[s]'].values
         # Column mapping
@@ -346,17 +520,58 @@ def averagePostPro(outFiles,TimeAvgWindow=10,ColMap=None,ColKeep=None,ColSort=No
         if ColKeep is not None:
             df=df[ColKeep]
         ## Defining a window for stats (start time and end time)
-        tEnd       = time[-1]
-        tStart     = tEnd-TimeAvgWindow
+        if avgMethod.lower()=='constantwindow':
+            tEnd = time[-1]
+            if avgParam is None:
+                tStart=time[0]
+            else:
+                tStart =tEnd-avgParam
+        elif avgMethod.lower()=='periods':
+            # --- Using azimuth to find periods
+            # NOTE: potentially we could average over each period and then average
+            psi=df['Azimuth_[deg]'].values
+            _,iBef = _zero_crossings(psi-psi[-10],direction='up')
+            tEnd = time[iBef[-1]]
+            if avgParam is None:
+                tStart=time[iBef[0]]
+            else:
+                avgParam=int(avgParam) 
+                if len(iBef)-1<avgParam:
+                    print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!'.format(len(iBef)-1,avgParam))
+                    avgParam=len(iBef)-1
+                   
+                tStart=time[iBef[-1-avgParam]]
+        elif avgMethod.lower()=='periods_omega':
+            # --- Using average omega to find periods
+            Omega=df['RotSpeed_[rpm]'].mean()/60*2*np.pi
+            Period = 2*np.pi/Omega 
+            if avgParam is None:
+                nRotations=np.floor(tEnd/Period)
+            else:
+                nRotations=avgParam
+            tStart =tEnd-Period*nRotations
+        else:
+            raise Exception('Unknown averaging method {}'.format(avgMethod))
+        if tStart<time[0]:
+            print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
         IWindow    = np.where((time>=tStart) & (time<=tEnd))[0]
-        iStart = IWindow[0]
         iEnd   = IWindow[-1]
+        iStart = IWindow[0]
         ## Absolute and relative differences at window extremities
-        #DeltaValuesAbs=(df.iloc[iEnd]-df.iloc[iStart]).abs()
-        #DeltaValuesRel=(df.iloc[iEnd]-df.iloc[iStart]).abs()/df.iloc[iEnd]
+        DeltaValuesAbs=(df.iloc[iEnd]-df.iloc[iStart]).abs()
+#         DeltaValuesRel=(df.iloc[iEnd]-df.iloc[iStart]).abs()/df.iloc[iEnd]
+        DeltaValuesRel=(df.iloc[IWindow].max()-df.iloc[IWindow].min())/df.iloc[IWindow].mean()
         #EndValues=df.iloc[iEnd]
+        #if avgMethod.lower()=='periods_omega':
+        #    if DeltaValuesRel['RotSpeed_[rpm]']*100>5:
+        #        print('[WARN] Rotational speed vary more than 5% in averaging window ({}%) for simulation: {}'.format(DeltaValuesRel['RotSpeed_[rpm]']*100,f))
         ## Stats values during window
-        MeanValues = pd.DataFrame(df.iloc[IWindow].mean()).transpose()
+        # MeanValues = df[IWindow].mean()
+        # StdValues  = df[IWindow].std()
+        if 'mean' in stats:
+            MeanValues = pd.DataFrame(df.iloc[IWindow].mean()).transpose()
+        else:
+            raise NotImplementedError()
         #StdValues  = df.iloc[IWindow].std()
         if i==0:
             result = MeanValues.copy()
@@ -411,7 +626,7 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
             RPM_flat.append(rpm)
             Pitch_flat.append(pitch)
     # --- Setting up default options
-    BaseDict={'FAST|TMax': TMax, 'FAST|DT': 0.01, 'FAST|DT_Out': 0.1}
+    BaseDict={'FAST|TMax': TMax, 'FAST|DT': 0.01, 'FAST|DT_Out': 0.1} # NOTE: Tmax should be at least 2pi/Omega
     BaseDict = paramsNoController(BaseDict)
     if bStiff:
         BaseDict = paramsStiff(BaseDict)
@@ -438,7 +653,7 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
     outFiles = [os.path.splitext(f)[0]+'.outb' for f in fastFiles]
     # outFiles = glob.glob(os.path.join(workdir,'*.outb'))
     ColKeepStats  = ['RotSpeed_[rpm]','BldPitch1_[deg]','RtAeroCp_[-]','RtAeroCt_[-]','Wind1VelX_[m/s]']
-    result = averagePostPro(outFiles,TimeAvgWindow=5,ColKeep=ColKeepStats,ColSort='RotSpeed_[rpm]')
+    result = averagePostPro(outFiles,avgMethod='periods',avgParam=1,ColKeep=ColKeepStats,ColSort='RotSpeed_[rpm]')
     # print(result)        
 
     # --- Adding lambda, sorting and keeping only few columns

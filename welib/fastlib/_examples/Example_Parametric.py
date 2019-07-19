@@ -46,6 +46,9 @@ def ParametricExample():
     with open(os.path.join(work_dir,'_RUN_ALL.bat'), 'w') as f:
         for l in [fastlib.FAST_EXE + ' '+ os.path.basename(f) for f in fastfiles]:
             f.write("%s\n" % l)
+
+    # --- Creating a batch script just in case
+    fastlib.writeBatch(fastfiles,fastExe=FAST_EXE, os.path.join(work_dir,'_RUN_ALL.bat'))
     # --- Running the simulations
     fastlib.run_fastfiles(fastfiles,fastExe=FAST_EXE,parallel=True,ShowOutputs=False,nCores=2)
 
