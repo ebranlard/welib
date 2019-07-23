@@ -13,7 +13,10 @@ import shutil
 import stat
 
 # --- External library for io
-import weio
+try:
+    import weio
+except:
+    raise Exception('Fastlib needs the package `weio` to be installed from https://github.com/ebranlard/weio/`')
     
 
 
@@ -285,7 +288,9 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
 
     fastfiles=[]
     # TODO: Recursive loop splitting at the pipes '|', for now only 1 level supported...
-    for p in PARAMS:
+    for ip,p in enumerate(PARAMS):
+        if '__index__' not in p.keys():
+            p['__index__']=ip
         if name_function is None:
             if '__name__' in p.keys():
                 strID=p['__name__']
@@ -384,7 +389,7 @@ def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
     """ """
     # --- Naming function appropriate for such parametric study
     def default_naming(p): # TODO TODO CHANGE ME
-        return '_{:03d}_ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
+        return '{:03d}_ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
 
     # --- Ensuring everythin is an iterator
     def iterify(x):
@@ -517,8 +522,6 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
         # Column mapping
         if ColMap is not None:
             df.rename(columns=renameCol,inplace=True)
-        if ColKeep is not None:
-            df=df[ColKeep]
         ## Defining a window for stats (start time and end time)
         if avgMethod.lower()=='constantwindow':
             tEnd = time[-1]
@@ -528,6 +531,8 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
                 tStart =tEnd-avgParam
         elif avgMethod.lower()=='periods':
             # --- Using azimuth to find periods
+            if 'Azimuth_[deg]' not in df.columns:
+                raise Exception('The sensor `Azimuth_[deg]` does not appear to be in the output file. Cannot use the averaging method by periods.')
             # NOTE: potentially we could average over each period and then average
             psi=df['Azimuth_[deg]'].values
             _,iBef = _zero_crossings(psi-psi[-10],direction='up')
@@ -543,6 +548,8 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
                 tStart=time[iBef[-1-avgParam]]
         elif avgMethod.lower()=='periods_omega':
             # --- Using average omega to find periods
+            if 'RotSpeed_[rpm]' not in df.columns:
+                raise Exception('The sensor `RotSpeed_[rpm]` does not appear to be in the output file. Cannot use the averaging method by periods_omega.')
             Omega=df['RotSpeed_[rpm]'].mean()/60*2*np.pi
             Period = 2*np.pi/Omega 
             if avgParam is None:
@@ -552,6 +559,9 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
             tStart =tEnd-Period*nRotations
         else:
             raise Exception('Unknown averaging method {}'.format(avgMethod))
+        # Narrowind number of columns here (azimuth needed above)
+        if ColKeep is not None:
+            df=df[ColKeep]
         if tStart<time[0]:
             print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
         IWindow    = np.where((time>=tStart) & (time<=tEnd))[0]
