@@ -360,6 +360,10 @@ def paramsNoGen(p=dict()):
     p['EDFile|GenDOF' ]  = 'False'
     return p
 
+def paramsGen(p=dict()):
+    p['EDFile|GenDOF' ]  = 'True'
+    return p
+
 def paramsNoController(p=dict()):
     p['ServoFile|PCMode']   = 0;
     p['ServoFile|VSContrl'] = 0;
