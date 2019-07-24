@@ -602,8 +602,8 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
     result=None
     for i,f in enumerate(outFiles):
         df=weio.read(f).toDataFrame()
-        stats=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats)
-        MeanValues=stats # todo
+        postpro=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats)
+        MeanValues=postpro # todo
         if i==0:
             result = MeanValues.copy()
         else:

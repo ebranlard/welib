@@ -23,7 +23,7 @@ def PowerCurveParametricExample1():
     # --- Parameters for this script
     ref_dir          = 'NREL5MW/'   # Folder where the fast input files are located (will be copied)
     work_dir         = 'NREL5MW_ParametricPowerCurve1/'     # Output folder (will be created)
-    main_file        = 'DLC120_ws07_ye000_s1_r1.fst'  # Main file in ref_dir, used as a template
+    main_file        = 'Main_Onshore_OF2.fst'  # Main file in ref_dir, used as a template
     FAST_EXE         = 'NREL5MW/OpenFAST2_x64s_ebra.exe' # Location of a FAST exe (and dll)
 
     # --- Defining the parametric study  (list of dictionnaries with keys as FAST parameters)
@@ -82,7 +82,7 @@ def PowerCurveParametricExample2():
     # --- Parameters for this script
     ref_dir          = 'NREL5MW/'   # Folder where the fast input files are located (will be copied)
     work_dir         = 'NREL5MW_ParametricPowerCurve2/'     # Output folder (will be created)
-    main_file        = 'DLC120_ws07_ye000_s1_r1.fst'  # Main file in ref_dir, used as a template
+    main_file        = 'Main_Onshore_OF2.fst'  # Main file in ref_dir, used as a template
     FAST_EXE         = 'NREL5MW/OpenFAST2_x64s_ebra.exe' # Location of a FAST exe (and dll)
     out_Ext          = '.outb' # Output extension
 

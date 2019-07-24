@@ -12,7 +12,7 @@ import weio
 ref_dir          = 'NREL5MW/'   # Folder where the fast input files are located (will be copied)
 work_dir         = 'NREL5MW_ParametricExcel/'     # Output folder (will be created)
 FAST_EXE         = 'NREL5MW/OpenFAST2_x64s_ebra.exe' # Location of a FAST exe (and dll)
-main_file        = 'DLC120_ws07_ye000_s1_r1.fst'  # Main file in ref_dir, used as a template
+main_file        = 'Main_Onshore_OF2.fst'  # Main file in ref_dir, used as a template
 parametricFile   = 'ParametricExcel.xlsx' # Excel file containing set of parameters
 
 

@@ -1,3 +1,10 @@
+""" 
+
+NOTE: This script needs polishing and should be moved to fastlib directly
+
+"""
+
+
 import os
 import glob
 import pandas as pd
@@ -89,7 +96,7 @@ ColMap['TTDspSS_[m]']      = ''
 # ColMap['RtAeroCt_[-]']      = ''
 # ColMap['RtTSR_[-]']      = ''
 
-OutFile='0_StepWind_FAST/V112_OF2_WindStepBig.outb'
+OutFile='WindStep.outb'
 result = powerCurvePostProWindStep(OutFile, tWindow=20, ColMap=ColMap)
 result['RtAeroFxh_[kN]']    /=1000
 result['RtAeroMxh_[kN-m]']  /=1000

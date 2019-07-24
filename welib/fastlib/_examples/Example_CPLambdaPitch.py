@@ -11,7 +11,7 @@ def CPLambdaExample():
     above.
     """
     ref_dir          = 'NREL5MW/'   # Folder where the fast input files are located (will be copied)
-    main_file        = 'DLC120_ws07_ye000_s1_r1.fst'  # Main file in ref_dir, used as a template
+    main_file        = 'Main_Onshore_OF2.fst'  # Main file in ref_dir, used as a template
     FAST_EXE         = 'NREL5MW/OpenFAST2_x64s_ebra.exe' # Location of a FAST exe (and dll)
 
     # --- Computing CP and CT matrices for range of lambda and pitches
