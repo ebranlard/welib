@@ -366,6 +366,14 @@ def paramsNoController(p=dict()):
     p['ServoFile|YCMode']   = 0;
     return p
 
+def paramsControllerDLL(p=dict()):
+    p['ServoFile|PCMode']   = 5;
+    p['ServoFile|VSContrl'] = 5;
+    p['ServoFile|YCMode']   = 5;
+    p['EDFile|GenDOF']      = 'True';
+    return p
+
+
 def paramsStiff(p=dict()):
     p['EDFile|FlapDOF1']  = 'False'
     p['EDFile|FlapDOF2']  = 'False'
@@ -486,6 +494,84 @@ def _zero_crossings(y,x=None,direction=None):
     return xzc, iBef, sign
 
 
+def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
+    """
+    See average PostPro for documentation, same interface, just does it for one dataframe
+    """
+    def renameCol(x):
+        for k,v in ColMap.items():
+            if x==v:
+                return k
+        return x
+    # Before doing the colomn map we store the time
+    time = df['Time_[s]'].values
+    # Column mapping
+    if ColMap is not None:
+        df.rename(columns=renameCol,inplace=True)
+    ## Defining a window for stats (start time and end time)
+    if avgMethod.lower()=='constantwindow':
+        tEnd = time[-1]
+        if avgParam is None:
+            tStart=time[0]
+        else:
+            tStart =tEnd-avgParam
+    elif avgMethod.lower()=='periods':
+        # --- Using azimuth to find periods
+        if 'Azimuth_[deg]' not in df.columns:
+            raise Exception('The sensor `Azimuth_[deg]` does not appear to be in the output file. Cannot use the averaging method by periods.')
+        # NOTE: potentially we could average over each period and then average
+        psi=df['Azimuth_[deg]'].values
+        _,iBef = _zero_crossings(psi-psi[-10],direction='up')
+        tEnd = time[iBef[-1]]
+        if avgParam is None:
+            tStart=time[iBef[0]]
+        else:
+            avgParam=int(avgParam) 
+            if len(iBef)-1<avgParam:
+                print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!'.format(len(iBef)-1,avgParam))
+                avgParam=len(iBef)-1
+               
+            tStart=time[iBef[-1-avgParam]]
+    elif avgMethod.lower()=='periods_omega':
+        # --- Using average omega to find periods
+        if 'RotSpeed_[rpm]' not in df.columns:
+            raise Exception('The sensor `RotSpeed_[rpm]` does not appear to be in the output file. Cannot use the averaging method by periods_omega.')
+        Omega=df['RotSpeed_[rpm]'].mean()/60*2*np.pi
+        Period = 2*np.pi/Omega 
+        if avgParam is None:
+            nRotations=np.floor(tEnd/Period)
+        else:
+            nRotations=avgParam
+        tStart =tEnd-Period*nRotations
+    else:
+        raise Exception('Unknown averaging method {}'.format(avgMethod))
+    # Narrowind number of columns here (azimuth needed above)
+    if ColKeep is not None:
+        df=df[ColKeep]
+    if tStart<time[0]:
+        print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
+    IWindow    = np.where((time>=tStart) & (time<=tEnd))[0]
+    iEnd   = IWindow[-1]
+    iStart = IWindow[0]
+    ## Absolute and relative differences at window extremities
+    DeltaValuesAbs=(df.iloc[iEnd]-df.iloc[iStart]).abs()
+#         DeltaValuesRel=(df.iloc[iEnd]-df.iloc[iStart]).abs()/df.iloc[iEnd]
+    DeltaValuesRel=(df.iloc[IWindow].max()-df.iloc[IWindow].min())/df.iloc[IWindow].mean()
+    #EndValues=df.iloc[iEnd]
+    #if avgMethod.lower()=='periods_omega':
+    #    if DeltaValuesRel['RotSpeed_[rpm]']*100>5:
+    #        print('[WARN] Rotational speed vary more than 5% in averaging window ({}%) for simulation: {}'.format(DeltaValuesRel['RotSpeed_[rpm]']*100,f))
+    ## Stats values during window
+    # MeanValues = df[IWindow].mean()
+    # StdValues  = df[IWindow].std()
+    if 'mean' in stats:
+        MeanValues = pd.DataFrame(df.iloc[IWindow].mean()).transpose()
+    else:
+        raise NotImplementedError()
+    return MeanValues
+
+
+
 def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
     """ Opens a list of FAST output files, perform average of its signals and return a panda dataframe
     For now, the scripts only computes the mean within a time window which may be a constant or a time that is a function of the rotational speed (see `avgMethod`).
@@ -509,80 +595,11 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
                 - for 'constantwindow': the number of seconds for the window
                    Default: None, full simulation length is used
     """
-    def renameCol(x):
-        for k,v in ColMap.items():
-            if x==v:
-                return k
-        return x
     result=None
     for i,f in enumerate(outFiles):
         df=weio.read(f).toDataFrame()
-        # Before doing the colomn map we store the time
-        time = df['Time_[s]'].values
-        # Column mapping
-        if ColMap is not None:
-            df.rename(columns=renameCol,inplace=True)
-        ## Defining a window for stats (start time and end time)
-        if avgMethod.lower()=='constantwindow':
-            tEnd = time[-1]
-            if avgParam is None:
-                tStart=time[0]
-            else:
-                tStart =tEnd-avgParam
-        elif avgMethod.lower()=='periods':
-            # --- Using azimuth to find periods
-            if 'Azimuth_[deg]' not in df.columns:
-                raise Exception('The sensor `Azimuth_[deg]` does not appear to be in the output file. Cannot use the averaging method by periods.')
-            # NOTE: potentially we could average over each period and then average
-            psi=df['Azimuth_[deg]'].values
-            _,iBef = _zero_crossings(psi-psi[-10],direction='up')
-            tEnd = time[iBef[-1]]
-            if avgParam is None:
-                tStart=time[iBef[0]]
-            else:
-                avgParam=int(avgParam) 
-                if len(iBef)-1<avgParam:
-                    print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!'.format(len(iBef)-1,avgParam))
-                    avgParam=len(iBef)-1
-                   
-                tStart=time[iBef[-1-avgParam]]
-        elif avgMethod.lower()=='periods_omega':
-            # --- Using average omega to find periods
-            if 'RotSpeed_[rpm]' not in df.columns:
-                raise Exception('The sensor `RotSpeed_[rpm]` does not appear to be in the output file. Cannot use the averaging method by periods_omega.')
-            Omega=df['RotSpeed_[rpm]'].mean()/60*2*np.pi
-            Period = 2*np.pi/Omega 
-            if avgParam is None:
-                nRotations=np.floor(tEnd/Period)
-            else:
-                nRotations=avgParam
-            tStart =tEnd-Period*nRotations
-        else:
-            raise Exception('Unknown averaging method {}'.format(avgMethod))
-        # Narrowind number of columns here (azimuth needed above)
-        if ColKeep is not None:
-            df=df[ColKeep]
-        if tStart<time[0]:
-            print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
-        IWindow    = np.where((time>=tStart) & (time<=tEnd))[0]
-        iEnd   = IWindow[-1]
-        iStart = IWindow[0]
-        ## Absolute and relative differences at window extremities
-        DeltaValuesAbs=(df.iloc[iEnd]-df.iloc[iStart]).abs()
-#         DeltaValuesRel=(df.iloc[iEnd]-df.iloc[iStart]).abs()/df.iloc[iEnd]
-        DeltaValuesRel=(df.iloc[IWindow].max()-df.iloc[IWindow].min())/df.iloc[IWindow].mean()
-        #EndValues=df.iloc[iEnd]
-        #if avgMethod.lower()=='periods_omega':
-        #    if DeltaValuesRel['RotSpeed_[rpm]']*100>5:
-        #        print('[WARN] Rotational speed vary more than 5% in averaging window ({}%) for simulation: {}'.format(DeltaValuesRel['RotSpeed_[rpm]']*100,f))
-        ## Stats values during window
-        # MeanValues = df[IWindow].mean()
-        # StdValues  = df[IWindow].std()
-        if 'mean' in stats:
-            MeanValues = pd.DataFrame(df.iloc[IWindow].mean()).transpose()
-        else:
-            raise NotImplementedError()
-        #StdValues  = df.iloc[IWindow].std()
+        stats=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats)
+        MeanValues=stats # todo
         if i==0:
             result = MeanValues.copy()
         else:
