@@ -58,7 +58,7 @@ def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tm
 
 
 # --------------------------------------------------------------------------------}
-# --- Tools for running FAST
+# --- Tools for executing FAST
 # --------------------------------------------------------------------------------{
 # --- START cmd.py
 def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, ShowCommand=True): 
@@ -175,6 +175,75 @@ def removeFASTOuputs(workdir):
         os.remove(f)
     for f in glob.glob(os.path.join(workdir,'*.sum')):
         os.remove(f)
+
+# --------------------------------------------------------------------------------}
+# --- Tools for IO 
+# --------------------------------------------------------------------------------{
+def ED_BldStations(ED):
+    """ Returns ElastoDyn Blade Station positions, useful to know where the outputs are.
+    INPUTS:
+       - ED: either:
+           - a filename of a ElastoDyn input file
+           - an instance of FileCl, as returned by reading the file, ED = weio.read(ED_filename)
+
+    OUTUPTS:
+        - bld_fract: fraction of the blade length were stations are defined
+        - r_nodes: spanwise position from the rotor apex of the Blade stations
+    """
+    if not isinstance(ED,weio.FASTInFile):
+        ED = weio.FASTInFile(ED)
+
+    nBldNodes = ED['BldNodes']
+    bld_fract    = np.arange(1/nBldNodes/2,1,1/nBldNodes)
+    r_nodes      = bld_fract*(ED['TipRad']-ED['HubRad']) + ED['HubRad']
+    return bld_fract, r_nodes
+
+def ED_BldGag(ED):
+    """ Returns the radial position of ElastoDyn blade gages 
+    INPUTS:
+       - ED: either:
+           - a filename of a ElastoDyn input file
+           - an instance of FileCl, as returned by reading the file, ED = weio.read(ED_filename)
+    OUTPUTS:
+       - r_gag: The radial positions of the gages, given from the rotor apex
+    """
+    if not isinstance(ED,weio.FASTInFile):
+        ED = weio.FASTInFile(ED)
+    _,r_nodes= ED_BldStations(ED)
+    nOuts = ED['NBlGages']
+    if nOuts<=0:
+        return np.array([])
+    r_gag = r_nodes[ np.array(ED['BldGagNd'])[:nOuts] -1]
+    return r_gag
+
+def AD_BldGag(AD,AD_bld):
+    """ Returns the radial position of AeroDyn blade gages 
+    INPUTS:
+       - AD: either:
+           - a filename of a AeroDyn input file
+           - an instance of FileCl, as returned by reading the file, AD = weio.read(AD_filename)
+       - AD_bld: either:
+           - a filename of a AeroDyn Blade input file
+           - an instance of FileCl, as returned by reading the file, AD_bld = weio.read(AD_bld_filename)
+    OUTPUTS:
+       - r_gag: The radial positions of the gages, given from the blade root
+    """
+    if not isinstance(AD,weio.FASTInFile):
+        AD = weio.FASTInFile(AD)
+    if not isinstance(AD,weio.FASTInFile):
+        AD_bld = weio.FASTInFile(AD_bld)
+    print(AD_bld.keys())
+
+    nOuts=AD['NBlOuts']
+    if nOuts<=0:
+        return np.array([])
+    INodes = np.array(AD['BlOutNd'][:nOuts])
+    r_gag = AD_bld['BldAeroNodes'][INodes-1,0]
+    return r_gag
+
+# 
+# 
+# 1, 7, 14, 21, 30, 36, 43, 52, 58 BldGagNd List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
 
 
 # --------------------------------------------------------------------------------}
@@ -511,6 +580,9 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
     time = df['Time_[s]'].values
     # Column mapping
     if ColMap is not None:
+        ColMapMiss = [v for _,v in ColMap.items() if v not in df.columns.values]
+        if len(ColMapMiss)>0:
+            print('[WARN] Signals missing and omitted for ColMap:\n       '+'\n       '.join(ColMapMiss))
         df.rename(columns=renameCol,inplace=True)
     ## Defining a window for stats (start time and end time)
     if avgMethod.lower()=='constantwindow':
@@ -551,7 +623,11 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
         raise Exception('Unknown averaging method {}'.format(avgMethod))
     # Narrowind number of columns here (azimuth needed above)
     if ColKeep is not None:
-        df=df[ColKeep]
+        ColKeepSafe = [c for c in ColKeep if c in df.columns.values]
+        ColKeepMiss = [c for c in ColKeep if c not in df.columns.values]
+        if len(ColKeepMiss)>0:
+            print('[WARN] Signals missing and omitted for ColKeep:\n       '+'\n       '.join(ColKeepMiss))
+        df=df[ColKeepSafe]
     if tStart<time[0]:
         print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
     IWindow    = np.where((time>=tStart) & (time<=tEnd))[0]
