@@ -541,9 +541,10 @@ class Polar(object):
            a_f07_Upp = xInter[2]
            a_f07_Low = xInter[0]
         else:
-           raise Exception('cn_f does not ntersect cn 3 times.')
-           #alpha1 =  abs(xInter[0]) 
-           #alpha2 = -abs(xInter[0])
+           #print(xInter)
+           print('[WARN] Polar, unsteady params: cn_f does not intersect cn 3 times.')
+           a_f07_Upp =  abs(xInter[0]) 
+           a_f07_Low = -abs(xInter[0])
 
         # --- DEBUG plot
 #         import matplotlib.pyplot as plt

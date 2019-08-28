@@ -1,5 +1,6 @@
 
 # --- For cmd.py
+from __future__ import division, print_function
 import os
 import subprocess
 import multiprocessing
@@ -194,7 +195,7 @@ def ED_BldStations(ED):
         ED = weio.FASTInFile(ED)
 
     nBldNodes = ED['BldNodes']
-    bld_fract    = np.arange(1/nBldNodes/2,1,1/nBldNodes)
+    bld_fract    = np.arange(1./nBldNodes/2., 1, 1./nBldNodes)
     r_nodes      = bld_fract*(ED['TipRad']-ED['HubRad']) + ED['HubRad']
     return bld_fract, r_nodes
 
@@ -213,7 +214,11 @@ def ED_BldGag(ED):
     nOuts = ED['NBlGages']
     if nOuts<=0:
         return np.array([])
-    r_gag = r_nodes[ np.array(ED['BldGagNd'])[:nOuts] -1]
+    if type(ED['BldGagNd']) is list:
+        Inodes = np.asarray(ED['BldGagNd'])
+    else:
+        Inodes = np.array([ED['BldGagNd']])
+    r_gag = r_nodes[ Inodes[:nOuts] -1]
     return r_gag
 
 def AD_BldGag(AD,AD_bld):
@@ -516,7 +521,7 @@ def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
 
 
 # --------------------------------------------------------------------------------}
-# --- Tools for PostProcessing several simulations
+# --- Tools for PostProcessing one or several simulations
 # --------------------------------------------------------------------------------{
 def _zero_crossings(y,x=None,direction=None):
     """
@@ -566,6 +571,25 @@ def _zero_crossings(y,x=None,direction=None):
         raise Exception('Direction should be either `up` or `down`')
     return xzc, iBef, sign
 
+
+def extractSpanTS(ts, nr, col_pattern, colname):
+    """ Helper function to extract spanwise results, like B1N1Cl B1N2Cl etc. 
+
+    Example
+        col_pattern: 'B1N{:d}Cl_[-]'
+        colname    : 'B1Cl_[-]'
+    """
+    Values=np.zeros((nr,1))
+    nCount=0
+    cols   = [col_pattern.format(ir+1) for ir in range(nr)]
+    cols   = [c for c in cols if c in ts.keys() ]
+    #cols   = [c for c in cols if c in df.columns.values() ]
+    if len(cols)==0:
+        return (None,None)
+    if len(cols)<nr:
+        print('[WARN] Not all values found for {}, found {}/{}'.format(colname,nCount,nr))
+    Values = ts[cols].T
+    return (colname,Values)
 
 def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
     """
