@@ -342,6 +342,12 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
 #     distutils.dir_util.copy_tree(template_dir, workdir)
     #distutils.dir_util.copy_tree(template_dir, workdir)
     #shutil.copytree(template_dir, workdir, ignore=ignore_patterns('.git'))
+    #files=glob.glob(os.path.join(template_dir,'*'))
+    #for f in files:
+    #    if os.path.isdir(f):
+    #        subfold=os.path.basename(f)
+    #        print('Copying subdirectory ',f,subfold)
+    #        copyTree(f, os.path.join(workdir,subfold))
     copyTree(template_dir, workdir)
     if RemoveAllowed:
         removeFASTOuputs(workdir)
@@ -354,6 +360,7 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
             raise Exception('More than one fst file found in template folder, provide `main_file` or ensure there is only one `.fst` file') 
         main_file=rebase(FstFiles.pop(),'')
     else:
+        #main_file=os.path.join(template_dir, os.path.basename(main_file))
         main_file=os.path.join(workdir, os.path.basename(main_file))
 
     # Params need to be a list
@@ -381,6 +388,14 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
         shutil.copyfile(main_file, fst_full )
         Files=dict()
         Files['FAST']=weio.FASTInFile(fst_full)
+        # 
+#         fst=weio.FASTInputDeck(main_file)
+#         for k,v in fst.inputfiles.items():
+#             rel = os.path.relpath(v,template_dir)
+#             if rel.find('/')<0 or rel.find('\\')<0:
+#                 print('Copying ',k,rel)
+#                 shutil.copyfile(os.path.join(template_dir,rel), os.path.join(workdir,rel))
+
         # --- Looping through required files and opening them
         for t in FileTypes: 
             # Doing a naive if
@@ -388,12 +403,18 @@ def templateReplace(template_dir, PARAMS, workdir=None, main_file=None, name_fun
             if t=='FAST':
                 continue
             org_filename   = Files['FAST'][t].strip('"')
+#             org_filename_full =os.path.join(template_dir,org_filename)
             org_filename_full =os.path.join(workdir,org_filename)
             new_filename_full = rebase_rel(org_filename,'_'+strID)
             new_filename      = os.path.relpath(new_filename_full,workdir)
+#             print('org_filename',org_filename)
+#             print('org_filename',org_filename_full)
+#             print('New_filename',new_filename_full)
+#             print('New_filename',new_filename)
             shutil.copyfile(org_filename_full, new_filename_full)
             Files['FAST'][t] = '"'+new_filename+'"'
             # Reading files
+#             Files[t]=weio.FASTInFile(org_filename_full)
             Files[t]=weio.FASTInFile(new_filename_full)
         # --- Replacing in files
         for k,v in p.items():
@@ -602,6 +623,7 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
         return x
     # Before doing the colomn map we store the time
     time = df['Time_[s]'].values
+    timenoNA = time[~np.isnan(time)]
     # Column mapping
     if ColMap is not None:
         ColMapMiss = [v for _,v in ColMap.items() if v not in df.columns.values]
@@ -610,9 +632,9 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
         df.rename(columns=renameCol,inplace=True)
     ## Defining a window for stats (start time and end time)
     if avgMethod.lower()=='constantwindow':
-        tEnd = time[-1]
+        tEnd = timenoNA[-1]
         if avgParam is None:
-            tStart=time[0]
+            tStart=timenoNA[0]
         else:
             tStart =tEnd-avgParam
     elif avgMethod.lower()=='periods':
@@ -654,7 +676,7 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
         df=df[ColKeepSafe]
     if tStart<time[0]:
         print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
-    IWindow    = np.where((time>=tStart) & (time<=tEnd))[0]
+    IWindow    = np.where((time>=tStart) & (time<=tEnd) & (~np.isnan(time)))[0]
     iEnd   = IWindow[-1]
     iStart = IWindow[0]
     ## Absolute and relative differences at window extremities
