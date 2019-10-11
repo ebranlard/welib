@@ -15,9 +15,12 @@ import stat
 
 # --- External library for io
 try:
-    import weio
+    import welib.weio as weio
 except:
-    raise Exception('Fastlib needs the package `weio` to be installed from https://github.com/ebranlard/weio/`')
+    try:
+        import weio
+    except:
+        raise Exception('Fastlib needs the package `weio` to be installed from https://github.com/ebranlard/weio/`')
     
 
 
