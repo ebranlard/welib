@@ -22,7 +22,7 @@ False         Echo         - Echo input data to <RootName>.ech (flag)
 True          GenTiStr     - Method to start the generator {T: timed using TimGenOn, F: generator speed using SpdGenOn} (flag)
 True          GenTiStp     - Method to stop the generator {T: timed using TimGenOf, F: when generator power = 0} (flag)
      9999.9   SpdGenOn     - Generator speed to turn on the generator for a startup (HSS speed) (rpm) [used only when GenTiStr=False]
-          0   TimGenOn     - Time to turn on the generator for a startup (s) [used only when GenTiStr=True]
+     9999.0   TimGenOn     - NOTE: NEVER ON Time to turn on the generator for a startup (s) [used only when GenTiStr=True]
      9999.9   TimGenOf     - Time to turn off the generator (s) [used only when GenTiStp=True]
 ---------------------- SIMPLE VARIABLE-SPEED TORQUE CONTROL --------------------
      9999.9   VS_RtGnSp    - Rated generator speed for simple variable-speed generator control (HSS side) (rpm) [used only when VSContrl=1]
@@ -44,8 +44,8 @@ True          GenTiStp     - Method to stop the generator {T: timed using TimGen
      9999.9   TEC_RLR      - Rotor leakage reactance (ohms) [used only when VSContrl=0 and GenModel=2]
      9999.9   TEC_MR       - Magnetizing reactance (ohms) [used only when VSContrl=0 and GenModel=2]
 ---------------------- HIGH-SPEED SHAFT BRAKE ----------------------------------
-          1   HSSBrMode    - HSS brake model {0: none, 1: simple, 3: user-defined from routine UserHSSBr, 4: user-defined from Simulink/Labview, 5: user-defined from Bladed-style DLL} (switch)
-     0350.0   THSSBrDp     - Time to initiate deployment of the HSS brake (s)
+          0   HSSBrMode    - HSS brake model {0: none, 1: simple, 3: user-defined from routine UserHSSBr, 4: user-defined from Simulink/Labview, 5: user-defined from Bladed-style DLL} (switch)
+     9999.9   THSSBrDp     - Time to initiate deployment of the HSS brake (s)
         0.6   HSSBrDT      - Time for HSS-brake to reach full deployment once initiated (sec) [used only when HSSBrMode=1]
     28116.2   HSSBrTqF     - Fully deployed HSS-brake torque (N-m)
 ---------------------- NACELLE-YAW CONTROL -------------------------------------
@@ -63,9 +63,9 @@ False         CompNTMD     - Compute nacelle tuned mass damper {true/false} (fla
 False         CompTTMD     - Compute tower tuned mass damper {true/false} (flag)
 "unused"      TTMDfile     - Name of the file for tower tuned mass damper (quoted string) [unused when CompTTMD is false]
 ---------------------- BLADED INTERFACE ----------------------------------------
-"../ServoData/DISCON_x64.dll"      DLL_FileName - Name/location of the dynamic library {.dll [Windows] or .so [Linux]} in the Bladed-DLL format (-) [used only with Bladed Interface]
-"DISCON.IN"      DLL_InFile   - Name of input file sent to the DLL [used only with Bladed Interface] (-)
-"DISCON"      DLL_ProcName - Name of procedure in DLL to be called (-) [case sensitive; used only with DLL Interface]
+"NaN"      DLL_FileName - Name/location of the dynamic library {.dll [Windows] or .so [Linux]} in the Bladed-DLL format (-) [used only with Bladed Interface]
+"NaN"      DLL_InFile   - Name of input file sent to the DLL [used only with Bladed Interface] (-)
+"NaN"      DLL_ProcName - Name of procedure in DLL to be called (-) [case sensitive; used only with DLL Interface]
 "default"     DLL_DT       - Communication interval for dynamic library [used only with Bladed Interface] (s) (or "default")
 false         DLL_Ramp     - Whether a linear ramp should be used between DLL_DT time steps [introduces time shift when true] (flag)
 9999.9        BPCutoff     - Cuttoff frequency for low-pass filter on blade pitch from DLL (Hz)

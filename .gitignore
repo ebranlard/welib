@@ -1,3 +1,5 @@
+*.exe
+*.dll
 *.mat
 *.png
 *.zip
