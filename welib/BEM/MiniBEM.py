@@ -77,6 +77,7 @@ def fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
     Ct = Vrel_norm**2 * sigma * cnForAI/(V0**2)  # that's a CT loc
     # --- Hight thrust correction
     # Glauert correction
+    #>>> NOTE this is:  a = a_Ct_a(Ct, a, method='Glauert') from HighThrust
     ac = 0.3
     bHigh = a > ac
     fg = 0.25*(5.-3.*a[bHigh])
