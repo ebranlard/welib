@@ -52,7 +52,7 @@ def ParametricExample():
         return '{:03d}_ws{:04.1f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|RotSpeed'])
 
     # --- Generating all files in a workdir
-    fastfiles=fastlib.templateReplace(ref_dir,PARAMS,workdir=work_dir,name_function=naming,RemoveRefSubFiles=True,main_file=main_file)
+    fastfiles=fastlib.templateReplace(PARAMS,ref_dir,workdir=work_dir,name_function=naming,RemoveRefSubFiles=True,main_file=main_file)
     print(fastfiles)
 
     # --- Creating a batch script just in case

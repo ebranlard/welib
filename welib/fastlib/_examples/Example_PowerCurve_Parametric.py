@@ -49,7 +49,7 @@ def PowerCurveParametricExample1():
             return 'ws{:04.1f}'.format(p['InflowFile|HWindSpeed'])
 
     # --- Generating all files in a workdir
-    fastfiles=fastlib.templateReplace(ref_dir,PARAMS,workdir=work_dir,name_function=naming,RemoveRefSubFiles=True,main_file=main_file)
+    fastfiles=fastlib.templateReplace(PARAMS,ref_dir,work_dir,name_function=naming,RemoveRefSubFiles=True,main_file=main_file)
     print(fastfiles)
 
     # --- Creating a batch script just in case
@@ -94,7 +94,7 @@ def PowerCurveParametricExample2():
     PARAMS,_=fastlib.paramsWS_RPM_Pitch(WS,RPM,PITCH,BaseDict=BaseDict,FlatInputs=True)
 
     # --- Generating all files in a workdir
-    fastfiles=fastlib.templateReplace(ref_dir,PARAMS,workdir=work_dir,RemoveRefSubFiles=True,RemoveAllowed=True,main_file=main_file)
+    fastfiles=fastlib.templateReplace(PARAMS,ref_dir,work_dir,RemoveRefSubFiles=True,RemoveAllowed=True,main_file=main_file)
 
     # --- Creating a batch script just in case
     fastlib.writeBatch(os.path.join(work_dir,'_RUN_ALL.bat'), fastfiles,fastExe=FAST_EXE)
