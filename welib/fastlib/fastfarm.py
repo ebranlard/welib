@@ -50,8 +50,12 @@ def SensorsFARMDiam(nWT,nD):
     return sens
 
 
+def extractFFRadialData(fastfarm_out,fastfarm_input,avgMethod='constantwindow',avgParam=30,D=1,df=None):
+    # LEGACY
+    return spanwisePostProFF(fastfarm_input,avgMethod=avgMethod,avgParam=avgParam,D=D,df=df,fastfarm_out=fastfarm_out)
 
-def extractFFRadialData(fastfarm_out,fastfarm_input,avgMethod='constantwindow',avgParam=30,D=1):
+
+def spanwisePostProFF(fastfarm_input,avgMethod='constantwindow',avgParam=30,D=1,df=None,fastfarm_out=None):
     """ 
     Opens a FASTFarm output file, extract the radial data, average them and returns spanwise data
 
@@ -71,7 +75,8 @@ def extractFFRadialData(fastfarm_out,fastfarm_input,avgMethod='constantwindow',a
     nr=len(vr_bar)
     nD=len(vD)
     # --- Opening ouputfile
-    df=weio.read(fastfarm_out).toDataFrame()
+    if df is None:
+        df=weio.read(fastfarm_out).toDataFrame()
 
     # --- Extracting time series of radial data only
     colRadial = SensorsFARMRadial(nWT=nWT,nD=nD,nR=nr,signals=df.columns.values)
@@ -83,7 +88,10 @@ def extractFFRadialData(fastfarm_out,fastfarm_input,avgMethod='constantwindow',a
 
     # --- Brute force storing of radial data
     Columns     = [vr_bar]
-    ColumnNames = ['r/R_[-]']
+    if D==1:
+        ColumnNames = ['r_[m]']
+    else:
+        ColumnNames = ['r/R_[-]']
     for iWT in range(nWT):
         Values=np.zeros((len(vr_bar),1))
         nCount=0

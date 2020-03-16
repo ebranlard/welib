@@ -12,6 +12,7 @@ import numpy as np
 import distutils.dir_util
 import shutil 
 import stat
+import re
 
 # --- External library for io
 try:
@@ -323,7 +324,10 @@ def AD_BldGag(AD,AD_bld,chordOut=False):
 
     nOuts=AD['NBlOuts']
     if nOuts<=0:
-        return np.array([])
+        if chordOut:
+            return np.array([]), np.array([])
+        else:
+            return np.array([])
     INodes = np.array(AD['BlOutNd'][:nOuts])
     r_gag = AD_bld['BldAeroNodes'][INodes-1,0]
     if chordOut:
@@ -358,106 +362,149 @@ def spanwise(tsAvg,vr_bar,R,postprofile=None):
             dfRad.to_csv(postprofile,sep='\t',index=False)
     return dfRad
 
-def spanwiseAD(tsAvg,vr_bar,rho,R,nB,chord=None,postprofile=None,IR=None):
-    r=vr_bar*R
-    nr=len(vr_bar)
-    Columns     = [('r/R_[-]', vr_bar)]
+def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=None,IR=None):
     # --- Extract radial data
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Alpha_[deg]','B1Alpha_[deg]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}AxInd_[-]'  ,'B1AxInd_[-]'  ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}TnInd_[-]'  ,'B1TnInd_[-]'  ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Cl_[-]'     ,'B1Cl_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Cd_[-]'     ,'B1Cd_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Cm_[-]'     ,'B1Cm_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Cx_[-]'     ,'B1Cx_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Cy_[-]'     ,'B1Cy_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Cn_[-]'     ,'B1Cn_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Ct_[-]'     ,'B1Ct_[-]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Re_[-]' ,'B1Re_[-]' ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Vrel_[m/s]' ,'B1Vrel_[m/s]' ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Theta_[deg]','B1Theta_[deg]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Phi_[deg]','B1Phi_[deg]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Curve_[deg]','B1Curve_[deg]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Vindx_[m/s]','B1Vindx_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Vindy_[m/s]','B1Vindy_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Fx_[N/m]'   ,'B1Fx_[N/m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Fy_[N/m]'   ,'B1Fy_[N/m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Fl_[N/m]'   ,'B1Fl_[N/m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Fd_[N/m]'   ,'B1Fd_[N/m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Fn_[N/m]'   ,'B1Fn_[N/m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Ft_[N/m]'   ,'B1Ft_[N/m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}VUndx_[m/s]','B1VUndx_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}VUndy_[m/s]','B1VUndy_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}VUndz_[m/s]','B1VUndz_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}VDisx_[m/s]','B1VDisx_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}VDisy_[m/s]','B1VDisy_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}VDisz_[m/s]','B1VDisz_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Vx_[m/s]','B1Vx_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Vy_[m/s]','B1Vy_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Vz_[m/s]','B1Vz_[m/s]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}DynP_[Pa]' ,'B1DynP_[Pa]' ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}M_[-]' ,'B1M_[-]' ))
-    Columns.append(extractSpanTS(tsAvg,nr,'B1N{:d}Mm_[N-m/m]'   ,'B1Mm_[N-m/m]'   ))
+    Columns=[]
+    for sB in ['B1','B2','B3']:
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Alpha_\[deg\]',sB+'Alpha_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)AOA_\[deg\]'  ,sB+'Alpha_[deg]')) # DBGOuts
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)AxInd_\[-\]'  ,sB+'AxInd_[-]'  ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)TnInd_\[-\]'  ,sB+'TnInd_[-]'  ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)AIn_\[-\]'    ,sB+'AxInd_[-]'  )) # DBGOuts
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)ApI_\[-\]'    ,sB+'TnInd_[-]'  )) # DBGOuts
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Cl_\[-\]'     ,sB+'Cl_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Cd_\[-\]'     ,sB+'Cd_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Cm_\[-\]'     ,sB+'Cm_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Cx_\[-\]'     ,sB+'Cx_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Cy_\[-\]'     ,sB+'Cy_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Cn_\[-\]'     ,sB+'Cn_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Ct_\[-\]'     ,sB+'Ct_[-]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Re_\[-\]'     ,sB+'Re_[-]' ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Vrel_\[m/s\]' ,sB+'Vrel_[m/s]' ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Theta_\[deg\]',sB+'Theta_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Phi_\[deg\]'  ,sB+'Phi_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Twst_\[deg\]' ,sB+'Twst_[deg]')) #DBGOuts
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Curve_\[deg\]',sB+'Curve_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Vindx_\[m/s\]',sB+'Vindx_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Vindy_\[m/s\]',sB+'Vindy_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Fx_\[N/m\]'   ,sB+'Fx_[N/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Fy_\[N/m\]'   ,sB+'Fy_[N/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Fl_\[N/m\]'   ,sB+'Fl_[N/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Fd_\[N/m\]'   ,sB+'Fd_[N/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Fn_\[N/m\]'   ,sB+'Fn_[N/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Ft_\[N/m\]'   ,sB+'Ft_[N/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)VUndx_\[m/s\]',sB+'VUndx_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)VUndy_\[m/s\]',sB+'VUndy_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)VUndz_\[m/s\]',sB+'VUndz_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)VDisx_\[m/s\]',sB+'VDisx_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)VDisy_\[m/s\]',sB+'VDisy_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)VDisz_\[m/s\]',sB+'VDisz_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Vx_\[m/s\]'   ,sB+'Vx_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Vy_\[m/s\]'   ,sB+'Vy_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Vz_\[m/s\]'   ,sB+'Vz_[m/s]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)DynP_\[Pa\]'  ,sB+'DynP_[Pa]' ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)M_\[-\]'      ,sB+'M_[-]' ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Mm_\[N-m/m\]' ,sB+'Mm_[N-m/m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d*)Gam_\['       ,sB+'Gam_[m^2/s]')) #DBGOuts
 
     # --- AD 14
-    Columns.append(extractSpanTS(tsAvg,nr,'Alpha{:02d}_[deg]'    ,'Alpha_[deg]'  ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'DynPres{:02d}_[Pa]'   ,'DynPres_[Pa]' ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'CLift{:02d}_[-]'      ,'CLift_[-]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'CDrag{:02d}_[-]'      ,'CDrag_[-]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'CNorm{:02d}_[-]'      ,'CNorm_[-]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'CTang{:02d}_[-]'      ,'CTang_[-]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'CMomt{:02d}_[-]'      ,'CMomt_[-]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'Pitch{:02d}_[deg]'    ,'Pitch_[deg]'  ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'AxInd{:02d}_[-]'      ,'AxInd_[-]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'TanInd{:02d}_[-]'     ,'TanInd_[-]'   ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'ForcN{:02d}_[N]'      ,'ForcN_[N]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'ForcT{:02d}_[N]'      ,'ForcT_[N]'    ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'Pmomt{:02d}_[N-m]'    ,'Pmomt_[N-N]'  ,  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'ReNum{:02d}_[x10^6]'  ,'ReNum_[x10^6]',  IR=IR))
-    Columns.append(extractSpanTS(tsAvg,nr,'Gamma{:02d}_[m^2/s]'  ,'Gamma_[m^2/s]',  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^Alpha(\d*)_\[deg\]'    ,'Alpha_[deg]'  ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^DynPres(\d*)_\[Pa\]'   ,'DynPres_[Pa]' ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^CLift(\d*)_\[-\]'      ,'CLift_[-]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^CDrag(\d*)_\[-\]'      ,'CDrag_[-]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^CNorm(\d*)_\[-\]'      ,'CNorm_[-]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^CTang(\d*)_\[-\]'      ,'CTang_[-]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^CMomt(\d*)_\[-\]'      ,'CMomt_[-]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^Pitch(\d*)_\[deg\]'    ,'Pitch_[deg]'  ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^AxInd(\d*)_\[-\]'      ,'AxInd_[-]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^TanInd(\d*)_\[-\]'     ,'TanInd_[-]'   ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^ForcN(\d*)_\[N\]'      ,'ForcN_[N]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^ForcT(\d*)_\[N\]'      ,'ForcT_[N]'    ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^Pmomt(\d*)_\[N-m\]'    ,'Pmomt_[N-N]'  ,  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^ReNum(\d*)_\[x10^6\]'  ,'ReNum_[x10^6]',  IR=IR))
+    Columns.append(extractSpanTSReg(tsAvg,'^Gamma(\d*)_\[m^2/s\]'  ,'Gamma_[m^2/s]',  IR=IR))
+
+    # --- Data present
+    data     = [c for _,c in Columns if c is not None]
+    ColNames = [n for n,_ in Columns if n is not None]
+    Lengths  = [len(d) for d in data]
+    if len(data)<=0:
+        print('[WARN] No spanwise aero data')
+        return None
+
+    # --- Harmonize data so that they all have the same length
+    nrMax = np.max(Lengths)
+    ids=np.arange(nrMax)
+    if vr_bar is None:
+        bFakeVr=True
+        vr_bar = ids/(nrMax-1)
+    else:
+        bFakeVr=False
+        if (nrMax)<len(vr_bar):
+            vr_bar=vr_bar[1:nrMax]
+            if chord is not None:
+                chord =chord[1:nrMax]
+        elif (nrMax)>len(vr_bar):
+            raise Exception('Inconsitent length between radial stations and max index present in output chanels')
+
+    for i in np.arange(len(data)):
+        d=data[i]
+        if len(d)<nrMax:
+            Values = np.zeros((nrMax,1))
+            Values[:] = np.nan
+            Values[1:len(d)] = d
+            data[i] = Values
+            print('>> nr',len(d), nrMax,len(Values))
+
+    # --- Combine data and remove 
+    dataStack = np.column_stack([d for d in data])
+    ValidRow = np.logical_not([np.isnan(dataStack).all(axis=1)])
+    dataStack = dataStack[ValidRow[0],:]
+    ids       = ids      [ValidRow[0]]
+    vr_bar    = vr_bar   [ValidRow[0]]
+    if chord is not None:
+        chord    = chord   [ValidRow[0]]
+
+    # --- Create a dataframe
+    dfRad = pd.DataFrame(data= dataStack, columns = ColNames)
+
+    if bFakeVr:
+        dfRad.insert(0, 'i/n_[-]', vr_bar)
+    else:
+        dfRad.insert(0, 'r/R_[-]', vr_bar)
+        if R is not None:
+            r = vr_bar*R
+
 
     # --- Compute additional values (AD15 only)
-    ColNames = [n for n,_ in Columns]
-    iFx=ColNames.index('B1Fx_[N/m]')
-    if iFx>=0:
-        try:
-            Fx = np.array(Columns[iFx][1])
+    for sB in ['B1','B2','B3']:
+        try: # for python 2
+            Fx = dfRad[sB+'Fx_[N/m]']
             U0 = tsAvg['Wind1VelX_[m/s]']
             Ct=nB*Fx/(0.5 * rho * 2 * U0**2 * np.pi * r)
             Ct[vr_bar<0.01] = 0
-            Columns.append(('B1Ct_[-]', Ct))
+            dfRad[sB+'Ct_[-]'] = Ct
             CT=2*np.trapz(vr_bar*Ct,vr_bar)
-            Columns.append(('B1CtAvg_[-]', CT*np.ones(r.shape)))
+            dfRad[sB+'CtAvg_[-]']= CT*np.ones(r.shape)
         except:
             pass
-    iVrel=ColNames.index('B1Vrel_[m/s]')
-    iCl  =ColNames.index('B1Cl_[-]')
-    if iVrel>=0 and iCl>=0 and chord is not None:
         try:
-            Vrel = np.array(Columns[iVrel][1])
-            Cl   = np.array(Columns[iCl][1])
-            Columns.append(('B1Gamma_[m^2/s]', 1/2 * chord*  Vrel * Cl))
+            dfRad[sB+'Gamma_[m^2/s]'] = 1/2 * chord*  dfRad[sB+'Vrel_[m/s]'] * dfRad[sB+'Cl_[-]'] 
         except:
             pass
 
-    Columns.append(('r_[m]', r))
-
-    data     = np.column_stack([c for _,c in Columns if c is not None])
-    ColNames = [n for n,_ in Columns if n is not None]
-
+    dfRad['id_[#]']=ids+1
+    if not bFakeVr:
+        dfRad['r_[m]'] = r
+ 
     # --- Export to dataframe and csv
-    if len(ColNames)<=2:
-        print('[WARN] No spanwise aero data')
-        return None
-    else:
-        dfRad = pd.DataFrame(data= data, columns = ColNames)
-        if postprofile is not None:
-            dfRad.to_csv(postprofile,sep='\t',index=False)
+    if postprofile is not None:
+        dfRad.to_csv(postprofile,sep='\t',index=False)
     return dfRad
 
 
 
-def spanwisePostPro(FST_In,avgMethod='constantwindow',avgParam=5,out_ext='.outb',postprofile=None,df=None):
+def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.outb',postprofile=None,df=None):
     """
     Postprocess FAST radial data
 
@@ -477,61 +524,131 @@ def spanwisePostPro(FST_In,avgMethod='constantwindow',avgParam=5,out_ext='.outb'
     dfAvg = averageDF(df,avgMethod=avgMethod ,avgParam=avgParam) # NOTE: average 5 last seconds
 
     # --- Extract info (e.g. radial positions) from Fast input file
-    fst = weio.FASTInputDeck(FST_In)
-    chord=None
-    if fst.version == 'F7':
-        # --- FAST7
-        if  not hasattr(fst,'AD'):
-            raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
-        r_FST_aero,IR   = AD14_BldGag(fst.AD)
-        R   = fst.fst['TipRad']
-        try:
-            rho = fst.AD['Rho']
-        except:
-            rho = fst.AD['AirDens']
+    if FST_In is None: 
         r_FST_struct = None
+        rho = 1.225
+        r_bar_FST_aero=None
+        R=None
+        chord=None
+        IR = None
     else:
-        # --- OpenFAST 2
-        if  not hasattr(fst,'ED'):
-            raise Exception('The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
-        if  not hasattr(fst,'AD'):
-            raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
-
-        if fst.ADversion == 'AD15':
-            if  not hasattr(fst.AD,'Bld1'):
-                raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
-            rho        = fst.AD['AirDens']
-            r_FST_aero,chord = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True)
-            print(chord)
-            r_FST_aero+= fst.ED['HubRad']
-            IR         = None
-
-        elif fst.ADversion == 'AD14':
+        fst = weio.FASTInputDeck(FST_In)
+        chord=None
+        if fst.version == 'F7':
+            # --- FAST7
+            if  not hasattr(fst,'AD'):
+                raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
+            r_FST_aero,IR   = AD14_BldGag(fst.AD)
+            R   = fst.fst['TipRad']
             try:
                 rho = fst.AD['Rho']
             except:
                 rho = fst.AD['AirDens']
-            r_FST_aero,IR   = AD14_BldGag(fst.AD)
-
+            r_FST_struct = None
         else:
-            raise Exception('AeroDyn version unknown')
+            # --- OpenFAST 2
+            if  not hasattr(fst,'ED'):
+                raise Exception('The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
+            if  not hasattr(fst,'AD'):
+                raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
 
-        R   = fst.ED ['TipRad']
-        r_FST_struct = ED_BldGag(fst.ED)
-        #print('r struct:',r_FST_struct)
-        #print('r aero  :',r_FST_aero)
-        #print('IR      :',IR)
+            if fst.ADversion == 'AD15':
+                if  not hasattr(fst.AD,'Bld1'):
+                    raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
+                rho        = fst.AD['AirDens']
+                r_FST_aero_gag,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
+                if len(r_FST_aero_gag)==0:
+                    # All outs?
+                    r_FST_aero = fst.AD.Bld1['BldAeroNodes'][:,0] # Full span
+                    chord      = fst.AD.Bld1['BldAeroNodes'][:,5] # Full span
+                    r_FST_aero+= fst.ED['HubRad']
+                    IR         = None
+                else:
+                    r_FST_aero = r_FST_aero_gag
 
-        # --- Extract radial data and export to csv if needed
-        dfAeroRad   = spanwiseAD(dfAvg.iloc[0], r_FST_aero/R, rho , R, nB=3, chord=chord, postprofile=postprofile, IR=IR)
-        if r_FST_struct is None:
-            dfStructRad=None
-        else:
-            dfStructRad = spanwise(dfAvg.iloc[0]  , r_FST_struct/R, R=R, postprofile=postprofile)
+            elif fst.ADversion == 'AD14':
+                try:
+                    rho = fst.AD['Rho']
+                except:
+                    rho = fst.AD['AirDens']
+                r_FST_aero,IR   = AD14_BldGag(fst.AD)
+
+            else:
+                raise Exception('AeroDyn version unknown')
+
+            R   = fst.ED ['TipRad']
+            r_FST_struct = ED_BldGag(fst.ED)
+            #print('r struct:',r_FST_struct)
+            #print('r aero  :',r_FST_aero)
+            #print('IR      :',IR)
+        r_bar_FST_aero = r_FST_aero/R
+
+    # --- Extract radial data and export to csv if needed
+    dfAeroRad   = spanwiseAD(dfAvg.iloc[0], r_bar_FST_aero, rho , R, nB=3, chord=chord, postprofile=postprofile, IR=IR)
+    if r_FST_struct is None:
+        dfStructRad=None
+    else:
+        dfStructRad = spanwise(dfAvg.iloc[0]  , r_FST_struct/R, R=R, postprofile=postprofile)
 
     return dfStructRad , dfAeroRad
 
 
+# --------------------------------------------------------------------------------}
+# --- Generic df 
+# --------------------------------------------------------------------------------{
+def remap_df(df, ColMap, bColKeepNewOnly=False):
+    """ Add/rename columns of a dataframe, potentially perform operations between columns
+    """
+    ColMapMiss=[]
+    ColNew=[]
+    RenameMap=dict()
+    for k0,v in ColMap.items():
+        k=k0.strip()
+        v=v.strip()
+        if v.find('{')>=0:
+            search_results = re.finditer(r'\{.*?\}', v)
+            expr=v
+            # For more advanced operations, we use an eval
+            bFail=False
+            for item in search_results:
+                col=item.group(0)[1:-1]
+                if col not in df.columns:
+                    ColMapMiss.append(col)
+                    bFail=True
+                expr=expr.replace(item.group(0),'df[\''+col+'\']')
+            #print(k0, '=', expr)
+            if not bFail:
+                df[k]=eval(expr)
+                ColNew.append(k)
+            else:
+                print('[WARN] Column not present in dataframe, cannot evaluate: ',expr)
+        else:
+            #print(k0,'=',v)
+            if v not in df.columns:
+                ColMapMiss.append(v)
+                print('[WARN] Column not present in dataframe: ',v)
+            else:
+                RenameMap[k]=v
+
+    # Applying renameing only now so that expressions may be applied in any order
+    for k,v in RenameMap.items():
+        k=k.strip()
+        iCol = list(df.columns).index(v)
+        df.columns.values[iCol]=k
+        ColNew.append(k)
+    df.columns = df.columns.values # Hack to ensure columns are updated
+
+    if len(ColMapMiss)>0:
+        print('[FAIL] The following columns were not found in the dataframe:',ColMapMiss)
+        #print('Available columns are:',df.columns.values)
+
+    if bColKeepNewOnly:
+        ColKeepSafe = [c for c in ColNew if c in df.columns.values]
+        ColKeepMiss = [c for c in ColNew if c not in df.columns.values]
+        if len(ColKeepMiss)>0:
+            print('[WARN] Signals missing and omitted for ColKeep:\n       '+'\n       '.join(ColKeepMiss))
+        df=df[ColKeepSafe]
+    return df
 
 # --------------------------------------------------------------------------------}
 # --- Template replace 
@@ -1023,6 +1140,59 @@ def _zero_crossings(y,x=None,direction=None):
         raise Exception('Direction should be either `up` or `down`')
     return xzc, iBef, sign
 
+def find_matching_pattern(List, pattern):
+    """ Return elements of a list of strings that match a pattern
+        and return the first matching group
+    """
+    reg_pattern=re.compile(pattern)
+    MatchedElements=[]
+    MatchedStrings=[]
+    for l in List:
+        match=reg_pattern.search(l)
+        if match:
+            MatchedElements.append(l)
+            MatchedStrings.append(match.groups(1)[0])
+    return MatchedElements, MatchedStrings
+
+        
+
+def extractSpanTSReg(ts, col_pattern, colname, IR=None):
+    """ Helper function to extract spanwise results, like B1N1Cl B1N2Cl etc. 
+
+    Example
+        col_pattern: 'B1N(\d*)Cl_\[-\]'
+        colname    : 'B1Cl_[-]'
+    """
+    # Extracting columns matching pattern
+    cols, sIdx = find_matching_pattern(ts.keys(), col_pattern)
+    if len(cols) ==0:
+        return (None,None)
+
+    # Sorting by ID
+    cols = np.asarray(cols)
+    Idx  = np.array([int(s) for s in sIdx])
+    Isort = np.argsort(Idx)
+    Idx  = Idx[Isort]
+    cols = cols[Isort]
+
+    nrMax =  np.max(Idx)
+    Values = np.zeros((nrMax,1))
+    Values[:] = np.nan
+#     if IR is None:
+#         cols   = [col_pattern.format(ir+1) for ir in range(nr)]
+#     else:
+#         cols   = [col_pattern.format(ir) for ir in IR]
+    for idx,col in zip(Idx,cols):
+        Values[idx-1]=ts[col]
+    nMissing = np.sum(np.isnan(Values))
+    if nMissing==nrMax:
+        return (None,None)
+    if len(cols)<nrMax:
+        #print(Values)
+        print('[WARN] Not all values found for {}, missing {}/{}'.format(colname,nMissing,nrMax))
+    if len(cols)>nrMax:
+        print('[WARN] More values found for {}, found {}/{}'.format(colname,len(cols),nrMax))
+    return (colname,Values)
 
 def extractSpanTS(ts, nr, col_pattern, colname, IR=None):
     """ Helper function to extract spanwise results, like B1N1Cl B1N2Cl etc. 
