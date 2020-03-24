@@ -251,13 +251,13 @@ def ED_BldGag(ED):
     _,r_nodes= ED_BldStations(ED)
     nOuts = ED['NBlGages']
     if nOuts<=0:
-        return np.array([])
+        return np.array([]), np.array([])
     if type(ED['BldGagNd']) is list:
         Inodes = np.asarray(ED['BldGagNd'])
     else:
         Inodes = np.array([ED['BldGagNd']])
     r_gag = r_nodes[ Inodes[:nOuts] -1]
-    return r_gag
+    return r_gag, Inodes
 
 def ED_TwrGag(ED):
     """ Returns the heights of ElastoDyn blade gages 
@@ -336,30 +336,114 @@ def AD_BldGag(AD,AD_bld,chordOut=False):
     else:
         return r_gag
 
+def BD_BldGag(BD):
+    """ Returns the radial position of BeamDyn blade gages 
+    INPUTS:
+       - BD: either:
+           - a filename of a BeamDyn input file
+           - an instance of FileCl, as returned by reading the file, BD = weio.read(BD_filename)
+    OUTPUTS:
+       - r_gag: The radial positions of the gages, given from the rotor apex
+    """
+    if not isinstance(BD,weio.FASTInFile):
+        BD = weio.FASTInFile(BD)
+#     _,r_nodes= BD_BldStations(BD)
+#     nOuts = ED['NBlGages']
+#     if nOuts<=0:
+#         return np.array([]), np.array([])
+#     if type(ED['BldGagNd']) is list:
+#         Inodes = np.asarray(ED['BldGagNd'])
+#     else:
+#         Inodes = np.array([ED['BldGagNd']])
+#     r_gag = r_nodes[ Inodes[:nOuts] -1]
+    return r_gag, Inodes
+
 # 
 # 
 # 1, 7, 14, 21, 30, 36, 43, 52, 58 BldGagNd List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
 
-def spanwise(tsAvg,vr_bar,R,postprofile=None):
+def spanwiseED(tsAvg,vr_bar,R,postprofile=None, IR=None):
     nr=len(vr_bar)
-    Columns     = [('r/R_[-]', vr_bar)]
-    Columns.append(extractSpanTS(tsAvg,nr,'Spn{:d}FLxb1_[kN]'   ,'FLxb1_[kN]'))
-    Columns.append(extractSpanTS(tsAvg,nr,'Spn{:d}MLyb1_[kN-m]' ,'MLxb1_[kN-m]'  ))
-    Columns.append(extractSpanTS(tsAvg,nr,'Spn{:d}MLxb1_[kN-m]' ,'MLyb1_[kN-m]'   ))
-    Columns.append(extractSpanTS(tsAvg,nr,'Spn{:d}MLzb1_[kN-m]' ,'MLzb1_[kN-m]'   ))
-    Columns.append(('r_[m]', vr_bar*R))
+    # --- Extract radial data
+    Columns=[]
+    for sB in ['b1','b2','b3']:
+        SB=sB.upper()
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)ALx'+sB+'_\[m/s^2\]',SB+'ALx_[m/s^2]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)ALy'+sB+'_\[m/s^2\]',SB+'ALy_[m/s^2]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)ALz'+sB+'_\[m/s^2\]',SB+'ALz_[m/s^2]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)TDx'+sB+'_\[m\]'    ,SB+'TDx_[m]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)TDy'+sB+'_\[m\]'    ,SB+'TDy_[m]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)TDz'+sB+'_\[m\]'    ,SB+'TDz_[m]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)RDx'+sB+'_\[deg\]'  ,SB+'RDx_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)RDy'+sB+'_\[deg\]'  ,SB+'RDy_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)RDz'+sB+'_\[deg\]'  ,SB+'RDz_[deg]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)FLx'+sB+'_\[kN\]'   ,SB+'FLx_[kN]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)FLy'+sB+'_\[kN\]'   ,SB+'FLy_[kN]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)FLz'+sB+'_\[kN\]'   ,SB+'FLz_[kN]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)MLy'+sB+'_\[kN-m\]' ,SB+'MLx_[kN-m]'  ))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)MLx'+sB+'_\[kN-m\]' ,SB+'MLy_[kN-m]'   ))
+        Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)MLz'+sB+'_\[kN-m\]' ,SB+'MLz_[kN-m]'   ))
 
-    data     = np.column_stack([c for _,c in Columns if c is not None])
+    # --- Data present
+    data     = [c for _,c in Columns if c is not None]
     ColNames = [n for n,_ in Columns if n is not None]
-
-    # --- Export to dataframe and csv
-    if len(ColNames)<=2:
+    Lengths  = [len(d) for d in data]
+    if len(data)<=0:
         print('[WARN] No elastodyn spanwise data found.')
         return None
+
+    # --- Harmonize data so that they all have the same length
+    nrMax = np.max(Lengths)
+    print(ColNames)
+    print(Lengths)
+    print(nrMax)
+    print(vr_bar)
+    ids=np.arange(nrMax)
+    if vr_bar is None:
+        bFakeVr=True
+        vr_bar = ids/(nrMax-1)
     else:
-        dfRad = pd.DataFrame(data= data, columns = ColNames)
-        if postprofile is not None:
-            dfRad.to_csv(postprofile,sep='\t',index=False)
+        bFakeVr=False
+        if (nrMax)<len(vr_bar):
+            vr_bar=vr_bar[1:nrMax]
+        elif (nrMax)>len(vr_bar):
+            raise Exception('Inconsitent length between radial stations and max index present in output chanels')
+    print(vr_bar)
+
+    for i in np.arange(len(data)):
+        d=data[i]
+        if len(d)<nrMax:
+            Values = np.zeros((nrMax,1))
+            Values[:] = np.nan
+            Values[1:len(d)] = d
+            data[i] = Values
+
+    # --- Combine data and remove 
+    dataStack = np.column_stack([d for d in data])
+    ValidRow = np.logical_not([np.isnan(dataStack).all(axis=1)])
+    print(ValidRow)
+    dataStack = dataStack[ValidRow[0],:]
+    ids       = ids      [ValidRow[0]]
+    vr_bar    = vr_bar   [ValidRow[0]]
+
+    # --- Create a dataframe
+    dfRad = pd.DataFrame(data= dataStack, columns = ColNames)
+
+    if bFakeVr:
+        dfRad.insert(0, 'i/n_[-]', vr_bar)
+    else:
+        dfRad.insert(0, 'r/R_[-]', vr_bar)
+        if R is not None:
+            r = vr_bar*R
+    if IR is not None:
+        dfRad['Node_[#]']=IR[:nrMax]
+    dfRad['id_[#]']=ids+1
+    if not bFakeVr:
+        dfRad['r_[m]'] = r
+
+    # --- Export to csv
+    if postprofile is not None:
+        dfRad.to_csv(postprofile,sep='\t',index=False)
     return dfRad
 
 def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=None,IR=None):
@@ -454,7 +538,6 @@ def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=
             Values[:] = np.nan
             Values[1:len(d)] = d
             data[i] = Values
-            print('>> nr',len(d), nrMax,len(Values))
 
     # --- Combine data and remove 
     dataStack = np.column_stack([d for d in data])
@@ -474,7 +557,6 @@ def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=
         dfRad.insert(0, 'r/R_[-]', vr_bar)
         if R is not None:
             r = vr_bar*R
-
 
     # --- Compute additional values (AD15 only)
     for sB in ['B1','B2','B3']:
@@ -497,7 +579,7 @@ def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=
     if not bFakeVr:
         dfRad['r_[m]'] = r
  
-    # --- Export to dataframe and csv
+    # --- Export to csv
     if postprofile is not None:
         dfRad.to_csv(postprofile,sep='\t',index=False)
     return dfRad
@@ -526,6 +608,7 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     # --- Extract info (e.g. radial positions) from Fast input file
     if FST_In is None: 
         r_FST_struct = None
+        IR_struct = None
         rho = 1.225
         r_bar_FST_aero=None
         R=None
@@ -556,15 +639,15 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
                 if  not hasattr(fst.AD,'Bld1'):
                     raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
                 rho        = fst.AD['AirDens']
-                r_FST_aero_gag,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
-                if len(r_FST_aero_gag)==0:
-                    # All outs?
+                
+                if 'B1N001Cl_[-]' in df.columns.values:
+                    # This was compiled with all outs
                     r_FST_aero = fst.AD.Bld1['BldAeroNodes'][:,0] # Full span
                     chord      = fst.AD.Bld1['BldAeroNodes'][:,5] # Full span
                     r_FST_aero+= fst.ED['HubRad']
                     IR         = None
                 else:
-                    r_FST_aero = r_FST_aero_gag
+                    r_FST_aero,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
 
             elif fst.ADversion == 'AD14':
                 try:
@@ -577,7 +660,7 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
                 raise Exception('AeroDyn version unknown')
 
             R   = fst.ED ['TipRad']
-            r_FST_struct = ED_BldGag(fst.ED)
+            r_FST_struct, IR_struct = ED_BldGag(fst.ED)
             #print('r struct:',r_FST_struct)
             #print('r aero  :',r_FST_aero)
             #print('IR      :',IR)
@@ -588,9 +671,20 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     if r_FST_struct is None:
         dfStructRad=None
     else:
-        dfStructRad = spanwise(dfAvg.iloc[0]  , r_FST_struct/R, R=R, postprofile=postprofile)
+        dfStructRad = spanwiseED(dfAvg.iloc[0]  , r_FST_struct/R, R=R, IR=IR_struct, postprofile=postprofile)
 
     return dfStructRad , dfAeroRad
+
+def addToOutlist(OutList, Signals):
+    if not isinstance(Signals,list):
+        raise Exception('Signals must be a list')
+    for s in Signals:
+        ss=s.split()[0].strip().strip('"').strip('\'')
+        AlreadyIn = any([o.find(ss)==1 for o in OutList ])
+        if not AlreadyIn:
+            OutList.append(s)
+    return OutList
+
 
 
 # --------------------------------------------------------------------------------}
@@ -711,7 +805,7 @@ def copyTree(src, dst):
                 forceMergeFlatDir(s, d)
 
 
-def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file=None, name_function=None, RemoveAllowed=False):
+def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
     """ Generate inputs files by replacing different parameters from a template file.
     The generated files are placed in the output directory `output_dir` 
     The files are read and written using the library `weio`. 
@@ -743,9 +837,15 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
     def rebase(s,sid):
         split = os.path.splitext(os.path.basename(s))
         return os.path.join(output_dir,split[0]+sid+split[1])
-    def rebase_rel(s,sid):
+    def rebase_rel(wd,s,sid):
         split = os.path.splitext(s)
-        return os.path.join(output_dir,split[0]+sid+split[1])
+        return os.path.join(wd,split[0]+sid+split[1])
+    def get_strID(p) :
+        if '__name__' in p.keys():
+            strID=p['__name__']
+        else:
+            raise Exception('When calling `templateReplace`, provide the key `__name_` in the parameter dictionaries')
+        return strID
 
     # --- Safety checks
     if template_dir is None and output_dir is None:
@@ -776,29 +876,52 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
     else:
         main_file=main_file
 
+#     # --- Fast main file use as "master"
+#     if main_file is None:
+#         FstFiles=set(glob.glob(os.path.join(template_dir,'*.fst'))+glob.glob(os.path.join(template_dir,'*.FST')))
+#         if len(FstFiles)>1:
+#             print(FstFiles)
+#             raise Exception('More than one fst file found in template folder, provide `main_file` or ensure there is only one `.fst` file') 
+#         main_file=FstFiles.pop()
+#     # if the user provided a full path to the main file, we scrap the directory. TODO, should be cleaner
+#     if len(os.path.dirname(main_file))>0:
+#         main_file=os.path.basename(main_file)
+
+
     # Params need to be a list
     if not isinstance(PARAMS,list):
         PARAMS=[PARAMS]
 
+    if oneSimPerDir:
+        WORKDIRS=[os.path.join(output_dir,get_strID(p)) for p in PARAMS]
+    else:
+        WORKDIRS=[output_dir]*len(PARAMS)
+        # Copying template folder to workdir
+    for wd in list(set(WORKDIRS)):
+        if RemoveAllowed:
+            removeFASTOuputs(wd)
+        if os.path.exists(wd) and RemoveAllowed:
+            shutil.rmtree(wd, ignore_errors=False, onerror=handleRemoveReadonlyWin)
+        copyTree(template_dir, wd)
+        if RemoveAllowed:
+            removeFASTOuputs(wd)
+
     files=[]
     # TODO: Recursive loop splitting at the pipes '|', for now only 1 level supported...
-    for ip,p in enumerate(PARAMS):
+    for ip,(wd,p) in enumerate(zip(WORKDIRS,PARAMS)):
+
+        main_file_new=os.path.join(wd, os.path.basename(main_file))
+
         if '__index__' not in p.keys():
             p['__index__']=ip
-        if name_function is None:
-            if '__name__' in p.keys():
-                strID=p['__name__']
-            else:
-                raise Exception('When calling `templateReplace`, either provide a naming function or profile the key `__name_` in the parameter dictionaries')
-        else:
-            strID =name_function(p)
+        strID = get_strID(p)
         FileTypes = set([fileID(k) for k in list(p.keys()) if (k!='__index__' and k!='__name__')])
         FileTypes = set(list(FileTypes)+['ROOT']) # Enforcing ROOT in list, so the main file is written
 
         # ---Copying main file and reading it
-        #fst_full = rebase(main_file,strID)
         ext = os.path.splitext(main_file)[-1]
-        fst_full = os.path.join(output_dir,strID+ext)
+        fst_full = os.path.join(wd,strID+ext)
+
         shutil.copyfile(main_file, fst_full )
         Files=dict()
         Files['ROOT']=weio.FASTInFile(fst_full)
@@ -809,9 +932,9 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
             if t=='ROOT':
                 continue
             org_filename      = Files['ROOT'][t].strip('"')
-            org_filename_full = os.path.join(output_dir,org_filename)
-            new_filename_full = rebase_rel(org_filename,'_'+strID)
-            new_filename      = os.path.relpath(new_filename_full,output_dir)
+            org_filename_full = os.path.join(wd,org_filename)
+            new_filename_full = rebase_rel(wd, org_filename,'_'+strID)
+            new_filename      = os.path.relpath(new_filename_full,wd).replace('\\','/')
 #             print('org_filename',org_filename)
 #             print('org_filename',org_filename_full)
 #             print('New_filename',new_filename_full)
@@ -829,7 +952,11 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
             if len(sp)==1:
                 Files['ROOT'][kk]=v
             elif len(sp)==2:
-                Files[sp[0]][sp[1]]=v
+                if sp[1]=='OutList':
+                    OutList=Files[sp[0]][sp[1]]
+                    Files[sp[0]][sp[1]]=addToOutlist(OutList, v)
+                else:
+                    Files[sp[0]][sp[1]]=v
             else:
                 raise Exception('Multi-level not supported')
         # --- Rewritting all files
@@ -839,156 +966,39 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
         files.append(fst_full)
 
     # --- Remove extra files at the end
-    if template_dir is not None:
-        os.remove(main_file)
-
-    return files
-
-def templateReplace(PARAMS, template_dir, workdir=None, main_file=None, name_function=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
-    """ Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
-        'FAST|DT', 'EDFile|GBRatio', 'ServoFile|GenEff'
-    """
-    def fileID(s):
-        return s.split('|')[0]
-    def basename(s):
-        return os.path.splitext(os.path.basename(s))[0]
-    def rebase(wd,s,sid):
-        split = os.path.splitext(os.path.basename(s))
-        return os.path.join(wd,split[0]+sid+split[1])
-    def rebase_rel(wd,s,sid):
-        split = os.path.splitext(s)
-        return os.path.join(wd,split[0]+sid+split[1])
-    def get_strID(p) :
-        if name_function is None:
-            if '__name__' in p.keys():
-                strID=p['__name__']
-            else:
-                raise Exception('When calling `templateReplace`, either provide a naming function or profile the key `__name_` in the parameter dictionaries')
-        else:
-            strID =name_function(p)
-        return strID
-
-    # --- Safety checks
-    if not os.path.exists(template_dir):
-        raise Exception('Template directory does not exist: '+template_dir)
-
-    # Default value of workdir if not provided
-    if template_dir[-1]=='/'  or template_dir[-1]=='\\' :
-        template_dir=template_dir[0:-1]
-    if workdir is None:
-        workdir=template_dir+'_Parametric'
-
-    # Params need to be a list
-    if not isinstance(PARAMS,list):
-        PARAMS=[PARAMS]
-
-    if oneSimPerDir:
-        WORKDIRS=[os.path.join(workdir,get_strID(p)) for p in PARAMS]
-    else:
-        WORKDIRS=[workdir]*len(PARAMS)
-        # Copying template folder to workdir
-    for wd in list(set(WORKDIRS)):
-        if RemoveAllowed:
-            removeFASTOuputs(wd)
-        if os.path.exists(wd) and RemoveAllowed:
-            shutil.rmtree(wd, ignore_errors=False, onerror=handleRemoveReadonlyWin)
-        copyTree(template_dir, wd)
-        if RemoveAllowed:
-            removeFASTOuputs(wd)
-
-    # --- Fast main file use as "master"
-    if main_file is None:
-        FstFiles=set(glob.glob(os.path.join(template_dir,'*.fst'))+glob.glob(os.path.join(template_dir,'*.FST')))
-        if len(FstFiles)>1:
-            print(FstFiles)
-            raise Exception('More than one fst file found in template folder, provide `main_file` or ensure there is only one `.fst` file') 
-        main_file=FstFiles.pop()
-    # if the user provided a full path to the main file, we scrap the directory. TODO, should be cleaner
-    if len(os.path.dirname(main_file))>0:
-        main_file=os.path.basename(main_file)
-
-
-
-    fastfiles=[]
-    # TODO: Recursive loop splitting at the pipes '|', for now only 1 level supported...
-    for ip,(wd,p) in enumerate(zip(WORKDIRS,PARAMS)):
-        # 
-        main_file_new=os.path.join(wd, os.path.basename(main_file))
-
-        if '__index__' not in p.keys():
-            p['__index__']=ip
-        if name_function is None:
-            if '__name__' in p.keys():
-                strID=p['__name__']
-            else:
-                raise Exception('When calling `templateReplace`, either provide a naming function or profile the key `__name_` in the parameter dictionaries')
-        else:
-            strID =name_function(p)
-        FileTypes = set([fileID(k) for k in list(p.keys()) if (k!='__index__' and k!='__name__')])
-        FileTypes = set(list(FileTypes)+['FAST']) # Enforcing FAST in list, so the main fst file is written
-
-        # ---Copying main file and reading it
-        fst_full = os.path.join(wd,strID+'.fst')
-        shutil.copyfile(main_file_new, fst_full )
-        Files=dict()
-        Files['FAST']=weio.FASTInFile(fst_full)
-        # 
-#         fst=weio.FASTInputDeck(main_file)
-#         for k,v in fst.inputfiles.items():
-#             rel = os.path.relpath(v,template_dir)
-#             if rel.find('/')<0 or rel.find('\\')<0:
-#                 print('Copying ',k,rel)
-#                 shutil.copyfile(os.path.join(template_dir,rel), os.path.join(workdir,rel))
-
-        # --- Looping through required files and opening them
-        for t in FileTypes: 
-            # Doing a naive if
-            # The reason is that we want to account for more complex file types in the future
-            if t=='FAST':
-                continue
-            org_filename   = Files['FAST'][t].strip('"')
-            org_filename_full =os.path.join(wd, org_filename)
-            new_filename_full = rebase_rel(wd, org_filename,'_'+strID)
-            new_filename      = os.path.relpath(new_filename_full,wd).replace('\\','/')
-#             print('org_filename',org_filename)
-#             print('org_filename',org_filename_full)
-#             print('New_filename',new_filename_full)
-#             print('New_filename',new_filename)
-            shutil.copyfile(org_filename_full, new_filename_full)
-            Files['FAST'][t] = '"'+new_filename+'"'
-            # Reading files
-            Files[t]=weio.FASTInFile(new_filename_full)
-        # --- Replacing in files
-        for k,v in p.items():
-            if k =='__index__' or k=='__name__':
-                continue
-            t,kk=k.split('|')
-            Files[t][kk]=v
-            #print(t+'|'+kk+'=',v)
-        # --- Rewritting all files
-        for t in FileTypes:
-            Files[t].write()
-
-        fastfiles.append(fst_full)
-    # --- Remove extra files at the end
     if RemoveRefSubFiles:
         for wd in np.unique(WORKDIRS):
             main_file_new=os.path.join(wd, os.path.basename(main_file))
             FST = weio.FASTInFile(main_file_new)
             for t in FileTypes:
-                if t=='FAST':
+                if t=='ROOT':
                     continue
                 filename   = FST[t].strip('"')
-                #fullname   = rebase(filename,'')
                 fullname   = os.path.join(wd,filename)
-                os.remove(fullname)
+                try:
+                    os.remove(fullname)
+                except:
+                    pass
 
     for wd in np.unique(WORKDIRS):
         main_file_new=os.path.join(wd, os.path.basename(main_file))
         os.remove(main_file_new)
 
-    return fastfiles
+    return files
 
+def templateReplace(PARAMS, template_dir, workdir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
+    """ Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
+        'FAST|DT', 'EDFile|GBRatio', 'ServoFile|GenEff'
+    """
+    # --- For backward compatibility, remove "FAST|" from the keys
+    for p in PARAMS:
+        old_keys=[ k for k,_ in p.items() if k.find('FAST|')==0]
+        for k_old in old_keys:
+            k_new=k_old.replace('FAST|','')
+            p[k_new] = p.pop(k_old)
+    
+    return templateReplaceGeneral(PARAMS, template_dir, output_dir=workdir, main_file=main_file, 
+            RemoveAllowed=RemoveAllowed, RemoveRefSubFiles=RemoveRefSubFiles, oneSimPerDir=oneSimPerDir)
 
 # --------------------------------------------------------------------------------}
 # --- Tools for template replacement 
@@ -1042,10 +1052,6 @@ def paramsStiff(p=dict()):
 
 def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
     """ """
-    # --- Naming function appropriate for such parametric study
-    def default_naming(p): # TODO TODO CHANGE ME
-        return '{:03d}_ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
-
     # --- Ensuring everythin is an iterator
     def iterify(x):
         if not isinstance(x, collections.Iterable): x = [x]
@@ -1083,10 +1089,10 @@ def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
         p['EDFile|BlPitch(3)']     = pitch
 
         p['__index__']  = i
-        p['__name__']   = default_naming(p)
+        p['__name__']   = '{:03d}_ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
         i=i+1
         PARAMS.append(p)
-    return PARAMS, default_naming
+    return PARAMS
 
 
 # --------------------------------------------------------------------------------}
@@ -1417,13 +1423,13 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
 
     # --- Creating set of parameters to be changed
     # TODO: verify that RtAeroCp and RtAeroCt are present in AeroDyn outlist
-    PARAMS,naming = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,BaseDict=BaseDict, FlatInputs=True)
+    PARAMS = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,BaseDict=BaseDict, FlatInputs=True)
 
     # --- Generating all files in a workdir
     workdir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
     print('>>> Generating inputs files in {}'.format(workdir))
     RemoveAllowed=ReRun # If the user want to rerun, we can remove, otherwise we keep existing simulations
-    fastFiles=templateReplace(PARAMS, refdir, workdir=workdir,name_function=naming,RemoveRefSubFiles=True,RemoveAllowed=RemoveAllowed,main_file=main_fastfile)
+    fastFiles=templateReplace(PARAMS, refdir, workdir=workdir,RemoveRefSubFiles=True,RemoveAllowed=RemoveAllowed,main_file=main_fastfile)
 
     # --- Running fast simulations
     print('>>> Running {} simulations...'.format(len(fastFiles)))
@@ -1482,10 +1488,9 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
 if __name__=='__main__':
     pass
     # --- Test of templateReplace
-    def naming(p):
-        return '_ws_'+str(p['InflowFile|HWindSpeed'])
     PARAMS                          = {}
     PARAMS['FAST|TMax']             = 10
+    PARAMS['__name__']             =  'MyName'
     PARAMS['FAST|DT']               = 0.01
     PARAMS['FAST|DT_Out']           = 0.1
     PARAMS['EDFile|RotSpeed']       = 100
@@ -1494,5 +1499,5 @@ if __name__=='__main__':
     PARAMS['ServoFile|VS_Rgn2K']    = 0.00038245
     PARAMS['ServoFile|GenEff']      = 0.95
     PARAMS['InflowFile|HWindSpeed'] = 8
-    templateReplace(PARAMS,ref_dir,name_function=naming,RemoveRefSubFiles=True)
+    templateReplace(PARAMS,ref_dir,RemoveRefSubFiles=True)
 
