@@ -347,20 +347,96 @@ def BD_BldGag(BD):
     """
     if not isinstance(BD,weio.FASTInFile):
         BD = weio.FASTInFile(BD)
-#     _,r_nodes= BD_BldStations(BD)
-#     nOuts = ED['NBlGages']
-#     if nOuts<=0:
-#         return np.array([]), np.array([])
-#     if type(ED['BldGagNd']) is list:
-#         Inodes = np.asarray(ED['BldGagNd'])
-#     else:
-#         Inodes = np.array([ED['BldGagNd']])
-#     r_gag = r_nodes[ Inodes[:nOuts] -1]
-    return r_gag, Inodes
+
+    M       = BD['MemberGeom']
+    r_nodes = M[:,2] # NOTE: we select the z axis here, and we don't take curvilenear coord
+    nOuts = BD['NNodeOuts']
+    if nOuts<=0:
+        return np.array([]), np.array([])
+    if type(BD['OutNd']) is list:
+        Inodes = np.asarray(BD['OutNd'])
+    else:
+        Inodes = np.array([BD['OutNd']])
+    r_gag = r_nodes[ Inodes[:nOuts] -1]
+    return r_gag, Inodes, r_nodes
 
 # 
 # 
 # 1, 7, 14, 21, 30, 36, 43, 52, 58 BldGagNd List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
+
+def _HarmonizeSpanwiseData(Name, Columns, vr_bar,R, IR=None) :
+    """ helper function to use with spanwiseAD and spanwiseED """
+    # --- Data present
+    data     = [c for _,c in Columns if c is not None]
+    ColNames = [n for n,_ in Columns if n is not None]
+    Lengths  = [len(d) for d in data]
+    if len(data)<=0:
+        print('[WARN] No spanwise data for '+Name)
+        return None, None, None
+
+    # --- Harmonize data so that they all have the same length
+    nrMax = np.max(Lengths)
+    ids=np.arange(nrMax)
+    if vr_bar is None:
+        bFakeVr=True
+        vr_bar = ids/(nrMax-1)
+    else:
+        bFakeVr=False
+        if (nrMax)<len(vr_bar):
+            vr_bar=vr_bar[1:nrMax]
+        elif (nrMax)>len(vr_bar):
+            raise Exception('Inconsitent length between radial stations and max index present in output chanels')
+
+    for i in np.arange(len(data)):
+        d=data[i]
+        if len(d)<nrMax:
+            Values = np.zeros((nrMax,1))
+            Values[:] = np.nan
+            Values[1:len(d)] = d
+            data[i] = Values
+
+    # --- Combine data and remove 
+    dataStack = np.column_stack([d for d in data])
+    ValidRow = np.logical_not([np.isnan(dataStack).all(axis=1)])
+    dataStack = dataStack[ValidRow[0],:]
+    ids       = ids      [ValidRow[0]]
+    vr_bar    = vr_bar   [ValidRow[0]]
+
+    # --- Create a dataframe
+    dfRad = pd.DataFrame(data= dataStack, columns = ColNames)
+
+    if bFakeVr:
+        dfRad.insert(0, 'i/n_[-]', vr_bar)
+    else:
+        dfRad.insert(0, 'r/R_[-]', vr_bar)
+        if R is not None:
+            r = vr_bar*R
+    if IR is not None:
+        dfRad['Node_[#]']=IR[:nrMax]
+    dfRad['i_[#]']=ids+1
+    if not bFakeVr:
+        dfRad['r_[m]'] = r
+
+    return dfRad,  nrMax, ValidRow
+
+
+def spanwiseBD(tsAvg,vr_bar,R,postprofile=None, IR=None):
+    nr=len(vr_bar)
+    # --- Extract radial data
+    Columns=[]
+    for sB in ['B1','B2','B3']:
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d)TDxr_\[m\]',sB+'TDxr_[m]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d)TDyr_\[m\]',sB+'TDyr_[m]'))
+        Columns.append(extractSpanTSReg(tsAvg,'^'+sB+'N(\d)TDzr_\[m\]',sB+'TDzr_[m]'))
+
+    dfRad, nrMax, ValidRow = _HarmonizeSpanwiseData('BeamDyn', Columns, vr_bar, R, IR=IR)
+
+    # --- Export to csv
+    if postprofile is not None and dfRad is not None:
+        dfRad.to_csv(postprofile,sep='\t',index=False)
+    return dfRad
+
+ 
 
 def spanwiseED(tsAvg,vr_bar,R,postprofile=None, IR=None):
     nr=len(vr_bar)
@@ -384,65 +460,10 @@ def spanwiseED(tsAvg,vr_bar,R,postprofile=None, IR=None):
         Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)MLx'+sB+'_\[kN-m\]' ,SB+'MLy_[kN-m]'   ))
         Columns.append(extractSpanTSReg(tsAvg,'^Spn(\d)MLz'+sB+'_\[kN-m\]' ,SB+'MLz_[kN-m]'   ))
 
-    # --- Data present
-    data     = [c for _,c in Columns if c is not None]
-    ColNames = [n for n,_ in Columns if n is not None]
-    Lengths  = [len(d) for d in data]
-    if len(data)<=0:
-        print('[WARN] No elastodyn spanwise data found.')
-        return None
-
-    # --- Harmonize data so that they all have the same length
-    nrMax = np.max(Lengths)
-    print(ColNames)
-    print(Lengths)
-    print(nrMax)
-    print(vr_bar)
-    ids=np.arange(nrMax)
-    if vr_bar is None:
-        bFakeVr=True
-        vr_bar = ids/(nrMax-1)
-    else:
-        bFakeVr=False
-        if (nrMax)<len(vr_bar):
-            vr_bar=vr_bar[1:nrMax]
-        elif (nrMax)>len(vr_bar):
-            raise Exception('Inconsitent length between radial stations and max index present in output chanels')
-    print(vr_bar)
-
-    for i in np.arange(len(data)):
-        d=data[i]
-        if len(d)<nrMax:
-            Values = np.zeros((nrMax,1))
-            Values[:] = np.nan
-            Values[1:len(d)] = d
-            data[i] = Values
-
-    # --- Combine data and remove 
-    dataStack = np.column_stack([d for d in data])
-    ValidRow = np.logical_not([np.isnan(dataStack).all(axis=1)])
-    print(ValidRow)
-    dataStack = dataStack[ValidRow[0],:]
-    ids       = ids      [ValidRow[0]]
-    vr_bar    = vr_bar   [ValidRow[0]]
-
-    # --- Create a dataframe
-    dfRad = pd.DataFrame(data= dataStack, columns = ColNames)
-
-    if bFakeVr:
-        dfRad.insert(0, 'i/n_[-]', vr_bar)
-    else:
-        dfRad.insert(0, 'r/R_[-]', vr_bar)
-        if R is not None:
-            r = vr_bar*R
-    if IR is not None:
-        dfRad['Node_[#]']=IR[:nrMax]
-    dfRad['id_[#]']=ids+1
-    if not bFakeVr:
-        dfRad['r_[m]'] = r
+    dfRad, nrMax, ValidRow = _HarmonizeSpanwiseData('ElastoDyn', Columns, vr_bar, R, IR=IR)
 
     # --- Export to csv
-    if postprofile is not None:
+    if postprofile is not None and dfRad is not None:
         dfRad.to_csv(postprofile,sep='\t',index=False)
     return dfRad
 
@@ -508,57 +529,13 @@ def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=
     Columns.append(extractSpanTSReg(tsAvg,'^ReNum(\d*)_\[x10^6\]'  ,'ReNum_[x10^6]',  IR=IR))
     Columns.append(extractSpanTSReg(tsAvg,'^Gamma(\d*)_\[m^2/s\]'  ,'Gamma_[m^2/s]',  IR=IR))
 
-    # --- Data present
-    data     = [c for _,c in Columns if c is not None]
-    ColNames = [n for n,_ in Columns if n is not None]
-    Lengths  = [len(d) for d in data]
-    if len(data)<=0:
-        print('[WARN] No spanwise aero data')
-        return None
-
-    # --- Harmonize data so that they all have the same length
-    nrMax = np.max(Lengths)
-    ids=np.arange(nrMax)
-    if vr_bar is None:
-        bFakeVr=True
-        vr_bar = ids/(nrMax-1)
-    else:
-        bFakeVr=False
-        if (nrMax)<len(vr_bar):
-            vr_bar=vr_bar[1:nrMax]
-            if chord is not None:
-                chord =chord[1:nrMax]
-        elif (nrMax)>len(vr_bar):
-            raise Exception('Inconsitent length between radial stations and max index present in output chanels')
-
-    for i in np.arange(len(data)):
-        d=data[i]
-        if len(d)<nrMax:
-            Values = np.zeros((nrMax,1))
-            Values[:] = np.nan
-            Values[1:len(d)] = d
-            data[i] = Values
-
-    # --- Combine data and remove 
-    dataStack = np.column_stack([d for d in data])
-    ValidRow = np.logical_not([np.isnan(dataStack).all(axis=1)])
-    dataStack = dataStack[ValidRow[0],:]
-    ids       = ids      [ValidRow[0]]
-    vr_bar    = vr_bar   [ValidRow[0]]
-    if chord is not None:
-        chord    = chord   [ValidRow[0]]
-
-    # --- Create a dataframe
-    dfRad = pd.DataFrame(data= dataStack, columns = ColNames)
-
-    if bFakeVr:
-        dfRad.insert(0, 'i/n_[-]', vr_bar)
-    else:
-        dfRad.insert(0, 'r/R_[-]', vr_bar)
-        if R is not None:
-            r = vr_bar*R
-
+    dfRad, nrMax, ValidRow = _HarmonizeSpanwiseData('AeroDyn', Columns, vr_bar, R, IR=IR)
+    
     # --- Compute additional values (AD15 only)
+    if chord is not None:
+        if vr_bar is not None:
+            chord =chord[0:nrMax]
+        chord    = chord   [ValidRow[0]]
     for sB in ['B1','B2','B3']:
         try: # for python 2
             Fx = dfRad[sB+'Fx_[N/m]']
@@ -575,12 +552,8 @@ def spanwiseAD(tsAvg,vr_bar=None,rho=None,R=None,nB=None,chord=None,postprofile=
         except:
             pass
 
-    dfRad['id_[#]']=ids+1
-    if not bFakeVr:
-        dfRad['r_[m]'] = r
- 
     # --- Export to csv
-    if postprofile is not None:
+    if postprofile is not None and dfRad is not None:
         dfRad.to_csv(postprofile,sep='\t',index=False)
     return dfRad
 
@@ -606,74 +579,98 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     dfAvg = averageDF(df,avgMethod=avgMethod ,avgParam=avgParam) # NOTE: average 5 last seconds
 
     # --- Extract info (e.g. radial positions) from Fast input file
-    if FST_In is None: 
-        r_FST_struct = None
-        IR_struct = None
-        rho = 1.225
-        r_bar_FST_aero=None
-        R=None
-        chord=None
-        IR = None
-    else:
-        fst = weio.FASTInputDeck(FST_In)
-        chord=None
+    # We don't have a .fst input file, so we'll rely on some default values for "r"
+    rho         = 1.225
+    R           = None
+    chord       = None
+    r_bar_AD    = None # TODO
+    r_AD        = None # TODO
+    r_ED        = None
+    r_BD        = None
+    IR_ED       = None
+    IR_AD       = None
+    IR_BD       = None
+    dfRad_AD    = None
+    dfRad_ED    = None
+    dfRad_BD    = None
+
+    if FST_In is not None:
+        fst = weio.FASTInputDeck(FST_In, readlist=['AD','ED','BD'])
+        # NOTE: all this below should be in FASTInputDeck
         if fst.version == 'F7':
             # --- FAST7
             if  not hasattr(fst,'AD'):
                 raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
-            r_FST_aero,IR   = AD14_BldGag(fst.AD)
+            r_AD,IR_AD = AD14_BldGag(fst.AD)
             R   = fst.fst['TipRad']
             try:
                 rho = fst.AD['Rho']
             except:
                 rho = fst.AD['AirDens']
-            r_FST_struct = None
         else:
             # --- OpenFAST 2
+
+            # --- BeamDyn
+            if  hasattr(fst,'BD'):
+                r_BD, IR_BD, r_BD_All = BD_BldGag(fst.BD)
+                R = r_BD_All[-1] # just in case ED file missing
+
+            # --- ElastoDyn
             if  not hasattr(fst,'ED'):
-                raise Exception('The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
-            if  not hasattr(fst,'AD'):
-                raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
-
-            if fst.ADversion == 'AD15':
-                if  not hasattr(fst.AD,'Bld1'):
-                    raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
-                rho        = fst.AD['AirDens']
-                
-                if 'B1N001Cl_[-]' in df.columns.values:
-                    # This was compiled with all outs
-                    r_FST_aero = fst.AD.Bld1['BldAeroNodes'][:,0] # Full span
-                    chord      = fst.AD.Bld1['BldAeroNodes'][:,5] # Full span
-                    r_FST_aero+= fst.ED['HubRad']
-                    IR         = None
-                else:
-                    r_FST_aero,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
-
-            elif fst.ADversion == 'AD14':
-                try:
-                    rho = fst.AD['Rho']
-                except:
-                    rho = fst.AD['AirDens']
-                r_FST_aero,IR   = AD14_BldGag(fst.AD)
-
+                print('[WARN] The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
+                R     = 1
+                r_hub = 0
+                #raise Exception('The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
             else:
-                raise Exception('AeroDyn version unknown')
+                R           = fst.ED['TipRad']
+                r_hub       = fst.ED['HubRad']
+                r_ED, IR_ED = ED_BldGag(fst.ED)
 
-            R   = fst.ED ['TipRad']
-            r_FST_struct, IR_struct = ED_BldGag(fst.ED)
-            #print('r struct:',r_FST_struct)
-            #print('r aero  :',r_FST_aero)
-            #print('IR      :',IR)
-        r_bar_FST_aero = r_FST_aero/R
+            # --- AeroDyn
+            if  not hasattr(fst,'AD'):
+                print('[WARN] The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
+                #raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
+            else:
+
+                if fst.ADversion == 'AD15':
+                    if  not hasattr(fst.AD,'Bld1'):
+                        raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
+                    rho        = fst.AD['AirDens']
+                    
+                    if 'B1N001Cl_[-]' in df.columns.values:
+                        # This was compiled with all outs
+                        r_AD   = fst.AD.Bld1['BldAeroNodes'][:,0] # Full span
+                        chord  = fst.AD.Bld1['BldAeroNodes'][:,5] # Full span
+                        r_AD   += r_hub
+                        IR_AD  = None
+                    else:
+                        r_AD,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
+
+                elif fst.ADversion == 'AD14':
+                    try:
+                        rho = fst.AD['Rho']
+                    except:
+                        rho = fst.AD['AirDens']
+                    r_AD,IR_AD = AD14_BldGag(fst.AD)
+
+                else:
+                    raise Exception('AeroDyn version unknown')
+                r_bar_AD = r_AD/R
 
     # --- Extract radial data and export to csv if needed
-    dfAeroRad   = spanwiseAD(dfAvg.iloc[0], r_bar_FST_aero, rho , R, nB=3, chord=chord, postprofile=postprofile, IR=IR)
-    if r_FST_struct is None:
-        dfStructRad=None
-    else:
-        dfStructRad = spanwiseED(dfAvg.iloc[0]  , r_FST_struct/R, R=R, IR=IR_struct, postprofile=postprofile)
+    print('r_AD:', r_AD)
+    print('r_ED:', r_ED)
+    print('r_BD:', r_BD)
+    print('I_AD:', IR_AD)
+    print('I_ED:', IR_ED)
+    print('I_BD:', IR_BD)
+    dfRad_AD   = spanwiseAD(dfAvg.iloc[0], r_bar_AD, rho , R, nB=3, chord=chord, postprofile=postprofile, IR=IR_AD)
+    if r_ED is not None:
+        dfRad_ED = spanwiseED(dfAvg.iloc[0], r_ED/R, R=R, IR=IR_ED, postprofile=postprofile)
+    if r_BD is not None:
+        dfRad_BD = spanwiseBD(dfAvg.iloc[0], r_BD/R, R=R, IR=IR_BD, postprofile=postprofile)
 
-    return dfStructRad , dfAeroRad
+    return dfRad_ED , dfRad_AD, dfRad_BD
 
 def addToOutlist(OutList, Signals):
     if not isinstance(Signals,list):
