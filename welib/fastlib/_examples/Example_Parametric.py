@@ -35,30 +35,35 @@ def ParametricExample():
     # --- Defining the parametric study  (list of dictionnaries with keys as FAST parameters)
     WS = [3,5,6,7]
     RPM = [10,12,13,15]
-    BaseDict = {'FAST|TMax': 10, 'FAST|DT': 0.01, 'FAST|DT_Out': 0.1}
+    BaseDict = {'TMax': 10, 'DT': 0.01, 'DT_Out': 0.1}
     BaseDict = fastlib.paramsNoController(BaseDict)   # Remove the controller
     #BaseDict = fastlib.paramsControllerDLL(BaseDict) # Activate the controller
     #BaseDict = fastlib.paramsStiff(BaseDict)         # Make the turbine stiff (except generator)
     #BaseDict = fastlib.paramsNoGen(BaseDict)         # Remove the Generator DOF
     PARAMS=[]
-    for wsp,rpm in zip(WS,RPM): # NOTE: same length of WS and RPM otherwise do multiple for loops
+    for i,(wsp,rpm) in enumerate(zip(WS,RPM)): # NOTE: same length of WS and RPM otherwise do multiple for loops
         p=BaseDict.copy()
+        if i==0:
+            p['AeroFile|TwrAero']       = True
+        if i==2:
+            p['EDFile|BldFile(1)|AdjBlMs'] =1.1
+            p['EDFile|BldFile(2)|AdjBlMs'] =1.1
+            p['EDFile|BldFile(3)|AdjBlMs'] =1.1
+
         p['EDFile|RotSpeed']       = rpm
         p['InflowFile|HWindSpeed'] = wsp
         p['InflowFile|WindType']   = 1 # Setting steady wind
+        p['__name__']='{:03d}_ws{:04.1f}_om{:04.2f}'.format(i,p['InflowFile|HWindSpeed'],p['EDFile|RotSpeed'])
         PARAMS.append(p)
-    # --- Defining a function to name the files  based on the parameters
-    def naming(p):
-        return '{:03d}_ws{:04.1f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|RotSpeed'])
-
+        i=i+1
     # --- Generating all files in a workdir
-    fastfiles=fastlib.templateReplace(PARAMS,ref_dir,workdir=work_dir,name_function=naming,RemoveRefSubFiles=True,main_file=main_file)
+    fastfiles=fastlib.templateReplace(PARAMS,ref_dir,workdir=work_dir,RemoveRefSubFiles=True,main_file=main_file, oneSimPerDir=False)
     print(fastfiles)
 
     # --- Creating a batch script just in case
     fastlib.writeBatch(os.path.join(work_dir,'_RUN_ALL.bat'),fastfiles,fastExe=FAST_EXE)
     # --- Running the simulations
-    fastlib.run_fastfiles(fastfiles,fastExe=FAST_EXE,parallel=True,ShowOutputs=False,nCores=2)
+    fastlib.run_fastfiles(fastfiles,fastExe=FAST_EXE,parallel=True,ShowOutputs=False,nCores=4)
 
     # --- Simple Postprocessing
     outFiles = [os.path.splitext(f)[0]+'.outb' for f in fastfiles]

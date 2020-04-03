@@ -999,25 +999,93 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
 
       output_dir  : directory where files will be generated. 
     """
-    def fileID(s):
-        if s.find('|')<=0:
-            return 'ROOT'
-        else:
-            return s.split('|')[0]
-    def basename(s):
-        return os.path.splitext(os.path.basename(s))[0]
-    def rebase(s,sid):
-        split = os.path.splitext(os.path.basename(s))
-        return os.path.join(output_dir,split[0]+sid+split[1])
+    # --- Helper functions
     def rebase_rel(wd,s,sid):
         split = os.path.splitext(s)
         return os.path.join(wd,split[0]+sid+split[1])
+
     def get_strID(p) :
         if '__name__' in p.keys():
             strID=p['__name__']
         else:
             raise Exception('When calling `templateReplace`, provide the key `__name_` in the parameter dictionaries')
         return strID
+
+    def splitAddress(sAddress):
+        sp = sAddress.split('|')
+        if len(sp)==1:
+            return sp[0],[]
+        else:
+            return sp[0],sp[1:]
+
+    def rebaseFileName(org_filename, WorkDir, strID):
+            new_filename_full = rebase_rel(WorkDir, org_filename,'_'+strID)
+            new_filename      = os.path.relpath(new_filename_full,WorkDir).replace('\\','/')
+            return new_filename, new_filename_full
+
+    def replaceRecurse(templatename_or_newname, FileKey, ParamKey, ParamValue, Files, strID, WorkDir, TemplateFiles):
+        """ 
+        FileKey: a single key defining which file we are currently modifying e.g. :'AeroFile', 'EDFile','FVWInputFileName'
+        ParamKey: the address key of the parameter to be changed, relative to the current FileKey
+                  e.g. 'EDFile|IntMethod' (if FileKey is '') 
+                       'IntMethod' (if FileKey is 'EDFile') 
+        ParamValue: the value to be used
+        Files: dict of files, as returned by weio, keys are "FileKeys" 
+        """
+        # --- Special handling for the root
+        if FileKey=='':
+            FileKey='Root'
+        # --- Open (or get if already open) file where a parameter needs to be changed
+        if FileKey in Files.keys():
+            # The file was already opened, it's stored
+            f = Files[FileKey]
+            newfilename_full = f.filename
+            newfilename      = os.path.relpath(newfilename_full,WorkDir).replace('\\','/')
+
+        else:
+            templatefilename              = templatename_or_newname
+            templatefilename_full         = os.path.join(WorkDir,templatefilename)
+            TemplateFiles.append(templatefilename_full)
+            if FileKey=='Root':
+                # Root files, we start from strID
+                ext = os.path.splitext(templatefilename)[-1]
+                newfilename_full = os.path.join(wd,strID+ext)
+                newfilename      = strID+ext
+            else:
+                newfilename, newfilename_full = rebaseFileName(templatefilename, WorkDir, strID)
+            #print('--------------------------------------------------------------')
+            #print('TemplateFile    :', templatefilename)
+            #print('TemplateFileFull:', templatefilename_full)
+            #print('NewFile         :', newfilename)
+            #print('NewFileFull     :', newfilename_full)
+            shutil.copyfile(templatefilename_full, newfilename_full)
+            f= weio.FASTInFile(newfilename_full) # open the template file for that filekey 
+            Files[FileKey]=f # store it
+
+        # --- Changing parameters in that file
+        NewFileKey_or_Key, ChildrenKeys = splitAddress(ParamKey)
+        if len(ChildrenKeys)==0:
+            # A simple parameter is changed 
+            Key    = NewFileKey_or_Key
+            #print('Setting', FileKey, '|',Key, 'to',ParamValue)
+            f[Key] = ParamValue
+        else:
+            # Parameters needs to be changed in subfiles (children)
+            NewFileKey                = NewFileKey_or_Key
+            ChildrenKey            = '|'.join(ChildrenKeys)
+            child_templatefilename = f[NewFileKey].strip('"') # old filename that will be used as a template
+            baseparent = os.path.dirname(newfilename)
+            #print('Child templatefilename:',child_templatefilename)
+            #print('Parent base dir       :',baseparent)
+            WorkDir = os.path.join(WorkDir, baseparent)
+
+            #  
+            newchildFilename, Files = replaceRecurse(child_templatefilename, NewFileKey, ChildrenKey, ParamValue, Files, strID, WorkDir, TemplateFiles)
+            #print('Setting', FileKey, '|',NewFileKey, 'to',newchildFilename)
+            f[NewFileKey] = '"'+newchildFilename+'"'
+
+        return newfilename, Files
+
 
     # --- Safety checks
     if template_dir is None and output_dir is None:
@@ -1033,32 +1101,11 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
         if output_dir is None:
             output_dir=template_dir+'_Parametric'
 
-    # --- Creating output_dir - Copying template folder to output_dir if necessary
-    if os.path.exists(output_dir) and RemoveAllowed:
-        shutil.rmtree(output_dir, ignore_errors=False, onerror=handleRemoveReadonlyWin)
-    if template_dir is not None:
-        copyTree(template_dir, output_dir)
-    else:
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
     # --- Main file use as "master"
     if template_dir is not None:
         main_file=os.path.join(output_dir, os.path.basename(main_file))
     else:
         main_file=main_file
-
-#     # --- Fast main file use as "master"
-#     if main_file is None:
-#         FstFiles=set(glob.glob(os.path.join(template_dir,'*.fst'))+glob.glob(os.path.join(template_dir,'*.FST')))
-#         if len(FstFiles)>1:
-#             print(FstFiles)
-#             raise Exception('More than one fst file found in template folder, provide `main_file` or ensure there is only one `.fst` file') 
-#         main_file=FstFiles.pop()
-#     # if the user provided a full path to the main file, we scrap the directory. TODO, should be cleaner
-#     if len(os.path.dirname(main_file))>0:
-#         main_file=os.path.basename(main_file)
-
 
     # Params need to be a list
     if not isinstance(PARAMS,list):
@@ -1068,7 +1115,8 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
         WORKDIRS=[os.path.join(output_dir,get_strID(p)) for p in PARAMS]
     else:
         WORKDIRS=[output_dir]*len(PARAMS)
-        # Copying template folder to workdir
+    # --- Creating output_dir - Copying template folder to output_dir if necessary
+    # Copying template folder to workdir
     for wd in list(set(WORKDIRS)):
         if RemoveAllowed:
             removeFASTOuputs(wd)
@@ -1078,84 +1126,40 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
         if RemoveAllowed:
             removeFASTOuputs(wd)
 
+
+    TemplateFiles=[]
     files=[]
-    # TODO: Recursive loop splitting at the pipes '|', for now only 1 level supported...
     for ip,(wd,p) in enumerate(zip(WORKDIRS,PARAMS)):
-
-        main_file_new=os.path.join(wd, os.path.basename(main_file))
-
         if '__index__' not in p.keys():
             p['__index__']=ip
-        strID = get_strID(p)
-        FileTypes = set([fileID(k) for k in list(p.keys()) if (k!='__index__' and k!='__name__')])
-        FileTypes = set(list(FileTypes)+['ROOT']) # Enforcing ROOT in list, so the main file is written
 
-        # ---Copying main file and reading it
-        ext = os.path.splitext(main_file)[-1]
-        fst_full = os.path.join(wd,strID+ext)
-
-        shutil.copyfile(main_file, fst_full )
+        main_file_base = os.path.basename(main_file)
+        strID          = get_strID(p)
+        # --- Setting up files for this simulation
         Files=dict()
-        Files['ROOT']=weio.FASTInFile(fst_full)
-        # --- Looping through required files and opening them
-        for t in FileTypes: 
-            # Doing a naive if
-            # The reason is that we want to account for more complex file types in the future
-            if t=='ROOT':
-                continue
-            org_filename      = Files['ROOT'][t].strip('"')
-            org_filename_full = os.path.join(wd,org_filename)
-            new_filename_full = rebase_rel(wd, org_filename,'_'+strID)
-            new_filename      = os.path.relpath(new_filename_full,wd).replace('\\','/')
-#             print('org_filename',org_filename)
-#             print('org_filename',org_filename_full)
-#             print('New_filename',new_filename_full)
-#             print('New_filename',new_filename)
-            shutil.copyfile(org_filename_full, new_filename_full)
-            Files['ROOT'][t] = '"'+new_filename+'"'
-            # Reading files
-            Files[t]=weio.FASTInFile(new_filename_full)
-        # --- Replacing in files
         for k,v in p.items():
             if k =='__index__' or k=='__name__':
                 continue
-            sp= k.split('|')
-            kk=sp[0]
-            if len(sp)==1:
-                Files['ROOT'][kk]=v
-            elif len(sp)==2:
-                if sp[1]=='OutList':
-                    OutList=Files[sp[0]][sp[1]]
-                    Files[sp[0]][sp[1]]=addToOutlist(OutList, v)
-                else:
-                    Files[sp[0]][sp[1]]=v
-            else:
-                raise Exception('Multi-level not supported')
-        # --- Rewritting all files
-        for t in FileTypes:
-            Files[t].write()
+            new_mainFile, Files = replaceRecurse(main_file_base, '', k, v, Files, strID, wd, TemplateFiles)
 
-        files.append(fst_full)
+        # --- Writting files
+        for k,f in Files.items():
+            if k=='Root':
+                files.append(f.filename)
+            f.write()
 
     # --- Remove extra files at the end
     if RemoveRefSubFiles:
-        for wd in np.unique(WORKDIRS):
-            main_file_new=os.path.join(wd, os.path.basename(main_file))
-            FST = weio.FASTInFile(main_file_new)
-            for t in FileTypes:
-                if t=='ROOT':
-                    continue
-                filename   = FST[t].strip('"')
-                fullname   = os.path.join(wd,filename)
-                try:
-                    os.remove(fullname)
-                except:
-                    pass
-
-    for wd in np.unique(WORKDIRS):
-        main_file_new=os.path.join(wd, os.path.basename(main_file))
-        os.remove(main_file_new)
-
+        TemplateFiles, nCounts = np.unique(TemplateFiles, return_counts=True)
+        if not oneSimPerDir:
+            # we can only detele template files that were used by ALL simulations
+            TemplateFiles=[t for nc,t in zip(nCounts, TemplateFiles) if nc==len(PARAMS)]
+        for tf in TemplateFiles:
+            try:
+                os.remove(tf)
+            except:
+                print('[FAIL] Removing '+tf)
+                pass
     return files
 
 def templateReplace(PARAMS, template_dir, workdir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
