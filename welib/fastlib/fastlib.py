@@ -176,10 +176,18 @@ def run_fast(input_file, fastExe=None, wait=True, ShowOutputs=False, ShowCommand
 
 
 def writeBatch(batchfile, fastfiles, fastExe=None):
+    """ Write batch file, everything is written relative to the batch file"""
     if fastExe is None:
         fastExe=FAST_EXE
+    fastExe_abs   = os.path.abspath(fastExe)
+    batchfile_abs = os.path.abspath(batchfile)
+    batchdir      = os.path.dirname(batchfile_abs)
+    fastExe_rel   = os.path.relpath(fastExe_abs, batchdir)
     with open(batchfile,'w') as f:
-        for l in [fastExe + ' '+ os.path.basename(f) for f in fastfiles]:
+        for ff in fastfiles:
+            ff_abs = os.path.abspath(ff)
+            ff_rel = os.path.relpath(ff_abs, batchdir)
+            l = fastExe_rel + ' '+ ff_rel
             f.write("%s\n" % l)
 
 
@@ -439,8 +447,8 @@ def insert_radial_columns(df, vr, R=None, IR=None):
         df.insert(0, 'i/n_[-]', vr_bar)
     else:
         vr_bar=vr/R
-        if (nrMax)<len(vr_bar):
-            vr_bar=vr_bar[1:nrMax]
+        if (nrMax)<=len(vr_bar):
+            vr_bar=vr_bar[:nrMax]
         elif (nrMax)>len(vr_bar):
             raise Exception('Inconsitent length between radial stations and max index present in output chanels')
         df.insert(0, 'r/R_[-]', vr_bar)
@@ -496,7 +504,9 @@ def extract_spanwise_data(ColsInfo, nrMax, df=None,ts=None):
             print('[WARN] Not all values found for {}, missing {}/{}'.format(colname,nMissing,nrMax))
         if len(cols)>nrMax:
             print('[WARN] More values found for {}, found {}/{}'.format(colname,len(cols),nrMax))
-    return pd.DataFrame(data=Values, columns=ColNames)
+    df = pd.DataFrame(data=Values, columns=ColNames)
+    df = df.reindex(sorted(df.columns), axis=1)
+    return df
 
 def spanwiseColBD(Cols):
     """ Return column info, available columns and indices that contain BD spanwise data"""
@@ -537,10 +547,13 @@ def spanwiseColAD(Cols):
         ADSpanMap['^'+sB+'N(\d*)AOA_\[deg\]'  ]=sB+'Alpha_[deg]' # DBGOuts
         ADSpanMap['^'+sB+'N(\d*)AxInd_\[-\]'  ]=sB+'AxInd_[-]'  
         ADSpanMap['^'+sB+'N(\d*)TnInd_\[-\]'  ]=sB+'TnInd_[-]'  
-        ADSpanMap['^'+sB+'N(\d*)AIn_\[deg\]'  ]=sB+'AxInd_[-]'   # DBGOuts NOTE BUG
-        ADSpanMap['^'+sB+'N(\d*)ApI_\[deg\]'  ]=sB+'TnInd_[-]'   # DBGOuts NOTE BUG
+        ADSpanMap['^'+sB+'N(\d*)AIn_\[deg\]'  ]=sB+'AxInd_[-]'   # DBGOuts NOTE BUG Unit
+        ADSpanMap['^'+sB+'N(\d*)ApI_\[deg\]'  ]=sB+'TnInd_[-]'   # DBGOuts NOTE BUG Unit
         ADSpanMap['^'+sB+'N(\d*)AIn_\[-\]'    ]=sB+'AxInd_[-]'   # DBGOuts
         ADSpanMap['^'+sB+'N(\d*)ApI_\[-\]'    ]=sB+'TnInd_[-]'   # DBGOuts
+        ADSpanMap['^'+sB+'N(\d*)Uin_\[m/s\]'  ]=sB+'Uin_[m/s]'     # DBGOuts
+        ADSpanMap['^'+sB+'N(\d*)Uit_\[m/s\]'  ]=sB+'Uit_[m/s]'     # DBGOuts
+        ADSpanMap['^'+sB+'N(\d*)Uir_\[m/s\]'  ]=sB+'Uir_[m/s]'     # DBGOuts
         ADSpanMap['^'+sB+'N(\d*)Cl_\[-\]'     ]=sB+'Cl_[-]'   
         ADSpanMap['^'+sB+'N(\d*)Cd_\[-\]'     ]=sB+'Cd_[-]'   
         ADSpanMap['^'+sB+'N(\d*)Cm_\[-\]'     ]=sB+'Cm_[-]'   
@@ -608,11 +621,11 @@ def insert_extra_columns_AD(dfRad, tsAvg, vr=None, rho=None, R=None, nB=None, ch
             vr_bar=vr/R
             Fx = dfRad[sB+'Fx_[N/m]']
             U0 = tsAvg['Wind1VelX_[m/s]']
-            Ct=nB*Fx/(0.5 * rho * 2 * U0**2 * np.pi * r)
+            Ct=nB*Fx/(0.5 * rho * 2 * U0**2 * np.pi * vr)
             Ct[vr<0.01*R] = 0
-            dfRad[sB+'Ct_[-]'] = Ct
+            dfRad[sB+'Ctloc_[-]'] = Ct
             CT=2*np.trapz(vr_bar*Ct,vr_bar)
-            dfRad[sB+'CtAvg_[-]']= CT*np.ones(r.shape)
+            dfRad[sB+'CtAvg_[-]']= CT*np.ones(vr.shape)
         except:
             pass
         try:
@@ -682,8 +695,8 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     # --- AD
     ColsInfoAD, nrMaxAD = spanwiseColAD(Cols)
     dfRad_AD            = extract_spanwise_data(ColsInfoAD, nrMaxAD, df=None, ts=dfAvg.iloc[0])
-    dfRad_AD            = insert_radial_columns(dfRad_AD, r_AD, R=R, IR=IR_AD)
     dfRad_AD            = insert_extra_columns_AD(dfRad_AD, dfAvg.iloc[0], vr=r_AD, rho=rho, R=R, nB=3, chord=chord)
+    dfRad_AD            = insert_radial_columns(dfRad_AD, r_AD, R=R, IR=IR_AD)
     # --- ED
     ColsInfoED, nrMaxED = spanwiseColED(Cols)
     dfRad_ED            = extract_spanwise_data(ColsInfoED, nrMaxED, df=None, ts=dfAvg.iloc[0])
@@ -747,8 +760,8 @@ def spanwisePostProRows(df, FST_In=None):
     for i,val in enumerate(v):
         if r_AD is not None:
             dfRad_AD = extract_spanwise_data(ColsInfoAD, nrMaxAD, df=None, ts=df.iloc[i])
-            dfRad_AD = insert_radial_columns(dfRad_AD, r_AD, R=R, IR=IR_AD)
             dfRad_AD = insert_extra_columns_AD(dfRad_AD, df.iloc[i], vr=r_AD, rho=rho, R=R, nB=3, chord=chord)
+            dfRad_AD = insert_radial_columns(dfRad_AD, r_AD, R=R, IR=IR_AD)
             if i==0:
                 M_AD = np.zeros((len(v), len(dfRad_AD), len(dfRad_AD.columns)))
                 Col_AD=dfRad_AD.columns.values
@@ -1068,7 +1081,11 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
             # A simple parameter is changed 
             Key    = NewFileKey_or_Key
             #print('Setting', FileKey, '|',Key, 'to',ParamValue)
-            f[Key] = ParamValue
+            if Key=='OutList':
+                OutList=f[Key]
+                f[Key]=addToOutlist(OutList, ParamValue)
+            else:
+                f[Key] = ParamValue
         else:
             # Parameters needs to be changed in subfiles (children)
             NewFileKey                = NewFileKey_or_Key
@@ -1563,18 +1580,33 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
                    Default: None, full simulation length is used
     """
     result=None
+    invalidFiles =[]
+    # Loop trough files and populate result
     for i,f in enumerate(outFiles):
-        df=weio.read(f).toDataFrame()
+        try:
+            df=weio.FASTOutFile(f).toDataFrame()
+        except:
+            invalidFiles.append(f)
+            continue
         postpro=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats)
         MeanValues=postpro # todo
-        if i==0:
-            result = MeanValues.copy()
-        else:
-            result=result.append(MeanValues, ignore_index=True)
+        if result is None:
+            # We create a dataframe here, now that we know the colums
+            columns = MeanValues.columns
+            result = pd.DataFrame(np.nan, index=np.arange(len(outFiles)), columns=columns)
+        result.iloc[i,:] = MeanValues.copy().values
+
     if ColSort is not None:
         # Sorting 
         result.sort_values([ColSort],inplace=True,ascending=True)
         result.reset_index(drop=True,inplace=True) 
+
+    if len(invalidFiles)==len(outFiles):
+        raise Exception('None of the files can be read (or exist)!')
+    elif len(invalidFiles)>0:
+        print('[WARN] There were {} missing/invalid files: {}'.format(len(invalidFiles),invalidFiles))
+
+
     return result 
 
 # --------------------------------------------------------------------------------}
