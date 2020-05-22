@@ -22,9 +22,18 @@ except:
         import welib.weio as weio
         print('Using `weio` from `welib`')
     except:
-        raise Exception('Fastlib needs the package `weio` to be installed from https://github.com/ebranlard/weio/`')
-    
-
+        print('[WARN] Fastlib relies on the package `weio` to be installed from https://github.com/ebranlard/weio/`')
+# --- Allowing FASTInFile to be shipped separately..
+try:
+    from weio.FASTInFile import *
+except:
+    try:
+        from weio.weio.FASTInFile import *
+    except:
+        try:
+            from FASTInFile import * 
+        except:
+            pass
 
 FAST_EXE='openfast'
 
@@ -67,10 +76,10 @@ def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tm
 # --- Tools for executing FAST
 # --------------------------------------------------------------------------------{
 # --- START cmd.py
-def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, ShowCommand=True): 
+def run_cmds(inputfiles, exe, parallel=True, showOutputs=True, nCores=None, showCommand=True): 
     """ Run a set of simple commands of the form `exe input_file`
     By default, the commands are run in "parallel" (though the method needs to be improved)
-    The stdout and stderr may be displayed on screen (`ShowOutputs`) or hidden. 
+    The stdout and stderr may be displayed on screen (`showOutputs`) or hidden. 
     A better handling is yet required.
     """
     Failed=[]
@@ -82,7 +91,7 @@ def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, Show
             print('[FAIL] Input    : ',p.input_file)
             print('       Directory: '+os.getcwd())
             print('       Command  : '+p.cmd)
-            print('       Use `ShowOutputs=True` to debug, or run the command above.')
+            print('       Use `showOutputs=True` to debug, or run the command above.')
             #out, err = p.communicate()
             #print('StdOut:\n'+out)
             #print('StdErr:\n'+err)
@@ -94,7 +103,7 @@ def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, Show
         nCores=len(inputfiles)+1
     for i,f in enumerate(inputfiles):
         #print('Process {}/{}: {}'.format(i+1,len(inputfiles),f))
-        ps.append(run_cmd(f, exe, wait=(not parallel), ShowOutputs=ShowOutputs, ShowCommand=ShowCommand))
+        ps.append(run_cmd(f, exe, wait=(not parallel), showOutputs=showOutputs, showCommand=showCommand))
         iProcess += 1
         # waiting once we've filled the number of cores
         # TODO: smarter method with proper queue, here processes are run by chunks
@@ -121,26 +130,35 @@ def run_cmds(inputfiles, exe, parallel=True, ShowOutputs=True, nCores=None, Show
             print('      ',p.input_file)
         return False
 
-def run_cmd(input_file, exe, wait=True, ShowOutputs=False, ShowCommand=True):
-    """ Run a simple command of the form `exe input_file`  """
+def run_cmd(input_file_or_arglist, exe, wait=True, showOutputs=False, showCommand=True):
+    """ Run a simple command of the form `exe input_file` or `exe arg1 arg2`  """
     # TODO Better capture STDOUT
-    if not os.path.isabs(input_file):
-        input_file_abs=os.path.abspath(input_file)
+    if isinstance(input_file_or_arglist, list):
+        args= [exe] + input_file_or_arglist
+        input_file     = ' '.join(input_file_or_arglist)
+        input_file_abs = input_file
     else:
-        input_file_abs=input_file
-    if not os.path.exists(exe):
-        raise Exception('Executable not found: {}'.format(exe))
-    args= [exe,input_file]
-    #args = 'cd '+workdir+' && '+ exe +' '+basename
+        input_file=input_file_or_arglist
+        if not os.path.isabs(input_file):
+            input_file_abs=os.path.abspath(input_file)
+        else:
+            input_file_abs=input_file
+        if not os.path.exists(exe):
+            raise Exception('Executable not found: {}'.format(exe))
+        args= [exe,input_file]
+    #args = 'cd '+workDir+' && '+ exe +' '+basename
     shell=False
-    if ShowOutputs:
+    if showOutputs:
         STDOut= None
     else:
         STDOut= open(os.devnull, 'w') 
-    if ShowCommand:
+    if showCommand:
         print('Running: '+' '.join(args))
     if wait:
-        p=subprocess.call(args , stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
+        class Dummy():
+            pass
+        p=Dummy()
+        p.returncode=subprocess.call(args , stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
     else:
         p=subprocess.Popen(args, stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
     # Storing some info into the process
@@ -152,10 +170,10 @@ def run_cmd(input_file, exe, wait=True, ShowOutputs=False, ShowCommand=True):
     return p
 # --- END cmd.py
 
-def run_fastfiles(fastfiles, fastExe=None, parallel=True, ShowOutputs=True, nCores=None, ShowCommand=True, ReRun=True):
+def run_fastfiles(fastfiles, fastExe=None, parallel=True, showOutputs=True, nCores=None, showCommand=True, reRun=True):
     if fastExe is None:
         fastExe=FAST_EXE
-    if not ReRun:
+    if not reRun:
         # Figure out which files exist
         newfiles=[]
         for f in fastfiles:
@@ -167,12 +185,12 @@ def run_fastfiles(fastfiles, fastExe=None, parallel=True, ShowOutputs=True, nCor
                 newfiles.append(f)
         fastfiles=newfiles
 
-    return run_cmds(fastfiles, fastExe, parallel=parallel, ShowOutputs=ShowOutputs, nCores=nCores, ShowCommand=ShowCommand)
+    return run_cmds(fastfiles, fastExe, parallel=parallel, showOutputs=showOutputs, nCores=nCores, showCommand=showCommand)
 
-def run_fast(input_file, fastExe=None, wait=True, ShowOutputs=False, ShowCommand=True):
+def run_fast(input_file, fastExe=None, wait=True, showOutputs=False, showCommand=True):
     if fastExe is None:
         fastExe=FAST_EXE
-    return run_cmd(input_file, fastExe, wait=wait, ShowOutputs=ShowOutputs, ShowCommand=ShowCommand)
+    return run_cmd(input_file, fastExe, wait=wait, showOutputs=showOutputs, showCommand=showCommand)
 
 
 def writeBatch(batchfile, fastfiles, fastExe=None):
@@ -191,15 +209,15 @@ def writeBatch(batchfile, fastfiles, fastExe=None):
             f.write("%s\n" % l)
 
 
-def removeFASTOuputs(workdir):
+def removeFASTOuputs(workDir):
     # Cleaning folder
-    for f in glob.glob(os.path.join(workdir,'*.out')):
+    for f in glob.glob(os.path.join(workDir,'*.out')):
         os.remove(f)
-    for f in glob.glob(os.path.join(workdir,'*.outb')):
+    for f in glob.glob(os.path.join(workDir,'*.outb')):
         os.remove(f)
-    for f in glob.glob(os.path.join(workdir,'*.ech')):
+    for f in glob.glob(os.path.join(workDir,'*.ech')):
         os.remove(f)
-    for f in glob.glob(os.path.join(workdir,'*.sum')):
+    for f in glob.glob(os.path.join(workDir,'*.sum')):
         os.remove(f)
 
 # --------------------------------------------------------------------------------}
@@ -216,8 +234,8 @@ def ED_BldStations(ED):
         - bld_fract: fraction of the blade length were stations are defined
         - r_nodes: spanwise position from the rotor apex of the Blade stations
     """
-    if not isinstance(ED,weio.FASTInFile):
-        ED = weio.FASTInFile(ED)
+    if not isinstance(ED,FASTInFile):
+        ED = FASTInFile(ED)
 
     nBldNodes = ED['BldNodes']
     bld_fract    = np.arange(1./nBldNodes/2., 1, 1./nBldNodes)
@@ -235,8 +253,8 @@ def ED_TwrStations(ED):
         - r_fract: fraction of the towet length were stations are defined
         - h_nodes: height from the *ground* of the stations  (not from the Tower base)
     """
-    if not isinstance(ED,weio.FASTInFile):
-        ED = weio.FASTInFile(ED)
+    if not isinstance(ED,FASTInFile):
+        ED = FASTInFile(ED)
 
     nTwrNodes = ED['TwrNodes']
     twr_fract    = np.arange(1./nTwrNodes/2., 1, 1./nTwrNodes)
@@ -254,8 +272,8 @@ def ED_BldGag(ED):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if not isinstance(ED,weio.FASTInFile):
-        ED = weio.FASTInFile(ED)
+    if not isinstance(ED,FASTInFile):
+        ED = FASTInFile(ED)
     _,r_nodes= ED_BldStations(ED)
     nOuts = ED['NBlGages']
     if nOuts<=0:
@@ -276,8 +294,8 @@ def ED_TwrGag(ED):
     OUTPUTS:
        - h_gag: The heights of the gages, given from the ground height (tower base + TowerBsHt)
     """
-    if not isinstance(ED,weio.FASTInFile):
-        ED = weio.FASTInFile(ED)
+    if not isinstance(ED,FASTInFile):
+        ED = FASTInFile(ED)
     _,h_nodes= ED_TwrStations(ED)
     nOuts = ED['NTwGages']
     if nOuts<=0:
@@ -299,8 +317,8 @@ def AD14_BldGag(AD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if not isinstance(AD,weio.FASTInFile):
-        AD = weio.FASTInFile(AD)
+    if not isinstance(AD,FASTInFile):
+        AD = FASTInFile(AD)
 
     Nodes=AD['BldAeroNodes']  
     if Nodes.shape[1]==6:
@@ -324,10 +342,10 @@ def AD_BldGag(AD,AD_bld,chordOut=False):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if not isinstance(AD,weio.FASTInFile):
-        AD = weio.FASTInFile(AD)
-    if not isinstance(AD_bld,weio.FASTInFile):
-        AD_bld = weio.FASTInFile(AD_bld)
+    if not isinstance(AD,FASTInFile):
+        AD = FASTInFile(AD)
+    if not isinstance(AD_bld,FASTInFile):
+        AD_bld = FASTInFile(AD_bld)
     #print(AD_bld.keys())
 
     nOuts=AD['NBlOuts']
@@ -353,8 +371,8 @@ def BD_BldGag(BD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if not isinstance(BD,weio.FASTInFile):
-        BD = weio.FASTInFile(BD)
+    if not isinstance(BD,FASTInFile):
+        BD = FASTInFile(BD)
 
     M       = BD['MemberGeom']
     r_nodes = M[:,2] # NOTE: we select the z axis here, and we don't take curvilenear coord
@@ -654,7 +672,7 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     """
     # --- Opens Fast output  and performs averaging
     if df is None:
-        df = weio.read(FST_In.replace('.fst',out_ext)).toDataFrame()
+        df = FASTInFile(FST_In.replace('.fst',out_ext)).toDataFrame()
         returnDF=True
     else:
         returnDF=False
@@ -990,9 +1008,9 @@ def copyTree(src, dst):
                 forceMergeFlatDir(s, d)
 
 
-def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
+def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
     """ Generate inputs files by replacing different parameters from a template file.
-    The generated files are placed in the output directory `output_dir` 
+    The generated files are placed in the output directory `outputDir` 
     The files are read and written using the library `weio`. 
     The template file is read and its content can be changed like a dictionary.
     Each item of `PARAMS` correspond to a set of parameters that will be replaced
@@ -1007,10 +1025,10 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
 
                PARAMS[0]={'FAST|DT':0.1, 'EDFile|GBRatio':1, 'ServoFile|GenEff':0.8}
 
-      template_dir: if provided, this directory and its content will be copied to `output_dir` 
+      templateDir: if provided, this directory and its content will be copied to `outputDir` 
                       before doing the parametric substitution
 
-      output_dir  : directory where files will be generated. 
+      outputDir  : directory where files will be generated. 
     """
     # --- Helper functions
     def rebase_rel(wd,s,sid):
@@ -1031,12 +1049,12 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
         else:
             return sp[0],sp[1:]
 
-    def rebaseFileName(org_filename, WorkDir, strID):
-            new_filename_full = rebase_rel(WorkDir, org_filename,'_'+strID)
-            new_filename      = os.path.relpath(new_filename_full,WorkDir).replace('\\','/')
+    def rebaseFileName(org_filename, workDir, strID):
+            new_filename_full = rebase_rel(workDir, org_filename,'_'+strID)
+            new_filename      = os.path.relpath(new_filename_full,workDir).replace('\\','/')
             return new_filename, new_filename_full
 
-    def replaceRecurse(templatename_or_newname, FileKey, ParamKey, ParamValue, Files, strID, WorkDir, TemplateFiles):
+    def replaceRecurse(templatename_or_newname, FileKey, ParamKey, ParamValue, Files, strID, workDir, TemplateFiles):
         """ 
         FileKey: a single key defining which file we are currently modifying e.g. :'AeroFile', 'EDFile','FVWInputFileName'
         ParamKey: the address key of the parameter to be changed, relative to the current FileKey
@@ -1053,11 +1071,11 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
             # The file was already opened, it's stored
             f = Files[FileKey]
             newfilename_full = f.filename
-            newfilename      = os.path.relpath(newfilename_full,WorkDir).replace('\\','/')
+            newfilename      = os.path.relpath(newfilename_full,workDir).replace('\\','/')
 
         else:
             templatefilename              = templatename_or_newname
-            templatefilename_full         = os.path.join(WorkDir,templatefilename)
+            templatefilename_full         = os.path.join(workDir,templatefilename)
             TemplateFiles.append(templatefilename_full)
             if FileKey=='Root':
                 # Root files, we start from strID
@@ -1065,14 +1083,14 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
                 newfilename_full = os.path.join(wd,strID+ext)
                 newfilename      = strID+ext
             else:
-                newfilename, newfilename_full = rebaseFileName(templatefilename, WorkDir, strID)
+                newfilename, newfilename_full = rebaseFileName(templatefilename, workDir, strID)
             #print('--------------------------------------------------------------')
             #print('TemplateFile    :', templatefilename)
             #print('TemplateFileFull:', templatefilename_full)
             #print('NewFile         :', newfilename)
             #print('NewFileFull     :', newfilename_full)
             shutil.copyfile(templatefilename_full, newfilename_full)
-            f= weio.FASTInFile(newfilename_full) # open the template file for that filekey 
+            f= FASTInFile(newfilename_full) # open the template file for that filekey 
             Files[FileKey]=f # store it
 
         # --- Changing parameters in that file
@@ -1094,10 +1112,10 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
             baseparent = os.path.dirname(newfilename)
             #print('Child templatefilename:',child_templatefilename)
             #print('Parent base dir       :',baseparent)
-            WorkDir = os.path.join(WorkDir, baseparent)
+            workDir = os.path.join(workDir, baseparent)
 
             #  
-            newchildFilename, Files = replaceRecurse(child_templatefilename, NewFileKey, ChildrenKey, ParamValue, Files, strID, WorkDir, TemplateFiles)
+            newchildFilename, Files = replaceRecurse(child_templatefilename, NewFileKey, ChildrenKey, ParamValue, Files, strID, workDir, TemplateFiles)
             #print('Setting', FileKey, '|',NewFileKey, 'to',newchildFilename)
             f[NewFileKey] = '"'+newchildFilename+'"'
 
@@ -1105,22 +1123,22 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
 
 
     # --- Safety checks
-    if template_dir is None and output_dir is None:
+    if templateDir is None and outputDir is None:
         raise Exception('Provide at least a template directory OR an output directory')
 
-    if template_dir is not None:
-        if not os.path.exists(template_dir):
-            raise Exception('Template directory does not exist: '+template_dir)
+    if templateDir is not None:
+        if not os.path.exists(templateDir):
+            raise Exception('Template directory does not exist: '+templateDir)
 
-        # Default value of output_dir if not provided
-        if template_dir[-1]=='/'  or template_dir[-1]=='\\' :
-            template_dir=template_dir[0:-1]
-        if output_dir is None:
-            output_dir=template_dir+'_Parametric'
+        # Default value of outputDir if not provided
+        if templateDir[-1]=='/'  or templateDir[-1]=='\\' :
+            templateDir=templateDir[0:-1]
+        if outputDir is None:
+            outputDir=templateDir+'_Parametric'
 
     # --- Main file use as "master"
-    if template_dir is not None:
-        main_file=os.path.join(output_dir, os.path.basename(main_file))
+    if templateDir is not None:
+        main_file=os.path.join(outputDir, os.path.basename(main_file))
     else:
         main_file=main_file
 
@@ -1129,24 +1147,24 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
         PARAMS=[PARAMS]
 
     if oneSimPerDir:
-        WORKDIRS=[os.path.join(output_dir,get_strID(p)) for p in PARAMS]
+        workDirS=[os.path.join(outputDir,get_strID(p)) for p in PARAMS]
     else:
-        WORKDIRS=[output_dir]*len(PARAMS)
-    # --- Creating output_dir - Copying template folder to output_dir if necessary
-    # Copying template folder to workdir
-    for wd in list(set(WORKDIRS)):
+        workDirS=[outputDir]*len(PARAMS)
+    # --- Creating outputDir - Copying template folder to outputDir if necessary
+    # Copying template folder to workDir
+    for wd in list(set(workDirS)):
         if RemoveAllowed:
             removeFASTOuputs(wd)
         if os.path.exists(wd) and RemoveAllowed:
             shutil.rmtree(wd, ignore_errors=False, onerror=handleRemoveReadonlyWin)
-        copyTree(template_dir, wd)
+        copyTree(templateDir, wd)
         if RemoveAllowed:
             removeFASTOuputs(wd)
 
 
     TemplateFiles=[]
     files=[]
-    for ip,(wd,p) in enumerate(zip(WORKDIRS,PARAMS)):
+    for ip,(wd,p) in enumerate(zip(workDirS,PARAMS)):
         if '__index__' not in p.keys():
             p['__index__']=ip
 
@@ -1179,7 +1197,7 @@ def templateReplaceGeneral(PARAMS, template_dir=None, output_dir=None, main_file
                 pass
     return files
 
-def templateReplace(PARAMS, template_dir, workdir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
+def templateReplace(PARAMS, templateDir, workDir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
     """ Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
         'FAST|DT', 'EDFile|GBRatio', 'ServoFile|GenEff'
     """
@@ -1190,7 +1208,7 @@ def templateReplace(PARAMS, template_dir, workdir=None, main_file=None, RemoveAl
             k_new=k_old.replace('FAST|','')
             p[k_new] = p.pop(k_old)
     
-    return templateReplaceGeneral(PARAMS, template_dir, output_dir=workdir, main_file=main_file, 
+    return templateReplaceGeneral(PARAMS, templateDir, outputDir=workDir, main_file=main_file, 
             RemoveAllowed=RemoveAllowed, RemoveRefSubFiles=RemoveRefSubFiles, oneSimPerDir=oneSimPerDir)
 
 # --------------------------------------------------------------------------------}
@@ -1243,7 +1261,7 @@ def paramsStiff(p=dict()):
     p['EDFile|PtfmYDOF']  = 'False'
     return p
 
-def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
+def paramsWS_RPM_Pitch(WS,RPM,Pitch,baseDict=None,FlatInputs=False):
     """ """
     # --- Ensuring everythin is an iterator
     def iterify(x):
@@ -1270,10 +1288,10 @@ def paramsWS_RPM_Pitch(WS,RPM,Pitch,BaseDict=None,FlatInputs=False):
     PARAMS=[]
     i=0
     for ws,rpm,pitch in zip(WS_flat,RPM_flat,Pitch_flat):
-        if BaseDict is None:
+        if baseDict is None:
             p=dict()
         else:
-            p = BaseDict.copy()
+            p = baseDict.copy()
         p['EDFile|RotSpeed']       = rpm
         p['InflowFile|HWindSpeed'] = ws
         p['InflowFile|WindType']   = 1 # Setting steady wind
@@ -1612,10 +1630,11 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
 # --------------------------------------------------------------------------------}
 # --- Tools for typical wind turbine study 
 # --------------------------------------------------------------------------------{
+
 def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5),WS=None,Omega=None, # operating conditions
           TMax=20,bStiff=True,bNoGen=True,bSteadyAero=True, # simulation options
-          ReRun=True, 
-          fastExe=None,ShowOutputs=True,nCores=4): # execution options
+          reRun=True, 
+          fastExe=None,showOutputs=True,nCores=4): # execution options
     """ Computes CP and CT as function of tip speed ratio (lambda) and pitch.
     There are two main ways to define the inputs:
       - Option 1: provide Lambda and Pitch (deg)
@@ -1629,8 +1648,8 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
         main_fastfile=os.path.basename(main_fastfile)
 
     # --- Reading main fast file to get rotor radius 
-    fst = weio.FASTInFile(os.path.join(refdir,main_fastfile))
-    ed  = weio.FASTInFile(os.path.join(refdir,fst['EDFile'].replace('"','')))
+    fst = FASTInFile(os.path.join(refdir,main_fastfile))
+    ed  = FASTInFile(os.path.join(refdir,fst['EDFile'].replace('"','')))
     R = ed['TipRad']
 
     # --- Making sure we have 
@@ -1657,33 +1676,33 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
             RPM_flat.append(rpm)
             Pitch_flat.append(pitch)
     # --- Setting up default options
-    BaseDict={'FAST|TMax': TMax, 'FAST|DT': 0.01, 'FAST|DT_Out': 0.1} # NOTE: Tmax should be at least 2pi/Omega
-    BaseDict = paramsNoController(BaseDict)
+    baseDict={'FAST|TMax': TMax, 'FAST|DT': 0.01, 'FAST|DT_Out': 0.1} # NOTE: Tmax should be at least 2pi/Omega
+    baseDict = paramsNoController(baseDict)
     if bStiff:
-        BaseDict = paramsStiff(BaseDict)
+        baseDict = paramsStiff(baseDict)
     if bNoGen:
-        BaseDict = paramsNoGen(BaseDict)
+        baseDict = paramsNoGen(baseDict)
     if bSteadyAero:
-        BaseDict = paramsSteadyAero(BaseDict)
+        baseDict = paramsSteadyAero(baseDict)
 
     # --- Creating set of parameters to be changed
     # TODO: verify that RtAeroCp and RtAeroCt are present in AeroDyn outlist
-    PARAMS = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,BaseDict=BaseDict, FlatInputs=True)
+    PARAMS = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,baseDict=baseDict, FlatInputs=True)
 
-    # --- Generating all files in a workdir
-    workdir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
-    print('>>> Generating inputs files in {}'.format(workdir))
-    RemoveAllowed=ReRun # If the user want to rerun, we can remove, otherwise we keep existing simulations
-    fastFiles=templateReplace(PARAMS, refdir, workdir=workdir,RemoveRefSubFiles=True,RemoveAllowed=RemoveAllowed,main_file=main_fastfile)
+    # --- Generating all files in a workDir
+    workDir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
+    print('>>> Generating inputs files in {}'.format(workDir))
+    RemoveAllowed=reRun # If the user want to rerun, we can remove, otherwise we keep existing simulations
+    fastFiles=templateReplace(PARAMS, refdir, workDir=workDir,RemoveRefSubFiles=True,RemoveAllowed=RemoveAllowed,main_file=main_fastfile)
 
     # --- Running fast simulations
     print('>>> Running {} simulations...'.format(len(fastFiles)))
-    run_fastfiles(fastFiles, ShowOutputs=ShowOutputs, fastExe=fastExe, nCores=nCores, ReRun=ReRun)
+    run_fastfiles(fastFiles, showOutputs=showOutputs, fastExe=fastExe, nCores=nCores, reRun=reRun)
 
     # --- Postpro - Computing averages at the end of the simluation
     print('>>> Postprocessing...')
     outFiles = [os.path.splitext(f)[0]+'.outb' for f in fastFiles]
-    # outFiles = glob.glob(os.path.join(workdir,'*.outb'))
+    # outFiles = glob.glob(os.path.join(workDir,'*.outb'))
     ColKeepStats  = ['RotSpeed_[rpm]','BldPitch1_[deg]','RtAeroCp_[-]','RtAeroCt_[-]','Wind1VelX_[m/s]']
     result = averagePostPro(outFiles,avgMethod='periods',avgParam=1,ColKeep=ColKeepStats,ColSort='RotSpeed_[rpm]')
     # print(result)        
@@ -1708,9 +1727,9 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
     return  MCP,MCT,Lambda,Pitch,MaxVal,result
 
 
-# def detectFastFiles(workdir):
-#     FstFiles=glob.glob(os.path.join(workdir,'*.fst'))+glob.glob(os.path.join(workdir,'*.FST'))
-#     DatFiles=glob.glob(os.path.join(workdir,'*.dat'))+glob.glob(os.path.join(workdir,'*.DAT'))
+# def detectFastFiles(workDir):
+#     FstFiles=glob.glob(os.path.join(workDir,'*.fst'))+glob.glob(os.path.join(workDir,'*.FST'))
+#     DatFiles=glob.glob(os.path.join(workDir,'*.dat'))+glob.glob(os.path.join(workDir,'*.DAT'))
 #     Files=dict()
 #     Files['Main']      = FstFiles
 #     Files['Inflow']    = None
@@ -1744,5 +1763,5 @@ if __name__=='__main__':
     PARAMS['ServoFile|VS_Rgn2K']    = 0.00038245
     PARAMS['ServoFile|GenEff']      = 0.95
     PARAMS['InflowFile|HWindSpeed'] = 8
-    templateReplace(PARAMS,ref_dir,RemoveRefSubFiles=True)
+    templateReplace(PARAMS,refDir,RemoveRefSubFiles=True)
 
