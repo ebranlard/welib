@@ -83,30 +83,86 @@ class ReadHawc2(object):
         fid = opent(self.FileName + '.sel', 'r')
         Lines = fid.readlines()
         fid.close()
-        # findes general result info (number of scans, number of channels,
-        # simulation time and file format)
-        temp = Lines[8].split()
-        self.NrSc = int(temp[0])
-        self.NrCh = int(temp[1])
-        self.Time = float(temp[2])
-        self.Freq = self.NrSc / self.Time
-        self.t = np.linspace(0, self.Time, self.NrSc + 1)[1:]
-        Format = temp[3]
-        # reads channel info (name, unit and description)
-        Name = []; Unit = []; Description = [];
-        for i in range(0, self.NrCh):
-            temp = str(Lines[i + 12][12:43]); Name.append(temp.strip())
-            temp = str(Lines[i + 12][43:54]); Unit.append(temp.strip())
-            temp = str(Lines[i + 12][54:-1]); Description.append(temp.strip())
-        self.ChInfo = [Name, Unit, Description]
-        # if binary file format, scaling factors are read
-        if Format.lower() == 'binary':
-            self.ScaleFactor = np.zeros(self.NrCh)
-            self.FileFormat = 'HAWC2_BINARY'
-            for i in range(0, self.NrCh):
-                self.ScaleFactor[i] = float(Lines[i + 12 + self.NrCh + 2])
+        if Lines[0].lower().find('bhawc')>=0:
+            # --- Find line with scan info
+            iLine=0
+            for i in np.arange(5,10):
+                if Lines[i].lower().find('scans')>=0:
+                    iLine=i+1
+            if iLine==0:
+                raise Exception('Cannot find the keyword "scans"')
+            temp = Lines[iLine].split()
+            self.NrSc = int(temp[0])
+            self.NrCh = int(temp[1])
+            self.Time = float(temp[2])
+            self.Freq = self.NrSc / self.Time
+            self.t = np.linspace(0, self.Time, self.NrSc + 1)[1:]
+            # --- Find line with channel info
+            iLine=0
+            for i in np.arange(5,13):
+                if Lines[i].lower().find('channel')>=0:
+                    iLine=i+1
+            if iLine==0:
+                raise Exception('Cannot find the keyword "Channel"')
+
+            # reads channel info (name, unit and description)
+            Name = []; Unit = []; Description = [];
+            for i in range(0, self.NrCh+1):
+                if (i+iLine)>=len(Lines):
+                    break
+                line = Lines[i + iLine].strip()
+                if len(line)==0:
+                    continue
+                # --- removing number and unit
+                sp=[sp.strip() for sp in line.split() if len(sp.strip())>0]
+                num   = sp[0]
+                iNum  = line.find(num)
+                line  = line[iNum+len(num)+1:]
+                unit  = sp[-1]
+                iUnit = line.find(unit)
+                line  = line[:iUnit]
+                # --- Splitting to find label and description
+                sp=[sp.strip() for sp in line.split('\t') if len(sp.strip())>0]
+                if len(sp)!=2:
+                    for nSpaces in np.arange(2,15):
+                        sp=[sp.strip() for sp in line.split(' '*nSpaces) if len(sp.strip())>0]
+                        if len(sp)==2:
+                            break
+                if len(sp)!=2:
+                    raise Exception('Dont know how to split the input of the sel file into 4 columns')
+
+                Unit.append(unit)
+                Description.append(sp[0]) 
+                Name.append(sp[1]) 
+
+            self.ChInfo = [Name, Unit, Description]
+            self.FileFormat = 'BHAWC_ASCII'
         else:
-            self.FileFormat = 'HAWC2_ASCII'
+
+            # findes general result info (number of scans, number of channels,
+            # simulation time and file format)
+            temp = Lines[8].split()
+            self.NrSc = int(temp[0])
+            self.NrCh = int(temp[1])
+            self.Time = float(temp[2])
+            self.Freq = self.NrSc / self.Time
+            self.t = np.linspace(0, self.Time, self.NrSc + 1)[1:]
+            Format = temp[3]
+            # reads channel info (name, unit and description)
+            Name = []; Unit = []; Description = [];
+            for i in range(0, self.NrCh):
+                temp = str(Lines[i + 12][12:43]); Name.append(temp.strip())
+                temp = str(Lines[i + 12][43:54]); Unit.append(temp.strip())
+                temp = str(Lines[i + 12][54:-1]); Description.append(temp.strip())
+            self.ChInfo = [Name, Unit, Description]
+            # if binary file format, scaling factors are read
+            if Format.lower() == 'binary':
+                self.ScaleFactor = np.zeros(self.NrCh)
+                self.FileFormat = 'HAWC2_BINARY'
+                for i in range(0, self.NrCh):
+                    self.ScaleFactor[i] = float(Lines[i + 12 + self.NrCh + 2])
+            else:
+                self.FileFormat = 'HAWC2_ASCII'
 ################################################################################
 # read sensor file for FLEX format
     def _ReadSensorFile(self):
@@ -230,7 +286,7 @@ class ReadHawc2(object):
             ChVec = range(0, self.NrCh)
         if self.FileFormat == 'HAWC2_BINARY':
             return self.ReadBinary(ChVec)
-        elif self.FileFormat == 'HAWC2_ASCII':
+        elif self.FileFormat == 'HAWC2_ASCII' or self.FileFormat == 'BHAWC_ASCII':
             return self.ReadAscii(ChVec)
         elif self.FileFormat == 'GTSDF':
             return self.ReadGtsdf()

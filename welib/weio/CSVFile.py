@@ -1,15 +1,9 @@
-from __future__ import division
-from __future__ import unicode_literals
-from __future__ import print_function
-from __future__ import absolute_import
+from __future__ import division,unicode_literals,print_function,absolute_import
+from builtins import map, range, chr, str
 from io import open
-import os
-from builtins import map
-from builtins import range
-from builtins import chr
-from builtins import str
 from future import standard_library
 standard_library.install_aliases()
+import os
 import codecs
 import chardet
 
@@ -33,7 +27,6 @@ class CSVFile(File):
         self.commentChar  = commentChar
         self.commentLines = commentLines
         self.colNamesLine = colNamesLine
-        self.encoding = None
         self.data=[]
         self.header=[]
         self.nHeader=0
@@ -46,14 +39,7 @@ class CSVFile(File):
     def _read(self):
         COMMENT_CHAR=['#','!',';']
         # --- Detecting encoding
-        byts = min(32, os.path.getsize(self.filename))
-        with open(self.filename, 'rb') as f:
-            raw = f.read(byts)
-        if raw.startswith(codecs.BOM_UTF8):
-            self.encoding = 'utf-8-sig'
-        else:
-            result = chardet.detect(raw)
-            self.encoding = result['encoding']
+        # NOTE: done by parent class method
         
         # --- Subfunctions
         def readline(iLine):
@@ -167,8 +153,8 @@ class CSVFile(File):
                 first_cols = split(first_line)
                 nFloat = sum([strIsFloat(s) for s in first_cols])
                 nPa    = first_line.count('(')+first_line.count('[')
-                #print('>>> nFloat',nFloat)
-                if nFloat == 0 or nPa>len(self.colNames)/2:
+                #if nFloat == 0 or nPa>len(self.colNames)/2:
+                if nPa>len(self.colNames)/2:
                     # that's definitely some units
                     if len(first_cols)==len(self.colNames):
                         self.colNames=[c.strip()+'_'+u.strip() for c,u in zip(self.colNames, first_cols)]
@@ -190,10 +176,6 @@ class CSVFile(File):
                         if len(cols)==len(first_cols) and nFloat <= len(colNames)-1:
                             self.colNames = cols
                             break
-                #print('Sep>',self.sep,'<')
-                #print('Col in HEADER???',self.header)
-                #print('Col in HEADER???',self.colNames)
-            
         # --- Reading data
         skiprows = list(range(iStartLine))
         if (self.colNamesLine is not None):
@@ -204,7 +186,9 @@ class CSVFile(File):
         #print(self)
         #print(skiprows)
         try:
-            self.data = pd.read_csv(self.filename,sep=self.sep,skiprows=skiprows,header=None,comment=self.commentChar,encoding=self.encoding)
+#             self.data = pd.read_csv(self.filename,sep=self.sep,skiprows=skiprows,header=None,comment=self.commentChar,encoding=self.encoding)
+            with open(self.filename,'r',encoding=self.encoding) as f:
+                self.data = pd.read_csv(f,sep=self.sep,skiprows=skiprows,header=None,comment=self.commentChar)
         except pd.errors.ParserError as e:
             raise WrongFormatError('CSV File {}: '.format(self.filename)+e.args[0])
 
@@ -221,10 +205,19 @@ class CSVFile(File):
             self.sep='\t'
         # Write
         if len(self.header)>0:
-            with open(self.filename, 'w') as f:
+            with open(self.filename, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(self.header)+'\n')
-            with open(self.filename, 'a') as f:
-                self.data.to_csv(f,        sep=self.sep,index=False,header=False)
+            with open(self.filename, 'a', encoding='utf-8') as f:
+                try:
+                    self.data.to_csv(f,   sep=self.sep,     index=False,header=False)
+                except TypeError:
+                    print('[WARN] CSVFile: Pandas failed, likely encoding error. Attempting a quick and dirty fix.')
+                    s=''
+                    vals=self.data.values
+                    for l in vals:
+                        sLine=(self.sep).join([str(v) for v in l])
+                        s+=sLine+'\n'
+                    f.write(s)
         else:
             self.data.to_csv(self.filename,sep=self.sep,index=False)
 
