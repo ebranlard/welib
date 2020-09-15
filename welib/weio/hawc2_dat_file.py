@@ -12,7 +12,7 @@ standard_library.install_aliases()
 import os 
 import numpy as np
 
-from .File import File, WrongFormatError, FileNotFoundError
+from .file import File, WrongFormatError, FileNotFoundError
 import pandas as pd
 
 from .wetb.hawc2.Hawc2io import ReadHawc2

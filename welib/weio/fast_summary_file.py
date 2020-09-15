@@ -3,11 +3,11 @@ import pandas as pd
 from io import open
 import os
 # Local 
-import yaml
+from .mini_yaml import yaml_read
 
 
 try:
-    from .File import File, EmptyFileError
+    from .file import File, EmptyFileError
 except:
     EmptyFileError = type('EmptyFileError', (Exception,),{})
     File=dict
@@ -16,6 +16,24 @@ except:
 # --- Main Class 
 # --------------------------------------------------------------------------------{
 class FASTSummaryFile(File):
+    """ 
+    Read an OpenFAST summary file (.sum, .yaml). The object behaves as a dictionary.
+    NOTE: open new subdyn format supported.
+
+    Main methods
+    ------------
+    - read, toDataFrame
+
+    Examples
+    --------
+
+        # read a subdyn summary file
+        sum = FASTSummaryFile('5MW.SD.sum.yaml')
+        print(sum['module']) # SubDyn
+        M = sum['M'] # Mass matrix
+        K = sum['K'] # stiffness matrix
+
+    """
 
     @staticmethod
     def defaultExtensions():
@@ -43,13 +61,13 @@ class FASTSummaryFile(File):
 
         with open(self.filename, 'r', errors="surrogateescape") as fid:
             header= readFirstLines(fid, 4)
-            if any(['subdyn' in s.lower() for s in header]):
-                self['module']='SubDyn'
-                data=readSubDynSum(fid)
-                for k,v in data.items():
-                    self[k]=v
-            else:
-                raise NotImplementedError('This summary file format is not yet supported')
+        if any(['subdyn' in s.lower() for s in header]):
+            self['module']='SubDyn'
+            data=readSubDynSum(self.filename)
+            for k,v in data.items():
+                self[k]=v
+        else:
+            raise NotImplementedError('This summary file format is not yet supported')
 
     def toDataFrame(self):
         if 'module' not in self.keys():
@@ -75,11 +93,13 @@ def readFirstLines(fid, nLines):
 # --------------------------------------------------------------------------------}
 # --- Sub reader for different summary files
 # --------------------------------------------------------------------------------{
-def readSubDynSum(fid):
-    T=yaml.load(fid, Loader=yaml.SafeLoader)
-    for k,v in T.items():
-        if isinstance(v,list):
-            T[k]=np.array(v)
+def readSubDynSum(filename):
+    #T=yaml.load(fid, Loader=yaml.SafeLoader)
+    T=yaml_read(filename)
+    # Convert lists to np arrays for  convenience
+    #for k,v in T.items():
+    #    if isinstance(v,list):
+    #        T[k]=np.array(v)
     return T
 
 def subDynToDataFrame(data):
@@ -167,16 +187,6 @@ def subDynToDataFrame(data):
 
 
 if __name__=='__main__':
-    # read('Main_Monopile-SoilDyn.SD.sum')
     T=FASTSummaryFile('../Pendulum.SD.sum.yaml')
     df=T.toDataFrame()
     print(df)
-
-#     DOF2Nodes=T['DOF2Nodes']
-#     DOF_L=T['DOF___L'] # internal DOFs
-#     DOF_B=T['DOF___B'] # internal
-#     nDOF =T['nDOF_red']
-#     PhiB =T['PhiM']
-#     PhiR =T['PhiR']
-#     MM  =T['M']
-#     KK  =T['K']

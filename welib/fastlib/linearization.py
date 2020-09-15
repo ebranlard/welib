@@ -9,14 +9,14 @@ try:
 except:
     from welib.fastlib import fastlib
 
-def campbell(Cases, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe, fastExe,  
-             baseDict=None, generateInputs=True, runFast=True, runMBC=True, prefix='', suffix='', sortedSuffix=None, ylim=None):
+def campbell(caseFile, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe, fastExe,  
+             baseDict=None, generateInputs=True, runFast=True, runMBC=True, prefix='',sortedSuffix=None, ylim=None):
     """ 
     Wrapper function to perform a Campbell diagram study
        see: writeFASTLinInputs, matlabMBC, and postproMBC for more description of inputs.
 
     INPUTS:
-      - Cases        pandas DataFrame with WS, RPM, Pitch, and potentially gen torque and tower top FA
+      - caseFile     pandas DataFrame with WS, RPM, Pitch, and potentially gen torque and tower top FA
       - mainFst      Main file, used as a template
       - tStart       Time after which linearization is done (need to reach periodic steady state)
       - nPerPeriod   Number of linearizations per revolution
@@ -24,11 +24,12 @@ def campbell(Cases, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe,
       - fastExe      Full path to a FAST exe (and dll)
       - toolboxDir   path to matlab-toolbox
       - matlabExe    path the matlab or octave exe
-      - prefix       prefix used for filenames, only needed to distinguish different sets of simulations
-      - suffix       suffix used for filenames, idem
+      - prefix:     strings such that the output files will looked like: [folder prefix ]
       - sortedSuffix use a separate file where IDs have been sorted
       - runFast      Logical to specify whether to run the simulations or not
     """
+    Cases=pd.read_csv(caseFile); Cases.rename(columns=lambda x: x.strip(), inplace=True)
+
     # --- Generating input files
     if generateInputs:
         WS, RPM, Pitch = Cases['WindSpeed_[m/s]'], Cases['Omega_[RPM]'], Cases['Pitch_[deg]']
@@ -38,7 +39,7 @@ def campbell(Cases, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe,
             TT = None
         #GenTorq = Cases['GenTrq_[kNm]'] # TODO
         # Generate input files
-        fastfiles= writeFASTLinInputs(mainFst, workDir, WS, RPM, Pitch, TT=TT, nPerPeriod=nPerPeriod, baseDict=baseDict, tStart=tStart, prefix=prefix, suffix=suffix)
+        fastfiles= writeFASTLinInputs(mainFst, workDir, WS, RPM, Pitch, TT=TT, nPerPeriod=nPerPeriod, baseDict=baseDict, tStart=tStart, prefix=prefix)
         # Create a batch script (optional)
         fastlib.writeBatch(os.path.join(workDir,'_RUN_ALL.bat'),fastfiles,fastExe=fastExe)
 
@@ -48,8 +49,8 @@ def campbell(Cases, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe,
 
     # --- Postprocess linearization outputs (MBC + modes ID)
     if runMBC:
-        outBase = matlabMBC(workDir, toolboxDir, matlabExe, prefix=prefix, suffix=suffix)
-    OP, Freq, Damp, UnMapped, _ = postproMBC(csvBase=os.path.join(workDir,prefix+suffix), sortedSuffix=sortedSuffix)
+        outBase = matlabMBC(caseFile, workDir, toolboxDir, matlabExe, prefix=prefix)
+    OP, Freq, Damp, UnMapped, _ = postproMBC(csvBase=os.path.join(workDir,prefix), sortedSuffix=sortedSuffix)
 
     # ---  Plot Campbell
     fig, axes = plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=UnMapped, ylim=ylim)
@@ -57,8 +58,35 @@ def campbell(Cases, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe,
     #  fig.savefig('{:s}CampbellWS.png'.format(suffix))
     return OP, Freq, Damp, fig
 
+def readOperatingPoints(OP_file):
+    """ 
+    Reads an "Operating Point" delimited file to a pandas DataFrame
+    """
+    OP=pd.read_csv(OP_file);
+    OP.rename(columns=lambda x: x.strip().lower().replace(' ','').replace('_','').replace('(','[').split['['][0], inplace=True)
+    print(OP)
+    # TODO perform column replacements
+    #df.rename(columns={'oldName1': 'newName1', 'oldName2': 'newName2'}, inplace=True)
+    # TODO Default filenames
+    return OP
 
-def writeFASTLinInputs(main_fst, workDir, WS, RPM, Pitch, TT=None, 
+def defaultFilenames(OP, rpmSweep=False):
+    pass
+    #if ~exist('rpmSweep','var'); 
+    #    rpmSweep = isfield(OP,'WindSpeed');
+    #end
+    #nOP=length(OP.RotorSpeed);
+    #filenames=cell(1,nOP);
+    #for iOP=1:nOP
+    #    if rpmSweep
+    #        filenames{iOP}=sprintf('rpm%05.2f.fst',OP.RotSpeed(iOP));
+    #    else
+    #        filenames{iOP}=sprintf('ws%04.1f.fst',OP.WindSpeed(iOP));
+    #    end
+    #end
+
+
+def writeFASTLinInputs(main_fst, workDir, operatingPointsFile, 
         nPerPeriod=36, baseDict=None, tStart=100,
         LinInputs=0, LinOutputs=0,
         prefix='', suffix=''):
@@ -73,11 +101,7 @@ def writeFASTLinInputs(main_fst, workDir, WS, RPM, Pitch, TT=None,
                   The parent directory of the main fst file will be copied to `workDir`.
       - workDir: directory (will be created) where the simulation files will be generated
 
-      - operating conditions: (1d arrays, all of the same size)
-        WS:    wind speed [m/s]
-        RPM:   rotational speed [rpm]
-        Pitch: pitch angle [deg]
-        TT:    tower tower position [m]. If not provided, 0s are assumed
+      - operatingPointsFile: csv file containing operating conditions
       - nPerPeriod : number of linearization points per rotation (usually 12 or 36)
       - baseDict : a dictionary of inputs files keys to be applied to all simulations
                    Ignored if not provided.
@@ -93,8 +117,6 @@ def writeFASTLinInputs(main_fst, workDir, WS, RPM, Pitch, TT=None,
        - list of fst files created
     """
     # --- Optional values
-    if TT is None:
-        TT= [0]*len(WS)
     if baseDict is None:
         baseDict=dict()
 
@@ -105,9 +127,13 @@ def writeFASTLinInputs(main_fst, workDir, WS, RPM, Pitch, TT=None,
         print('[WARN] For now linearization is done without controller.')
         baseDict['CompServo']=0
 
+    # --- Reading operating points
+    OP = readOperatingPoints(operatingPointsFile)
+    WS, RPM, Pitch = OP['WindSpeed_[m/s]'], OP['RotorSpeed_[rpm]'], OP['PitchAngle_[deg]'] # <<< TODO
+
     # --- Generating list of parameters that vary based on the operating conditions provided
     PARAMS     = []
-    for i,(ws,rpm,pitch,tt) in enumerate(zip(WS,RPM,Pitch,TT)):
+    for i,(ws,rpm,pitch) in enumerate(zip(WS,RPM,Pitch)):
         # Determine linearization times based on RPM and nPerPeriod
         Omega = rpm/60*2*np.pi
         if abs(Omega)<0.001:
@@ -130,7 +156,7 @@ def writeFASTLinInputs(main_fst, workDir, WS, RPM, Pitch, TT=None,
         linDict['Linearize']    = True
         linDict['NLinTimes']    = len(LinTimes)
         linDict['LinTimes']     = list(LinTimes)
-        linDict['OutFmt']       = '"ES16.9E2"'  # Important for decent resolution
+        linDict['OutFmt']       = '"ES20.12E2"'  # Important for decent resolution
         linDict['LinInputs']    = LinInputs     # 0: none, 1: standard, 2: to get full linearizations
         linDict['LinOutputs']   = LinOutputs    # 0: none, 1: based on outlist 
         # --- New Linearization options
@@ -177,17 +203,18 @@ def writeFASTLinInputs(main_fst, workDir, WS, RPM, Pitch, TT=None,
 
     return fastfiles
 
-def matlabMBC(workDir, toolboxDir, matlabExe, prefix='', suffix='', outputFormat='csv'):
+def matlabMBC(caseFile, workDir, toolboxDir, matlabExe, outputFormat='csv', prefix=''):
     """ 
     Run the matlab script `campbellFolderPostPro` located in the matlab-toolbox.
     This matlab script generates a set of csv files, or one excel file.
-    Lin files are looked for with the pattern: workDir+prefix+'*'+suffix+'*.lin'
+    Lin files are looked for based on filenames defined in the caseFile 
 
     INPUTS:
+      - caseFile  : operating point files, with columns such as WindSpeed RotorSpeed and Filename
       - workDir   : directory where .lin files are to be found
       - toolboxDir: directory where the matlab toolbox is located
       - matlabExe : path to MATLAB or OCTAVE executable
-      - prefix/suffix: strings such that the files looked for are: [folder prefix '*' suffix '*.lin']
+      - prefix:     strings such that the output files will looked like: [folder prefix ]
       - ouputFormat : 'csv' or 'xls', choose between output as CSV files or one Excel file
     """
     workDir    = os.path.abspath(workDir).replace('\\','/')
@@ -199,7 +226,7 @@ def matlabMBC(workDir, toolboxDir, matlabExe, prefix='', suffix='', outputFormat
     else: # here we assume Octave
         args=['--eval']
         matlabRun = '{} --eval '.format(matlabExe)
-    matlabCmd = 'addpath(genpath("{}")); campbellFolderPostPro("{}","{}","{}", "{}"); quit'.format(toolboxDir, workDir, prefix, suffix, outputFormat)
+    matlabCmd = 'addpath(genpath("{}")); postproLinearization("{}","{}","{}","{}"); quit'.format(toolboxDir, workDir, caseFile, outputFormat, prefix)
     args+=[matlabCmd]
 
     # system call to matlab
@@ -207,11 +234,11 @@ def matlabMBC(workDir, toolboxDir, matlabExe, prefix='', suffix='', outputFormat
     if p.returncode==1:
         raise Exception('Matlab command failed to run, non 0 exit code return')
     # checks
-    outBase = os.path.join(workDir,prefix+suffix)
+    outBase = os.path.join(workDir,'Campbell_')
     if outputFormat.lower()=='csv':
-        outName = outBase+'CampbellModesID.csv'
+        outName = outBase+'ModesID.csv'
     else:
-        outName = outBase+'CampbellDataSummary.xlsx'
+        outName = outBase+'DataSummary.xlsx'
     if not os.path.exists(outName):
         raise Exception('Matlab command failed to run, main xlsx or csv file was not created')
     print('[ OK ] Matlab command ran successfully')
@@ -281,8 +308,8 @@ def postproMBC(xlsFile=None,csvBase=None, sortedSuffix=None):
                 raise Exception('Couldnf find sheet for operating point {:d}'.format(i))
     else:
         # --- csv file reading
-        OPFileName=csvBase+'CampbellOP.csv'
-        IDFileName=csvBase+'CampbellModesID'+sortedSuffix+'.csv'
+        OPFileName=csvBase+'Campbell_OP.csv'
+        IDFileName=csvBase+'Campbell_ModesID'+sortedSuffix+'.csv'
 
         OP      = pd.read_csv(OPFileName, sep = ',')
         ID      = pd.read_csv(IDFileName, sep = ',',header=None)
@@ -294,7 +321,9 @@ def postproMBC(xlsFile=None,csvBase=None, sortedSuffix=None):
         # Storing data for each points into a dict
         Points=dict()
         for i,v in enumerate(WS):
-            Points[i] = pd.read_csv(csvBase+'CampbellPoint{:d}.csv'.format(i+1), sep = ',', header=None)
+            OPFile = csvBase+'Campbell_Point{:02d}.csv'.format(i+1)
+            print(OPFile, WS[i], RPM[i])
+            Points[i] = pd.read_csv(OPFile, sep = ',', header=None)
     # --- Mode Identification
     ID.iloc[:,0].fillna('Unknown', inplace=True) # replace nan
     ModeNames = ID.iloc[2: ,0].values
@@ -393,16 +422,18 @@ def postproMBC(xlsFile=None,csvBase=None, sortedSuffix=None):
 
     return OP, Freq, Damp, UnMapped, ModeData
 
-def plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=None, fig=None, axes=None, ylim=None):
+def plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=None, fig=None, axes=None, ylim=None,ylimDamp=None,legend=True):
     """ Plot Campbell data as returned by postproMBC """
     import matplotlib.pyplot as plt
     FullLineStyles = [':', '-', '-+', '-o', '-^', '-s', '--x', '--d', '-.', '-v', '-+', ':o', ':^', ':s', ':x', ':d', ':.', '--','--+','--o','--^','--s','--x','--d','--.'];
     Markers    = ['', '+', 'o', '^', 's', 'd', 'x', '.']
     LineStyles = ['-', ':', '-.', '--'];
     Colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    MW_Light_Blue    = np.array([114,147,203])/255.
+    #MW_Light_Blue    = np.array([114,147,203])/255.
+    MW_Light_Blue    = np.array([134,172,238])/255.
     MW_Light_Orange  = np.array([225,151,76])/255.
-    MW_Light_Green   = np.array([132,186,91])/255.
+    #MW_Light_Green   = np.array([132,186,91])/255.
+    MW_Light_Green   = np.array([152,211,107])/255.
     MW_Light_Red     = np.array([211,94,96])/255.
     MW_Light_Gray    = np.array([128,133,133])/255.
     MW_Light_Purple  = np.array([144,103,167])/255.
@@ -420,7 +451,8 @@ def plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=None, fig=None, axes=No
     def modeStyle(i, lbl):
         lbl=lbl.lower().replace('_',' ')
         ms = 4
-        c  = Colors[np.mod(i,len(Colors))]
+        #c  = Colors[np.mod(i,len(Colors))]
+        c  = Colors[7]
         ls = LineStyles[np.mod(int(i/len(Markers)),len(LineStyles))]
         mk = Markers[np.mod(i,len(Markers))]
         # Color
@@ -465,6 +497,8 @@ def plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=None, fig=None, axes=No
         FreqRange=ylim
     if DampRange[0]>0:
         DampRange[0]=0
+    if ylimDamp is not None:
+        DampRange=ylimDamp
 
     # Plot "background"
 
@@ -497,7 +531,8 @@ def plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=None, fig=None, axes=No
     axes[1].set_xlabel(sx.replace('_',' '))
     axes[0].set_ylabel('Frequencies [Hz]')
     axes[1].set_ylabel('Damping ratios [-]')
-    axes[0].legend(bbox_to_anchor=(0., 1.02, 2.16, .802), loc='lower left', ncol=4, mode="expand", borderaxespad=0.)
+    if legend:
+        axes[0].legend(bbox_to_anchor=(0., 1.02, 2.16, .802), loc='lower left', ncol=4, mode="expand", borderaxespad=0.)
     axes[0].set_ylim(FreqRange)
     
     XLIM=axes[1].get_xlim()

@@ -10,8 +10,8 @@ from builtins import str
 from future import standard_library
 standard_library.install_aliases()
 
-from .CSVFile import CSVFile
-from .File import isBinary, WrongFormatError
+from .csv_file import CSVFile
+from .file import isBinary, WrongFormatError
 import pandas as pd
 
 class FASTWndFile(CSVFile):

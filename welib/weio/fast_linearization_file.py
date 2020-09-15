@@ -2,13 +2,38 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
 from io import open
-from .File import File, isBinary, WrongFormatError, BrokenFormatError
+from .file import File, isBinary, WrongFormatError, BrokenFormatError
 import pandas as pd
 import numpy as np
 import re
 
 
-class FASTLinFile(File):
+class FASTLinearizationFile(File):
+    """ 
+    Read/write an OpenFAST linearization file. The object behaves like a dictionary.
+
+    Main keys
+    ---------
+    - 'x', 'xdot' 'u', 'y', 'A', 'B', 'C', 'D'
+
+    Main methods
+    ------------
+    - read, write, toDataFrame, keys, xdescr, ydescr, udescr
+
+    Examples
+    --------
+
+        f = FASTLinearizationFile('5MW.1.lin')
+        print(f.keys())
+        print(f['u'])     # input operating point
+        print(f.udescr()) # description of inputs
+
+        # use a dataframe with "named" columns and rows
+        df = f.toDataFrame()
+        print(df['A'].columns)
+        print(df['A'])
+
+    """
 
     @staticmethod
     def defaultExtensions():

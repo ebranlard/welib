@@ -1,5 +1,6 @@
 numpy>=1.15.2
 matplotlib 
+xlrd
 pandas
 future
 chardet

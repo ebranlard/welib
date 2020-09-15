@@ -10,7 +10,7 @@ from builtins import str
 from future import standard_library
 standard_library.install_aliases()
 
-from .File import File, WrongFormatError
+from .file import File, WrongFormatError
 import pandas as pd
 
 #import xarray as xr  # 

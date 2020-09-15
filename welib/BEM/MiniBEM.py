@@ -7,13 +7,12 @@ from __future__ import print_function,division
 import numpy as np
 from numpy import pi, cos, exp, sqrt, sin, arctan2, arccos
 from scipy.interpolate import interp1d
-
+import pandas as pd
 import matplotlib.pyplot as plt
-import pdb
 
 np.seterr(all='raise')
 
-def fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
+def _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
     """Tabulated airfoil data interpolation
         Inputs
         ----------
@@ -47,7 +46,7 @@ def fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
         ctForTI =  Cl * sin(phi) # ctNoDrag
     return Cl, Cd, cn, ct, cnForAI, ctForTI
 
-def fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
+def _fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
         lambda_r, sigma, phi, relaxation=0.4,bSwirl=True):
     """Compute the induction coefficients
 
@@ -101,7 +100,29 @@ def fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
 
 
 class MiniBEM_Outputs:
-    pass
+    def WriteRadialFile(BEM,filename):
+        header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] Pn_[N/m] Pt_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uia_[m/s] uit_[m/s] u_turb_[m/s]'
+        header=' '.join(['{:14s}'.format(s) for s in header.split()])
+        M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.Pn,BEM.Pt,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uia,BEM.uit,BEM.u_turb))
+        np.savetxt(filename,M,header=header,fmt='%14.7e',comments='#')
+
+    def StoreIntegratedValues(BEM,df=None):
+        if df is None:
+            df = pd.DataFrame(columns=['WS_[m/s]','RotSpeed_[rpm]','Pitch_[deg]','AeroThurst_[kN]','AeroTorque_[kNm]','AeroPower_[kW]','AeroCP_[-]','AeroCT_[-]','AeroCQ_[-]','AeroFlap_[kNm]', 'AeroEdge_[kNm]'])
+        df = df.append(pd.Series(), ignore_index=True)
+        i=len(df)-1
+        df.loc[i,'WS_[m/s]']         = BEM.V0
+        df.loc[i,'RotSpeed_[rpm]']   = BEM.Omega *60/(2*np.pi)
+        df.loc[i,'Pitch_[deg]']      = BEM.Pitch
+        df.loc[i,'AeroThurst_[kN]']  = BEM.Thrust/1000
+        df.loc[i,'AeroTorque_[kNm]'] = BEM.Torque/1000
+        df.loc[i,'AeroPower_[kW]']   = BEM.Power/1000
+        df.loc[i,'AeroFlap_[kNm]']   = BEM.Flap/1000
+        df.loc[i,'AeroEdge_[kNm]']   = BEM.Edge/1000
+        df.loc[i,'AeroCT_[-]']       = BEM.CT
+        df.loc[i,'AeroCP_[-]']       = BEM.CP
+        df.loc[i,'AeroCQ_[-]']       = BEM.CQ
+        return df
 
 def MiniBEM(Omega,pitch,V0,xdot,u_turb,
         nB, cone, r, chord, twist, polars, # Rotor
@@ -175,7 +196,6 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
                 Fhub[IOK] = 2/pi*arccos(exp(-nB/2*(r[IOK]-rhub)/(rhub*sin(phi[IOK]))));
         except:
             raise
-#             pdb.set_trace()
         F=Ftip*Fhub;
         F[F<=0]=0.5 # To avoid singularities
         # --------------------------------------------------------------------------------
@@ -185,14 +205,14 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
         # --------------------------------------------------------------------------------
         # --- Step 4: Profile Data
         # --------------------------------------------------------------------------------
-        Cl, Cd, cn, ct, cnForAI, ctForTI = fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag, bTIDrag)
+        Cl, Cd, cn, ct, cnForAI, ctForTI = _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag, bTIDrag)
         # --------------------------------------------------------------------------------
         # --- Step 5: Induction Coefficients
         # --------------------------------------------------------------------------------
         # Storing last values
         a_last      = a
         aprime_last = aprime
-        a, aprime, CT_loc = fInductionCoefficients(a_last,Vrel_norm,V0, F, cnForAI, ctForTI,
+        a, aprime, CT_loc = _fInductionCoefficients(a_last,Vrel_norm,V0, F, cnForAI, ctForTI,
                                                lambda_r, sigma, phi, relaxation, bSwirl)
 
         if (i > 3 and (np.mean(np.abs(a-a_last)) + np.mean(np.abs(aprime - aprime_last))) < aTol):  # used to be on alpha
@@ -236,98 +256,59 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
     BEM.CQ = BEM.Torque / (0.5 * rho * V0**2 * pi * R**3)
     BEM.r=r
     BEM.R=R
-    BEM.uia = V0 * BEM.a
-    BEM.uit = Omega * r * BEM.aprime
+    BEM.uia    = V0 * BEM.a
+    BEM.uit    = Omega * r * BEM.aprime
+    BEM.u_turb = np.ones(r.shape)*u_turb
     BEM.Omega = Omega
     BEM.Pitch = pitch
+    BEM.V0 = V0
     return BEM
 
 
-def WriteRadialFile(BEM,filename):
-    header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] Pn_[N/m] Pt_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uia_[m/s] uit_[m/s]'
-    header=' '.join(['{:14s}'.format(s) for s in header.split()])
-    M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.Pn,BEM.Pt,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uia,BEM.uit))
-    np.savetxt(filename,M,header=header,fmt='%14.7e',comments='#')
-
-
 def FASTFile2MiniBEM(FASTFileName):
-    import weio
-    F=weio.FASTInputDeck(FASTFileName,readlist=['Aero','ED'])
+    import welib.weio as weio
+    F=weio.FASTInputDeck(FASTFileName,readlist=['AD','ED'])
 
-    rho     = F.Aero['AirDens']
-    KinVisc = F.Aero['KinVisc']
+    rho     = F.AD['AirDens']
+    KinVisc = F.AD['KinVisc']
 
     nB   =  F.ED['NumBl']
     cone = -F.ED['PreCone(1)']
-    r     = F.Aero.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
-    chord = F.Aero.Bld1['BldAeroNodes'][:,-2] 
-    twist = F.Aero.Bld1['BldAeroNodes'][:,-3]
+    r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
+    chord = F.AD.Bld1['BldAeroNodes'][:,-2] 
+    twist = F.AD.Bld1['BldAeroNodes'][:,-3]
     polars=[]
-    ProfileID=F.Aero.Bld1['BldAeroNodes'][:,-1].astype(int)
+    ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
     for ipolar in  ProfileID:
-        polars.append(F.Aero.AF[ipolar-1]['AFCoeff'])
+        polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
     return nB,cone,r,chord,twist,polars,rho,KinVisc
 
 if __name__=="__main__":
-    import weio
-    import pandas as pd
-    from pybra.tictoc import Timer
+    """ See examples/ for more examples """
 
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM('OpenFAST_model/SNLV27_OF2.fst')
+    # --- Read a FAST model to get the main parameters needed
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM('../../_data/NREL5MW/Main_Onshore_OF2.fst')
 
-    df=weio.read('Simulated_data/RotorPerformances_OF2.csv').toDataFrame();
-    Pref      = df['GenPower_[kW]']
-    Tref      = df['AeroThrust_[kN]']
-    CPref     = df['AeroCp_[-]']
-    CTref     = df['AeroCt_[-]']
-    FlapRef   = df['BldRootFlapM_[kN.m]']
-    Omega_ref = df['RotSpeed_[rpm]']
-    V0_ref    = df['WS_[m/s]']
+    # --- Run BEM on a set of operating points
+    WS =[5,10]
+    RPM=[7,12]
+    a0, ap0  = None,None  # inductions, used to speed up parametric study
+    for i,ws in enumerate(WS):
+        V0        = WS[i]
+        Omega     = RPM[i]
+        pitch=2     #[deg]
+        xdot=0      #[m/s]
+        u_turb=0    #[m/s]
+        BEM=MiniBEM(Omega,pitch,V0,xdot,u_turb,
+                    nB,cone,r,chord,twist,polars,
+                    rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
+                    a_init =a0,
+                    ap_init=ap0
+                    )
+        a0, ap0 = BEM.a, BEM.aprime
+        print('WS ',V0, 'Power',BEM.Power,'Thrust',BEM.Thrust)
 
-#     fig=plt.figure(); ax=fig.add_subplot(111)
-#     fig2=plt.figure(); ax2=fig2.add_subplot(111)
-    with Timer('Total'):
-        a0  = None
-        ap0 = None
-        for i in np.arange(len(df)):
-            V0        = V0_ref[i]
-            Omega     = Omega_ref[i]
-            pitch=2     #[deg]
-            xdot=0      #[m/s]
-            u_turb=0    #[m/s]
-            with Timer():
-                BEM=MiniBEM(Omega,pitch,V0,xdot,u_turb,
-                            nB,cone,r,chord,twist,polars,
-                            rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
-                            a_init =a0,
-                            ap_init=ap0
-                            )
-                a0  = BEM.a
-                ap0 = BEM.aprime
-
-            filename='BEM_ws{}_radial.csv'.format(V0)
-            WriteRadialFile(BEM,filename)
-
-#             ax.plot(V0,BEM.Power*0.9/1000 ,'ro')
-#             ax.plot(V0,BEM.Thrust/1000    ,'go')
-#             ax.plot(V0,BEM.Flap/1000      ,'bo')
-#             ax2.plot(V0,BEM.CP   ,'ro')
-#             ax2.plot(V0,BEM.CT   ,'go')
-#     ax.plot (V0_ref,Pref               ,'-',label = 'Power ref')
-#     ax.plot (V0_ref,Tref               ,'-',label = 'Thurst ref')
-#     ax.plot (V0_ref,FlapRef               ,'-',label = 'Flap ref')
-#     ax2.plot(V0_ref,CPref   ,'-',label = 'CP ref')
-#     ax2.plot(V0_ref,CTref   ,'-',label = 'CT ref')
-#     ax.legend()
-#     ax2.legend()
-#     fig=plt.figure(); ax=fig.add_subplot(111)
-#     ax.plot(BEM.r ,BEM.a     ,label='a'   )
-#     ax.plot(BEM.r ,BEM.aprime,label='ap'  )
-#     ax.legend()
-#     ax2.legend()
-#     plt.show()
-#     print(F.Aero.AD['BldAeroNodes'])
-#     for afName in F.Aero['AFNames']:
-#         fpath = os.path.join(modeldir, afName.strip('"'))
-#         print(fpath)
+        # --- Save radial distribution to a csv file
+        filename='_BEM_ws{}_radial.csv'.format(V0)
+        BEM.WriteRadialFile(filename)
 

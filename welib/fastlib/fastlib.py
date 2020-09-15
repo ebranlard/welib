@@ -23,15 +23,17 @@ except:
         print('Using `weio` from `welib`')
     except:
         print('[WARN] Fastlib relies on the package `weio` to be installed from https://github.com/ebranlard/weio/`')
-# --- Allowing FASTInFile to be shipped separately..
+# --- Allowing FASTInputFile to be shipped separately..
 try:
-    from weio.FASTInFile import *
+    from weio.fast_input_file import *
 except:
     try:
-        from weio.weio.FASTInFile import *
+        from weio.weio.fast_input_file import *
+        from weio.weio.fast_output_file import *
     except:
         try:
-            from FASTInFile import * 
+            from fast_input_file import * 
+            from fast_output_file import * 
         except:
             pass
 
@@ -139,13 +141,13 @@ def run_cmd(input_file_or_arglist, exe, wait=True, showOutputs=False, showComman
         input_file_abs = input_file
     else:
         input_file=input_file_or_arglist
-        if not os.path.isabs(input_file):
-            input_file_abs=os.path.abspath(input_file)
-        else:
-            input_file_abs=input_file
-        if not os.path.exists(exe):
-            raise Exception('Executable not found: {}'.format(exe))
-        args= [exe,input_file]
+    if not os.path.isabs(input_file):
+        input_file_abs=os.path.abspath(input_file)
+    else:
+        input_file_abs=input_file
+    if not os.path.exists(exe):
+        raise Exception('Executable not found: {}'.format(exe))
+    args= [exe,input_file]
     #args = 'cd '+workDir+' && '+ exe +' '+basename
     shell=False
     if showOutputs:
@@ -234,8 +236,8 @@ def ED_BldStations(ED):
         - bld_fract: fraction of the blade length were stations are defined
         - r_nodes: spanwise position from the rotor apex of the Blade stations
     """
-    if not isinstance(ED,FASTInFile):
-        ED = FASTInFile(ED)
+    if not isinstance(ED,FASTInputFile):
+        ED = FASTInputFile(ED)
 
     nBldNodes = ED['BldNodes']
     bld_fract    = np.arange(1./nBldNodes/2., 1, 1./nBldNodes)
@@ -253,8 +255,8 @@ def ED_TwrStations(ED):
         - r_fract: fraction of the towet length were stations are defined
         - h_nodes: height from the *ground* of the stations  (not from the Tower base)
     """
-    if not isinstance(ED,FASTInFile):
-        ED = FASTInFile(ED)
+    if not isinstance(ED,FASTInputFile):
+        ED = FASTInputFile(ED)
 
     nTwrNodes = ED['TwrNodes']
     twr_fract    = np.arange(1./nTwrNodes/2., 1, 1./nTwrNodes)
@@ -272,8 +274,8 @@ def ED_BldGag(ED):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if not isinstance(ED,FASTInFile):
-        ED = FASTInFile(ED)
+    if not isinstance(ED,FASTInputFile):
+        ED = FASTInputFile(ED)
     _,r_nodes= ED_BldStations(ED)
     nOuts = ED['NBlGages']
     if nOuts<=0:
@@ -294,8 +296,8 @@ def ED_TwrGag(ED):
     OUTPUTS:
        - h_gag: The heights of the gages, given from the ground height (tower base + TowerBsHt)
     """
-    if not isinstance(ED,FASTInFile):
-        ED = FASTInFile(ED)
+    if not isinstance(ED,FASTInputFile):
+        ED = FASTInputFile(ED)
     _,h_nodes= ED_TwrStations(ED)
     nOuts = ED['NTwGages']
     if nOuts<=0:
@@ -317,8 +319,8 @@ def AD14_BldGag(AD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if not isinstance(AD,FASTInFile):
-        AD = FASTInFile(AD)
+    if not isinstance(AD,FASTInputFile):
+        AD = FASTInputFile(AD)
 
     Nodes=AD['BldAeroNodes']  
     if Nodes.shape[1]==6:
@@ -342,10 +344,10 @@ def AD_BldGag(AD,AD_bld,chordOut=False):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if not isinstance(AD,FASTInFile):
-        AD = FASTInFile(AD)
-    if not isinstance(AD_bld,FASTInFile):
-        AD_bld = FASTInFile(AD_bld)
+    if not isinstance(AD,FASTInputFile):
+        AD = FASTInputFile(AD)
+    if not isinstance(AD_bld,FASTInputFile):
+        AD_bld = FASTInputFile(AD_bld)
     #print(AD_bld.keys())
 
     nOuts=AD['NBlOuts']
@@ -371,8 +373,8 @@ def BD_BldGag(BD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if not isinstance(BD,FASTInFile):
-        BD = FASTInFile(BD)
+    if not isinstance(BD,FASTInputFile):
+        BD = FASTInputFile(BD)
 
     M       = BD['MemberGeom']
     r_nodes = M[:,2] # NOTE: we select the z axis here, and we don't take curvilenear coord
@@ -449,7 +451,7 @@ def _HarmonizeSpanwiseData(Name, Columns, vr, R, IR=None) :
 
     return dfRad,  nrMax, ValidRow
 
-def insert_radial_columns(df, vr, R=None, IR=None):
+def insert_radial_columns(df, vr=None, R=None, IR=None):
     """
     Add some columns to the radial data
     """
@@ -459,7 +461,7 @@ def insert_radial_columns(df, vr, R=None, IR=None):
         return None
     nrMax=len(df)
     ids=np.arange(nrMax)
-    if vr is None:
+    if vr is None or R is None:
         # Radial position unknown
         vr_bar = ids/(nrMax-1)
         df.insert(0, 'i/n_[-]', vr_bar)
@@ -468,7 +470,8 @@ def insert_radial_columns(df, vr, R=None, IR=None):
         if (nrMax)<=len(vr_bar):
             vr_bar=vr_bar[:nrMax]
         elif (nrMax)>len(vr_bar):
-            raise Exception('Inconsitent length between radial stations and max index present in output chanels')
+            print(vr_bar)
+            raise Exception('Inconsitent length between radial stations ({:d}) and max index present in output chanels ({:d})'.format(len(vr_bar),nrMax))
         df.insert(0, 'r/R_[-]', vr_bar)
 
     if IR is not None:
@@ -522,6 +525,7 @@ def extract_spanwise_data(ColsInfo, nrMax, df=None,ts=None):
             print('[WARN] Not all values found for {}, missing {}/{}'.format(colname,nMissing,nrMax))
         if len(cols)>nrMax:
             print('[WARN] More values found for {}, found {}/{}'.format(colname,len(cols),nrMax))
+
     df = pd.DataFrame(data=Values, columns=ColNames)
     df = df.reindex(sorted(df.columns), axis=1)
     return df
@@ -561,51 +565,51 @@ def spanwiseColAD(Cols):
     """ Return column info, available columns and indices that contain AD spanwise data"""
     ADSpanMap=dict()
     for sB in ['B1','B2','B3']:
-        ADSpanMap['^'+sB+'N(\d*)Alpha_\[deg\]']=sB+'Alpha_[deg]'
-        ADSpanMap['^'+sB+'N(\d*)AOA_\[deg\]'  ]=sB+'Alpha_[deg]' # DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)AxInd_\[-\]'  ]=sB+'AxInd_[-]'  
-        ADSpanMap['^'+sB+'N(\d*)TnInd_\[-\]'  ]=sB+'TnInd_[-]'  
-        ADSpanMap['^'+sB+'N(\d*)AIn_\[deg\]'  ]=sB+'AxInd_[-]'   # DBGOuts NOTE BUG Unit
-        ADSpanMap['^'+sB+'N(\d*)ApI_\[deg\]'  ]=sB+'TnInd_[-]'   # DBGOuts NOTE BUG Unit
-        ADSpanMap['^'+sB+'N(\d*)AIn_\[-\]'    ]=sB+'AxInd_[-]'   # DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)ApI_\[-\]'    ]=sB+'TnInd_[-]'   # DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)Uin_\[m/s\]'  ]=sB+'Uin_[m/s]'     # DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)Uit_\[m/s\]'  ]=sB+'Uit_[m/s]'     # DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)Uir_\[m/s\]'  ]=sB+'Uir_[m/s]'     # DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)Cl_\[-\]'     ]=sB+'Cl_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Cd_\[-\]'     ]=sB+'Cd_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Cm_\[-\]'     ]=sB+'Cm_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Cx_\[-\]'     ]=sB+'Cx_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Cy_\[-\]'     ]=sB+'Cy_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Cn_\[-\]'     ]=sB+'Cn_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Ct_\[-\]'     ]=sB+'Ct_[-]'   
-        ADSpanMap['^'+sB+'N(\d*)Re_\[-\]'     ]=sB+'Re_[-]' 
-        ADSpanMap['^'+sB+'N(\d*)Vrel_\[m/s\]' ]=sB+'Vrel_[m/s]' 
-        ADSpanMap['^'+sB+'N(\d*)Theta_\[deg\]']=sB+'Theta_[deg]'
-        ADSpanMap['^'+sB+'N(\d*)Phi_\[deg\]'  ]=sB+'Phi_[deg]'
-        ADSpanMap['^'+sB+'N(\d*)Twst_\[deg\]' ]=sB+'Twst_[deg]' #DBGOuts
-        ADSpanMap['^'+sB+'N(\d*)Curve_\[deg\]']=sB+'Curve_[deg]'
-        ADSpanMap['^'+sB+'N(\d*)Vindx_\[m/s\]']=sB+'Vindx_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)Vindy_\[m/s\]']=sB+'Vindy_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)Fx_\[N/m\]'   ]=sB+'Fx_[N/m]'   
-        ADSpanMap['^'+sB+'N(\d*)Fy_\[N/m\]'   ]=sB+'Fy_[N/m]'   
-        ADSpanMap['^'+sB+'N(\d*)Fl_\[N/m\]'   ]=sB+'Fl_[N/m]'   
-        ADSpanMap['^'+sB+'N(\d*)Fd_\[N/m\]'   ]=sB+'Fd_[N/m]'   
-        ADSpanMap['^'+sB+'N(\d*)Fn_\[N/m\]'   ]=sB+'Fn_[N/m]'   
-        ADSpanMap['^'+sB+'N(\d*)Ft_\[N/m\]'   ]=sB+'Ft_[N/m]'   
-        ADSpanMap['^'+sB+'N(\d*)VUndx_\[m/s\]']=sB+'VUndx_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)VUndy_\[m/s\]']=sB+'VUndy_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)VUndz_\[m/s\]']=sB+'VUndz_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)VDisx_\[m/s\]']=sB+'VDisx_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)VDisy_\[m/s\]']=sB+'VDisy_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)VDisz_\[m/s\]']=sB+'VDisz_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)Vx_\[m/s\]'   ]=sB+'Vx_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)Vy_\[m/s\]'   ]=sB+'Vy_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)Vz_\[m/s\]'   ]=sB+'Vz_[m/s]'
-        ADSpanMap['^'+sB+'N(\d*)DynP_\[Pa\]'  ]=sB+'DynP_[Pa]' 
-        ADSpanMap['^'+sB+'N(\d*)M_\[-\]'      ]=sB+'M_[-]' 
-        ADSpanMap['^'+sB+'N(\d*)Mm_\[N-m/m\]' ]=sB+'Mm_[N-m/m]'   
-        ADSpanMap['^'+sB+'N(\d*)Gam_\['       ]=sB+'Gam_[m^2/s]' #DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)Alpha_\[deg\]']=sB+'Alpha_[deg]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)AOA_\[deg\]'  ]=sB+'Alpha_[deg]' # DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)AxInd_\[-\]'  ]=sB+'AxInd_[-]'  
+        ADSpanMap['^[A]*'+sB+'N(\d*)TnInd_\[-\]'  ]=sB+'TnInd_[-]'  
+        ADSpanMap['^[A]*'+sB+'N(\d*)AIn_\[deg\]'  ]=sB+'AxInd_[-]'   # DBGOuts NOTE BUG Unit
+        ADSpanMap['^[A]*'+sB+'N(\d*)ApI_\[deg\]'  ]=sB+'TnInd_[-]'   # DBGOuts NOTE BUG Unit
+        ADSpanMap['^[A]*'+sB+'N(\d*)AIn_\[-\]'    ]=sB+'AxInd_[-]'   # DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)ApI_\[-\]'    ]=sB+'TnInd_[-]'   # DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)Uin_\[m/s\]'  ]=sB+'Uin_[m/s]'     # DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)Uit_\[m/s\]'  ]=sB+'Uit_[m/s]'     # DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)Uir_\[m/s\]'  ]=sB+'Uir_[m/s]'     # DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)Cl_\[-\]'     ]=sB+'Cl_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Cd_\[-\]'     ]=sB+'Cd_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Cm_\[-\]'     ]=sB+'Cm_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Cx_\[-\]'     ]=sB+'Cx_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Cy_\[-\]'     ]=sB+'Cy_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Cn_\[-\]'     ]=sB+'Cn_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Ct_\[-\]'     ]=sB+'Ct_[-]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Re_\[-\]'     ]=sB+'Re_[-]' 
+        ADSpanMap['^[A]*'+sB+'N(\d*)Vrel_\[m/s\]' ]=sB+'Vrel_[m/s]' 
+        ADSpanMap['^[A]*'+sB+'N(\d*)Theta_\[deg\]']=sB+'Theta_[deg]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Phi_\[deg\]'  ]=sB+'Phi_[deg]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Twst_\[deg\]' ]=sB+'Twst_[deg]' #DBGOuts
+        ADSpanMap['^[A]*'+sB+'N(\d*)Curve_\[deg\]']=sB+'Curve_[deg]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Vindx_\[m/s\]']=sB+'Vindx_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Vindy_\[m/s\]']=sB+'Vindy_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Fx_\[N/m\]'   ]=sB+'Fx_[N/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Fy_\[N/m\]'   ]=sB+'Fy_[N/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Fl_\[N/m\]'   ]=sB+'Fl_[N/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Fd_\[N/m\]'   ]=sB+'Fd_[N/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Fn_\[N/m\]'   ]=sB+'Fn_[N/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Ft_\[N/m\]'   ]=sB+'Ft_[N/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)VUndx_\[m/s\]']=sB+'VUndx_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)VUndy_\[m/s\]']=sB+'VUndy_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)VUndz_\[m/s\]']=sB+'VUndz_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)VDisx_\[m/s\]']=sB+'VDisx_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)VDisy_\[m/s\]']=sB+'VDisy_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)VDisz_\[m/s\]']=sB+'VDisz_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Vx_\[m/s\]'   ]=sB+'Vx_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Vy_\[m/s\]'   ]=sB+'Vy_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)Vz_\[m/s\]'   ]=sB+'Vz_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)DynP_\[Pa\]'  ]=sB+'DynP_[Pa]' 
+        ADSpanMap['^[A]*'+sB+'N(\d*)M_\[-\]'      ]=sB+'M_[-]' 
+        ADSpanMap['^[A]*'+sB+'N(\d*)Mm_\[N-m/m\]' ]=sB+'Mm_[N-m/m]'   
+        ADSpanMap['^[A]*'+sB+'N(\d*)Gam_\['       ]=sB+'Gam_[m^2/s]' #DBGOuts
     # --- AD 14
     ADSpanMap['^Alpha(\d*)_\[deg\]'  ]='Alpha_[deg]'  
     ADSpanMap['^DynPres(\d*)_\[Pa\]' ]='DynPres_[Pa]' 
@@ -672,7 +676,7 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     """
     # --- Opens Fast output  and performs averaging
     if df is None:
-        df = FASTInFile(FST_In.replace('.fst',out_ext)).toDataFrame()
+        df = FASTInputFile(FST_In.replace('.fst',out_ext)).toDataFrame()
         returnDF=True
     else:
         returnDF=False
@@ -858,7 +862,7 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
                     if  not hasattr(fst.AD,'Bld1'):
                         raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
                     
-                    if 'B1N001Cl_[-]' in OutputCols:
+                    if 'B1N001Cl_[-]' in OutputCols or np.any(np.char.find(list(OutputCols),'AB1N')==0):
                         # This was compiled with all outs
                         r_AD   = fst.AD.Bld1['BldAeroNodes'][:,0] # Full span
                         r_AD   += r_hub
@@ -1008,7 +1012,7 @@ def copyTree(src, dst):
                 forceMergeFlatDir(s, d)
 
 
-def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
+def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False):
     """ Generate inputs files by replacing different parameters from a template file.
     The generated files are placed in the output directory `outputDir` 
     The files are read and written using the library `weio`. 
@@ -1090,7 +1094,7 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
             #print('NewFile         :', newfilename)
             #print('NewFileFull     :', newfilename_full)
             shutil.copyfile(templatefilename_full, newfilename_full)
-            f= FASTInFile(newfilename_full) # open the template file for that filekey 
+            f= FASTInputFile(newfilename_full) # open the template file for that filekey 
             Files[FileKey]=f # store it
 
         # --- Changing parameters in that file
@@ -1153,12 +1157,12 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
     # --- Creating outputDir - Copying template folder to outputDir if necessary
     # Copying template folder to workDir
     for wd in list(set(workDirS)):
-        if RemoveAllowed:
+        if removeAllowed:
             removeFASTOuputs(wd)
-        if os.path.exists(wd) and RemoveAllowed:
+        if os.path.exists(wd) and removeAllowed:
             shutil.rmtree(wd, ignore_errors=False, onerror=handleRemoveReadonlyWin)
         copyTree(templateDir, wd)
-        if RemoveAllowed:
+        if removeAllowed:
             removeFASTOuputs(wd)
 
 
@@ -1184,7 +1188,7 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
             f.write()
 
     # --- Remove extra files at the end
-    if RemoveRefSubFiles:
+    if removeRefSubFiles:
         TemplateFiles, nCounts = np.unique(TemplateFiles, return_counts=True)
         if not oneSimPerDir:
             # we can only detele template files that were used by ALL simulations
@@ -1197,7 +1201,7 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
                 pass
     return files
 
-def templateReplace(PARAMS, templateDir, workDir=None, main_file=None, RemoveAllowed=False, RemoveRefSubFiles=False, oneSimPerDir=False):
+def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False):
     """ Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
         'FAST|DT', 'EDFile|GBRatio', 'ServoFile|GenEff'
     """
@@ -1208,8 +1212,8 @@ def templateReplace(PARAMS, templateDir, workDir=None, main_file=None, RemoveAll
             k_new=k_old.replace('FAST|','')
             p[k_new] = p.pop(k_old)
     
-    return templateReplaceGeneral(PARAMS, templateDir, outputDir=workDir, main_file=main_file, 
-            RemoveAllowed=RemoveAllowed, RemoveRefSubFiles=RemoveRefSubFiles, oneSimPerDir=oneSimPerDir)
+    return templateReplaceGeneral(PARAMS, templateDir, outputDir=outputDir, main_file=main_file, 
+            removeAllowed=removeAllowed, removeRefSubFiles=removeRefSubFiles, oneSimPerDir=oneSimPerDir)
 
 # --------------------------------------------------------------------------------}
 # --- Tools for template replacement 
@@ -1368,7 +1372,10 @@ def find_matching_pattern(List, pattern):
         match=reg_pattern.search(l)
         if match:
             MatchedElements.append(l)
-            MatchedStrings.append(match.groups(1)[0])
+            if len(match.groups(1))>0:
+                MatchedStrings.append(match.groups(1)[0])
+            else:
+                MatchedStrings.append('')
     return MatchedElements, MatchedStrings
 
         
@@ -1630,7 +1637,6 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
 # --------------------------------------------------------------------------------}
 # --- Tools for typical wind turbine study 
 # --------------------------------------------------------------------------------{
-
 def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5),WS=None,Omega=None, # operating conditions
           TMax=20,bStiff=True,bNoGen=True,bSteadyAero=True, # simulation options
           reRun=True, 
@@ -1648,8 +1654,8 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
         main_fastfile=os.path.basename(main_fastfile)
 
     # --- Reading main fast file to get rotor radius 
-    fst = FASTInFile(os.path.join(refdir,main_fastfile))
-    ed  = FASTInFile(os.path.join(refdir,fst['EDFile'].replace('"','')))
+    fst = FASTInputFile(os.path.join(refdir,main_fastfile))
+    ed  = FASTInputFile(os.path.join(refdir,fst['EDFile'].replace('"','')))
     R = ed['TipRad']
 
     # --- Making sure we have 

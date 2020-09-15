@@ -3,14 +3,12 @@ from __future__ import unicode_literals
 from __future__ import print_function
 from __future__ import absolute_import
 from io import open
-from builtins import map
 from builtins import range
-from builtins import chr
 from builtins import str
 from future import standard_library
 standard_library.install_aliases()
 try:
-    from .File import File, WrongFormatError, BrokenFormatError
+    from .file import File, WrongFormatError, BrokenFormatError
 except:
     # --- Allowing this file to be standalone..
     class WrongFormatError(Exception):
@@ -51,7 +49,7 @@ import numpy as np
 import re
 import pandas as pd
 
-__all__  = ['FASTInFile','FASTInputDeck']
+__all__  = ['FASTInputFile','FASTInputDeck']
 
 TABTYPE_NOT_A_TAB          = 0
 TABTYPE_NUM_WITH_HEADER    = 1
@@ -65,7 +63,28 @@ TABTYPE_FMT                = 9999 # TODO
 # --------------------------------------------------------------------------------}
 # --- INPUT FILE 
 # --------------------------------------------------------------------------------{
-class FASTInFile(File):
+class FASTInputFile(File):
+    """ 
+    Read/write an OpenFAST input file. The object behaves like a dictionary.
+
+    Main methods
+    ------------
+    - read, write, toDataFrame, keys
+
+    Main keys
+    ---------
+    The keys correspond to the keys used in the file. For instance for a .fst file: 'DT','TMax'
+
+    Examples
+    --------
+
+        filename = 'AeroDyn.dat'
+        f = FASTInputFile(filename)
+        f['TwrAero'] = True
+        f['AirDens'] = 1.225
+        f.write('AeroDyn_Changed.dat')
+
+    """
 
     @staticmethod
     def defaultExtensions():
@@ -76,7 +95,7 @@ class FASTInFile(File):
         return 'FAST input file'
 
     def __init__(self, filename=None, **kwargs):
-        super(FASTInFile, self).__init__(filename=filename,**kwargs)
+        super(FASTInputFile, self).__init__(filename=filename,**kwargs)
 
     def keys(self):
         self.labels = [ d['label'] for d in self.data if not d['isComment'] ]
@@ -88,6 +107,18 @@ class FASTInFile(File):
             raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
         else:
             return i
+
+    def getIDs(self,label):
+        I=[]
+        # brute force search
+        for i in range(len(self.data)):
+            d = self.data[i]
+            if d['label'].lower()==label.lower():
+                I.append(i)
+        if len(I)<0:
+            raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
+        else:
+            return I
 
     def getIDSafe(self,label):
         # brute force search
@@ -112,8 +143,9 @@ class FASTInFile(File):
 
     # Making it behave like a dictionary
     def __setitem__(self,key,item):
-        i = self.getID(key)
-        self.data[i]['value'] = item
+        I = self.getIDs(key)
+        for i in I: 
+            self.data[i]['value'] = item
 
     def __getitem__(self,key):
         i = self.getID(key)
@@ -133,7 +165,6 @@ class FASTInFile(File):
 
     def _read(self):
 
-        # from .dtuwetb import fast_io
         # TODO members for  BeamDyn with mutliple key point                                                                                                                                                                                                                                                                                                        ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
         NUMTAB_FROM_VAL_DETECT  = ['HtFract'  , 'TwrElev'   , 'BlFract'  , 'Genspd_TLU' , 'BlSpn'        , 'WndSpeed' , 'HvCoefID' , 'AxCoefID' , 'JointID'  , 'Dpth'      , 'FillNumM'    , 'MGDpth'    , 'SimplCd'  , 'RNodes'       , 'kp_xr'      , 'mu1'           , 'TwrHtFr'   , 'TwrRe'   , 'RJointID'        , 'IJointID'        , 'COSMID'             , 'CMJointID'        , 'WT_X']
         NUMTAB_FROM_VAL_DIM_VAR = ['NTwInpSt' , 'NumTwrNds' , 'NBlInpSt' , 'DLL_NumTrq' , 'NumBlNds'     , 'NumCases' , 'NHvCoef'  , 'NAxCoef'  , 'NJoints'  , 'NCoefDpth' , 'NFillGroups' , 'NMGDepths' , 1          , 'BldNodes'     , 'kp_total'   , 1               , 'NTwrHt'    , 'NTwrRe'  , 'NReact'          , 'NInterf'         , 'NCOSMs'             , 'NCmass'           , 'NumTurbines']
@@ -143,10 +174,10 @@ class FASTInFile(File):
         NUMTAB_FROM_VAL_DETECT_L = [s.lower() for s in NUMTAB_FROM_VAL_DETECT]
 
         # NOTE: MJointID1, used by SubDyn and HydroDyn
-        NUMTAB_FROM_LAB_DETECT   = ['NumAlf'  , 'F_X'       , 'MemberCd1'    , 'MJointID1' , 'NOutLoc'    , 'NOutCnt'    , 'PropD'             , 'YoungE'            , 'YoungE'          ]
-        NUMTAB_FROM_LAB_DIM_VAR  = ['NumAlf'  , 'NKInpSt'   , 'NCoefMembers' , 'NMembers'  , 'NMOutputs'  , 'NMOutputs'  , 'NPropSets'         , 'NPropSets'         , 'NXPropSets'         ]
-        NUMTAB_FROM_LAB_VARNAME  = ['AFCoeff' , 'TMDspProp' , 'MemberProp'   , 'Members'   , 'MemberOuts' , 'MemberOuts' , 'MemberSectionProp' , 'MemberSectionProp' , 'MemberSectionProp2' ]
-        NUMTAB_FROM_LAB_TYPE     = ['num'     , 'num'       , 'num'          , 'mix'       , 'num'        , 'num'        , 'num'               , 'num'               , 'num'                    ]
+        NUMTAB_FROM_LAB_DETECT   = ['NumAlf'  , 'F_X'       , 'MemberCd1'    , 'MJointID1' , 'NOutLoc'    , 'NOutCnt'    , 'PropD'             , 'YoungE'            , 'YoungE'             ,'Diam'       ,'Type'           ,'LineType']
+        NUMTAB_FROM_LAB_DIM_VAR  = ['NumAlf'  , 'NKInpSt'   , 'NCoefMembers' , 'NMembers'  , 'NMOutputs'  , 'NMOutputs'  , 'NPropSets'         , 'NPropSets'         , 'NXPropSets'         ,'NTypes'     ,'NConnects'      ,'NLines']
+        NUMTAB_FROM_LAB_VARNAME  = ['AFCoeff' , 'TMDspProp' , 'MemberProp'   , 'Members'   , 'MemberOuts' , 'MemberOuts' , 'MemberSectionProp' , 'MemberSectionProp' , 'MemberSectionProp2' ,'LineTypes'  ,'ConnectionProp' ,'LineProp']
+        NUMTAB_FROM_LAB_TYPE     = ['num'     , 'num'       , 'num'          , 'mix'       , 'num'        , 'num'        , 'num'               , 'num'               , 'num'                ,'mix'        ,'mix'            ,'mix']
         NUMTAB_FROM_LAB_DETECT_L = [s.lower() for s in NUMTAB_FROM_LAB_DETECT]                                         
 
         FILTAB_FROM_LAB_DETECT   = ['FoilNm' ,'AFNames']
@@ -455,6 +486,22 @@ class FASTInFile(File):
                 lab='{:13s}'.format(lab)
             return val+' '+lab+' - '+descr.strip().strip('-').strip()+'\n'
 
+        def beamdyn_section_mat_tostring(x,K,M):
+            def mat_tostring(M,fmt='.5e'):
+                return '\n'.join(['   '+' '.join(['{:.6E}'.format(m) for m in M[i,:]]) for i in range(np.size(M,1))])
+            s=''
+            s+='{:.6f}\n'.format(x)
+            s+=mat_tostring(K)
+            #s+=np.array2string(K)
+            s+='\n'
+            s+='\n'
+            s+=mat_tostring(M)
+            #s+=np.array2string(M)
+            s+='\n'
+            s+='\n'
+            return s
+
+
         for i in range(len(self.data)):
             d=self.data[i]
             if d['isComment']:
@@ -490,6 +537,16 @@ class FASTInFile(File):
                 #f.write('{} {} {}\n'.format(d['value'][0],d['tabDetect'],d['descr']))
                 s+='{} {} {}\n'.format(d['value'][0],d['label'],d['descr']) # TODO?
                 s+='\n'.join(fil for fil in d['value'][1:])
+            elif d['tabType']==TABTYPE_NUM_BEAMDYN:
+                data = d['value']
+                Cols =['Span'] 
+                Cols+=['K{}{}'.format(i+1,j+1) for i in range(6) for j in range(6)] 
+                Cols+=['M{}{}'.format(i+1,j+1) for i in range(6) for j in range(6)] 
+                for i in np.arange(data.shape[0]):
+                    x = data[i][0]
+                    K = data[i][1:37].reshape(6,6)
+                    M = data[i][37:].reshape(6,6)
+                    s += beamdyn_section_mat_tostring(x,K,M)
             else:
                 raise Exception('Unknown table type for variable {}',d)
             if i<len(self.data)-1:
@@ -529,7 +586,7 @@ class FASTInFile(File):
 
         for i in range(len(self.data)): 
             d=self.data[i]
-            if d['tabType'] in [TABTYPE_NUM_WITH_HEADER, TABTYPE_NUM_WITH_HEADERCOM, TABTYPE_NUM_NO_HEADER]:
+            if d['tabType'] in [TABTYPE_NUM_WITH_HEADER, TABTYPE_NUM_WITH_HEADERCOM, TABTYPE_NUM_NO_HEADER, TABTYPE_MIX_WITH_HEADER]:
                 Val= d['value']
                 if d['tabUnits'] is None:
                     Cols=d['tabColumnNames']
@@ -744,7 +801,6 @@ class FASTInFile(File):
         try:
             for j in range(nStations):
                 M[j,0]=float(lines[i]); i+=1;
-                LL = lines[i:i+6]
                 M[j,1:37]=np.array((' '.join(lines[i:i+6])).split()).astype(np.float)
                 i+=7
                 M[j,37:]=np.array((' '.join(lines[i:i+6])).split()).astype(np.float)
@@ -777,7 +833,7 @@ class FASTInputDeck(object):
         self.modeldir = os.path.split(fstfile)[0]
         self.inputfiles = {}
         # read master file
-        self.fst = FASTInFile(fstfile)
+        self.fst = FASTInputFile(fstfile)
         print('Read',fstfile)
         self.Attributes=['fst']
 
@@ -801,9 +857,9 @@ class FASTInputDeck(object):
                     fpath = os.path.join(modeldir, os.path.normpath(keyv.strip('"').replace('\\','/')))
                     if os.path.isfile(fpath):
                         self.inputfiles[name] = fpath
-                        modinput = FASTInFile(fpath)
+                        modinput = FASTInputFile(fpath)
                         try:
-                            modinput = FASTInFile(fpath)
+                            modinput = FASTInputFile(fpath)
                         except:
                             print('Problem reading',fpath)
                         else:
@@ -905,7 +961,7 @@ class FASTInputDeck(object):
         #        name = key[:-4]
         #        self.inputfiles[name] = fpath
         #        try:
-        #            modinput = FASTInFile(fpath)
+        #            modinput = FASTInputFile(fpath)
         #        except:
         #            print('Problem reading',fpath)
         #        else:
@@ -1215,7 +1271,8 @@ def parseFASTFilTable(lines,n,iStart):
 
 
 if __name__ == "__main__":
-    B=FASTInFile('BeamDyn_Blade.dat')
+    pass
+    #B=FASTIn('Turbine.outb')
 
 
 

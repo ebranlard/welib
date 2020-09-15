@@ -1,7 +1,5 @@
 """Read/Write TurbSim File
 
-Part of weio library: https://github.com/ebranlard/weio
-
 """
 import pandas as pd
 import numpy as np
@@ -10,12 +8,36 @@ import struct
 import time
 
 try:
-    from .File import File, EmptyFileError
+    from .file import File, EmptyFileError
 except:
     EmptyFileError = type('EmptyFileError', (Exception,),{})
     File=dict
 
 class TurbSimFile(File):
+    """ 
+    Read/write a TurbSim turbulence file (.bts). The object behaves as a dictionary.
+
+    Main keys
+    ---------
+    - 'u': velocity field, shape (3 x nt x ny x nz)
+    - 'y', 'z', 't': space and time coordinates 
+    - 'dt', 'ID', 'info'
+    - 'zTwr', 'uTwr': tower coordinates and field if present (3 x nt x nTwr)
+    - 'zHub', 'uHub': height and velocity at a reference point (usually not hub)
+
+    Main methods
+    ------------
+    - read, write, toDataFrame, keys, makePeriodic, checkPeriodic, closestPoint
+
+    Examples
+    --------
+
+        ts = TurbSimFile('Turb.bts')
+        print(ts.keys())
+        print(ts['u'].shape)  
+
+
+    """
 
     @staticmethod
     def defaultExtensions():
@@ -137,14 +159,17 @@ class TurbSimFile(File):
                 f.write(out[:,it,:,:].tostring(order='F'))
                 f.write(outTwr[:,it,:].tostring(order='F'))
 
-    def hubValues(self):
-        try:
-            zHub=self['zHub']
+    def hubValues(self, zHub=None):
+        if zHub is None:
+            try:
+                zHub=self['zHub']
+                bHub=True
+            except:
+                bHub=False
+                iz = np.argmin(np.abs(self['z']-(self['z'][0]+self['z'][-1])/2))
+                zHub = self['z'][iz]
+        else:
             bHub=True
-        except:
-            bHub=False
-            iz = np.argmin(np.abs(self['z']-(self['z'][0]+self['z'][-1])/2))
-            zHub = self['z'][iz]
         try:
             uHub=self['uHub']
         except:
@@ -156,6 +181,11 @@ class TurbSimFile(File):
     def _iMid(self):
         iy = np.argmin(np.abs(self['y']-(self['y'][0]+self['y'][-1])/2))
         iz = np.argmin(np.abs(self['z']-(self['z'][0]+self['z'][-1])/2))
+        return iy,iz
+
+    def closestPoint(self, y, z):
+        iy = np.argmin(np.abs(self['y']-y))
+        iz = np.argmin(np.abs(self['z']-z))
         return iy,iz
 
     def makePeriodic(self):
@@ -195,8 +225,9 @@ class TurbSimFile(File):
 
 
     def __repr__(self):
-        s='<TurbSimFile object> with keys:\n'
-        s+=' - ID {}\n'.format(self['ID'])
+        s='<{} object> with keys:\n'.format(type(self).__name__)
+        s+=' - filename: {}\n'.format(self.filename)
+        s+=' - ID: {}\n'.format(self['ID'])
         s+=' - z: [{} ... {}],  dz: {}, n: {} \n'.format(self['z'][0],self['z'][-1],self['z'][1]-self['z'][0],len(self['z']))
         s+=' - y: [{} ... {}],  dy: {}, n: {} \n'.format(self['y'][0],self['y'][-1],self['y'][1]-self['y'][0],len(self['y']))
         s+=' - t: [{} ... {}],  dt: {}, n: {} \n'.format(self['t'][0],self['t'][-1],self['t'][1]-self['t'][0],len(self['t']))

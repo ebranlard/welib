@@ -4,7 +4,7 @@ from io import open
 from future import standard_library
 standard_library.install_aliases()
 
-from .File import File, WrongFormatError, BrokenFormatError
+from .file import File, WrongFormatError, BrokenFormatError
 import numpy as np
 import pandas as pd
 import os

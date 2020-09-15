@@ -162,7 +162,7 @@ class File(dict):
             f2 = f+'_TMP2'+ext
             self.write(f2)
         else:
-            f1 = self.filename
+            f1 = f+ext
             f2 = filename_out
         bStat=ascii_comp(f1,f2,bDelete=bDelete)
 

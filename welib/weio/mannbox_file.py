@@ -21,7 +21,7 @@ import os
 import struct
 
 try:
-    from .File import EmptyFileError 
+    from .file import EmptyFileError 
 except:
     EmptyFileError = type('EmptyFileError', (Exception,),{})
     File=dict
@@ -93,6 +93,14 @@ class MannBoxFile(File):
                 data = np.flip(self['field'][ix,:,:],0).ravel() # We have to flip the y axis again
                 f.write(struct.pack(sfmt, *data))
 
+    
+    def __repr__(self):
+        s='<{} object> with keys:\n'.format(type(self).__name__)
+        s+=' - filename: {}\n'.format(self.filename)
+        s+=' - field:  shape {}x{}x{}\n'.format(self['field'].shape[0],self['field'].shape[1],self['field'].shape[2])
+        s+='   min: {}, max: {}, mean: {} \n'.format(np.min(self['field']), np.max(self['field']), np.mean(self['field']))
+        return s
+
     def toDataFrame(self):
         pass
 
@@ -101,6 +109,7 @@ class MannBoxFile(File):
         """ 
         Assumes: 
              u (3 x nt x ny x nz)
+        Removes the mean of the turbsim file
         """
         self['field'] = u[icomp, :, : ,: ]-np.mean(u[icomp,:,:,:],axis=0)
 

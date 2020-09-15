@@ -12,7 +12,7 @@ standard_library.install_aliases()
 import os
 import re
 
-from .File import File, WrongFormatError
+from .file import File, WrongFormatError
 import numpy as np
 import pandas as pd
 

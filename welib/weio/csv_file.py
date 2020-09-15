@@ -4,13 +4,26 @@ from io import open
 from future import standard_library
 standard_library.install_aliases()
 import os
-import codecs
-import chardet
 
-from .File import File, WrongFormatError
+from .file import File, WrongFormatError
 import pandas as pd
 
 class CSVFile(File):
+    """ 
+    Read/write a CSV file. 
+
+    Main methods
+    ------------
+      read, write, toDataFrame
+
+    Examples
+    --------
+
+        # Read a csv file and convert it to a pandas dataframe
+        f = CSVFile('test.csv')
+        df = f.toDataFrame()
+
+    """
 
     @staticmethod
     def defaultExtensions():
@@ -52,7 +65,7 @@ class CSVFile(File):
         def split(s):
             if s is None:
                 return []
-            if self.sep=='\s+':
+            if self.sep==r'\s+':
                 return s.strip().split()
             else:
                 return s.strip().split(self.sep)
@@ -64,10 +77,12 @@ class CSVFile(File):
                 return False
         # --- Safety
         if self.sep=='' or self.sep==' ':
-            self.sep='\s+'
+            self.sep=r'\s+'
 
         iStartLine=0
         # --- Headers (i.e. comments)
+        # TODO: read few headers lines instead of multiple read below..
+
         self.header = []
         if len(self.commentLines)>0:
             # We read the lines
@@ -143,7 +158,7 @@ class CSVFile(File):
             # Looking at first line of data, if mainly floats -> it's not the column names
             colNames = split(readline(iStartLine))
             nFloat = sum([strIsFloat(s) for s in colNames])
-            if nFloat <= len(colNames)-1:
+            if nFloat <= len(colNames)/2:
                 self.colNames=colNames
                 self.colNamesLine = iStartLine
                 iStartLine = iStartLine+1
@@ -201,7 +216,7 @@ class CSVFile(File):
 
     def _write(self):
         # --- Safety
-        if self.sep=='\s+' or self.sep=='':
+        if self.sep==r'\s+' or self.sep=='':
             self.sep='\t'
         # Write
         if len(self.header)>0:

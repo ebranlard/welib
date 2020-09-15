@@ -12,12 +12,12 @@ import weio       # http
 
 
 # --- Reading a existing AD file, just as a template, we'll replace things in it
-templatePolFile    = 'Airfoil.dat'
+templatePolFile    = '_data/Airfoil.dat'
 pol = weio.read(templatePolFile)
 
 
 # --- Creating a Polar object from partial data
-p=weio.read('Polar.csv').toDataFrame().values
+p=weio.read('_data/Polar.csv').toDataFrame().values
 oldpolar= Polar(np.nan, p[:,0],p[:,1],p[:,2],p[:,3])
 cdmax = 1.5
 # Extrapolate to -180 180
@@ -51,7 +51,7 @@ pol['Cm0']       = np.around(cm0, 4)
 # Setting
 pol['NumAlf'] = polar.cl.shape[0]
 pol['AFCoeff'] = np.around(PolarTable, 5)
-filename='Polar_out.dat'
+filename='_data/Polar_out.dat.ignore'
 pol.write(filename)
 #print('Writing polar to file:',filename,' thick={}'.format(t))
 
