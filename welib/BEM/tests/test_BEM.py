@@ -10,9 +10,10 @@ class Test(unittest.TestCase):
     """ See examples/ for more examples """
 
     def test_BEM(self):
-        """ 
-        Performs simple BEM simulations of the NREL 5MW turbine for one operating condition.
-        """
+
+        np.seterr(all='raise')
+
+        # Performs simple BEM simulations of the NREL 5MW turbine for one operating condition.
         # --- Read a FAST model to get the main parameters needed
         nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../_data/NREL5MW/Main_Onshore_OF2.fst'))
 

@@ -10,7 +10,6 @@ from scipy.interpolate import interp1d
 import pandas as pd
 import matplotlib.pyplot as plt
 
-np.seterr(all='raise')
 
 def _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
     """Tabulated airfoil data interpolation

@@ -33,7 +33,7 @@ class Polar(object):
         - cl_fully_separated: fully separated cl
     """
 
-    def __init__(self, Re, alpha, cl, cd, cm, compute_params=False, radians=None):
+    def __init__(self, Re, alpha, cl, cd, cm=None, compute_params=False, radians=None):
         """Constructor
 
         Parameters
@@ -115,7 +115,7 @@ class Polar(object):
         if not os.path.exists(filename):
             raise Exception('File not found:',filename)
         try: 
-            import weio
+            import welib.weio as weio
         except:
             print('[WARN] Module `weio` not present, only delimited file format supported ')
             fformat='delimited'
@@ -755,13 +755,7 @@ class Polar(object):
             pass
         cl_max       = cl[i_max]
         alpha_cl_max = alpha[i_max]
-#         alpha_zc,i_zc = _zero_crossings(x=alpha,y=cl,direction='up')
-#         if len(alpha_zc)>1:
-#             raise Exception('Cannot find alpha0, {} zero crossings of Cl in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
-#         elif len(alpha_zc)==0:
-#             raise Exception('Cannot find alpha0, no zero crossing of Cl in the range of alpha values: [{} {}] '.format(window[0],window[1]))
-# 
-#         alpha0=alpha_zc[0]
+
         return cl_max, alpha_cl_max
 
 
@@ -1135,6 +1129,7 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
     elif method=='finitediff_1c':
         # First order centered finite difference
         if xi is not None:
+            # First point strictly before xi
             im = np.where(x<xi)[0][-1]
             dx=(x[im+1]-x[im-1])
             if np.abs(dx)>1e-7:
@@ -1144,12 +1139,29 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
             else:
                 a=np.inf
                 x0 = xi
+            #print('a',a)
+            #print('x0',x0)
+            #print('yi',yi)
+            dx=(x[im+1]-x[im])
+            if np.abs(dx)>1e-7:
+                a = (y[im+1]-y[im])/dx
+                yi = np.interp(xi,x,y)
+                x0 = xi - yi/a
+            else:
+                a=np.inf
+                x0 = xi
+            #print('a',a)
+            #print('x0',x0)
+            #print('yi',yi)
         else:
             raise Exception('For now xi needs to be set to find a slope with the finite diff method')
 
     elif method=='leastsquare':
         if x0 is not None:
-            a = np.linalg.lstsq((x-x0).reshape((-1,1)),y.reshape((-1,1)),rcond = None)[0][0][0]
+            try:
+                a = np.linalg.lstsq((x-x0).reshape((-1,1)),y.reshape((-1,1)),rcond = None)[0][0][0]
+            except:
+                a = np.linalg.lstsq((x-x0).reshape((-1,1)),y.reshape((-1,1)))[0][0][0]
         else:
             p      = np.polyfit(x, y, 1)
             a  =  p[0]
@@ -1226,7 +1238,13 @@ def _zero_crossings(y,x=None,direction=None):
     if x is None:
         x=np.arange(len(y))
 
-    if np.any((x[1:] - x[0:-1]) <= 0.0):
+    deltas = x[1:] - x[0:-1]
+    if np.any(deltas == 0.0):
+        I=np.where(deltas==0)[0]
+        print('[WARN] Some x values are repeated at index {}. Removing them.'.format(I))
+        x=np.delete(x,I)
+        y=np.delete(x,I)
+    if np.any(deltas<0):
         raise Exception('x values need to be in ascending order')
 
     # Indices before zero-crossing
