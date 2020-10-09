@@ -5,3 +5,4 @@ pandas
 future
 chardet
 scipy
+sympy

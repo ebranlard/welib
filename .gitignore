@@ -6,7 +6,13 @@
 *.pyc
 __pycache*
 *.egg-info*
+*.ipynb_checkpoints*
 _IGNORE
+*_TODO.m
+TODO
+*TODO*
 _*
-
+!__*__.py
+*.pdf
+*Copy.py
 
