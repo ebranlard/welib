@@ -343,7 +343,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 class Test(unittest.TestCase):
     def test_rot(self):
         try:
-            import wintudit.beams.theory as bt
+            import welib.beams.theory as bt
         except:
             print('[FAIL] Loading beam theory')
             pass

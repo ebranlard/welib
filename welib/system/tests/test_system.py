@@ -1,8 +1,8 @@
 import unittest
 import sys
 #sys.path.insert(0,'..')
-from wintudit.system.system import *
-from wintudit.system.statespacelinear import lti_state_space_function, lti_output_function
+from welib.system.system import *
+from welib.system.statespacelinear import lti_state_space_function, lti_output_function
 
 import random
 

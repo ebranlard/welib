@@ -2,13 +2,11 @@ import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter
 from .filters import moving_average
-from ws_estimator.tabulated import TabulatedWSEstimator
-import wintudit
-from yams.TNSB_FAST import FASTmodel2TNSB
+from .TNSB_FAST import FASTmodel2TNSB
 
-# --- External dependencies!
+from welib.ws_estimator.tabulated import TabulatedWSEstimator
 import welib.fastlib as fastlib
-import weio
+import welib.weio as weio
 
 DEFAULT_COL_MAP={
   ' ut1    ' : ' TTDspFA_[m]                   ' ,
