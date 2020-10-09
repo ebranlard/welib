@@ -101,7 +101,7 @@ class System():
 
             F=self.implicit_function
 
-            deltas = np.array([None, dxp, dx, du])     # (dt, dxp, dx, du)
+            deltas = np.array([None, dxp, dx, du], dtype=object)     # (dt, dxp, dx, du)
             Iargs  = list(range(1,self.nArgsImplicit)) # [1,2] or [1,2,3]
             deltas = deltas[Iargs]
 
@@ -120,7 +120,7 @@ class System():
                 B = None
         else:
             # --- Linearization of explicit equation
-            deltas = np.array([None, dx, du])  # (dt, dx, du)
+            deltas = np.array([None, dx, du], dtype=object)  # (dt, dx, du)
             Iargs  = list(range(1,self.nArgs)) # [1] or [1,2]
             deltas = deltas[Iargs]
 
@@ -129,7 +129,7 @@ class System():
 
         # --- Linearization of output equation
         if self.has_output:
-            deltas = np.array([None, dx, du])  # (dt, dx, du)
+            deltas = np.array([None, dx, du], dtype=object)  # (dt, dx, du)
             Iargs  = list(range(1,self.nArgs)) # [1] or [1,2]
             deltas = deltas[Iargs]
             C, D = linearize_function(self.Y, op, Iargs, deltas, self.param)

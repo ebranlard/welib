@@ -1,7 +1,7 @@
 import unittest
 import sys
 #sys.path.insert(0,'..')
-from wintudit.system.linearization import *
+from welib.system.linearization import *
 
 
     
