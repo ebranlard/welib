@@ -282,6 +282,44 @@ def FASTFile2MiniBEM(FASTFileName):
         polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
     return nB,cone,r,chord,twist,polars,rho,KinVisc
 
+def FLEX2MiniBEM(BladeFile,ProfileFile, cone, tilt, r_hub, rho=1.225, nB=3):
+    import welib.weio as weio
+    pro=weio.read(ProfileFile)
+    bld=weio.read(BladeFile).toDataFrame()
+    bld.columns=[v.split('_[')[0] for v in bld.columns.values]
+    # TODO
+    #rho=1.225;
+    #r_hub=2.253;
+    #nB   = 3
+    #cone = 5
+    #tilt = 6; # TODO
+    r     = bld['r'].values+r_hub
+    chord = bld['Chord'].values
+    twist = bld['AeroTwist'].values
+    thick = bld['RelThickness'].values
+    polars=[]
+    ProfileSet = bld['ProfileSet'].astype(int)
+    for iset,thick in zip(ProfileSet,thick):
+        PSet=pro.ProfileSets[iset-1]
+        AOA=PSet.polars[0][:,0]
+        CL = np.column_stack([v[:,1] for v in PSet.polars])
+        CD = np.column_stack([v[:,2] for v in PSet.polars])
+        CM = np.column_stack([v[:,3] for v in PSet.polars])
+        fCL = interp1d(PSet.thickness,CL,axis=1)
+        fCD = interp1d(PSet.thickness,CD,axis=1)
+        fCM = interp1d(PSet.thickness,CM,axis=1)
+        myCL=fCL(thick)
+        myCD=fCD(thick)
+        myCM=fCM(thick)
+        polar=np.zeros(PSet.polars[0].shape)
+        polar[:,0]=AOA
+        polar[:,1]=myCL
+        polar[:,2]=myCD
+        polar[:,3]=myCM
+        polars.append(polar)
+    return nB,cone,r,chord,twist,polars,rho
+
+
 if __name__=="__main__":
     """ See examples/ for more examples """
 

@@ -676,7 +676,7 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     """
     # --- Opens Fast output  and performs averaging
     if df is None:
-        df = FASTInputFile(FST_In.replace('.fst',out_ext)).toDataFrame()
+        df = FASTOutputFile(FST_In.replace('.fst',out_ext)).toDataFrame()
         returnDF=True
     else:
         returnDF=False
@@ -1609,7 +1609,7 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
     # Loop trough files and populate result
     for i,f in enumerate(outFiles):
         try:
-            df=weio.FASTOutFile(f).toDataFrame()
+            df=weio.FASTOutputFile(f).toDataFrame()
         except:
             invalidFiles.append(f)
             continue
