@@ -1,14 +1,14 @@
+""" 
+Test that builds the 5 DOF model presented in the article:
+     [1]: Branlard, Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex, Wind Energy, 2019
 
+""" 
 ##
 import numpy as np
 import copy
 import unittest
-try:
-    from .yams import *
-    from .TNSB import manual_assembly
-except:
-    from yams import *
-    from TNSB import manual_assembly
+from welib.yams.yams import *
+from welib.yams.TNSB import manual_assembly
 
 def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
 
@@ -69,8 +69,8 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     I0_nac[1,1]=3*10**6
     I0_nac[2,2]=1*10**6 
     # Inertias not at COG...
-    IG_hub = fTranslateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
-    IG_nac = fTranslateInertiaMatrixToCOG(I0_nac,M_nac, -r_NGnac_inN)
+    IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
+    IG_nac = translateInertiaMatrixToCOG(I0_nac,M_nac, -r_NGnac_inN)
 
     ## Derived parameters
     iPsi = nShapes_twr # Index of DOF corresponding to azimuth
@@ -139,7 +139,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     return Struct
 
 
-class Test(unittest.TestCase):
+class TestTNSB(unittest.TestCase):
     def test_TNSB_article(self):
         Struct=main()
         MM=Struct.MM

@@ -4,13 +4,11 @@ Reference:
 """
 
 import numpy as np
-import unittest
-try:
-    from .flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode
-except:
-    from flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode
-from numpy import eye, cross, cos ,sin
+from .flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode
+from .utils import *
 
+# --- To ease comparison with sympy version
+from numpy import eye, cross, cos ,sin
 def Matrix(m):
 	return np.asarray(m)
 def colvec(v): 
@@ -266,7 +264,7 @@ class RigidBody(Body):
         super(RigidBody,B).__init__()
         B.s_G_inB = rho_G
         B.J_G_inB = J_G
-        B.J_O_inB = fTranslateInertiaMatrixFromCOG(B.J_G_inB, Mass, B.s_G_inB)
+        B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, B.s_G_inB)
         B.MM = fGMRigidBody(Mass,B.J_O_inB,B.s_G_inB)
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
@@ -274,7 +272,7 @@ class RigidBody(Body):
 
 def fGMRigidBody(Mass,J,rho):
     """ Generalized mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] """
-    S=Mass*fSkew(rho)
+    S=Mass*skew(rho)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);
     MM[0:3,3:6] = -S;
@@ -593,18 +591,6 @@ class FASTBeamBody(BeamBody):
             c             = xi * m * om / np.pi
             B.DD[6+j,6+j] = c
 
-
-# --------------------------------------------------------------------------------}
-# --- Rotation 
-# --------------------------------------------------------------------------------{
-def R_x(t):
-    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
-
-def R_y(t):
-    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
-
-def R_z(t): 
-    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
 # --------------------------------------------------------------------------------}
 # --- B Matrices 
 # --------------------------------------------------------------------------------{
@@ -668,11 +654,11 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
     # TODO use Translate here
     Bi = Matrix(np.zeros((6,ni+n_p)))
     for j in range(n_p):
-            Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi.ravel()) # Recursive formula for Bt mentioned after Eq.(15)
-            Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
+        Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi.ravel()) # Recursive formula for Bt mentioned after Eq.(15)
+        Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
     if ni>0:
-        Bi[:3,n_p:] = np.dot(R0p,Bhat_x[:,:]) # Recursive formula for Bx mentioned after Eq.(15)
-        Bi[3:,n_p:] = np.dot(R0p,Bhat_t[:,:]) # Recursive formula for Bt mentioned after Eq.(12)
+        Bi[:3,n_p:] = np.dot(R0p, Bhat_x[:,:]) # Recursive formula for Bx mentioned after Eq.(15)
+        Bi[3:,n_p:] = np.dot(R0p, Bhat_t[:,:]) # Recursive formula for Bt mentioned after Eq.(12)
     return Bi
 
 def fBMatTranslate(Bp,r_pi):
@@ -698,154 +684,5 @@ def fBMB(BB_I_inI,MM):
     MM_I = np.dot(np.transpose(BB_I_inI), MM).dot(BB_I_inI)
     return MM_I
 
-
-
-
-
-
-
-# --------------------------------------------------------------------------------}
-# --- Inertia functions 
-# --------------------------------------------------------------------------------{
-def fTranslateInertiaMatrix(I_A, Mass, r_BG, r_AG = np.array([0,0,0])):
-    """
-    Transform inertia matrix with respect to point A to the inertia matrix with respect to point B
-    NOTE: the vectors and the inertia matrix needs to be expressed in the same coordinate system. 
-    NOTE: one of the vector r_BG or r_AG may be empty or 0 instead of [0,0,0];
-    NOTE: if r_AG is not provided it is assumed to be 0, i.e. A=G
-    To avoid this confusion you can use fTranslateInertiaMatrixFromCOG  and fTranslateInertiaMatrixToCOG
-    
-    INPUTS:
-       I_A  : Inertia matrix 3x3 in the coordinate system A
-       Mass : Mass of the body
-       r_BG: vector from point B to COG of the body
-    
-    OPTIONAL INPUTS:
-       r_AG: vector from point A to point G
-    """
-    if len(r_AG) < 3:
-        r_AG = np.array([0,0,0])
-    if len(r_BG) < 3:
-        r_BG = np.array([0,0,0])   
-    return I_A - Mass*(np.dot(fSkew(r_BG), fSkew(r_BG))-np.dot(fSkew(r_AG),fSkew(r_AG)))
-
-def fTranslateInertiaMatrixToCOG(I_B = None,Mass = None,r_GB = None): 
-    """ Transform inertia matrix with respect to point B to the inertia matrix with respect to the COG
-    NOTE: the vectors and the inertia matrix needs to be expressed in the same coordinate system.
-    
-    INPUTS:
-      I_G  : Inertia matrix 3x3 with respect to COG
-      Mass : Mass of the body
-      r_GB: vector from COG to point B
-    """
-    I_G = I_B + Mass * np.dot(fSkew(r_GB), fSkew(r_GB))
-    return I_G
-
-def fTranslateInertiaMatrixFromCOG(I_G = None,Mass = None,r_BG = None): 
-    """
-    Transform inertia matrix with respect to COG to the inertia matrix with respect to point B
-    NOTE: the vectors and the inertia matrix needs to be expressed in the same coordinate system.
-    INPUTS:
-       I_G  : Inertia matrix 3x3 with respect to COG
-       Mass : Mass of the body
-       r_BG: vector from point B to COG of the body
-    """
-    I_B = I_G - Mass * np.dot(fSkew(r_BG),fSkew(r_BG))
-    return I_B
-    
-def fSkew(x):
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
-    return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
-
-
-# --------------------------------------------------------------------------------}
-# --- TESTS
-# --------------------------------------------------------------------------------{
-class Test(unittest.TestCase):
-    def test_rot(self):
-        # --- Identity matrix for 0 rotation
-        np.testing.assert_almost_equal(R_x(0),np.eye(3))
-
-    def test_skew(self):
-        # --- Testing  \tilde{u} . v  ==  u x v
-        u=np.array([1,2,3])
-        v=np.array([-1,0,-3])
-        np.testing.assert_equal(np.cross(u,v), np.dot(fSkew(u),v))
-
-    def test_inertia(self):
-        # --- Transferring inertia at G to point A and B and then to each other
-        I_G=np.diag([1,2,3]); 
-        M=2;
-        r_OG = np.array([ 1, 2, 10 ])
-        r_OA = r_OG + np.array([5, 8 , 2] )
-        r_OB = r_OG + np.array([4, -6, -3])
-        r_AG = r_OG-r_OA
-        r_BG = r_OG-r_OB
-        I_A  = fTranslateInertiaMatrix(I_G,M,r_AG)        # I@ A
-        I_B  = fTranslateInertiaMatrix(I_G,M,r_BG)        # I@ B
-        I_B2 = fTranslateInertiaMatrix(I_A,M,r_BG,r_AG   )# I@B from A
-        I_A2 = fTranslateInertiaMatrix(I_B,M,r_AG,r_BG   )# I@A from B
-        np.testing.assert_equal(I_A,I_A2)
-        np.testing.assert_equal(I_B,I_B2)
-
-        # --- Transfer of inertia at A to COG then back at A
-        I_A = np.eye(3)
-        M = 12
-        r_GA = np.array([3,4,5])
-        I_G  = fTranslateInertiaMatrixToCOG  (I_A,M,r_GA)  # I@G from A
-        I_A2 = fTranslateInertiaMatrixFromCOG(I_G,M,-r_GA) # I@A from G
-        np.testing.assert_equal(I_A,I_A2)
-
-
-    def test_BMat(self):
-        # --- Example taken from Main_TNSB from YAMS
-        alpha_y  = -1.466329361065083e-02
-        B_N_ref = np.array([ 0.0000E+00, 0.0000E+00, 1.0000E+00, 0.0000E+00, alpha_y, 0.0000E+00]).reshape((6,1))
-        B_S_ref = np.array([
-          [ 1.466171724553691e-01 ,  0.000000000000000e+00],
-          [ 0.000000000000000e+00 ,  0.000000000000000e+00],
-          [ 1.002150044745554e+00 ,  0.000000000000000e+00],
-          [ 0.000000000000000e+00 , -1.466276815184685e-02],
-          [-1.466329361065083e-02 ,  0.000000000000000e+00],
-          [ 0.000000000000000e+00 ,  9.998924958364900e-01 ]])
-        r_NS_ref=np.array([1.466276815184686e-01, 0.000000000000000e+00, -9.998924958364899e+00]).reshape((3,1))
-
-        R_TN     = R_y(alpha_y)        ;
-        q_psi    = 1
-        z_NS     = - 10
-        r_NS_inN = np.array([0, 0, z_NS]).reshape((3,1))
-        # link E-T
-        R_ET     = np.eye(3)
-        # ---------------------------------------------
-        # Link T-N
-        r_TN     = np.zeros((3,1))
-        r_TN[0]  = 1.0000E+02
-        Bx_TN    = np.zeros((3,1))
-        Bt_TN    = np.zeros((3,1))
-        Bx_TN[2] = 1
-        Bt_TN[1] = alpha_y
-        B_TN     = np.vstack((Bx_TN,Bt_TN))
-        B_T      = np.array([])
-        B_N      = fBMatRecursion(B_T,B_TN,R_ET,r_TN)
-        np.testing.assert_equal(B_N,B_N_ref)
-        R_TN=R_y(alpha_y);
-        R_EN=np.dot(R_ET,R_TN)
-        # ---------------------------------------------
-        # Link N-S
-        R_NS = R_z(q_psi+np.pi) # Adding pi here , blade down
-        R_ES = np.dot(R_EN, R_NS   )
-        r_NS = np.dot(R_EN, r_NS_inN )
-        np.testing.assert_almost_equal(r_NS,r_NS_ref)
-
-        Bx_NS=np.array([0,0,0]).reshape((3,1))
-        Bt_NS=np.array([0,0,1]).reshape((3,1))
-        B_NS =np.vstack((Bx_NS,Bt_NS))
-
-        B_S = fBMatRecursion(B_N,B_NS,R_EN,r_NS);
-        np.testing.assert_almost_equal(B_S,B_S_ref)
-
-
-
-
 if __name__=='__main__':
-    unittest.main()
+    pass

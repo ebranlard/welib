@@ -1,5 +1,4 @@
 import numpy as np
-import unittest
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 

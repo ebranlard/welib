@@ -4,12 +4,9 @@ import copy
 import matplotlib.pyplot as plt
 import os
 
-try:
-    from .yams import FASTBeamBody, RigidBody
-    from .TNSB import *
-except:
-    from yams import FASTBeamBody, RigidBody
-    from TNSB import *
+from .yams import FASTBeamBody, RigidBody
+from .utils import *
+from .TNSB import *
 
 import weio
 
@@ -17,6 +14,15 @@ import weio
 # --- Creating a TNSB model from a FAST model
 # --------------------------------------------------------------------------------{
 def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False):
+    """ 
+    Returns the following structure
+      Twr :  BeamBody
+      Shft:  RigiBody
+      Nac :  RigidBody
+      Blds:  List of BeamBodies
+
+      MM, KK, DD : mass, stiffness and damping matrix of full system
+    """
     
     nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
     if q is None:
@@ -91,8 +97,8 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     I0_nac = I0_nac * bNacMass
 
     # Inertias not at COG...
-    IG_hub = fTranslateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
-    IG_nac = fTranslateInertiaMatrixToCOG(I0_nac,M_nac, -r_NGnac_inN)
+    IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
+    IG_nac = translateInertiaMatrixToCOG(I0_nac,M_nac, -r_NGnac_inN)
 
     # --------------------------------------------------------------------------------}
     ## --- Creating bodies
