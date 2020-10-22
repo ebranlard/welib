@@ -5,7 +5,7 @@ from .filters import moving_average
 from .TNSB_FAST import FASTmodel2TNSB
 
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
-import welib.fastlib as fastlib
+import welib.fast.fastlib as fastlib
 import welib.weio as weio
 
 DEFAULT_COL_MAP={

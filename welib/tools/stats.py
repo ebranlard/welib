@@ -49,13 +49,14 @@ def rsquare(y,f, c = True):
     return r2,rmse
 
 
-
-
-def pdf_histogram(y,nBins=50, norm=True):
+def pdf_histogram(y,nBins=50, norm=True, count=False):
     yh, xh = np.histogram(y[~np.isnan(y)], bins=nBins)
     dx   = xh[1] - xh[0]
     xh  = xh[:-1] + dx/2
-    yh  = yh / (nBins*dx) 
+    if count:
+        yh  = yh / (len(n)*dx) # TODO DEBUG /VERIFY THIS
+    else:
+        yh  = yh / (nBins*dx) 
     if norm:
         yh=yh/np.trapz(yh,xh)
     return xh,yh
@@ -76,6 +77,7 @@ def pdf_gaussian_kde(data, bw='scott', nOut=100, cut=3, clip=(-np.inf,np.inf)):
     from six import string_types
 
     data = np.asarray(data)
+    data = data[~np.isnan(data)]
     # Gaussian kde
     kde  = stats.gaussian_kde(data, bw_method = bw)
     # Finding a relevant support (i.e. x values)

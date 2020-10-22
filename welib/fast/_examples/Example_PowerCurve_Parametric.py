@@ -1,7 +1,7 @@
 import numpy as np
 import os
 try:
-    import welib.fastlib.fastlib as fastlib
+    import welib.fast.fastlib as fastlib
 except:
     import fastlib
 

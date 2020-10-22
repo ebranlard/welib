@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 try:
-    import welib.fastlib.fastlib as fastlib
+    import welib.fast.fastlib as fastlib
 except:
     import fastlib
 import weio

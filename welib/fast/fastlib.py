@@ -26,6 +26,7 @@ except:
 # --- Allowing FASTInputFile to be shipped separately..
 try:
     from weio.fast_input_file import *
+    from weio.fast_output_file import *
 except:
     try:
         from weio.weio.fast_input_file import *
@@ -1622,7 +1623,7 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
     # Loop trough files and populate result
     for i,f in enumerate(outFiles):
         try:
-            df=weio.FASTOutputFile(f).toDataFrame()
+            df=FASTOutputFile(f).toDataFrame()
         except:
             invalidFiles.append(f)
             continue

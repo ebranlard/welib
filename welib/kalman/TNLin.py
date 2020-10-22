@@ -8,7 +8,7 @@ from yams.TNSB_FAST import FASTmodel2TNSB
 from fast.linmodel import FASTLinModel
 
 # --- External dependencies!
-import welib.fastlib as fastlib
+import welib.fast.fastlib as fastlib
 import weio
 
 #          'WS':'Wind1VelX', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 try:
-    from welib.fastlib import fastlib
+    import welib.fast.fastlib as fastlib
 except:
     try:
         import fastlib
@@ -75,7 +75,7 @@ def extractSpanTSNew(ts, col_pattern, colname, IR=None):
 
 if __name__=='__main__':
 
-    import welib.fastlib.fastlib as fastlib
+    import welib.fast.fastlib as fastlib
     import weio
     import fnmatch
     import re
