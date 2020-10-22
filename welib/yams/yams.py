@@ -6,6 +6,10 @@ Reference:
 import numpy as np
 from .flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode
 from .utils import *
+from .bodies import Body         as GenericBody
+from .bodies import RigidBody    as GenericRigidBody
+from .bodies import FlexibleBody as GenericFlexibleBody
+from .bodies import InertialBody as GenericInertialBody
 
 # --- To ease comparison with sympy version
 from numpy import eye, cross, cos ,sin
@@ -76,8 +80,9 @@ class Connection():
 # --------------------------------------------------------------------------------}
 # --- Bodies 
 # --------------------------------------------------------------------------------{
-class Body(object):
+class Body(GenericBody):
     def __init__(B,Name=''):
+        GenericBody.__init__(B, name=Name)
         B.Children    = []
         B.Connections = []
         B.Name        = Name
@@ -249,19 +254,21 @@ class Body(object):
 # --------------------------------------------------------------------------------}
 # --- Ground Body 
 # --------------------------------------------------------------------------------{
-class GroundBody(Body):
+class GroundBody(Body, GenericInertialBody):
     def __init__(B):
-        super(GroundBody,B).__init__('Grd')
+        GenericInertialBody.__init__(B)
+        Body.__init__(B, 'Grd')
 
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
-class RigidBody(Body):
+class RigidBody(Body,GenericRigidBody):
     def __init__(B, Name, Mass, J_G, rho_G):
         """
         Creates a rigid body 
         """
-        super(RigidBody,B).__init__()
+        GenericRigidBody.__init__(B, Name, Mass, J_G, rho_G)
+        Body.__init__(B)
         B.s_G_inB = rho_G
         B.J_G_inB = J_G
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, B.s_G_inB)

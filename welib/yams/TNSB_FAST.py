@@ -8,7 +8,7 @@ from .yams import FASTBeamBody, RigidBody
 from .utils import *
 from .TNSB import *
 
-import weio
+import welib.weio as weio
 
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model
