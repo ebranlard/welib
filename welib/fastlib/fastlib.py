@@ -896,6 +896,19 @@ def addToOutlist(OutList, Signals):
 # --------------------------------------------------------------------------------{
 def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False):
     """ Add/rename columns of a dataframe, potentially perform operations between columns
+
+    Example:
+
+        ColumnMap={
+          'WS_[m/s]'         : '{Wind1VelX_[m/s]}'             , # create a new column from existing one
+          'RtTSR_[-]'        : '{RtTSR_[-]} * 2  +  {RtAeroCt_[-]}'    , # change value of column
+          'RotSpeed_[rad/s]' : '{RotSpeed_[rpm]} * 2*np.pi/60 ', # new column [rpm] -> [rad/s]
+        }
+        # Read
+        df = weio.read('FASTOutBin.outb').toDataFrame()
+        # Change columns based on formulae, potentially adding new columns
+        df = fastlib.remap_df(df, ColumnMap, inplace=True)
+
     """
     if not inPlace:
         df=df.copy()
@@ -1699,7 +1712,7 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
     workDir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
     print('>>> Generating inputs files in {}'.format(workDir))
     RemoveAllowed=reRun # If the user want to rerun, we can remove, otherwise we keep existing simulations
-    fastFiles=templateReplace(PARAMS, refdir, workDir=workDir,RemoveRefSubFiles=True,RemoveAllowed=RemoveAllowed,main_file=main_fastfile)
+    fastFiles=templateReplace(PARAMS, refdir, outputDir=workDir,removeRefSubFiles=True,removeAllowed=RemoveAllowed,main_file=main_fastfile)
 
     # --- Running fast simulations
     print('>>> Running {} simulations...'.format(len(fastFiles)))

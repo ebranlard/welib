@@ -1,0 +1,7 @@
+numpy  
+pandas
+future
+screeninfo
+deap
+matplotlib
+pandas

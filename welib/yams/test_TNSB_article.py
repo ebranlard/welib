@@ -102,7 +102,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
                  [-1.9634E+02, 0.0000E+00, 1.1746E+04, 0.0000E+00,-5.1196E+05, 0.0000E+00, 7.5019E+03]])
 
 
-    Blds[0].PhiU =np.zeros(nShapes_bld) # HACK since cannot access nf
+    Blds[0].PhiU =np.zeros(nShapes_bld) # cannot access nf
     Blds[0].KK = np.zeros((8, 8))
     Blds[0].KK[6,6:]= np.array([ 2.8624E+05, -1.0224E+03])
     Blds[0].KK[7,6:]= np.array([-1.0224E+03,  1.1249E+07])

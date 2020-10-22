@@ -4,6 +4,7 @@
 *.png
 *.zip
 *.pyc
+*.pyd
 __pycache*
 *.egg-info*
 *.ipynb_checkpoints*
