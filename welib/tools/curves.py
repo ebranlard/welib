@@ -146,11 +146,21 @@ def seg_to_lines(seg):
         i=iEnd+1
     return lines
 
-def streamQuiver(ax,sp,*args,spacing=None,n=5,**kwargs):
+def streamQuiver(ax,sp,*args,**kwargs):
     """ Plot arrows from streamplot data  
     The number of arrows per streamline is controlled either by `spacing` or by `n`.
     See `lines_to_arrows`.
     """
+    # TODO this was changed for python 2.7
+    if 'spacing' in kwargs.keys():
+        spacing=kwargs['spacing']
+    else:
+        spacing=None
+    if 'n' in kwargs.keys():
+        n=kwargs['n']
+    else:
+        n=5
+
     # --- Main body of streamQuiver
     # Extracting lines
     seg   = sp.lines.get_segments() # list of (2, 2) numpy arrays

@@ -11,6 +11,7 @@ class Test(unittest.TestCase):
 
     def test_BEM(self):
 
+        old_settings = np.seterr()
         np.seterr(all='raise')
 
         # Performs simple BEM simulations of the NREL 5MW turbine for one operating condition.
@@ -29,6 +30,9 @@ class Test(unittest.TestCase):
 
         np.testing.assert_almost_equal(BEM.Power ,445183.13,1)
         np.testing.assert_almost_equal(BEM.Thrust,140978.66,1)
+
+
+        np.seterr(**old_settings)
 
 if __name__ == '__main__':
     unittest.main()

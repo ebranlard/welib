@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 
 import matplotlib.pyplot as plt
@@ -69,20 +70,20 @@ def smooth_heaviside(x, k=1, rng=(-np.inf, np.inf), method='exp'):
     if method=='exp':
         if np.abs(mn)==np.inf and np.abs(mx)==np.inf:
             # Infinite support
-            x[k*x>100 ]  = 100/k
-            x[k*x<-100] = -100/k
+            x[k*x>100 ]  = 100./k
+            x[k*x<-100] = -100./k
             if mn<mx:
                 H[b] = 1 / ( 1+np.exp(-  k * x))
             else:
                 H[b] = 1 / ( 1+np.exp(   k * x))
         elif np.abs(mn)!=np.inf and np.abs(mx)!=np.inf:
-            n=4
+            n=4.
             # Compact support
-            s= 2/(mx -mn) * (x-(mn+mx)/2) # transform compact support into ]-1,1[ 
-            x = -n*s/(s**2-1)             # then transform   ]-1,1[  into ]-inf,inf[
-            x[k*x>100 ]  = 100/k
-            x[k*x<-100] = -100/k
-            H[b] = 1/(1+np.exp(-k*x))
+            s= 2./(mx -mn) * (x-(mn+mx)/2.) # transform compact support into ]-1,1[ 
+            x = -n*s/(s**2-1.)             # then transform   ]-1,1[  into ]-inf,inf[
+            x[k*x>100 ]  = 100./k
+            x[k*x<-100] = -100./k
+            H[b] = 1./(1+np.exp(-k*x))
         else:
             raise NotImplementedError('Heaviside with only one bound infinite')
     else:
@@ -119,39 +120,39 @@ def smooth_delta(x, e=1, rng=(-np.inf, np.inf), method='gaussian'):
     def smooth_delta_inf(xx, method):
         """ functions for infinite support"""
         if method=='frac':
-            return 1/np.pi * (e/(xx**2+e**2))
+            return 1./np.pi * (e/(xx**2+e**2))
         elif method=='gaussian':
-            return 1/(2*np.sqrt(np.pi*e)) *np.exp( -xx**2/(4*e))
+            return 1./(2*np.sqrt(np.pi*e)) *np.exp( -xx**2/(4.*e))
         elif method=='sin':
-            return 1/(np.pi*xx)*np.sin(xx/e)
+            return 1./(np.pi*xx)*np.sin(xx/e)
         elif method=='exp-heaviside':
             k=e
-            xx[k*xx >100]  = 100/k
-            xx[k*xx<-100] = -100/k
+            xx[k*xx >100]  = 100./k
+            xx[k*xx<-100] = -100./k
             E        = np.exp(-1*k*xx)
-            return  1*k*E / (1+E)**2
+            return  1.*k*E / (1.+E)**2
 
     if np.abs(mn)!=np.inf and np.abs(mx)!=np.inf:
-        n=4
+        n=4.
         # Compact support
-        s     = 2/(mx -mn) * (x-(mn+mx)/2) # first transform ]-mn,mx[ into ]-1,1[
+        s     = 2./(mx -mn) * (x-(mn+mx)/2) # first transform ]-mn,mx[ into ]-1,1[
         x_new = -n*s/(s**2-1)              # then transform   ]-1,1[  into ]-inf,inf[
         # NOTE: the first transformation is linear, so the integral scales accordingly
         #       the second is not, for now we computing the scaling numerically..
-        scale=2/(mx-mn) # scaling due to linear transformation
+        scale=2./(mx-mn) # scaling due to linear transformation
         s0 = np.linspace(-1-1e-5,1-1e-5,100)
         x0 = -n*s0/(s0**2-1)
         if method=='frac': # further scaling adjustements
             scale/=np.trapz(1/np.pi * (e/(x0**2+e**2)), s0)
         elif method=='gaussian':
-            scale/=np.trapz(1/(2*np.sqrt(np.pi*e)) *np.exp( -x0**2/(4*e)), s0)
+            scale/=np.trapz(1./(2*np.sqrt(np.pi*e)) *np.exp( -x0**2/(4.*e)), s0)
         elif method=='sin':
             scale*=n
 
         if method=='exp-heaviside':
             k=e
-            E =  np.exp( k*4*s/(s**2-1-eps))
-            delta[b] = 4*k*(s**2+1) * E/ ( (s**2-1)**2 * (1+E)**2)*scale
+            E =  np.exp( k*4.*s/(s**2-1.-eps))
+            delta[b] = 4.*k*(s**2+1) * E/ ( (s**2-1)**2 * (1.+E)**2)*scale
         else:
             delta[b] = smooth_delta_inf(x_new, method=method) * scale
 
