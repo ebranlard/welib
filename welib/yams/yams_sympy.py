@@ -773,6 +773,7 @@ class YAMSFlexibleBody(YAMSBody):
         
     def bodyMassMatrix(self, q=None, form='TaylorExpanded'):
         """ Body mass matrix in body coordinates M'(q)
+        form is ['symbolic' , 'TaylorExpanded']
         """
         nq=len(self.q)
         if q is None:

@@ -1,6 +1,6 @@
 import numpy as np
 
-from mech_system.eva import eig
+from welib.system.eva import eig
 
 
 def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None): 
