@@ -810,6 +810,8 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
     """ Returns radial positions where FAST has outputs
     INPUTS:
        FST_In: fast input file (.fst)
+    OUTPUTS:
+       r_AD: radial positions of FAST Outputs from the rotor center
     """
     R           = None
     r_hub =0
@@ -870,6 +872,7 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
                         IR_AD  = None
                     else:
                         r_AD,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
+                        r_AD   += r_hub
 
                 elif fst.ADversion == 'AD14':
                     r_AD,IR_AD = AD14_BldGag(fst.AD)
