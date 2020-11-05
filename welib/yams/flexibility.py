@@ -247,7 +247,6 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #print('Mxg\n',Mxg)
         
     # --- Mtt = - \int [~s][~s] dm
-
     if main_axis=='x':
         if bUseIW:
             s00= np.sum(IW_xm * s_G[0,:]);
@@ -338,3 +337,4 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
 if __name__=='__main__':
     pass
+
