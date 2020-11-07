@@ -2,9 +2,14 @@
 
 "Standard input data (SID)" used to define a flexible body.
 
-The format is defined in the following paper:
-    Oskar Wallrapp, 1993, "Standard Input Data of Flexible Members in Multibody Systems"
-    Advanced Multibody System Dynamics, 445-450
+The following references are used:
+
+ [1]  Oskar Wallrapp, 1993, "Standard Input Data of Flexible Members in Multibody Systems"
+      Advanced Multibody System Dynamics, 445-450
+
+ [2]  Richard Schwertassek,  Oskar Wallrapp
+      "Dynamik Flexibler Mehrkoerpersysteme : Methoden Der Mechanik 
+
 
 
 
@@ -60,6 +65,12 @@ class Taylor(object):
         s+='end {}\n'.format(self.name)
         return s
 
+    def setorder(self,order):
+        self.order=order
+        if self.order==1:
+            if not hasattr(self,'M1'):
+                self.M1=np.zeros((self.nrow,self.ncol,self.nq))
+
 class Node(object):
     """ """
     def __init__(self, nq, name=0):
@@ -101,23 +112,27 @@ class SID(object):
 
     def __repr__(self):
         s =''
+        s+='part\n'
+        s+='new modal\n'
         s+=str(self.refmod)+'\n'
         s+='new frame\n'
         for i,f in enumerate(self.frame):
             f.name=i+1
-            s+=str(f)+'\n'
+            s+=str(f)
         s+='end frame\n'
-        s+=str(self.mdCM  )+'\n'
-        s+=str(self.J     )+'\n'
-        s+=str(self.Ct    )+'\n'
-        s+=str(self.Cr    )+'\n'
-        s+=str(self.Me    )+'\n'
-        s+=str(self.Gr    )+'\n'
-        s+=str(self.Ge    )+'\n'
-        s+=str(self.Oe    )+'\n'
-        s+=str(self.ksigma)+'\n'
-        s+=str(self.Ke    )+'\n'
-        s+=str(self.De    )+'\n'
+        s+=str(self.mdCM  )
+        s+=str(self.J     )
+        s+=str(self.Ct    )
+        s+=str(self.Cr    )
+        s+=str(self.Me    )
+        s+=str(self.Gr    )
+        s+=str(self.Ge    )
+        s+=str(self.Oe    )
+        s+=str(self.ksigma)
+        s+=str(self.Ke    )
+        s+=str(self.De    )
+        s+='end modal\n'
+        s+='end part\n'
         return s
 
 
@@ -126,7 +141,7 @@ class SID(object):
 # ---  Converters
 # --------------------------------------------------------------------------------{
 # --- Populating SID
-def FEMBeam2SID(Mtt, J0, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM, Se, C4=None, Kom=None):
+def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=dict()):
     from welib.yams.utils import skew 
     # TODO take MM, KK, Tr as inputs
     assert(xNodes.shape[0]==3)
@@ -134,7 +149,9 @@ def FEMBeam2SID(Mtt, J0, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM, Se, 
     nNodes   = xNodes.shape[1]
     nDOF_tot = nNodes*nqk      # Total number of DOF without constraint (BC)
 
-    # Tabelle 6.9 S. 346
+    iMaxDim = np.argmax(np.max(np.abs(xNodes),axis=1)-np.min(np.abs(xNodes),axis=1)) 
+
+    # See [2] Table 6.9 S. 346
     nq = len(Imodes)
     sid=SID(nq=nq)
     sid.refmod.mass= Mtt[0,0]
@@ -157,14 +174,11 @@ def FEMBeam2SID(Mtt, J0, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM, Se, 
             f.origin.M1[:, 0, j] = Phi.dot(Se[:, j]);
         # Node translations (6.46),(6.80), (6.337), (5.122), (6.415)
         f.phi.M0= Phi.dot(Se)
-        # TODO, stiffnening due to force
-        #         if i==nk
-        #             f.Phi.order= 1;
-        #             f.Phi.M1(1, :, :)= 0*K0Fend_ax; % stiffening due to force (6.46),(6.80), (6.337), (5.122), (6.415)
-        #             f.Phi.M1(2, :, :)= 0*K0Fend_ax;
-        #             f.Phi.M1(3, :, :)= 0*K0Fend_ax;
-        #             f.Phi.M1(extentIdx, :, :)= K0Fend_ax;        
-        #         end
+        # Stiffnening due to force
+        if 'Fend' in GKg.keys():
+            if i==nNodes-1:
+                f.phi.setorder(1)
+                f.phi.M1[iMaxDim, :, :]= GKg['Fend']
 
         # Node rotations (6.81), (6.337)
         f.psi.M0= Psi.dot(Se);
@@ -175,65 +189,79 @@ def FEMBeam2SID(Mtt, J0, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM, Se, 
         for j in np.arange(nq):
             f.APmod.M1[:, :, j]= skew(f.psi.M0[:, j]);
 
-        # --- TODO Pretension
-        #  f.sigma.M0= zeros(6, 1); % no pretension for now. Spannungen  % (6.413)
-        #  if i<nk:
-        #      e= i;
-        #  else:
-        #      e= i-1;
+        # --- Pretension
+        #if i<nNodes-1:
+        #  e= i;
+        #else:
+        #  e= i-1;
         #  Ke= T{e}' .dot(K{e}).dot(T{e})
         #  if i<nk:
         #      Ke= -Ke;
         #  for j= 1:nq:
         #      f.sigma.M1(:, 1, j)= Ke((i-1)*nqk+(1:6), :)*Se(:, j); % left sided nodal force except last node
         sid.frame.append(f)
-    # sid.mdCM
-    # TODO
-#     sid.md.M0= [sum(sum(crossmat([0.5 0 0]).*mc0)) sum(sum(crossmat([0 0.5 0]).*mc0)) sum(sum(crossmat([0 0 0.5]).*mc0))]';
-#     for j= 1:nq
-#         sid.md.M1(:, 1, j)= Mgt[j, :]'; # Ct0 Mgt
-#     end
+
+    # --- mdCM
+    # NOTE: Mtr (mc0) is anti symmetric and contains m*x_COG
+    # The math below is to extract m*x_COG rom Mtr
+    sid.mdCM.M0= np.array([
+        np.sum(skew([0.5, 0 , 0  ])*Mtr), 
+        np.sum(skew([0,  0.5, 0  ])*Mtr), 
+        np.sum(skew([0,   0 , 0.5])*Mtr)
+        ]).reshape(3,1)
+    for j in np.arange(nq):
+        sid.mdCM.M1[:, 0, j]= Mgt[j, :].T # Ct0 Mgt
 
     # --- J
     sid.J.M0= J0
-    # TODO
-    #for j in np.arange(nq):
-    #    sid.J.M1[:, :, i]= -C4[:, :, i] - C4[:, :, i].T;
+    for j in np.arange(nq):
+        sid.J.M1[:, :, j]= -C4[:, :, j] - C4[:, :, j].T;
 
     # --- Ct
     sid.Ct.M0= Mgt
-    # TODO
-    #     sid.Ct.M1(:, 1, :)= 0*K0t_ax;
-    #     sid.Ct.M1(:, 2, :)= 0*K0t_ax;
-    #     sid.Ct.M1(:, 3, :)= 0*K0t_ax;
-    #     sid.Ct.M1(:, extentIdx, :)= K0t_ax;
+    if 't_ax' in GKg.keys():
+        sid.Ct.M1[:, iMaxDim, :]= GKg['t_ax'];
     # --- Cr
     sid.Cr.M0= Mgr
-    # TODO
-#     sid.Cr.M1(:, 1, :)= Kr{1}; % K0r= 0 because only axial stiffening.  Kr= Se*KFr?
-#     sid.Cr.M1(:, 2, :)= Kr{2}; % K0r= 0 because only axial stiffening.  Kr= Se*KFr?
-#     sid.Cr.M1(:, 3, :)= Kr{3}; % K0r= 0 because only axial stiffening.  Kr= Se*KFr?
+    sid.Cr.M1[:, 0, :]= Kr[0][:,:]; # nq x nq
+    sid.Cr.M1[:, 1, :]= Kr[1][:,:]; 
+    sid.Cr.M1[:, 2, :]= Kr[2][:,:]; 
     # --- Me
     sid.Me.M0= Mgg;
 
-    # --- Gr TODO
-    #sid.Gr.M0= -2*reshape(C4, 3, 3*nq); % (6.403) S. 339; or -2*KFr?
-    # --- Ge TODO
-    #     for i= 1:nq
-    #         sid.Ge.M0(:, 3*(i-1)+(1:3))= 2*[Kr{1}(:, i) Kr{2}(:, i) Kr{3}(:, i)]; % (6.405) S. 340 = 2*C5'
-    #     end
-    # --- Oe (6.407) TODO
-    #sid.Oe.M0= Kom0;
-#     sid.Oe.M1(:, 1, :)= Kom{1}+K0omxx;
-#     sid.Oe.M1(:, 2, :)= Kom{2}+K0omyy;
-#     sid.Oe.M1(:, 3, :)= Kom{3}+K0omzz;
-#     sid.Oe.M1(:, 4, :)= Kom{4}+K0omxy;
-#     sid.Oe.M1(:, 5, :)= Kom{5}+K0omxz;
-#     sid.Oe.M1(:, 6, :)= Kom{6}+K0omyz;
-# 
+    # --- Gr 
+    # see [2] (6.403) p. 339
+    for j in np.arange(nq):
+        sid.Gr.M0[0:3, 3*j:3*j+3]= -2*C4[:,:,j];  # columns concatenation 3 per shapes
+
+    # --- Ge = 2 \int Phi^t phi_j~^t dm  = [2C5']
+    # Ge Taylor(0,nq,3*nq,0 ,0) # Gyroscopic matrix for modal coordinates
+    for j in np.arange(nq):
+          # see [2] (6.405) p. 340 = 2*C5'
+          M0j = 2*np.vstack([Kr[0,0:nq, j],Kr[1,0:nq, j],Kr[2,0:nq, j]])  # 3 x nq
+          sid.Ge.M0[0:nq, 3*j:3*j+3]= M0j.T;  # columns concatenation 3 per shapes
+    
+    # --- Oe 
+    # see [2] (6.407) 
+    # Size nq x 6 x nq
+    sid.Oe.M0= Kom0             
+    sid.Oe.M1[:, 0, :]= Kom[0]   # nq x nq
+    sid.Oe.M1[:, 1, :]= Kom[1]  
+    sid.Oe.M1[:, 2, :]= Kom[2]  
+    sid.Oe.M1[:, 3, :]= Kom[3]  
+    sid.Oe.M1[:, 4, :]= Kom[4]  
+    sid.Oe.M1[:, 5, :]= Kom[5]  
+    if 'omxx' in GKg.keys():
+        sid.Oe.M1[:, 0, :]+= GKg['omxx'];  # nq x nq
+        sid.Oe.M1[:, 1, :]+= GKg['omyy'];
+        sid.Oe.M1[:, 2, :]+= GKg['omzz'];
+        sid.Oe.M1[:, 3, :]+= GKg['omxy'];
+        sid.Oe.M1[:, 4, :]+= GKg['omxz'];
+        sid.Oe.M1[:, 5, :]+= GKg['omyz'];
+
     # ---  sid.Ke 
     sid.Ke.M0= (Se.T).dot(KK).dot(Se);
-    #sid.ksigma.M0= [];
+
     # --- De
     #sid.De.M0= [];
 

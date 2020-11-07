@@ -4,14 +4,24 @@ Classes and tools to easily set up a FEM model made of beam elements
 
 """
 import numpy as np
+import scipy
 
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
-def continuousBeam_linearElements(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=None, G=None, phi=None):
-    """ """
-    from welib.FEM.utils import elementDCMfromBeamNodes
-    from welib.FEM.frame3d import frame3dlin_KeMe
+def beam_frame3dlin(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=None, G=None, phi=None):
+    """
+    Assemble a FEM system for a continuous beam using frame3d linear elements
+    Elements are assumed to be connected continuously from 1st node to last
+
+    xNodes: (3 x nNodes) position of the nodes.
+    m     : (nNodes) linear mass per length
+
+    phi   : rotation of principal axes wrt mean line (tangent) of the beam
+    
+    """
+    from welib.FEM.utils      import elementDCMfromBeamNodes
+    from welib.FEM.frame3dlin import frame3dlin_KeMe
     import scipy 
 
     E  = 214e9                           # Young modulus  
@@ -28,8 +38,6 @@ def continuousBeam_linearElements(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=Non
     if Iz is None: Iz=Iy
     if E is None:  E = 211e9       # Young modulus
     if G is None:  G = E/2/(1+0.3) # Young modulus
-
-        
 
     # --- Coordinates system / direction cosine of each element
     # Putting "z" along x
@@ -81,8 +89,36 @@ def continuousBeam_linearElements(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=Non
         MM[np.ix_(IDOF,IDOF)] += Mg
         KK[np.ix_(IDOF,IDOF)] += Kg
 
-    return MM, KK, DCM, Elem2Nodes, Nodes2DOF
 
+    return MM, KK, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF
+
+def beam_frame3dlin_Kg(Tload, xNodes, Elem2Nodes, Elem2DOF, DCM, E, A):
+    """ 
+    Geometric stiffness due a load Tload on all the DOFs
+    """
+    from welib.FEM.frame3dlin import frame3dlin_Kg
+
+    # (6.311) S. 312 [(6.259) S. 301, (6.300) S. 309]
+    nDOF_tot = len(Tload)
+    nElem = Elem2Nodes.shape[0]
+    Kg= np.zeros((nDOF_tot,nDOF_tot))
+
+    # --- Element mass matrices
+    for ie in np.arange(nElem):
+        dx = (xNodes[:,ie+1]-xNodes[:,ie]).reshape(3,1)
+        L  = np.linalg.norm(dx)                         # element length
+        iNode1, iNode2 = Elem2Nodes[ie,:]
+        A1 = A[iNode1]
+        A2 = A[iNode2]
+
+        IDOF = Elem2DOF[ie,:]
+        R    = DCM[:,:,ie]
+        RR   = scipy.linalg.block_diag(R,R,R,R)
+        Te   = RR.dot(Tload[IDOF])
+        Kge  = frame3dlin_Kg(E,A1,A2,L,Te[0],Te[6],R=DCM[:,:,ie])
+
+        Kg[np.ix_(IDOF,IDOF)] += Kge
+    return Kg
 
 
 # --------------------------------------------------------------------------------}

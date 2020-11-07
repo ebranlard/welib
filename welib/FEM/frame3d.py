@@ -1,68 +1,80 @@
 import numpy as np
+import sympy
+import scipy
     
+# --------------------------------------------------------------------------------}
+# --- Shape functions, displacement field, energy
+# --------------------------------------------------------------------------------{
+def b1(s) :
+    return 1-s 
+def b4(s) :
+    return s 
+def b2(s) :
+    return 1 -3*s**2 + 2*s**3
+def b3(s,L) :
+    return L*s*(1-s)**2       
+def b5(s) :
+    return 3*s**2 - 2*s**3     
+def b6(s,L) :
+    return  L*s**2*(s-1)       
 
-def frame3dlin_KeMe(E,G,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,L,me1,me2,R=None):
+def frame3d_N(x,L):
+    """  Interpolation matrix from nodal DOF to deflections for a 3d frame
+     [   u_x   ]  = N(x) * [ux1,uy1,uz1,tx1,...,tz2]^t
+     [   u_y   ]
+     [   u_z   ]
+     [\theta_x ]
     """
-    Linear frame element directed along x
-    Values are given at both nodes
+    if isinstance(x, sympy.Symbol):
+        NN = sympy.zeros(4,12)
+    else:
+        NN = np.zeros((4,12))
+    NN[0,0]  = b1(x/L)
+    NN[1,1]  = b2(x/L)
+    NN[2,2]  = b2(x/L)
+    NN[3,3]  = b1(x/L)
+    NN[2,4]  = -b3(x/L,L)
+    NN[1,5]  = b3(x/L,L)
+    NN[0,6]  = b4(x/L)
+    NN[1,7]  = b5(x/L)
+    NN[2,8]  = b5(x/L)
+    NN[3,9]  = b4(x/L)
+    NN[2,10] = -b6(x/L,L)
+    NN[1,11] = b6(x/L,L)
+    return NN
 
-    INPUTS
-        "1" at node 1, "2" at node 2
-        E  : Young's (elastic) modulus
-        Gs : Shear modulus. For an isotropic material G = E/2(nu+1) with nu the Poission's ratio
-        Kv : Saint-Venant's torsion constant, Polar moment of i
-        L  : Element length
-        A  : Cross section area
-        Ix : Polar  second moment of area,local x-axis. Ix=\iint(y^2+z^2) dy dz [m4]
-        Iy : Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4]
-        Iz : Planar second moment of area,local z-axis. Iz=\iint y^2 dy dz [m4]
-    OPTIONAL INPUTS
-        R   : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g
-             if provided, element matrix is provided in global coord
-    OUTPUTS
-        ke: Element stiffness matrix (12x12)
-        me: Element mass matrix (12x12)
 
+# ---
+def frame3d_u(x,q,L):
+    """ Returns deflections for a 3d frame:
+    [   u_x   ]  = N(x) * q   with q = [ux1,uy1,uz1,tx1,...,tz2]^t
+    [   u_y   ]
+    [   u_z   ]
+    [\theta_x ]
     """
-    # --- Stifness matrix
-    ke = np.array([
-        [((A2+A1)*E)/(2*L)  , 0                       , 0                       , 0                    , 0                       , 0                       , -((A2+A1)*E)/(2*L) , 0                       , 0                       , 0                    , 0                       , 0]                       , 
-        [0                  , ((6*Iz2+6*Iz1)*E)/L**3  , 0                       , 0                    , 0                       , ((2*Iz2+4*Iz1)*E)/L**2  , 0                  , -((6*Iz2+6*Iz1)*E)/L**3 , 0                       , 0                    , 0                       , ((4*Iz2+2*Iz1)*E)/L**2]  , 
-        [0                  , 0                       , ((6*Iy2+6*Iy1)*E)/L**3  , 0                    , -((2*Iy2+4*Iy1)*E)/L**2 , 0                       , 0                  , 0                       , -((6*Iy2+6*Iy1)*E)/L**3 , 0                    , -((4*Iy2+2*Iy1)*E)/L**2 , 0]                       , 
-        [0                  , 0                       , 0                       , ((Kv2+Kv1)*G)/(2*L)  , 0                       , 0                       , 0                  , 0                       , 0                       , -((Kv2+Kv1)*G)/(2*L) , 0                       , 0]                       , 
-        [0                  , 0                       , -((2*Iy2+4*Iy1)*E)/L**2 , 0                    , ((Iy2+3*Iy1)*E)/L       , 0                       , 0                  , 0                       , ((2*Iy2+4*Iy1)*E)/L**2  , 0                    , ((Iy2+Iy1)*E)/L         , 0]                       , 
-        [0                  , ((2*Iz2+4*Iz1)*E)/L**2  , 0                       , 0                    , 0                       , ((Iz2+3*Iz1)*E)/L       , 0                  , -((2*Iz2+4*Iz1)*E)/L**2 , 0                       , 0                    , 0                       , ((Iz2+Iz1)*E)/L]         , 
-        [-((A2+A1)*E)/(2*L) , 0                       , 0                       , 0                    , 0                       , 0                       , ((A2+A1)*E)/(2*L)  , 0                       , 0                       , 0                    , 0                       , 0]                       , 
-        [0                  , -((6*Iz2+6*Iz1)*E)/L**3 , 0                       , 0                    , 0                       , -((2*Iz2+4*Iz1)*E)/L**2 , 0                  , ((6*Iz2+6*Iz1)*E)/L**3  , 0                       , 0                    , 0                       , -((4*Iz2+2*Iz1)*E)/L**2] , 
-        [0                  , 0                       , -((6*Iy2+6*Iy1)*E)/L**3 , 0                    , ((2*Iy2+4*Iy1)*E)/L**2  , 0                       , 0                  , 0                       , ((6*Iy2+6*Iy1)*E)/L**3  , 0                    , ((4*Iy2+2*Iy1)*E)/L**2  , 0]                       , 
-        [0                  , 0                       , 0                       , -((Kv2+Kv1)*G)/(2*L) , 0                       , 0                       , 0                  , 0                       , 0                       , ((Kv2+Kv1)*G)/(2*L)  , 0                       , 0]                       , 
-        [0                  , 0                       , -((4*Iy2+2*Iy1)*E)/L**2 , 0                    , ((Iy2+Iy1)*E)/L         , 0                       , 0                  , 0                       , ((4*Iy2+2*Iy1)*E)/L**2  , 0                    , ((3*Iy2+Iy1)*E)/L       , 0]                       , 
-        [0                  , ((4*Iz2+2*Iz1)*E)/L**2  , 0                       , 0                    , 0                       , ((Iz2+Iz1)*E)/L         , 0                  , -((4*Iz2+2*Iz1)*E)/L**2 , 0                       , 0                    , 0                       , ((3*Iz2+Iz1)*E)/L]
-        ])
-    # --- Mass matrix
-    me = np.array([
-        [(me2+3*me1)/12 , 0                      , 0                       , 0              , 0                           , 0                           , (me2+me1)/12   , 0                       , 0                      , 0              , 0                           , 0]                           , 
-        [0              , (3*me2+10*me1)/35      , 0                       , 0              , 0                           , (7*L*me2+15*L*me1)/420      , 0              , (9*me2+9*me1)/140       , 0                      , 0              , 0                           , -(6*L*me2+7*L*me1)/420]      , 
-        [0              , 0                      , (3*me2+10*me1)/35       , 0              , -(7*L*me2+15*L*me1)/420     , 0                           , 0              , 0                       , (9*me2+9*me1)/140      , 0              , (6*L*me2+7*L*me1)/420       , 0]                           , 
-        [0              , 0                      , 0                       , (me2+3*me1)/12 , 0                           , 0                           , 0              , 0                       , 0                      , (me2+me1)/12   , 0                           , 0]                           , 
-        [0              , 0                      , -(7*L*me2+15*L*me1)/420 , 0              , (3*L**2*me2+5*L**2*me1)/840 , 0                           , 0              , 0                       , -(7*L*me2+6*L*me1)/420 , 0              , -(L**2*me2+L**2*me1)/280    , 0]                           , 
-        [0              , (7*L*me2+15*L*me1)/420 , 0                       , 0              , 0                           , (3*L**2*me2+5*L**2*me1)/840 , 0              , (7*L*me2+6*L*me1)/420   , 0                      , 0              , 0                           , -(L**2*me2+L**2*me1)/280]    , 
-        [(me2+me1)/12   , 0                      , 0                       , 0              , 0                           , 0                           , (3*me2+me1)/12 , 0                       , 0                      , 0              , 0                           , 0]                           , 
-        [0              , (9*me2+9*me1)/140      , 0                       , 0              , 0                           , (7*L*me2+6*L*me1)/420       , 0              , (10*me2+3*me1)/35       , 0                      , 0              , 0                           , -(15*L*me2+7*L*me1)/420]     , 
-        [0              , 0                      , (9*me2+9*me1)/140       , 0              , -(7*L*me2+6*L*me1)/420      , 0                           , 0              , 0                       , (10*me2+3*me1)/35      , 0              , (15*L*me2+7*L*me1)/420      , 0]                           , 
-        [0              , 0                      , 0                       , (me2+me1)/12   , 0                           , 0                           , 0              , 0                       , 0                      , (3*me2+me1)/12 , 0                           , 0]                           , 
-        [0              , 0                      , (6*L*me2+7*L*me1)/420   , 0              , -(L**2*me2+L**2*me1)/280    , 0                           , 0              , 0                       , (15*L*me2+7*L*me1)/420 , 0              , (5*L**2*me2+3*L**2*me1)/840 , 0]                           , 
-        [0              , -(6*L*me2+7*L*me1)/420 , 0                       , 0              , 0                           , -(L**2*me2+L**2*me1)/280    , 0              , -(15*L*me2+7*L*me1)/420 , 0                      , 0              , 0                           , (5*L**2*me2+3*L**2*me1)/840]
-        ])
-    return ke, me
+    s=x/L
+    N = frame3d_N(x,L)
+    if isinstance(N, sympy.Matrix):
+        return N * q
+    else:
+        return N.dot(q)
+
+def h(x, u_2, u_3, u_5, u_6, L):
+    """ Transverse displacement field """
+    s=x/L
+    return  u_2*b2(s) + u_3*b3(s,L) +u_5*b5(s) + u_6*b6(s,L)
 
 
+# --------------------------------------------------------------------------------}
+# --- Element formulation 
+# --------------------------------------------------------------------------------{
 
-def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None): 
+def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None): 
     """ 
     Stiffness and mass matrices for Hermitian beam element with 6DOF per node
+    See folder derivation for sympy derivations.
+
     Euler-Bernoulli beam model. The torsion is de-coupled to the rest, not like Timoshenko.
-        
     The beam coordinate system is such that the cross section is assumed to be in the y-z plane
         
     (ux uy uz thetax thetay thetaz)
@@ -83,11 +95,14 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None):
         EIy : Young Modulus times Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4]
         EIz : Young Modulus times Planar second moment of area,local z-axis. Iz=\iint y^2 dy dz [m4]
     OPTIONAL INPUTS
+        T   : Axial loads (along x) to use for the geometric stiffness matrix Kg
         R   : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g
              if provided, element matrix is provided in global coord
     OUTPUTS
         ke: Element stiffness matrix (12x12)
         me: Element mass matrix (12x12)
+        Kg: Element geometrical stiffness matrix (12x12)
+
         
     AUTHOR: E. Branlard
     """
@@ -101,14 +116,7 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None):
     f = G * Kv / L
     g = 2 * EIy / L
     h = 2 * EIz / L
-    # NOTE: OK with
-    #          - Serano beam3e function
-    #          - Matlab FEM Book
-    #          - frame3d_6j
-    #          - Panzer-Hubele
-    # NOTE: compatible with Timoshenko with shear offsets
-    #    ux1 uy1 uz1 tx1 ty1 tz1   ux2  uy2 yz2 tx2 ty2 tz2
-    ke = np.array([
+    Ke = np.array([
         [a  , 0  , 0  , 0  , 0     , 0     , -a , 0  , 0  , 0  , 0     , 0]     , 
         [0  , b  , 0  , 0  , 0     , c     , 0  , -b , 0  , 0  , 0     , c]     , 
         [0  , 0  , d  , 0  , -e    , 0     , 0  , 0  , -d , 0  , -e    , 0]     , 
@@ -122,52 +130,11 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None):
         [0  , 0  , -e , 0  , g     , 0     , 0  , 0  , e  , 0  , 2 * g , 0]     , 
         [0  , c  , 0  , 0  , 0     , h     , 0  , -c , 0  , 0  , 0     , 2 * h]
         ])
-    # ---
-    # SOURCE: frame3d_6j.m -  Structural analysis of 3d frame by Ace_ventura  - https://se.mathworks.com/matlabcentral/fileexchange/49559-structural-analysis-of-3d-frames
-    # NOTE: compatible with above
-    # GIx=G*Kv;
-    # ke2=[EA/L      0             0             0      0            0            -EA/L 0             0             0      0            0
-    #      0         12*EIz/(L^3)  0             0      0            6*EIz/(L^2)  0     -12*EIz/(L^3) 0             0      0            6*EIz/(L^2)
-    #      0         0             12*EIy/(L^3)  0      -6*EIy/(L^2) 0            0     0             -12*EIy/(L^3) 0      -6*EIy/(L^2) 0
-    #      0         0             0             GIx/L  0            0            0     0             0             -GIx/L 0            0
-    #      0         0             -6*EIy/(L^2)  0      4*EIy/L      0            0     0             6*EIy/(L^2)   0      2*EIy/L      0
-    #      0         6*EIz/(L^2)   0             0      0            4*EIz/L      0     -6*EIz/(L^2)  0             0      0            2*EIz/L
-    #      -EA/L     0             0             0      0            0            EA/L  0             0             0      0            0
-    #      0         -12*EIz/(L^3) 0             0      0            -6*EIz/(L^2) 0     12*EIz/(L^3)  0             0      0            -6*EIz/(L^2)
-    #      0         0             -12*EIy/(L^3) 0      6*EIy/(L^2)  0            0     0             12*EIy/(L^3)  0      6*EIy/(L^2)  0
-    #      0         0             0             -GIx/L 0            0            0     0             0             GIx/L  0            0
-    #      0         0             -6*EIy/(L^2)  0      2*EIy/L      0            0     0             6*EIy/(L^2)   0      4*EIy/L      0
-    #      0         6*EIz/(L^2)   0             0      0            2*EIz/L      0     -6*EIz/(L^2)  0             0      0            4*EIz/L      ]; #formation of element stiffness matrix IN MEMBER AXIS
-
-        # ---
-    # SOURCE: Panzer-Hubele - Generating a Parametric Finite Element Model of a 3D Cantilever Timoshenko Beam Using Matlab
-    # NOTE: compatible with above
-    # Py=0; Pz=0; It=Kv; l=L; Iz=EIz/E; Iy=EIy/E;
-    # K11 = zeros(6,6);
-    # K11(1,1) = E * A/l ;
-    # K11(2,2) = 12 * E * Iz/(l^3 * (1+Py)) ;
-    # K11(2,6) = 6 * E * Iz/(l^2 * (1+Py)) ;
-    # K11(3,3) = 12 * E * Iy/(l^3 * (1+Pz)) ;
-    # K11(3,5) = -6 * E * Iy/(l^2 * (1+Pz)) ;
-    # K11(4,4) = G * It/l ;
-    # K11(5,5) = (4+Pz) * E * Iy/(l * (1+Pz)) ;
-    # K11(5,3) = K11(3,5) ;
-    # K11(6,6) = (4+Py) * E * Iz/(l * (1+Py)) ;
-    # K11(6,2) = K11(2,6) ;
-
-        # K22 = -K11 + 2 * diag(diag(K11));
-    # K21 = K11 - 2 * diag(diag(K11));
-    # K21(5,5) = (2-Pz) * E * Iy/(l * (1+Pz)) ;
-    # K21(6,6) = (2-Py) * E * Iz/(l * (1+Py)) ;
-    # K21(2,6) = -K21(6,2);
-    # K21(3,5) = -K21(5,3);
-    # ke3 = [K11, K21'; K21, K22];
     # ---  Mass matrix
-    # SOURCE: What-When-How-FEM-For-Frames. NOTE: the sign was reveresed in front of 35*r2!!!, to be consistent with Panzer-Hubele with Iy and Iz=0
     a = L / 2
     a2 = a ** 2
     r2 = EIx / E / A
-    me = Mass / 2 / 105 * np.array( [
+    Me = Mass / 2 / 105 * np.array( [
                 [70 , 0       , 0       , 0       , 0       , 0       , 35 , 0       , 0       , 0       , 0       , 0]       , 
                 [0  , 78      , 0       , 0       , 0       , 22 * a  , 0  , 27      , 0       , 0       , 0       , -13 * a] , 
                 [0  , 0       , 78      , 0       , -22 * a , 0       , 0  , 0       , 27      , 0       , 13 * a  , 0]       , 
@@ -182,12 +149,31 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None):
                 [0  , -13 * a , 0       , 0       , 0       , -6 * a2 , 0  , -22 * a , 0       , 0       , 0       , 8 * a2]
                 ])
 
+    # --- Geometrical stiffness matrix
+    Kg= T* np.array([
+        [0 , 0         , 0         , 0 , 0      , 0      , 0 , 0         , 0         , 0 , 0      , 0]      , 
+        [0 , 6./(5*L)  , 0         , 0 , 0      , 1./10  , 0 , -6./(5*L) , 0         , 0 , 0      , 1./10]  , 
+        [0 , 0         , 6./(5*L)  , 0 , -1./10 , 0      , 0 , 0         , -6./(5*L) , 0 , -1./10 , 0]      , 
+        [0 , 0         , 0         , 0 , 0      , 0      , 0 , 0         , 0         , 0 , 0      , 0]      , 
+        [0 , 0         , -1./10    , 0 , 2*L/15 , 0      , 0 , 0         , 1./10     , 0 , -L/30  , 0]      , 
+        [0 , 1./10     , 0         , 0 , 0      , 2*L/15 , 0 , -1./10    , 0         , 0 , 0      , -L/30] , 
+        [0 , 0         , 0         , 0 , 0      , 0      , 0 , 0         , 0         , 0 , 0      , 0]      , 
+        [0 , -6./(5*L) , 0         , 0 , 0      , -1./10 , 0 , 6./(5*L)  , 0         , 0 , 0      , -1./10] , 
+        [0 , 0         , -6./(5*L) , 0 , 1./10  , 0      , 0 , 0         , 6./(5*L)  , 0 , 1./10  , 0]      , 
+        [0 , 0         , 0         , 0 , 0      , 0      , 0 , 0         , 0         , 0 , 0      , 0]      , 
+        [0 , 0         , -1./10    , 0 , -L/30  , 0      , 0 , 0         , 1./10     , 0 , 2*L/15 , 0]      , 
+        [0 , 1./10     , 0         , 0 , 0      , -L/30  , 0 , -1./10    , 0         , 0 , 0      , 2*L/15]
+       ])
+
+
+
     ## Element in global coord
     if (R is not None):
-        RR = np.blkdiag(R,R,R,R)
-        me = np.transpose(RR).dot(me.dot(RR))
-        ke = np.transpose(RR).dot(ke.dot(RR))
-    return ke, me
+        RR = scipy.linalg.block_diag(R,R,R,R)
+        Me = np.transpose(RR).dot(Me).dot(RR)
+        Ke = np.transpose(RR).dot(Ke).dot(RR)
+        Kg = np.transpose(RR).dot(Kg).dot(RR)
+    return Ke, Me, Kg
     
     # ---
     # SOURCE: Panzer-Hubele - Generating a Parametric Finite Element Model of a 3D Cantilever Timoshenko Beam Using Matlab
@@ -216,7 +202,6 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None):
     # M21(5,3) = 13 * l/420 - Iy/(10 * A * l);
     # M21(3,5) = -M21(5,3);
     # me= Mass * [M11, M21'; M21, M22];
-    # keyboard
         #   b=[ ex(2)-ex(1); ey(2)-ey(1); ez(2)-ez(1) ];
     #   L=sqrt(b'*b);  n1=b/L;
     #   lc=sqrt(eo*eo'); n3=eo/lc;
@@ -233,12 +218,10 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,R = None):
     #     An=[n1';
     #         n2;
     #         n3];
-    # #
     #     Grot=[  An     zeros(3) zeros(3) zeros(3);
     #        zeros(3)   An     zeros(3) zeros(3);
     #        zeros(3) zeros(3)   An     zeros(3);
     #        zeros(3) zeros(3) zeros(3)   An    ];
-    #  #
     #     Ke1=Grot'*Kle*Grot;  fe1=Grot'*fle;
 
 
