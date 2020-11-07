@@ -140,8 +140,90 @@ class SID(object):
 # --------------------------------------------------------------------------------}
 # ---  Converters
 # --------------------------------------------------------------------------------{
+def Beam2SID(xNodes, Imodes, m, Iy, Iz, G=None, Kv=None, A=None, E=None, phi=None):
+    from welib.FEM.fem_beam import cbeam_frame3dlin
+    from welib.FEM.fem_beam import applyBC
+    from welib.FEM.fem_beam import orthogonalizeModePair, normalize_to_last
+    from welib.system.eva import eig
+
+    # --- Assembling FEM beam model with frame3dlin
+    MM, KK, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF = cbeam_frame3dlin(xNodes, m, Iy, Iz=Iz, A=A, Kv=Kv, E=E, G=G, phi=phi)
+
+    # --- Constraints/ BC
+    MMr, KKr, Tr = applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC_root=[0,0,0,0,0,0], BC_tip=[1,1,1,1,1,1])
+    iStart= 0; 
+
+    # --- Selections, and orthogonlization of modes 
+    # TODO orthogonalization options
+    [Q, freq]= eig(KKr, MMr, freq_out=True)
+    Imodes_all=[]
+    for Im in Imodes:
+        if type(Im) is tuple:
+            if len(Im) == 2:
+                Q[:,Im[0]],Q[:,Im[1]] = orthogonalizeModePair(Q[:,Im[0]],Q[:,Im[1]], iStart)
+                Imodes_all.append(Im[0])
+                Imodes_all.append(Im[1])
+            else:
+                raise Exception('Only tuples of length 2 accepted for orthogonalization')
+        else:
+            Imodes_all.append(Im)
+
+    Q= normalize_to_last(Q, Imodes_all, iStart);
+    # Selecting modes
+    if len(Imodes)>0:
+        Se= Tr.dot(Q[:, Imodes_all]) # nDOF_tot x nShapes
+    else:
+        Se= Tr # All
+
+    sid = FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF)
+
+    # Additional info
+    sid.Q    = Q
+    sid.freq = freq
+    return sid
+
+
+
+def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF):
+    from welib.FEM.fem_beam import generalizedMassMatrix, shapeIntegrals
+    from welib.FEM.fem_beam import geometricalStiffening
+    from numpy.linalg import inv
+
+    # --- Generalized mass matrix
+    Mtt, J0, Mtr, Mgt, Mgr, Mgg, St, Sr= generalizedMassMatrix(xNodes, MM, Se)
+    Ct0_ = (Tr.T).dot(MM).dot(St) # Mode mass matrix for all modes
+
+    # --- Shape integrals
+    C3, Kr, C4, KFom_ab, Kom, Kom0, Kom0_ = shapeIntegrals(xNodes, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, m, Se, Sr, Tr)
+
+    # --- Stiffening terms
+    Kinv= Tr.dot(inv(KKr)).dot(Tr.T);
+    GKg= geometricalStiffening(xNodes, Kinv, Tr, Se, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, E, A, Kom0_, Ct0_)
+
+    # --- Convert to SID 
+    sid = FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=C4, GKg=GKg)
+
+    # --- Additional info, shape functions and modes
+    sid.C3    = C3
+    sid.C4    = C4
+    sid.Kr    = Kr
+    sid.Kom   = Kom
+    sid.Kom0  = Kom0
+    sid.Kom0_ = Kom0_
+    sid.Sr    = Sr
+    sid.St    = St
+    sid.Se    = Se
+    sid.Mtt=Mtt
+    sid.Mtr=Mtr
+    sid.Mgt=Mgt
+    sid.Mgr=Mgr
+    sid.GKg=GKg
+
+    return sid
+
+
 # --- Populating SID
-def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=dict()):
+def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=dict()):
     from welib.yams.utils import skew 
     # TODO take MM, KK, Tr as inputs
     assert(xNodes.shape[0]==3)
@@ -152,12 +234,11 @@ def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM,
     iMaxDim = np.argmax(np.max(np.abs(xNodes),axis=1)-np.min(np.abs(xNodes),axis=1)) 
 
     # See [2] Table 6.9 S. 346
-    nq = len(Imodes)
+    nq  = Se.shape[1]
     sid=SID(nq=nq)
     sid.refmod.mass= Mtt[0,0]
     for i in np.arange(nq):
-        imode=Imodes[i]
-        sid.refmod.ielastq[i]= 'Eigen Mode {:4d}: {:.3f}Hz'.format(imode,frequency[imode])
+        sid.refmod.ielastq[i]= 'Eigen Mode {:4d}'.format(i)
 
     for i in np.arange(nNodes):
         f=Node(nq=nq)
@@ -264,5 +345,66 @@ def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, Imodes, frequency, xNodes, DCM,
 
     # --- De
     #sid.De.M0= [];
-
     return sid
+
+# --------------------------------------------------------------------------------}
+# ---FAST 2 SID
+# --------------------------------------------------------------------------------{
+def FAST2SID(ed_file, Imodes_twr=None, Imodes_bld=None):
+    import welib.weio as weio
+    import os
+    # --- Read data from ElastoDyn file
+    parentDir=os.path.dirname(ed_file)
+    ed = weio.read(ed_file)
+#     edfile =
+#     if twr:
+
+    twr_sid=None
+    if Imodes_twr is not None:
+        TowerHt = ed['TowerHt']
+        TowerBs = ed['TowerBsHt']
+        TwrFile = ed['TwrFile'].replace('"','')
+        TwrFile=os.path.join(parentDir,TwrFile)
+        twr = weio.FASTInputFile(TwrFile).toDataFrame()
+        z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
+        m   = twr['TMassDen_[kg/m]']               # mu
+        EIy = twr['TwFAStif_[Nm^2]']
+        EIz = twr['TwSSStif_[Nm^2]']               # TODO actually EIx, but FEM beams along x
+        # --- Create Beam FEM model
+        # Derived parameters
+        A  = m*0 + 100       # Area
+        Kv = m*0 + 100       # Saint Venant torsion
+        E  = 214e9     # Young modulus  
+        Iy = EIy/E
+        Iz = EIz/E
+        xNodes = np.zeros((3,len(m)))
+        xNodes[2,:]=z
+
+        twr_sid= Beam2SID(xNodes, Imodes_twr, m, Iy, Iz, Kv=Kv, A=A, E=E)
+
+    bld_sid=None
+    if Imodes_bld is not None:
+        TipRad = ed['TipRad']
+        HubRad = ed['HubRad']
+        BldLen= TipRad-HubRad;
+        BldFile = ed['BldFile(1)'].replace('"','')
+        BldFile=os.path.join(parentDir,BldFile)
+        bld = weio.FASTInputFile(BldFile).toDataFrame()
+        z   = bld['BlFract_[-]']*BldLen + HubRad
+        m   = bld['BMassDen_[kg/m]']               # mu
+        EIy = bld['FlpStff_[Nm^2]']
+        EIz = bld['EdgStff_[Nm^2]']               # TODO actually EIx, but FEM beams along x
+        phi = bld['PitchAxis_[-]']/(180)*np.pi 
+        # --- Derived parameters
+        phi= np.concatenate(([0], np.diff(phi))) #% add phi_abs(1) to pitch angle
+        A  = m*0 + 100       # Area
+        Kv = m*0 + 100       # Saint Venant torsion
+        E  = 214e9     # Young modulus  
+        Iy = EIy/E
+        Iz = EIz/E
+        xNodes = np.zeros((3,len(m)))
+        xNodes[2,:]=z
+        bld_sid= Beam2SID(xNodes, Imodes_bld, m, Iy, Iz, Kv=Kv, A=A, E=E, phi=phi)
+
+    return twr_sid, bld_sid
+
