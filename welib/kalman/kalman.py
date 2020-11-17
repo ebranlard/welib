@@ -136,6 +136,46 @@ def BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=None,Pp=None,Yp=None,Yu=None,Method='de
     return Xx,Xu,Yx,Yu
 
 
+def BuildSystem_Linear_MechOnly(M, C, K, nP=0, nU=0, nY=0, Fp=None):
+    """ 
+    Takes mechanical system matrices, returns state matrices with only the mechanical part filled.
+    The state matrix may be an "augmented matrix" (nP>0)
+    The user will have to fill the entries related to:
+      - the augmented states "p"
+      - the inputs u
+      - the outputs y
+
+    Returns Xu, Yu, Yx as zeros! (to be filled by user)
+
+    - Mechanical equation:
+       M qddot + Cqdot + Kq = Fp.p + Fu.u 
+
+    State/Output Equations
+        xdot = Xx.x + Xu.u + wd
+          y  = Yx.x + Yu.u + wn
+    """
+    nDOF = M.shape[0]
+    Z    = np.zeros((nDOF,nDOF))
+    Znnp = np.zeros((nDOF,nP  ))
+    Znpn = np.zeros((nP  ,nDOF))
+    I    = np.eye(nDOF)
+    mM_K = np.linalg.solve(-M,K)
+    mM_C = np.linalg.solve(-M,C)
+    if Fp is not None:
+        M_Fp  = np.linalg.solve(M,Fp)
+    else:
+        M_Fp = np.zeros((nDOF,nP))  # NOTE: to be filled by user
+    Pp   = np.zeros((nP  ,nP))  # NOTE: to be filled by user
+    Xx = np.block( [ [Z, I ,Znnp] , [mM_K, mM_C, M_Fp], [Znpn, Znpn, Pp] ])
+
+    Xu = np.zeros((2*nDOF+nP,nU))# NOTE: to be filled by user
+    Yx = np.zeros((nY,2*nDOF+nP))  # NOTE: to be filled by user
+    Yu = np.zeros((nY,nU))       # NOTE: to be filled by user
+
+    return Xx,Xu,Yx,Yu
+
+
+
 
 def EmptyStateMat(nX,nU,nY):
     """ Returns state matrices with proper dimensions, filled with 0 """

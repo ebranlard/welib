@@ -115,26 +115,17 @@ class KalmanFilterTN(KalmanFilter):
         # --- Estimate sigmas from measurements
         sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
 
-    def prepareTimeStepping(KF):
-        # --- Process and measurement covariances
-        KF.P, KF.Q, KF.R = KF.covariancesFromSig()
-        # --- Storage for plot
-        KF.initTimeStorage()
-
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, nFilt=15):
         # --- Creating noise measuremnts
         KF.setYFromClean(R=KF.R, NoiseRFactor=NoiseRFactor)
         if bFilterAcc:
             KF.set_vY('TTacc',  moving_average(KF.get_vY('TTacc'),n=nFilt) )
 
-
-
     def timeLoop(KF):
         # --- Initial conditions
         x = KF.initFromClean()
         P = KF.P
 
-        iY={lab: i   for i,lab in enumerate(KF.sY)}
         for it in range(0,KF.nt-1):    
             # --- "Measurements"
             y  = KF.Y[:,it]
@@ -316,7 +307,7 @@ class KalmanFilterTN(KalmanFilter):
         except:
             pass
         #                                         
-    def plot_moments(KF,fig=None):
+    def plot_moments(KF,fig=None,scaleByMean=False):
         import matplotlib
         import matplotlib.pyplot as plt
 
@@ -332,8 +323,12 @@ class KalmanFilterTN(KalmanFilter):
         fig.set_size_inches(6.4,15.0,forward=True) # default is (6.4,4.8)
         for i,z in enumerate(z_test):
             ax = fig.add_subplot(n,1,i+1)
+            M_sim =KF.M_sim[i]
+            if scaleByMean:
+                M_sim+=-np.mean(KF.M_sim[i])+np.mean(KF.M_ref[i])
+            
             ax.plot (KF.time, KF.M_ref[i], 'k-', color='k',       label='Reference' , lw=1)
-            ax.plot (KF.time, KF.M_sim[i], '--', color=COLRS[i],label='Estimation', lw=0.8)
+            ax.plot (KF.time,    M_sim   , '--', color=COLRS[i],label='Estimation', lw=0.8)
             ax.set_ylabel('My z={:.1f}'.format(z))
             ax.tick_params(direction='in')
 #             if ii<2:

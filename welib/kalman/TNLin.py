@@ -163,19 +163,11 @@ class KalmanFilterTNLin(KalmanFilter):
         # --- Estimate sigmas from measurements
         sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
 
-    def prepareTimeStepping(KF):
-        # --- Process and measurement covariances
-        KF.P, KF.Q, KF.R = KF.covariancesFromSig()
-        # --- Storage for plot
-        KF.initTimeStorage()
-
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, nFilt=15):
         # --- Creating noise measuremnts
         KF.setYFromClean(R=KF.R, NoiseRFactor=NoiseRFactor)
         if bFilterAcc:
             KF.set_vY('TTacc',  moving_average(KF.get_vY('TTacc'),n=nFilt) )
-
-
 
     def timeLoop(KF):
         # --- Initial conditions
@@ -189,9 +181,6 @@ class KalmanFilterTNLin(KalmanFilter):
         
         KF.X_hat[:,0]   = x
         P = KF.P
-
-        iY={lab: i   for i,lab in enumerate(KF.sY)}
-
 
         WSavg      = np.zeros((50,1))
         WSavg[:]=WS_last

@@ -7,7 +7,7 @@ class KalmanFilter(object):
         self.sXa = sXa
         self.sU  = sU
         self.sY  = sY
-        self.sS  = sS # Storage
+        self.sS  = sS # Storage, "Misc" values
 
         #  State vector is States and Augmented states
         self.sX=np.concatenate((self.sX0,self.sXa))
@@ -206,7 +206,52 @@ class KalmanFilter(object):
         return np.zeros(self.nX)
 
 
+    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]'):
+        """" 
+         - Open a simulation result file
+         - Use dt to discretize the KF
+         - Define clean values of measurements and states based on simulation
+         - Define sigmas from the std of the clean signals
+        
+        """
+        import welib.fast.fastlib as fastlib 
+        import welib.weio as weio
+
+        # --- Loading "Measurements"
+        df=weio.read(measFile).toDataFrame()
+        df=df.iloc[::nUnderSamp,:]                      # reducing sampling
+        if tRange is not None:
+            df=df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
+        time = df[timeCol].values
+        dt   = (time[-1] - time[0])/(len(time)-1)
+        KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False)
+
+        # --- 
+        KF.discretize(dt, method='exponential')
+        KF.setTimeVec(time)
+        KF.setCleanValues(KF.df)
+
+        # --- Estimate sigmas from measurements
+        sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
+
+    def prepareTimeStepping(KF):
+        # --- Process and measurement covariances
+        KF.P, KF.Q, KF.R = KF.covariancesFromSig()
+        # --- Storage for plot
+        KF.initTimeStorage()
+
+
     def setYFromClean(self,NoiseRFactor=None,y_bias=None,R=None):
+        """ 
+        Create y vector from "clean" y values (when available with simulations for instance)
+        Possibilty to add a constant bias
+
+          y_bias: nY vector of bias for each measurements
+
+          R : covariance matrix
+          NoiseRFactor : factor for covariance matrix
+
+        """
         if y_bias is None:
             y_bias = np.zeros(self.nY)
 
