@@ -12,8 +12,8 @@ NOTE: test not ready
 """ 
 import numpy as np
 import unittest
-
-from sympy import Symbol, parse_expr
+from sympy import Symbol
+from sympy.parsing.sympy_parser import parse_expr
 from welib.yams.models.FTNSB_sympy import get_model
 from welib.yams.models.FTNSB_sympy_symbols import *
 
