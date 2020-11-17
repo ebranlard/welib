@@ -960,11 +960,17 @@ def kane_frstar_alt(bodies, coordinates, speeds, kdeqs, inertial_frame, uaux=Mat
     #self._f_d = -msubs(self._fr + self._frstar, udot_zero)
     return fr_star, MM, MM_full
 
-def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame, Omega_Subs=[(None,None)], Mform='TaylorExpanded'):
+def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame, 
+        Omega_Subs=[(None,None)], Mform='TaylorExpanded', addGravity=False, g_vect=None):
     """ 
     coordinates "q"
     speeds      "u"
     kdeqs:   relates qdot and udot
+
+
+    Computes Jv and Jo at a reference point:
+      - For rigid bodies centere of mass
+      - For flexible bodies origin
     
     """ 
     from sympy.physics.vector import partial_velocity
@@ -1036,7 +1042,7 @@ def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame, Omeg
             # --- Mass Matrix 
             for j in range(nq):
                 tmp_vel = Jv_vect[j]      # Jv[:,j]
-                tmp_ang = I & Jo_vect[j]  # Jo[:,j]
+                tmp_ang = I & Jo_vect[j]  # I Jo[:,j]
                 for k in range(nq):
                     # translational
                     bodyMM[j, k] += M * (tmp_vel & Jv_vect[k]) # M * Jv[:,j] dot Jv[:,k]
@@ -1062,9 +1068,12 @@ def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame, Omeg
             #frstar_o+ = Jo.transpose() * inertial_torque
 
         elif isinstance(body,YAMSFlexibleBody):
+            if addGravity:
+                acc=acc-g_vect
             MMloc = body.bodyMassMatrix(form=Mform)
             body.h_omega = body.bodyQuadraticForce(omega.to_matrix(body.frame), body.q, body.qdot)
             body.h_elast = body.bodyElasticForce(body.q, body.qdot)
+            #  Inertial forces and torques at the body origin (wher Jv and Jo were computed)
             inertial_force=0 # Fstar
             inertial_torque=0 # Tstar
             inertial_force_coord =MMloc[0:3,0:3] * acc.to_matrix(body.frame) 
@@ -1095,7 +1104,7 @@ def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame, Omeg
                     if q[j] == body.q[k]:
                         bodynonMM[j] +=  inertial_elast_coord[k]
             bnMMSubs = msubs(bodynonMM, q_ddot_u_map)
-            bodyMM = bnMMSubs.jacobian(udot)
+            bodyMM = bnMMSubs.jacobian(udot) # TODO why not using MMloc????? <<<<<<
 
         else:
             raise Exception('Unsupported body type: {}'.format(type(body)))

@@ -24,6 +24,7 @@ init_vprinting(use_latex='mathjax', pretty_print=False)
 
 display=lambda x: sympy.pprint(x, use_unicode=False,wrap_line=False)
 
+
 __all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody']
 __all__+= ['Body','RigidBody','GroundBody'] # Old implementation
 __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
@@ -110,6 +111,7 @@ def DCMtoOmega(DCM, ref_frame=None):
         return (OmSkew[2,1], OmSkew[0,2], OmSkew[1,0])
     else:
         return OmSkew[2,1] * ref_frame.x + OmSkew[0,2]*ref_frame.y + OmSkew[1,0] * ref_frame.z
+
 
 
 # --------------------------------------------------------------------------------}
@@ -254,6 +256,7 @@ class YAMSBody(object):
         s+=' - origin:       {}\n'.format(self.origin)
         s+=' - frame:        {}\n'.format(self.frame)
         return s
+
         
     def ang_vel_in(self,frame_or_body):
         """ Angular velocity of body wrt to another frame or body
@@ -272,10 +275,10 @@ class YAMSBody(object):
         child.parent = parent
         parent.children.append(child)
         if isinstance(parent, YAMSInertialBody):
-            parent.inertial_frame = parent.frame
-            child.inertial_frame = parent.frame
+            parent.inertial_frame  = parent.frame
+            child.inertial_frame   = parent.frame
             parent.inertial_origin = parent.origin
-            child.inertial_origin = parent.origin
+            child.inertial_origin  = parent.origin
         else:
             if parent.inertial_frame is None:
                 raise Exception('Parent body was not connected to an inertial frame. Bodies needs to be connected in order, starting from inertial frame.')
@@ -323,8 +326,9 @@ class YAMSBody(object):
             if rot_amounts is None:
                 raise Exception('rot_amounts needs to be provided with Joint connection')
             for d in rot_amounts:
-                if d!=0 and not exprHasFunction(d):
-                    raise Exception('Rotation amount variable should be a dynamic variable for a joint connection, variable: {}'.format(d))
+                if d!=0 and d!=1 and not exprHasFunction(d):
+                    print('>>> WARNING: Rotation amount variable is not a dynamic variable for joint connection, variable: {}'.format(d))
+                    #raise Exception('Rotation amount variable should be a dynamic variable for a joint connection, variable: {}'.format(d))
         else:
             raise Exception('Unsupported joint type: {}'.format(type))
 
@@ -657,6 +661,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     def inertia_matrix(self):
         """ Returns inertia matrix in body frame"""
         return self.inertia[0].to_matrix(self.frame)
+
     
     def __repr__(self):
         s=YAMSBody.__repr__(self)
@@ -666,6 +671,19 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         s+=' - masscenter:   {}\n'.format(self.masscenter)
         s+='   (position from origin: {})\n'.format(self.masscenter.pos_from(self.origin))
         return s
+
+    def noInertia(self):
+        """ set inertia to zero"""
+        self.inertia=(inertia(self.frame, 0,0,0), self._inertia_point)
+
+    def noMass(self):
+        """ set inertia to zero"""
+        self.mass=0
+
+    #def zeroOrigin(self):
+    #    """ set origin to zero"""
+    #    self.origin.set_pos=(0,0,0)
+
         
 class RigidBody(Body):
     def __init__(B, Name, Mass, J_G, rho_G):
@@ -855,7 +873,7 @@ class YAMSFlexibleBody(YAMSBody):
         
         if form=='TaylorExpanded':
             # k_omega_t
-            k_omega[0:3,0] = 2 *om_til * transpose(self.Ct.eval(q)) * qd
+            k_omega[0:3,0] = 2 *om_til * transpose(self.Ct.eval(q)) * qd # TODO does star work? or dot!
             k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega
             # k_omega_r
             k_omega[3:6,0] = om_til * self.J.eval(q) * omega
@@ -881,6 +899,40 @@ class YAMSFlexibleBody(YAMSBody):
         ke = Matrix(np.zeros((6+nq,1)).astype(int)) 
         ke[6:6+nq,0] = self.Ke.eval(q)*q + self.De.eval(q)*qd
         return ke
+
+    def bodyGravitationalForce(self, g_vect, q, form='TaylorExpanded'):
+        """ Body gravity force  h_g  
+        inputs:
+           g_vect: gravity vector, expressed in body coordinates
+           q: generalied coordinates for this body
+        """
+        # --- Safety
+        q     = ensureMat(q , len(q), 1)
+        g_vect = ensureMat(g_vect, 3, 1)
+        nq=len(self.q)
+        if len(q)!=nq:
+            raise Exception('Inconsistent dimension between q ({}) and body nq ({}) for body {}'.format(len(q),nq,self.name))
+            
+        # --- Init
+        M33 = Matrix(np.zeros((3,3)))
+        M33[0,0] = self.mass
+        M33[1,1] = self.mass
+        M33[2,2] = self.mass
+
+        h_g = Matrix(np.zeros((6+nq,1)).astype(int)) 
+        if form=='TaylorExpanded':
+            # h_g,t
+            h_g[0:3,0] = M33.dot(g_vect)
+            # h_g,t
+            h_g[3:6,0] =  skew(self.mdCM.eval(q)).dot(g_vect)
+            # h_g_e
+            h_g[6:6+nq,0] =  (self.Ct.eval(q)).dot(g_vect)
+        else:
+            raise NotImplementedError()
+
+        return h_g
+
+
     
     def connectTo(parent, child, type, rel_pos, rot_type='Body', rot_amounts=None, rot_order=None, rot_order_elastic='XYZ', rot_type_elastic='SmallRot', doSubs=True):
         """
@@ -901,7 +953,7 @@ class YAMSFlexibleBody(YAMSBody):
         
         """
         rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
-        # Computing DCM due to elasti motion
+        # Computing DCM due to elastic motion
         M_B2e = rotToDCM(rot_type_elastic, rot_amounts = parent.alpha, rot_order=rot_order_elastic) # from parent to deformed parent 
         # Insert elastic DOF
         if doSubs:
