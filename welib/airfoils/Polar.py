@@ -484,6 +484,7 @@ class Polar(object):
                 dwin = np.radians(dwin)
         cl = self.cl
         cd = self.cd
+        cl[np.abs(cl)<1e-10]=0
         alpha = self.alpha
 
         if self._radians:
@@ -1019,7 +1020,10 @@ def _find_alpha0(alpha,coeff,window):
     coeff  = coeff[iwindow]
     alpha_zc,i_zc = _zero_crossings(x=alpha,y=coeff,direction='up')
     if len(alpha_zc)>1:
-        raise Exception('Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
+        print('WARN: Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
+        print('>>> Using second zero')
+        alpha_zc=alpha_zc[1:]
+        #raise Exception('Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
     elif len(alpha_zc)==0:
         raise Exception('Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(window[0],window[1]))
 
