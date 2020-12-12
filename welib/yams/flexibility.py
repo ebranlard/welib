@@ -138,7 +138,7 @@ def GKBeam(s_span, EI, ddU, bOrth=False):
     KK0[6:,6:] = Kgg
     return KK0
     
-def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None):
+def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False):
     """
     Computes generalized mass matrix for a beam.
     Eq.(2) from [1]
@@ -157,6 +157,8 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
      - bOrth : if true, enforce orthogonality of modes
      - JxxG, if omitted, assumed to be 0 # TODO
      - U , if omitted, then rigid body (6x6) mass matrix is returned
+     - split_outputs: if false (default) return MM, else returns Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
+     - rot_terms : if True, outputs the rotational terms as well
     
     """
     # Speed up integration along the span, using integration weight
@@ -196,7 +198,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     Mxx = np.identity(3)*M
     #print('Mxx\n',Mxx)
 
-    # --- Mxt = -\int [~s] dm    =  -Skew(sigma+Psi g)
+    # --- Mxt = -\int [~s] dm    =  -Skew(sigma+Psi g)    Or: +/- Skew(mdCM)
     C_x = trapzs(s_G[0,:]*m)
     C_y = trapzs(s_G[1,:]*m)
     C_z = trapzs(s_G[2,:]*m)
@@ -218,7 +220,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
             Mxt[2,1]=-trapzs(V_tot[0,:]*FT) # m16
     #print('Mxt\n',Mxt)
 
-    # --- Mxg = \int Phi dm  =   Psi
+    # --- Mxg = \int Phi dm     Or:  Psi , Ct^T
     Mxg      = np.zeros((3,nf))
     for j in range(nf):
         Mxg[0,j] = trapzs(U[j][0,:]*m)
@@ -246,7 +248,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
             raise Exception('Please provide Vtot of Peq_tot for axial correction');
     #print('Mxg\n',Mxg)
         
-    # --- Mtt = - \int [~s][~s] dm
+    # --- Mtt = - \int [~s][~s] dm  - Or: J, Mrr
     if main_axis=='x':
         if bUseIW:
             s00= np.sum(IW_xm * s_G[0,:]);
@@ -284,12 +286,15 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         Mtt[2,2] += Jxx
     #print('Mtt\n',Mtt)
 
-    # --- Mtg  = \int [~s] Phi dm  
+    # --- Mtg  = \int [~s] Phi dm -  Or: Mrg, Cr^T
+    # [~s]=[ 0 -z  y]
+    #      [ z  0 -x]
+    #      [-y  x  0]
     Mtg      = np.zeros((3,nf))
     if main_axis=='x':
         if bUseIW:
             for j in range(nf):
-                Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m) + I_Jxx[j]
+                Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m) + I_Jxx[j]
                 Mtg[1,j] = trapzs(  (+s_G[2,:]*U[j][0,:]*m)) - sum(IW_xm*U[j][2,:]);
                 Mtg[2,j] = trapzs(  (-s_G[1,:]*U[j][0,:]*m)) + sum(IW_xm*U[j][1,:]);
         else:
@@ -300,9 +305,9 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     elif main_axis=='z':
         if bUseIW:
             for j in range(nf):
-                Mtg[0,j] = trapzs((-sum(IW_xm*U[j][1,:]) + s_G[1,:]*U[j][2,:])*m) 
-                Mtg[1,j] = trapzs(( sum(IW_xm*U[j][0,:]) - s_G[0,:]*U[j][2,:])*m)
-                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)+ I_Jxx[j]
+                Mtg[0,j] = -sum(IW_xm*U[j][1,:])+trapzs((+ s_G[1,:]*U[j][2,:])*m) 
+                Mtg[1,j] =  sum(IW_xm*U[j][0,:])+trapzs((- s_G[0,:]*U[j][2,:])*m)
+                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:]   + s_G[0,:]*U[j][1,:])*m)+ I_Jxx[j]
         else:
             for j in range(nf):
                 Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m) 
@@ -311,7 +316,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
     #print('Mtg\n',Mtg)
         
-    # --- Mgg  = \int Phi^t Phi dm  =  Sum Upsilon_kl(i,i)
+    # --- Mgg  = \int Phi^t Phi dm  =  Sum Upsilon_kl(i,i)  Or: Me
     Mgg = np.zeros((nf,nf))
     for i in range(nf):
         for j in range(nf):
@@ -331,7 +336,60 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
     i_lower     = np.tril_indices(len(MM), -1)
     MM[i_lower] = MM.T[i_lower]
-    return MM
+
+
+
+    # --- Additional shape functions
+    if rot_terms:
+        # --- Gr_j = - 2*\int [~s] [~Phi_j]
+        Gr = np.zeros((nf,3,3))
+
+        # --- Oe_j = \int [~Phi_j] [~s] = { \int [~s] [~Phi_j] }^t = -1/2 *(Gr_j)^t
+        Oe = np.zeros((nf,3,3))
+        Oe6= np.zeros((nf,6))
+
+        for j in range(nf):
+            sxx = trapzs(s_G[0,:]*U[j][0,:]*m)
+            sxy = trapzs(s_G[0,:]*U[j][1,:]*m)
+            sxz = trapzs(s_G[0,:]*U[j][2,:]*m)
+            syx = trapzs(s_G[1,:]*U[j][0,:]*m)
+            syy = trapzs(s_G[1,:]*U[j][1,:]*m)
+            syz = trapzs(s_G[1,:]*U[j][2,:]*m)
+            szx = trapzs(s_G[2,:]*U[j][0,:]*m)
+            szy = trapzs(s_G[2,:]*U[j][1,:]*m)
+            szz = trapzs(s_G[2,:]*U[j][2,:]*m)
+            Gr[j][0,:] = 2*np.array([ syy+szz, -syx  , -szx     ])
+            Gr[j][1,:] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
+            Gr[j][2,:] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
+
+            Oe[j] = -0.5*Gr[j].T
+            Oe6[j][0] = Oe[j][0,0]
+            Oe6[j][1] = Oe[j][1,1]
+            Oe6[j][2] = Oe[j][2,2]
+            Oe6[j][3] = Oe[j][0,1] + Oe[j][1,0]
+            Oe6[j][4] = Oe[j][1,2] + Oe[j][2,1]
+            Oe6[j][5] = Oe[j][0,2] + Oe[j][2,0]
+
+        # --- Ge_j = - 2*\int [Phi]^t  [~Phi_j]
+        # [Phi]: 3xnf
+        Ge = np.zeros((nf,nf,3))
+        for j in range(nf):
+            for k in range(nf):
+                Ge[j][k,0] = -2*( trapzs(U[k][1,:]*U[j][2,:]*m) - trapzs(U[k][2,:]*U[j][1,:]*m))
+                Ge[j][k,1] = -2*(-trapzs(U[k][0,:]*U[j][2,:]*m) + trapzs(U[k][2,:]*U[j][0,:]*m))
+                Ge[j][k,2] = -2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))
+
+
+    if split_outputs:
+        if rot_terms:
+            return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6
+        else:
+            return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
+    else:
+        if rot_terms:
+            return MM, Gr, Ge, Oe, Oe6
+        else:
+            return MM
 
 
 
