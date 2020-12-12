@@ -20,9 +20,14 @@ from sympy.physics.mechanics import Point, ReferenceFrame, inertia, dynamicsymbo
 from sympy.physics.mechanics.functions import msubs
 
 from sympy.physics.vector import init_vprinting, vlatex
-init_vprinting(use_latex='mathjax', pretty_print=False)
 
-display=lambda x: sympy.pprint(x, use_unicode=False,wrap_line=False)
+# Local
+from welib.yams.yams_sympy_tools import exprHasFunction
+
+
+#init_vprinting(use_latex='mathjax', pretty_print=False)
+#
+#display=lambda x: sympy.pprint(x, use_unicode=False,wrap_line=False)
 
 
 __all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody']
@@ -223,13 +228,6 @@ class Connection():
                 R      = np.dot(R , Rj )
                 j.R_ci = Matrix(np.dot(R, j.R_ci_0 ))
 
-def exprHasFunction(expr):
-    """ return True if a sympy expression contains a function"""
-    if hasattr(expr, 'atoms'): 
-        return len(expr.atoms(Function))>0
-    else:
-        return False
-
 
 
 # --------------------------------------------------------------------------------}
@@ -255,9 +253,118 @@ class YAMSBody(object):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
         s+=' - origin:       {}\n'.format(self.origin)
         s+=' - frame:        {}\n'.format(self.frame)
+        s+=' - inertial_frame: {} \n'.format(self.inertial_frame)
+        try:
+            posI=self.pos_global
+        except:
+            posI = 'unknown'
+        try:
+            omI=self.omega_inertial
+        except:
+            omI = 'unknown'
+        try:
+            omP=self.omega_parent
+        except:
+            omP = 'unknown'
+        try:
+            velI=self.vel_inertial
+        except:
+            velI = 'unknown'
+        try:
+            velP=self.vel_parent
+        except:
+            velP = 'unknown'
+        try:
+            accI=self.acc_inertial
+        except:
+            accI = 'unknown'
+        try:
+            rotaccI=self.ang_acc_inertial
+        except:
+            rotaccI = 'unknown'
+
+            # --- Step 3/4: Velocities and accelerations
+            #if not isinstance(body, Particle):
+            #    alpha = omega.diff(t, N)
+            #OmSkew = (R.diff(t) *  R.transpose()).simplify()
+            #omega_ident = OmSkew[2,1] * N.x + OmSkew[0,2]*N.y + OmSkew[1,0] * N.z
+
+        s+=' * pos_global:     {} (origin)\n'.format(posI)
+        s+=' * vel_inertial:   {} (origin)\n'.format(velI)
+        s+=' * vel_parent:     {} (origin)\n'.format(velP)
+        s+=' * omega_inertial: {} \n'.format(omI)
+        s+=' * omega_parent:   {} \n'.format(omP)
+        s+=' * acc_inertial:   {} (origin)\n'.format(accI)
+        s+=' * ang_acc_inertial:{} (origin)\n'.format(rotaccI)
+        s+=' * R_b2g, R_g2b, _alt'
         return s
 
-        
+    # --------------------------------------------------------------------------------}
+    # --- Useful getters
+    # --------------------------------------------------------------------------------{
+    @property
+    def pos_global(self):
+        """ return velocity of origin in inertial frame """
+        return self.origin.pos_from(self.inertial_origin)
+
+    @property
+    def vel_inertial(self):
+        """ return velocity of origin in inertial frame """
+        return self.origin.vel(self.inertial_frame)
+    @property
+    def vel_inertial_alt(self):
+        """ return velocity of origin in inertial frame, alternative formulation dr/dt """
+        return  self.pos_global.diff(dynamicsymbols._t, self.inertial_frame) # dr/dt
+
+    @property
+    def vel_parent(self):
+        """ return velocity of origin in parent frame """
+        return self.origin.vel(self.parent.frame)
+
+    @property
+    def omega_inertial(self):
+        """ return rotational velocity of body in inertial frame """
+        # NOTE: in kane omega = zero_uaux(body.frame.ang_vel_in(N))
+        return self.ang_vel_in(self.inertial_frame)
+    @property
+    def omega_inertial_alt(self):
+        """ return rotational velocity of body in inertial frame, alternative formulation """
+        R      = self.R_b2g
+        N      = self.inertial_frame
+        OmSkew = R.diff(dynamicsymbols._t) *  R.transpose() # dR/dt * R^t
+        return OmSkew[2,1] * N.x + OmSkew[0,2]*N.y + OmSkew[1,0] * N.z
+
+    @property
+    def omega_parent(self):
+        """ return rotational velocity of body wrt parent frame """
+        return self.ang_vel_in(self.parent.frame)
+    
+    @property
+    def acc_inertial(self):
+        """ return acceleration velocity of body in inertial frame """
+        # NOTE: in kane: acc = zero_udot_uaux(P.acc(N))
+        return self.origin.acc(self.inertial_frame)
+    @property
+    def acc_inertial_alt(self):
+        """ return acceleration velocity of body in inertial frame, alternative formulation, acc= dr^2/dt^2 """
+        return self.pos_global.diff(dynamicsymbols._t, self.inertial_frame).diff(dynamicsymbols._t,self.inertial_frame)
+
+    @property
+    def ang_acc_inertial(self):
+        """ return acceleration velocity of body in inertial frame """
+        return self.ang_acc_in(self.inertial_frame)
+
+
+    @property
+    def R_b2g(self):
+        """ Transformation matrix from body to global """
+        return self.inertial_frame.dcm(self.frame)  # from body to global
+
+    @property
+    def R_g2b(self):
+        """ Transformation matrix from global to body """
+        return self.R_b2g.transpose() 
+
     def ang_vel_in(self,frame_or_body):
         """ Angular velocity of body wrt to another frame or body
         This is just a wrapper for the ReferenceFrame ang_vel_in function
@@ -269,7 +376,22 @@ class YAMSBody(object):
                 return self.frame.ang_vel_in(frame_or_body.frame)
             else:
                 raise Exception('Unknown class type, use ReferenceFrame of YAMSBody as argument')
+
+    def ang_acc_in(self,frame_or_body):
+        """ Angular acceleration of body wrt to another frame or body
+        This is just a wrapper for the ReferenceFrame ang_acc_in function
+        """
+        if isinstance(frame_or_body,ReferenceFrame):
+            return self.frame.ang_acc_in(frame_or_body)
+        else:
+            if issubclass(type(frame_or_body),YAMSBody):
+                return self.frame.ang_acc_in(frame_or_body.frame)
+            else:
+                raise Exception('Unknown class type, use ReferenceFrame of YAMSBody as argument')
                 
+    # --------------------------------------------------------------------------------}
+    # --- Connection between bodies
+    # --------------------------------------------------------------------------------{
     def connectTo(parent,child,type='Rigid', rel_pos=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False):
         # register parent/child relationship
         child.parent = parent
@@ -662,15 +784,55 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         """ Returns inertia matrix in body frame"""
         return self.inertia[0].to_matrix(self.frame)
 
+    @property
+    def masscenter_pos_global(self):
+        """ return masscenter position from inertial frame """
+        return self.masscenter.pos_from(self.inertial_origin)
+
+    @property
+    def masscenter_pos_local(self):
+        """ return masscenter position in body coordinate """
+        return self.masscenter.pos_from(self.origin)
+
+    @property
+    def masscenter_vel_inertial(self):
+        """ return velocity of masscenter in inertial frame """
+        return self.masscenter.vel(self.inertial_frame)
+
+    @property
+    def masscenter_acc_inertial(self):
+        """ return acceleration velocity of body COG in inertial frame """
+        return self.masscenter.acc(self.inertial_frame)
+
     
     def __repr__(self):
         s=YAMSBody.__repr__(self)
         s+=' - mass:         {}\n'.format(self.mass)
-        s+=' - inertia:      {}\n'.format(self.inertia[0].to_matrix(self.frame))
+        s+=' * inertia_matrix: {}\n'.format(self.inertia_matrix)
         s+='   (defined at point {})\n'.format(self.inertia[1])
         s+=' - masscenter:   {}\n'.format(self.masscenter)
-        s+='   (position from origin: {})\n'.format(self.masscenter.pos_from(self.origin))
+        try:
+            s+=' * masscenter_pos_global:   {}\n'.format(self.masscenter_pos_global)
+        except:
+            s+=' * masscenter_pos_global:   {}\n'.format('unknown')
+        try:
+            s+=' * masscenter_pos_local:    {}\n'.format(self.masscenter_pos_local)
+        except:
+            s+=' * masscenter_pos_local:    {}\n'.format('unknown')
+        try:
+            s+=' * masscenter_vel_inertial: {}\n'.format(self.masscenter_vel_inertial)
+        except:
+            s+=' * masscenter_vel_inertial: {}\n'.format('unknown')
+        try:
+            s+=' * masscenter_acc_inertial: {}\n'.format(self.masscenter_acc_inertial)
+        except:
+            s+=' * masscenter_acc_inertial: {}\n'.format('unknown')
+
+        s+='Useful getters: origin_inertia, inertia_matrix\n'
+        s+='Useful setters: noMass, noInertia, setGcoord\n'
         return s
+
+
 
     def noInertia(self):
         """ set inertia to zero"""
@@ -700,7 +862,7 @@ class RigidBody(Body):
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None):
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2):
         YAMSBody.__init__(self,name)
         self.name=name
         self.L= symbols('L_'+name)
@@ -716,15 +878,15 @@ class YAMSFlexibleBody(YAMSBody):
             self.qddot.append(diff(self.qdot[i],t))
         # --- Mass matrix related
         self.mass=symbols('M_{}'.format(name))
-        self.J   = Taylor(self.name,'J'  , 3 , 3, nq=nq, rname='xyz', cname='xyz')
-        self.Ct  = Taylor(self.name,'C_t', nq, 3, nq=nq, rname=None , cname='xyz')
-        self.Cr  = Taylor(self.name,'C_r', nq, 3, nq=nq, rname=None , cname=['x','y','z'])
-        self.Me  = Taylor(self.name,'M_e', nq, nq, nq=nq, rname=None , cname=None)
-        self.mdCM= Taylor(self.name,'M_d', 3,  1,  nq=nq, rname='xyz', cname=[''])
+        self.J   = Taylor(self.name,'J'  , 3 , 3, nq=nq, rname='xyz', cname='xyz', order=orderMM)
+        self.Ct  = Taylor(self.name,'C_t', nq, 3, nq=nq, rname=None , cname='xyz', order=orderMM)
+        self.Cr  = Taylor(self.name,'C_r', nq, 3, nq=nq, rname=None , cname=['x','y','z'], order=orderMM)
+        self.Me  = Taylor(self.name,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM)
+        self.mdCM= Taylor(self.name,'M_d', 3,  1,  nq=nq, rname='xyz', cname=[''], order=orderMM)
         # --- h-omega related terms
-        self.Gr = Taylor(self.name, 'G_r', 3,  3,  nq=nq, rname='xyz', cname='xyz')
-        self.Ge = Taylor(self.name, 'G_e', nq, 3,  nq=nq, rname=None, cname='xyz')
-        self.Oe = Taylor(self.name, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'])
+        self.Gr = Taylor(self.name, 'G_r', 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
+        self.Ge = Taylor(self.name, 'G_e', nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
+        self.Oe = Taylor(self.name, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH)
         # --- Stiffness and damping
         self.Ke  = Taylor(self.name,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
         self.De  = Taylor(self.name,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
@@ -734,6 +896,8 @@ class YAMSFlexibleBody(YAMSBody):
         self.origin = Point('O_'+self.name)
         # Properties from Rigid body
         # inertia
+
+        self.shapeNormSubs= [(v,1) for v in self.ucList]
         
         # NOTE: masscenter put at origin for flexible bodies for now
         self.masscenter.set_pos(self.origin, 0*self.frame.x)
@@ -950,15 +1114,26 @@ class YAMSFlexibleBody(YAMSBody):
         s_PC0 : vector from parent origin to child origin when undeflected
         
         s_PC = s_PC0 + u
+
+        NOTE:
+          - by default rot_type_elatic is "SmallRot" 
+                e.g. 
+                   R_b2g = [ 1     0  nu*q ]
+                           [ 0     1    0  ]
+                           [-nu*q  0    1  ]
         
+          - by default doSubs is True
+              alpha_y - > nu y*q 
         """
         rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
         # Computing DCM due to elastic motion
         M_B2e = rotToDCM(rot_type_elastic, rot_amounts = parent.alpha, rot_order=rot_order_elastic) # from parent to deformed parent 
+        print('M_B2e',M_B2e)
         # Insert elastic DOF
         if doSubs:
             rel_pos = [r.subs(parent.ucSubs) for r in rel_pos]
             M_B2e   = M_B2e.subs(parent.alphaSubs)
+        print('M_B2e',M_B2e)
         # Full DCM
         if rot_amounts is None:
             M_c2B = M_B2e.transpose()

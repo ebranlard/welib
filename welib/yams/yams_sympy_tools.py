@@ -3,7 +3,9 @@ Tools for yams_sympy
 """
 
 import numpy as np
-from sympy import latex, python
+from sympy import latex, python, symarray, diff
+from sympy import Function
+from sympy.physics.vector import dynamicsymbols
 
 def frame_viz(Origin, frame, l=1, r=0.08):
     """ """
@@ -28,45 +30,84 @@ def frame_viz(Origin, frame, l=1, r=0.08):
     return X_viz_frame, Y_viz_frame, Z_viz_frame
 
 
+def exprHasFunction(expr):
+    """ return True if a sympy expression contains a function"""
+    if hasattr(expr, 'atoms'): 
+        return len(expr.atoms(Function))>0
+    else:
+        return False
 
-def linearize(expr, x0, order=1):
+
+def subs_no_diff(expr, subslist):
+    """ 
+    Perform sustitution in an expression, but not in the time derivatives
+    Only works if Subslist is a simple lists of ( var, value) 
+
+
+    see also: sympy.physics.mechanics.functions.msubs
+
+
+    """
+    # Set mapping between time derivatives and dummy variables
+    time=dynamicsymbols._t
+    Dummys=symarray('DUM', len(subslist))
+    DT2Dummy=[]
+    for i, (var,b) in enumerate(subslist):
+        if len(var.atoms())!=1:
+            print(var)
+            raise Exception('subs_no_diff only works for simple (atomic) substitution')
+        if exprHasFunction(var):
+            dvar = diff(var,time)
+            DT2Dummy.append((dvar,Dummys[i]))
+    Dummy2DT=[(b,a) for a,b in DT2Dummy]
+
+    # Remove time derivative
+    expr_clean = expr.subs(DT2Dummy)
+
+    # Perform user substitution
+    expr_new = expr_clean.subs(subslist)
+
+    # Reinsert time derivatives
+    return expr_new.subs(Dummy2DT)
+
+
+def linearize(expr, x0, order=1, sym=False):
     """ 
     Return a Taylor expansion of the expression at the operating point x0
     x0=[(x,0),(y,0),...]
     """
-    flin=expr.subs(x0)  # Order 0
-    if order==0:
-        return flin
+    # --- First protect expression from derivatives
+    time=dynamicsymbols._t
+    # Mapping derivative -> Dummy
+    Dummys=symarray('DUM', len(x0))
+    DT2Dummy=[(diff(v,time),Dummys[i]) for i,(v,x) in enumerate(x0)]
+    Dummy2DT=[(b,a) for a,b in DT2Dummy]
+
+    # Helper function, linearizes one expression (for matrices and lists..)
+    def __linearize_one_expr(myexpr):
+        # Remove derivatives
+        myexpr = myexpr.subs(DT2Dummy)
+        flin=myexpr.subs(x0)  # Order 0
+        if order==0:
+            return flin.subs(Dummy2DT)
+        
+        df = [(myexpr.diff(v1).subs(x0))*(v1-v10) for v1,v10 in x0]
+        flin+=sum(df)
+        if order==1:
+            return flin.subs(Dummy2DT)
+        
+        df2 = [ (myexpr.diff(v1)).diff(v2).subs(x0)*(v1-v10)*(v2-v20) for v1,v10 in x0 for v2,v20 in x0]
+        flin+=sum(df2)/2
+        if order==2:
+            return flin.subs(Dummy2DT)
+        
+        df3 = [ (myexpr.diff(v1)).diff(v2).diff(v3).subs(x0)*(v1-v10)*(v2-v20)*(v3-v30) for v1,v10 in x0 for v2,v20 in x0 for v3,v30 in x0]
+        flin+=sum(df3)/6
+        if order==3:
+            return flin.subs(Dummy2DT)
+        raise NotImplementedError('Higher order')
     
-    df = [(expr.diff(v1).subs(x0))*(v1-v10) for v1,v10 in x0]
-    flin+=sum(df)
-    if order==1:
-        return flin
-    
-    df2 = [ (expr.diff(v1)).diff(v2).subs(x0)*(v1-v10)*(v2-v20) for v1,v10 in x0 for v2,v20 in x0]
-    flin+=sum(df2)/2
-    if order==2:
-        return flin
-    
-    df3 = [ (expr.diff(v1)).diff(v2).diff(v3).subs(x0)*(v1-v10)*(v2-v20)*(v3-v30) for v1,v10 in x0 for v2,v20 in x0 for v3,v30 in x0]
-    flin+=sum(df3)/6
-    if order==3:
-        return flin
-
-    raise NotImplementedError('Higher order')
-
-
-def smallAngleApprox(expr, angle_list, order=1, sym=True):
-    """ 
-    Perform small angle approximation of an expresion by linearizaing about the "0" operating point of each angle
-
-    angle_list: list of angle to be considered small:  [phi,alpha,...]
-
-    """
-
-    # operating point
-    x0=[(angle,0) for angle in angle_list]
-
+    # --- Hanlde inputs of multiple dimension, scalar, vectors, matrices
     try:
         ndim=len(expr.shape)
     except:
@@ -75,11 +116,11 @@ def smallAngleApprox(expr, angle_list, order=1, sym=True):
     expr_lin=expr*0
 
     if ndim==0:
-        expr_lin = linearize(expr, x0, order=order)
+        expr_lin = __linearize_one_expr(expr)
 
     elif ndim==1:
         for i in range(expr.shape[0]):
-            expr_lin[i] = linearize(expr[i], x0, order=1)
+            expr_lin[i] = __linearize_one_expr(expr[i])
 
     elif ndim==2:
         if expr.shape[0] != expr.shape[1]:
@@ -88,7 +129,7 @@ def smallAngleApprox(expr, angle_list, order=1, sym=True):
         for i in range(expr.shape[0]):
             for j in range(expr.shape[1]):
                 if (j<=i and sym) or (not sym):
-                    expr_lin[i,j] = linearize(expr[i,j], x0, order=1)
+                    expr_lin[i,j] = __linearize_one_expr(expr[i,j])
                 if sym:
                     expr_lin[j,i] = expr_lin[i,j]
     else:
@@ -98,15 +139,29 @@ def smallAngleApprox(expr, angle_list, order=1, sym=True):
 
 
 
+def smallAngleApprox(expr, angle_list, order=1, sym=True):
+    """ 
+    Perform small angle approximation of an expresion by linearizaing about the "0" operating point of each angle
+
+    angle_list: list of angle to be considered small:  [phi,alpha,...]
+
+    """
+    # operating point
+    x0=[(angle,0) for angle in angle_list]
+    return linearize(expr, x0, order=order, sym=sym)
+
+
+
 # --------------------------------------------------------------------------------}
 # --- Misc sympy utils 
 # --------------------------------------------------------------------------------{
-def cleantex(s):
+def cleantex(expr):
     """ clean a latex expression 
     
     Example:
         print( cleantex( vlatex(MM, symbol_names={Jxx:'J_{xx}'})))
     """
+    s=latex(expr)
     D_rep={
         '\\operatorname{sin}':'\\sin',
         '\\operatorname{cos}':'\\cos',
@@ -114,23 +169,50 @@ def cleantex(s):
         '\\left[\\begin{matrix}':'\\begin{bmatrix}\n', 
         '\\end{matrix}\\right]':'\n\\end{bmatrix}\n' ,
         '\\operatorname{q_{T1}}':'q_{T1}',
+        '\\operatorname{q_{T2}}':'q_{T2}',
+        '\operatorname{T_{a}}'  : 'T_a',
         '\\left(t \\right)'    : '(t)',
         '{(t)}': '(t)',
+        '{d t}': '{dt}',
         'L_{T}':'L_T',
         'M_{N}':'M_N',
         '_{x}':'_x',
         '_{y}':'_y',
         '_{z}':'_z',
+        'x(t)':'x',
+        'y(t)':'y',
+        'z(t)':'z',
+        'T_a(t)': 'T_a',
+        'g(t)'  : 'g',
         'phi_x(t)':'phi_x',
         'phi_y(t)':'phi_y',
         'phi_z(t)':'phi_z',
+        'psi(t)'  :'psi',
         'q_{T1}(t)': 'q_{T1}',
+        'q_{T2}(t)': 'q_{T2}',
+        'frac{d}{dt} q_{T1}':'dot{q}_{T1}',
+        'frac{d}{dt} \\phi_x':'dot{\\phi}_x',
+        'frac{d}{dt} \\phi_y':'dot{\\phi}_y',
+        'frac{d}{dt} \\phi_z':'dot{\\phi}_z',
+        'frac{d}{dt} \\psi':'dot{\\psi}',
+        'frac{d}{dt} q_{T2}':'dot{q}_{T2}',
+        '{RNA}':'{N}',
+        'RNA':'N',
+        'x_{NG}^{2} + z_{NG}^{2}':'r_{NG}^2',
+        'M_N x_{NG}^{2} + M_N z_{NG}^{2}':'M_N r_{NG}^{2}',
+        'M_{R} x_{NR}^{2} + M_{R} z_{NR}^{2}':'M_{R} r_{NR}^{2}',
+        '\\theta_{tilt}':'\\theta_t',
+        '\\cos{\\left(\\theta_t \\right)}':'\\cos\\theta_t',
+        '\\sin{\\left(\\theta_t \\right)}':'\\sin\\theta_t',
         '\\sin{\\left(\\phi_x \\right)}':'\\sin\\phi_x',
         '\\sin{\\left(\\phi_y \\right)}':'\\sin\\phi_y',
         '\\sin{\\left(\\phi_z \\right)}':'\\sin\\phi_z',
         '\\cos{\\left(\\phi_x \\right)}':'\\cos\\phi_x',
         '\\cos{\\left(\\phi_y \\right)}':'\\cos\\phi_y',
         '\\cos{\\left(\\phi_z \\right)}':'\\cos\\phi_z',
+        '\\left(\\dot{\\phi}_x\\right)^{2}':'\dot{\\phi}_x^2',
+        '\\left(\\dot{\\phi}_y\\right)^{2}':'\dot{\\phi}_y^2',
+        '\\left(\\dot{\\phi}_z\\right)^{2}':'\dot{\\phi}_z^2',
         '\\\\':'\\\\ \n' 
         }
     for k in D_rep.keys():
@@ -141,5 +223,5 @@ def cleantex(s):
 def saveTex(expr, filename):
     print('Exporting to {}'.format(filename))
     with open(filename,'w') as f:
-        f.write(cleantex(latex(expr)))
+        f.write(cleantex(expr))
     print('Done')

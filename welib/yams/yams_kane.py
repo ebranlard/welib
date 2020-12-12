@@ -484,13 +484,13 @@ class YAMSKanesMethod(object):
             MM   +=bodyMM
             nonMM+=bodynonMM
             # --- Storing for debug
-            body.acc             = acc
-            body.vel             = vel
-            body.omega           = omega
-            body.inertial_force  = inertial_force
-            body.inertial_torque = inertial_torque
-            body.Jv_vect=Jv_vect
-            body.Jo_vect=Jo_vect
+            body._acc             = acc
+            body._vel             = vel
+            body._omega           = omega
+            body._inertial_force  = inertial_force
+            body._inertial_torque = inertial_torque
+            body._Jv_vect=Jv_vect
+            body._Jo_vect=Jo_vect
 
         # Compose fr_star out of MM and nonMM
         MM = zero_uaux(msubs(MM, q_ddot_u_map))
@@ -579,6 +579,13 @@ class YAMSKanesMethod(object):
         # Sort r to make it canonical.
         r = list(find_dynamicsymbols(msubs(self._f_d, uaux_zero), sym_list))
         r.sort(key=default_sort_key)
+        self._lin_r = r
+        self._lin_q   = q
+        self._lin_q_i = q_i
+        self._lin_q_d = q_d
+        self._lin_u   = u
+        self._lin_u_i = u_i
+        self._lin_u_d = u_d
 
         # Check for any derivatives of variables in r that are also found in r.
         for i in r:

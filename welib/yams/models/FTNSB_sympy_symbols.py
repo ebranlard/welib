@@ -53,15 +53,14 @@ Jxx_N, Jyy_N, Jzz_N       = symbols('Jxx_N, Jyy_N, Jzz_N')
 L_F, L_T, L_R, L_B = symbols('L_F, L_T, L_R, L_B') # length
 
 # --- COGs
-z_G_F        = symbols('z_G_F')       # Position of Foundation COG in F, measured from point T
-z_G_T        = symbols('z_G_T')       # Position of Tower COG in T
-x_G_N,z_G_N = symbols('x_G_N, z_G_N') # Position of Nacelle COG in N
+z_FG     = symbols('z_FG')       # Position of Foundation COG in F, measured from point T
+z_TG     = symbols('z_TG')       # Position of Tower COG in T
+x_NG,z_NG = symbols('x_NG, z_NG') # Position of Nacelle COG in N
 
 
 # Points
-x_R, z_R  = symbols('x_R, z_R') # Position of Rotor center in N
-x_NR,z_NR = symbols('x_NR, z_NR') # 
-z_M, z_B  = symbols('z_M, z_B') # Position of mooring line attachment point and Buoyancy center in F, measured from point T
+x_NR, z_NR = symbols('x_NR, z_NR') # 
+z_TM, z_TB = symbols('z_TM, z_TB') # Position of mooring line attachment point and Buoyancy center in F, measured from point T
 
 
 
@@ -72,7 +71,7 @@ z_M, z_B  = symbols('z_M, z_B') # Position of mooring line attachment point and 
 
 # --- Simplifying substitution 
 # Nacelle COG on tower top
-subs_NacGatTT= [(z_G_N,0),(x_G_N,0)]
+subs_NacGatTT= [(z_NG,0),(x_NG,0)]
 
 subs_NormShapeT1x=[ (Symbol('u_xT1c'),1) ]
 
