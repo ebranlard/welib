@@ -26,7 +26,7 @@ class Test(unittest.TestCase):
 #         np.testing.assert_almost_equal(freq[1],     0.891449, 5)
 #         np.testing.assert_almost_equal(freq[-1], 5250.756553, 5)
 # 
-        np.testing.assert_almost_equal(sid.Mtr[0,1], -13265404.838207997, 5) # -m*zCOG
+        np.testing.assert_almost_equal(sid.Mrt[0,1], -13265404.838207997, 5) # -m*zCOG
         np.testing.assert_almost_equal(sid.Mgt[0,0],  104625.69072, 5) # -m*zCOG
         np.testing.assert_almost_equal(sid.Mgt[1,1],  104625.69072, 5) # -m*zCOG
         np.testing.assert_almost_equal(sid.Mgr[0,1], 6449889.716099, 5) # -m*zCOG
@@ -70,4 +70,5 @@ class Test(unittest.TestCase):
            f.write(str(sid).replace('-0.000000',' 0.000000'))
 
 if __name__=='__main__':
-    unittest.main()
+    Test().test_fast2sid_bld()
+#     unittest.main()

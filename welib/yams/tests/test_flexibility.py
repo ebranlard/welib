@@ -1,14 +1,27 @@
-
 import unittest
 import numpy as np
+import os
 from welib.yams.flexibility import *
+import welib.weio as weio
 
+MyDir=os.path.dirname(__file__)
 
 # --------------------------------------------------------------------------------}
 # --- TESTS
 # --------------------------------------------------------------------------------{
 class Test(unittest.TestCase):
-    def test_rot(self):
+    def test_GMGKBeam(self):
+        """ 
+        Given mass, stiffness distribution along the span of a beam and a set of shape functions
+        compute the Generalized mass and stiffness matrix for the flexible beam.
+
+        In that test: 
+        - as shape functions the "theoretical" shape function for a clamped-free beam
+         (see welib.beams.theory)
+        - constant properties along the beam
+        - Beam along x axis
+
+        """
         try:
             import welib.beams.theory as bt
         except:
@@ -41,16 +54,18 @@ class Test(unittest.TestCase):
                           [  134.55304,     0.,   3839.68233,    1537.68181,   -30396.91796,       0.00000,     27.42335,   37.54289,  7546.66429]])
 
 
-        # --- Setting up mode shapes
-        nShapes=3;
-        nSpan=30;
-        L   = 60  ; EI0 = 2E+10; m = 5E+2;
-        GKt = 7e11# [Nm2]
-        jxx = 1e5 # [kg.m]
+        # --- Setting up beam properties and shape functions
+        nShapes = 3
+        nSpan   = 30
+        L       = 60
+        EI0     = 2E+10 # [Nm^2]
+        m       = 5E+2  # [kg/m]
+        GKt     = 7e11  # [Nm2]
+        jxx     = 1e5   # [kg.m]
         A=1; rho=A*m;
 
         x=np.linspace(0,L,nSpan);
-        # Mode shapes
+        # Shape functions (taken as analytical mode shapes)
         freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-clamped-free',EI0,rho,A,L,x=x)
         PhiU = np.zeros((nShapes,3,nSpan)) # Shape
         PhiV = np.zeros((nShapes,3,nSpan)) # Slope
@@ -88,7 +103,164 @@ class Test(unittest.TestCase):
         np.testing.assert_allclose(MM,MM2_ref,rtol=1e-5)
         #np.testing.assert_allclose(KK[6:,6:],KKg_ref,rtol=1e-5)
 
+    # --------------------------------------------------------------------------------}
+    # --- NREL5MW Tower 
+    # --------------------------------------------------------------------------------{
+    def test_TowerBeam_SID(self):
+        """ 
+        In this test we use:
+        - Beam properties from the Tower of the NREL5MW
+        - Shape functions determined using a FEM beam representation (see welib/FEM/tests/test_beam_linear_element.py)
+        - We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
+        - Beam along z axis
+        
+        """
+        np.set_printoptions(linewidth=300, precision=9)
+        # --- Read data from NREL5MW tower
+        TowerHt=87.6;
+        TowerBs=0;
+        TwrFile=os.path.join(MyDir,'./../../../_data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
+        twr = weio.FASTInputFile(TwrFile).toDataFrame()
+        z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
+        m   = twr['TMassDen_[kg/m]']  
+        EIy = twr['TwFAStif_[Nm^2]'] 
+        EIz = twr['TwSSStif_[Nm^2]'] # TODO actually EIx
+        nSpan = len(z)
+
+        # --- Shape function taken from FEM
+        shapeFile = os.path.join(MyDir,'../../../_data/NREL5MW/NREL5MW_Tower_Onshore_FEM_Modes.csv')
+        shapes = weio.read(shapeFile).toDataFrame()
+        nShapes=2
+        PhiU = np.zeros((nShapes,3,nSpan)) # Shape
+        PhiV = np.zeros((nShapes,3,nSpan)) # Slope
+        s_G      = np.zeros((3,nSpan))
+        main_axis='z'
+        if main_axis=='x':
+            PhiU[0,1,:]=shapes['U1'] # along y
+            PhiU[1,2,:]=shapes['U2'] # along z
+            PhiV[0,1,:]=shapes['V1'] # along y 
+            PhiV[1,2,:]=shapes['V2'] # along z 
+            s_G[0,:] = z
+        elif main_axis=='z':
+            PhiU[0,0,:]=shapes['U1'] # along x
+            PhiU[1,1,:]=shapes['U2'] # along y
+            PhiV[0,0,:]=shapes['V1'] # along x (around theta y) # TODO double check convention
+            PhiV[1,1,:]=shapes['V2'] # along y (around theta x  # TODO double check convention
+            s_G[2,:] = z
+
+        # --- Testing for straight COG
+        s_span = z
+        jxxG= EIy*0 + m # NOTE: unknown
+        #MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
+        Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=True, rot_terms=True)
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
+        MM_ref=np.array(
+        [[ 3.474602316e+05,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.322633773e+07, -0.000000000e+00,  1.046938838e+05,  0.000000000e+00],
+         [ 0.000000000e+00,  3.474602316e+05,  0.000000000e+00, -1.322633773e+07,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.046938838e+05],
+         [ 0.000000000e+00,  0.000000000e+00,  3.474602316e+05,  0.000000000e+00, -0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00],
+         [ 0.000000000e+00, -1.322633773e+07,  0.000000000e+00,  7.182575651e+08, -0.000000000e+00, -0.000000000e+00,  0.000000000e+00, -6.440479129e+06],
+         [ 1.322633773e+07,  0.000000000e+00, -0.000000000e+00, -0.000000000e+00,  7.182575651e+08, -0.000000000e+00,  6.440479129e+06,  0.000000000e+00],
+         [-0.000000000e+00,  0.000000000e+00,  0.000000000e+00, -0.000000000e+00, -0.000000000e+00,  3.474602316e+05,  0.000000000e+00,  0.000000000e+00],
+         [ 1.046938838e+05,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  6.440479129e+06,  0.000000000e+00,  6.145588498e+04,  0.000000000e+00],
+         [ 0.000000000e+00,  1.046938838e+05,  0.000000000e+00, -6.440479129e+06,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  6.145588498e+04]])
+
+        np.testing.assert_allclose(Mxx, MM_ref[0:3,0:3] ,rtol=1e-4)
+        np.testing.assert_allclose(Mxt, MM_ref[0:3,3:6] ,rtol=1e-4)
+        np.testing.assert_allclose(Mxg, MM_ref[0:3,6::] ,rtol=1e-4)
+        np.testing.assert_allclose(Mtt, MM_ref[3:6,3:6] ,rtol=1e-4)
+        np.testing.assert_allclose(Mtg, MM_ref[3:6,6: ] ,rtol=1e-4)
+        np.testing.assert_allclose(Mgg, MM_ref[6: ,6: ] ,rtol=1e-4)
+
+        np.testing.assert_allclose(Gr[0][0,:],[0,0,-12945834],rtol=1e-5)
+        np.testing.assert_allclose(Gr[1][1,:],[0,0,-12945834],rtol=1e-5)
+        np.testing.assert_allclose(Ge[0][1,:],[0,0,122911],rtol=1e-5)
+        np.testing.assert_allclose(Ge[1][0,:],[0,0,-122911],rtol=1e-5)
+        np.testing.assert_allclose(Oe6[0][:],[0,0,0,0,0,6472917],rtol=1e-5)
+        np.testing.assert_allclose(Oe6[1][:],[0,0,0,0,6472917,0],rtol=1e-5)
+
+    # --------------------------------------------------------------------------------}
+    # --- NREL5MW Blade 
+    # --------------------------------------------------------------------------------{
+    def test_BladeBeam_SID(self):
+        """ 
+        In this test we use:
+        - Beam properties from the Blade of the NREL5MW
+        - Shape functions determined using a FEM beam representation (see welib/yams/tests/test_sid.py)
+        - We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
+        - Beam along z axis
+        
+        """
+        np.set_printoptions(linewidth=300, precision=9)
+
+        # --- Read data from NREL5MW Blade
+        edFile=os.path.join(MyDir,'./../../../_data/NREL5MW/data/NREL5MW_ED.dat')
+        parentDir=os.path.dirname(edFile)
+        ed = weio.FASTInputFile(edFile)
+        TipRad = ed['TipRad']
+        HubRad = ed['HubRad']
+        BldLen= TipRad-HubRad;
+        BldFile = ed['BldFile(1)'].replace('"','')
+        BldFile=os.path.join(parentDir,BldFile)
+        bld = weio.FASTInputFile(BldFile).toDataFrame()
+        z   = bld['BlFract_[-]']*BldLen + HubRad
+        m   = bld['BMassDen_[kg/m]']
+        EIy = bld['FlpStff_[Nm^2]']
+        EIz = bld['EdgStff_[Nm^2]']               # TODO actually EIx, but FEM beams along x
+        phi = bld['PitchAxis_[-]']/(180)*np.pi 
+        nSpan = len(z)
+
+        # --- Shape function taken from FEM
+        shapeFile = os.path.join(MyDir,'../../../_data/NREL5MW/NREL5MW_Blade_FEM_Modes.csv')
+        shapes = weio.read(shapeFile).toDataFrame()
+        nShapes=2
+        PhiU = np.zeros((nShapes,3,nSpan)) # Shape
+        PhiV = np.zeros((nShapes,3,nSpan)) # Slope
+        s_G  = np.zeros((3,nSpan))
+        main_axis='z'
+        if main_axis=='z':
+            # Mode 1
+            PhiU[0,0,:]=shapes['U1x']
+            PhiU[0,1,:]=shapes['U1y']
+            # Mode 2
+            PhiU[1,0,:]=shapes['U2x']
+            PhiU[1,1,:]=shapes['U2y']
+            s_G[2,:] = z
+
+        # --- Testing for straight COG
+        s_span = z
+        jxxG= EIy*0 + m # NOTE: unknown
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
+
+        MM_ref=np.array(
+        [[ 1.684475202e+04,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  3.707069074e+05, -0.000000000e+00,  1.976263092e+03, -6.366476591e+00],
+         [ 0.000000000e+00,  1.684475202e+04,  0.000000000e+00, -3.707069074e+05,  0.000000000e+00,  0.000000000e+00,  4.082717323e+00,  2.915664880e+03],
+         [ 0.000000000e+00,  0.000000000e+00,  1.684475202e+04,  0.000000000e+00, -0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00],
+         [ 0.000000000e+00, -3.707069074e+05,  0.000000000e+00,  1.225603507e+07, -0.000000000e+00, -0.000000000e+00, -1.817970390e+02, -1.200295386e+05],
+         [ 3.707069074e+05,  0.000000000e+00, -0.000000000e+00, -0.000000000e+00,  1.225603507e+07, -0.000000000e+00,  8.737268222e+04, -2.574073558e+02],
+         [-0.000000000e+00,  0.000000000e+00,  0.000000000e+00, -0.000000000e+00, -0.000000000e+00,  1.684475202e+04,  0.000000000e+00,  0.000000000e+00],
+         [ 1.976263092e+03,  4.082717323e+00,  0.000000000e+00, -1.817970390e+02,  8.737268222e+04,  0.000000000e+00,  8.364646779e+02, -9.586291225e-04],
+         [-6.366476591e+00,  2.915664880e+03,  0.000000000e+00, -1.200295386e+05, -2.574073558e+02,  0.000000000e+00, -9.586291225e-04,  1.351321852e+03]])
+
+        np.testing.assert_allclose(MM[0:3,0:3], MM_ref[0:3,0:3] ,rtol=1e-4)
+        np.testing.assert_allclose(MM[0:3,3:6], MM_ref[0:3,3:6] ,rtol=1e-4)
+        np.testing.assert_allclose(MM[0:3,6: ], MM_ref[0:3,6::] ,rtol=1e-4)
+        np.testing.assert_allclose(MM[3:6,3:6], MM_ref[3:6,3:6] ,rtol=1e-4)
+        np.testing.assert_allclose(MM[3:6,6: ], MM_ref[3:6,6: ] ,rtol=1e-4)
+        np.testing.assert_allclose(MM[6::,6::], MM_ref[6: ,6: ] ,rtol=1e-4)
+        np.testing.assert_allclose(MM,         MM.T ,rtol=1e-4)
+
+        np.testing.assert_allclose(Gr[0][0,:],[0,0,-174817]  ,rtol   = 1e-5)
+        np.testing.assert_allclose(Gr[0][1,:],[0,0,-363.7477],rtol = 1e-5  )
+        np.testing.assert_allclose(Gr[1][0,:],[0,0,514.944]  ,rtol  = 1e-5 )
+        np.testing.assert_allclose(Gr[1][1,:],[0,0,-240127]  ,rtol  = 1e-5 )
+
+        np.testing.assert_allclose(Ge[0][1,:],[0,0,2087.767],rtol=1e-5)
+        np.testing.assert_allclose(Ge[1][0,:],[0,0,-2087.767],rtol=1e-5)
+        np.testing.assert_allclose(Oe6[0][:],[0,0,0,0,181.8739,87408.6],rtol=1e-5)
+        np.testing.assert_allclose(Oe6[1][:],[0,0,0,0,120063,-257.472],rtol=1e-5)
 
 
 if __name__=='__main__':
+    #Test().test_TowerBeam_SID()
+    #Test().test_BladeBeam_SID()
     unittest.main()

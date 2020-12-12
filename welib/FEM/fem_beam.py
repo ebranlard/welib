@@ -196,12 +196,12 @@ def generalizedMassMatrix(xNodes, MM, Se):
     # Rigid body part             # Different Notations:
     Mtt  = (St.T).dot(MM).dot(St) # Mxx, mE
     J0   = (Sr.T).dot(MM).dot(Sr) # Mrr, Mtt, I0
-    Mtr  = (Sr.T).dot(MM).dot(St) # Mtr, Mxt, mc0
+    Mrt  = (Sr.T).dot(MM).dot(St) # Mrt, Mxt, mc0
     # Flexible part
     Mgt  = (Se.T).dot(MM).dot(St) # Mgt, Mgx, Mxg', Ct0
     Mgr  = (Se.T).dot(MM).dot(Sr) # Mgr, Mgt, Mtg', Cr0
     Mgg  = (Se.T).dot(MM).dot(Se) # Mgg, Me
-    return Mtt, J0, Mtr, Mgt, Mgr, Mgg, St, Sr
+    return Mtt, J0, Mrt, Mgt, Mgr, Mgg, St, Sr
 
 
 def shapeIntegrals(xNodes, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, m, Se, Sr, Tr):

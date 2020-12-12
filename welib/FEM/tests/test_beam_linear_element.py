@@ -36,9 +36,9 @@ class Test(unittest.TestCase):
         # Derived parameters
         A  = m*0+100                         # Area
         Kv = m*0+100                         # Saint Venant torsion
-        E  = 214e9                           # Young modulus  
-        Iy = EIy/E
-        Iz = EIz/E
+        E  = 214e9                           # Young modulus  [N/m^2]
+        Iy = EIy/E                           # Area moment [m^4]
+        Iz = EIz/E                           # Area moment [m^4]
         nNodes   = len(z)
         nElem    = nNodes-1
         nqe      = 12           # Number of DOF per element
@@ -76,6 +76,13 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(freq[1],     0.891449, 5)
         np.testing.assert_almost_equal(freq[-1], 5250.756553, 5)
 
+        # --- Export Modes
+        #U1 = np.concatenate(([0],Q[0::6,0] )) # along x
+        #V1 = np.concatenate(([0],Q[4::6,0] )) # theta y
+        #U2 = np.concatenate(([0],Q[1::6,1] )) # along y
+        #V2 = np.concatenate(([0],Q[3::6,1] )) # theta x
+        #M=np.column_stack([z,U1,V2,U2,V2])
+        # np.savetxt('out.csv',M)
 
         # --- Generalized mass matrix
         # Selecting modes
@@ -83,13 +90,15 @@ class Test(unittest.TestCase):
             Se= Tr.dot(Q[:, Imodes]) # nDOF_tot x nShapes
         else:
             Se= Tr # All
-        Mtt, J0, Mtr, Mgt, Mgr, Mgg, St, Sr= generalizedMassMatrix(xNodes, MM, Se)
+
+        Mtt, J0, Mrt, Mgt, Mgr, Mgg, St, Sr= generalizedMassMatrix(xNodes, MM, Se)
+
         Ct0_ = (Tr.T).dot(MM).dot(St) # Mode mass matrix for all modes
 
         np.testing.assert_almost_equal(np.diag(Mtt), [347460.2316]*3, 5)
         np.testing.assert_almost_equal(np.diag(Mgg), [61094.66490]*2, 5)
         np.testing.assert_almost_equal(np.diag(J0)/1e8, np.array([7.198598843e8]*2+[3.474602316e5])/1e8, 5)
-        np.testing.assert_almost_equal(Mtr[0,1], -13265404.838207997, 5) # -m*zCOG
+        np.testing.assert_almost_equal(Mrt[0,1], -13265404.838207997, 5) # -m*zCOG
         np.testing.assert_almost_equal(Mgt[0,0],  104625.69072, 5) # -m*zCOG
         np.testing.assert_almost_equal(Mgt[1,1],  104625.69072, 5) # -m*zCOG
         np.testing.assert_almost_equal(Mgr[0,1], 6449889.716099, 5) # -m*zCOG
@@ -136,7 +145,7 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(GKg['omyz'][0,0],   0, 5)
 
         # --- Convert to SID 
-        sid= FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4, GKg)
+        sid= FEMBeam2SID(Mtt, J0, Mrt, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4, GKg)
 
         #print(sid)
         with open('_OUT_SID_PY.txt','w') as f:
@@ -152,4 +161,5 @@ class Test(unittest.TestCase):
 
 
 if __name__=='__main__':
-    unittest.main()
+    #unittest.main()
+    Test.test_fast2sid()

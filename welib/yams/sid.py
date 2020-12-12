@@ -175,6 +175,12 @@ def Beam2SID(xNodes, Imodes, m, Iy, Iz, G=None, Kv=None, A=None, E=None, phi=Non
     else:
         Se= Tr # All
 
+    # --- Export Modes
+    #Mode1=np.column_stack([Se[0::6,0], Se[1::6,0], Se[2::6,0], Se[3::6,0], Se[4::6,0], Se[5::6,0]])
+    #Mode2=np.column_stack([Se[0::6,1], Se[1::6,1], Se[2::6,1], Se[3::6,1], Se[4::6,1], Se[5::6,1]])
+    #M=np.column_stack([xNodes[2,:], Mode1, Mode2])
+    #np.savetxt('Modes.csv',M)
+
     sid = FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF)
 
     # Additional info
@@ -190,7 +196,7 @@ def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DO
     from numpy.linalg import inv
 
     # --- Generalized mass matrix
-    Mtt, J0, Mtr, Mgt, Mgr, Mgg, St, Sr= generalizedMassMatrix(xNodes, MM, Se)
+    Mtt, J0, Mrt, Mgt, Mgr, Mgg, St, Sr= generalizedMassMatrix(xNodes, MM, Se)
     Ct0_ = (Tr.T).dot(MM).dot(St) # Mode mass matrix for all modes
 
     # --- Shape integrals
@@ -201,7 +207,7 @@ def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DO
     GKg= geometricalStiffening(xNodes, Kinv, Tr, Se, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, E, A, Kom0_, Ct0_)
 
     # --- Convert to SID 
-    sid = FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=C4, GKg=GKg)
+    sid = FEMBeam2SID(Mtt, J0, Mrt, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=C4, GKg=GKg)
 
     # --- Additional info, shape functions and modes
     sid.C3    = C3
@@ -214,7 +220,7 @@ def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DO
     sid.St    = St
     sid.Se    = Se
     sid.Mtt=Mtt
-    sid.Mtr=Mtr
+    sid.Mrt=Mrt
     sid.Mgt=Mgt
     sid.Mgr=Mgr
     sid.GKg=GKg
@@ -223,7 +229,7 @@ def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DO
 
 
 # --- Populating SID
-def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=dict()):
+def FEMBeam2SID(Mtt, J0, Mrt, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=dict()):
     from welib.yams.utils import skew 
     # TODO take MM, KK, Tr as inputs
     assert(xNodes.shape[0]==3)
@@ -283,12 +289,12 @@ def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom,
         sid.frame.append(f)
 
     # --- mdCM
-    # NOTE: Mtr (mc0) is anti symmetric and contains m*x_COG
-    # The math below is to extract m*x_COG rom Mtr
+    # NOTE: Mrt (mc0) is anti symmetric and contains m*x_COG
+    # The math below is to extract m*x_COG rom Mrt
     sid.mdCM.M0= np.array([
-        np.sum(skew([0.5, 0 , 0  ])*Mtr), 
-        np.sum(skew([0,  0.5, 0  ])*Mtr), 
-        np.sum(skew([0,   0 , 0.5])*Mtr)
+        np.sum(skew([0.5, 0 , 0  ])*Mrt), 
+        np.sum(skew([0,  0.5, 0  ])*Mrt), 
+        np.sum(skew([0,   0 , 0.5])*Mrt)
         ]).reshape(3,1)
     for j in np.arange(nq):
         sid.mdCM.M1[:, 0, j]= Mgt[j, :].T # Ct0 Mgt
@@ -324,8 +330,9 @@ def FEMBeam2SID(Mtt, J0, Mtr, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom,
     
     # --- Oe 
     # see [2] (6.407) 
-    # Size nq x 6 x nq
-    sid.Oe.M0= Kom0             
+    # M0: nq x 6
+    # M1: nq x 6 x nq
+    sid.Oe.M0= Kom0  # nq x 6
     sid.Oe.M1[:, 0, :]= Kom[0]   # nq x nq
     sid.Oe.M1[:, 1, :]= Kom[1]  
     sid.Oe.M1[:, 2, :]= Kom[2]  
