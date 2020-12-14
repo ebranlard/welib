@@ -11,11 +11,22 @@ import pandas as pd
 from welib.BEM.MiniBEM import MiniBEM, FASTFile2MiniBEM
 import welib.weio as weio
 
-def runParametricBEM_FAST(MainFASTFile, Pitch, Omega, WS):
+def main(test=False):
     """ 
     Performs BEM simulations for different Pitch, RPM and Wind Speed.
     The wind turbine is initialized using a FAST input file (.fst)
     """
+    OutDir                 = './'
+    MainFASTFile           = '../../../data/NREL5MW/Main_Onshore_OF2.fst'
+    OperatingConditionFile = '../../../data/NREL5MW/NREL5MW_Oper.csv'
+
+    #  --- Reading turbine operating conditions, Pitch, RPM, WS  (From FAST)
+    df=weio.read(OperatingConditionFile).toDataFrame()
+    Pitch = df['BldPitch_[deg]'].values
+    Omega = df['RotSpeed_[rpm]'].values
+    WS    = df['WS_[m/s]'].values
+
+
     # -- Extracting information from a FAST main file and sub files
     nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(MainFASTFile) 
     BladeData=np.column_stack((r,chord,twist))
@@ -42,23 +53,13 @@ def runParametricBEM_FAST(MainFASTFile, Pitch, Omega, WS):
 
     # --- Export integrated values to file
     filenameOut= os.path.join(OutDir,'_BEM_IntegratedValues.csv')
-    dfOut.to_csv(filenameOut,sep='\t',index=False)
-    print('>>>',filenameOut)
+    if not test:
+        dfOut.to_csv(filenameOut,sep='\t',index=False)
+        print('>>>',filenameOut)
     return dfOut
 
 
 if __name__=="__main__":
-    OutDir                 = './'
-    MainFASTFile           = '../../../data/NREL5MW/Main_Onshore_OF2.fst'
-    OperatingConditionFile = '../../../data/NREL5MW/NREL5MW_Oper.csv'
-
-    #  --- Reading turbine operating conditions, Pitch, RPM, WS  (From FAST)
-    df=weio.read(OperatingConditionFile).toDataFrame()
-    Pitch = df['BldPitch_[deg]'].values
-    Omega = df['RotSpeed_[rpm]'].values
-    WS    = df['WS_[m/s]'].values
-
-    dfOut = runParametricBEM_FAST(MainFASTFile, Pitch, Omega, WS)
-
-
-
+    main()
+if __name__=="__test__":
+    main(test=True)

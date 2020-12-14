@@ -3,21 +3,12 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-import pdb
 
 MyDir=os.path.dirname(__file__)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import welib.airfoils
 from welib.airfoils.Polar import * 
 from welib.airfoils.DynamicStall import * 
-
-# Wagner - R.T Jones approximation (Jones 1938)
-#Cl_wag_Jones=1-0.165*npexp(-0.0455*tau_t)-0.335*np.exp(-0.3*tau_t);
-A1_Jones=0.165
-A2_Jones=0.335
-b1_Jones=0.0455
-b2_Jones=0.3
 
 # --------------------------------------------------------------------------------}
 # ---  
@@ -138,3 +129,5 @@ def prescribed_oscillations_ris_r_1792():
 if __name__ == '__main__':
     prescribed_oscillations_ris_r_1792()
     plt.show()
+if __name__ == '__test__':
+    prescribed_oscillations_ris_r_1792()

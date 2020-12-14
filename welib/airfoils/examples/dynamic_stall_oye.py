@@ -5,9 +5,8 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
 MyDir=os.path.dirname(__file__)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-from Polar import * 
+from welib.airfoils.Polar import * 
 
 # --------------------------------------------------------------------------------}
 # ---  
@@ -72,5 +71,6 @@ def prescribed_oscillations():
 
 if __name__ == '__main__':
     prescribed_oscillations()
-
     plt.show()
+if __name__ == '__test__':
+    prescribed_oscillations()

@@ -7,9 +7,7 @@ import os
 
 MyDir=os.path.dirname(__file__)
 
-if __name__=="__main__":
-    """ See examples/ for more examples """
-
+def main(test=False):
     # --- Read a FAST model to get the main parameters needed
     nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
 
@@ -34,5 +32,11 @@ if __name__=="__main__":
 
         # --- Save radial distribution to a csv file
         filename='_BEM_ws{}_radial.csv'.format(V0)
-        BEM.WriteRadialFile(filename)
+        if not test:
+            BEM.WriteRadialFile(filename)
+
+if __name__=="__main__":
+    main()
+if __name__=="__test__":
+    main(True)
 

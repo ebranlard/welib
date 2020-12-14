@@ -3,10 +3,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-import pdb
 
 MyDir=os.path.dirname(__file__)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import welib.airfoils
 from welib.airfoils.Polar import * 
@@ -109,3 +107,5 @@ def step_change():
 if __name__ == '__main__':
     step_change()
     plt.show()
+if __name__ == '__test__':
+    step_change()

@@ -5,16 +5,20 @@ from welib.BEM.MiniBEM import MiniBEM, FASTFile2MiniBEM
 
 MyDir=os.path.dirname(__file__)
 
-if __name__=="__main__":
-    """ Run a parametric study on lambda and pitch, save CP and CT """
 
+def main(test=False):
+    """ Run a parametric study on lambda and pitch, save CP and CT """
     # --- Turbine data
     nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
 
-    vlambda = np.linspace( 2,15,10)
-    vpitch  = np.linspace(-10,40,20)
-    print(vlambda)
-    print(vpitch)
+    if test:
+        vlambda = np.linspace( 2,15,3)
+        vpitch  = np.linspace(-10,40,2)
+    else:
+        vlambda = np.linspace( 2,15,10)
+        vpitch  = np.linspace(-10,40,20)
+        print(vlambda)
+        print(vpitch)
 
     V0=10
     R=r[-1]
@@ -46,8 +50,15 @@ if __name__=="__main__":
     CP[CP<0]=np.nan
     CT[CT<0]=np.nan
 
-    np.savetxt('_CP.csv'    , CP     , delimiter=',')
-    np.savetxt('_CT.csv'    , CT     , delimiter=',')
-    np.savetxt('_Lambda.csv', vlambda, delimiter=',')
-    np.savetxt('_Pitch.csv' , vpitch , delimiter=',')
+    if not test:
+        np.savetxt('_CP.csv'    , CP     , delimiter=',')
+        np.savetxt('_CT.csv'    , CT     , delimiter=',')
+        np.savetxt('_Lambda.csv', vlambda, delimiter=',')
+        np.savetxt('_Pitch.csv' , vpitch , delimiter=',')
+
+
+if __name__=="__main__":
+    main()
+if __name__=="__test__":
+    main(True)
 
