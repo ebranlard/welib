@@ -1,10 +1,12 @@
 """ 
 Set of tools for statistics 
-  - measures
+  - measures (R^2, RMSE)
   - pdf distributions
+  - Binning 
 
 """
 import numpy as np
+import pandas as pd
 
 def rsquare(y,f, c = True): 
     """ Compute coefficient of determination of data fit model and RMSE
@@ -106,3 +108,48 @@ def pdf_sns(y,nBins=50):
     xh=hh[0]
     yh=hh[1]
     return xh,yh
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Binning 
+# --------------------------------------------------------------------------------{
+def bin_DF(df, xbins, colBin ):
+    """ 
+    Perform bin averaging of a dataframe
+    """
+    if colBin not in df.columns.values:
+        raise Exception('The column `{}` does not appear to be in the dataframe'.format(colBin))
+    xmid      = (xbins[:-1]+xbins[1:])/2
+    df['Bin'] = pd.cut(df[colBin], bins=xbins, labels=xmid ) # Adding a column that has bin attribute
+    df2       = df.groupby('Bin').mean()                     # Average by bin
+    # also counting
+    df['Counts'] = 1
+    dfCount=df[['Counts','Bin']].groupby('Bin').sum()
+    df2['Counts'] = dfCount['Counts']
+    # Just in case some bins are missing (will be nan)
+    df2       = df2.reindex(xmid)
+    return df2
+
+def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, colTime='Time_[s]'):
+    """ 
+    Average a dataframe based on azimuthal value
+    Returns a dataframe with same amount of columns as input, and azimuthal values as index
+    """
+    if psiBin is None: 
+        psiBin = np.arange(0,360+1,10)
+
+    if tStart is not None:
+        if colTime not in df.columns.values:
+            raise Exception('The column `{}` does not appear to be in the dataframe'.format(colTime))
+        df=df[ df[colTime]>tStart].copy()
+
+    dfPsi= bin_DF(df, psiBin, colPsi)
+    if np.any(dfPsi['Counts']<1):
+        print('[WARN] some bins have no data! Increase the bin size.')
+
+    return dfPsi
+
+
+
+
