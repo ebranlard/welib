@@ -77,5 +77,5 @@ class FEMModel(GraphModel):
 if __name__=='__main__':
     np.set_printoptions(linewidth=500)
     mdl=SubDynModel()
-    mdl.fromSummaryFile('../../_data/Monopile/Pendulum.SD.sum.yaml')
+    mdl.fromSummaryFile('../../data/Monopile/Pendulum.SD.sum.yaml')
 

@@ -16,7 +16,7 @@ NoiseRFactor=0  # Add noise to measurements. 0: no noise
 algo     = '3'  # Define algorithm kind for splitting qh into states and inputs
 
 # --- Parameters for the simulation that we will use as "measurements"
-simFile='../../../_data/Monopile/MT100_LoadsMotions.csv'
+simFile='../../../data/Monopile/MT100_LoadsMotions.csv'
 # Mappign to rename columns present in simulation file, to be uses as measurements and clean states (for comparison)
 colMap={
         'q'    : 'GX_[m]' ,

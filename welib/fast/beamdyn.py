@@ -496,9 +496,9 @@ def MM(m,I_x,I_y,I_p,x_G=0,y_G=0,theta_i=0):
 if __name__=='__main__':
     np.set_printoptions(linewidth=300)
 
-    H2MeanLine     = '../../_data/Hawc2/Blade_Planform_Hawc2.csv' # csv file with c2def columns: ['X_[m]','Y_[m]','Z_[m]','Twist_theta_z_[deg]']
-    H2Structure    = '../../_data/Hawc2/Blade_Structural_Hawc2.csv' # csv file with columns ['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]',... ,'x_e_[m]','y_e_[m]']
-    BDMainTemplate = '../../_data/Hawc2/BD.dat'  # template file to write main BD file
+    H2MeanLine     = '../../data/Hawc2/Blade_Planform_Hawc2.csv' # csv file with c2def columns: ['X_[m]','Y_[m]','Z_[m]','Twist_theta_z_[deg]']
+    H2Structure    = '../../data/Hawc2/Blade_Structural_Hawc2.csv' # csv file with columns ['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]',... ,'x_e_[m]','y_e_[m]']
+    BDMainTemplate = '../../data/Hawc2/BD.dat'  # template file to write main BD file
 
     BDOut          = 'BD_Smooth.dat'
     BDBldOut       = 'BD_Blade_Smooth.dat' 

@@ -11,7 +11,7 @@ if __name__=="__main__":
     """ See examples/ for more examples """
 
     # --- Read a FAST model to get the main parameters needed
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../_data/NREL5MW/Main_Onshore_OF2.fst'))
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
 
     # --- Run BEM on a set of operating points
     WS =[5,10]

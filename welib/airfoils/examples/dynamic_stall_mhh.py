@@ -37,8 +37,8 @@ def prescribed_oscillations():
     #valpha_mean = [5,10,15,20,25,30,35,50,60,80,100,110,130,150]
     valpha_mean = [-12,-22,10]
     #valpha_mean = [20]
-    t_max       = 1.3*T                  # simulation length
-    dt          = 0.01                   # time step
+    t_max       = 1.6*T                  # simulation length
+    dt          = T/500                   # time step
     #XLIM        = np.array([0,40])
     XLIM        = np.array([-40,40])
     YLIM        = np.array([-2,2])

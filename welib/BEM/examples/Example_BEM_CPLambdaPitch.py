@@ -9,7 +9,7 @@ if __name__=="__main__":
     """ Run a parametric study on lambda and pitch, save CP and CT """
 
     # --- Turbine data
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../_data/NREL5MW/Main_Onshore_OF2.fst'))
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
 
     vlambda = np.linspace( 2,15,10)
     vpitch  = np.linspace(-10,40,20)

@@ -10,8 +10,8 @@ from welib.tools.clean_exceptions import *
 
 
 if __name__ == '__main__':
-    filename='../../_data/Monopile/MT100_HD.dat'
-    filename='../../_data/Monopile/TetraSpar_HydroDyn_v2.dat'
+    filename='../../data/Monopile/MT100_HD.dat'
+    filename='../../data/Monopile/TetraSpar_HydroDyn_v2.dat'
 
     hd = weio.FASTInputFile(filename)
     hd.write('Out.dat')

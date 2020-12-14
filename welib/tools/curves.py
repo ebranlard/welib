@@ -158,6 +158,7 @@ def streamQuiver(ax,sp,*args,**kwargs):
         spacing=None
     if 'n' in kwargs.keys():
         n=kwargs['n']
+        del kwargs['n']
     else:
         n=5
 

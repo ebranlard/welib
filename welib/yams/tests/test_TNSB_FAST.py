@@ -18,7 +18,7 @@ class TestTNSB(unittest.TestCase):
         q[[2]]=0*np.pi/4.
 
         np.set_printoptions(linewidth=500)
-        EDFile = os.path.join(MyDir, '../../../_data/NREL5MW/data/NREL5MW_ED.dat')
+        EDFile = os.path.join(MyDir, '../../../data/NREL5MW/data/NREL5MW_ED.dat')
 
         # --- Auto assembly with z axis
         main_axis='z'

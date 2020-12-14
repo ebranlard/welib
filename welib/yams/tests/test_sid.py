@@ -14,7 +14,7 @@ class Test(unittest.TestCase):
     def test_fast2sid_twr(self):
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
-        EDFile=os.path.join(MyDir,'./../../../_data/NREL5MW/data/NREL5MW_ED_Onshore.dat')
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Onshore.dat')
         sid, _ = FAST2SID(EDFile, Imodes_twr=[(0,1)])
 
         # --- Generalized mass matrix
@@ -64,7 +64,7 @@ class Test(unittest.TestCase):
     def test_fast2sid_bld(self):
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
-        EDFile=os.path.join(MyDir,'./../../../_data/NREL5MW/data/NREL5MW_ED_Onshore.dat')
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Onshore.dat')
         _, sid = FAST2SID(EDFile, Imodes_bld=[0,1])
         with open('_OUT_SID_BLD_PY.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))

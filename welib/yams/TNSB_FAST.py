@@ -186,11 +186,11 @@ if __name__=='__main__':
     np.set_printoptions(linewidth=500)
     assembly='auto'
     main_axis='z'
-    StructA= FASTmodel2TNSB('../_data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    StructA= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     assembly='manual'
 #     assembly='auto'
     main_axis='x'
-    StructM= FASTmodel2TNSB('../_data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    StructM= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     print('------------------')
     from scipy.linalg import block_diag
 #     print('RR')

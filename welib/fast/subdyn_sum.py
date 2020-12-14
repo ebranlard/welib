@@ -151,5 +151,5 @@ class SubDynModel(FEMModel):
 if __name__=='__main__':
     np.set_printoptions(linewidth=500)
     mdl=SubDynModel()
-    mdl.fromSummaryFile('../../_data/example_files/FASTSum_Pendulum.SD.sum.yaml')
+    mdl.fromSummaryFile('../../data/example_files/FASTSum_Pendulum.SD.sum.yaml')
 

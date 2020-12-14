@@ -1,0 +1,73 @@
+--------- BEAMDYN V1.01.* INPUT FILE -------------------------------------------
+Label
+---------------------- SIMULATION CONTROL --------------------------------------
+False         Echo          - Echo input data to "<RootName>.ech" (flag)
+False         QuasiStaticInit - Use quasistatic pre-conditioning with centripetal accelerations in initialization (flag) [dynamic solve only]
+0.0           rhoinf        - Numerical damping parameter for generalized-alpha integrator
+2             quadrature    - Quadrature method: 1=Gaussian; 2=Trapezoidal (switch)
+"DEFAULT"     refine        - Refinement factor for trapezoidal quadrature (-). DEFAULT = 1 [used only when quadrature=2]
+"DEFAULT"     n_fact        - Factorization frequency for the Jacobian in N-R iteration(-). DEFAULT = 5
+"DEFAULT"     DTBeam        - Time step size (s).
+"DEFAULT"     load_retries  - Tolerance for stopping criterion
+"DEFAULT"     NRMax         - Max number of iterations in Newton-Raphson algorithm (-). DEFAULT = 10
+"DEFAULT"     stop_tol      - Tolerance for stopping criterion (-)
+FALSE         tngt_stf_fd   - finite difference for tangent stiffness flag
+FALSE         tngt_stf_comp - compare tangent stiffness using finite difference flag'
+"DEFAULT"     tngt_stf_pert - perturbation size for finite differenced tangent stiffness'
+"DEFAULT"     tngt_stf_difftol - tolerance for difference between analytical and fd tangent stiffness'
+True          RotStates     - Orient states in the rotating frame during linearization? (flag) [used only when linearizing]
+---------------------- GEOMETRY PARAMETER --------------------------------------
+1             member_total   - Total number of member (-)
+10            kp_total       - Total number of key point (-)
+1    10                      - Member number; Number of key points in this member
+    kp_xr      kp_yr     kp_zr    initial_twist
+    (m)         (m)       (m)      (deg)
+0.00000		0.00000		0.00	 0.00
+0.00021		0.00000		2.00	 5.37
+-0.00010	0.00000		4.00	 6.69
+-0.00232	0.00000		6.00	 7.90
+-0.00783	0.00000		8.00	 9.11
+-0.01803	0.00000		10.00	 10.19
+-0.03431	0.00000		12.00	 9.39
+-0.05805	0.00000		14.00	 7.16
+-0.09066	0.00000		16.00	 5.45
+-0.13352	0.00000		18.00	 4.34
+---------------------- MESH PARAMETER ------------------------------------------
+6             order_elem     - Order of interpolation (basis) function (-)
+---------------------- MATERIAL PARAMETER --------------------------------------
+"NA"  BldFile - Name of file containing properties for blade
+---------------------- PITCH ACTUATOR PARAMETERS -------------------------------
+False         UsePitchAct    - Whether a pitch actuator should be used (flag)
+200           PitchJ         - Pitch actuator inertia (kg-m^2) [used only when UsePitchAct is true]
+2.0E+7        PitchK         - Pitch actuator stiffness (kg-m^2/s^2) [used only when UsePitchAct is true]
+5.0E+5        PitchC         - Pitch actuator damping (kg-m^2/s) [used only when UsePitchAct is true]
+---------------------- OUTPUTS -------------------------------------------------
+False         SumPrint      - Print summary data to "<RootName>.sum" (flag)
+"ES10.3E2"    OutFmt        - Format used for text tabular output, excluding the time channel. Resulting field should be 10 characters. (quoted string)
+9             NNodeOuts     - Number of nodes to output to file [0 - 9] (-)
+2, 4, 6, 10, 12, 14, 17, 20, 23 OutNd         - Nodes whose values will be output (-)
+ OutList The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
+"RootFxr, RootFyr, RootFzr"
+"RootMxr, RootMyr, RootMzr"
+"TipTDxr, TipTDyr, TipTDzr"
+"TipRDxr, TipRDyr, TipRDzr"
+N1TDxr
+N2TDxr
+N3TDxr
+N4TDxr
+N5TDxr
+N6TDxr
+N7TDxr
+N8TDxr
+N9TDxr
+N1TDyr
+N2TDyr
+N3TDyr
+N4TDyr
+N5TDyr
+N6TDyr
+N7TDyr
+N8TDyr
+N9TDyr
+END           of            - input file (the word "END" must appear in the first 3 columns of this last OutList line)
+---------------------------------------------------------------------------------------

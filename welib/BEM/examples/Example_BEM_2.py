@@ -49,8 +49,8 @@ def runParametricBEM_FAST(MainFASTFile, Pitch, Omega, WS):
 
 if __name__=="__main__":
     OutDir                 = './'
-    MainFASTFile           = '../../../_data/NREL5MW/Main_Onshore_OF2.fst'
-    OperatingConditionFile = '../../../_data/NREL5MW/NREL5MW_Oper.csv'
+    MainFASTFile           = '../../../data/NREL5MW/Main_Onshore_OF2.fst'
+    OperatingConditionFile = '../../../data/NREL5MW/NREL5MW_Oper.csv'
 
     #  --- Reading turbine operating conditions, Pitch, RPM, WS  (From FAST)
     df=weio.read(OperatingConditionFile).toDataFrame()

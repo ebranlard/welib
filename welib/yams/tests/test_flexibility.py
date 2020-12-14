@@ -119,7 +119,7 @@ class Test(unittest.TestCase):
         # --- Read data from NREL5MW tower
         TowerHt=87.6;
         TowerBs=0;
-        TwrFile=os.path.join(MyDir,'./../../../_data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
+        TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
         twr = weio.FASTInputFile(TwrFile).toDataFrame()
         z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m   = twr['TMassDen_[kg/m]']  
@@ -128,7 +128,7 @@ class Test(unittest.TestCase):
         nSpan = len(z)
 
         # --- Shape function taken from FEM
-        shapeFile = os.path.join(MyDir,'../../../_data/NREL5MW/NREL5MW_Tower_Onshore_FEM_Modes.csv')
+        shapeFile = os.path.join(MyDir,'../../../data/NREL5MW/NREL5MW_Tower_Onshore_FEM_Modes.csv')
         shapes = weio.read(shapeFile).toDataFrame()
         nShapes=2
         PhiU = np.zeros((nShapes,3,nSpan)) # Shape
@@ -193,7 +193,7 @@ class Test(unittest.TestCase):
         np.set_printoptions(linewidth=300, precision=9)
 
         # --- Read data from NREL5MW Blade
-        edFile=os.path.join(MyDir,'./../../../_data/NREL5MW/data/NREL5MW_ED.dat')
+        edFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED.dat')
         parentDir=os.path.dirname(edFile)
         ed = weio.FASTInputFile(edFile)
         TipRad = ed['TipRad']
@@ -210,7 +210,7 @@ class Test(unittest.TestCase):
         nSpan = len(z)
 
         # --- Shape function taken from FEM
-        shapeFile = os.path.join(MyDir,'../../../_data/NREL5MW/NREL5MW_Blade_FEM_Modes.csv')
+        shapeFile = os.path.join(MyDir,'../../../data/NREL5MW/NREL5MW_Blade_FEM_Modes.csv')
         shapes = weio.read(shapeFile).toDataFrame()
         nShapes=2
         PhiU = np.zeros((nShapes,3,nSpan)) # Shape
