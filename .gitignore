@@ -8,6 +8,7 @@
 __pycache*
 *.egg-info*
 *.ipynb_checkpoints*
+*.ipynb
 _IGNORE
 *_TODO.m
 TODO
