@@ -11,14 +11,16 @@ import pandas as pd
 from welib.BEM.MiniBEM import MiniBEM, FASTFile2MiniBEM
 import welib.weio as weio
 
+MyDir=os.path.dirname(__file__)
+
 def main(test=False):
     """ 
     Performs BEM simulations for different Pitch, RPM and Wind Speed.
     The wind turbine is initialized using a FAST input file (.fst)
     """
-    OutDir                 = './'
-    MainFASTFile           = '../../../data/NREL5MW/Main_Onshore_OF2.fst'
-    OperatingConditionFile = '../../../data/NREL5MW/NREL5MW_Oper.csv'
+    OutDir                 = os.path.join(MyDir,'./')
+    MainFASTFile           = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst')
+    OperatingConditionFile = os.path.join(MyDir,'../../../data/NREL5MW/NREL5MW_Oper.csv')
 
     #  --- Reading turbine operating conditions, Pitch, RPM, WS  (From FAST)
     df=weio.read(OperatingConditionFile).toDataFrame()
@@ -46,9 +48,10 @@ def main(test=False):
                     a_init =a0, ap_init=ap0)
         a0, ap0 = BEM.a, BEM.aprime
         # Export radial data to file
-        filenameRadial = os.path.join(OutDir,'_BEM_ws{:02.0f}_radial.csv'.format(V0))
-        BEM.WriteRadialFile(filenameRadial)
-        print('>>>',filenameRadial)
+        if not test:
+            filenameRadial = os.path.join(OutDir,'_BEM_ws{:02.0f}_radial.csv'.format(V0))
+            BEM.WriteRadialFile(filenameRadial)
+            print('>>>',filenameRadial)
         dfOut = BEM.StoreIntegratedValues(dfOut)
 
     # --- Export integrated values to file

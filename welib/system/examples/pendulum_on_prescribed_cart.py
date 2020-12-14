@@ -69,48 +69,46 @@ x_cart= motion(time)[0]
 x_end = l*np.sin(theta)  + x_cart 
 y_end =-l*np.cos(theta) 
 
-# --- Plot
-fig,axes = plt.subplots(2, 1, sharey=False, figsize=(6.4,5.8)) # (6.4,4.8)
-fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-axes[0].plot([-A_forced, A_forced],[0,0],'k--')
-axes[0].set_xlabel('x [m]')
-axes[0].set_ylabel('y [m]')
-axes[0].tick_params(direction='in')
-axes[1].plot(res.t,x_end,        label='x tip')
-axes[1].plot(res.t,x_cart, 'k-', label='x cart')
-axes[1].plot(res.t,res.y[0,:], label='theta')
-axes[1].set_xlabel('time [s]')
-axes[1].set_ylabel('')
-axes[1].legend()
-axes[1].tick_params(direction='in')
-lnc1, = axes[0].plot([], [], 'ks',lw=2,ms=9)
-lnc2, = axes[1].plot([], [], 'ks',lw=2)
-lnt1, = axes[0].plot([], [], 'o',lw=2)
-lnt2, = axes[1].plot([], [], 'bo',lw=2)
-lnp,  = axes[0].plot([], [], 'k-',lw=2)
+if __name__ == '__main__':
+    # --- Plot
+    fig,axes = plt.subplots(2, 1, sharey=False, figsize=(6.4,5.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    axes[0].plot([-A_forced, A_forced],[0,0],'k--')
+    axes[0].set_xlabel('x [m]')
+    axes[0].set_ylabel('y [m]')
+    axes[0].tick_params(direction='in')
+    axes[1].plot(res.t,x_end,        label='x tip')
+    axes[1].plot(res.t,x_cart, 'k-', label='x cart')
+    axes[1].plot(res.t,res.y[0,:], label='theta')
+    axes[1].set_xlabel('time [s]')
+    axes[1].set_ylabel('')
+    axes[1].legend()
+    axes[1].tick_params(direction='in')
+    lnc1, = axes[0].plot([], [], 'ks',lw=2,ms=9)
+    lnc2, = axes[1].plot([], [], 'ks',lw=2)
+    lnt1, = axes[0].plot([], [], 'o',lw=2)
+    lnt2, = axes[1].plot([], [], 'bo',lw=2)
+    lnp,  = axes[0].plot([], [], 'k-',lw=2)
 
-def init():
-    axes[0].set_xlim(-l-abs(A_forced), l+abs(A_forced))
-    axes[0].set_ylim(-l*1.1, l*0.2)
-    axes[0].set_aspect('equal')
-    return lnp,lnc1,lnc2,lnt1,lnt2,
+    def init():
+        axes[0].set_xlim(-l-abs(A_forced), l+abs(A_forced))
+        axes[0].set_ylim(-l*1.1, l*0.2)
+        axes[0].set_aspect('equal')
+        return lnp,lnc1,lnc2,lnt1,lnt2,
 
-def update(i):
-    i=fps*int(i)
-    lnp.set_data([x_cart[i],x_end[i]],[0,y_end[i]])
-    lnt1.set_data([x_end[i]],[y_end[i]])
-    lnc1.set_data([x_cart[i]],[0])
-    lnt2.set_data([time[i]],[x_end[i] ])
-    lnc2.set_data([time[i]],[x_cart[i]])
-    return lnp,lnc1,lnc2,lnt1,lnt2
+    def update(i):
+        i=fps*int(i)
+        lnp.set_data([x_cart[i],x_end[i]],[0,y_end[i]])
+        lnt1.set_data([x_end[i]],[y_end[i]])
+        lnc1.set_data([x_cart[i]],[0])
+        lnt2.set_data([time[i]],[x_end[i] ])
+        lnc2.set_data([time[i]],[x_cart[i]])
+        return lnp,lnc1,lnc2,lnt1,lnt2
+    ani = FuncAnimation(fig, update, frames=np.arange(0,len(time)/fps), init_func=init, blit=True)
+    plt.show()
 
-ani = FuncAnimation(fig, update, frames=np.arange(0,len(time)/fps), init_func=init, blit=True)
+if __name__ == '__test__':
+    pass
 
-
-
-
-
-
-plt.show()
 
 
