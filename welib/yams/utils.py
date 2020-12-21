@@ -28,6 +28,15 @@ def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
     return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
+def rigidBodyMassMatrix(Mass,J,rho):
+    """ Mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] """
+    S=Mass*skew(rho)
+    MM=np.zeros((6,6))
+    MM[0:3,0:3] = Mass*np.eye(3);
+    MM[0:3,3:6] = -S;
+    MM[3:6,0:3] = S ; # transpose(S)=-S;
+    MM[3:6,3:6] = J ;
+    return MM
 # --------------------------------------------------------------------------------}
 # --- Inertia functions 
 # --------------------------------------------------------------------------------{
@@ -53,28 +62,28 @@ def translateInertiaMatrix(I_A, Mass, r_BG, r_AG = np.array([0,0,0])):
         r_BG = np.array([0,0,0])   
     return I_A - Mass*(np.dot(skew(r_BG), skew(r_BG))-np.dot(skew(r_AG),skew(r_AG)))
 
-def translateInertiaMatrixToCOG(I_B = None,Mass = None,r_GB = None): 
-    """ Transform inertia matrix with respect to point B to the inertia matrix with respect to the COG
+def translateInertiaMatrixToCOG(I_P, Mass, r_PG): 
+    """ Transform inertia matrix with respect to point P to the inertia matrix with respect to the COG
     NOTE: the vectors and the inertia matrix needs to be expressed in the same coordinate system.
     
     INPUTS:
       I_G  : Inertia matrix 3x3 with respect to COG
       Mass : Mass of the body
-      r_GB: vector from COG to point B
+      r_PG: vector from P to COG 
     """
-    I_G = I_B + Mass * np.dot(skew(r_GB), skew(r_GB))
+    I_G = I_P + Mass * np.dot(skew(r_PG), skew(r_PG))
     return I_G
 
-def translateInertiaMatrixFromCOG(I_G = None,Mass = None,r_BG = None): 
+def translateInertiaMatrixFromCOG(I_G, Mass, r_GP): 
     """
-    Transform inertia matrix with respect to COG to the inertia matrix with respect to point B
+    Transform inertia matrix with respect to COG to the inertia matrix with respect to point P
     NOTE: the vectors and the inertia matrix needs to be expressed in the same coordinate system.
     INPUTS:
        I_G  : Inertia matrix 3x3 with respect to COG
        Mass : Mass of the body
-       r_BG: vector from point B to COG of the body
+       r_GP: vector from COG of the body to point P
     """
-    I_B = I_G - Mass * np.dot(skew(r_BG),skew(r_BG))
-    return I_B
+    I_P = I_G - Mass * np.dot(skew(r_GP),skew(r_GP))
+    return I_P
     
 

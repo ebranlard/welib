@@ -70,7 +70,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     I0_nac[2,2]=1*10**6 
     # Inertias not at COG...
     IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
-    IG_nac = translateInertiaMatrixToCOG(I0_nac,M_nac, -r_NGnac_inN)
+    IG_nac = translateInertiaMatrixToCOG(I0_nac,M_nac, r_NGnac_inN)
 
     ## Derived parameters
     iPsi = nShapes_twr # Index of DOF corresponding to azimuth

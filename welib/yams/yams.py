@@ -271,21 +271,12 @@ class RigidBody(Body,GenericRigidBody):
         Body.__init__(B)
         B.s_G_inB = rho_G
         B.J_G_inB = J_G
-        B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, B.s_G_inB)
-        B.MM = fGMRigidBody(Mass,B.J_O_inB,B.s_G_inB)
+        B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, -B.s_G_inB)
+        B.MM = rigidBodyMassMatrix(Mass, B.J_O_inB, B.s_G_inB)
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
 
 
-def fGMRigidBody(Mass,J,rho):
-    """ Generalized mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] """
-    S=Mass*skew(rho)
-    MM=np.zeros((6,6))
-    MM[0:3,0:3] = Mass*np.eye(3);
-    MM[0:3,3:6] = -S;
-    MM[3:6,0:3] = S ; # transpose(S)=-S;
-    MM[3:6,3:6] = J ;
-    return MM
 
 
 # --------------------------------------------------------------------------------}

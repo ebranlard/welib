@@ -123,8 +123,6 @@ class Test(unittest.TestCase):
         twr = weio.FASTInputFile(TwrFile).toDataFrame()
         z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m   = twr['TMassDen_[kg/m]']  
-        EIy = twr['TwFAStif_[Nm^2]'] 
-        EIz = twr['TwSSStif_[Nm^2]'] # TODO actually EIx
         nSpan = len(z)
 
         # --- Shape function taken from FEM
@@ -150,7 +148,7 @@ class Test(unittest.TestCase):
 
         # --- Testing for straight COG
         s_span = z
-        jxxG= EIy*0 + m # NOTE: unknown
+        jxxG= z*0 + m # NOTE: unknown
         #MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
         Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=True, rot_terms=True)
         MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
@@ -204,9 +202,6 @@ class Test(unittest.TestCase):
         bld = weio.FASTInputFile(BldFile).toDataFrame()
         z   = bld['BlFract_[-]']*BldLen + HubRad
         m   = bld['BMassDen_[kg/m]']
-        EIy = bld['FlpStff_[Nm^2]']
-        EIz = bld['EdgStff_[Nm^2]']               # TODO actually EIx, but FEM beams along x
-        phi = bld['PitchAxis_[-]']/(180)*np.pi 
         nSpan = len(z)
 
         # --- Shape function taken from FEM
@@ -214,7 +209,6 @@ class Test(unittest.TestCase):
         shapes = weio.read(shapeFile).toDataFrame()
         nShapes=2
         PhiU = np.zeros((nShapes,3,nSpan)) # Shape
-        PhiV = np.zeros((nShapes,3,nSpan)) # Slope
         s_G  = np.zeros((3,nSpan))
         main_axis='z'
         if main_axis=='z':
@@ -228,7 +222,7 @@ class Test(unittest.TestCase):
 
         # --- Testing for straight COG
         s_span = z
-        jxxG= EIy*0 + m # NOTE: unknown
+        jxxG= z*0 + m # NOTE: unknown
         MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
 
         MM_ref=np.array(

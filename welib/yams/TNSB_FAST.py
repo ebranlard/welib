@@ -98,7 +98,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
 
     # Inertias not at COG...
     IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
-    IG_nac = translateInertiaMatrixToCOG(I0_nac,M_nac, -r_NGnac_inN)
+    IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, r_NGnac_inN)
 
     # --------------------------------------------------------------------------------}
     ## --- Creating bodies
