@@ -3,11 +3,12 @@ from numpy.linalg import inv
 # --------------------------------------------------------------------------------}
 # --- Functions for state space model integrations
 # --------------------------------------------------------------------------------{
-def StateMatrix(M,C,K):
-    A = np.zeros((2*len(M),2*len(M)))
-    A[:len(M),len(M):]  =  np.identity(len(M))
-    A[len(M):,:len(M)]  = -np.dot(inv(M),K)
-    A[len(M):,len(M):]  = -np.dot(inv(M),C)
+def StateMatrix(Minv,C,K):
+    n = len(Minv)
+    A = np.zeros((2*n,2*n))
+    A[:n,n:] =  np.identity(n)
+    A[n:,:n] = -np.dot(Minv,K)
+    A[n:,n:] = -np.dot(Minv,C)
     return A
 
 
@@ -18,19 +19,19 @@ def vec_interp(t,vTime,vF):
         F[iDOF] = np.interp(t,vTime,F_DOF)
     return F
 
-def B_interp(t,M,vTime,vF):
+def B_interp(t,Minv,vTime,vF):
     """ Interpolate B-vector from loads known at discrete values (vTime, vF) at a given time `t` """
     nDOF=len(vF)
     B = np.zeros((2*nDOF,1))
     F = vec_interp(t,vTime,vF)
-    B[nDOF:,0] = np.dot(inv(M),F)
+    B[nDOF:,0] = np.dot(Minv,F)
     return B
 
-def B_reg(t,M,F):
+def B_reg(t,Minv,F):
     """ Return B vector from loads at time t and mass matrix """
     nDOF=len(F)
     B = np.zeros((2*nDOF,1))
-    B[nDOF:,0] = np.dot(inv(M),F)
+    B[nDOF:,0] = np.dot(Minv,F)
     return B
 
 def dxdt(q, t, A, M, vTime, vF): 

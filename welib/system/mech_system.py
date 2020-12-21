@@ -11,11 +11,49 @@ from .statespace import *
 # --------------------------------------------------------------------------------{
 # NOTE: this is time invariant!
 class MechSystem():
-    def __init__(self,M,C,K,x0=None,xdot0=None):
-        self.M=M
-        self.C=C
-        self.K=K
+    """ 
+    Tools to handle/simulate a mechanical system of the form
+
+        M(x) xddot + C xdot + K x = F(t,x,xdot) 
+
+    where 
+       - M: mass matrix, constant or function of x
+       - K: stiffness matrix, constant matrix or None
+       - C: damping matrix, constant matrix or None
+       - F: forcing term, function of t,x,xdot, or, tuple (time, Force time series)
+
+    """
+    def __init__(self, M, C=None, K=None, F=None, x0=None, xdot0=None):
+
+        # Functions that return the mass matrix and its inverse
+        if hasattr(M, '__call__'):  
+            self.M_is_func=True
+            self._fM    = M
+            self._fMinv = inv(M(q))
+        else:
+            self.M_is_func=False
+            self._Minv= inv(M) # compute inverse once and for all
+            self._fM    = lambda q : M
+            self._fMinv = lambda q : self._Minv
+
+        # Store
+        self.M = M
+        self.C = C
+        self.K = K
+        self.has_A      = C is not None or K is not None # do we have a constant state matrix?
+
+        # Forcing
+        if F is not None:
+            if type(F) is tuple:
+                self.setForceTimeSeries(F[0], F[1])
+            else:
+                self.setForceFunction(F)
+
+        # Initial conditions
         self.setInitialConditions(x0,xdot0)
+
+        # Time integration results
+        self.res=None
 
     def setInitialConditions(self,x0,xdot0):
         self.q0 = np.zeros(2*self.nDOF)
@@ -49,42 +87,59 @@ class MechSystem():
     def setForceFunction(self,fn):
         self._force_fn = fn
 
-    def Force(self,t,x=None):
+    def Force(self,t,x=None,xdot=None):
         if hasattr(self,'_force_ts'):
             return vec_interp(t,self._time_ts,self._force_ts)
         elif hasattr(self,'_force_fn'):
-            return self._force_fn(t,x)
+            return self._force_fn(t,x,xdot)
         else:
             raise NotImplementedError('Please specify a time series of force first')
 
-    def B(self,t,q):
+    def B(self,t,q,qdot=None):
         if hasattr(self,'_force_ts'):
-            return  B_interp(t,self.M,self._time_ts,self._force_ts)
+            return  B_interp(t,self._fMinv(q),self._time_ts,self._force_ts)
+
         elif hasattr(self,'_force_fn'):
-            F = self._force_fn(t,q)
-            return  B_reg(t,self.M, F)
+            F          = self._force_fn(t,q,qdot)
+            nDOF       = len(F)
+            B          = np.zeros((2*nDOF,1))
+            B[nDOF:,0] = np.dot(self._fMinv(q),F)
+            return B
         else:
             raise NotImplementedError('Please specify a time series of force first')
 
 
     def integrate(self,t_eval, method='RK45', y0=None, **options):
+        """ Perform time integration of system """
         #
         if y0 is not None:
             self.setStateInitialConditions(y0)
             
-        A=self.A
-        odefun = lambda t, q : np.dot(A,q)+self.B(t,q)
+        if self.has_A:
+            A=self.A
+            odefun = lambda t, q : np.dot(A,q)+self.B(t,q)
+        else:
+            raise NotImplementedError()
 
         res = solve_ivp(fun=odefun, t_span=[t_eval[0], t_eval[-1]], y0=self.q0, t_eval=t_eval, method=method, vectorized=True, **options)   
+        # Store
+        self.res    = res
         return res
 
     @property
     def A(self):
-        return StateMatrix(self.M,self.C,self.K)
+        if self.M_is_func:
+            raise Exception('A matrix not a property when A is a function')
+        else:
+            return StateMatrix(self._Minv,self.C,self.K)
 
     @property
     def nDOF(self):
-        return len(self.M)
+        if self.M_is_func:
+            x=np.zeros((5000,1))
+            return len(self.M(x))
+        else:
+            return len(self.M)
 
     @property
     def nStates(self):
@@ -113,3 +168,30 @@ class MechSystem():
         s+=' - q0: Initial conditions (state) \n'
         s+=str(self.q0)+'\n'
         return s
+
+
+    def plot(self,axes=None):
+        """ Simple plot of states after time integration"""
+        if self.res is None:
+            raise Exception('Call integrate before plotting')
+
+        if axes is None:
+            import matplotlib.pyplot as plt
+            fig,axes = plt.subplots( self.nStates,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+
+        n=self.nDOF
+        for i,ax in enumerate(axes):
+            if i<n:
+                lbl=r'$x_{}$'.format(i+1)
+            else:
+                lbl=r'$\dot{x}_'+r'{}$'.format(i-n+1)
+            ax.plot(self.res.t, self.res.y[i,:], label=lbl)
+            ax.set_ylabel(lbl)
+            #ax.legend()
+            ax.tick_params(direction='in')
+        axes[-1].set_xlabel('Time [s]')
+
+        return fig, axes
+
+

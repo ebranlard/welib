@@ -48,7 +48,7 @@ def motion(t):
     """ returns cart pos vel and acc (harmonic oscillation)"""
     return A_forced*np.sin(Omega*t),A_forced*Omega*np.cos(Omega*t),-A_forced*Omega**2*np.sin(Omega*t)
 
-def Fx(t,x):
+def Fx(t,x,xdot):
     """ Returns force on pendulum"""
     theta      = x[0,0]
     Force      = np.zeros((1,1))

@@ -235,7 +235,7 @@ def shapeIntegrals(xNodes, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, m, Se, Sr, Tr):
         C3[:,:,:,:,ie]=c3
 
     # --- Term for second order Cr (Mgr) terms and Oe
-    # (5.252) S. 233, (6.401) S. 338
+    # [2] (5.252) p. 233, (6.401) p. 338
     KFr= np.zeros((3,nDOF_tot,nDOF_tot))
     Kr  =np.zeros((3,nShapes,nShapes))
     for ia in np.arange(3):
@@ -251,11 +251,11 @@ def shapeIntegrals(xNodes, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, m, Se, Sr, Tr):
 
                 KFr[ia][np.ix_(IDOF,IDOF)] += (RR.T).dot( -C3[m_, n_,:,:,ie] + C3[n_, m_,:,:,ie]).dot(RR) * Gamma[l, ia]
                 lmn= np.roll(lmn,-1) #circshift(lmn, [0 -1]);
-        # % (6.483) S. 367
+        # [2] (6.483) p. 367
         Kr[ia,:,:]= (Se.T).dot(KFr[ia]).dot(Se)
 
     # --- Terms useful for 0th order of Gr, and 1st order of J
-    #(6.490) S. 368; (6.531) S. 379 or (6.515) S. 375
+    # [2] (6.490) p. 368; (6.531) p. 379 or (6.515) p. 375
     C4= np.zeros((3, 3, nShapes))
     for l in np.arange(nShapes):
         for ia in np.arange(3):
@@ -279,7 +279,7 @@ def shapeIntegrals(xNodes, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, m, Se, Sr, Tr):
                             if m_>2: m_= 0
                             n_= m_+1;
                             if n_>2: n_= 0
-                            Xi= -(C3[m_, m_,:,:,ie]+C3[n_, n_,:,:,ie]) # (5.266) S. 236
+                            Xi= -(C3[m_, m_,:,:,ie]+C3[n_, n_,:,:,ie]) # [2] (5.266) p. 236
                         else:
                             Xi= C3[m, l,:,:,ie];
                         Madd = (RR.T).dot(Xi).dot(RR) * Gamma[l, ia]*Gamma[m, ib]
@@ -291,7 +291,7 @@ def shapeIntegrals(xNodes, Nodes2DOF, Elem2Nodes, Elem2DOF, DCM, m, Se, Sr, Tr):
         IDOF=Nodes2DOF[iNode][:3] # translational DOF only
         ZF0[IDOF,0]= xNodes[:,iNode];
 
-    # ---  (5.271) S. 237
+    # --- [2] (5.271) p. 237
     KFom = np.zeros((6,nDOF_tot, nDOF_tot))
     Kom  = np.zeros((6,nShapes,nShapes))
     Kom0 = np.zeros((nShapes, 6))
