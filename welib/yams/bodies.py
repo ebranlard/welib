@@ -168,7 +168,7 @@ class RigidBody(Body):
     @property
     def mass_matrix(self):
         """ Body mass matrix at origin"""
-        return rigidBodyMassMatrix(self.mass, self._J_G, self._s_OG)
+        return rigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
 
     def __repr__(self):
         s='<{} {} object>:\n'.format(type(self).__name__, self.name)
@@ -290,6 +290,10 @@ class BeamBody(FlexibleBody):
     def nSpan(B):
         return len(B.s_span)
 
+    @property
+    def nf(B):
+        return len(B.PhiU)
+
     def __repr__(self):
         s='<{} {} object>:\n'.format(type(self).__name__, self.name)
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
@@ -306,7 +310,7 @@ class BeamBody(FlexibleBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody):
-    def __init__(self, ED, inp, Mtop=0, nShapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True):
+    def __init__(self, ED, inp, Mtop=0, nShapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
@@ -360,7 +364,7 @@ class FASTBeamBody(BeamBody):
 
         gravity=ED['Gravity']
 
-        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
+        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
 
 
         BeamBody.__init__(self, 'dummy', p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 

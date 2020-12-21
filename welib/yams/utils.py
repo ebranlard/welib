@@ -28,7 +28,7 @@ def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
     return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
-def rigidBodyMassMatrix(Mass,J,rho):
+def rigidBodyMassMatrix(Mass,J,rho): # TODO change interface
     """ Mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] """
     S=Mass*skew(rho)
     MM=np.zeros((6,6))
