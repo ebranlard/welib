@@ -391,6 +391,109 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         else:
             return MM
 
+def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxxG=None, gravity=None, Mtop=0, nSpan=None, bAxialCorr=False, bStiffening=True, main_axis='z'):
+    """ 
+    Compute generalized mass, stiffness and damping matrix, and shape integrals for a beam defined using polynomial coefficients
+    The shape functions of the beam are defined as:
+       (U_j = a_ij s^i,  i=1..nExponents),  j=1..nShapes
+
+    INPUTS:
+       s_span    : spanwise coordinate (blade radius, or tower height)
+       m         : mass per length [kg/m], array-like of length n
+       EIFlp     : Flap EI, (FA EI for tower), array-like of length n
+       EIEdg     : Edge EI  (SS EI for tower), array-like of length n
+       coeffs    : coefficient used to define beam shape functions, array of shape nCoeffs x nShapes
+       exp       : exponents used to defined beam shape functions, array of shape nExponent
+       damp_zeta : damping ratio for the shape functions, array-like of length nShapes
+
+    OPTIONAL INPUTS:
+       jxxG      : cross section moment of inertia about G
+       gravity   : acceleration of gravity
+       Mtop      : mass on top of beam if any
+       nSpan     : number of spanwise station desired (will be interpolated)
+    """
+
+    # --- Reading properties, coefficients
+    nShapes = coeffs.shape[1]
+
+    # --- Interpolating structural properties
+    if jxxG is None:
+        jxxG=m*0
+    if nSpan is not None:
+        s_span0 = s_span
+        s_span  = np.linspace(0,np.max(s_span),nSpan)
+        m       = np.interp(s_span, s_span0, m)
+        EIFlp   = np.interp(s_span, s_span0, EIFlp)
+        EIEdg   = np.interp(s_span, s_span0, EIEdg)
+        jxxG    = np.interp(s_span, s_span0, jxxG)
+    nSpan=len(s_span)
+
+    # --- Definition of main directions
+    ShapeDir=np.zeros(nShapes).astype(int)
+    EI =np.zeros((3,nSpan))
+    if main_axis=='x':
+        iMain = 0  # longitudinal axis along x
+        try:
+            ShapeDir[0] = 2 # First two shapes are along z (flapwise/Fore-Aft)
+            ShapeDir[0:2] = 2 # First two shapes are along z (flapwise/Fore-Aft)
+            ShapeDir[2:]  = 1 # Third shape along along y (edgewise/Side-Side) Sign...
+        except:
+            pass
+        EI[2,:] = EIFlp
+        EI[1,:] = EIEdg
+    elif main_axis=='z':
+        iMain = 2  # longitudinal axis along z
+        try:
+            ShapeDir[0] = 0 # First two shapes are along z (flapwise/Fore-Aft)
+            ShapeDir[0:2] = 0 # First two shapes are along x (flapwise/Fore-Aft)
+            ShapeDir[2:]  = 1 # Third shape along along y (edgewise/Side-Side) Sign...
+        except:
+            pass
+        EI[0,:] = EIFlp
+        EI[1,:] = EIEdg
+    else:
+        raise NotImplementedError()
+
+    # --- Undeflected shape
+    s_P0          = np.zeros((3,nSpan))
+    s_P0[iMain,:] = s_span 
+    s_G0 = s_P0
+    # TODO blade COG
+
+    # --- Shape functions
+    PhiU = np.zeros((nShapes,3,nSpan)) # Shape
+    PhiV = np.zeros((nShapes,3,nSpan)) # Slope
+    PhiK = np.zeros((nShapes,3,nSpan)) # Curvature
+    for j in np.arange(nShapes):
+        iAxis = ShapeDir[j]
+        PhiU[j][iAxis,:], PhiV[j][iAxis,:], PhiK[j][iAxis,:] = polymode(s_span,coeffs[:,j],exp)
+
+
+    # --- Generalized stiffness
+    KK0 = GKBeam(s_span, EI, PhiK, bOrth=False)
+    if bStiffening:
+        KKg = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, main_axis=main_axis)
+    else:
+        KKg=KK0*0
+    KK=KK0+KKg
+
+    # --- Generalized mass
+    MM = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False)
+
+    # --- Generalized damping
+    DD = np.zeros((6+nShapes,6+nShapes))
+    for j in range(nShapes):
+        gm             = MM[6+j,6+j]
+        gk             = KK[6+j,6+j]
+        om            = np.sqrt(gk/gm)
+        xi            = damp_zeta[j]*2*np.pi
+        c             = xi * gm * om / np.pi
+        DD[6+j,6+j] = c
+
+    # --- Return dict
+    return {'MM':MM, 'KK':KK, 'DD':DD, 'KK0':KK0, 'KKg':KKg, 'PhiU':PhiU, 'PhiV':PhiV, 'PhiK':PhiK,
+            's_P0':s_P0, 's_G':s_G0, 's_span':s_span, 'm':m, 'EI':EI, 'jxxG':jxxG, 'ShapeDir':ShapeDir}
+
 
 
 if __name__=='__main__':

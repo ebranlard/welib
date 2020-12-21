@@ -4,7 +4,7 @@ Reference:
 """
 
 import numpy as np
-from .flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode
+from .flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode, GeneralizedMCK_PolyBeam
 from .utils import *
 from .bodies import Body         as GenericBody
 from .bodies import RigidBody    as GenericRigidBody
@@ -526,59 +526,20 @@ class FASTBeamBody(BeamBody):
 
         else:
             raise Exception('Body type not supported {}'.format(body_type))
+        m *= mass_fact
+        s_span=s_bar*span_max
         nShpMax=coeff.shape[1]
+
         if nShapes>nShpMax:
             raise Exception('A maximum of {} shapes function possible with FAST {} body'.format(nShpMax,body_type))
+        coeff= coeff[:,:nShapes]
 
         gravity=ED['Gravity']
 
-        # --- Interpolating structural properties
-        m *= mass_fact
-        if nSpan is None or nSpan<0:
-            nSpan  = len(prop[:,0])
-        s_span     = np.linspace(0,span_max,nSpan)
-        m          = np.interp(s_span/span_max,s_bar,m)
-        EIFlp      = np.interp(s_span/span_max,s_bar,EIFlp)
-        EIEdg      = np.interp(s_span/span_max,s_bar,EIEdg)
+        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
 
-        # --- Definition of main directions
-        ShapeDir=np.zeros(nShpMax).astype(int)
-        DirNames=['x','y','z']
-        EI =np.zeros((3,nSpan))
-        if main_axis=='x':
-            iMain = 0  # longitudinal axis along x
-            ShapeDir[0:2] = 2 # First two shapes are along z (flapwise/Fore-Aft)
-            ShapeDir[2:]  = 1 # Third shape along along y (edgewise/Side-Side) Sign...
-            EI[2,:] = EIFlp
-            EI[1,:] = EIEdg
-        elif main_axis=='z':
-            iMain = 2  # longitudinal axis along z
-            ShapeDir[0:2] = 0 # First two shapes are along x (flapwise/Fore-Aft)
-            ShapeDir[2:]  = 1 # Third shape along along y (edgewise/Side-Side) Sign...
-            EI[0,:] = EIFlp
-            EI[1,:] = EIEdg
-        else:
-            raise NotImplementedError()
-
-        # --- Undeflected shape
-        s_P0          = np.zeros((3,nSpan))
-        s_P0[iMain,:] = s_span 
-        # TODO blade COG
-        jxxG=m*0
-
-        # --- Shape functions
-        PhiU = np.zeros((nShapes,3,nSpan)) # Shape
-        PhiV = np.zeros((nShapes,3,nSpan)) # Slope
-        PhiK = np.zeros((nShapes,3,nSpan)) # Curvature
-        for j in np.arange(nShapes):
-            iAxis = ShapeDir[j]
-            PhiU[j][iAxis,:], PhiV[j][iAxis,:], PhiK[j][iAxis,:] = polymode(s_span,coeff[:,j],exp)
-
-
-        super(FASTBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity,Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
-
-        # Damping
-        B.DD=np.zeros((6+nShapes,6+nShapes))
+        #super(FASTBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity,Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
+        super(FASTBeamBody,B).__init__(p['s_span'], p['s_P0'], p['m'], p['PhiU'], p['PhiV'], p['PhiK'], p['EI'], jxxG=p['jxxG'], bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity,Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
 
         # Using diagonal damping
         for j in range(nShapes):
