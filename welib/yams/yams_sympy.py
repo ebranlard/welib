@@ -23,7 +23,7 @@ from sympy.physics.vector import init_vprinting, vlatex
 
 # Local
 from welib.yams.yams_sympy_tools import exprHasFunction
-
+from collections import OrderedDict 
 
 #init_vprinting(use_latex='mathjax', pretty_print=False)
 #
@@ -862,7 +862,7 @@ class RigidBody(Body):
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2):
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None):
         YAMSBody.__init__(self,name)
         self.name=name
         self.L= symbols('L_'+name)
@@ -884,13 +884,17 @@ class YAMSFlexibleBody(YAMSBody):
         self.Me  = Taylor(self.name,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM)
         self.mdCM= Taylor(self.name,'M_d', 3,  1,  nq=nq, rname='xyz', cname=[''], order=orderMM)
         # --- h-omega related terms
-        self.Gr = Taylor(self.name, 'G_r', 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
-        self.Ge = Taylor(self.name, 'G_e', nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
+        self.Gr=[0]*nq
+        self.Ge=[0]*nq
+        for i in np.arange(nq):
+            self.Gr[i] = Taylor(self.name, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
+            self.Ge[i] = Taylor(self.name, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
         self.Oe = Taylor(self.name, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH)
         # --- Stiffness and damping
         self.Ke  = Taylor(self.name,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
         self.De  = Taylor(self.name,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
         
+        self.directions=directions
         self.defineExtremity(directions)
         
         self.origin = Point('O_'+self.name)
@@ -901,6 +905,9 @@ class YAMSFlexibleBody(YAMSBody):
         
         # NOTE: masscenter put at origin for flexible bodies for now
         self.masscenter.set_pos(self.origin, 0*self.frame.x)
+
+        self.predefined_kind=predefined_kind
+        self.applyKindSimplification()
  
     def __repr__(self):
         s=YAMSBody.__repr__(self)
@@ -1012,6 +1019,52 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[6:6+nq,6:6+nq] = Mgg
         else:
             raise Exception('Unknown mass matrix form option `{}`'.format(form))
+
+        if self.predefined_kind is not None:
+            if self.predefined_kind=='twr-z':
+                # --- We assume a tower symmetric along z
+                # "x-theta"
+                self.M[0,3]   = 0
+                self.M[0,5]   = 0
+                self.M[1,4]   = 0
+                self.M[1,5]   = 0
+                self.M[2,3]   = 0
+                self.M[2,4]   = 0
+                self.M[2,5]   = 0
+                self.M[1,3] = -self.M[0,4]
+                # "theta-theta"
+                # "x-theta"
+                self.M[3,4]   = 0
+                self.M[3,5]   = 0
+                self.M[4,3]   = 0
+                self.M[4,5]   = 0
+                # shape
+                for iq in np.arange(nq):
+                    xyz = self.directions[iq]
+                    if xyz=='y':
+                        self.M[0,6+iq]=0
+                        self.M[2,6+iq]=0
+                        self.M[4,6+iq]=0
+                        self.M[5,6+iq]=0
+                    if xyz=='x':
+                        self.M[1,6+iq]=0
+                        self.M[2,6+iq]=0
+                        self.M[3,6+iq]=0
+                        self.M[5,6+iq]=0
+                    for jq in np.arange(nq):
+                        xyz2 = self.directions[jq]
+                        # Assume no coupling x-y
+                        if xyz2!=xyz:
+                            self.M[6+iq,6+jq]=0
+
+
+                # symmetry
+                for i in np.arange(self.M.shape[0]):
+                    for j in np.arange(self.M.shape[0]):
+                        if i<j:
+                            self.M[j,i]=self.M[i,j]
+            else:
+                raise NotImplementedError()
         
         return self.M
     
@@ -1042,11 +1095,11 @@ class YAMSFlexibleBody(YAMSBody):
             # k_omega_r
             k_omega[3:6,0] = om_til * self.J.eval(q) * omega
             for k in np.arange(nq):
-                k_omega[3:6,0] += self.Gr.eval(q) * qd[k] * omega
+                k_omega[3:6,0] += self.Gr[k].eval(q) * qd[k] * omega
             # k_omega_e
             k_omega[6:6+nq,0] = self.Oe.eval(q) * omega_q
             for k in np.arange(nq):
-                k_omega[6:6+nq,0] += self.Ge.eval(q) * qd[k] * omega
+                k_omega[6:6+nq,0] += self.Ge[k].eval(q) * qd[k] * omega
         else:
             raise NotImplementedError()
 
@@ -1147,7 +1200,113 @@ class YAMSFlexibleBody(YAMSBody):
         YAMSBody.connectTo(parent, child, type, rel_pos=rel_pos, rot_type='DCM', rot_amounts=M_c2B, dynamicAllowed=True)
         #YAMSBody.connectTo(parent, child, type, rel_pos=rel_pos, dynamicAllowed=True)
         
+
+    def applyKindSimplification(self):
+        """ set inertia to zero"""
+        if self.predefined_kind is not None:
+            if self.predefined_kind=='twr-z':
+                nq=len(self.q)
+                for iq in np.arange(nq):
+                    xyz = self.directions[iq]
+                    if xyz=='y' or xyz=='x':
+                        # Ge
+                        for jq in np.arange(nq):
+                            self.Ge[iq].M0[jq,0]=0
+                            self.Ge[iq].M0[jq,1]=0
+                            xyz2 = self.directions[jq]
+                            if xyz==xyz2:
+                                self.Ge[iq].M0[jq,2]=0
+                            if xyz!=xyz2:
+                                self.Me.M0[iq,jq]=0
+                                self.De.M0[iq,jq]=0
+                                self.Ke.M0[iq,jq]=0
+                        # Gr
+                        for i,xyz2 in enumerate(['x','y','z']):
+                            self.Gr[iq].M0[i,0]=0
+                            self.Gr[iq].M0[i,1]=0
+                            if xyz!=xyz2:
+                                self.Gr[iq].M0[i,2]=0
+                    else:
+                        raise NotImplementedError()
+                    # Oe
+                    for j in np.arange(4):
+                        self.Oe.M0[iq,j]=0
+                    for j,xyz2 in [(4,'x'),(5,'y')]:
+                        if xyz2==xyz:
+                            self.Oe.M0[iq,j]=0
+                    # Ct, Cr
+                    if xyz=='y':
+                        self.Ct.M0[iq,0]=0
+                        self.Cr.M0[iq,1]=0
+                    if xyz=='x':
+                        self.Ct.M0[iq,1]=0
+                        self.Cr.M0[iq,0]=0
+                    self.Ct.M0[iq,2]=0
+                    self.Cr.M0[iq,2]=0
+                # J
+                self.J.M0[0,1]= 0
+                self.J.M0[0,2]= 0
+                self.J.M0[1,0]= 0
+                self.J.M0[1,2]= 0
+                self.J.M0[2,0]= 0
+                self.J.M0[2,1]= 0
+                # Mdcm
+                self.mdCM.M0[0]=0
+                self.mdCM.M0[1]=0
+
+    def replaceDict(self, rd=None, form='TaylorExpanded'):
+        if rd is None:
+            rd = OrderedDict()
+        else:
+            rd.update(rd)
+
+        MM = self.bodyMassMatrix(q = [0]*len(self.q), form = form)
+
+        rd[repr(MM[0,0])] = ('MM_{}'.format(self.name), [0,0])
+        rd[repr(self.mass)] = ('MM_{}'.format(self.name), [0,0])
+
+        for i in np.arange(0,MM.shape[0]):
+            for j in np.arange(3,MM.shape[0]):
+                s=repr(MM[i,j])
+                if len(s)>1:
+                    if s[0]!='-':
+                        rd[s] = ('MM_{}'.format(self.name), [i,j])
+
+        for iq in np.arange(len(self.Gr)):
+            for i in np.arange(self.Gr[iq].M0.shape[0]):
+                for j in np.arange(self.Gr[iq].M0.shape[1]):
+                    s=repr(self.Gr[iq].M0[i,j])
+                    if len(s)>1:
+                        rd[s] = ('Gr_{}'.format(self.name), [iq,i,j])
+
+        for iq in np.arange(len(self.Ge)):
+            for i in np.arange(self.Ge[iq].M0.shape[0]):
+                for j in np.arange(self.Ge[iq].M0.shape[1]):
+                    s=repr(self.Ge[iq].M0[i,j])
+                    if len(s)>1:
+                        rd[s] = ('Ge_{}'.format(self.name), [iq,i,j])
+
+        for i in np.arange(self.Oe.M0.shape[0]):
+            for j in np.arange(self.Oe.M0.shape[1]):
+                s=repr(self.Oe.M0[i,j])
+                if len(s)>1:
+                    rd[s] = ('Oe_{}'.format(self.name), [i,j])
+
+        for i in np.arange(self.Ke.M0.shape[0]):
+            for j in np.arange(self.Ke.M0.shape[1]):
+                s=repr(self.Ke.M0[i,j])
+                if len(s)>1:
+                    rd[s] = ('KK_{}'.format(self.name), [i,j])
+
+        for i in np.arange(self.De.M0.shape[0]):
+            for j in np.arange(self.De.M0.shape[1]):
+                s=repr(self.De.M0[i,j])
+                if len(s)>1:
+                    rd[s] = ('DD_{}'.format(self.name), [i,j])
+        return rd
     
+
+
 class BeamBody(Body):
     def __init__(B,Name,nf,main_axis='z',nD=2):
         super(BeamBody,B).__init__(Name)

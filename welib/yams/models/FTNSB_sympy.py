@@ -15,7 +15,7 @@ _defaultOpts={
     'floating':True,
     'yaw'    : 'fixed',  # 'fixed', 'dynamic' or 'zero'
     'tilt'   : 'fixed',  # 'fixed', 'dynamic' or 'zero'
-    'Mform'  :'symbolic', # or 'TaylorExpanded'
+    'Mform'  : 'TaylorExpanded', # 'symbolic',or 'TaylorExpanded'
     'mergeFndTwr':True, # Use one body for FND and TWR
     'tiltShaft':False, # Tilt shaft or nacelle
     'twrDOFDir':['x','y','x','y'], # Order in which the flexible DOF of the tower are set
@@ -83,7 +83,7 @@ def get_model(model_name, **opts):
         twrSpeeds=[]
     elif nDOF_twr<=4:
         # Flexible tower
-        twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'])
+        twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='twr-z')
         twrDOFs   = twr.q
         twrSpeeds = twr.qd
     # Nacelle rotor assembly
@@ -102,7 +102,7 @@ def get_model(model_name, **opts):
             rot.inertia = (inertia(rot.frame, Jxx_R, JO_R, JO_R), rot.origin)  # defining inertia at orign
     else:
         # Nacelle
-        nac = YAMSRigidBody('N', rho_G = [x_NG ,0, z_NG], J_diag=True) 
+        nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
         rot = None
 
     # --------------------------------------------------------------------------------}
@@ -187,22 +187,23 @@ def get_model(model_name, **opts):
     # --------------------------------------------------------------------------------}
     # --- Connections between bodies
     # --------------------------------------------------------------------------------{
+    z_OT = Symbol('z_OT')
     if opts['floating']:
         if nDOF_fnd==0:
             print('Rigid connection ref twr')
-            ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,0))
+            ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,z_OT))
         elif nDOF_fnd==1: 
             print('Constraint connection ref twr')
-            ref.connectTo(twr, type='Free' , rel_pos=(x,0,0), rot_amounts=(0    , x * symbols('nu'), 0   ), rot_order='XYZ')
+            ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(0    , x * symbols('nu'), 0   ), rot_order='XYZ')
         elif nDOF_fnd==2: 
             print('Free connection ref twr')
-            ref.connectTo(twr, type='Free' , rel_pos=(x,0,0), rot_amounts=(0    ,phi_y, 0   ), rot_order='XYZ')
+            ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(0    ,phi_y, 0   ), rot_order='XYZ')
         elif nDOF_fnd==3: 
             print('Free connection ref twr')
-            ref.connectTo(twr, type='Free' , rel_pos=(x,0,0), rot_amounts=(phi_x,phi_y, 0   ), rot_order='XYZ')
+            ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(phi_x,phi_y, 0   ), rot_order='XYZ')
         else:
             print('Free connection ref twr')
-            ref.connectTo(twr, type='Free' , rel_pos=(x,y,z), rot_amounts=(phi_x,phi_y,phi_z), rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
+            ref.connectTo(twr, type='Free' , rel_pos=(x,y,z+z_OT), rot_amounts=(phi_x,phi_y,phi_z), rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
     else:
         print('Rigid connection ref twr')
         ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,0))
@@ -210,7 +211,10 @@ def get_model(model_name, **opts):
     # Rigid connection between twr and fnd if fnd exists
     if fnd is not None:
         print('Rigid connection twr fnd')
-        twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
+        if nDOF_twr==0:
+            twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
+        else:
+            raise Exception('Flexible bodies can only have on body connection')
 
     if nDOF_twr==0:
         # Tower rigid -> Rigid connection to nacelle
@@ -221,8 +225,10 @@ def get_model(model_name, **opts):
             print('Dynamic connection twr nac')
 
         if opts['tiltShaft']:
+            # Shaft will be tilted, not nacelle
             twr.connectTo(nac, type='Rigid', rel_pos=(0,0,L_T)  , rot_amounts=(yawDOF,0,0), rot_order='ZYX')
         else:
+            # Nacelle is tilted
             twr.connectTo(nac, type='Rigid', rel_pos=(0,0,L_T)  , rot_amounts=(yawDOF,tiltDOF,0), rot_order='ZYX')
 
     else:
@@ -258,7 +264,7 @@ def get_model(model_name, **opts):
     # --- Kinetics
     body_loads       = []
     bodies           = []
-    g                = dynamicsymbols('g')
+    g                = symbols('g')
     T_a              = dynamicsymbols('T_a') # NOTE NOTE
     #T_a              = Function('T_a')(dynamicsymbols._t, *coordinates, *speeds) # NOTE NOTE
     M_ax, M_ay, M_az = dynamicsymbols('M_ax, M_ay, M_az') # Aero torques

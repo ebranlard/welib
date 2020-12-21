@@ -38,8 +38,8 @@ class TestUtils(unittest.TestCase):
         I_A = np.eye(3)
         M = 12
         r_GA = np.array([3,4,5])
-        I_G  = translateInertiaMatrixToCOG  (I_A,M,r_GA)  # I@G from A
-        I_A2 = translateInertiaMatrixFromCOG(I_G,M,-r_GA) # I@A from G
+        I_G  = translateInertiaMatrixToCOG  (I_A,M,-r_GA)  # I@G from A
+        I_A2 = translateInertiaMatrixFromCOG(I_G,M, r_GA) # I@A from G
         np.testing.assert_equal(I_A,I_A2)
 
 if __name__=='__main__':

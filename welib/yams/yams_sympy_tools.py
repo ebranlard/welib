@@ -4,8 +4,10 @@ Tools for yams_sympy
 
 import numpy as np
 from sympy import latex, python, symarray, diff
+from sympy import Symbol
 from sympy import Function
 from sympy.physics.vector import dynamicsymbols
+from sympy.physics.mechanics.functions import find_dynamicsymbols
 
 def frame_viz(Origin, frame, l=1, r=0.08):
     """ """
@@ -196,8 +198,8 @@ def cleantex(expr):
         'frac{d}{dt} \\phi_z':'dot{\\phi}_z',
         'frac{d}{dt} \\psi':'dot{\\psi}',
         'frac{d}{dt} q_{T2}':'dot{q}_{T2}',
-        '{RNA}':'{N}',
-        'RNA':'N',
+#         '{RNA}':'{N}',
+#         'RNA':'N',
         'x_{NG}^{2} + z_{NG}^{2}':'r_{NG}^2',
         'M_N x_{NG}^{2} + M_N z_{NG}^{2}':'M_N r_{NG}^{2}',
         'M_{R} x_{NR}^{2} + M_{R} z_{NR}^{2}':'M_{R} r_{NR}^{2}',
@@ -225,3 +227,108 @@ def saveTex(expr, filename):
     with open(filename,'w') as f:
         f.write(cleantex(expr))
     print('Done')
+
+
+
+def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None):
+    """ 
+    Clean a python sympy expression 
+    """
+
+    # list of parameters inputs and dofs
+    parameters = []
+    inputs     = []
+    sdofs      = []
+    sdofsDeriv = []
+    parametersProblem = []
+    if dofs is not None:
+        for idof,dof in enumerate(dofs):
+            s=repr(dof)
+            sdofs.append(s)
+            sdofsDeriv.append('Derivative({},t)'.format(s))
+            #sdofsDeriv.append('Derivative({}(t),t)'.format(s))
+        # sorting dofs by decreasing string length to avoid replacements (=> phi_y before y)
+        II = np.argsort([len(s) for s in sdofs])[-1::-1]
+        dofs=np.array(dofs)[II]
+
+    def cleanPyAtom(atom, dofs=None):
+        symbols     = atom.free_symbols
+        try:
+            symbols.remove(Symbol('t'))
+        except:
+            pass
+        dyn_symbols = find_dynamicsymbols(atom)
+        #print('>>> symbols', symbols)
+        #print('>>> Dynsymbols', dyn_symbols)
+        s=repr(atom).replace(' ','')
+
+        # Replace
+        if replDict is not None:
+            for k,v in replDict.items():
+                if len(v)==2:
+                    if s.find(k)>=0:
+                        if v[1] is not None:
+                            s=s.replace(k, 'p[\'{}\'][{}]'.format(v[0],','.join([str(ii) for ii in v[1]]) ) )
+                            parameters.append(v[0])
+                        else:
+                            s=s.replace(k, 'p[\'{}\']'.format(v[0]))
+                            parameters.append(v[0])
+                else:
+                    if s.find(k)>=0:
+                        s=s.replace(k,v)
+
+        if dofs is not None:
+            # time derivatives first!!! important
+            for idof,dof in enumerate(dofs):
+                sdof=repr(dof)
+                #s=s.replace('Derivative({}(t),t)'.format(sdof),'qd[{}]'.format(idof))
+                s=s.replace('Derivative({},t)'.format(sdof),'qd[{}]'.format(idof))
+            # then Dof
+            for idof,dof in enumerate(dofs):
+                sdof=repr(dof)
+                s=s.replace(sdof+'(t)','q[{}]'.format(idof))
+                s=s.replace(sdof,'q[{}]'.format(idof))
+
+        for symb in symbols:
+            ssymb=repr(symb)
+            if not any([p.find(ssymb)>0 for p in parameters]):
+                if s.find(ssymb)>=0:
+                    s=s.replace(ssymb,'p[\'{}\']'.format(ssymb))
+                    parameters.append(ssymb)
+            else:
+                parametersProblem.append(ssymb)
+
+        for symb in dyn_symbols:
+            ssymb=repr(symb).replace(' ','')
+            if ssymb not in sdofsDeriv and ssymb not in sdofs:
+                ssymb=ssymb.replace('(t)','')
+                s=s.replace(ssymb,'u[\'{}\']'.format(ssymb))
+                inputs.append(ssymb)
+        return s
+
+
+    try:
+        dims=expr.shape
+    except:
+        dims=0
+        return '{}{} = '.format(indent,varname) + cleanPyAtom(expr,dofs=dofs), list(set(parameters)), list(set(inputs)), sdofs
+
+    indent =''.join([' ']*indent)
+
+    s=''
+    if len(dims)==1:
+        s+='{}{} = np.zeros({})\n'.format(indent,varname,dims[0])
+        for i in np.arange(dims[0]):
+            s+='{}{}[{}] = '.format(indent,varname,i) + cleanPyAtom(expr[i], dofs=dofs) +'\n'
+    elif len(dims)==2:
+        s+='{}{} = np.zeros(({},{}))\n'.format(indent,varname, dims[0],dims[1])
+        for i in np.arange(dims[0]):
+            for j in np.arange(dims[1]):
+                s+='{}{}[{},{}] = '.format(indent,varname,i,j) + cleanPyAtom(expr[i,j], dofs=dofs)+'\n'
+    # removing duplicates
+    parameters = list(set(parameters))
+    inputs     = list(set(inputs))
+    parametersProblem = list(set(parametersProblem))
+    if len(parametersProblem)>0:
+        print('>>> Problematic parameters: ', parametersProblem)
+    return s, parameters, inputs, sdofs

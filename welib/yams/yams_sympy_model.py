@@ -2,9 +2,11 @@ import os
 from sympy.physics.mechanics import dynamicsymbols
 from sympy import diff
 
-from .yams_sympy_tools import smallAngleApprox, cleantex, subs_no_diff 
+from .yams_sympy_tools import smallAngleApprox, cleantex, subs_no_diff , cleanPy
 from .yams_kane import YAMSKanesMethod
+from .yams_sympy import YAMSFlexibleBody
 from welib.tools.tictoc import Timer
+from collections import OrderedDict
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
@@ -67,7 +69,7 @@ class YAMSModel(object):
         # --- Expensive kane step
         with Timer('Kane step 2',True):
             #(use  Mform ='symbolic' or 'TaylorExpanded'), Mform='symbolic'
-            self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads)
+            self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform)
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
 
@@ -140,10 +142,10 @@ class YAMSModel(object):
             # KEEP ME Alternative
             #M, A, B = linearizer.linearize(op_point=op_point ) #o
 
-            M = EOM.jacobian(self.coordinates_acc  ).subs(extraSubs).subs(op_point)
-            C = EOM.jacobian(self.coordinates_speed).subs(extraSubs).subs(op_point)
-            K = EOM.jacobian(self.coordinates      ).subs(extraSubs).subs(op_point)
-            B =-EOM.jacobian(self.var              ).subs(extraSubs).subs(op_point)
+            M =-EOM.jacobian(self.coordinates_acc  ).subs(extraSubs).subs(op_point)
+            C =-EOM.jacobian(self.coordinates_speed).subs(extraSubs).subs(op_point)
+            K =-EOM.jacobian(self.coordinates      ).subs(extraSubs).subs(op_point)
+            B = EOM.jacobian(self.var              ).subs(extraSubs).subs(op_point)
 
         return M,C,K,B
 
@@ -158,6 +160,7 @@ class YAMSModel(object):
             prefix=self.name+'_'+prefix.strip('_')
         else:
             prefix=self.name
+
 
         filename=os.path.join(folder,prefix+'.tex')
         with Timer('Latex to {}'.format(filename),True):
@@ -177,7 +180,7 @@ class YAMSModel(object):
 
                 if 'FF' in variables:
                     FF=subs_no_diff(self._sa_forcing,extraSubs)
-                    FF.simplify()
+                    #FF.simplify()
 
                     f.write('Forcing vector:\n')
                     f.write('\\begin{equation*}\n')
@@ -188,7 +191,7 @@ class YAMSModel(object):
 
                 if 'MM' in variables:
                     MM=subs_no_diff(self._sa_mass_matrix,extraSubs)
-                    MM.simplify()
+                    #MM.simplify()
                     f.write('Mass matrix:\n')
                     f.write('\\begin{equation*}\n')
                     f.write('\\resizebox{\\textwidth}{!}{$\n')
@@ -198,7 +201,7 @@ class YAMSModel(object):
 
                 if 'M' in variables:
                     MM=subs_no_diff(self._sa_M,extraSubs)
-                    MM.simplify()
+                    #MM.simplify()
                     f.write('Linearized mass matrix:\n')
                     f.write('\\begin{equation*}\n')
                     f.write('\\resizebox{\\textwidth}{!}{$\n')
@@ -208,7 +211,7 @@ class YAMSModel(object):
 
                 if 'C' in variables:
                     MM=subs_no_diff(self._sa_C,extraSubs)
-                    MM.simplify()
+                    #MM.simplify()
                     stretch=True
                     if MM==MM*0:
                         stretch=False
@@ -223,7 +226,7 @@ class YAMSModel(object):
 
                 if 'K' in variables:
                     MM=subs_no_diff(self._sa_K,extraSubs)
-                    MM.simplify()
+                    #MM.simplify()
                     f.write('Linearized stiffness matrix:\n')
                     f.write('\\begin{equation*}\n')
                     f.write('\\resizebox{\\textwidth}{!}{$\n')
@@ -234,7 +237,7 @@ class YAMSModel(object):
 
                 if 'B' in variables:
                     MM=subs_no_diff(self._sa_B,extraSubs)
-                    MM.simplify()
+                    #MM.simplify()
                     f.write('Linearized forcing matrix:\n')
                     f.write('\\begin{equation*}\n')
                     f.write('\\resizebox{\\textwidth}{!}{$\n')
@@ -242,5 +245,147 @@ class YAMSModel(object):
                     f.write('$}\n')
                     f.write('\\end{equation*}\n')
 
+    # --------------------------------------------------------------------------------}
+    # --- Export to Python script 
+    # --------------------------------------------------------------------------------{
+    def smallAngleSavePython(self, prefix='', folder='./', extraSubs=[], variables=['MM','FF','M','C','K','B'], replaceDict=None):
+        """ 
+        Save forcing, mass matrix and linear model to python package
+        """
+        from sympy import python
+        import sympy.printing.pycode as pycode
 
+        if len(prefix)>0:
+            prefix=self.name+'_'+prefix.strip('_')
+        else:
+            prefix=self.name
+        filename=os.path.join(folder,prefix+'.py')
+
+
+        # --- replace  dict
+        if replaceDict is None: 
+            replaceDict=OrderedDict()
+        for b in self.bodies:
+            if isinstance(b, YAMSFlexibleBody):
+                b.replaceDict(replaceDict)
+        print(replaceDict)
+
+        with Timer('Python to {}'.format(filename),True):
+            with open(filename,'w') as f:
+                f.write('"""\n')
+                f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
+                f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.coordinates)))
+                f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAngleUsed)))
+                f.write('Free vars:       ${}$\\\\ \n'.format(cleantex(self.var)))
+                f.write('"""\n')
+                f.write('import numpy as np\n')
+                f.write('from numpy import cos, sin\n')
+
+
+                if 'FF' in variables:
+                    FF = subs_no_diff(self._sa_forcing,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(FF, varname='FF', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def forcing(t,q=None,qd=None,p=None,u=None,z=None):\n')
+                    f.write('    """ Non linear mass forcing \n')
+                    f.write('    q:  degrees of freedom, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a function of time\n')
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write('        qd = z[int(len(z)/2): ] \n')
+                    f.write(s)
+                    f.write('    return FF\n\n')
+
+                if 'MM' in variables:
+                    MM=subs_no_diff(self._sa_mass_matrix,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def mass_matrix(q=None,p=None,z=None):\n')
+                    f.write('    """ Non linear mass matrix \n')
+                    f.write('     q:  degrees of freedom, array-like: {}\n'.format(sdofs))
+                    f.write('     p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write(s)
+                    f.write('    return MM\n\n')
+
+                if 'M' in variables:
+                    MM=subs_no_diff(self._sa_M,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def M_lin(q=None,p=None,z=None):\n')
+                    f.write('    """ Linear mass matrix \n')
+                    f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write(s)
+                    f.write('    return MM\n\n')
+
+                if 'C' in variables:
+                    MM=subs_no_diff(self._sa_C,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def C_lin(q=None,qd=None,p=None,u=None,z=None):\n')
+                    f.write('    """ Linear damping matrix \n')
+                    f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities at operating point, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a constant!\n')
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write('        qd = z[int(len(z)/2): ] \n')
+                    f.write(s)
+                    f.write('    return CC\n\n')
+
+                if 'K' in variables:
+                    MM=subs_no_diff(self._sa_K,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def K_lin(q=None,qd=None,p=None,u=None,z=None):\n')
+                    f.write('    """ Linear stiffness matrix \n')
+                    f.write('    q:  degrees of freedom, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a constant!\n')
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write('        qd = z[int(len(z)/2): ] \n')
+                    f.write(s)
+                    f.write('    return KK\n\n')
+
+                if 'B' in variables:
+                    MM=subs_no_diff(self._sa_B,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def B_lin(q=None,qd=None,p=None,u=None):\n')
+                    f.write('    """ Linear mass matrix \n')
+                    f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities at operating point, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a constant!\n')
+                    f.write('    """\n')
+                    f.write(s)
+                    f.write('    return BB\n\n')
+
+
+    def save(self, filename):
+        """ Save to pickle """
+        import pickle
+        with open(filename,'wb') as f:
+            pickle.dump(repr(self._sa_forcing),f)
+
+    @staticmethod
+    def load(filename):
+        """ Save to pickle """
+        import pickle
+        from sympy.parsing.sympy_parser import parse_expr
+        with open(filename,'rb') as f:
+            #return parse_expr(pickle.load(f))
+            return pickle.load(f)
 

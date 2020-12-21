@@ -56,6 +56,7 @@ L_F, L_T, L_R, L_B = symbols('L_F, L_T, L_R, L_B') # length
 z_FG     = symbols('z_FG')       # Position of Foundation COG in F, measured from point T
 z_TG     = symbols('z_TG')       # Position of Tower COG in T
 x_NG,z_NG = symbols('x_NG, z_NG') # Position of Nacelle COG in N
+x_RNAG,z_RNAG = symbols('x_RNAG, z_RNAG') # Position of Nacelle COG in N
 
 
 # Points

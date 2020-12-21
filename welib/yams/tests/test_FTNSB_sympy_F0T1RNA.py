@@ -51,7 +51,7 @@ class TestF0T1RNA(unittest.TestCase):
 
         # --- Mass matrix
         MM = model._sa_mass_matrix
-        MM_noTwr= parse_expr('Matrix([[-2*M_N*v_yT1c*(x_NG*sin(theta_tilt) - z_NG*cos(theta_tilt)) + M_N]])')# M_e^0_T_11 + M_e^1_1_T_11*q_T1(t)
+        MM_noTwr= parse_expr('Matrix([[-2*M_RNA*v_yT1c*(x_RNAG*sin(theta_tilt) - z_RNAG*cos(theta_tilt)) + M_RNA]])')# M_e^0_T_11 + M_e^1_1_T_11*q_T1(t)
         MM_twr  = model.twr.MM 
         #print('MM',MM)
         #print('MM_noT',MM_noTwr)
@@ -66,7 +66,7 @@ class TestF0T1RNA(unittest.TestCase):
         FF = model._sa_forcing[0,0].subs([(dynamicsymbols('g'),Symbol('g')),(dynamicsymbols('T_a'),Symbol('T_a')), ])
         #forcing1=parse_expr('-D_e^0_T_11*Derivative(q_T1(t), t) - K_e^0_T_11*q_T1(t)')
         forcing1 = twr.bodyElasticForce(twr.q, twr.qdot)[6,0]
-        forcing2 = parse_expr('T_a*cos(theta_tilt) + v_yT1c*(M_N*g*x_NG*cos(theta_tilt) + M_N*g*z_NG*sin(theta_tilt) + T_a*z_NR - T_a*q_T1(t)*sin(theta_tilt) + M_ay(t))')
+        forcing2 = parse_expr('T_a*cos(theta_tilt) + v_yT1c*(M_RNA*g*x_RNAG*cos(theta_tilt) + M_RNA*g*z_RNAG*sin(theta_tilt) + T_a*z_NR - T_a*q_T1(t)*sin(theta_tilt) + M_ay(t))')
 
         DFF = FF-forcing2+forcing1
         DFF.simplify()
