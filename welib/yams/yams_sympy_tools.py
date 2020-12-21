@@ -330,5 +330,5 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None):
     inputs     = list(set(inputs))
     parametersProblem = list(set(parametersProblem))
     if len(parametersProblem)>0:
-        print('>>> Problematic parameters: ', parametersProblem)
+        print('>>> Parameters not replaced for python: ', parametersProblem)
     return s, parameters, inputs, sdofs

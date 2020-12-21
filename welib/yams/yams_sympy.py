@@ -299,6 +299,9 @@ class YAMSBody(object):
         s+=' * R_b2g, R_g2b, _alt'
         return s
 
+    def __str__(self):
+        return self.__repr__()
+
     # --------------------------------------------------------------------------------}
     # --- Useful getters
     # --------------------------------------------------------------------------------{
@@ -590,7 +593,8 @@ class Body(object):
         return n
 
     def __repr__(B):
-        pass
+        s=''
+        return s
 
     @property
     def R_bc(self):
@@ -759,6 +763,9 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             
         # Init Sympy Rigid Body 
         SympyRigidBody.__init__(self, name, self.masscenter, self.frame, mass, _inertia)
+
+        # For harmony with flexible bodies
+        self.shapeNormSubs= []
             
     def inertiaIsInPrincipalAxes(self):
         """ enforce the fact that the frame is along the principal axes"""
@@ -803,7 +810,6 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     def masscenter_acc_inertial(self):
         """ return acceleration velocity of body COG in inertial frame """
         return self.masscenter.acc(self.inertial_frame)
-
     
     def __repr__(self):
         s=YAMSBody.__repr__(self)
@@ -1181,12 +1187,10 @@ class YAMSFlexibleBody(YAMSBody):
         rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
         # Computing DCM due to elastic motion
         M_B2e = rotToDCM(rot_type_elastic, rot_amounts = parent.alpha, rot_order=rot_order_elastic) # from parent to deformed parent 
-        print('M_B2e',M_B2e)
         # Insert elastic DOF
         if doSubs:
             rel_pos = [r.subs(parent.ucSubs) for r in rel_pos]
             M_B2e   = M_B2e.subs(parent.alphaSubs)
-        print('M_B2e',M_B2e)
         # Full DCM
         if rot_amounts is None:
             M_c2B = M_B2e.transpose()

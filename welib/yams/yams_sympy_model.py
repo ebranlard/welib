@@ -268,7 +268,7 @@ class YAMSModel(object):
         for b in self.bodies:
             if isinstance(b, YAMSFlexibleBody):
                 b.replaceDict(replaceDict)
-        print(replaceDict)
+        #print(replaceDict)
 
         with Timer('Python to {}'.format(filename),True):
             with open(filename,'w') as f:
