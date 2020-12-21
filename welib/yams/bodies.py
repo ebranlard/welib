@@ -6,6 +6,7 @@ These classes will be used for more advanced classes:
 """
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrixFromCOG
 from welib.yams.utils import rigidBodyMassMatrix 
+from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GeneralizedMCK_PolyBeam
 # from welib.yams.utils import skew
 
 
@@ -23,11 +24,16 @@ def zeros(m,n):
 # --- Generic Body 
 # --------------------------------------------------------------------------------{
 class Body(object):
-    def __init__(self, name='', r_O=None):
+    """
+    Base class for rigid bodies and flexible bodies
+    """
+    def __init__(self, name='', r_O=[0,0,0], R_b2g=np.eye(3)):
         self.name = name
-        self._r_O  = None       # position of body origin in global coordinates
-        self.mass = None       # mass
-        self.MM   = zeros(6,6) # Mass Matrix
+        self._r_O   = np.asarray(r_O).ravel()
+        self._R_b2g = np.asarray(R_b2g)
+
+        self.mass = None # To be defined by children
+        self.MM  = None # To be defined by children
 
     def __repr__(B):
         s='<Generic {} object>:\n'.format(type(self).__name__)
@@ -37,64 +43,6 @@ class Body(object):
     def Mass(self):
         print('Warning: `Mass` is an old interface, use `mass` instead')
         return self.mass
-
-# --------------------------------------------------------------------------------}
-# --- Ground Body 
-# --------------------------------------------------------------------------------{
-class InertialBody(Body):
-    def __init__(self):
-        Body.__init__(self, name='Grd')
-
-# --------------------------------------------------------------------------------}
-# --- Rigid Body 
-# --------------------------------------------------------------------------------{
-class RigidBody(Body):
-    def __init__(self, name, mass, J, s_OG, R_b2g=np.eye(3), s_OP=None, r_O=[0,0,0]):
-        """
-        Creates a rigid body 
-
-        INPUTS:
-         - name: name of body (string)
-         - mass: body mass (float)
-         - J: inertia tensor (array-like) in body frame, defined either at:
-               - center of mass G, located at s_OG from the body origin
-               - OR point P, located at s_OP from the body origin
-             J may be defined as:
-               - a 3x3 matrix
-               - a 3-vector (Jxx, Jyy, Jzz) representing the diagonal values
-               - a 6-vector (Jxx, Jyy, Jzz, Jxy, Jyz, Jzx) representing the diagonal values
-         - s_OG: vector from body origin to body COG in body frame 
-
-         - s_OP: vector from body origin to point where inertia is defined,
-                 in body frame
-                 (only if inertia is not defined at COG).
-         - r_O: vector from global origin to body origin, in global coordinates
-         - R_b2g : transformation matrix from body to gobal coordinates
-
-        """
-        Body.__init__(self, name)
-        self.mass  = mass
-        self._r_O   = np.asarray(r_O).ravel()
-        self._s_OG = np.asarray(s_OG).ravel()
-        self._R_b2g = np.asarray(R_b2g)
-
-        # Ensuring a 3x3 inertia matrix
-        J = np.asarray(J)
-        Jflat=J.ravel()
-        if len(Jflat)==3:
-            J = np.diag(Jflat)
-        elif len(Jflat)==6:
-            J = np.diag(Jflat[:3])
-            J[0,1]=J[1,0]=Jflat[3]
-            J[1,2]=J[2,1]=Jflat[4]
-            J[1,3]=J[3,1]=Jflat[5]
-            
-        # inertia at COG
-        if s_OP is not None:
-            s_PG=  self._s_OG - s_OP
-            self._J_G = translateInertiaMatrixToCOG(J, mass, s_PG)
-        else:
-            self._J_G = J
 
     @property    
     def pos_global(self):
@@ -122,6 +70,64 @@ class RigidBody(Body):
     def pos_local(self, x_gl):
         """ return position vector from origin of body, in body coordinates, of a point in global """
         return self.R_g2b.dot(x_gl - self._r_O)
+
+
+# --------------------------------------------------------------------------------}
+# --- Ground Body 
+# --------------------------------------------------------------------------------{
+class InertialBody(Body):
+    def __init__(self):
+        Body.__init__(self, name='Grd')
+
+# --------------------------------------------------------------------------------}
+# --- Rigid Body 
+# --------------------------------------------------------------------------------{
+class RigidBody(Body):
+    def __init__(self, name, mass, J, s_OG, r_O=[0,0,0], R_b2g=np.eye(3), s_OP=None):
+        """
+        Creates a rigid body 
+
+        INPUTS:
+         - name: name of body (string)
+         - mass: body mass (float)
+         - J: inertia tensor (array-like) in body frame, defined either at:
+               - center of mass G, located at s_OG from the body origin
+               - OR point P, located at s_OP from the body origin
+             J may be defined as:
+               - a 3x3 matrix
+               - a 3-vector (Jxx, Jyy, Jzz) representing the diagonal values
+               - a 6-vector (Jxx, Jyy, Jzz, Jxy, Jyz, Jzx) representing the diagonal values
+         - s_OG: vector from body origin to body COG in body frame 
+
+         - s_OP: vector from body origin to point where inertia is defined,
+                 in body frame
+                 (only if inertia is not defined at COG).
+         - r_O: vector from global origin to body origin, in global coordinates
+         - R_b2g : transformation matrix from body to gobal coordinates
+
+        """
+        Body.__init__(self, name, r_O=r_O, R_b2g=R_b2g)
+        self.mass  = mass
+        self._s_OG = np.asarray(s_OG).ravel()
+
+        # Ensuring a 3x3 inertia matrix
+        J = np.asarray(J)
+        Jflat=J.ravel()
+        if len(Jflat)==3:
+            J = np.diag(Jflat)
+        elif len(Jflat)==6:
+            J = np.diag(Jflat[:3])
+            J[0,1]=J[1,0]=Jflat[3]
+            J[1,2]=J[2,1]=Jflat[4]
+            J[1,3]=J[3,1]=Jflat[5]
+            
+        # inertia at COG
+        if s_OP is not None:
+            s_PG=  self._s_OG - s_OP
+            self._J_G = translateInertiaMatrixToCOG(J, mass, s_PG)
+        else:
+            self._J_G = J
+
 
     # --------------------------------------------------------------------------------
     # --- Inertia
@@ -210,8 +216,157 @@ class RigidBody(Body):
 # --- Flexible Body 
 # --------------------------------------------------------------------------------{
 class FlexibleBody(Body):
-    def __init__(self, name):
+    def __init__(self, name, 
+            r_O=[0,0,0], R_b2g=np.eye(3) # Position and orientation in global
+            ):
         """
         Creates a Flexible body 
         """
-        Body.__init__(self, name)
+        Body.__init__(self, name, r_O=r_O, R_b2g=R_b2g)
+
+# --------------------------------------------------------------------------------}
+# --- Beam Body 
+# --------------------------------------------------------------------------------{
+class BeamBody(FlexibleBody):
+    def __init__(self, name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=None, s_G0=None, 
+            r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
+            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None, main_axis='z'):
+        """
+        Creates a Flexible Beam body 
+          Points P0 - Undeformed mean line of the body
+        """
+        FlexibleBody.__init__(self,name)
+        self.main_axis = main_axis
+        self.s_span = s_span
+        self.m      = m
+        self.s_G0   = s_G0
+        self.PhiU   = PhiU
+        self.PhiV   = PhiV
+        self.PhiK   = PhiK
+        self.jxxG   = jxxG
+        self.s_P0   = s_P0
+        self.EI     = EI
+        if jxxG is None:
+            self.jxxG   = 0*m
+        if self.s_G0 is None:
+            self.s_G0=self.s_P0
+    
+        self.s_G    = self.s_G0
+        self.bAxialCorr = bAxialCorr
+        self.bOrth      = bOrth
+        self.bStiffening= bStiffening
+        self.Mtop       = Mtop
+        self.gravity    = gravity
+
+        self.computeMassMatrix()
+        self.computeStiffnessMatrix()
+        self.DD = np.zeros((6+self.nf,6+self.nf))
+
+        # TODO
+        #self.V0         = np.zeros((3,self.nSpan))
+        #self.K0         = np.zeros((3,self.nSpan))
+        #self.rho_G0_inS = np.zeros((3,self.nSpan)) # location of COG in each cross section
+        #[o.PhiV,o.PhiK] = fBeamSlopeCurvature(o.s_span,o.PhiU,o.PhiV,o.PhiK,1e-2);
+        #[o.V0,o.K0]     = fBeamSlopeCurvature(o.s_span,o.s_P0,o.V0,o.K0,1e-2)    ;
+
+    def computeStiffnessMatrix(B):
+        B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
+        if B.bStiffening:
+            B.KKg = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, main_axis=B.main_axis)
+        else:
+            B.KKg=B.KK0*0
+
+        B.KK=B.KK0+B.KKg
+
+    @property
+    def mass_matrix(self):
+        """ Body mass matrix at origin"""
+        return self.MM
+
+    def computeMassMatrix(B):
+        B.MM = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth)
+
+    @property
+    def nSpan(B):
+        return len(B.s_span)
+
+    def __repr__(self):
+        s='<{} {} object>:\n'.format(type(self).__name__, self.name)
+        s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
+        #s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
+        #s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
+        #s+=' - mass:         {}\n'.format(self.mass)
+        #s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
+        #s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
+        #s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+        #s+='Useful getters: inertia_at, mass_matrix\n'
+        return s
+
+# --------------------------------------------------------------------------------}
+# --- FAST Beam body 
+# --------------------------------------------------------------------------------{
+class FASTBeamBody(BeamBody):
+    def __init__(self, ED, inp, Mtop=0, nShapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True):
+        """ 
+        INPUTS:
+           ED: ElastoDyn inputs as read from weio
+           inp: blade or tower file, as read by weio
+           Mtop: top mass if any
+           nSpan: number of spanwise station used (interpolated from input)
+                  Use -1 or None to use number of stations from input file
+        """
+
+        # --- Reading properties, coefficients
+        exp = np.arange(2,7)
+        if 'BldProp' in inp.keys():
+            body_type='blade'
+            # --- Blade
+            coeff = np.array([[ inp['BldFl1Sh(2)'], inp['BldFl2Sh(2)'], inp['BldEdgSh(2)']],
+                              [ inp['BldFl1Sh(3)'], inp['BldFl2Sh(3)'], inp['BldEdgSh(3)']],
+                              [ inp['BldFl1Sh(4)'], inp['BldFl2Sh(4)'], inp['BldEdgSh(4)']],
+                              [ inp['BldFl1Sh(5)'], inp['BldFl2Sh(5)'], inp['BldEdgSh(5)']],
+                              [ inp['BldFl1Sh(6)'], inp['BldFl2Sh(6)'], inp['BldEdgSh(6)']]])
+
+            damp_zeta = np.array([ inp['BldFlDmp(1)'], inp['BldFlDmp(2)'], inp['BldEdDmp(1)']])/100
+            mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
+            prop      = inp['BldProp']  
+            span_max  = ED['TipRad']     # TODO TODO do somdthing about hub rad <<<<<<<<<<<<<<<
+            s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
+            if nShapes is None:
+                nShapes = 3
+
+        elif 'TowProp' in inp.keys():
+            # --- Tower
+            body_type='tower'
+            coeff = np.array([[ inp['TwFAM1Sh(2)'], inp['TwFAM2Sh(2)'], inp['TwSSM1Sh(2)'], inp['TwSSM2Sh(2)']],
+                              [ inp['TwFAM1Sh(3)'], inp['TwFAM2Sh(3)'], inp['TwSSM1Sh(3)'], inp['TwSSM2Sh(3)']],
+                              [ inp['TwFAM1Sh(4)'], inp['TwFAM2Sh(4)'], inp['TwSSM1Sh(4)'], inp['TwSSM2Sh(4)']],
+                              [ inp['TwFAM1Sh(5)'], inp['TwFAM2Sh(5)'], inp['TwSSM1Sh(5)'], inp['TwSSM2Sh(5)']],
+                              [ inp['TwFAM1Sh(6)'], inp['TwFAM2Sh(6)'], inp['TwSSM1Sh(6)'], inp['TwSSM2Sh(6)']]])
+            damp_zeta = np.array([inp['TwrFADmp(1)'], inp['TwrFADmp(2)'], inp['TwrSSDmp(1)'], inp['TwrSSDmp(2)']])/100 # structural damping ratio 
+            mass_fact = inp['AdjTwMa']                                              # Factor to adjust tower mass density (-)
+            prop     = inp['TowProp']
+            span_max = ED['TowerHt']-ED['TowerBsHt']
+            s_bar, m, EIFlp, EIEdg  = prop[:,0], prop[:,1], prop[:,2], prop[:,3]
+            if nShapes is None:
+                nShapes = 4
+        else:
+            raise Exception('Body type not supported, key BldProp and Tow Prop not found in file')
+        m *= mass_fact
+        s_span=s_bar*span_max
+        if nShapes>coeff.shape[1]:
+            raise Exception('A maximum of {} shapes function possible with this FAST body'.format(coeff.shape[1]))
+        coeff= coeff[:,:nShapes]
+
+        gravity=ED['Gravity']
+
+        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
+
+
+        BeamBody.__init__(self, 'dummy', p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
+                bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity, Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
+
+#     def __init__(self, name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=None, s_G0=None, 
+#             r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
+#             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None, main_axis='z'):
+

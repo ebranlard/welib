@@ -9,6 +9,8 @@ from .utils import *
 from .bodies import Body         as GenericBody
 from .bodies import RigidBody    as GenericRigidBody
 from .bodies import FlexibleBody as GenericFlexibleBody
+from .bodies import BeamBody     as GenericBeamBody
+from .bodies import FASTBeamBody as GenericFASTBeamBody
 from .bodies import InertialBody as GenericInertialBody
 
 # --- To ease comparison with sympy version
@@ -81,11 +83,10 @@ class Connection():
 # --- Bodies 
 # --------------------------------------------------------------------------------{
 class Body(GenericBody):
-    def __init__(B,Name=''):
-        GenericBody.__init__(B, name=Name)
+    def __init__(B,name=''):
+        GenericBody.__init__(B, name=name)
         B.Children    = []
         B.Connections = []
-        B.Name        = Name
         B.MM     = None
         B.B           = [] # Velocity transformation matrix
         B.updatePosOrientation(colvec([0,0,0]), eye(3))
@@ -149,7 +150,7 @@ class Body(GenericBody):
             Bt_pc = p.Bhat_t_bc
             # Joint influence to next body (R_ci, B_ci)
             conn_pi.updateKinematics(q) # TODO
-            #print('R_ci',p.Name)
+            #print('R_ci',p.name)
             #print(conn_pi.R_ci)
 
             # Full connection p and j
@@ -163,11 +164,11 @@ class Body(GenericBody):
               
             # Rotation of body i is rotation due to p and j
             R_0i = np.dot( R_0p , R_pi )
-            #print('R_pi',p.Name)
+            #print('R_pi',p.name)
             #print(R_pi)
-            #print('R_0p',p.Name)
+            #print('R_0p',p.name)
             #print(R_0p)
-            #print('R_0i',p.Name)
+            #print('R_0i',p.name)
             #print(R_0i)
 
             # Position of connection point in P and 0 system
@@ -263,11 +264,11 @@ class GroundBody(Body, GenericInertialBody):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class RigidBody(Body,GenericRigidBody):
-    def __init__(B, Name, Mass, J_G, rho_G):
+    def __init__(B, name, Mass, J_G, rho_G):
         """
         Creates a rigid body 
         """
-        GenericRigidBody.__init__(B, Name, Mass, J_G, rho_G)
+        GenericRigidBody.__init__(B, name, Mass, J_G, rho_G)
         Body.__init__(B)
         B.s_G_inB = rho_G
         B.J_G_inB = J_G
@@ -282,38 +283,16 @@ class RigidBody(Body,GenericRigidBody):
 # --------------------------------------------------------------------------------}
 # --- Beam Body 
 # --------------------------------------------------------------------------------{
-class BeamBody(Body):
+class BeamBody(GenericBeamBody, Body):
     def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z'):
         """ 
           Points P0 - Undeformed mean line of the body
         """
-        super(BeamBody,B).__init__()
-        B.main_axis = main_axis
-
-        B.s_span = s_span
-        B.m      = m
-        B.s_G0   = s_G0
-        B.PhiU   = PhiU
-        B.PhiV   = PhiV
-        B.PhiK   = PhiK
-        B.jxxG   = jxxG
-        B.s_P0   = s_P0
-        B.EI     = EI
-        if jxxG is None:
-            B.jxxG   = 0*m
-        if B.s_G0 is None:
-            B.s_G0=B.s_P0
-    
-        B.s_G    = B.s_G0
-        B.bAxialCorr = bAxialCorr
-        B.bOrth      = bOrth
-        B.bStiffening= bStiffening
-        B.Mtop       = Mtop
-        B.gravity    = gravity
-
-        B.computeMassMatrix()
-        B.computeStiffnessMatrix()
-        B.DD = np.zeros((6+B.nf,6+B.nf))
+        # --- nherit from BeamBody and Body 
+        Body.__init__(B)
+        GenericBeamBody.__init__(B,'dummy', s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0,
+                 bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis
+                )
 
         B.gzf   = np.zeros((B.nf,1))
         B.gzpf  = np.zeros((B.nf,1))
@@ -368,21 +347,18 @@ class BeamBody(Body):
                 Bhat_t_bc[2,j]= 0                     # torsion
         return Bhat_t_bc
 
-
-
-
-    def computeStiffnessMatrix(B):
-        B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
-        if B.bStiffening:
-            B.KKg = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, main_axis=B.main_axis)
-        else:
-            B.KKg=B.KK0*0
-
-        B.KK=B.KK0+B.KKg
-
-    def computeMassMatrix(B):
-        B.MM = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth)
-
+#     def computeStiffnessMatrix(B):
+#         B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
+#         if B.bStiffening:
+#             B.KKg = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, main_axis=B.main_axis)
+#         else:
+#             B.KKg=B.KK0*0
+# 
+#         B.KK=B.KK0+B.KKg
+# 
+#     def computeMassMatrix(B):
+#         B.MM = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth)
+# 
     def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
         super(BeamBody,o).updateKinematics(x_0,R_0b,gz,v_0,a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
@@ -438,7 +414,7 @@ class BeamBody(Body):
 # --- Uniform Beam Body 
 # --------------------------------------------------------------------------------{
 class UniformBeamBody(BeamBody):
-    def __init__(B, Name, nShapes, nSpan, L, EI0, m, Mtop=0, jxxG=None, GKt=None, bAxialCorr=True, bCompatibility=False, bStiffnessFromGM=False, bStiffening=True, gravity=None, main_axis='x'):
+    def __init__(B, name, nShapes, nSpan, L, EI0, m, Mtop=0, jxxG=None, GKt=None, bAxialCorr=True, bCompatibility=False, bStiffnessFromGM=False, bStiffening=True, gravity=None, main_axis='x'):
 
         import welib.beams.theory as bt
         if jxxG is None:
@@ -487,68 +463,12 @@ class UniformBeamBody(BeamBody):
 # --------------------------------------------------------------------------------}
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
-class FASTBeamBody(BeamBody):
-    def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=40,bAxialCorr=False,bStiffening=True):
+class FASTBeamBody(BeamBody, GenericFASTBeamBody):
+    def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True):
         """ 
-        INPUTS:
-           nSpan: number of spanwise station used (interpolated from input)
-                  Use -1 or None to use number of stations from input file
         """
-        # --- Reading coefficients
-        exp = np.arange(2,7)
-        if body_type.lower()=='blade':
-            coeff = np.array([[ inp['BldFl1Sh(2)'], inp['BldFl2Sh(2)'], inp['BldEdgSh(2)']],
-                              [ inp['BldFl1Sh(3)'], inp['BldFl2Sh(3)'], inp['BldEdgSh(3)']],
-                              [ inp['BldFl1Sh(4)'], inp['BldFl2Sh(4)'], inp['BldEdgSh(4)']],
-                              [ inp['BldFl1Sh(5)'], inp['BldFl2Sh(5)'], inp['BldEdgSh(5)']],
-                              [ inp['BldFl1Sh(6)'], inp['BldFl2Sh(6)'], inp['BldEdgSh(6)']]])
-
-            damp_zeta  = np.array([ inp['BldFlDmp(1)'], inp['BldFlDmp(2)'], inp['BldEdDmp(1)']])/100
-            mass_fact = inp['AdjBlMs']                                              # Factor to adjust blade mass density (-)
-          
-            prop     = inp['BldProp']
-            span_max = ED['TipRad']   # TODO TODO do somthing about hub rad
-            s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
-
-        elif body_type.lower()=='tower':
-            coeff = np.array([[ inp['TwFAM1Sh(2)'], inp['TwFAM2Sh(2)'], inp['TwSSM1Sh(2)'], inp['TwSSM2Sh(2)']],
-                              [ inp['TwFAM1Sh(3)'], inp['TwFAM2Sh(3)'], inp['TwSSM1Sh(3)'], inp['TwSSM2Sh(3)']],
-                              [ inp['TwFAM1Sh(4)'], inp['TwFAM2Sh(4)'], inp['TwSSM1Sh(4)'], inp['TwSSM2Sh(4)']],
-                              [ inp['TwFAM1Sh(5)'], inp['TwFAM2Sh(5)'], inp['TwSSM1Sh(5)'], inp['TwSSM2Sh(5)']],
-                              [ inp['TwFAM1Sh(6)'], inp['TwFAM2Sh(6)'], inp['TwSSM1Sh(6)'], inp['TwSSM2Sh(6)']]])
-            damp_zeta = np.array([inp['TwrFADmp(1)'], inp['TwrFADmp(2)'], inp['TwrSSDmp(1)'], inp['TwrSSDmp(2)']])/100 # structural damping ratio 
-            mass_fact = inp['AdjTwMa']                                              # Factor to adjust tower mass density (-)
-
-            prop     = inp['TowProp']
-            span_max = ED['TowerHt']-ED['TowerBsHt']
-            s_bar, m, EIFlp, EIEdg  = prop[:,0], prop[:,1], prop[:,2], prop[:,3]
-
-
-        else:
-            raise Exception('Body type not supported {}'.format(body_type))
-        m *= mass_fact
-        s_span=s_bar*span_max
-        nShpMax=coeff.shape[1]
-
-        if nShapes>nShpMax:
-            raise Exception('A maximum of {} shapes function possible with FAST {} body'.format(nShpMax,body_type))
-        coeff= coeff[:,:nShapes]
-
-        gravity=ED['Gravity']
-
-        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
-
-        #super(FASTBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity,Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
-        super(FASTBeamBody,B).__init__(p['s_span'], p['s_P0'], p['m'], p['PhiU'], p['PhiV'], p['PhiK'], p['EI'], jxxG=p['jxxG'], bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity,Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
-
-        # Using diagonal damping
-        for j in range(nShapes):
-            m             = B.MM[6+j,6+j]
-            k             = B.KK[6+j,6+j]
-            om            = np.sqrt(k/m)
-            xi            = damp_zeta[j]*2*np.pi
-            c             = xi * m * om / np.pi
-            B.DD[6+j,6+j] = c
+        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, nShapes=nShapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening)
+        BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
 
 # --------------------------------------------------------------------------------}
 # --- B Matrices 
