@@ -230,7 +230,7 @@ def saveTex(expr, filename):
 
 
 
-def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None):
+def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=False):
     """ 
     Clean a python sympy expression 
     """
@@ -248,8 +248,8 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None):
             sdofsDeriv.append('Derivative({},t)'.format(s))
             #sdofsDeriv.append('Derivative({}(t),t)'.format(s))
         # sorting dofs by decreasing string length to avoid replacements (=> phi_y before y)
-        II = np.argsort([len(s) for s in sdofs])[-1::-1]
-        dofs=np.array(dofs)[II]
+        IDOF = np.argsort([len(s) for s in sdofs])[-1::-1]
+        dofs=np.array(dofs)[IDOF]
 
     def cleanPyAtom(atom, dofs=None):
         symbols     = atom.free_symbols
@@ -279,12 +279,12 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None):
 
         if dofs is not None:
             # time derivatives first!!! important
-            for idof,dof in enumerate(dofs):
+            for idof,dof in zip(IDOF,dofs):
                 sdof=repr(dof)
                 #s=s.replace('Derivative({}(t),t)'.format(sdof),'qd[{}]'.format(idof))
                 s=s.replace('Derivative({},t)'.format(sdof),'qd[{}]'.format(idof))
             # then Dof
-            for idof,dof in enumerate(dofs):
+            for idof,dof in zip(IDOF,dofs):
                 sdof=repr(dof)
                 s=s.replace(sdof+'(t)','q[{}]'.format(idof))
                 s=s.replace(sdof,'q[{}]'.format(idof))
@@ -302,7 +302,10 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None):
             ssymb=repr(symb).replace(' ','')
             if ssymb not in sdofsDeriv and ssymb not in sdofs:
                 ssymb=ssymb.replace('(t)','')
-                s=s.replace(ssymb,'u[\'{}\']'.format(ssymb))
+                if noTimeDep:
+                    s=s.replace(ssymb+'(t)','u[\'{}\']'.format(ssymb)) # When linearizing, the "u" is a u0
+                else:
+                    s=s.replace(ssymb,'u[\'{}\']'.format(ssymb))
                 inputs.append(ssymb)
         return s
 

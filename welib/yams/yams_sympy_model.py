@@ -314,7 +314,7 @@ class YAMSModel(object):
 
                 if 'M' in variables:
                     MM=subs_no_diff(self._sa_M,extraSubs)
-                    s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def M_lin(q=None,p=None,z=None):\n')
                     f.write('    """ Linear mass matrix \n')
                     f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
@@ -327,7 +327,7 @@ class YAMSModel(object):
 
                 if 'C' in variables:
                     MM=subs_no_diff(self._sa_C,extraSubs)
-                    s, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def C_lin(q=None,qd=None,p=None,u=None,z=None):\n')
                     f.write('    """ Linear damping matrix \n')
                     f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
@@ -344,7 +344,7 @@ class YAMSModel(object):
 
                 if 'K' in variables:
                     MM=subs_no_diff(self._sa_K,extraSubs)
-                    s, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def K_lin(q=None,qd=None,p=None,u=None,z=None):\n')
                     f.write('    """ Linear stiffness matrix \n')
                     f.write('    q:  degrees of freedom, array-like: {}\n'.format(sdofs))

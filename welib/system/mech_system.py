@@ -16,11 +16,18 @@ class MechSystem():
 
         M(x) xddot + C xdot + K x = F(t,x,xdot) 
 
+    Integrated as:
+        [xdot ] = [ 0          I     ].[x   ] + [  0   ]
+        [xddot]   [-M^-1 K    -M^-1 C] [xdot]   [M^-1 F]
+
+          qdot =             A        .q      +    B
     where 
        - M: mass matrix, constant or function of x
        - K: stiffness matrix, constant matrix or None
        - C: damping matrix, constant matrix or None
        - F: forcing term, function of t,x,xdot, or, tuple (time, Force time series)
+
+       - q : full state vector
 
     """
     def __init__(self, M, C=None, K=None, F=None, x0=None, xdot0=None):
@@ -29,12 +36,12 @@ class MechSystem():
         if hasattr(M, '__call__'):  
             self.M_is_func=True
             self._fM    = M
-            self._fMinv = lambda q : inv(M(q))
+            self._fMinv = lambda x : inv(M(x))
         else:
             self.M_is_func=False
             self._Minv= inv(M) # compute inverse once and for all
-            self._fM    = lambda q : M
-            self._fMinv = lambda q : self._Minv
+            self._fM    = lambda x : M
+            self._fMinv = lambda x : self._Minv
             # TODO TODO
             if K is None:
                 self.K = M*0
@@ -104,14 +111,16 @@ class MechSystem():
             raise NotImplementedError('Please specify a time series of force first')
 
     def B(self,t,q):
+        x  = q[0:self.nDOF]
+        xd = q[self.nDOF:]
         if hasattr(self,'_force_ts'):
-            return  B_interp(t,self._fMinv(q),self._time_ts,self._force_ts)
+            return  B_interp(t,self._fMinv(x),self._time_ts,self._force_ts)
 
         elif hasattr(self,'_force_fn'):
-            F          = self._force_fn(t,q).ravel()
+            F          = self._force_fn(t,x,xd).ravel()
             nDOF       = len(F)
             B          = np.zeros((2*nDOF,1))
-            B[nDOF:,0] = np.dot(self._fMinv(q),F)
+            B[nDOF:,0] = np.dot(self._fMinv(x),F)
             return B
         else:
             raise NotImplementedError('Please specify a time series of force first')

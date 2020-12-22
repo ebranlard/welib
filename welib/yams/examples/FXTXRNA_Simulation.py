@@ -163,14 +163,14 @@ def main(model_name='F2T0RNA_fnd'):
 
     # --- integrate non-linear system
     fM = lambda x: model.mass_matrix(x, p)
-    fF = lambda t,q,qd: model.forcing(t, q, qd, p=p, u=u)
+    fF = lambda t,x,xd: model.forcing(t, x, xd, p=p, u=u)
 
     sysNL = MechSystem(fM, F=fF, x0=q0 )
     print(sysNL)
     resNL=sysNL.integrate(time, method='RK45') # **options):
 
     # --- integrate linear system
-    fF = lambda t,q: np.array([0,0])
+    fF = lambda t,x,xd: np.array([0,0])
     sysL = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=q0 )
     resL=sysL.integrate(time, method='RK45') # **options):
 
