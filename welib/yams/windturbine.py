@@ -15,6 +15,7 @@ Example:
 
 import os
 import numpy as np
+import copy
 import welib.weio as weio
 from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
@@ -30,14 +31,29 @@ class WindTurbineStructure():
     def fromFAST(fstFilename):
         return FASTWindTurbine(fstFilename)
 
+
+# --------------------------------------------------------------------------------}
+# --- Helpers 
+# --------------------------------------------------------------------------------{
+def rigidBlades(blds, hub=None, r_O=[0,0,0]):
+    """ return a rigid body for the three blades
+    All bodies should be in a similar frame
+    """
+    blades = blds[0].toRigidBody()
+    for B in blds[1:]:
+        B_rigid = B.toRigidBody()
+        blades = blades.combine(B_rigid, r_O=r_O)
+    blades.name='blades'
+    return blades
+
+
 # --------------------------------------------------------------------------------}
 # --- Converters 
 # --------------------------------------------------------------------------------{
-def FASTWindTurbine(fstFilename):
+def FASTWindTurbine(fstFilename, main_axis='z'):
     """
 
     """
-
     # --- Reading main OpenFAST files
     ext     = os.path.splitext(fstFilename)[1]
     FST     = weio.read(fstFilename)
@@ -58,6 +74,8 @@ def FASTWindTurbine(fstFilename):
     r_NR_inN    = r_NS_inN + R_NS.dot(r_SR_inS)                 # Rotor center in N
     r_NGnac_inN = np.array([ED['NacCMxn'],0,ED['NacCMzn']    ]) # Nacelle G in N
     r_RGhub_inS = - r_SR_inS + r_SGhub_inS
+    if main_axis=='x':
+        raise NotImplementedError()
 
     # --- Hub  (defined using point N and nacelle coord as ref)
     M_hub  = ED['HubMass']
@@ -72,42 +90,42 @@ def FASTWindTurbine(fstFilename):
     JyyNac_atN = ED['NacYIner'] # Inertia of nacelle at N in N
     nac = RigidBody('Nac', M_nac, (0,JyyNac_atN,0), r_NGnac_inN, s_OP=[0,0,0])
 
-    # Blades 
+    # --- Blades 
     bldFile = weio.read(bldfile)
+    m    = bldFile['BldProp'][:,3]
+    jxxG = m     # NOTE: unknown
+    nB = ED['NumBl']
+    bld=np.zeros(nB,dtype=object)
+    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False) 
+    for iB in range(nB-1):
+        bld[iB+1]=copy.deepcopy(bld[0])
+        bld[iB+1].R_b2g
+    for iB,B in enumerate(bld):
+        B.name='bld'+str(iB+1)
+        psi_B= -iB*2*np.pi/len(bld) 
+        if main_axis=='x':
+            R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
+        elif main_axis=='z':
+            R_SB = R_x(0*np.pi + psi_B) # TODO psi0
+        R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
+        B.R_b2g= R_SB
 
-    m= bldFile['BldProp'][:,3]  
-    jxxG= m # NOTE: unknown
-    bld=FASTBeamBody(ED, bldFile, Mtop=0, main_axis='z', jxxG=jxxG)
-#     print(bld.MM)
-    # TODO reconsider hubrad there
-    psi=0
-    bld1 = RigidBody('Bld1', 1.684475202e+04, (1.225603507e+07, 1.225603507e+07, 1.684475202e+04), s_OG=[0,0,22.00726], s_OP=[0,0,0], R_b2g=R_x(psi+ 0        ).dot(R_y(ED['PreCone(1)']*np.pi/180))  )
-    bld2 = RigidBody('Bld2', 1.684475202e+04, (1.225603507e+07, 1.225603507e+07, 1.684475202e+04), s_OG=[0,0,22.00726], s_OP=[0,0,0], R_b2g=R_x(psi+ 2*np.pi/3).dot(R_y(ED['PreCone(2)']*np.pi/180))  )
-    bld3 = RigidBody('Bld3', 1.684475202e+04, (1.225603507e+07, 1.225603507e+07, 1.684475202e+04), s_OG=[0,0,22.00726], s_OP=[0,0,0], R_b2g=R_x(psi+ 4*np.pi/3).dot(R_y(ED['PreCone(3)']*np.pi/180))  )
-#     print(bld1)
-#     print('Blade mass matrix\n',np.around(bld1.mass_matrix,5))
-    blades = bld1.combine(bld2).combine(bld3, name='Blades')
-#     print(blades)
-    # 
-    blades.pos_global = r_NR_inN # Setting origin w.r.t. N
-    blades.R_b2g      = R_NS     # Setting frame w.r.t. N, as rotated
-#     print(blades)
+    # --- Blades (with origin R, using N as "global" ref)
+    blades = rigidBlades(bld, r_O = [0,0,0])
+    blades.pos_global = r_NR_inN
+    blades.R_b2g      = R_NS
 
-    # --- Rotor = Hub + Blades
-    hubgen= hub.combine(gen, R_b2g=R_NS, r_O=hub.pos_global)
-    rotor = blades.combine(hubgen, R_b2g=R_NS, r_O=hub.pos_global)
-#     print(rotor)
-
-    rotor = blades.combine(hub).combine(gen, r_O=r_NS_inN, R_b2g=R_NS)
-#     print(rotor)
-    rotor = blades.combine(hub, r_O=r_NS_inN, R_b2g=R_NS)
-#     print(rotor)
+    # --- Rotor = Hub + Blades (with origin R, using N as global ref)
+    rot = blades.combine(hub, R_b2g=R_NS, r_O=blades.pos_global)
+    rot.name='rotor'
 
     # --- RNA
-    M_RNA= rotor.mass + M_nac
-#     print(hub)
-#     print(gen)
-#     print(nac)
+    RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
+    RNA.name='RNA'
+    print(RNA)
+
+    # --- RNA
+    M_RNA = RNA.mass
     # --- Fnd (defined wrt ground/MSL "E")
 #     print(FST.keys())
     M_fnd = ED['PtfmMass']
@@ -115,24 +133,21 @@ def FASTWindTurbine(fstFilename):
     r_OT_inF    = np.array([0             ,0             ,ED['PtfmRefzt']])
     r_TGfnd_inF = -r_OT_inF + r_OGfnd_inF
     fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_TGfnd_inF, r_O=r_OT_inF) 
-#     print(fnd)
-#     print(fnd.inertia_at([0,0,-20]))
-#     print(fnd.mass_matrix)
-#     print(fnd.mass_matrix_at([0,0,-20]))
-
 
     # --- Twr
     twrFile = weio.read(twrfile)
     twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True) # TODO options
-#     print(twr)
 
     # --- Return
     WT = WindTurbineStructure()
-    WT.hub = hub
-    WT.gen = gen
-    WT.nac = nac
-    WT.twr = twr
-    WT.fnd = fnd
+    WT.hub = hub # origin at S
+    WT.gen = gen # origin at S
+    WT.nac = nac # origin at N
+    WT.twr = twr # origin at T
+    WT.fnd = fnd # origin at T
+    WT.bld = bld # origin at R
+    WT.rot = rot # origin at R, rigid body bld+hub
+    WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
     #WT.r_ET_inE
     #WT.r_TN_inT
     #WT.r_NS_inN

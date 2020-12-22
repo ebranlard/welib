@@ -105,7 +105,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --------------------------------------------------------------------------------{
     # Bld
     Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis))
+    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=True)) # NOTE: legacy spanfrom0
     Blds[0].MM *=bBldMass
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))

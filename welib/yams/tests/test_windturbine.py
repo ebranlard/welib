@@ -60,7 +60,37 @@ class TestWindturbclassmethod(unittest.TestCase):
 
     def test_bld(self):
         # --- Blade
-        pass
+        # NOTE: bldes have "R" as origin
+        bld0=self.WT.bld[0]
+        # print(bld0)
+        #print(bld0.start_pos)
+        #print(bld0.end_pos)
+        #print(bld0.inertia_at(bld0.start_pos))
+
+	# Comparison with ElastoDyn summary file
+        #Mass                  (kg)        17600.773
+        #Second Mass Moment    (kg-m^2) 11688785.000
+        #First Mass Moment     (kg-m)     361234.438
+        #Center of Mass        (m)            20.524
+        np.testing.assert_allclose(bld0.mass,                              17600.773, 1e-3)
+        np.testing.assert_allclose(bld0.inertia_at(bld0.start_pos)[0,0],11688785.000, 1e-3)
+        np.testing.assert_allclose((bld0.masscenter-bld0.start_pos)    ,[0,0,20.524], 1e-3)
+	
+
+    def test_rotor(self):
+        # NOTE: rotor is hub + rigid blades, with "R" as origin, but define with "N" as global
+        rot = self.WT.rot
+	# Rotor Mass            (kg)       109582.320
+	# Rotor Inertia         (kg-m^2) 38479064.000
+        np.testing.assert_allclose(rot.mass,           109582.320, 1e-3)
+        np.testing.assert_allclose(rot.inertia[0,0], 38479064.000, 1e-4)
+
+    def test_RNA(self):
+        RNA = self.WT.RNA
+	#Tower-top Mass        (kg)       349582.312
+        np.testing.assert_allclose(RNA.mass,  349582.312, 1e-3)
+        np.testing.assert_allclose(RNA.inertia[0,0],  43972846, 1e-3)
+        np.testing.assert_allclose(np.around(RNA.masscenter_pos_global,5), [-0.40774, 0, 1.96643], 1e-2)
 
 if __name__=='__main__':
     np.set_printoptions(linewidth=300, precision=5)

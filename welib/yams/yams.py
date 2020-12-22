@@ -443,10 +443,10 @@ class UniformBeamBody(BeamBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
-    def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True):
+    def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, spanFrom0=False):
         """ 
         """
-        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, nShapes=nShapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening)
+        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, nShapes=nShapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, spanFrom0=spanFrom0)
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
 
 # --------------------------------------------------------------------------------}

@@ -6,6 +6,7 @@ These classes will be used for more advanced classes:
 """
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrixFromCOG
 from welib.yams.utils import rigidBodyMassMatrix 
+from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GeneralizedMCK_PolyBeam
 # from welib.yams.utils import skew
 
@@ -131,6 +132,12 @@ class RigidBody(Body):
         else:
             self._J_G = J
 
+    def shiftOrigin(self, s_OOnew):
+        """ change body origin
+        s_OOnew: vector from old origin to new origin
+        """
+        s_OnewG    = -np.asarray(s_OOnew) + self._s_OG
+        self._s_OG = s_OnewG
 
     # --------------------------------------------------------------------------------
     # --- Inertia
@@ -291,6 +298,14 @@ class BeamBody(FlexibleBody):
 
         B.KK=B.KK0+B.KKg
 
+    @property    
+    def start_pos(self):
+        """ start of body wrt origin """
+        return self.s_P0[:,0]
+    @property    
+    def end_pos(self):
+        """ end of body wrt origin """
+        return self.s_P0[:,-1]
     # --------------------------------------------------------------------------------}
     # --- Inertia 
     # --------------------------------------------------------------------------------{
@@ -403,7 +418,7 @@ class BeamBody(FlexibleBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody):
-    def __init__(self, ED, inp, Mtop=0, nShapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None):
+    def __init__(self, ED, inp, Mtop=0, nShapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, spanFrom0=False):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
@@ -416,8 +431,9 @@ class FASTBeamBody(BeamBody):
         # --- Reading properties, coefficients
         exp = np.arange(2,7)
         if 'BldProp' in inp.keys():
-            body_type='blade'
             # --- Blade
+            body_type='blade'
+            name     ='bld'
             coeff = np.array([[ inp['BldFl1Sh(2)'], inp['BldFl2Sh(2)'], inp['BldEdgSh(2)']],
                               [ inp['BldFl1Sh(3)'], inp['BldFl2Sh(3)'], inp['BldEdgSh(3)']],
                               [ inp['BldFl1Sh(4)'], inp['BldFl2Sh(4)'], inp['BldEdgSh(4)']],
@@ -427,15 +443,29 @@ class FASTBeamBody(BeamBody):
             damp_zeta = np.array([ inp['BldFlDmp(1)'], inp['BldFlDmp(2)'], inp['BldEdDmp(1)']])/100
             mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
             prop      = inp['BldProp']  
-            span_max  = ED['TipRad']     # TODO TODO do somdthing about hub rad <<<<<<<<<<<<<<<
             s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
+
+            if spanFrom0:
+                s_span=s_bar*ED['TipRad'] # NOTE: this is a wrong scaling
+            else:
+                s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
+            r_O = [0,0,0] # NOTE: blade defined wrt point R for now
+
+            psi_B= 0
+            if main_axis=='x':
+                R_SB = R_z(0*np.pi + psi_B)
+            elif main_axis=='z':
+                R_SB = R_x(0*np.pi + psi_B)
+            R_SB = np.dot(R_SB, R_y(ED['PreCone(1)']*np.pi/180))  # Blade 2 shaft
+            R_b2g= R_SB
+
             if nShapes is None:
                 nShapes = 3
-            r_O = [0,0,0] # TODO
 
         elif 'TowProp' in inp.keys():
             # --- Tower
-            body_type='tower'
+            body_type = 'tower'
+            name      = 'twr'
             coeff = np.array([[ inp['TwFAM1Sh(2)'], inp['TwFAM2Sh(2)'], inp['TwSSM1Sh(2)'], inp['TwSSM2Sh(2)']],
                               [ inp['TwFAM1Sh(3)'], inp['TwFAM2Sh(3)'], inp['TwSSM1Sh(3)'], inp['TwSSM2Sh(3)']],
                               [ inp['TwFAM1Sh(4)'], inp['TwFAM2Sh(4)'], inp['TwSSM1Sh(4)'], inp['TwSSM2Sh(4)']],
@@ -447,12 +477,13 @@ class FASTBeamBody(BeamBody):
             span_max = ED['TowerHt']-ED['TowerBsHt']
             s_bar, m, EIFlp, EIEdg  = prop[:,0], prop[:,1], prop[:,2], prop[:,3]
             r_O = [0,0,ED['TowerBsHt']]
+            R_b2g=np.eye(3)
             if nShapes is None:
                 nShapes = 4
+            s_span=s_bar*span_max
         else:
             raise Exception('Body type not supported, key BldProp and Tow Prop not found in file')
         m *= mass_fact
-        s_span=s_bar*span_max
         if nShapes>coeff.shape[1]:
             raise Exception('A maximum of {} shapes function possible with this FAST body'.format(coeff.shape[1]))
         coeff= coeff[:,:nShapes]
@@ -461,12 +492,6 @@ class FASTBeamBody(BeamBody):
 
         p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
 
-
-        BeamBody.__init__(self, 'dummy', p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
-                r_O = r_O, 
+        BeamBody.__init__(self, name, p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
+                r_O = r_O, R_b2g=R_b2g,
                 bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity, Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
-
-#     def __init__(self, name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=None, s_G0=None, 
-#             r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
-#             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None, main_axis='z'):
-
