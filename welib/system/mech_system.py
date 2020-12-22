@@ -29,18 +29,26 @@ class MechSystem():
         if hasattr(M, '__call__'):  
             self.M_is_func=True
             self._fM    = M
-            self._fMinv = inv(M(q))
+            self._fMinv = lambda q : inv(M(q))
         else:
             self.M_is_func=False
             self._Minv= inv(M) # compute inverse once and for all
             self._fM    = lambda q : M
             self._fMinv = lambda q : self._Minv
+            # TODO TODO
+            if K is None:
+                self.K = M*0
+            if C is None:
+                self.C = M*0
 
         # Store
         self.M = M
         self.C = C
         self.K = K
         self.has_A      = C is not None or K is not None # do we have a constant state matrix?
+        #self.has_A      = True
+
+
 
         # Forcing
         if F is not None:
@@ -95,12 +103,12 @@ class MechSystem():
         else:
             raise NotImplementedError('Please specify a time series of force first')
 
-    def B(self,t,q,qdot=None):
+    def B(self,t,q):
         if hasattr(self,'_force_ts'):
             return  B_interp(t,self._fMinv(q),self._time_ts,self._force_ts)
 
         elif hasattr(self,'_force_fn'):
-            F          = self._force_fn(t,q,qdot)
+            F          = self._force_fn(t,q).ravel()
             nDOF       = len(F)
             B          = np.zeros((2*nDOF,1))
             B[nDOF:,0] = np.dot(self._fMinv(q),F)
@@ -110,7 +118,9 @@ class MechSystem():
 
 
     def integrate(self,t_eval, method='RK45', y0=None, **options):
-        """ Perform time integration of system """
+        """ Perform time integration of system 
+            method: 'RK54', 'LSODA'  (see solve_ivp)
+        """
         #
         if y0 is not None:
             self.setStateInitialConditions(y0)
@@ -119,12 +129,26 @@ class MechSystem():
             A=self.A
             odefun = lambda t, q : np.dot(A,q)+self.B(t,q)
         else:
-            raise NotImplementedError()
+            odefun = self.dqdt
+            #odefun = lambda t, q : self.B(t,q)
 
         res = solve_ivp(fun=odefun, t_span=[t_eval[0], t_eval[-1]], y0=self.q0, t_eval=t_eval, method=method, vectorized=True, **options)   
         # Store
         self.res    = res
         return res
+
+    def dqdt(self, t, q):
+        dqdt = np.zeros(q.shape)
+        x  = q[0:self.nDOF]
+        xd = q[self.nDOF:]
+
+        dqdt[0:self.nDOF]=  xd
+        Minv = self._fMinv(x)
+        F = self._force_fn(t,x,xd)
+        dqdt[self.nDOF:] =  Minv.dot(F)
+        return dqdt
+
+
 
     @property
     def A(self):
@@ -167,6 +191,10 @@ class MechSystem():
         s+=str(self.K)+'\n'
         s+=' - q0: Initial conditions (state) \n'
         s+=str(self.q0)+'\n'
+        if self.has_A:
+            s+=' - A:  \n'
+            s+=str(self.A)+'\n'
+
         return s
 
 

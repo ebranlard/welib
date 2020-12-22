@@ -148,10 +148,13 @@ def FASTWindTurbine(fstFilename, main_axis='z'):
     WT.bld = bld # origin at R
     WT.rot = rot # origin at R, rigid body bld+hub
     WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
-    #WT.r_ET_inE
+
+    #WT.r_ET_inE = 
     #WT.r_TN_inT
-    #WT.r_NS_inN
-    #WT.r_SR_inS
+    WT.r_NS_inN = r_NS_inN
+    WT.r_NR_inN = r_NR_inN
+    WT.r_SR_inS = r_SR_inS
+    WT.ED=ED
 
     return WT
 
