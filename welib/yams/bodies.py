@@ -32,7 +32,7 @@ class Body(object):
         self._r_O   = np.asarray(r_O).ravel()
         self._R_b2g = np.asarray(R_b2g)
 
-        self.mass = None # To be defined by children
+        self._mass=None
         self.MM  = None # To be defined by children
 
     def __repr__(B):
@@ -41,8 +41,11 @@ class Body(object):
 
     @property
     def Mass(self):
-        print('Warning: `Mass` is an old interface, use `mass` instead')
-        return self.mass
+        raise Exception('`Mass` is an old interface, use `mass` instead')
+
+    @property
+    def mass(self):
+        return self._mass
 
     @property    
     def pos_global(self):
@@ -107,7 +110,7 @@ class RigidBody(Body):
 
         """
         Body.__init__(self, name, r_O=r_O, R_b2g=R_b2g)
-        self.mass  = mass
+        self._mass  = mass
         self._s_OG = np.asarray(s_OG).ravel()
 
         # Ensuring a 3x3 inertia matrix
@@ -169,6 +172,12 @@ class RigidBody(Body):
     def mass_matrix(self):
         """ Body mass matrix at origin"""
         return rigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
+
+    def mass_matrix_at(self, s_OP):
+        """ Body mass matrix at a ginve point"""
+        J = self.inertia_at(s_OP)
+        s_PG = -np.asarray(s_OP)+ self._s_OG
+        return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
         s='<{} {} object>:\n'.format(type(self).__name__, self.name)
@@ -235,7 +244,7 @@ class BeamBody(FlexibleBody):
         Creates a Flexible Beam body 
           Points P0 - Undeformed mean line of the body
         """
-        FlexibleBody.__init__(self,name)
+        FlexibleBody.__init__(self,name, r_O=r_O, R_b2g=R_b2g)
         self.main_axis = main_axis
         self.s_span = s_span
         self.m      = m
@@ -269,6 +278,10 @@ class BeamBody(FlexibleBody):
         #[o.PhiV,o.PhiK] = fBeamSlopeCurvature(o.s_span,o.PhiU,o.PhiV,o.PhiK,1e-2);
         #[o.V0,o.K0]     = fBeamSlopeCurvature(o.s_span,o.s_P0,o.V0,o.K0,1e-2)    ;
 
+    def toRigidBody(self):
+        """ Create a rigid body from a flexible body """
+        return RigidBody(self.name+'_rigid', self.mass, self.masscenter_inertia, self.masscenter, r_O=self.pos_global, R_b2g=self.R_b2g)
+
     def computeStiffnessMatrix(B):
         B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
         if B.bStiffening:
@@ -278,13 +291,70 @@ class BeamBody(FlexibleBody):
 
         B.KK=B.KK0+B.KKg
 
+    # --------------------------------------------------------------------------------}
+    # --- Inertia 
+    # --------------------------------------------------------------------------------{
+    @property    
+    def mass(self):
+        """ Body mass"""
+        return self.MM[0,0]
+
+    @property    
+    def masscenter(self):
+        """ Position of mass center in body frame"""
+        return  np.trapz(self.m*self.s_G0,self.s_span)/self.mass
+
+    @property
+    def masscenter_pos_global(self):
+        """ return masscenter position from inertial frame """
+        return self._r_O + self.R_b2g.dot(self.masscenter)
+
+    @property    
+    def inertia(self):
+        """ Returns inertia matrix at Origin in body frame"""
+        return self.MM[3:6,3:6]
+
+    @property    
+    def masscenter_inertia(self):
+        """ Returns inertia matrix at COG in body frame. 
+        NOTE: this is approximate for flexible bodies
+        """
+        return translateInertiaMatrixToCOG(self.inertia, self.mass, self.masscenter)
+
+    def inertia_at(self, s_OP, R_f2g=None):
+        """ returns body inertia at a given point, and given frame (default body frame)
+        NOTE: this is approximate for flexible bodies
+        INPUTS:
+         - s_OP: point coordinates from body origin in body coordinates
+         - R_f2g: transformation matrix from a given frame when inertia is wanted to global
+        """
+        # 
+        s_GP =   np.asarray(s_OP) - self.masscenter
+        J = translateInertiaMatrixFromCOG(self.masscenter_inertia, self.mass, s_GP)
+        if R_f2g is not None:
+            R_b2f = np.dot(R_f2g.T, self.R_b2g)
+            J = R_b2f.dot(J).dot(R_b2f.T)
+        return J
+
+
     @property
     def mass_matrix(self):
         """ Body mass matrix at origin"""
         return self.MM
 
+    def mass_matrix_at(self, s_OP):
+        """ Body mass matrix at a ginve point"""
+        J = self.inertia_at(s_OP)
+        s_PG = -np.asarray(s_OP)+ self._s_OG
+        return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
+
     def computeMassMatrix(B):
-        B.MM = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth)
+        B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
+
+    @property
+    def length(B):
+        return B.s_span[-1]-B.s_span[0]
+
 
     @property
     def nSpan(B):
@@ -294,16 +364,39 @@ class BeamBody(FlexibleBody):
     def nf(B):
         return len(B.PhiU)
 
+    @property
+    def Bhat_x_bc(self,iNode=-1):
+        Bhat_x_bc = Matrix(np.zeros((3,self.nf)))
+        for j in np.arange(self.nf):
+            Bhat_x_bc[:,j]=self.PhiU[j][:,iNode] #  along x
+        return Bhat_x_bc
+
+    @property
+    def Bhat_t_bc(self,iNode=-1):
+        """ unit "alpha" couplings """
+        Bhat_t_bc = Matrix(np.zeros((3,self.nf)))
+        for j in np.arange(self.nf):
+            if self.main_axis=='x':
+                Bhat_t_bc[0,j]=0                      # torsion
+                Bhat_t_bc[1,j]=-self.PhiV[j][2,iNode]
+                Bhat_t_bc[2,j]= self.PhiV[j][1,iNode]
+            elif self.main_axis=='z':
+                Bhat_t_bc[0,j]=-self.PhiV[j][1,iNode]
+                Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
+                Bhat_t_bc[2,j]= 0                     # torsion
+        return Bhat_t_bc
+
     def __repr__(self):
         s='<{} {} object>:\n'.format(type(self).__name__, self.name)
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
-        #s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
-        #s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
-        #s+=' - mass:         {}\n'.format(self.mass)
-        #s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
-        #s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
-        #s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
-        #s+='Useful getters: inertia_at, mass_matrix\n'
+        s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
+        s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
+        s+=' - mass:         {}\n'.format(self.mass)
+        s+=' * length:      {}\n'.format(self.length)
+        s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
+        s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
+        s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+        s+='Useful getters: inertia_at, mass_matrix_at, toRigidBody \n'
         return s
 
 # --------------------------------------------------------------------------------}
@@ -338,6 +431,7 @@ class FASTBeamBody(BeamBody):
             s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
             if nShapes is None:
                 nShapes = 3
+            r_O = [0,0,0] # TODO
 
         elif 'TowProp' in inp.keys():
             # --- Tower
@@ -352,6 +446,7 @@ class FASTBeamBody(BeamBody):
             prop     = inp['TowProp']
             span_max = ED['TowerHt']-ED['TowerBsHt']
             s_bar, m, EIFlp, EIEdg  = prop[:,0], prop[:,1], prop[:,2], prop[:,3]
+            r_O = [0,0,ED['TowerBsHt']]
             if nShapes is None:
                 nShapes = 4
         else:
@@ -368,6 +463,7 @@ class FASTBeamBody(BeamBody):
 
 
         BeamBody.__init__(self, 'dummy', p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
+                r_O = r_O, 
                 bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity, Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
 
 #     def __init__(self, name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=None, s_G0=None, 

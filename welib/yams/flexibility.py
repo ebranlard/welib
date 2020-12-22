@@ -412,6 +412,10 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
        Mtop      : mass on top of beam if any
        nSpan     : number of spanwise station desired (will be interpolated)
     """
+    def skew(x):
+        x=np.asarray(x).ravel()
+        """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
+        return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
     # --- Reading properties, coefficients
     nShapes = coeffs.shape[1]
@@ -478,7 +482,15 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     KK=KK0+KKg
 
     # --- Generalized mass
-    MM = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False)
+    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+
+    # Beam COG
+    s_COG = np.trapz(m*s_G0,s_span)/MM[0,0]
+
+    # J at COG
+    J_O  = MM[3:6, 3:6]
+    r_PG = s_COG
+    J_G  = J_O + MM[0,0] * np.dot(skew(r_PG), skew(r_PG))
 
     # --- Generalized damping
     DD = np.zeros((6+nShapes,6+nShapes))
@@ -490,9 +502,26 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
         c             = xi * gm * om / np.pi
         DD[6+j,6+j] = c
 
+    # --- alpha couplings 
+    alpha = np.zeros((3,nShapes))
+    for j in np.arange(nShapes):
+        if main_axis=='x':
+            alpha[0,j]=0                      # torsion
+            alpha[1,j]=-PhiV[j][2,-1]
+            alpha[2,j]= PhiV[j][1,-1]
+        elif main_axis=='z':
+            alpha[0,j]=-PhiV[j][1,-1]
+            alpha[1,j]= PhiV[j][0,-1]
+            alpha[2,j]= 0                     # torsion
+
+
     # --- Return dict
-    return {'MM':MM, 'KK':KK, 'DD':DD, 'KK0':KK0, 'KKg':KKg, 'PhiU':PhiU, 'PhiV':PhiV, 'PhiK':PhiK,
-            's_P0':s_P0, 's_G':s_G0, 's_span':s_span, 'm':m, 'EI':EI, 'jxxG':jxxG, 'ShapeDir':ShapeDir}
+    return {'MM':MM, 'KK':KK, 'DD':DD, 'KK0':KK0, 'KKg':KKg, 
+            'Oe':Oe, 'Oe6':Oe6, 'Gr':Gr, 'Ge':Ge,
+            'PhiU':PhiU, 'PhiV':PhiV, 'PhiK':PhiK,
+            's_P0':s_P0, 's_G':s_G0, 's_span':s_span, 'm':m, 'EI':EI, 'jxxG':jxxG, 'ShapeDir':ShapeDir,
+            's_OG':s_COG, 'J_G':J_G, 'alpha':alpha
+            }
 
 
 

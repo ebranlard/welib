@@ -326,27 +326,6 @@ class BeamBody(GenericBeamBody, Body):
         else:
             raise NotImplementedError()
 
-    @property
-    def Bhat_x_bc(self,iNode=-1):
-        Bhat_x_bc = Matrix(np.zeros((3,self.nf)))
-        for j in np.arange(self.nf):
-            Bhat_x_bc[:,j]=self.PhiU[j][:,iNode] #  along x
-        return Bhat_x_bc
-
-    @property
-    def Bhat_t_bc(self,iNode=-1):
-        Bhat_t_bc = Matrix(np.zeros((3,self.nf)))
-        for j in np.arange(self.nf):
-            if self.main_axis=='x':
-                Bhat_t_bc[0,j]=0                      # torsion
-                Bhat_t_bc[1,j]=-self.PhiV[j][2,iNode]
-                Bhat_t_bc[2,j]= self.PhiV[j][1,iNode]
-            elif self.main_axis=='z':
-                Bhat_t_bc[0,j]=-self.PhiV[j][1,iNode]
-                Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
-                Bhat_t_bc[2,j]= 0                     # torsion
-        return Bhat_t_bc
-
 #     def computeStiffnessMatrix(B):
 #         B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
 #         if B.bStiffening:

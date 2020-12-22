@@ -152,7 +152,7 @@ class Test(unittest.TestCase):
         #MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
         Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=True, rot_terms=True)
         MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
-        MM_ref=np.array(
+        MM_ref=np.array( # NOTE: this is onshore tower
         [[ 3.474602316e+05,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.322633773e+07, -0.000000000e+00,  1.046938838e+05,  0.000000000e+00],
          [ 0.000000000e+00,  3.474602316e+05,  0.000000000e+00, -1.322633773e+07,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.046938838e+05],
          [ 0.000000000e+00,  0.000000000e+00,  3.474602316e+05,  0.000000000e+00, -0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00],

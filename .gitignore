@@ -1,5 +1,8 @@
 *.exe
 *.dll
+*.sum
+*.out
+*.outb
 *.mat
 *.png
 *.zip
