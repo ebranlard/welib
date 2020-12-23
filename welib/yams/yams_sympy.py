@@ -702,7 +702,7 @@ class GroundBody(Body):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class YAMSRigidBody(YAMSBody,SympyRigidBody):
-    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False):
+    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False):
         """
         Define a rigid body and introduce symbols for convenience.
         
@@ -717,6 +717,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             J_G  : 3x3 array or 3-array defining the coordinates of the inertia tensor in the body frame at the COG
             rho_G: array-like of length 3 defining the coordinates of the COG in the body frame
             J_diag: if true, the inertial tensor J_G is initialized as diagonal
+            J_diag: if true, the inertial tensor J_G is initialized as a "cross"
         
         
         """
@@ -751,6 +752,8 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             iyz = Symbol('J_yz_'+name)
         if J_diag:
             ixy, iyz, izx =0,0,0
+        if J_cross:
+            ixy, iyz =0,0
             
         #inertia: dyadic : (inertia(frame, *list), point)
         _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
@@ -1127,7 +1130,7 @@ class YAMSFlexibleBody(YAMSBody):
         """ Body gravity force  h_g  
         inputs:
            g_vect: gravity vector, expressed in body coordinates
-           q: generalied coordinates for this body
+           q: generalized coordinates for this body
         """
         # --- Safety
         q     = ensureMat(q , len(q), 1)
@@ -1157,7 +1160,7 @@ class YAMSFlexibleBody(YAMSBody):
 
 
     
-    def connectTo(parent, child, type, rel_pos, rot_type='Body', rot_amounts=None, rot_order=None, rot_order_elastic='XYZ', rot_type_elastic='SmallRot', doSubs=True):
+    def connectToTip(parent, child, type, rel_pos, rot_type='Body', rot_amounts=None, rot_order=None, rot_order_elastic='XYZ', rot_type_elastic='SmallRot', doSubs=True):
         """
         The connection between a flexible body and another body is similar to the connections between rigid bodies
         The relative position and rotations between bodies are modified in this function to include the elastic 

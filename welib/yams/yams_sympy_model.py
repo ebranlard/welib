@@ -115,14 +115,26 @@ class YAMSModel(object):
         """
         if self._sa_EOM is None:
             raise Exception('Run smallAngleApproxEOM first')
-        M,C,K,B = self.linearize(op_point=op_point, EOM=self._sa_EOM, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
+        M,C,K,B = self._linearize(op_point=op_point, EOM=self._sa_EOM, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
 
         self._sa_M = M
         self._sa_C = C
         self._sa_K = K
         self._sa_B = B
 
-    def linearize(self, op_point=[], EOM=None, noAcc=True, noVel=False, extraSubs=[]):
+    def linearize(self, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
+        """ 
+        Linearize the "non" linear equations
+        NOTE: EOM has kdeqsSubs in it
+        """
+        M,C,K,B = self._linearize(op_point=op_point, EOM=self.EOM, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
+
+        self.M = M
+        self.C = C
+        self.K = K
+        self.B = B
+
+    def _linearize(self, op_point=[], EOM=None, noAcc=True, noVel=False, extraSubs=[]):
         if EOM is None:
             EOM=self.EOM
 
@@ -146,6 +158,7 @@ class YAMSModel(object):
             C =-EOM.jacobian(self.coordinates_speed).subs(extraSubs).subs(op_point)
             K =-EOM.jacobian(self.coordinates      ).subs(extraSubs).subs(op_point)
             B = EOM.jacobian(self.var              ).subs(extraSubs).subs(op_point)
+
 
         return M,C,K,B
 
@@ -248,7 +261,7 @@ class YAMSModel(object):
     # --------------------------------------------------------------------------------}
     # --- Export to Python script 
     # --------------------------------------------------------------------------------{
-    def smallAngleSavePython(self, prefix='', folder='./', extraSubs=[], variables=['MM','FF','M','C','K','B'], replaceDict=None):
+    def savePython(self, prefix='', folder='./', extraSubs=[], variables=['MM','FF','MMsa','FFsa','M','C','K','B','Msa','Csa','Ksa','Bsa'], replaceDict=None):
         """ 
         Save forcing, mass matrix and linear model to python package
         """
@@ -281,9 +294,9 @@ class YAMSModel(object):
                 f.write('import numpy as np\n')
                 f.write('from numpy import cos, sin\n')
 
-
                 if 'FF' in variables:
-                    FF = subs_no_diff(self._sa_forcing,extraSubs)
+                    forcing = self.kane.forcing.subs(self.kdeqsSubs)
+                    FF = subs_no_diff(forcing,extraSubs)
                     s, params, inputs, sdofs  = cleanPy(FF, varname='FF', dofs = self.coordinates, indent=4, replDict=replaceDict)
                     f.write('def forcing(t,q=None,qd=None,p=None,u=None,z=None):\n')
                     f.write('    """ Non linear mass forcing \n')
@@ -300,7 +313,8 @@ class YAMSModel(object):
                     f.write('    return FF\n\n')
 
                 if 'MM' in variables:
-                    MM=subs_no_diff(self._sa_mass_matrix,extraSubs)
+                    MM = self.kane.mass_matrix.subs(self.kdeqsSubs)
+                    MM = subs_no_diff(MM,extraSubs)
                     s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict)
                     f.write('def mass_matrix(q=None,p=None,z=None):\n')
                     f.write('    """ Non linear mass matrix \n')
@@ -312,8 +326,38 @@ class YAMSModel(object):
                     f.write(s)
                     f.write('    return MM\n\n')
 
+                if 'FFsa' in variables:
+                    FF = subs_no_diff(self._sa_forcing,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(FF, varname='FF', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def forcing_sa(t,q=None,qd=None,p=None,u=None,z=None):\n')
+                    f.write('    """ Non linear forcing with small angle approximation\n')
+                    f.write('    q:  degrees of freedom, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a function of time\n')
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write('        qd = z[int(len(z)/2): ] \n')
+                    f.write(s)
+                    f.write('    return FF\n\n')
+
+                if 'MMsa' in variables:
+                    MM=subs_no_diff(self._sa_mass_matrix,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def mass_matrix_sa(q=None,p=None,z=None):\n')
+                    f.write('    """ Non linear mass matrix with small angle approximation\n')
+                    f.write('     q:  degrees of freedom, array-like: {}\n'.format(sdofs))
+                    f.write('     p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write(s)
+                    f.write('    return MM\n\n')
+
                 if 'M' in variables:
-                    MM=subs_no_diff(self._sa_M,extraSubs)
+                    MM=subs_no_diff(self.M,extraSubs)
                     s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def M_lin(q=None,p=None,z=None):\n')
                     f.write('    """ Linear mass matrix \n')
@@ -326,7 +370,7 @@ class YAMSModel(object):
                     f.write('    return MM\n\n')
 
                 if 'C' in variables:
-                    MM=subs_no_diff(self._sa_C,extraSubs)
+                    MM=subs_no_diff(self.C,extraSubs)
                     s, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def C_lin(q=None,qd=None,p=None,u=None,z=None):\n')
                     f.write('    """ Linear damping matrix \n')
@@ -343,7 +387,7 @@ class YAMSModel(object):
                     f.write('    return CC\n\n')
 
                 if 'K' in variables:
-                    MM=subs_no_diff(self._sa_K,extraSubs)
+                    MM=subs_no_diff(self.K,extraSubs)
                     s, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def K_lin(q=None,qd=None,p=None,u=None,z=None):\n')
                     f.write('    """ Linear stiffness matrix \n')
@@ -360,10 +404,71 @@ class YAMSModel(object):
                     f.write('    return KK\n\n')
 
                 if 'B' in variables:
-                    MM=subs_no_diff(self._sa_B,extraSubs)
+                    MM=subs_no_diff(self.B,extraSubs)
                     s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict)
                     f.write('def B_lin(q=None,qd=None,p=None,u=None):\n')
                     f.write('    """ Linear mass matrix \n')
+                    f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities at operating point, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a constant!\n')
+                    f.write('    """\n')
+                    f.write(s)
+                    f.write('    return BB\n\n')
+
+                if 'Msa' in variables:
+                    MM=subs_no_diff(self._sa_M,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
+                    f.write('def M_lin_sa(q=None,p=None,z=None):\n')
+                    f.write('    """ Linear mass matrix with small angle approximation\n')
+                    f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write(s)
+                    f.write('    return MM\n\n')
+
+                if 'Csa' in variables:
+                    MM=subs_no_diff(self._sa_C,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
+                    f.write('def C_lin_sa(q=None,qd=None,p=None,u=None,z=None):\n')
+                    f.write('    """ Linear damping matrix with small angle approximation\n')
+                    f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities at operating point, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a constant!\n')
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write('        qd = z[int(len(z)/2): ] \n')
+                    f.write(s)
+                    f.write('    return CC\n\n')
+
+                if 'Ksa' in variables:
+                    MM=subs_no_diff(self._sa_K,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
+                    f.write('def K_lin_sa(q=None,qd=None,p=None,u=None,z=None):\n')
+                    f.write('    """ Linear stiffness matrix with small angle approximation\n')
+                    f.write('    q:  degrees of freedom, array-like: {}\n'.format(sdofs))
+                    f.write('    qd: dof velocities, array-like\n')
+                    f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
+                    f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
+                    f.write('           where each values is a constant!\n')
+                    f.write('    """\n')
+                    f.write('    if z is not None:\n')
+                    f.write('        q  = z[0:int(len(z)/2)] \n')
+                    f.write('        qd = z[int(len(z)/2): ] \n')
+                    f.write(s)
+                    f.write('    return KK\n\n')
+
+                if 'Bsa' in variables:
+                    MM=subs_no_diff(self._sa_B,extraSubs)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    f.write('def B_lin_sa(q=None,qd=None,p=None,u=None):\n')
+                    f.write('    """ Linear mass matrix with small angle approximation\n')
                     f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
                     f.write('    qd: dof velocities at operating point, array-like\n')
                     f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))

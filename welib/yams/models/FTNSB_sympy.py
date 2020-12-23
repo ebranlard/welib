@@ -103,6 +103,7 @@ def get_model(model_name, **opts):
     else:
         # Nacelle
         nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
+        #nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_cross=True) 
         rot = None
 
     # --------------------------------------------------------------------------------}
@@ -214,7 +215,7 @@ def get_model(model_name, **opts):
         if nDOF_twr==0:
             twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
         else:
-            raise Exception('Flexible bodies can only have on body connection')
+            twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
 
     if nDOF_twr==0:
         # Tower rigid -> Rigid connection to nacelle
@@ -235,9 +236,9 @@ def get_model(model_name, **opts):
         # Flexible tower -> Flexible connection to nacelle
         print('Flexible connection twr nac')
         if opts['tiltShaft']:
-            twr.connectTo(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, 0      , 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
+            twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, 0      , 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
         else:
-            twr.connectTo(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, tiltDOF, 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
+            twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, tiltDOF, 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
 
     if bFullRNA:
         if bBlades:
@@ -447,27 +448,4 @@ def get_model(model_name, **opts):
     else:
         model.shapeNormSubs= []
 
-
-
     return model
-
-#     elif model_name=='F2T0RNA':
-#         # --- Connections between bodies
-#         ref.connectTo(twr, type='Free' , rel_pos=(x,0,0)   , rot_amounts=(0,phi_y,0), rot_order='XYZ')
-# 
-#         if Floating:
-#             if nPltfmDOF==2:
-#                 kdeqsSubs+=[(xd, diff(x,time))]; 
-#                 kdeqsSubs+=[ (omega_y_T, omega_TE.dot(ref.frame.y).simplify())]  
-#                 coordinates = [x, phi_y] + twr.q
-#                 speeds      = [xd, omega_y_T] + twr.qd
-# 
-# 
-#     elif model_name=='F0T0RNA':
-#         ref.connectTo(twr, type='Rigid', rel_pos=(0,0,0)   , rot_amounts=(0,0,0), rot_order='XYZ')
-# 
-#         coordinates = [] + twr.q
-#         speeds      = [] + twr.qd
-# 
-#     else:
-#         raise Exception()
