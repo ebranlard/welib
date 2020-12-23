@@ -245,7 +245,9 @@ class FlexibleBody(Body):
 # --------------------------------------------------------------------------------{
 class BeamBody(FlexibleBody):
     def __init__(self, name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=None, s_G0=None, 
+            s_min=None, s_max=None,
             r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
+            damp_zeta=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None, main_axis='z'):
         """
         Creates a Flexible Beam body 
@@ -254,6 +256,14 @@ class BeamBody(FlexibleBody):
         FlexibleBody.__init__(self,name, r_O=r_O, R_b2g=R_b2g)
         self.main_axis = main_axis
         self.s_span = s_span
+        if s_min is None:
+            self.s_min = np.min(s_span)
+        else:
+            self.s_min = s_min
+        if s_max is None:
+            self.s_max = np.max(s_span)
+        else:
+            self.s_max = s_max
         self.m      = m
         self.s_G0   = s_G0
         self.PhiU   = PhiU
@@ -276,7 +286,7 @@ class BeamBody(FlexibleBody):
 
         self.computeMassMatrix()
         self.computeStiffnessMatrix()
-        self.DD = np.zeros((6+self.nf,6+self.nf))
+        self.computeDampingMatrix(damp_zeta)
 
         # TODO
         #self.V0         = np.zeros((3,self.nSpan))
@@ -297,6 +307,19 @@ class BeamBody(FlexibleBody):
             B.KKg=B.KK0*0
 
         B.KK=B.KK0+B.KKg
+
+    def computeDampingMatrix(self, damp_zeta=None):
+        self.DD = np.zeros((6+self.nf,6+self.nf))
+        if damp_zeta is None:
+            return
+        for j,zeta in enumerate(damp_zeta):
+            gm = self.MM[6+j,6+j]
+            gk = self.KK[6+j,6+j]
+            om = np.sqrt(gk/gm)
+            xi = zeta*2*np.pi
+            c  = xi * gm * om / np.pi
+            self.DD[6+j,6+j] = c
+
 
     @property    
     def start_pos(self):
@@ -368,7 +391,7 @@ class BeamBody(FlexibleBody):
 
     @property
     def length(B):
-        return B.s_span[-1]-B.s_span[0]
+        return B.s_max-B.s_min
 
 
     @property
@@ -418,7 +441,7 @@ class BeamBody(FlexibleBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody):
-    def __init__(self, ED, inp, Mtop=0, nShapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, spanFrom0=False):
+    def __init__(self, ED, inp, Mtop=0, shapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, spanFrom0=False, algo=''):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
@@ -432,15 +455,21 @@ class FASTBeamBody(BeamBody):
         exp = np.arange(2,7)
         if 'BldProp' in inp.keys():
             # --- Blade
-            body_type='blade'
-            name     ='bld'
-            coeff = np.array([[ inp['BldFl1Sh(2)'], inp['BldFl2Sh(2)'], inp['BldEdgSh(2)']],
-                              [ inp['BldFl1Sh(3)'], inp['BldFl2Sh(3)'], inp['BldEdgSh(3)']],
-                              [ inp['BldFl1Sh(4)'], inp['BldFl2Sh(4)'], inp['BldEdgSh(4)']],
-                              [ inp['BldFl1Sh(5)'], inp['BldFl2Sh(5)'], inp['BldEdgSh(5)']],
-                              [ inp['BldFl1Sh(6)'], inp['BldFl2Sh(6)'], inp['BldEdgSh(6)']]])
-
+            body_type = 'blade'
+            name      = 'bld'
+            shapeBase = ['BldFl1','BldFl2','BldEdg']
+            if shapes is None:
+                shapes=[0,1,2]
+            coeff = np.zeros((len(exp), len(shapes)))
+            for iishape, ishape in enumerate(shapes):
+                base=shapeBase[ishape]
+                coeff[0, iishape] = inp[base+'Sh(2)']
+                coeff[1, iishape] = inp[base+'Sh(3)']
+                coeff[2, iishape] = inp[base+'Sh(4)']
+                coeff[3, iishape] = inp[base+'Sh(5)']
+                coeff[4, iishape] = inp[base+'Sh(6)']
             damp_zeta = np.array([ inp['BldFlDmp(1)'], inp['BldFlDmp(2)'], inp['BldEdDmp(1)']])/100
+            damp_zeta=damp_zeta[shapes]
             mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
             prop      = inp['BldProp']  
             s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
@@ -459,39 +488,42 @@ class FASTBeamBody(BeamBody):
             R_SB = np.dot(R_SB, R_y(ED['PreCone(1)']*np.pi/180))  # Blade 2 shaft
             R_b2g= R_SB
 
-            if nShapes is None:
-                nShapes = 3
 
         elif 'TowProp' in inp.keys():
             # --- Tower
             body_type = 'tower'
             name      = 'twr'
-            coeff = np.array([[ inp['TwFAM1Sh(2)'], inp['TwFAM2Sh(2)'], inp['TwSSM1Sh(2)'], inp['TwSSM2Sh(2)']],
-                              [ inp['TwFAM1Sh(3)'], inp['TwFAM2Sh(3)'], inp['TwSSM1Sh(3)'], inp['TwSSM2Sh(3)']],
-                              [ inp['TwFAM1Sh(4)'], inp['TwFAM2Sh(4)'], inp['TwSSM1Sh(4)'], inp['TwSSM2Sh(4)']],
-                              [ inp['TwFAM1Sh(5)'], inp['TwFAM2Sh(5)'], inp['TwSSM1Sh(5)'], inp['TwSSM2Sh(5)']],
-                              [ inp['TwFAM1Sh(6)'], inp['TwFAM2Sh(6)'], inp['TwSSM1Sh(6)'], inp['TwSSM2Sh(6)']]])
+            shapeBase = ['TwFAM1','TwFAM2','TwSSM1','TwSSM2']
+            if shapes is None:
+                shapes=[0,1,2,3]
+            coeff = np.zeros((len(exp), len(shapes)))
+            for iishape, ishape in enumerate(shapes):
+                base=shapeBase[ishape]
+                coeff[0, iishape] = inp[base+'Sh(2)']
+                coeff[1, iishape] = inp[base+'Sh(3)']
+                coeff[2, iishape] = inp[base+'Sh(4)']
+                coeff[3, iishape] = inp[base+'Sh(5)']
+                coeff[4, iishape] = inp[base+'Sh(6)']
             damp_zeta = np.array([inp['TwrFADmp(1)'], inp['TwrFADmp(2)'], inp['TwrSSDmp(1)'], inp['TwrSSDmp(2)']])/100 # structural damping ratio 
+            damp_zeta=damp_zeta[shapes]
+
             mass_fact = inp['AdjTwMa']                                              # Factor to adjust tower mass density (-)
             prop     = inp['TowProp']
             span_max = ED['TowerHt']-ED['TowerBsHt']
             s_bar, m, EIFlp, EIEdg  = prop[:,0], prop[:,1], prop[:,2], prop[:,3]
             r_O = [0,0,ED['TowerBsHt']]
             R_b2g=np.eye(3)
-            if nShapes is None:
-                nShapes = 4
             s_span=s_bar*span_max
         else:
             raise Exception('Body type not supported, key BldProp and Tow Prop not found in file')
         m *= mass_fact
-        if nShapes>coeff.shape[1]:
-            raise Exception('A maximum of {} shapes function possible with this FAST body'.format(coeff.shape[1]))
-        coeff= coeff[:,:nShapes]
 
         gravity=ED['Gravity']
 
-        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis)
+        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis, shapes=shapes, algo=algo)
 
         BeamBody.__init__(self, name, p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
+                s_min=p['s_min'], s_max=p['s_max'],
                 r_O = r_O, R_b2g=R_b2g,
+                damp_zeta=damp_zeta,
                 bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity, Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)

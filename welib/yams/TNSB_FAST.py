@@ -4,9 +4,9 @@ import copy
 import matplotlib.pyplot as plt
 import os
 
-from .yams import FASTBeamBody, RigidBody
-from .utils import *
-from .TNSB import *
+from welib.yams.yams import FASTBeamBody, RigidBody
+from welib.yams.utils import *
+from welib.yams.TNSB import *
 
 import welib.weio as weio
 
@@ -175,23 +175,25 @@ def readFASTOut():
 
 if __name__=='__main__':
     bStiffening=True
-    nShapes_twr=2
+    nShapes_twr=1
     nShapes_bld=0
     nDOF = 1 + nShapes_twr + nShapes_bld * 3
     q = np.zeros((nDOF,1)) # TODO, full account of q not done
-    q[[0]]=1
-    q[[1]]=0.1
-    q[[2]]=0*np.pi/4.
+    q[[0]]= 0          # Twr 1
+#     q[[1]]=0.1        # Twr 2
+#     q[[2]]=0*np.pi/4. # psi
 
     np.set_printoptions(linewidth=500)
     assembly='auto'
     main_axis='z'
-    StructA= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    #StructA= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    StructA= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     assembly='manual'
 #     assembly='auto'
-    main_axis='x'
-    StructM= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
-    print('------------------')
+#     main_axis='x'
+#     #StructM= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    StructM= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+#     print('------------------')
     from scipy.linalg import block_diag
 #     print('RR')
     RR = np.eye(3)
@@ -253,8 +255,8 @@ if __name__=='__main__':
 #     print('Twr KK matrix:')
 #     print(StructA.Twr.KK)
 #     print(StructM.Twr.KK)
-#     print('Twr Mass matrix:')
-#     print(StructA.Twr.MM[6:,6:])
+    print('Twr Mass matrix:')
+    print(StructA.Twr.MM[6:,6:])
 #     print(StructM.Twr.MM[6:,6:])
 #     print(StructA.Twr.MM[6:,6:]-StructM.Twr.MM[6:,6:])
 
@@ -280,8 +282,8 @@ if __name__=='__main__':
 
     print('Mass matrix:')
     print(StructA.MM)
-    print(StructM.MM)
-    print(StructM.MM-StructA.MM)
-    print(StructA)
-    print(StructM)
+#     print(StructM.MM)
+#     print(StructM.MM-StructA.MM)
+#     print(StructA)
+#     print(StructM)
 #     print('Origin E :',StructM.Grd.r_O.T)

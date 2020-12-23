@@ -4,7 +4,6 @@ Reference:
 """
 
 import numpy as np
-from .flexibility import GMBeam, GKBeam, GKBeamStiffnening, polymode, GeneralizedMCK_PolyBeam
 from .utils import *
 from .bodies import Body         as GenericBody
 from .bodies import RigidBody    as GenericRigidBody
@@ -284,13 +283,15 @@ class RigidBody(Body,GenericRigidBody):
 # --- Beam Body 
 # --------------------------------------------------------------------------------{
 class BeamBody(GenericBeamBody, Body):
-    def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z'):
+    def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
+            s_min=None, s_max=None,
+            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z'):
         """ 
           Points P0 - Undeformed mean line of the body
         """
         # --- nherit from BeamBody and Body 
         Body.__init__(B)
-        GenericBeamBody.__init__(B,'dummy', s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0,
+        GenericBeamBody.__init__(B,'dummy', s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis
                 )
 
@@ -326,18 +327,6 @@ class BeamBody(GenericBeamBody, Body):
         else:
             raise NotImplementedError()
 
-#     def computeStiffnessMatrix(B):
-#         B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
-#         if B.bStiffening:
-#             B.KKg = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, main_axis=B.main_axis)
-#         else:
-#             B.KKg=B.KK0*0
-# 
-#         B.KK=B.KK0+B.KKg
-# 
-#     def computeMassMatrix(B):
-#         B.MM = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth)
-# 
     def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
         super(BeamBody,o).updateKinematics(x_0,R_0b,gz,v_0,a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
@@ -446,8 +435,18 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
     def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, spanFrom0=False):
         """ 
         """
-        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, nShapes=nShapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, spanFrom0=spanFrom0)
-        BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
+        if nShapes==2:
+            shapes=[0,1]
+        elif nShapes==0:
+            shapes=[]
+        elif nShapes==1:
+            shapes=[0]
+        else:
+            raise NotImplementedError('>> TODO')
+        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, spanFrom0=spanFrom0)
+        BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
+                s_min=B.s_min, s_max=B.s_max,
+                bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
 
 # --------------------------------------------------------------------------------}
 # --- B Matrices 

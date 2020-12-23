@@ -18,7 +18,7 @@ def fcumtrapzlr(s_span, p):
     return P
 
 
-def polymode(x,coeff,exp):
+def polyshape(x, coeff, exp, x_max=None):
     """ 
     Computes a shape function described as a polynomial expression y = a_i x^e_i
         where the a_i are given by `coeff`
@@ -28,6 +28,8 @@ def polymode(x,coeff,exp):
     INPUTS:
         x : spanwise dimension, from 0 to L, not dimensionless!
 
+        xmax:value used to non-dimensionlize x:  x_bar = x/x_max. default: max(x)
+
     Returns:
         U, dU, ddU the shape, slope and curvature
     """
@@ -35,16 +37,20 @@ def polymode(x,coeff,exp):
     dmode  = np.zeros(x.shape)
     ddmode = np.zeros(x.shape)
     # Polynomials assume x to be dimensionless
-    x_max= x[-1] 
-    x_bar=x/x[-1] 
+    if x_max is None: 
+        x_max= x[-1]  # Miht not alsways be desired if "x" are mid-points
+    x_bar=x/x_max
+    mode_max =0   #  value of shape function at max x
     for i in range(0,len(coeff)):
-        mode += coeff[i]*x_bar**exp[i]
+        mode     += coeff[i]*x_bar**exp[i]
+        mode_max += coeff[i]*1**exp[i]
         if exp[i]-1>=0:
             dmode += coeff[i]*exp[i]* x_bar**(exp[i]-1)
         if exp[i]-2>=0:
             ddmode += coeff[i]*exp[i]*(exp[i]-1) * x_bar**(exp[i]-2)
     # Scaling by the tip deflection, and include x_max for derivatives since derivates were computed w.r.t. x_bar not x
-    scale= mode[-1]
+    #scale= mode[-1]
+    scale= mode_max
     return mode/scale, dmode/(scale*x_max), ddmode/(scale*x_max*x_max)
 
 
@@ -391,7 +397,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         else:
             return MM
 
-def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxxG=None, gravity=None, Mtop=0, nSpan=None, bAxialCorr=False, bStiffening=True, main_axis='z'):
+def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxxG=None, gravity=None, Mtop=0, nSpan=None, bAxialCorr=False, bStiffening=True, main_axis='z', shapes=[0,1,2,3], algo=''):
     """ 
     Compute generalized mass, stiffness and damping matrix, and shape integrals for a beam defined using polynomial coefficients
     The shape functions of the beam are defined as:
@@ -423,36 +429,53 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     # --- Interpolating structural properties
     if jxxG is None:
         jxxG=m*0
-    if nSpan is not None:
+
+    s_min = np.min(s_span)
+    s_max = np.max(s_span)
+    if algo=='ElastoDyn':
+        print('>>>>>>>')
+        # Settting up nodes like ElastoDyn
         s_span0 = s_span
-        s_span  = np.linspace(0,np.max(s_span),nSpan)
+
+        if nSpan is None:
+            nSpan=len(s_span)
+        length = s_span0[-1]-s_span0[0]
+        fract  = np.arange(1./nSpan/2., 1, 1./nSpan)
+        s_span = fract*length
         m       = np.interp(s_span, s_span0, m)
         EIFlp   = np.interp(s_span, s_span0, EIFlp)
         EIEdg   = np.interp(s_span, s_span0, EIEdg)
         jxxG    = np.interp(s_span, s_span0, jxxG)
+
+    else:
+        if nSpan is not None:
+            s_span0 = s_span
+            s_span  = np.linspace(0,np.max(s_span),nSpan)
+            m       = np.interp(s_span, s_span0, m)
+            EIFlp   = np.interp(s_span, s_span0, EIFlp)
+            EIEdg   = np.interp(s_span, s_span0, EIEdg)
+            jxxG    = np.interp(s_span, s_span0, jxxG)
     nSpan=len(s_span)
 
     # --- Definition of main directions
     ShapeDir=np.zeros(nShapes).astype(int)
     EI =np.zeros((3,nSpan))
+    shapes = shapes[:nShapes]
+
     if main_axis=='x':
         iMain = 0  # longitudinal axis along x
-        try:
-            ShapeDir[0] = 2 # First two shapes are along z (flapwise/Fore-Aft)
-            ShapeDir[0:2] = 2 # First two shapes are along z (flapwise/Fore-Aft)
-            ShapeDir[2:]  = 1 # Third shape along along y (edgewise/Side-Side) Sign...
-        except:
-            pass
+         # First two shapes are along z (flapwise/Fore-Aft)
+         # Third shape along along y (edgewise/Side-Side) Sign...
+        shape2Dir = np.array([2,2,1,1])
+        ShapeDir = shape2Dir[shapes]
         EI[2,:] = EIFlp
         EI[1,:] = EIEdg
     elif main_axis=='z':
         iMain = 2  # longitudinal axis along z
-        try:
-            ShapeDir[0] = 0 # First two shapes are along z (flapwise/Fore-Aft)
-            ShapeDir[0:2] = 0 # First two shapes are along x (flapwise/Fore-Aft)
-            ShapeDir[2:]  = 1 # Third shape along along y (edgewise/Side-Side) Sign...
-        except:
-            pass
+        # First two shapes are along x (flapwise/Fore-Aft)
+        # Third shape along along y (edgewise/Side-Side) Sign...
+        shape2Dir = np.array([0,0,1,1])
+        ShapeDir = shape2Dir[shapes]
         EI[0,:] = EIFlp
         EI[1,:] = EIEdg
     else:
@@ -470,7 +493,7 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     PhiK = np.zeros((nShapes,3,nSpan)) # Curvature
     for j in np.arange(nShapes):
         iAxis = ShapeDir[j]
-        PhiU[j][iAxis,:], PhiV[j][iAxis,:], PhiK[j][iAxis,:] = polymode(s_span,coeffs[:,j],exp)
+        PhiU[j][iAxis,:], PhiV[j][iAxis,:], PhiK[j][iAxis,:] = polyshape(s_span,coeffs[:,j],exp, x_max=s_max)
 
 
     # --- Generalized stiffness
@@ -519,7 +542,8 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     return {'MM':MM, 'KK':KK, 'DD':DD, 'KK0':KK0, 'KKg':KKg, 
             'Oe':Oe, 'Oe6':Oe6, 'Gr':Gr, 'Ge':Ge,
             'PhiU':PhiU, 'PhiV':PhiV, 'PhiK':PhiK,
-            's_P0':s_P0, 's_G':s_G0, 's_span':s_span, 'm':m, 'EI':EI, 'jxxG':jxxG, 'ShapeDir':ShapeDir,
+            's_P0':s_P0, 's_G':s_G0, 's_span':s_span, 's_min':s_min, 's_max':s_max,
+            'm':m, 'EI':EI, 'jxxG':jxxG, 'ShapeDir':ShapeDir,
             's_OG':s_COG, 'J_G':J_G, 'alpha':alpha
             }
 

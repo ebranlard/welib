@@ -409,7 +409,7 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
      
 
     # --- Final assembly
-    MM = MM_B 
+    MM = MM_B.copy()
     MM[:iPsi+1,:iPsi+1] += MM_S
     MM[:Twr.nf,:Twr.nf] += MM_T + MM_N
 

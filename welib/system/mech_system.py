@@ -231,4 +231,36 @@ class MechSystem():
 
         return fig, axes
 
+    def save(self, filename, DOFs=None, Factors=None):
+        """ Save time integration results to file 
+        DOFs: array of string for DOFs names
+        """
+        df = self.toDataFrame(DOFs=DOFs, Factors=Factors)
+        df.to_csv(filename, sep=',', index=False)
+
+    def toDataFrame(self, DOFs=None, Factors=None):
+        """ Return time integration results as a dataframe
+        DOFs:    array of string for DOFs names   (2xnDOF)
+        Factors: array of floats to scale the DOFs (2xnDOF)
+        """
+        import pandas as pd
+        if self.res is None:
+            raise Exception('Call integrate before save')
+
+        if DOFs is None:
+            DOFs  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]
+            DOFs += ['xd_{}'.format(i) for i in np.arange(self.nDOF)]
+        header = ' Time_[s], '+','.join(DOFs)
+
+        res = self.res
+        M=np.column_stack((res.t, res.y.T))
+
+        # Scaling
+        if Factors is not None:
+            for i, f in enumerate(Factors):
+                M[:,i+1] *= f
+
+        return pd.DataFrame(data=M, columns=['Time_[s]']+DOFs)
+
+
 

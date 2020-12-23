@@ -232,9 +232,11 @@ def saveTex(expr, filename):
 
 def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=False):
     """ 
-    Clean a python sympy expression 
+    Clean a python sympy expression and perform replacements:
+      - DOFs       -> q[i]
+      - Velocities -> qd[i]
+      - Constants ->  p['name']
     """
-
     # list of parameters inputs and dofs
     parameters = []
     inputs     = []
