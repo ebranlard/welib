@@ -1300,13 +1300,13 @@ class YAMSFlexibleBody(YAMSBody):
             for j in np.arange(self.Ke.M0.shape[1]):
                 s=repr(self.Ke.M0[i,j])
                 if len(s)>1:
-                    rd[s] = ('KK_{}'.format(self.name), [i,j])
+                    rd[s] = ('KK_{}'.format(self.name), [i+6,j+6])
 
         for i in np.arange(self.De.M0.shape[0]):
             for j in np.arange(self.De.M0.shape[1]):
                 s=repr(self.De.M0[i,j])
                 if len(s)>1:
-                    rd[s] = ('DD_{}'.format(self.name), [i,j])
+                    rd[s] = ('DD_{}'.format(self.name), [i+6,j+6])
         return rd
     
 
