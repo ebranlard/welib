@@ -266,6 +266,7 @@ def get_model(model_name, **opts):
     body_loads       = []
     bodies           = []
     g                = symbols('g')
+    g_vect           = -g * ref.frame.z
     T_a              = dynamicsymbols('T_a') # NOTE NOTE
     #T_a              = Function('T_a')(dynamicsymbols._t, *coordinates, *speeds) # NOTE NOTE
     M_ax, M_ay, M_az = dynamicsymbols('M_ax, M_ay, M_az') # Aero torques
@@ -424,6 +425,7 @@ def get_model(model_name, **opts):
     model.rot=rot
     #model.sft=sft
     #model.bld=bld
+    model.g_vect=g_vect
 
     # Small angles
     model.smallAnglesFnd    = [phi_x,phi_y,phi_z]

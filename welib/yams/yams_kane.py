@@ -338,7 +338,7 @@ class YAMSKanesMethod(object):
         self._fr = FR
         return FR
 
-    def _form_frstar(self, bl, Mform='TaylorExpanded'):
+    def _form_frstar(self, bl, Mform='TaylorExpanded', addGravity=True, g_vect=None):
         """Form the generalized inertia force.
 
         Mform: which form to use for flexible body mass matrix: TaylorExpanded or symbolic
@@ -430,9 +430,12 @@ class YAMSKanesMethod(object):
                     bodynonMM[j] += inertial_force  & Jv_vect[j]
                     bodynonMM[j] += inertial_torque & Jo_vect[j]
             elif isinstance(body,YAMSFlexibleBody):
+                if addGravity:
+                    acc=acc-g_vect
                 MMloc = body.bodyMassMatrix(form=Mform)
                 body.h_omega = body.bodyQuadraticForce(omega.to_matrix(body.frame), body.q, body.qdot)
                 body.h_elast = body.bodyElasticForce(body.q, body.qdot)
+                #body.h_g     = body.bodyGravitationalForce(g_vect, body.q, form='TaylorExpanded')
                 inertial_force=0 # Fstar
                 inertial_torque=0 # Tstar
                 inertial_force_coord =MMloc[0:3,0:3] * acc.to_matrix(body.frame) 
@@ -627,7 +630,7 @@ class YAMSKanesMethod(object):
         result = linearizer.linearize(**kwargs)
         return result + (linearizer.r,)
 
-    def kanes_equations(self, bodies, loads=None, Mform='TaylorExpanded'):
+    def kanes_equations(self, bodies, loads=None, Mform='TaylorExpanded',addGravity=True, g_vect=None):
         """ Method to form Kane's equations, Fr + Fr* = 0.
 
         Returns (Fr, Fr*). In the case where auxiliary generalized speeds are
@@ -664,7 +667,7 @@ class YAMSKanesMethod(object):
             raise AttributeError('Create an instance of KanesMethod with '
                     'kinematic differential equations to use this method.')
         fr = self._form_fr(loads)
-        frstar = self._form_frstar(bodies, Mform=Mform)
+        frstar = self._form_frstar(bodies, Mform=Mform, addGravity=addGravity, g_vect=g_vect)
         if self._uaux:
             if not self._udep:
                 km = KanesMethod(self._inertial, self.q, self._uaux,
@@ -1076,10 +1079,12 @@ def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame,
 
         elif isinstance(body,YAMSFlexibleBody):
             if addGravity:
+                print('>>> add Gravity')
                 acc=acc-g_vect
             MMloc = body.bodyMassMatrix(form=Mform)
             body.h_omega = body.bodyQuadraticForce(omega.to_matrix(body.frame), body.q, body.qdot)
             body.h_elast = body.bodyElasticForce(body.q, body.qdot)
+            #body.h_g     = body.bodyGravitationalForce(g_vect, body.q, form='TaylorExpanded')
             #  Inertial forces and torques at the body origin (wher Jv and Jo were computed)
             inertial_force=0 # Fstar
             inertial_torque=0 # Tstar
@@ -1124,13 +1129,13 @@ def kane_frstar(bodies, coordinates, speeds, kdeqs, origin, inertial_frame,
         MM   +=bodyMM
         nonMM+=bodynonMM
         # --- Storing for debug
-        body.acc             = acc
-        body.vel             = vel
-        body.omega           = omega
-        body.inertial_force  = inertial_force
-        body.inertial_torque = inertial_torque
-        body.Jv_vect=Jv_vect
-        body.Jo_vect=Jo_vect
+        body._acc             = acc
+        body._vel             = vel
+        body._omega           = omega
+        body._inertial_force  = inertial_force
+        body._inertial_torque = inertial_torque
+        body._Jv_vect=Jv_vect
+        body._Jo_vect=Jo_vect
     # End loop on bodies
     # NOTE: substitution needs to be done at the end
     nonMM  = msubs(msubs(nonMM, q_ddot_u_map), udot_zero) #, uauxdot_zero, uaux_zero)

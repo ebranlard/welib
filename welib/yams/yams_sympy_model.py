@@ -27,6 +27,7 @@ class YAMSModel(object):
         self.kdeqsSubs   = None
         self.bodies      = None
         self.kane        = None
+        self.g_vect      = None
         self._sa_forcing     = None
         self._sa_mass_matrix = None
         self._sa_EOM         = None
@@ -58,7 +59,12 @@ class YAMSModel(object):
         return [qd.diff(dynamicsymbols._t) for qd in self.coordinates_speed]
 
 
-    def kaneEquations(self, Mform='symbolic'):
+    def kaneEquations(self, Mform='symbolic', addGravity=True):
+        """ 
+        Compute equation of motions using Kane's method
+        Mform: form to use for mass matrix
+        addGravity: include gravity for elastic bodies
+        """
         for sa in ['ref', 'coordinates', 'speeds','kdeqs','bodies','loads']:
             if getattr(self,sa) is None:
                 raise Exception('Attribute {} needs to be set before calling `kane` method'.format(sa))
@@ -69,7 +75,7 @@ class YAMSModel(object):
         # --- Expensive kane step
         with Timer('Kane step 2',True):
             #(use  Mform ='symbolic' or 'TaylorExpanded'), Mform='symbolic'
-            self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform)
+            self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform, addGravity=addGravity, g_vect=self.g_vect)
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
 
