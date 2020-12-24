@@ -294,7 +294,10 @@ class YAMSModel(object):
                 f.write('"""\n')
                 f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
                 f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.coordinates)))
-                f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAngleUsed)))
+                try:
+                    f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAngleUsed)))
+                except:
+                    pass
                 f.write('Free vars:       ${}$\\\\ \n'.format(cleantex(self.var)))
                 f.write('"""\n')
                 f.write('import numpy as np\n')

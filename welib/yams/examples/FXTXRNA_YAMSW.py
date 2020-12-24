@@ -1,3 +1,13 @@
+""" 
+TODO:
+ - Extra loads (torques, buoyancy, restoring)
+ - Option for RefZ (rotate z_OT with phis)
+ - Test shaft nacelle, potentially add new body for that..
+ - Test simulations with time varying force
+ - Force linearization
+ - Blade flexibility
+
+"""
 from welib.yams.models.FTNSB_sympy import *
 from welib.yams.models.FTNSB_sympy_symbols import *
 from welib.yams.yams_sympy_tools import cleantex
@@ -10,6 +20,8 @@ from collections import OrderedDict
 # model_name = 'F2T0N0S1'
 # model_name = 'F2T1RNA'
 # model_name = 'F2T1RNA_fnd'
+# model_name = 'F3T1RNA_fnd'
+model_name = 'F5T1RNA_fnd'
 # model_name = 'F2T1N0S1'
 # model_name = 'F0T2RNA'
 # model_name = 'F0T1RNA'
@@ -39,6 +51,9 @@ from collections import OrderedDict
 # 
 # 
 # #
+
+bSmallAngle=False
+
 opts=dict()
 opts['rot_elastic_type']='SmallRot' #<<< Very important, 'SmallRot', or 'Body', will affect the rotation matrix
 # opts['rot_elastic_type']='Body' #<<< Very important, 'SmallRot', or 'Body', will affect the rotation matrix
@@ -92,6 +107,27 @@ elif model_name == 'F2T1RNA_fnd':
     opts['linRot']      = True    # Linearize rotations matrices from the beginning
     opts['Mform']       ='symbolic', # or 'TaylorExpanded'
     opts['twrDOFDir']   = ['x','y','x','y']  # Order in which the flexible DOF of the tower are set
+
+elif model_name == 'F3T1RNA_fnd':
+    # --- F3T1RNA
+    opts['mergeFndTwr'] = False    # combined foudantion/floater and tower together, or two bodies
+    opts['yaw']         = 'zero'  # 'fixed', 'zero', or 'dynamic' if a DOF
+    opts['tilt']        = 'fixed' # 'fixed', 'zero', or 'dynamic' if a DOF
+    opts['tiltShaft']   = True    # OpenFAST tilts shaft not nacelle
+    opts['linRot']      = True    # Linearize rotations matrices from the beginning
+    opts['Mform']       ='symbolic', # or 'TaylorExpanded'
+    opts['twrDOFDir']   = ['x','y','x','y']  # Order in which the flexible DOF of the tower are set
+
+elif model_name == 'F5T1RNA_fnd':
+    # --- F5T1RNA
+    opts['mergeFndTwr'] = False    # combined foudantion/floater and tower together, or two bodies
+    opts['yaw']         = 'zero'  # 'fixed', 'zero', or 'dynamic' if a DOF
+    opts['tilt']        = 'fixed' # 'fixed', 'zero', or 'dynamic' if a DOF
+    opts['tiltShaft']   = True    # OpenFAST tilts shaft not nacelle
+    opts['linRot']      = True    # Linearize rotations matrices from the beginning
+    opts['Mform']       ='symbolic', # or 'TaylorExpanded'
+    opts['twrDOFDir']   = ['x','y','x','y']  # Order in which the flexible DOF of the tower are set
+
 
 elif model_name == 'F2T1N0S1':
     # --- F2T1N0S1
@@ -225,7 +261,6 @@ model.kaneEquations(Mform='TaylorExpanded')
 # ---
 extraSubs=model.shapeNormSubs
 print('Extra Subs:  ', extraSubs        )
-print('Small angles:', model.smallAngles)
 
 
 
@@ -233,14 +268,15 @@ print('Small angles:', model.smallAngles)
 model.linearize(noAcc=True, noVel=False, extraSubs=extraSubs)
 
 # --- Small angle approximation and linearization
-model.smallAngleApprox(model.smallAngles, extraSubs)
-model.smallAngleApproxEOM(model.smallAngles, extraSubs)
-model.smallAngleLinearize(noAcc=True, noVel=False, extraSubs=extraSubs)
-
-
-# --- Export
-model.smallAngleSaveTex(folder='_tex', variables=['MM','FF','M','C','K','B'])
-model.savePython(folder='_py' , variables=['MM','FF','MMsa','FFsa','M','C','K','B','Msa','Csa','Ksa','Bsa'], replaceDict=replaceDict, extraSubs=extraSubs)
+if bSmallAngle:
+    print('Small angles:', model.smallAngles)
+    model.smallAngleApprox(model.smallAngles, extraSubs)
+    model.smallAngleApproxEOM(model.smallAngles, extraSubs)
+    model.smallAngleLinearize(noAcc=True, noVel=False, extraSubs=extraSubs)
+    model.smallAngleSaveTex(folder='_tex', variables=['MM','FF','M','C','K','B'])
+    model.savePython(folder='_py' , variables=['MM','FF','MMsa','FFsa','M','C','K','B','Msa','Csa','Ksa','Bsa'], replaceDict=replaceDict, extraSubs=extraSubs)
+else:
+    model.savePython(folder='_py' , variables=['MM','FF','M','C','K','B'], replaceDict=replaceDict, extraSubs=extraSubs)
 
 # 
 # Subs for "linearized model", DOFs set to 0

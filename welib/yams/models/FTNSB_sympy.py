@@ -123,8 +123,15 @@ def get_model(model_name, **opts):
         fndDOFs   = [x,  phi_y   ]
         fndSpeeds = [xd,omega_y_T]
     elif nDOF_fnd==3:
-        fndDOFs   = [x,  phi_y   , phi_x]
-        fndSpeeds = [xd,omega_y_T, omega_x_T]
+        #fndDOFs   = [x,  phi_y   , phi_x]
+        #fndSpeeds = [xd,omega_y_T, omega_x_T]
+        fndDOFs   = [x, z,  phi_y   ] 
+        fndSpeeds = [xd,zd,omega_y_T]
+    elif nDOF_fnd==5:
+        #fndDOFs   = [x,  phi_y   , phi_x]
+        #fndSpeeds = [xd,omega_y_T, omega_x_T]
+        fndDOFs    = [x, y, phi_x,     phi_y,       phi_z]
+        fndSpeeds  = [xd,yd,omega_x_T,omega_y_T,omega_z_T]
     else:
         fndDOFs    = [x, y, z, phi_x,     phi_y,       phi_z]
         fndSpeeds  = [xd,yd,zd,omega_x_T,omega_y_T,omega_z_T]
@@ -201,7 +208,11 @@ def get_model(model_name, **opts):
             ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(0    ,phi_y, 0   ), rot_order='XYZ')
         elif nDOF_fnd==3: 
             print('Free connection ref twr')
-            ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(phi_x,phi_y, 0   ), rot_order='XYZ')
+            #ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(phi_x,phi_y, 0   ), rot_order='XYZ')
+            ref.connectTo(twr, type='Free' , rel_pos=(x,0,z+z_OT), rot_amounts=(0, phi_y, 0   ), rot_order='XYZ')
+        elif nDOF_fnd==5: 
+            print('Free connection ref twr')
+            ref.connectTo(twr, type='Free' , rel_pos=(x,y,z_OT), rot_amounts=(phi_x,phi_y,phi_z), rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
         else:
             print('Free connection ref twr')
             ref.connectTo(twr, type='Free' , rel_pos=(x,y,z+z_OT), rot_amounts=(phi_x,phi_y,phi_z), rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
@@ -366,13 +377,30 @@ def get_model(model_name, **opts):
         else:
             kdeqsSubs+=[ (omega_y_T, omega_TE.dot(ref.frame.y).simplify())]  
     elif nDOF_fnd==3:
+        #kdeqsSubs+=[(xd, diff(x,time))]; 
+        #if opts['linRot']:
+        #    kdeqsSubs+=[ (omega_x_T, diff(phi_x,time))]  
+        #    kdeqsSubs+=[ (omega_y_T, diff(phi_y,time))]  
+        #else:
+        #    kdeqsSubs+=[ (omega_x_T, omega_TE.dot(ref.frame.x).simplify())]  
+        #    kdeqsSubs+=[ (omega_y_T, omega_TE.dot(ref.frame.y).simplify())]  
         kdeqsSubs+=[(xd, diff(x,time))]; 
+        kdeqsSubs+=[(zd, diff(z,time))]; 
+        if opts['linRot']:
+            kdeqsSubs+=[ (omega_y_T, diff(phi_y,time))]  
+        else:
+            kdeqsSubs+=[ (omega_y_T, omega_TE.dot(ref.frame.y).simplify())]  
+    elif nDOF_fnd==5:
+        kdeqsSubs+=[(xd, diff(x,time))]; 
+        kdeqsSubs+=[(yd, diff(y,time))]; 
         if opts['linRot']:
             kdeqsSubs+=[ (omega_x_T, diff(phi_x,time))]  
             kdeqsSubs+=[ (omega_y_T, diff(phi_y,time))]  
+            kdeqsSubs+=[ (omega_z_T, diff(phi_z,time))]  
         else:
             kdeqsSubs+=[ (omega_x_T, omega_TE.dot(ref.frame.x).simplify())]  
             kdeqsSubs+=[ (omega_y_T, omega_TE.dot(ref.frame.y).simplify())]  
+            kdeqsSubs+=[ (omega_z_T, omega_TE.dot(ref.frame.z).simplify())]  
     elif nDOF_fnd==6:
         kdeqsSubs+=[(xd, diff(x,time))]; 
         kdeqsSubs+=[(yd, diff(y,time))]; 

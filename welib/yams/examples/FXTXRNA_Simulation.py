@@ -83,28 +83,20 @@ def simulate(fstFilename, model_name, sims, sim_name):
     C_lin   = model.C_lin(q0l,qd0l,p,u0)
     K_lin   = model.K_lin(q0l,qd0l,p,u0) 
     B_lin   = model.B_lin(q0l,qd0l,p,u0)
-    M_lin_sa  = model.M_lin_sa(q0l,p)
-    C_lin_sa  = model.C_lin_sa(q0l,qd0l,p,u0)
-    K_lin_sa  = model.K_lin_sa(q0l,qd0l,p,u0) 
-    B_lin_sa  = model.B_lin_sa(q0l,qd0l,p,u0)
 
     # --- Print linearized mass damping 
     print('--------------------')
     print('Linear Mass Matrix: ')
     print(M_lin)
-    #print(M_lin_sa)
     print('--------------------')
     print('Linear Damping Matrix: ')
     print(C_lin)
-    #print(C_lin_sa)
     print('--------------------')
     print('Linear Stifness Matrix: ')
     print(K_lin)
-    #print(K_lin_sa)
     print('--------------------')
     print('Linear RHS: ')
     print(B_lin)
-    #print(B_lin_sa)
 
     # --- Non linear
     u=dict()
@@ -112,17 +104,12 @@ def simulate(fstFilename, model_name, sims, sim_name):
     t=0
     MM      = model.mass_matrix(q0,p)
     forcing = model.forcing(t,q0,qd0,p,u)
-    MM_sa     = model.mass_matrix_sa(q0,p)
-    forcing_sa = model.forcing_sa(t,q0,qd0,p,u)
     print('--------------------')
     print('Mass Matrix: ')
     print(MM)
-    #print(MM_sa)
     print('--------------------')
     print('Forcing: ')
     print(forcing)
-    #print(forcing_sa)
-
 
     # --- Reference simulation
     df=weio.read(fstFilename.replace('.fst','.out')).toDataFrame()
@@ -191,13 +178,12 @@ def simulate(fstFilename, model_name, sims, sim_name):
 
 
 def main():
-    # --- Rigid
+    # --- Rigid "F2"
     #fstFilename = '_F2T0RNA/Main_Spar_ED.fst'      ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA'
-    fstFilename = '_F2T0RNANoRefH/Main_Spar_ED.fst' ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA_NoRefH'
-    fstFilename = '_F2T0_NoRNA_NoRefH/Main_Spar_ED.fst' ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA_NoRNA_NoRefH'
-    #fstFilename = '_Spar2DOFNoHydroNoAeroNoRNANoRefH/Main_Spar_ED.fst';model_name='F2T0RNA_fnd';sim_name='F2T0_NoRNA'
+    #fstFilename = '_F2T0RNANoRefH/Main_Spar_ED.fst' ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA_NoRefH'
+    #fstFilename = '_F2T0_NoRNA_NoRefH/Main_Spar_ED.fst' ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA_NoRNA_NoRefH'
 
-    # --- Flexibility
+    # --- Flexibility "T1, T2"
     #fstFilename = '_F0T1RNA/Main_Spar_ED.fst'; model_name='F0T1RNA'; sim_name='F0T1RNA'
 
     #fstFilename = '_F0T2_NoRNA_sym/Main_Spar_ED.fst'; model_name='F0T2RNA'; sim_name='F0T2_NoRNA_sym'  # NOTE: Works fine large disp, symmetric shapes, with HubMass and NacMass, Twr2Shaft, detoriate slightly with overhang 
@@ -206,9 +192,15 @@ def main():
     #fstFilename = '_F0T2RNA/Main_Spar_ED.fst'; model_name='F0T2RNA'; sim_name='F0T2RNA'
     #fstFilename = '_F0T2RNA_sym/Main_Spar_ED.fst'; model_name='F0T2RNA'; sim_name='F0T2RNA_sym'
 
+    # --- Floater + Flexibility "F2T1"
     #fstFilename = '_F2T1RNANoRefH/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_NoRefH'
     #fstFilename = '_F2T1RNA_SmallAngle/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_SmallAngle'
-    fstFilename = '_F2T1RNA/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_LargeAngle'
+    #fstFilename = '_F2T1RNA/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_LargeAngle'
+
+    # --- "F3"
+    fstFilename = '_F3T1RNA/Main_Spar_ED.fst'; model_name='F3T1RNA_fnd'; sim_name='F3T1RNA'
+    # --- "F5"
+    fstFilename = '_F5T1RNA/Main_Spar_ED.fst'; model_name='F5T1RNA_fnd'; sim_name='F5T1RNA'
 
 
 
