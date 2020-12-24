@@ -1,6 +1,5 @@
 """ 
 TODO:
- - Extra loads (torques, buoyancy, restoring)
  - Option for RefZ (rotate z_OT with phis)
  - Test shaft nacelle, potentially add new body for that..
  - Test simulations with time varying force
@@ -16,17 +15,18 @@ from sympy import symbols
 from collections import OrderedDict
 
 # model_name = 'F2T0RNA'
-# model_name = 'F2T0RNA_fnd'
-# model_name = 'F2T0N0S1'
+model_name = 'F2T0RNA_fnd'
+# model_name = 'F2T0N0S1_fnd'
 # model_name = 'F2T1RNA'
 # model_name = 'F2T1RNA_fnd'
 # model_name = 'F3T1RNA_fnd'
-model_name = 'F5T1RNA_fnd'
+# model_name = 'F5T1RNA_fnd'
 # model_name = 'F2T1N0S1'
 # model_name = 'F0T2RNA'
 # model_name = 'F0T1RNA'
 # model_name = 'F0T2N0S1'
 # model_name = 'F6T0RNA'
+model_name = 'F5T0N0S1_fnd'
 # 
 # model_name = 'F6T0RNA_fnd'
 # model_name = 'F6T0N0S1'
@@ -60,6 +60,8 @@ opts['rot_elastic_type']='SmallRot' #<<< Very important, 'SmallRot', or 'Body', 
 opts['rot_elastic_smallAngle']=False #<<< Very important, will perform small angle approx: sin(nu q) = nu q and nu^2=0 !!! Will remove all nu^2 and nu^3 terms!! Not recommended, removes part of RNA "Y" inertia from mass matrix
 opts['orderMM'] = 1     #< order of taylor expansion for Mass Matrix
 opts['orderH']  = 1     #< order of taylor expansion for H term
+opts['fnd_loads'] = False
+opts['aero_torques'] = False
 
 # --------------------------------------------------------------------------------}
 # --- 2DOF floater 
@@ -80,9 +82,9 @@ elif model_name == 'F2T0RNA_fnd':
     opts['tiltShaft']   = True    # OpenFAST tilts shaft not nacelle
     opts['linRot']      = True    # Linearize rotations matrices from the beginning
 
-elif model_name == 'F2T0N0S1':
+elif model_name == 'F2T0N0S1_fnd':
     # --- F2T0N0S1
-    opts['mergeFndTwr'] = True    # combined foudantion/floater and tower together, or two bodies
+    opts['mergeFndTwr'] = False    # combined foudantion/floater and tower together, or two bodies
     opts['yaw']         = 'zero'  # 'fixed', 'zero', or 'dynamic' if a DOF
     opts['tilt']        = 'fixed' # 'fixed', 'zero', or 'dynamic' if a DOF
     opts['tiltShaft']   = True    # OpenFAST tilts shaft not nacelle
@@ -172,6 +174,16 @@ elif model_name == 'F0T2N0S1':
     opts['Mform']       ='symbolic', # or 'TaylorExpanded'
     opts['twrDOFDir']   = ['x','y','x','y']  # Order in which the flexible DOF of the tower are set
 
+# --------------------------------------------------------------------------------}
+# --- 5 dof floater 
+# --------------------------------------------------------------------------------{
+elif model_name == 'F5T0N0S1_fnd':
+    # --- F5T0N0S1
+    opts['mergeFndTwr'] = False    # combined foudantion/floater and tower together, or two bodies
+    opts['yaw']         = 'zero'  # 'fixed', 'zero', or 'dynamic' if a DOF
+    opts['tilt']        = 'fixed' # 'fixed', 'zero', or 'dynamic' if a DOF  # 
+    opts['tiltShaft']   = True    # OpenFAST tilts shaft not nacelle
+    opts['linRot']      = True    # Linearize rotations matrices from the beginning
 # --------------------------------------------------------------------------------}
 # ---6DOF floater
 # --------------------------------------------------------------------------------{

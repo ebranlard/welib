@@ -49,16 +49,68 @@ def FAST2StructureInputs(FST_file, model_name=None):
     p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
     p['DD_T']     = WT.twr.DD
     p['KK_T']     = WT.twr.KK
+    # Rotor (blades + hub)
+    p['Jxx_R']    = WT.rotgen.masscenter_inertia[0,0]
+    p['JO_R']     = WT.rotgen.masscenter_inertia[1,1]
+    p['M_R']      = WT.rot.mass
+    # Nacelle 
+    p['J_xx_N']   = WT.nac.masscenter_inertia[0,0]
+    p['J_yy_N']   = WT.nac.masscenter_inertia[1,1]
+    p['J_zz_N']   = WT.nac.masscenter_inertia[2,2]
+    p['M_N']      = WT.nac.mass
+    p['x_NG']     = WT.nac.masscenter[0]            # x-coord from N to nac G in nac-coord
+    p['z_NG']     = WT.nac.masscenter[2]            # z-coord from N to nac G in nac-coord
+    print(WT.rot)
+
+    # Mooring restoring
+    p['z_TM']      = 0
+    p['K_x_M']     = 0
+    p['K_y_M']     = 0
+    p['K_z_M']     = 0
+    p['K_phi_x_M'] = 0
+    p['K_phi_y_M'] = 0
+    p['K_phi_z_M'] = 0
+    # Buoyancy
+    p['z_TB']      = 0
 
     #print('MT\n',WT.twr.MM[6:,6:])
+
+#     print('>>>>>>>>> HACK')
+#     p['Jxx_R']=4.370255E+07
+#     p['Jxx_R']=3.863464E+07
+    # 38677056
+#  8.066928E+06   -7.943743E+08   0.000000E+00 
+# -7.943743E+08    9.692683E+10   0.000000E+00
+#  0.000000E+00    0.000000E+00   4.370255E+07  
+#      x                y           tx            ty             tz                psi
+#[x   8.066928E+06   0.000000E+00  0.000000E+00 -7.943743E+08   0.000000E+00    0.000000E+00
+#[y   0.000000E+00   8.066928E+06  7.943743E+08  0.000000E+00 >-1.415862E+05    0.000000E+00
+#[tx  0.000000E+00   7.943743E+08  9.694190E+10 -1.093750E-01 > 8.551839E+06  > 3.858149E+07
+#[ty -7.943743E+08   0.000000E+00 -1.093750E-01  9.692683E+10   0.000000E+00    0.000000E+00
+#[tz  0.000000E+00 >-1.415862E+05 >8.551839E+06  0.000000E+00 > 1.853499E+08  >-3.375442E+06
+#[psi 0.000000E+00  0.000000E+00  >3.858149E+07  0.000000E+00 >-3.375442E+06    4.370255E+07
+
+
+#         y           tx              tz                psi
+#[y    8.066928E+06  7.943743E+08  >-1.415862E+05    0.000000E+00
+#[tx   7.943743E+08  9.694190E+10  > 8.551839E+06  > 3.858149E+07
+#[tz >-1.415862E+05 >8.551839E+06  > 1.853499E+08  >-3.375442E+06
+#[psi 0.000000E+00  >3.858149E+07  >-3.375442E+06    4.370255E+07
+
     return p,WT
 
 def simulate(fstFilename, model_name, sims, sim_name):
 
-    p ,WT = FAST2StructureInputs(fstFilename, model_name)
+    # ---
+    p, WT = FAST2StructureInputs(fstFilename, model_name)
 
     import importlib
     model= importlib.import_module('_py.{}'.format(model_name))
+
+    # --- Reference simulation
+    df=weio.read(fstFilename.replace('.fst','.out')).toDataFrame()
+    #time = np.linspace(0,50,5000)
+    time = df['Time_[s]'].values
 
     # --- Initial conditions
     nDOFExpected=np.sum([int(s) for s in model_name if s.isdigit()])
@@ -67,17 +119,20 @@ def simulate(fstFilename, model_name, sims, sim_name):
         raise Exception('Inconsistency in number of DOFs')
     q0  = WT.q0
     qd0 = WT.qd0
+    print('q0 :',q0)
+    print('qd0:',qd0)
     q0l = WT.q0*0
     qd0l= WT.qd0*0
     DOFs = WT.activeDOFs
-    print('q0 :',q0)
-    print('qd0:',qd0)
     print('q0l :',q0l)
     print('qd0l:',qd0l)
 
     # --- Evaluate linear structural model
     u0=dict() # Inputs at operating points
     u0['T_a']= 0 # thrust at operating point # TODO
+    u0['M_y_a']= 0 # aerodynamic tilting moment at operating point
+    u0['M_z_a']= 0 #+0*np.sin(0.1*t)  # aerodynamic "yawing" moment
+    u0['F_B']= 0 # Buoyancy at operating point
 
     M_lin   = model.M_lin(q0l,p)
     C_lin   = model.C_lin(q0l,qd0l,p,u0)
@@ -101,6 +156,10 @@ def simulate(fstFilename, model_name, sims, sim_name):
     # --- Non linear
     u=dict()
     u['T_a']= lambda t: 0 #+0*np.sin(0.1*t)  # Thrust as function of time # TODO
+    u['M_y_a']= lambda t: 0 #+0*np.sin(0.1*t)  # aerodynamic tilting moment
+    u['M_z_a']= lambda t: 0 #+0*np.sin(0.1*t)  # aerodynamic "yawing" moment
+    u['F_B']= lambda t: 0 #+0*np.sin(0.1*t)  # Thrust as function of time # TODO
+    #u['F_B']= lambda t: (p['M_F']  + p['M_RNA'] + p['MM_T'][0,0])*p['g']
     t=0
     MM      = model.mass_matrix(q0,p)
     forcing = model.forcing(t,q0,qd0,p,u)
@@ -111,26 +170,34 @@ def simulate(fstFilename, model_name, sims, sim_name):
     print('Forcing: ')
     print(forcing)
 
-    # --- Reference simulation
-    df=weio.read(fstFilename.replace('.fst','.out')).toDataFrame()
-    #time = np.linspace(0,50,5000)
-    time = df['Time_[s]'].values
+    if sims is False:
+        return p, WT, None, None, None, None 
+
 
     # --- integrate non-linear system
     fM = lambda x: model.mass_matrix(x, p)
     fF = lambda t,x,xd: model.forcing(t, x, xd, p=p, u=u)
-    sysNL = MechSystem(fM, F=fF, x0=q0 )
+    sysNL = MechSystem(fM, F=fF, x0=q0, xdot0=qd0 )
     resNL=sysNL.integrate(time, method='RK45')
 
     # --- integrate linear system
     fF = lambda t,x,xd: np.array([0]*len(q0))
-    sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=q0 )
+    sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=q0, xdot0=qd0)
     resLI=sysLI.integrate(time, method='RK45') # **options):
     
     # --- Convert results to dataframe and save to file
     channels = WT.channels
-    DOFscales = [180/np.pi if s.find('[deg]')>0 else 1 for s in channels]
-    DOFscales = [-1 if s.find('TSS1')>0 else f for s,f in zip(channels,DOFscales)]
+    DOFscales=[]
+    for s in channels:
+        if s.find('[deg]')>0:
+            DOFscales.append(180/np.pi)
+        elif s.find('TSS1')>0:
+            DOFscales.append(-1)
+        elif s.find('[rpm]')>0:
+            DOFscales.append(60/(2*np.pi))
+        else:
+            DOFscales.append(1)
+
     dfNL = sysNL.toDataFrame(WT.channels, DOFscales)
     dfLI = sysLI.toDataFrame(WT.channels, DOFscales)
     sysNL.save(fstFilename.replace('.fst','_NonLinear.csv'), WT.channels, DOFscales)
@@ -179,9 +246,14 @@ def simulate(fstFilename, model_name, sims, sim_name):
 
 def main():
     # --- Rigid "F2"
-    #fstFilename = '_F2T0RNA/Main_Spar_ED.fst'      ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA'
     #fstFilename = '_F2T0RNANoRefH/Main_Spar_ED.fst' ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA_NoRefH'
     #fstFilename = '_F2T0_NoRNA_NoRefH/Main_Spar_ED.fst' ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA_NoRNA_NoRefH'
+    #fstFilename = '_F2T0RNA/Main_Spar_ED.fst'      ;model_name='F2T0RNA_fnd';sim_name='F2T0RNA'
+
+    #fstFilename = '_F2T0N0S1/Main_Spar_ED.fst'; model_name='F2T0N0S1_fnd'; sim_name='F2T0N0S1'
+
+    # --- Rigid "F5"
+    fstFilename = '_F5T0N0S1/Main_Spar_ED.fst'; model_name='F5T0N0S1_fnd'; sim_name='F5T0N0S1'
 
     # --- Flexibility "T1, T2"
     #fstFilename = '_F0T1RNA/Main_Spar_ED.fst'; model_name='F0T1RNA'; sim_name='F0T1RNA'
@@ -197,14 +269,13 @@ def main():
     #fstFilename = '_F2T1RNA_SmallAngle/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_SmallAngle'
     #fstFilename = '_F2T1RNA/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_LargeAngle'
 
-    # --- "F3"
-    fstFilename = '_F3T1RNA/Main_Spar_ED.fst'; model_name='F3T1RNA_fnd'; sim_name='F3T1RNA'
-    # --- "F5"
-    fstFilename = '_F5T1RNA/Main_Spar_ED.fst'; model_name='F5T1RNA_fnd'; sim_name='F5T1RNA'
+    # --- "F3 T1"
+    #fstFilename = '_F3T1RNA/Main_Spar_ED.fst'; model_name='F3T1RNA_fnd'; sim_name='F3T1RNA'
+    # --- "F5 T1"
+    #fstFilename = '_F5T1RNA/Main_Spar_ED.fst'; model_name='F5T1RNA_fnd'; sim_name='F5T1RNA'
 
 
-
-    sim = ['nonlinear','linear']
+    sim = True
     p, WT, sysNL, resNL, sysL, resL  = simulate(fstFilename, model_name, sim, sim_name)
 
     # --- Print parameters

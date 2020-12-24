@@ -290,7 +290,6 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=Fal
                 sdof=repr(dof)
                 s=s.replace(sdof+'(t)','q[{}]'.format(idof))
                 s=s.replace(sdof,'q[{}]'.format(idof))
-
         for symb in symbols:
             ssymb=repr(symb)
             if not any([p.find(ssymb)>0 for p in parameters]):
@@ -333,6 +332,8 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=Fal
     # removing duplicates
     parameters = list(set(parameters))
     inputs     = list(set(inputs))
+    parameters.sort()
+    inputs.sort()
     parametersProblem = list(set(parametersProblem))
     if len(parametersProblem)>0:
         print('>>> Parameters not replaced for python: ', parametersProblem)

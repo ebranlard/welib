@@ -1,4 +1,6 @@
 import os
+import numpy as np
+
 from sympy.physics.mechanics import dynamicsymbols
 from sympy import diff
 
@@ -157,6 +159,8 @@ class YAMSModel(object):
             # ---  Using kane to get "r"...
             linearizer = self.kane.to_linearizer()
             self.var = self.kane._lin_r
+            II = np.argsort([str(v) for v in self.var])
+            self.var = list(np.array(self.var)[II])
             # KEEP ME Alternative
             #M, A, B = linearizer.linearize(op_point=op_point ) #o
 
@@ -293,12 +297,12 @@ class YAMSModel(object):
             with open(filename,'w') as f:
                 f.write('"""\n')
                 f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
-                f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.coordinates)))
+                f.write('Degrees of freedom: {}, \n'.format(self.coordinates))
                 try:
-                    f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAngleUsed)))
+                    f.write('Small angles:       {}\\\\ \n'.format(self.smallAngleUsed))
                 except:
                     pass
-                f.write('Free vars:       ${}$\\\\ \n'.format(cleantex(self.var)))
+                f.write('Free vars:       {}\\\\ \n'.format(self.var))
                 f.write('"""\n')
                 f.write('import numpy as np\n')
                 f.write('from numpy import cos, sin\n')
@@ -414,7 +418,7 @@ class YAMSModel(object):
 
                 if 'B' in variables:
                     MM=subs_no_diff(self.B,extraSubs)
-                    s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def B_lin(q=None,qd=None,p=None,u=None):\n')
                     f.write('    """ Linear mass matrix \n')
                     f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
@@ -422,6 +426,7 @@ class YAMSModel(object):
                     f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
                     f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
                     f.write('           where each values is a constant!\n')
+                    f.write('    The columns of B correspond to:   {}\\\\ \n'.format(self.var))
                     f.write('    """\n')
                     f.write(s)
                     f.write('    return BB\n\n')
@@ -475,7 +480,7 @@ class YAMSModel(object):
 
                 if 'Bsa' in variables:
                     MM=subs_no_diff(self._sa_B,extraSubs)
-                    s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict)
+                    s, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
                     f.write('def B_lin_sa(q=None,qd=None,p=None,u=None):\n')
                     f.write('    """ Linear mass matrix with small angle approximation\n')
                     f.write('    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs))
@@ -483,6 +488,7 @@ class YAMSModel(object):
                     f.write('    p:  parameters, dictionary with keys: {}\n'.format(params))
                     f.write('    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs))
                     f.write('           where each values is a constant!\n')
+                    f.write('    The columns of B correspond to:   {}\\\\ \n'.format(self.var))
                     f.write('    """\n')
                     f.write(s)
                     f.write('    return BB\n\n')

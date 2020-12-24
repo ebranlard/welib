@@ -23,6 +23,8 @@ _defaultOpts={
     'rot_elastic_type':'Body',     #<<< Very important, SmallRot, or Body, will affect the rotation matrix
     'rot_elastic_subs':True,       #<<< Very important, will substitute alpha_y with nuy q. Recommended True
     'rot_elastic_smallAngle':False,#<<< Very important, will perform small angle approx: sin(nu q) = nu q and nu^2=0 !!! Will remove all nu^2 and nu^3 terms!! might not be recommended
+    'fnd_loads':False, # Add loads on the foundation (restoring and buoyancy)
+    'aero_torques':False, # Add aerodynamic torques
     'orderMM':2, #< order of taylor expansion for Mass Matrix
     'orderH':2,  #< order of taylor expansion for H term
 }
@@ -278,13 +280,6 @@ def get_model(model_name, **opts):
     bodies           = []
     g                = symbols('g')
     g_vect           = -g * ref.frame.z
-    T_a              = dynamicsymbols('T_a') # NOTE NOTE
-    #T_a              = Function('T_a')(dynamicsymbols._t, *coordinates, *speeds) # NOTE NOTE
-    M_ax, M_ay, M_az = dynamicsymbols('M_ax, M_ay, M_az') # Aero torques
-    K_Mx, K_My, K_Mz = dynamicsymbols('K_Mx, K_My, K_Mz') # Mooring restoring
-    K_Mphix, K_Mphiy, K_Mphiz = dynamicsymbols('K_M_phi_x, K_M_phi_y, K_M_phi_z') # Mooring restoring
-    F_B              = dynamicsymbols('F_B')
-
     # Foundation/floater loads
     if fnd is not None:
         bodies+= [fnd]
@@ -294,13 +289,26 @@ def get_model(model_name, **opts):
         P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # <<<< Measured from T
         P_B.v2pt_theory(twr.origin, ref.frame, twr.frame); # PB & T are fixed in e_T
         P_M.v2pt_theory(twr.origin, ref.frame, twr.frame); # PM & T are fixed in e_T
-        # Buyancy
-        #F_buy = (P_B, F_B * ref.frame.z)
-        ## Restoring mooring
-        #F_moor = (P_M,  -K_x * x *ref.frame.x )
-        ## Ext torques
-        #M_moor = (fnd.frame, -K_phi_y * phi_y *ref.frame.y)
-        # TODO Moor and buoy
+        if opts['fnd_loads']:
+            K_Mx, K_My, K_Mz          = symbols('K_x_M, K_y_M, K_z_M') # Mooring restoring
+            K_Mphix, K_Mphiy, K_Mphiz = symbols('K_phi_x_M, K_phi_y_M, K_phi_z_M') # Mooring restoring
+            F_B = dynamicsymbols('F_B') # Buoyancy force
+            print('>>> Adding fnd loads. NOTE: reference might need to be adapted')
+            # Buoyancy
+            body_loads  += [(fnd, (P_B, F_B * ref.frame.z))]
+            ## Restoring mooring and torques
+            if nDOF_fnd==2:
+                body_loads  += [(fnd, (P_M,  -K_Mx * x *ref.frame.x                                                   ))]
+                body_loads  += [(fnd, (fnd.frame,                               -K_Mphiy * phi_y *ref.frame.y                               ))]
+            elif nDOF_fnd==3:
+                body_loads  += [(fnd, (P_M,  -K_Mx * x *ref.frame.x                          -K_Mz * z *ref.frame.z    ))]
+                body_loads  += [(fnd, (fnd.frame,                               -K_Mphiy * phi_y *ref.frame.y                               ))]
+            elif nDOF_fnd==5:
+                body_loads  += [(fnd, (P_M,  -K_Mx * x *ref.frame.x -K_My * y *ref.frame.y     ))]
+                body_loads  += [(fnd, (fnd.frame, -K_Mphix * phi_x *ref.frame.x -K_Mphiy * phi_y *ref.frame.y -K_Mphiz * phi_z *ref.frame.z ))]
+            elif nDOF_fnd==6:
+                body_loads  += [(fnd, (P_M,  -K_Mx * x *ref.frame.x -K_My * y *ref.frame.y  -K_Mz * z *ref.frame.z    ))]
+                body_loads  += [(fnd, (fnd.frame, -K_Mphix * phi_x *ref.frame.x -K_Mphiy * phi_y *ref.frame.y -K_Mphiz * phi_z *ref.frame.z ))]
         body_loads  += [(fnd,grav_F)]
 
     # Tower loads
@@ -313,6 +321,9 @@ def get_model(model_name, **opts):
     bodies      += [nac]
     body_loads  += [(nac,grav_N)]  
 
+    T_a              = dynamicsymbols('T_a') # NOTE NOTE
+    #T_a              = Function('T_a')(dynamicsymbols._t, *coordinates, *speeds) # NOTE: to introduce it in the linearization, add coordinates
+    M_ax, M_ay, M_az = dynamicsymbols('M_x_a, M_y_a, M_z_a') # Aero torques
     if bFullRNA:
         if bBlades:
             raise NotImplementedError()
@@ -346,14 +357,18 @@ def get_model(model_name, **opts):
             thrustN = (R, T_a *cos(tiltDOF) * nac.frame.x -T_a *sin(tiltDOF) * nac.frame.z)
         else:
             thrustN = (R, T_a * nac.frame.x )
+        body_loads  += [(nac,thrustN)]
 
-        if opts['tiltShaft']:
-            print('>>> WARNING tilt shft aero moments with RNA not implemented') # TODO
-            M_a_N = (nac.frame, 0*nac.frame.x)
-        else:
-            M_a_N = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z)
-
-        body_loads  += [(nac,thrustN), (nac, M_a_N)]  
+        if opts['aero_torques']:
+            print('>>> Adding aero torques')
+            if opts['tiltShaft']:
+                # NOTE: for a rigid RNA we keep only M_y and M_z, no shaft torque
+                x_tilted = cos(tiltDOF) * nac.frame.x - sin(tiltDOF) * nac.frame.z
+                z_tilted = cos(tiltDOF) * nac.frame.y + sin(tiltDOF) * nac.frame.x
+                M_a_N = (nac.frame,                  M_ay*nac.frame.y + M_az*z_tilted) 
+            else:
+                M_a_N = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z)
+            body_loads  += [(nac, M_a_N)]  
 
     # --------------------------------------------------------------------------------}
     # --- Kinematic equations 

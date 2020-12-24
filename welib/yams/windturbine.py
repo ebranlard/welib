@@ -146,6 +146,9 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     # --- Rotor = Hub + Blades (with origin R, using N as global ref)
     rot = blades.combine(hub, R_b2g=R_NS, r_O=blades.pos_global)
     rot.name='rotor'
+    rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blades.pos_global)
+    print(rotgen)
+
 
     # --- RNA
     RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
@@ -182,7 +185,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'][0]  in ['t','T'], 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]'}]
 
     DOFs+=[{'name':'\\theta_y','active':ED['YawDOF'][0]   in ['t','T'], 'q0': ED['NacYaw']*np.pi/180   , 'qd0':0 ,          'q_channel':'NacYaw_[deg]' , 'qd_channel':'QD_Yaw_[rad/s]'}]
-    DOFs+=[{'name':'\\psi'    ,'active':ED['GenDOF'][0]   in ['t','T'], 'q0': ED['Azimuth']*np.pi/180  , 'qd0':'RotSpeed' , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]'}]
+    DOFs+=[{'name':'\\psi'    ,'active':ED['GenDOF'][0]   in ['t','T'], 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]'}]
 
     DOFs+=[{'name':'\\nu'     ,'active':ED['DrTrDOF'][0]  in ['t','T'], 'q0': 0  , 'qd0':0 , 'q_channel':'Q_DrTr_[rad]', 'qd_channel':'QD_DrTr_[rad/s]'}]
 
@@ -207,6 +210,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     WT.fnd = fnd # origin at T
     WT.bld = bld # origin at R
     WT.rot = rot # origin at R, rigid body bld+hub
+    WT.rotgen = rotgen # origin at R, rigid body bld+hub+genLSS
     WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
 
     WT.DOF= DOFs
