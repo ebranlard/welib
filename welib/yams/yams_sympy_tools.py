@@ -228,6 +228,57 @@ def saveTex(expr, filename):
         f.write(cleantex(expr))
     print('Done')
 
+def cleanPySmallMat(expr, varname='R', indent=0, replDict=None, noTimeDep=True): 
+    """ Export a "small" matrix to python (row by row) """
+    def cleanPyAtom(atom):
+        s=repr(atom).replace(' ','')
+        if replDict is not None:
+            for k,v in replDict.items():
+                if s.find(k)>=0:
+                    s=s.replace(k,v)
+        if noTimeDep:
+            s=s.replace('(t)','',)
+        return s
+    s=''
+    indent =''.join([' ']*indent)
+    dims=expr.shape
+    s+='{}{} = np.zeros(({},{}))\n'.format(indent,varname, dims[0],dims[1])
+    for i in np.arange(dims[0]):
+        s+='{}{}[{},:] = ['.format(indent,varname,i) + ','.join([cleanPyAtom(expr[i,j]) for j in np.arange(dims[1])]) +']\n' 
+    return s
+
+def cleanPySimple(expr, varname='R', indent=0, replDict=None, noTimeDep=False):
+    """ 
+    Clean a python sympy expression 
+    """
+    def cleanPyAtom(atom):
+        s=repr(atom).replace(' ','')
+        # Replace
+        if replDict is not None:
+            for k,v in replDict.items():
+                if s.find(k)>=0:
+                    s=s.replace(k,v)
+        if noTimeDep:
+            s=s.replace('(t)','',)
+        return s
+    try:
+        dims=expr.shape
+    except:
+        dims=0
+        return '{}{} = '.format(indent,varname) + cleanPyAtom(expr), list(set(parameters)), list(set(inputs)), sdofs
+
+    indent =''.join([' ']*indent)
+    s=''
+    if len(dims)==1:
+        s+='{}{} = np.zeros({})\n'.format(indent,varname,dims[0])
+        for i in np.arange(dims[0]):
+            s+='{}{}[{}] = '.format(indent,varname,i) + cleanPyAtom(expr[i]) +'\n'
+    elif len(dims)==2:
+        s+='{}{} = np.zeros(({},{}))\n'.format(indent,varname, dims[0],dims[1])
+        for i in np.arange(dims[0]):
+            for j in np.arange(dims[1]):
+                s+='{}{}[{},{}] = '.format(indent,varname,i,j) + cleanPyAtom(expr[i,j])+'\n'
+    return s
 
 
 def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=False):

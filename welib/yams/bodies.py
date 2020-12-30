@@ -307,6 +307,9 @@ class BeamBody(FlexibleBody):
             B.KKg=B.KK0*0
 
         B.KK=B.KK0+B.KKg
+        if len(np.isnan(B.KK))>0:
+            print('>>> WARNING, some stiffness matrix values are nan, replacing with 0')
+            B.KK[np.isnan(B.KK)]=0
 
     def computeDampingMatrix(self, damp_zeta=None):
         self.DD = np.zeros((6+self.nf,6+self.nf))
@@ -319,6 +322,10 @@ class BeamBody(FlexibleBody):
             xi = zeta*2*np.pi
             c  = xi * gm * om / np.pi
             self.DD[6+j,6+j] = c
+
+        if len(np.isnan(self.DD))>0:
+            print('>>> WARNING, some damping matrix values are nan, replacing with 0')
+            self.DD[np.isnan(self.DD)]=0
 
 
     @property    
@@ -340,7 +347,10 @@ class BeamBody(FlexibleBody):
     @property    
     def masscenter(self):
         """ Position of mass center in body frame"""
-        return  np.trapz(self.m*self.s_G0,self.s_span)/self.mass
+        if self.mass>0:
+            return  np.trapz(self.m*self.s_G0,self.s_span)/self.mass
+        else:
+            return np.array([0,0,0])
 
     @property
     def masscenter_pos_global(self):
@@ -388,6 +398,9 @@ class BeamBody(FlexibleBody):
 
     def computeMassMatrix(B):
         B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
+        if len(np.isnan(B.MM))>0:
+            print('>>> WARNING, some mas matrix values are nan, replacing with 0')
+            B.MM[np.isnan(B.MM)]=0
 
     @property
     def length(B):

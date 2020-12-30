@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from sympy.physics.mechanics import dynamicsymbols
-from sympy import diff
+from sympy import diff, Matrix
 
 from .yams_sympy_tools import smallAngleApprox, cleantex, subs_no_diff , cleanPy
 from .yams_kane import YAMSKanesMethod
@@ -36,6 +36,19 @@ class YAMSModel(object):
         self.opts        = None
         self.body_loads  = None
         self.var         = [] # Independent variables
+        self.smallAngleUsed=None
+
+    def __repr__(self):
+        s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
+        s+=' - coordinates:       {}\n'.format(self.coordinates)
+        s+=' - speeds:            {}\n'.format(self.speeds)
+        s+=' - kdeqsSubs:         {}\n'.format(self.kdeqsSubs)
+        s+=' - var:               {}\n'.format(self.var)
+        s+=' - smallAngleUsed   : {}\n'.format(self.smallAngleUsed)
+        s+=' - number of bodies : {}\n'.format(len(self.bodies))
+        s+=' - opts             : {}\n'.format(self.opts)
+        s+=' * loads            : {}\n'.format(self.loads)
+        return s
     
     @property
     def kdeqs(self):
@@ -167,7 +180,10 @@ class YAMSModel(object):
             M =-EOM.jacobian(self.coordinates_acc  ).subs(extraSubs).subs(op_point)
             C =-EOM.jacobian(self.coordinates_speed).subs(extraSubs).subs(op_point)
             K =-EOM.jacobian(self.coordinates      ).subs(extraSubs).subs(op_point)
-            B = EOM.jacobian(self.var              ).subs(extraSubs).subs(op_point)
+            if len(self.var)>0:
+                B = EOM.jacobian(self.var              ).subs(extraSubs).subs(op_point)
+            else:
+                B=Matrix([])
 
 
         return M,C,K,B
@@ -296,13 +312,7 @@ class YAMSModel(object):
         with Timer('Python to {}'.format(filename),True):
             with open(filename,'w') as f:
                 f.write('"""\n')
-                f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
-                f.write('Degrees of freedom: {}, \n'.format(self.coordinates))
-                try:
-                    f.write('Small angles:       {}\\\\ \n'.format(self.smallAngleUsed))
-                except:
-                    pass
-                f.write('Free vars:       {}\\\\ \n'.format(self.var))
+                f.write('{}\n'.format(self.__repr__()))
                 f.write('"""\n')
                 f.write('import numpy as np\n')
                 f.write('from numpy import cos, sin\n')

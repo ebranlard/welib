@@ -93,6 +93,8 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     # TODO SubDyn, MoorDyn, BeamDyn 
 
+    r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
+    r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
     # Basic geometries for nacelle
     theta_tilt_y = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST
     R_NS = R_y(theta_tilt_y)  # Rotation fromShaft to Nacelle
@@ -147,16 +149,14 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     rot = blades.combine(hub, R_b2g=R_NS, r_O=blades.pos_global)
     rot.name='rotor'
     rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blades.pos_global)
-    print(rotgen)
-
+    #print(rotgen)
 
     # --- RNA
     RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
     RNA.name='RNA'
     #print(RNA)
-
-    # --- RNA
     M_RNA = RNA.mass
+
     # --- Fnd (defined wrt ground/MSL "E")
 #     print(FST.keys())
     M_fnd = ED['PtfmMass']
@@ -168,6 +168,15 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     # --- Twr
     twrFile = weio.read(twrfile)
     twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=algo) # TODO options
+    twr_rigid  = twr.toRigidBody()
+    twr_rigid.pos_global = r_ET_inE
+
+
+    # --- Full WT rigid body equivalent, with point T as ref
+    RNAb = copy.deepcopy(RNA)
+    RNAb.pos_global = r_TN_inT+r_ET_inE
+    RNAb.R_b2g      = np.eye(3)
+    WT_rigid = RNAb.combine(twr_rigid).combine(fnd)
 
     # --- Degrees of freedom
     DOFs=[]
@@ -212,6 +221,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     WT.rot = rot # origin at R, rigid body bld+hub
     WT.rotgen = rotgen # origin at R, rigid body bld+hub+genLSS
     WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
+    WT.WT_rigid = WT_rigid # rigid wind turbine body, origin at MSL
 
     WT.DOF= DOFs
 
