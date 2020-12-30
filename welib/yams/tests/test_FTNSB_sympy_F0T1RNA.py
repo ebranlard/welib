@@ -23,7 +23,8 @@ def main(unittest=False):
 
     model = get_model('F0T1RNA', mergeFndTwr=True, yaw='zero', tilt='fixed', tiltShaft=False,
             rot_elastic_type='SmallRot',
-            rot_elastic_smallAngle=True
+            rot_elastic_smallAngle=True,
+            aero_torques=True
             )
     model.kaneEquations()
     extraSubs=model.shapeNormSubs
@@ -66,10 +67,14 @@ class TestF0T1RNA(unittest.TestCase):
         FF = model._sa_forcing[0,0].subs([(dynamicsymbols('g'),Symbol('g')),(dynamicsymbols('T_a'),Symbol('T_a')), ])
         #forcing1=parse_expr('-D_e^0_T_11*Derivative(q_T1(t), t) - K_e^0_T_11*q_T1(t)')
         forcing1 = twr.bodyElasticForce(twr.q, twr.qdot)[6,0]
-        forcing2 = parse_expr('T_a*cos(theta_tilt) + v_yT1c*(M_RNA*g*x_RNAG*cos(theta_tilt) + M_RNA*g*z_RNAG*sin(theta_tilt) + T_a*z_NR - T_a*q_T1(t)*sin(theta_tilt) + M_ay(t))')
+        forcing2 = parse_expr('T_a*cos(theta_tilt) + v_yT1c*(M_RNA*g*x_RNAG*cos(theta_tilt) + M_RNA*g*z_RNAG*sin(theta_tilt) + T_a*z_NR - T_a*q_T1(t)*sin(theta_tilt) + M_y_a(t))')
+        #print('ff       ',FF)
+        #print('forcing 1',forcing1)
+        #print('forcing 2',forcing2)
 
         DFF = FF-forcing2+forcing1
-        DFF.simplify()
+        DFF = DFF.simplify()
+        #print('DFF',DFF)
 
         self.assertEqual(DFF,0)
 
