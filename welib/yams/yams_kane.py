@@ -1251,13 +1251,13 @@ def kane_fr(body_loads, speeds, inertial_frame):
 
     for bl in body_loads:
         body, (point_or_frame, force_or_moment) = bl
-        if not hasattr(body,'Jv_vect') or not hasattr(body, 'Jo_vect'):
+        if not hasattr(body,'_Jv_vect') or not hasattr(body, '_Jo_vect'):
             raise Exception('Jacobians matrices need to be computed for body {}. (Call frstart first)'.format(body.name))
         if isinstance(point_or_frame, ReferenceFrame):
             # Moment and frame
             Moment = force_or_moment
             for j in range(len(speeds)):
-                fr_o[j] += body.Jo_vect[j] & Moment # Jo^t * M
+                fr_o[j] += body._Jo_vect[j] & Moment # Jo^t * M
             pass
         else:
             # Force and point
@@ -1265,10 +1265,10 @@ def kane_fr(body_loads, speeds, inertial_frame):
             point = point_or_frame
             r = point.pos_from(body.masscenter)
             for j in range(len(speeds)):
-                fr_t[j] += body.Jv_vect[j] & Force  # Jv^t * F
+                fr_t[j] += body._Jv_vect[j] & Force  # Jv^t * F
             # Need to add moment if r/=0
             for j in range(len(speeds)):
-                fr_o[j] += body.Jo_vect[j] & (vect.cross( r, Force)) # Jo^t * M
+                fr_o[j] += body._Jo_vect[j] & (vect.cross( r, Force)) # Jo^t * M
     return fr_t+fr_o
 
 
