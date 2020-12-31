@@ -2,11 +2,62 @@
 Eigenvalue analyses tools for mechnical system: 
    mass matrix M, stiffness matrix K and possibly damping matrix C
 """
-import numpy as np
-from scipy import linalg
 import pandas as pd    
 
-def eig(K,M, freq_out=False):
+import numpy as np
+from scipy import linalg
+
+def polyeig(*A):
+    """
+    Solve the polynomial eigenvalue problem:
+        (A0 + e A1 +...+  e**p Ap)x=0 
+
+    Return the eigenvectors [x_i] and eigenvalues [e_i] that are solutions.
+
+    Usage:
+        X,e = polyeig(A0,A1,..,Ap)
+
+    Most common usage, to solve a second order system: (K + C e + M e**2) x =0
+        X,e = polyeig(K,C,M)
+
+    """
+    if len(A)<=0:
+        raise Exception('Provide at least one matrix')
+    for Ai in A:
+        if Ai.shape[0] != Ai.shape[1]:
+            raise Exception('Matrices must be square')
+        if Ai.shape != A[0].shape:
+            raise Exception('All matrices must have the same shapes');
+
+    n = A[0].shape[0]
+    l = len(A)-1 
+    # Assemble matrices for generalized problem
+    C = np.block([
+        [np.zeros((n*(l-1),n)), np.eye(n*(l-1))],
+        [-np.column_stack( A[0:-1])]
+        ])
+    D = np.block([
+        [np.eye(n*(l-1)), np.zeros((n*(l-1), n))],
+        [np.zeros((n, n*(l-1))), A[-1]          ]
+        ]);
+    # Solve generalized eigenvalue problem
+    e, X = linalg.eig(C, D);
+    if np.all(np.isreal(e)):
+        e=np.real(e)
+    X=X[:n,:]
+
+    # Sort eigen values
+    #I = np.argsort(e)
+    #X = X[:,I]
+    #e = e[I]
+
+    # Scaling each mode by max
+    X /= np.tile(np.max(np.abs(X),axis=0), (n,1))
+
+    return X, e
+
+
+def eig(K,M=None, freq_out=False, sort=True):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -16,7 +67,10 @@ def eig(K,M, freq_out=False):
          or
     frequencies (if freq_out is True)
     """
-    D,Q = linalg.eig(K,M)
+    if M is not None:
+        D,Q = linalg.eig(K,M)
+    else:
+        D,Q = linalg.eig(A)
     # --- rescaling TODO, this can be made smarter
     for j in range(M.shape[1]):
         q_j = Q[:,j]
@@ -26,8 +80,9 @@ def eig(K,M, freq_out=False):
     lambdaDiag=np.diag(Lambda) # Note lambda might have off diganoal values due to numerics
     I = np.argsort(lambdaDiag)
     # Sorting eigen values
-    Q          = Q[:,I]
-    lambdaDiag = lambdaDiag[I]
+    if sort:
+        Q          = Q[:,I]
+        lambdaDiag = lambdaDiag[I]
     if freq_out:
         Lambda = np.sqrt(lambdaDiag)/(2*np.pi) # frequencies [Hz]
     else:
@@ -35,47 +90,80 @@ def eig(K,M, freq_out=False):
 
     return Q,Lambda
 
-def eigMCK(M,C,K, method='diag_beta'): 
+def eigMCK(M, C, K, method='diag_beta'): 
     """ """
     if method.lower()=='diag_beta':
         ## using K, M and damping assuming diagonal beta matrix (Rayleigh Damping)
-        Q, Lambda   = eig(K,M) # provide scaled EV
+        Q, Lambda   = eig(K,M, sort=False) # provide scaled EV, important, no sorting here!
         freq        = np.sqrt(np.diag(Lambda))/(2*np.pi)
         betaMat     = np.dot(Q,C).dot(Q.T)
         xi          = (np.diag(betaMat)*np.pi/(2*np.pi*freq))
         xi[xi>2*np.pi] = np.NAN
         zeta        = xi/(2*np.pi)
         freq_d      = freq*np.sqrt(1-zeta**2)
+        # Sorting here
+        I = np.argsort(freq_d)
+        freq   = freq[I]
+        freq_d = freq_d[I]
+        zeta   = zeta[I]
+        xi     = xi[I]
+        Q      = Q[:,I]
+
     #    return Q, Lambda,freq, betaMat,xi,zeta
-#         if method.lower()=='full_matrix':
-#             ## Method 2 - Damping based on K, M and full D matrix
-#             Q,e = polyeig(K,C,M)
-#             zeta = - real(e) / np.abs(e)
-#             freq_d = imag(e) / 2 / np.pi
-#             # Sorting
-#             freq_d,idx = __builtint__.sorted(freq_d)
-#             zeta = zeta(idx)
-#             # Keeping only positive frequencies
-#             bValid = freq_d > 1e-08
-#             freq_d = freq_d(bValid)
-#             zeta = zeta(bValid)
-#             # Undamped frequency and pseudo log dec
-#             freq = freq_d / np.sqrt(1 - zeta ** 2)
-#             xi = 2 * pi * zeta
-            # logdec2 = 2*pi*dampratio_sorted./sqrt(1-dampratio_sorted.^2);
-# valid=freq_sorted>0.1; # Treshold value
+    elif method.lower()=='full_matrix':
+        ## Method 2 - Damping based on K, M and full D matrix
+        Q,e = polyeig(K,C,M)
+        #omega0 = np.abs(e)
+        zeta = - np.real(e) / np.abs(e)
+        freq_d = np.imag(e) / (2*np.pi)
+        # Sorting
+        I = np.argsort(freq_d)
+        freq_d = freq_d[I]
+        zeta   = zeta[I]
+        Q      = Q[:,I]
+        # Keeping only positive frequencies
+        bValid = freq_d > 1e-08
+        freq_d = freq_d[bValid]
+        zeta   = zeta[bValid]
+        Q      = Q[:,bValid]
+        # Undamped frequency and pseudo log dec
+        freq = freq_d / np.sqrt(1 - zeta**2)
+        xi = 2 * np.pi * zeta
+        # logdec2 = 2*pi*dampratio_sorted./sqrt(1-dampratio_sorted.^2);
+    else:
+        raise NotImplementedError()
     return freq_d,zeta,Q,freq,xi
 
 
-
 if __name__=='__main__':
+    np.set_printoptions(linewidth=300, precision=4)
     nDOF   = 2
     M      = np.zeros((nDOF,nDOF))
     K      = np.zeros((nDOF,nDOF))
     C      = np.zeros((nDOF,nDOF))
-    M[0,0] = 435024.04730258
-    M[1,1] = 42864056.19657615
-    C[0,0] = 7255.30090655
-    K[0,0] = 2751727.25652762
-    z = eigMCK(M,C,K)
-    print(z[0],z[3])
+    M[0,0] = 430000;
+    M[1,1] = 42000000;
+    C[0,0] = 7255;
+    C[1,1] = M[1,1]*0.001;
+    K[0,0] = 2700000.;
+    K[1,1] = 200000000.;
+
+    freq_d, zeta, Q, freq, xi = eigMCK(M,C,K)
+    print(freq_d)
+    print(Q)
+
+
+    #M = diag([3,0,0,0], [0, 1,0,0], [0,0,3,0],[0,0,0, 1])
+    M = np.diag([3,1,3,1])
+    C = np.array([[0.4 , 0 , -0.3 , 0] , [0 , 0  , 0 , 0] , [-0.3 , 0 , 0.5 , -0.2 ] , [ 0 , 0 , -0.2 , 0.2]])
+    K = np.array([[-7  , 2 , 4    , 0] , [2 , -4 , 2 , 0] , [4    , 2 , -9  , 3    ] , [ 0 , 0 , 3    , -3]])
+
+    X,e = polyeig(K,C,M)
+    print('X:\n',X)
+    print('e:\n',e)
+    # Test taht first eigenvector and valur satisfy eigenvalue problem:
+    s = e[0];
+    x = X[:,0];
+    res = (M*s**2 + C*s + K).dot(x) # residuals
+    assert(np.all(np.abs(res)<1e-12))
+
