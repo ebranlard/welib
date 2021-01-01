@@ -10,7 +10,7 @@ from scipy import linalg
 def polyeig(*A):
     """
     Solve the polynomial eigenvalue problem:
-        (A0 + e A1 +...+  e**p Ap)x=0 
+        (A0 + e A1 +...+  e**p Ap)x = 0
 
     Return the eigenvectors [x_i] and eigenvalues [e_i] that are solutions.
 
@@ -70,25 +70,69 @@ def eig(K,M=None, freq_out=False, sort=True):
     if M is not None:
         D,Q = linalg.eig(K,M)
     else:
-        D,Q = linalg.eig(A)
+        D,Q = linalg.eig(K)
     # --- rescaling TODO, this can be made smarter
-    for j in range(M.shape[1]):
-        q_j = Q[:,j]
-        modalmass_j = np.dot(q_j.T,M).dot(q_j)
-        Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
-    Lambda=np.dot(Q.T,K).dot(Q)
-    lambdaDiag=np.diag(Lambda) # Note lambda might have off diganoal values due to numerics
-    I = np.argsort(lambdaDiag)
-    # Sorting eigen values
-    if sort:
-        Q          = Q[:,I]
-        lambdaDiag = lambdaDiag[I]
-    if freq_out:
-        Lambda = np.sqrt(lambdaDiag)/(2*np.pi) # frequencies [Hz]
+    if M is not None:
+        for j in range(M.shape[1]):
+            q_j = Q[:,j]
+            modalmass_j = np.dot(q_j.T,M).dot(q_j)
+            Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
+        Lambda=np.dot(Q.T,K).dot(Q)
+        lambdaDiag=np.diag(Lambda) # Note lambda might have off diganoal values due to numerics
+        I = np.argsort(lambdaDiag)
+        # Sorting eigen values
+        if sort:
+            Q          = Q[:,I]
+            lambdaDiag = lambdaDiag[I]
+        if freq_out:
+            Lambda = np.sqrt(lambdaDiag)/(2*np.pi) # frequencies [Hz]
+        else:
+            Lambda = np.diag(lambdaDiag) # enforcing purely diagonal
     else:
-        Lambda = np.diag(lambdaDiag) # enforcing purely diagonal
+        Lambda = np.diag(D)
 
     return Q,Lambda
+
+
+def eigA(A, nq=None, nq1=None, full=False):
+    """
+    Perform eigenvalue analysis on a "state" matrix A
+    where states are assumed to be orderd as {q, q_dot, q1}
+
+    if full is True, the entire eigenvectors are returned, otherwise, 
+    only the part associated with q and q1 are returned
+    """
+    n,m = A.shape
+
+    if m!=n:
+        raise Exception('Matrix needs to be squared')
+    if nq is None:
+        if nq1 is None:
+            nq1=0
+        nq = int((n-nq1)/2)
+    else:
+        nq1 = n-2*nq
+    if n!=2*nq+nq1 or nq1<0:
+        raise Exception('Number of 1st and second order dofs should match the matrix shape (n= 2*nq + nq1')
+
+
+    Q, Lambda = eig(A, sort=False)
+    v = np.diag(Lambda)
+
+    if not full:
+        Q=np.delete(Q, slice(nq,2*nq), axis=0)
+
+    # Selecting eigenvalues with positive imaginary part (frequency)
+    Ipos = np.imag(v)>0
+    Q = Q[:,Ipos]
+    v = v[Ipos]
+
+    omega_0 = np.abs(v)  # natural cylic frequency [rad/s]
+    zeta   = - np.real(v) / omega_0 # damping ratio 
+    freq_d = np.imag(v) / (2*np.pi) # damped frequency [Hz]
+    freq_0 = omega_0 / (2*np.pi)    # natural frequency [Hz]
+    return freq_d, zeta, Q, freq_0 
+
 
 def eigMCK(M, C, K, method='diag_beta'): 
     """ """

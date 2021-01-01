@@ -1,3 +1,6 @@
+""" 
+Tests for eigenvalue analyses
+"""
 import unittest
 import numpy as np    
 import os
@@ -25,8 +28,8 @@ class Test(unittest.TestCase):
 
     def test_eigMCK(self):
         # --- Simple test
-        M = np.array([[100]])
-        K = np.array([[10]])
+        M = np.array([[100.]])
+        K = np.array([[10.]])
         omega = np.sqrt(K[0,0]/M[0,0])
         zeta0 = 0.9
         c = 2*M[0,0]*omega*zeta0
@@ -46,9 +49,9 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(freq_d[0], omega/(2*np.pi)*np.sqrt(1-zeta0**2), 2)
 
         # --- 
-        M = np.diag([3,1,3,1])
-        C = np.array([[0.4 , 0 , 0 , 0] , [0 , 1, 0 , 0] , [0 , 0 , 0.5 , 0 ] , [ 0 , 0 , 0 , 0.2]])
-        K = np.array([[ 7  , 0 , 0 , 0] , [0 , 2, 0 , 0] , [0 , 0 ,  9  , 0 ] , [ 0 , 0 , 0 ,  3]])
+        M = np.diag([3.,1.,3.,1.])
+        C = np.array([[0.4 , 0 , 0 , 0] , [0 , 1., 0 , 0] , [0 , 0 , 0.5 , 0 ] , [ 0 , 0 , 0 , 0.2]])
+        K = np.array([[ 7. , 0 , 0 , 0] , [0 , 2., 0 , 0] , [0 , 0 ,  9. , 0 ] , [ 0 , 0 , 0 ,  3.]])
         #M = np.diag([100,100,100,100])
         #K = np.diag([10,10,10,10])
         #C = np.diag([0.1*c,0.2*c,0.5*c,1*c])
