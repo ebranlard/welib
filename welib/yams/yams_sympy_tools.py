@@ -4,8 +4,9 @@ Tools for yams_sympy
 
 import numpy as np
 from sympy import latex, python, symarray, diff
-from sympy import Symbol
-from sympy import Function
+from sympy import Symbol, Matrix, collect
+from sympy import Function, DeferredVector
+import sympy.physics.mechanics as me
 from sympy.physics.vector import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
 
@@ -72,11 +73,63 @@ def subs_no_diff(expr, subslist):
     # Reinsert time derivatives
     return expr_new.subs(Dummy2DT)
 
+def mycollect(expr, var_list, evaluate=True, **kwargs):
+    """ Acts as collect but substitute the symbols with dummy symbols first so that it can work with partial derivatives. 
+        Matrix expressions are also supported. 
+    """
+    if not hasattr(var_list, '__len__'):
+        var_list=[var_list]
+    # Mapping Var -> Dummy, and Dummy-> Var
+    Dummies=symarray('DUM', len(var_list))
+    Var2Dummy=[(var, Dummies[i]) for i,var in enumerate(var_list)]
+    Dummy2Var=[(b,a) for a,b in Var2Dummy]
+    # Replace var with dummies and apply collect
+    expr = expr.expand().doit()
+    expr = expr.subs(Var2Dummy)
+    if hasattr(expr, '__len__'):
+        expr = expr.applyfunc(lambda ij: collect(ij, Dummies, **kwargs))
+    else:
+        expr = collect(expr, Dummies, evaluate=evaluate, **kwargs)
+    # Substitute back
+    if evaluate:
+        return expr.subs(Dummy2Var)
+    d={}
+    for k,v in expr.items():
+        k=k.subs(Dummy2Var)
+        v=v.subs(Dummy2Var)
+        d[k]=v
+    return d
+
+def myjacobian(expr, var_list):
+    """ Compute jacobian of expression, matrix or not. 
+    Perform symbol substitution first to have support for derivatives
+    """
+    if not hasattr(var_list, '__len__'):
+        var_list=[var_list]
+    # Mapping Var -> Dummy, and Dummy-> Var
+    Dummies=symarray('DUM', len(var_list))
+    Var2Dummy=[(var, Dummies[i]) for i,var in enumerate(var_list)]
+    Dummy2Var=[(b,a) for a,b in Var2Dummy]
+    expr = expr.expand().doit()
+    expr = expr.subs(Var2Dummy)
+    if hasattr(expr, '__len__'):
+        jac = expr.jacobian(Dummies)
+    else:
+        jac = Matrix(expr).jacobian(Dummies)
+    jac = jac.subs(Dummy2Var)
+    return jac
 
 def linearize(expr, x0, order=1, sym=False):
     """ 
     Return a Taylor expansion of the expression at the operating point x0
-    x0=[(x,0),(y,0),...]
+    INPUTS:
+        expr: expression to be linearized
+        x0: operating point [(x,0),(y,0),...]
+        order: order of Taylor expansion
+        sym: If sym is true and expr is an array of dimension 2, symmetry is assumed to avoid computing the linearization of symmetric elements
+    OUTPUTS:
+       linearized expression
+
     """
     # --- First protect expression from derivatives
     time=dynamicsymbols._t
@@ -145,8 +198,13 @@ def smallAngleApprox(expr, angle_list, order=1, sym=True):
     """ 
     Perform small angle approximation of an expresion by linearizaing about the "0" operating point of each angle
 
-    angle_list: list of angle to be considered small:  [phi,alpha,...]
-
+    INPUTS:
+        expr: expression to be linearized
+        angle_list: list of angle to be considered small:  [phi,alpha,...]
+        order: order of Taylor expansion
+        sym: If sym is true and expr is an array of dimension 2, symmetry is assumed to avoid computing the linearization of symmetric elements
+    OUTPUTS:
+       linearized expression
     """
     # operating point
     x0=[(angle,0) for angle in angle_list]
@@ -252,12 +310,13 @@ def cleanPySimple(expr, varname='R', indent=0, replDict=None, noTimeDep=False):
     Clean a python sympy expression 
     """
     def cleanPyAtom(atom):
-        s=repr(atom).replace(' ','')
+        s=repr(atom)
         # Replace
         if replDict is not None:
             for k,v in replDict.items():
                 if s.find(k)>=0:
                     s=s.replace(k,v)
+        s=s.replace(' ','')
         if noTimeDep:
             s=s.replace('(t)','',)
         return s
@@ -279,6 +338,28 @@ def cleanPySimple(expr, varname='R', indent=0, replDict=None, noTimeDep=False):
             for j in np.arange(dims[1]):
                 s+='{}{}[{},{}] = '.format(indent,varname,i,j) + cleanPyAtom(expr[i,j])+'\n'
     return s
+
+
+
+# TODO TODO TODO
+def insertQQd(expr, dofs):
+    #syms = [phi_x(t), phi_y(t), phi_z(t)]
+    # See pydy.codegen.ode_function_generator _lambdaify
+    subs = {}
+    vec_name = 'q'
+
+    q   = DeferredVector('q')
+    qd  = DeferredVector('qd')
+    for i, sym in enumerate(dofs):
+        dsym = diff(sym, dynamicsymbols._t)
+        subs[sym]  = q[i]
+        subs[dsym] = qd[i]
+    print(subs)
+    if hasattr(expr, '__len__'):
+        print(expr.shape)
+        return Matrix([me.msubs(e, subs) for e in expr]).reshape(expr.shape[0],expr.shape[1])
+    else:
+        return me.msubs(expr, subs)
 
 
 def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=False):

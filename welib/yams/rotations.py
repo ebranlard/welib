@@ -8,6 +8,8 @@ Rotation matrices for different rotational coordinates conventions:
 import numpy as np
 from numpy import cos, sin, tan, arccos, trace
 
+
+
 # --------------------------------------------------------------------------------}
 # --- Euler parameters 
 # --------------------------------------------------------------------------------{
@@ -43,6 +45,9 @@ def EulerP_Gb(e0,e1,e2,e3):
         [-e3,  e2, -e1,  e0 ]]);
     return Gb
 
+def EulerP_Gbinv(e0,e1,e2,e3):
+    """ Inverse of "G" matrix, such that  p_dot = Gbinv omega_local """
+    return  0.5* EulerP_Eb(e0,e1,e2,e3).T 
 
 def EulerP_E(e0,e1,e2,e3):
     """ 
