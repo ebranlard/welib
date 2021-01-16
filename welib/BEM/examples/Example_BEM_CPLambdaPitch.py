@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from welib.BEM.MiniBEM import MiniBEM, FASTFile2MiniBEM
+from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
 
 MyDir=os.path.dirname(__file__)
 
@@ -9,7 +9,7 @@ MyDir=os.path.dirname(__file__)
 def main(test=False):
     """ Run a parametric study on lambda and pitch, save CP and CT """
     # --- Turbine data
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
 
     if test:
         vlambda = np.linspace( 2,15,3)
@@ -38,7 +38,7 @@ def main(test=False):
             xdot=0      #[m/s]
             u_turb=0    #[m/s]
             a0,ap0 = None, None
-            BEM=MiniBEM(Omega,pitch,V0,xdot,u_turb,
+            BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
                         nB,cone,r,chord,twist,polars,
                         rho=rho,bTIDrag=True,bAIDrag=True,
                         a_init =a0, ap_init=ap0

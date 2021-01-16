@@ -2,14 +2,14 @@
 Performs simple BEM simulations of the NREL 5MW turbine for two operating conditions.
 """
 # --- Common libraries 
-from welib.BEM.MiniBEM import MiniBEM, FASTFile2MiniBEM
+from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
 import os
 
 MyDir=os.path.dirname(__file__)
 
 def main(test=False):
     # --- Read a FAST model to get the main parameters needed
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
 
     # --- Run BEM on a set of operating points
     WS =[5,10]
@@ -21,7 +21,7 @@ def main(test=False):
         pitch=2     #[deg]
         xdot=0      #[m/s]
         u_turb=0    #[m/s]
-        BEM=MiniBEM(Omega,pitch,V0,xdot,u_turb,
+        BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
                     a_init =a0,

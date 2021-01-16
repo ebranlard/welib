@@ -22,7 +22,6 @@ def _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
         Outputs
         ----------
         Cl,Cd  : lift and drag coefficients
-        cn,ct  : normal and tangential coefficients (for load computation)
         cnForAI: normal and tangential coefficient  (for induction computation)
     """
     alpha[alpha<-pi] += 2*pi
@@ -43,7 +42,7 @@ def _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
         ctForTI = ct
     else:
         ctForTI =  Cl * sin(phi) # ctNoDrag
-    return Cl, Cd, cn, ct, cnForAI, ctForTI
+    return Cl, Cd, cnForAI, ctForTI
 
 def _fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
         lambda_r, sigma, phi, relaxation=0.4,bSwirl=True):
@@ -98,7 +97,7 @@ def _fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
     return a, aprime, Ct
 
 
-class MiniBEM_Outputs:
+class SteadyBEM_Outputs:
     def WriteRadialFile(BEM,filename):
         header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] Pn_[N/m] Pt_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uia_[m/s] uit_[m/s] u_turb_[m/s]'
         header=' '.join(['{:14s}'.format(s) for s in header.split()])
@@ -123,7 +122,7 @@ class MiniBEM_Outputs:
         df.loc[i,'AeroCQ_[-]']       = BEM.CQ
         return df
 
-def MiniBEM(Omega,pitch,V0,xdot,u_turb,
+def SteadyBEM(Omega,pitch,V0,xdot,u_turb,
         nB, cone, r, chord, twist, polars, # Rotor
         rho=1.225,KinVisc=15.68*10**-6,    # Environment
         nItMax=100, aTol=10**-6, bTipLoss=True, bHubLoss=False, bAIDrag=True, bTIDrag=True, bSwirl=True, relaxation=0.4, a_init=None, ap_init=None):
@@ -204,7 +203,7 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
         # --------------------------------------------------------------------------------
         # --- Step 4: Profile Data
         # --------------------------------------------------------------------------------
-        Cl, Cd, cn, ct, cnForAI, ctForTI = _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag, bTIDrag)
+        Cl, Cd, cnForAI, ctForTI = _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag, bTIDrag)
         # --------------------------------------------------------------------------------
         # --- Step 5: Induction Coefficients
         # --------------------------------------------------------------------------------
@@ -223,7 +222,7 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
     # --------------------------------------------------------------------------------
     # --- Step 6: Outputs
     # --------------------------------------------------------------------------------
-    BEM=MiniBEM_Outputs();
+    BEM=SteadyBEM_Outputs();
     BEM.a,BEM.aprime,BEM.phi,BEM.Cl,BEM.Cd,BEM.Un,BEM.Ut,BEM.Vrel,BEM.F,BEM.nIt = a,aprime,phi,Cl,Cd,Un,Ut,Vrel_norm,F,nIt
     # L = 0.5 * rho * Vrel_norm ** 2 * chord[e] * Cl
     # D = 0.5 * rho * Vrel_norm ** 2 * chord[e] * Cd
@@ -264,7 +263,7 @@ def MiniBEM(Omega,pitch,V0,xdot,u_turb,
     return BEM
 
 
-def FASTFile2MiniBEM(FASTFileName):
+def FASTFile2SteadyBEM(FASTFileName):
     import welib.weio as weio
     F=weio.FASTInputDeck(FASTFileName,readlist=['AD','ED'])
 
@@ -282,7 +281,7 @@ def FASTFile2MiniBEM(FASTFileName):
         polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
     return nB,cone,r,chord,twist,polars,rho,KinVisc
 
-def FLEX2MiniBEM(BladeFile,ProfileFile, cone, tilt, r_hub, rho=1.225, nB=3):
+def FLEX2SteadyBEM(BladeFile,ProfileFile, cone, tilt, r_hub, rho=1.225, nB=3):
     import welib.weio as weio
     pro=weio.read(ProfileFile)
     bld=weio.read(BladeFile).toDataFrame()
@@ -324,7 +323,7 @@ if __name__=="__main__":
     """ See examples/ for more examples """
 
     # --- Read a FAST model to get the main parameters needed
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM('../../data/NREL5MW/Main_Onshore_OF2.fst')
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM('../../data/NREL5MW/Main_Onshore_OF2.fst')
 
     # --- Run BEM on a set of operating points
     WS =[5,10]
@@ -336,7 +335,7 @@ if __name__=="__main__":
         pitch=2     #[deg]
         xdot=0      #[m/s]
         u_turb=0    #[m/s]
-        BEM=MiniBEM(Omega,pitch,V0,xdot,u_turb,
+        BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
                     a_init =a0,

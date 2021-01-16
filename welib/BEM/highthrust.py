@@ -7,32 +7,40 @@ NOTE: ac=0.4 -> Ctc = (1-(1-2*ac)**2) = 0.96
 import numpy as np
 
 
-def a_Ct(Ct, F=None, method='AeroDyn'):
+def a_Ct(Ct, a=None, F=None, method='AeroDyn'):
     """ 
-    High thrust corrections of the form: a=a(Ct)
+    High thrust corrections of the form: 
+       a=a(Ct)
+   or 
+       a=a(Ct,a)
     INPUTS:
         Ct: Local thrust coefficient
+        a: induction factor
         F : tip-loss factor
     """
-    a=np.zeros(Ct.shape)
     if F is None:
         F=np.ones(Ct.shape)
-
+    # -------------------------------------------------------
+    # --- a = a(Ct)
+    # -------------------------------------------------------
     if method=='AeroDyn': # Very close to Glauert Empirical
         Ct[Ct>2]  = 2
         Ct[Ct<-2] = -2
         Ic        = Ct/F>0.96 # Correction
         In        = np.logical_not(Ic) # Normal
+        a=np.zeros(Ct.shape)
         a[Ic]     = 0.1432+np.sqrt(-0.55106+0.6427*Ct[Ic]/F[Ic])
         a[In]     = 0.5*(1-np.sqrt(1-Ct[In]/F[In]))
     elif method=='GlauertEmpirical':
         Ic    = Ct/F> 0.96  # Correction
         In    = np.logical_not(Ic) # Normal
+        a=np.zeros(Ct.shape)
         a[Ic] = 1/F[Ic]*(0.143+np.sqrt(0.0203-0.6427*(0.889-Ct[Ic])))
         a[In] = 0.5*(1-np.sqrt(1-Ct[In]/F[In]))
-    elif method=='Handbook':
+    elif method=='WEHandbook':
         Ic = Ct>0.96            # Correction
         In = np.logical_not(Ic) # Normal
+        a=np.zeros(Ct.shape)
         a[Ic]   = 1/F[Ic]*(0.143 + np.sqrt( 0.0203-0.6427 *(0.889-Ct[Ic] ) ))
         a[In] = 0.5*(1-np.sqrt(1-Ct[In]/F[In]))
     elif method=='HAWC2':
@@ -40,19 +48,10 @@ def a_Ct(Ct, F=None, method='AeroDyn'):
         k = [0.0       ,0.2460  ,0.0586,   0.0883]
         Ct = Ct/F
         a = k[3]*Ct**3+k[2]*Ct**2+k[1]*Ct+k[0]
-    else:
-        raise NotImplementedError('High correcton method '+method)
-    return a
-
-def a_Ct_a(Ct, a, F=None, method='Glauert_CTa'):
-    """ 
-    High thrust corrections of the form: a = a(Ct,a)
-        see a_Ct
-    """
-    if F is None:
-        F=np.ones(Ct.shape)
-    # These need "a", TODO, invert them
-    if method=='Glauert_CTa':
+    # -------------------------------------------------------
+    # --- a = a(Ct,a)
+    # -------------------------------------------------------
+    elif method=='Glauert_CTa':
        ac=0.3;
        #Ic =Ct/F> 1-(1-(2*ac))**2  # Correction
        Ic = a>ac                  # Correction
@@ -113,7 +112,7 @@ def main_plot():
     # Functions that depend on Ct only
     ax.plot(a_Ct(Ct,method = 'AeroDyn'         ),Ct,'-' ,label = 'AeroDyn'          )
     ax.plot(a_Ct(Ct,method = 'HAWC2'           ),Ct,'--',label = 'HAWC2'            )
-    ax.plot(a_Ct(Ct,method = 'Handbook'        ),Ct,':' ,label = 'Handbook'         )
+    ax.plot(a_Ct(Ct,method = 'WEHandbook'      ),Ct,':' ,label = 'Handbook'         )
     ax.plot(a_Ct(Ct,method = 'GlauertEmpirical'),Ct,'-.',label = 'Glauert Empirical')
     ax.set_xlabel('a [-]')
     ax.set_ylabel('Ct [-]')

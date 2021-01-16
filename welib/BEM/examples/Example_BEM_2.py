@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 # --- Local libraries
-from welib.BEM.MiniBEM import MiniBEM, FASTFile2MiniBEM
+from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
 import welib.weio as weio
 
 MyDir=os.path.dirname(__file__)
@@ -30,7 +30,7 @@ def main(test=False):
 
 
     # -- Extracting information from a FAST main file and sub files
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2MiniBEM(MainFASTFile) 
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(MainFASTFile) 
     BladeData=np.column_stack((r,chord,twist))
 
     # --- Running BEM simulations for each operating conditions
@@ -42,7 +42,7 @@ def main(test=False):
     for i,(V0,RPM,pitch), in enumerate(zip(WS,Omega,Pitch)):
         xdot   = 0        # [m/s]
         u_turb = 0        # [m/s] 
-        BEM=MiniBEM(RPM,pitch,V0,xdot,u_turb,
+        BEM=SteadyBEM(RPM,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
                     a_init =a0, ap_init=ap0)
