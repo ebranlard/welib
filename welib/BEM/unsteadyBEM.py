@@ -95,6 +95,8 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         aprime = a * 0.
 
     # Bounding values for safety
+    a     [np.isnan(a)]      = 0
+    aprime[np.isnan(aprime)] = 0
     aprime = np.clip(aprime,-1,1.0) 
     a      = np.clip(a     ,-1,1.5)
     Ct     = np.clip(Ct    ,-1,3)
@@ -227,6 +229,7 @@ class AeroBEM:
         self.Vind_t = np.zeros((nt,nB,nr))
         self.Vind_qs_n = np.zeros((nt,nB,nr))
         self.Vind_qs_t = np.zeros((nt,nB,nr))
+        self.Vflw_p = np.zeros((nt,nB,nr,3)) # Vwnd-Vstr
         self.Vwnd_n = np.zeros((nt,nB,nr))
         self.Vwnd_t = np.zeros((nt,nB,nr))
         self.Vwnd_r = np.zeros((nt,nB,nr))
@@ -295,56 +298,43 @@ class AeroBEM:
         for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.Fn[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] = self.Ft[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_n[:,iB,ir]
-        for iB in np.arange(self.nB):
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] = self.Vflw_p[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = - self.Vstr_t[:,iB,ir]
-        for iB in np.arange(self.nB):
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_r[:,iB,ir]
-        for iB in np.arange(self.nB):
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vrel_[m/s]'] = self.Vrel[:,iB,ir]
-        for iB in np.arange(self.nB):
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =-self.Vflw_p[:,iB,ir,1]
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] = self.Vwnd_n[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] =-self.Vwnd_t[:,iB,ir]
-        for iB in np.arange(self.nB):
+            for ir in np.arange(len(self.r)):
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_n[:,iB,ir]
+            for ir in np.arange(len(self.r)):
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = - self.Vstr_t[:,iB,ir]
+            for ir in np.arange(len(self.r)):
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_r[:,iB,ir]
+            for ir in np.arange(len(self.r)):
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vrel_[m/s]'] = self.Vrel[:,iB,ir]
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'TnInd_[-]'] = self.TnInd[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'AxInd_[-]'] = self.AxInd[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Phi_[deg]'] = self.phi[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindx_[m/s]'] = self.Vind_n[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindy_[m/s]'] =-self.Vind_t[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Alpha_[deg]'] = self.alpha[:,iB,ir]
         # AeroDyn "n-t", is almost like xa but y is switched
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.Fx_a[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Ft_[N/m]'] =-self.Fy_a[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cl_[-]'] = self.Cl[:,iB,ir]
-        for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cd_[-]'] = self.Cd[:,iB,ir]
         return df
@@ -406,11 +396,11 @@ class AeroBEM:
         for iB in np.arange(nB):
             R_p2g = R_ntr2g[iB]
             # radial position (in polar grid) of first and last node taken
-            Rs[iB] = (R_p2g).dot(pos_gl[iB,-1,:]-origin_pos_gl)[2]
-            rhub = (R_p2g).dot(pos_gl[iB,0,:]-origin_pos_gl)[2]
+            Rs[iB] = (R_p2g.T).dot(pos_gl[iB,-1,:]-origin_pos_gl)[2]
+            rhub = (R_p2g.T).dot(pos_gl[iB,0,:]-origin_pos_gl)[2]
             # loop on elements
             for ie in np.arange(nr):
-                r[iB,ie] = (R_p2g).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
+                r[iB,ie] = (R_p2g.T).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
         R = np.max(Rs)
 
         if firstCallEquilibrium:
@@ -442,6 +432,7 @@ class AeroBEM:
                     Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_g) # Structural velocity in polar coordinates
                     Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
                     Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_g) # Wind Velocity in polar coordinates
+            Vflw_p  = Vwnd_p-Vstr_p # Relative flow velocity, including wind and structural motion
 
             # Velocity norm and Reynolds
             Vrel_norm = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
@@ -455,10 +446,12 @@ class AeroBEM:
             if (p.bTipLoss): #Glauert tip correction
                 b=sin(phi_p)>0.01
                 F[b] = 2./pi*arccos(exp(-(nB *(R-r[b]))/(2*r[b]*sin(phi_p[b]))))
+                b2=abs(r-R)<1e-3
+                F[b2]=0.001
             # --- Hub loss
             if (p.bHubLoss): #Glauert hub loss correction
                 F = F* 2./pi*arccos(exp(-nB/2. *(r-rhub)/ (rhub*np.sin(phi_p))))
-            F[F<=1e-3]=0.5
+            #F[F<=1e-3]=0.5
             # --------------------------------------------------------------------------------
             # --- Step 3: Angle of attack
             # --------------------------------------------------------------------------------
@@ -496,8 +489,11 @@ class AeroBEM:
             # --- Step 5: Quasi-steady induction
             # --------------------------------------------------------------------------------
             # NOTE: all is done in polar grid
-            lambda_r = Vstr_p[:,:,1]/Vwnd_p[:,:,0] # "omega r/ U0n" defined in polar grid
-            V0       = np.sqrt(Vwnd_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that
+            #lambda_r = Vstr_p[:,:,1]/Vwnd_p[:,:,0] # "omega r/ U0n" defined in polar grid # TODO TODO TODO
+            lambda_r = -Vflw_p[:,:,1]/Vflw_p[:,:,0] # "omega r/ U0n" defined in polar grid # TODO TODO TODO
+            #lambda_r = Vflw_p[:,:,1]/Vflw_p[:,:,0] # "omega r/ U0n" defined in polar grid # TODO TODO TODO
+            #V0       = np.sqrt(Vwnd_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that # TODO TODO TOD
+            V0       = np.sqrt(Vflw_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that
             sigma    = p.chord*p.nB/(2*pi*r)
             #a,aprime,CT = fInductionCoefficients(a_last,Vrel_in4,Un,Ut,V0_in3,V0_in4,nnW_in4,omega,chord(e),F,Ftip,CnForAI,CtForTI,lambda_r,sigma(e),phi,Algo)
             if p.WakeMod==0:
@@ -520,7 +516,7 @@ class AeroBEM:
                 R_p2g = R_ntr2g[iB]
                 for ie in np.arange(nr):
                     # NOTE: Vind is negative along n and t!
-                    xd1.Vind_qs_p[iB,ie] = np.array([-a[iB,ie]*Vwnd_p[iB,ie,0], -aprime[iB,ie]*Vstr_p[iB,ie,1], 0])
+                    xd1.Vind_qs_p[iB,ie] = np.array([-a[iB,ie]*Vflw_p[iB,ie,0],  aprime[iB,ie]*Vflw_p[iB,ie,1], 0])
                     xd1.Vind_qs_g[iB,ie] = R_p2g.dot(xd1.Vind_qs_p[iB,ie]) # global
 
             if firstCallEquilibrium:
@@ -541,7 +537,7 @@ class AeroBEM:
             a_avg = min([np.mean(a),0.5])
             V_avg = max([np.mean(V0),0.001])
             tau1 = 1.1 / (1 - 1.3 *a_avg)*R/V_avg
-            #tau1=4
+            tau1=4
             tau2 = (0.39 - 0.26 * (r/R)**2) * tau1
             tau2 = np.tile(tau2[:,:,None],3)
             # Oye's dynamic inflow model, discrete time integration
@@ -602,8 +598,8 @@ class AeroBEM:
         self.Fy_a[it] = q_dyn * C_ya
         # --- Velocities
         #Vrel_a  = np.zeros((nB,nr,3))
-        self.AxInd[it] = a
-        self.TnInd[it] = aprime
+        self.AxInd[it] = a       # TODO TODO TODO >>> THIS SHOULD BE DYNAMIC
+        self.TnInd[it] = aprime       # TODO TODO TODO >>> THIS SHOULD BE DYNAMIC
         self.Vrel[it]  = Vrel_norm
         # polar system (missing Vind)
         self.Vrel_n[it]  = Vrel_p[:,:,0] # NOTE: Vrel is using previous inductions..
@@ -615,6 +611,7 @@ class AeroBEM:
         self.Vwnd_n[it]  = Vwnd_p[:,:,0]
         self.Vwnd_t[it]  = Vwnd_p[:,:,1]
         self.Vwnd_r[it]  = Vwnd_p[:,:,2]
+        self.Vflw_p[it]  = Vflw_p[:,:,:]
         self.Vind_qs_n[it] = xd1.Vind_qs_p[:,:,0]
         self.Vind_qs_t[it] = xd1.Vind_qs_p[:,:,1]
         self.RtVAvgxh[it]  = np.mean(Vwnd_p[:,:,0])
@@ -686,6 +683,7 @@ class PrescribedRotorMotion():
     def __init__(self):
         # body kinematics
         self.R_b2g = np.eye(3) # orientation from body to global
+        self.R_b2g0 = np.eye(3) # orientation from body to global at t=0
         self.origin_pos_gl0 = np.array([0,0,0]) # body origin at t=0
         self.origin_pos_gl = np.array([0,0,0]) # body origin
         self.origin_vel_gl = np.array([0,0,0])
@@ -710,7 +708,7 @@ class PrescribedRotorMotion():
         r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
         r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
         # Basic geometries for nacelle
-        theta_tilt_y = -ED['ShftTilt']*np.pi/180*0 # <<<<<<<<<<<<<<HACK HACK TODO TODO TODO TOO TODO TODO   # NOTE: tilt has wrong orientation in FAST
+        theta_tilt_y = -ED['ShftTilt']*np.pi/180 
         R_NS = R_y(theta_tilt_y)  # Rotation fromShaft to Nacelle
         r_NS_inN    = np.array([0             , 0, ED['Twr2Shft']]) # Shaft start in N
         r_SR_inS    = np.array([ED['OverHang'], 0, 0             ]) # Rotor center in S
@@ -718,6 +716,8 @@ class PrescribedRotorMotion():
         r_NR_inN    = r_NS_inN + R_NS.dot(r_SR_inS)                 # Rotor center in N
         r_NGnac_inN = np.array([ED['NacCMxn'],0,ED['NacCMzn']    ]) # Nacelle G in N
         r_RGhub_inS = - r_SR_inS + r_SGhub_inS
+
+        self.R_b2g0 = R_NS
 
         # Orientation of blades with respect to body
         self.R_bld2b = [np.eye(3)]*self.nB
@@ -783,8 +783,8 @@ class PrescribedRotorMotion():
             psi = t*omega
             pos = self.origin_pos_gl0
             vel = np.array([0,0,0])
-            ome = np.array([omega,0,0])
-            R_b2g = R_x(psi)
+            ome = self.R_b2g0.dot(np.array([omega,0,0]))
+            R_b2g = self.R_b2g0.dot(R_x(psi))
             self.rigidbodyKinUpdate(pos, vel, ome, R_b2g)
             self.psi=psi # hack
 
@@ -868,30 +868,34 @@ if __name__=="__main__":
 
     # --- Read a FAST model to get Aerodynamic parameters
     BEM = AeroBEM()
-    BEM.init_from_FAST('../../data/NREL5MW/Main_Onshore_OF2.fst')
+    #BEM.init_from_FAST('../../data/NREL5MW/Main_Onshore_OF2.fst')
+    BEM.init_from_FAST('./Main_Onshore_OF2.fst')
     BEM.CTcorrection='AeroDyn' # High Thrust correction
     BEM.swirlMethod ='AeroDyn' # type of swirl model
+#    BEM.swirlMethod ='HAWC2' # type of swirl model
 #     BEM.bSwirl = True  # swirl flow model enabled / disabled
+    BEM.WakeMod=1 # 0: no inductions, 1: BEM inductions
 #     BEM.bTipLoss = True # enable / disable tip loss model
 #     BEM.bHubLoss = False # enable / disable hub loss model
 #     BEM.bTipLossCl = False # enable / disable Cl loss model
 #     BEM.TipLossMethod = 'Glauert'  # type of tip loss model
 #     BEM.bDynaStall = True # dynamic stall model
+    BEM.bDynaWake = False # dynamic inflow model
     BEM.bDynaWake = True # dynamic inflow model
 #     BEM.bYawModel = True # Yaw correction
 #     BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
 #     BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
-    #BEM.relaxation = 1.0
+    BEM.relaxation = 0.5
 
     # --- Read a FAST model to get structural parameters for blade motion
     motion = PrescribedRotorMotion()
-    motion.init_from_FAST('../../data/NREL5MW/Main_Onshore_OF2.fst')
+    motion.init_from_FAST('./Main_Onshore_OF2.fst')
     motion.setType('constantRPM', RPM=10.0)
     #motion.setType('constantRPM x-oscillation', RPM=12.1, frequency=1.1, amplitude=20)
 
-    dt=0.1
+    dt=0.05
     dtRadOut=1.0
-    tmax=70
+    tmax=10
     
     xdBEM = BEM.getInitStates()
 
@@ -905,6 +909,7 @@ if __name__=="__main__":
                 motion.R_ntr2g, motion.R_bld2b,
                 motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                 firstCallEquilibrium=it==0
+#                 firstCallEquilibrium=it==0
                 )
         if np.mod(t,dtRadOut)<dt/2:
             #print(t)
