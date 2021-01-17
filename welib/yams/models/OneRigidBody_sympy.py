@@ -15,6 +15,10 @@ _defaultOpts={
     'loads':False, # Add loads on the foundation (restoring and buoyancy)
     'orderMM':2, #< order of taylor expansion for Mass Matrix
     'orderH':2,  #< order of taylor expansion for H term
+    'rotOrder':'XYZ',  #< 
+    'CG_on_z':False,  #< 
+    'J_cross':True,  #< 
+    'J_at_Origin':False,  #< 
 }
 
 
@@ -28,6 +32,7 @@ Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')              # NOTE: 
 x_BG, y_BG, z_BG          = symbols('x_BG, y_BG, z_BG')                # Position of Foundation COG in F, measured from point T
 x_NR, z_NR                = symbols('x_NR, z_NR')                       # 
 
+J_O, J_zz        = symbols('J_O, J_zz')    # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
 
 def get_model_one_body(model_name, **opts):
     """ 
@@ -66,7 +71,11 @@ def get_model_one_body(model_name, **opts):
 
     # --- Isolated bodies 
     ref = YAMSInertialBody('E') 
-    body = YAMSRigidBody('B', rho_G = [x_BG,y_BG,z_BG], J_diag=True) 
+    if opts['CG_on_z']:
+        body = YAMSRigidBody('B', rho_G = [0,0,z_BG], J_diag=True, J_cross=opts['J_cross'], J_at_Origin=opts['J_at_Origin']) 
+    else:
+        body = YAMSRigidBody('B', rho_G = [x_BG,y_BG,z_BG], J_diag=True, J_cross=opts['J_cross'], J_at_Origin=opts['J_at_Origin'])
+    #print(body)
 
     # --- Body DOFs
     bodyDOFsAll    = [x, y, z, phi_x,     phi_y,       phi_z]
@@ -86,7 +95,12 @@ def get_model_one_body(model_name, **opts):
     rPhiz= phi_z if bDOFs[5] else 0
     print('Free connection ref', rel_pos, (rPhix,rPhiy,rPhiz))
     print('>>>>>>>>>>>> ORDER IMPORTANT')
-    ref.connectTo(body, type='Free' , rel_pos=rel_pos, rot_amounts=(rPhiy,rPhix,rPhiz), rot_order='YXZ')  
+    #ref.connectTo(body, type='Free' , rel_pos=rel_pos, rot_amounts=(rPhiy,rPhix,rPhiz), rot_order='YXZ')  
+    #ref.connectTo(body, type='Free' , rel_pos=rel_pos, rot_amounts=(rPhiz,rPhiy,rPhix), rot_order='ZYX')  
+    if opts['rotOrder']=='XYZ': # Bryant
+        ref.connectTo(body, type='Free' , rel_pos=rel_pos, rot_amounts=(rPhix,rPhiy,rPhiz), rot_order='XYZ')  
+    else:
+        raise NotImplementedError()
 
     # --- Defining Body rotational velocities
     omega_BE = body.ang_vel_in(ref)        # Angular velocity of body in inertial frame
@@ -123,10 +137,19 @@ def get_model_one_body(model_name, **opts):
     if opts['linRot']:
         bodyVelAll += [diff(phi_x,time), diff(phi_y,time),  diff(phi_z,time)]  
     else:
-        omega_TE = body.ang_vel_in(ref)        # Angular velocity of nacelle in inertial frame
-        bodyVelAll +=[ omega_TE.dot(ref.frame.x).simplify(), omega_TE.dot(ref.frame.y).simplify(), omega_TE.dot(ref.frame.z).simplify()]  
-        # >>> TODO sort out frame
+        omega_TE = body.ang_vel_in(ref)        # Angular velocity of nacelle in inertial frame, then expressed in body coordinates
+        print('>>> Omega TE: ',omega_TE)
+        bodyVelAll +=[ omega_TE.dot(body.frame.x).simplify(), omega_TE.dot(body.frame.y).simplify(), omega_TE.dot(body.frame.z).simplify()]  
+
     kdeqsSubs+=[ (bodySpeedsAll[i], bodyVelAll[i]) for i,dof in enumerate(bDOFs) if dof] 
+
+    # --- Setting body omega
+    body.frame.set_ang_vel(ref.frame,  omega_x *body.frame.x + omega_y *body.frame.y + omega_z *body.frame.z)
+    print('>>> Omega TE: ',  body.ang_vel_in(ref))
+    ref.update_kinematics_trigger()
+        # >>> TODO sort out frame
+
+
 
     coordinates = bodyDOFs   
     speeds      = bodySpeeds 
@@ -141,8 +164,8 @@ def get_model_one_body(model_name, **opts):
     model.coordinates = coordinates
     model.speeds      = speeds
     model.kdeqsSubs   = kdeqsSubs
-    print(model)
-    print(body)
+    #print(model)
+    #print(body)
 
     model.body=body
     model.g_vect=g_vect

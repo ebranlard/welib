@@ -106,7 +106,7 @@ def get_model(model_name, **opts):
     # Nacelle rotor assembly
     if bFullRNA:
         # Nacelle
-        nac = YAMSRigidBody('N', rho_G = [x_NG ,0, z_NG], J_diag=True) 
+        nac = YAMSRigidBody('N', rho_G = [x_NG ,0, z_NG], J_cross=True) 
         # Shaft
         #...
         # Individual blades or rotor
@@ -119,8 +119,8 @@ def get_model(model_name, **opts):
             rot.inertia = (inertia(rot.frame, Jxx_R, JO_R, JO_R), rot.origin)  # defining inertia at orign
     else:
         # Nacelle
-        nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
-        #nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_cross=True) 
+        #nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
+        nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_cross=True) 
         rot = None
 
     # --------------------------------------------------------------------------------}
@@ -214,6 +214,7 @@ def get_model(model_name, **opts):
         else:
             print('Free connection ref twr', rel_pos, rots)
             ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
+            #ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=(rots[2],rots[1],rots[0]), rot_order='ZYX')  #NOTE: rot order is not "optimal".. phi_x should be last
     else:
         print('Rigid connection ref twr')
         ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,0))
@@ -403,6 +404,8 @@ def get_model(model_name, **opts):
             raise NotImplementedError()
         else:
             if nDOF_sft==1:
+                print('>>>>>>>> TODO sort out which frame')
+                # I believe we should use omega_RE
                 kdeqsSubs+=[ (omega_x_R, omega_RN.dot(rot.frame.x).simplify()) ]  
 
     # --- Create a YAMS wrapper model

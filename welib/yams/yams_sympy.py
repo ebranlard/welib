@@ -296,7 +296,7 @@ class YAMSBody(object):
         s+=' * omega_parent:   {} \n'.format(omP)
         s+=' * acc_inertial:   {} (origin)\n'.format(accI)
         s+=' * ang_acc_inertial:{} (origin)\n'.format(rotaccI)
-        s+=' * R_b2g, R_g2b, _alt'
+        s+=' * R_b2g, R_g2b, _alt\n'
         return s
 
     def __str__(self):
@@ -395,7 +395,7 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------}
     # --- Connection between bodies
     # --------------------------------------------------------------------------------{
-    def connectTo(parent,child,type='Rigid', rel_pos=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False):
+    def connectTo(parent, child, type='Rigid', rel_pos=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False):
         # register parent/child relationship
         child.parent = parent
         parent.children.append(child)
@@ -466,17 +466,22 @@ class YAMSBody(object):
             else:
                 child.frame.orient(parent.frame, rot_type, rot_amounts) # <<< 
 
-
         # Position of child origin wrt parent origin
         child.origin.set_pos(parent.origin, pos)
         # Velocity of child origin frame wrt parent frame (0 for rigid or joint)
         child.origin.set_vel(parent.frame, vel);
-        # Velocity of child masscenter wrt parent frame, based on origin vel (NOTE: for rigid body only, should be overriden for flexible body)
-        child.masscenter.v2pt_theory(child.origin, parent.frame, child.frame);
-        # Velocity of child origin wrt inertial frame, using parent origin/frame as intermediate
-        child.origin.v1pt_theory(parent.origin, child.inertial_frame, parent.frame)
-        # Velocity of child masscenter wrt inertial frame, using parent origin/frame as intermediate
-        child.masscenter.v1pt_theory(parent.origin, child.inertial_frame, parent.frame)
+
+        parent.update_kinematics_trigger()
+
+    def update_kinematics_trigger(parent):
+        """ """
+        for child in parent.children:
+            # Velocity of child masscenter wrt parent frame, based on origin vel (NOTE: for rigid body only, should be overriden for flexible body)
+            child.masscenter.v2pt_theory(child.origin, parent.frame, child.frame);
+            # Velocity of child origin wrt inertial frame, using parent origin/frame as intermediate
+            child.origin.v1pt_theory(parent.origin, child.inertial_frame, parent.frame)
+            # Velocity of child masscenter wrt inertial frame, using parent origin/frame as intermediate
+            child.masscenter.v1pt_theory(parent.origin, child.inertial_frame, parent.frame)
 
         #r_OB = child.origin.pos_from(child.inertial_origin)
         #vel_OB = r_OB.diff(t, child.inertial_frame)
@@ -702,7 +707,7 @@ class GroundBody(Body):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class YAMSRigidBody(YAMSBody,SympyRigidBody):
-    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False):
+    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False, J_at_Origin=False):
         """
         Define a rigid body and introduce symbols for convenience.
         
@@ -756,7 +761,14 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             ixy, iyz =0,0
             
         #inertia: dyadic : (inertia(frame, *list), point)
-        _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
+        if J_at_Origin:
+            _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.origin)
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+        else:
+            _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
             
         # --- Position of COG in body frame
         if rho_G is None: 
@@ -792,7 +804,8 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     @property    
     def inertia_matrix(self):
         """ Returns inertia matrix in body frame"""
-        return self.inertia[0].to_matrix(self.frame)
+        J_G= self.parallel_axis(self.masscenter)
+        return J_G.to_matrix(self.frame)
 
     @property
     def masscenter_pos_global(self):
@@ -815,6 +828,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         return self.masscenter.acc(self.inertial_frame)
     
     def __repr__(self):
+        # rigid body
         s=YAMSBody.__repr__(self)
         s+=' - mass:         {}\n'.format(self.mass)
         s+=' * inertia_matrix: {}\n'.format(self.inertia_matrix)
@@ -919,6 +933,7 @@ class YAMSFlexibleBody(YAMSBody):
         self.applyKindSimplification()
  
     def __repr__(self):
+        # YAMS Flexible body
         s=YAMSBody.__repr__(self)
         s+=' - mass:         {}\n'.format(self.mass)
         #s+=' - inertia:      {}\n'.format(self.inertia[0].to_matrix(self.frame))
@@ -927,6 +942,10 @@ class YAMSFlexibleBody(YAMSBody):
         #s+='   (position from origin: {})\n'.format(self.masscenter.pos_from(self.origin))
         s+=' - q:            {}\n'.format(self.q)
         s+=' - qd:           {}\n'.format(self.qd)
+        s+=' - ucList:       {}\n'.format(self.ucList)
+        s+=' - vcList:       {}\n'.format(self.vcList)
+        s+=' - uc    :       {}\n'.format(self.uc)
+        s+=' - alpha :       {}\n'.format(self.alpha)
         return s
 
 
