@@ -15,5 +15,5 @@ install:
   - python -m pip install -e .
 
 script: 
-  - python -m unittest discover
+  - python -m unittest discover -v
 

@@ -8,6 +8,9 @@ Set of tools for statistics
 import numpy as np
 import pandas as pd
 
+# --------------------------------------------------------------------------------}
+# --- Stats measures 
+# --------------------------------------------------------------------------------{
 def rsquare(y,f, c = True): 
     """ Compute coefficient of determination of data fit model and RMSE
     [r2 rmse] = rsquare(y,f)
@@ -50,7 +53,37 @@ def rsquare(y,f, c = True):
     rmse = np.sqrt(np.mean((y - f) ** 2))
     return r2,rmse
 
+def mean_rel_err(t1, y1, t2, y2, method='mean'):
+    """ 
+    Methods: 
+      'mean'   : 100 * |y1-y2|/mean(y1)
+      'meanabs': 100 * |y1-y2|/mean(|y1|)
+      'minmax': y1 and y2 scaled between 0.001 and 1
+                |y1s-y2s|/|y1|
+    """
+    if len(y1)!=len(y2):
+        y2=np.interp(t1,t2,y2)
+    # Method 1 relative to mean
+    if method=='mean':
+        ref_val = np.mean(y1)
+        meanrelerr = np.mean(np.abs(y1-y2)/ref_val)*100 
+    elif method=='meanabs':
+        ref_val = np.mean(np.abs(y1))
+        meanrelerr = np.mean(np.abs(y1-y2)/ref_val)*100 
+    elif method=='minmax':
+        # Method 2 scaling signals
+        Min=min(np.min(y1), np.min(y2))
+        Max=max(np.max(y1), np.max(y2))
+        y1=(y1-Min)/(Max-Min)+0.001
+        y2=(y2-Min)/(Max-Min)+0.001
+        meanrelerr = np.mean(np.abs(y1-y2)/np.abs(y1))*100 
+    #print('Mean rel error {:7.2f} %'.format( meanrelerr))
+    return meanrelerr
 
+
+# --------------------------------------------------------------------------------}
+# --- PDF 
+# --------------------------------------------------------------------------------{
 def pdf_histogram(y,nBins=50, norm=True, count=False):
     yh, xh = np.histogram(y[~np.isnan(y)], bins=nBins)
     dx   = xh[1] - xh[0]

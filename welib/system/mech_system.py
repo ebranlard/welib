@@ -260,6 +260,11 @@ class MechSystem():
             for i, f in enumerate(Factors):
                 M[:,i+1] *= f
 
+        for i,d in enumerate(DOFs):
+            if DOFs[i].find('[deg]')>1: 
+                if np.max(M[:,i+1])>180:
+                    M[:,i+1] = np.mod(M[:,i+1], 360)
+
         return pd.DataFrame(data=M, columns=['Time_[s]']+DOFs)
 
 

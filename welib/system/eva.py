@@ -114,8 +114,6 @@ def eigA(A, nq=None, nq1=None, full=False):
         nq1 = n-2*nq
     if n!=2*nq+nq1 or nq1<0:
         raise Exception('Number of 1st and second order dofs should match the matrix shape (n= 2*nq + nq1')
-
-
     Q, Lambda = eig(A, sort=False)
     v = np.diag(Lambda)
 
@@ -127,10 +125,18 @@ def eigA(A, nq=None, nq1=None, full=False):
     Q = Q[:,Ipos]
     v = v[Ipos]
 
-    omega_0 = np.abs(v)  # natural cylic frequency [rad/s]
-    zeta   = - np.real(v) / omega_0 # damping ratio 
-    freq_d = np.imag(v) / (2*np.pi) # damped frequency [Hz]
-    freq_0 = omega_0 / (2*np.pi)    # natural frequency [Hz]
+    # Frequencies and damping based on compled eigenvalues
+    omega_0 = np.abs(v)              # natural cylic frequency [rad/s]
+    freq_d  = np.imag(v)/(2*np.pi)   # damped frequency [Hz]
+    zeta    = - np.real(v)/omega_0   # damping ratio
+    freq_0  = omega_0/(2*np.pi)      # natural frequency [Hz]
+
+    # Sorting
+    I = np.argsort(freq_d)
+    freq_d = freq_d[I]
+    freq_0 = freq_0[I]
+    zeta   = zeta[I]
+    Q      = Q[:,I]
     return freq_d, zeta, Q, freq_0 
 
 

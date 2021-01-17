@@ -141,6 +141,7 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(aprime3, aprime, 4)
 
         # --- Simulation 4 Dynamic Wake
+        dt  = 0.5
         tmax=40
         BEM.bDynaWake = True # dynamic inflow model
         BEM.timeStepInit(0,tmax,dt) 

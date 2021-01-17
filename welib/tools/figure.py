@@ -5,6 +5,7 @@ Tools to manipulate and export figures
 from numpy import mod
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import re
 # from cycler import cycler
 # from .colors import rgb2hex, fColrs
 # Should be placed in some kind of InitClear
@@ -80,7 +81,7 @@ def setFigureTitle(btitle):
 
 def title2filename(title):
     title=''.join([s[0].capitalize()+s[1:] for s in title.split()])
-    return sub(r'[%|:;.\[ \]\\=^*_/]','',title)
+    return re.sub(r'[%|:;.\[ \]\\=^*_/]','',title)
 
 def findtitle(fig):
     axTitle=None
@@ -134,7 +135,7 @@ class FigureExporter:
 
 
         title,axTitle=findtitle(fig)
-        titleLatexSafe = sub(r"[_%^]", "", title)
+        titleLatexSafe = re.sub(r"[_%^]", "", title)
         print('>>>>> TITLE',title)
         # figure name from title or figure number
         if title=='' or (title is None):
@@ -367,7 +368,7 @@ def fig_move(fig, AreaName=None,ScreenName='rightscreen',Area=None):
 # --------------------------------------------------------------------------------
 # --- Example/tests
 # --------------------------------------------------------------------------------
-def test_fig_move()
+def test_fig_move():
     import matplotlib.pyplot as plt
     # --- Test fig_move
     fig=plt.figure()
