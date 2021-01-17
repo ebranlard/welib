@@ -15,14 +15,14 @@ import copy
 import pandas as pd
 
 # Load more models
-try:
-    from highthrust import a_Ct
-except: 
-    pass
+# try:
+from welib.BEM.highthrust import a_Ct
+# except: 
+#     pass
 
 
 def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
-        lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, CTcorrection='GlauertCT', swirlMethod='AeroDynOld'):
+        lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, CTcorrection='AeroDyn', swirlMethod='AeroDyn'):
     """Compute the induction coefficients
 
         Inputs
@@ -46,31 +46,45 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         Ct: local thrust coefficient
     """
     # --- Default a and CT
-    a = 1. / ((4.*F*sin(phi)**2)/(sigma*(cnForAI+10**-8))+1) # NOTE simgularity avoided
+    a = 1. / ((4.*F*sin(phi)**2)/(sigma*(cnForAI+10**-8))+1) # NOTE singularity avoided
     # CT=(1-a_last).^2.*sigma.*CnForAI./((sind(phi)).^2)
     Ct = Vrel_norm**2 * sigma * cnForAI/(V0**2)  # that's a CT loc
+    # AeroDyn
+    #k = sigma*cn/4.0_ReKi/F/sphi/sphi
+    #if (k <= 2/3) then  ! momentum state for a < 0.4
+    # a = k/(1+k)
+
     # --- Hight thrust correction
     if CTcorrection=='GlauertCT':
         # Glauert correction as default
-        #>>> NOTE this is:  a = a_Ct_a(Ct, a, method='Glauert') from HighThrust
+        #>>> NOTE this is:  a = a_Ct(Ct, a, method='Glauert') from highthrust
         ac = 0.3 
         bHigh = a > ac
         fg = 0.25*(5.-3.*a[bHigh])
         a[bHigh] = Ct[bHigh]/(4.*F[bHigh]*(1.-fg*a[bHigh]))
     else:
         a = a_Ct(Ct, a, F, method=CTcorrection)
-    # TODO implement AeroDyn High thrust correction
-    #a_high=0.5*(2+K*(1-2*ac)-sqrt((K*(1-2*ac)+2)^2+4*(K*ac^2-1)));
 
-    # --- Relaxation
+    a[F<0.01]=1 # HACK to match aerodyn # TODO make that an option
+
+    # --- Relaxation for high Ct
     if a_last is not None:
-        a = a*relaxation + (1.-relaxation)*a_last
+        bHigh = a>0.3
+        a[bHigh] = a[bHigh]*relaxation + (1.-relaxation)*a_last[bHigh]
 
     # --- Swirl
     if bSwirl is True:
-        if swirlMethod=='AeroDynOLD':
-            # TODO this might be old AeroDyn!
+        if swirlMethod=='AeroDynOld':
             aprime=0.5*(sqrt(1+4*a*F*(1-a)/lambda_r**2)-1);
+
+        elif swirlMethod=='AeroDyn':
+            # NOTE: AeroDyn has more tests (e.g. if cos(phi)=0)
+            aprime=np.zeros(a.shape)
+            b0 = np.logical_or(np.abs(a-1)<1e-5, np.abs(phi)<1e-5)
+            b1 = np.logical_not(b0)
+            aprime[b0] = 0 
+            kp         = sigma[b1]*ctForTI[b1]/(4*F[b1]*sin(phi[b1])*cos(phi[b1]))
+            aprime[b1] = kp/(1-kp)
         elif swirlMethod=='HAWC2':
             aprime = (Vrel_norm**2*ctForTI*sigma)/(4.*(1.-a)*V0**2*lambda_r)
         elif swirlMethod=='Default': # Need a better name
@@ -81,7 +95,7 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         aprime = a * 0.
 
     # Bounding values for safety
-    aprime = np.clip(aprime,-1,1.5) 
+    aprime = np.clip(aprime,-1,1.0) 
     a      = np.clip(a     ,-1,1.5)
     Ct     = np.clip(Ct    ,-1,3)
     return a, aprime, Ct
@@ -99,12 +113,15 @@ class BEMDiscreteStates:
         self.t = None
         self.it=-1
         # Induction
-        self.Vind    = np.zeros((nB,nr,3)) # Dynamic induced velocity with skew and yaw, global coordinates
+        self.Vind_g  = np.zeros((nB,nr,3)) # Dynamic induced velocity with skew and dyn wake, global coordinates
+        self.Vind_p  = np.zeros((nB,nr,3)) # Dynamic induced velocity with skew and dyn wake, polar coordinates
         self.a       = np.zeros((nB,nr)) # axial induction
         # Dynamic wake
-        self.Vind_qs  = np.zeros((nB,nr,3)) # Quasi-steady velocity, global coordinates
-        self.Vind_int = np.zeros((nB,nr,3)) # Intermediate velocity, global coordinates
-        self.Vind_dyn = np.zeros((nB,nr,3)) # Dynamic induced velocity (before skew/yaw), global coordinates
+        self.Vind_qs_p  = np.zeros((nB,nr,3)) # Quasi-steady velocity, polar coordinates
+        self.Vind_qs_g  = np.zeros((nB,nr,3)) # Quasi-steady velocity
+        self.Vind_int_p = np.zeros((nB,nr,3)) # Intermediate velocity, polar coordinates
+        self.Vind_dyn_p = np.zeros((nB,nr,3)) # Dynamic induced velocity (before skew/yaw), polar coordinates
+        self.Vind_dyn_g = np.zeros((nB,nr,3)) # Dynamic induced velocity (before skew/yaw), global coordinates
         # Dynamic stall
         self.fs = np.zeros((nB,nr)) # Separation 
 
@@ -134,10 +151,10 @@ class AeroBEM:
         self.nbIt = 200  # maximum number of iterations in BEM
         self.aTol = 10 ** -6 # tolerance for axial induction factor convergence
         self.relaxation = 0.5  # relaxation factor in axial induction factor
-        self.CTcorrection = 'GlauertCT'  #  type of CT correction more model implementated in the future like 'spera'
+        self.CTcorrection = 'AeroDyn'  #  type of CT correction more model implementated in the future like 'spera'
+        self.swirlMethod  = 'AeroDyn' # type of swirl model
         self.Ngrid = 1.0
         self.bSwirl = True  # swirl flow model enabled / disabled
-        self.swirlMethod = 'HAWC2' # type of swirl model
         self.bTipLoss = True # enable / disable tip loss model
         self.bHubLoss = False # enable / disable hub loss model
         self.bTipLossCl = False # enable / disable Cl loss model
@@ -177,7 +194,9 @@ class AeroBEM:
     def _init(self):
         # Creating interpolation functions for each polar, now in rad!
         self.fPolars = [interp1d(p[:,0]*np.pi/180,p[:,1:],axis=0) for p in self.polars]
-        self.xd0=BEMDiscreteStates(self.nB, len(self.r))
+
+    def getInitStates(self):
+        return BEMDiscreteStates(self.nB, len(self.r))
 
     def timeStepInit(self, t0, tmax, dt):
         """ Allocate storage for tiem step values"""
@@ -345,6 +364,7 @@ class AeroBEM:
             origin_pos_gl, omega_gl, R_b2g,  # Kinematics of rotor origin
             R_ntr2g, R_bld2b, # "polar grid to global" for each blade
             pos_gl, vel_gl, R_s2g, R_a2g,            # Kinematics of nodes
+            firstCallEquilibrium=False
             ):
         """ 
         xBEM0: BEM states at t-1
@@ -392,128 +412,157 @@ class AeroBEM:
             for ie in np.arange(nr):
                 r[iB,ie] = (R_p2g).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
         R = np.max(Rs)
-        # --------------------------------------------------------------------------------
-        # --- Step 1: velocity components
-        # --------------------------------------------------------------------------------
-        Vrel_a  = np.zeros((nB,nr,3))
-        Vrel_p  = np.zeros((nB,nr,3))
-        Vstr_p  = np.zeros((nB,nr,3))
-        Vwnd_p  = np.zeros((nB,nr,3))
-        for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB]
-            for ie in np.arange(nr):
-                # Velocity in global
-                Vwnd_g = Vwnd_gl
-                Vind_g = xd0.Vind[iB,ie] # dynamic inductions at previous time step
-                Vstr_g = vel_gl[iB,ie]
-                Vrel_g = Vwnd_gl+Vind_g-Vstr_g
-                # Airfoil coordinates
-                Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g)
-                # Polar coordinates
-                Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_g) # Structural velocity in polar coordinates
-                Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
-                Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_gl) # Wind Velocity in polar coordinates
 
-        # Velocity norm and Reynolds
-        Vrel_norm = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
-        Re        = Vrel_norm*p.chord/p.kinVisc/10**6 # Reynolds in million
-        # --------------------------------------------------------------------------------
-        # --- Step 2: Flow Angle and tip loss
-        # --------------------------------------------------------------------------------
-        phi_p = np.arctan2(Vrel_p[:,:,0],-Vrel_p[:,:,1])  # NOTE: using polar grid for phi
-        # --- Tip loss
-        F = np.ones((nB,nr))
-        if (p.bTipLoss): #Glauert tip correction
-            b=sin(phi_p)>0.01
-            F[b] = 2./pi*arccos(exp(-(nB *(R-r[b]))/(2*r[b]*sin(phi_p[b]))))
-        # --- Hub loss
-        if (p.bHubLoss): #Glauert hub loss correction
-            F = F* 2./pi*arccos(exp(-nB/2. *(r-rhub)/ (rhub*np.sin(phi_p))))
-        F[F<=1e-3]=0.5
-        # --------------------------------------------------------------------------------
-        # --- Step 3: Angle of attack
-        # --------------------------------------------------------------------------------
-        alpha = np.arctan2(Vrel_a[:,:,0],Vrel_a[:,:,1])        # angle of attack [rad]
-        # --------------------------------------------------------------------------------
-        # --- Step 4: Aerodynamic Coefficients
-        # --------------------------------------------------------------------------------
-        ClCdCm = np.array([p.fPolars[ie](alpha[iB,ie]) for iB in np.arange(nB) for ie in np.arange(nr)]).reshape((nB,nr,3))
-        Cl=ClCdCm[:,:,0]
-        Cd=ClCdCm[:,:,1]
-        # Project to airfoil coordinates
-        C_xa       ,C_ya        = Cl*cos(alpha)+ Cd*sin(alpha  )   ,  -Cl*sin(alpha)+ Cd*cos(alpha)
-        C_xa_noDrag,C_ya_noDrag = Cl*cos(alpha)                    ,  -Cl*sin(alpha)
-        # Project to polar coordinates
-        C_p        = np.zeros((nB,nr,3))
-        C_g        = np.zeros((nB,nr,3))
-        C_p_noDrag = np.zeros((nB,nr,3))
-        for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB]
-            for ie in np.arange(nr):
-                C_g        [iB,ie]=R_a2g[iB,ie].dot(np.array([C_xa       [iB,ie], C_ya       [iB,ie], 0]))
-                C_p        [iB,ie]=(R_p2g.T).dot(C_g[iB,ie])
-                C_p_noDrag [iB,ie]=(R_p2g.T).dot(R_a2g[iB,ie]).dot(np.array([C_xa_noDrag[iB,ie], C_ya_noDrag[iB,ie], 0]))
-        # Cn and Ct 
-        if (p.bAIDrag):
-            cnForAI = C_p[:,:,0]
+        if firstCallEquilibrium:
+            print('>>>> EQUILIBRIUM')
+            nit=200
         else:
-            cnForAI = C_p_noDrag[:,:,0]
-        if (p.bTIDrag):
-            ctForTI = C_p[:,:,1]
-        else:
-            ctForTI = C_p_noDrag[:,:,1]
-        # L = 0.5 * p.rho * Vrel_norm**2 * p.chord[ie]*Cl
-        # --------------------------------------------------------------------------------
-        # --- Step 5: Quasi-steady induction
-        # --------------------------------------------------------------------------------
-        # NOTE: all is done in polar grid
-        lambda_r = Vstr_p[:,:,1]/Vwnd_p[:,:,0] # "omega r/ U0n" defined in polar grid
-        V0       = np.sqrt(Vwnd_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that
-        sigma    = p.chord*p.nB/(2*pi*r)
-        #a,aprime,CT = fInductionCoefficients(a_last,Vrel_in4,Un,Ut,V0_in3,V0_in4,nnW_in4,omega,chord(e),F,Ftip,CnForAI,CtForTI,lambda_r,sigma(e),phi,Algo)
-        if p.WakeMod==0:
-            a      = V0*0
-            aprime = V0*0
-        else:
-            a,aprime,CT = _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi_p, 
-                    bSwirl=p.bSwirl, CTcorrection=p.CTcorrection, swirlMethod=p.swirlMethod,
-                    relaxation=p.relaxation, a_last=xd0.a
-            )
-            #
-            a[:,-1]=1 # HACK to match aerodyn
+            nit=1
+        for iterations in np.arange(nit):
+            # --------------------------------------------------------------------------------
+            # --- Step 1: velocity components
+            # --------------------------------------------------------------------------------
+            Vrel_a  = np.zeros((nB,nr,3))
+            Vrel_p  = np.zeros((nB,nr,3))
+            Vstr_p  = np.zeros((nB,nr,3))
+            Vwnd_p  = np.zeros((nB,nr,3))
+            for iB in np.arange(nB):
+                R_p2g = R_ntr2g[iB]
+                for ie in np.arange(nr):
+                    # Velocity in global
+                    Vwnd_g = Vwnd_gl # TODO
+                    # NOTE: inductions from previous time step, in polar grid (more realistic than global)
+                    #Vind_g = xd0.Vind_g[iB,ie] # dynamic inductions at previous time step
+                    Vind_g = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
+                    Vstr_g = vel_gl[iB,ie]
+                    Vrel_g = Vwnd_g+Vind_g-Vstr_g
+                    # Airfoil coordinates
+                    Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g)
+                    # Polar coordinates
+                    Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_g) # Structural velocity in polar coordinates
+                    Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
+                    Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_g) # Wind Velocity in polar coordinates
 
-        # Storing last values, for relaxation
-        xd1.a=a
-        # Quasi steady inductions, polar and global coordinates
-        Vind_qs_p = np.zeros((nB,nr,3))
-        for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB]
-            for ie in np.arange(nr):
-                # NOTE: Vind is negative along n and t!
-                Vind_qs_p[iB,ie] = np.array([-a[iB,ie]*Vwnd_p[iB,ie,0], -aprime[iB,ie]*Vstr_p[iB,ie,1], 0])
-                xd1.Vind_qs[iB,ie] = R_p2g.dot(Vind_qs_p[iB,ie]) # global
-                #if ie==18:
-                #    print(ie,xd1.Vind_qs[iB,ie], a[iB,ie])
+            # Velocity norm and Reynolds
+            Vrel_norm = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
+            Re        = Vrel_norm*p.chord/p.kinVisc/10**6 # Reynolds in million
+            # --------------------------------------------------------------------------------
+            # --- Step 2: Flow Angle and tip loss
+            # --------------------------------------------------------------------------------
+            phi_p = np.arctan2(Vrel_p[:,:,0],-Vrel_p[:,:,1])  # NOTE: using polar grid for phi
+            # --- Tip loss
+            F = np.ones((nB,nr))
+            if (p.bTipLoss): #Glauert tip correction
+                b=sin(phi_p)>0.01
+                F[b] = 2./pi*arccos(exp(-(nB *(R-r[b]))/(2*r[b]*sin(phi_p[b]))))
+            # --- Hub loss
+            if (p.bHubLoss): #Glauert hub loss correction
+                F = F* 2./pi*arccos(exp(-nB/2. *(r-rhub)/ (rhub*np.sin(phi_p))))
+            F[F<=1e-3]=0.5
+            # --------------------------------------------------------------------------------
+            # --- Step 3: Angle of attack
+            # --------------------------------------------------------------------------------
+            alpha = np.arctan2(Vrel_a[:,:,0],Vrel_a[:,:,1])        # angle of attack [rad]
+            # --------------------------------------------------------------------------------
+            # --- Step 4: Aerodynamic Coefficients
+            # --------------------------------------------------------------------------------
+            ClCdCm = np.array([p.fPolars[ie](alpha[iB,ie]) for iB in np.arange(nB) for ie in np.arange(nr)]).reshape((nB,nr,3))
+            Cl=ClCdCm[:,:,0]
+            Cd=ClCdCm[:,:,1]
+            # Project to airfoil coordinates
+            C_xa       ,C_ya        = Cl*cos(alpha)+ Cd*sin(alpha  )   ,  -Cl*sin(alpha)+ Cd*cos(alpha)
+            C_xa_noDrag,C_ya_noDrag = Cl*cos(alpha)                    ,  -Cl*sin(alpha)
+            # Project to polar coordinates
+            C_p        = np.zeros((nB,nr,3))
+            C_g        = np.zeros((nB,nr,3))
+            C_p_noDrag = np.zeros((nB,nr,3))
+            for iB in np.arange(nB):
+                R_p2g = R_ntr2g[iB]
+                for ie in np.arange(nr):
+                    C_g        [iB,ie]=R_a2g[iB,ie].dot(np.array([C_xa       [iB,ie], C_ya       [iB,ie], 0]))
+                    C_p        [iB,ie]=(R_p2g.T).dot(C_g[iB,ie])
+                    C_p_noDrag [iB,ie]=(R_p2g.T).dot(R_a2g[iB,ie]).dot(np.array([C_xa_noDrag[iB,ie], C_ya_noDrag[iB,ie], 0]))
+            # Cn and Ct 
+            if (p.bAIDrag):
+                cnForAI = C_p[:,:,0]
+            else:
+                cnForAI = C_p_noDrag[:,:,0]
+            if (p.bTIDrag):
+                ctForTI = C_p[:,:,1]
+            else:
+                ctForTI = C_p_noDrag[:,:,1]
+            # L = 0.5 * p.rho * Vrel_norm**2 * p.chord[ie]*Cl
+            # --------------------------------------------------------------------------------
+            # --- Step 5: Quasi-steady induction
+            # --------------------------------------------------------------------------------
+            # NOTE: all is done in polar grid
+            lambda_r = Vstr_p[:,:,1]/Vwnd_p[:,:,0] # "omega r/ U0n" defined in polar grid
+            V0       = np.sqrt(Vwnd_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that
+            sigma    = p.chord*p.nB/(2*pi*r)
+            #a,aprime,CT = fInductionCoefficients(a_last,Vrel_in4,Un,Ut,V0_in3,V0_in4,nnW_in4,omega,chord(e),F,Ftip,CnForAI,CtForTI,lambda_r,sigma(e),phi,Algo)
+            if p.WakeMod==0:
+                a      = V0*0
+                aprime = V0*0
+            else:
+                a,aprime,CT = _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi_p, 
+                        bSwirl=p.bSwirl, CTcorrection=p.CTcorrection, swirlMethod=p.swirlMethod,
+                        relaxation=p.relaxation, a_last=xd0.a
+                )
+
+            if np.any(np.isnan(a)):
+                print('>> BEM crashing')
+
+            # Storing last values, for relaxation
+            xd1.a=a.copy()
+            # Quasi steady inductions, polar and global coordinates
+            xd1.Vind_qs_p = np.zeros((nB,nr,3))
+            for iB in np.arange(nB):
+                R_p2g = R_ntr2g[iB]
+                for ie in np.arange(nr):
+                    # NOTE: Vind is negative along n and t!
+                    xd1.Vind_qs_p[iB,ie] = np.array([-a[iB,ie]*Vwnd_p[iB,ie,0], -aprime[iB,ie]*Vstr_p[iB,ie,1], 0])
+                    xd1.Vind_qs_g[iB,ie] = R_p2g.dot(xd1.Vind_qs_p[iB,ie]) # global
+
+            if firstCallEquilibrium:
+                # We update the previous states induction
+                xd0.a      = a.copy()
+                xd0.Vind_g = xd1.Vind_qs_g.copy()
+                xd0.Vind_p = xd1.Vind_qs_p.copy()
+        if firstCallEquilibrium:
+            # Initialize dynamic wake variables
+            xd0.Vind_qs_p  = xd1.Vind_qs_p.copy()
+            xd1.Vind_qs_p  = xd1.Vind_qs_p.copy()
+            xd0.Vind_int_p = xd1.Vind_qs_p.copy()
+            xd0.Vind_dyn_p = xd1.Vind_qs_p.copy()
         # --------------------------------------------------------------------------------
-        # --- Dynamic wake model
+        # --- Dynamic wake model, in polar coordinates (for "constant" structural velocity)
         # --------------------------------------------------------------------------------
         if (p.bDynaWake):
             a_avg = min([np.mean(a),0.5])
             V_avg = max([np.mean(V0),0.001])
             tau1 = 1.1 / (1 - 1.3 *a_avg)*R/V_avg
+            #tau1=4
             tau2 = (0.39 - 0.26 * (r/R)**2) * tau1
             tau2 = np.tile(tau2[:,:,None],3)
             # Oye's dynamic inflow model, discrete time integration
-            H            = xd1.Vind_qs + 0.6 * tau1 * (xd1.Vind_qs - xd0.Vind_qs) /dt
-            xd1.Vind_int = H + (xd0.Vind_int - H) * exp(-dt/tau1) # intermediate velocity
-            xd1.Vind_dyn = xd1.Vind_int + (xd0.Vind_dyn - xd0.Vind_int) * exp(-dt/tau2)
+            H              = xd1.Vind_qs_p + 0.6 * tau1 * (xd1.Vind_qs_p - xd0.Vind_qs_p) /dt
+            xd1.Vind_int_p = H + (xd0.Vind_int_p - H) * exp(-dt/tau1) # intermediate velocity
+            xd1.Vind_dyn_p = xd1.Vind_int_p + (xd0.Vind_dyn_p - xd1.Vind_int_p) * exp(-dt/tau2)
+            # In global
+            for iB in np.arange(nB):
+                R_p2g = R_ntr2g[iB]
+                for ie in np.arange(nr):
+                    xd1.Vind_dyn_g[iB,ie] = R_p2g.dot(xd1.Vind_dyn_p[iB,ie]) # global
         else:
-            xd1.Vind_dyn = xd1.Vind_qs
+            xd1.Vind_dyn_g = xd1.Vind_qs_g.copy()
+            xd1.Vind_dyn_p = xd1.Vind_qs_p.copy()
+
         # --------------------------------------------------------------------------------
         # ---  Yaw model, repartition of the induced velocity
         # --------------------------------------------------------------------------------
         if p.bYawModel:
-           xd1.Vind = xd1.Vind_dyn # TODO
+           xd1.Vind_g = xd1.Vind_dyn_g.copy() # TODO
+           xd1.Vind_p = xd1.Vind_dyn_p.copy() # TODO
 #                     ### Yaw model, Skew angle and psi0
 #                    # if (e == Rotor.e_ref_for_khi and idB == 1):
 #                    #     ### Determination of psi0
@@ -531,7 +580,8 @@ class AeroBEM:
 #                    #     khi = acosd(np.dot(n_rotor_in2,V_prime_for_khi_in2) / norm(V_prime_for_khi_in2))
 #                    #     W[:,e,idB] = W0(:,e,idB) * (1 + r(e) / R * tand(khi / 2) * np.cos(np.pi/180*Vpsi(idB) - psi0))
         else:
-           xd1.Vind = xd1.Vind_dyn
+           xd1.Vind_g = xd1.Vind_dyn_g.copy()
+           xd1.Vind_p = xd1.Vind_dyn_p.copy()
         # --------------------------------------------------------------------------------
         # --- Step 6: Outputs
         # --------------------------------------------------------------------------------
@@ -565,8 +615,8 @@ class AeroBEM:
         self.Vwnd_n[it]  = Vwnd_p[:,:,0]
         self.Vwnd_t[it]  = Vwnd_p[:,:,1]
         self.Vwnd_r[it]  = Vwnd_p[:,:,2]
-        self.Vind_qs_n[it] = Vind_qs_p[:,:,0]
-        self.Vind_qs_t[it] = Vind_qs_p[:,:,1]
+        self.Vind_qs_n[it] = xd1.Vind_qs_p[:,:,0]
+        self.Vind_qs_t[it] = xd1.Vind_qs_p[:,:,1]
         self.RtVAvgxh[it]  = np.mean(Vwnd_p[:,:,0])
         # airfoil system
         self.Vrel_xa[it] = Vrel_a[:,:,0]
@@ -582,7 +632,7 @@ class AeroBEM:
         for iB in np.arange(nB):
             R_p2g = R_ntr2g[iB]
             for ie in np.arange(nr):
-                Vind_g = xd1.Vind[iB,ie] # dynamic inductions at current time step
+                Vind_g = xd1.Vind_g[iB,ie] # dynamic inductions at current time step
                 #Vind_s = (R_s2g[iB,ie].T).dot(Vind_g) # Induced velocity in section coordinates
                 #Vind_a = (R_a2g[iB,ie].T).dot(Vind_g) # Induced velocity in airfoil coordinates
                 Vind_p = (R_p2g       .T).dot(Vind_g) # Induced velocity in polar coordinates
@@ -820,17 +870,18 @@ if __name__=="__main__":
     BEM = AeroBEM()
     BEM.init_from_FAST('../../data/NREL5MW/Main_Onshore_OF2.fst')
     BEM.CTcorrection='AeroDyn' # High Thrust correction
-    BEM.bSwirl = True  # swirl flow model enabled / disabled
-    BEM.swirlMethod = 'HAWC2' # type of swirl model
-    BEM.bTipLoss = True # enable / disable tip loss model
-    BEM.bHubLoss = False # enable / disable hub loss model
-    BEM.bTipLossCl = False # enable / disable Cl loss model
-    BEM.TipLossMethod = 'Glauert'  # type of tip loss model
-    BEM.bDynaStall = True # dynamic stall model
-    BEM.bDynaWake = False # dynamic inflow model
-    BEM.bYawModel = True # Yaw correction
-    BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
-    BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
+    BEM.swirlMethod ='AeroDyn' # type of swirl model
+#     BEM.bSwirl = True  # swirl flow model enabled / disabled
+#     BEM.bTipLoss = True # enable / disable tip loss model
+#     BEM.bHubLoss = False # enable / disable hub loss model
+#     BEM.bTipLossCl = False # enable / disable Cl loss model
+#     BEM.TipLossMethod = 'Glauert'  # type of tip loss model
+#     BEM.bDynaStall = True # dynamic stall model
+    BEM.bDynaWake = True # dynamic inflow model
+#     BEM.bYawModel = True # Yaw correction
+#     BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
+#     BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
+    #BEM.relaxation = 1.0
 
     # --- Read a FAST model to get structural parameters for blade motion
     motion = PrescribedRotorMotion()
@@ -842,18 +893,18 @@ if __name__=="__main__":
     dtRadOut=1.0
     tmax=70
     
-    xdBEM = copy.deepcopy(BEM.xd0)
+    xdBEM = BEM.getInitStates()
 
     # Allocate
     BEM.timeStepInit(0,tmax,dt) 
 
     for it,t in enumerate(BEM.time):
-        motion.update(t) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< HACK
-        #motion.update(0)
+        motion.update(t)
         xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
                 motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
                 motion.R_ntr2g, motion.R_bld2b,
-                motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g
+                motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
+                firstCallEquilibrium=it==0
                 )
         if np.mod(t,dtRadOut)<dt/2:
             #print(t)

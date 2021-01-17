@@ -40,7 +40,7 @@ def main(test=False):
     # Allocate memory for time storage
     BEM.timeStepInit(0,tmax,dt) 
     # Initial discrete states 
-    xdBEM = BEM.xd0 # 
+    xdBEM = BEM.getInitStates()
     for it,t in enumerate(BEM.time):
         motion.update(t)
         xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
@@ -49,10 +49,9 @@ def main(test=False):
                 motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g
                 )
         if np.mod(t,dtRadOut)<dt/2:
-            #print(t)
+            pass
             #dfRad = BEM.toDataFrameRadial(it)
             #dfRad.to_csv('_BEMRad_t{:04d}.csv'.format(it), index=False)
-            pass
 
     df = BEM.toDataFrame()
     if not test:
