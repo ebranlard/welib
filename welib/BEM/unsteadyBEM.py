@@ -404,8 +404,7 @@ class AeroBEM:
         R = np.max(Rs)
 
         if firstCallEquilibrium:
-            print('>>>> EQUILIBRIUM')
-            nit=200
+            nit=50
         else:
             nit=1
         for iterations in np.arange(nit):
@@ -692,12 +691,22 @@ class PrescribedRotorMotion():
         # Blades 
         self.R_bld2b=None # rotation matrix from blade to body
 
-    def init_from_FAST(self, FASTFileName):
+    def init_from_FAST(self, FASTFileName, tilt=None, cone=None):
+        """ 
+        Initializes motion from a FAST input deck
+        Possibility to override the tilt and cone geometry:
+        tilt: tilt angle in deg, with OpenFAST convention
+        cone: cone angle in deg, with OpenFAST convention
+        
+        """
         import welib.weio as weio
         F=weio.FASTInputDeck(FASTFileName,readlist=['AD','ED'])
 
         self.nB   =  F.ED['NumBl']
-        self.cone = -F.ED['PreCone(1)']*np.pi/180*0 # <<<<<<<<<<<<<<<<<<<<< HATODO TODO TODO TOO TODOTODO TODO TODO TOO TODOCK
+        if cone is not None:
+            self.cone = -cone*np.pi/180
+        else:
+            self.cone = -F.ED['PreCone(1)']*np.pi/180 
         self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
         self.chord = F.AD.Bld1['BldAeroNodes'][:,-2] 
         self.twist = F.AD.Bld1['BldAeroNodes'][:,-3]*np.pi/180
@@ -708,7 +717,10 @@ class PrescribedRotorMotion():
         r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
         r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
         # Basic geometries for nacelle
-        theta_tilt_y = -ED['ShftTilt']*np.pi/180 
+        if tilt is not None:
+            theta_tilt_y = -tilt*np.pi/180 
+        else:
+            theta_tilt_y = -ED['ShftTilt']*np.pi/180 
         R_NS = R_y(theta_tilt_y)  # Rotation fromShaft to Nacelle
         r_NS_inN    = np.array([0             , 0, ED['Twr2Shft']]) # Shaft start in N
         r_SR_inS    = np.array([ED['OverHang'], 0, 0             ]) # Rotor center in S
@@ -889,7 +901,7 @@ if __name__=="__main__":
 
     # --- Read a FAST model to get structural parameters for blade motion
     motion = PrescribedRotorMotion()
-    motion.init_from_FAST('./Main_Onshore_OF2.fst')
+    motion.init_from_FAST('./Main_Onshore_OF2.fst', tilt=None, cone=0)
     motion.setType('constantRPM', RPM=10.0)
     #motion.setType('constantRPM x-oscillation', RPM=12.1, frequency=1.1, amplitude=20)
 

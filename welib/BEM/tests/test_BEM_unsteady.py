@@ -79,7 +79,7 @@ class Test(unittest.TestCase):
         dt       = 0.1
         # Read a FAST model to get structural parameters for blade motion
         motion = PrescribedRotorMotion()
-        motion.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+        motion.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'), tilt=0)
         motion.setType('constantRPM', RPM=10.0)
         # Read a FAST model to get Aerodynamic parameters to initialze unstady BEM code
         BEM = AeroBEM()
@@ -87,7 +87,7 @@ class Test(unittest.TestCase):
 
 
         # --- Simulation 1, no dynamic inflow, starting at equilibrium 
-        tmax=2*dt
+        tmax=5*dt
         BEM.bDynaWake = False # dynamic inflow model
         BEM.timeStepInit(0,tmax,dt) 
         xdBEM = BEM.getInitStates()
@@ -99,11 +99,11 @@ class Test(unittest.TestCase):
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                     firstCallEquilibrium=it==0
                     )
-        a     = BEM.AxInd[-1].copy()
-        aprime= BEM.TnInd[-1].copy()
+        a     = BEM.AxInd.copy()
+        aprime= BEM.TnInd.copy()
 
         # --- Simulation 2, dynamic inflow, starting at equilibrium 
-        tmax=2*dt
+        tmax=5*dt
         BEM.bDynaWake = True # dynamic inflow model
         BEM.timeStepInit(0,tmax,dt) 
         xdBEM = BEM.getInitStates()
@@ -115,11 +115,9 @@ class Test(unittest.TestCase):
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                     firstCallEquilibrium=it==0
                     )
-        a2     = BEM.AxInd[-1].copy()
-        aprime2= BEM.TnInd[-1].copy()
+        a2     = BEM.AxInd.copy()
+        aprime2= BEM.TnInd.copy()
 
-        np.testing.assert_almost_equal(a2, a, 5)
-        np.testing.assert_almost_equal(aprime2, aprime, 5)
 
 
         # --- Simulation 3, no dynamic inflow
@@ -134,11 +132,9 @@ class Test(unittest.TestCase):
                     motion.R_ntr2g, motion.R_bld2b,
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g
                     )
-        a3     = BEM.AxInd[-1].copy()
-        aprime3= BEM.TnInd[-1].copy()
+        a3     = BEM.AxInd.copy()
+        aprime3= BEM.TnInd.copy()
 
-        np.testing.assert_almost_equal(a3, a, 4)
-        np.testing.assert_almost_equal(aprime3, aprime, 4)
 
         # --- Simulation 4 Dynamic Wake
         dt  = 0.5
@@ -153,11 +149,31 @@ class Test(unittest.TestCase):
                     motion.R_ntr2g, motion.R_bld2b,
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g
                     )
-        a4     = BEM.AxInd[-1].copy()
-        aprime4= BEM.TnInd[-1].copy()
+        a4     = BEM.AxInd.copy()
+        aprime4= BEM.TnInd.copy()
 
-        np.testing.assert_almost_equal(a4, a, 3)
-        np.testing.assert_almost_equal(aprime4, aprime, 3)
+        # --- Tests
+        np.testing.assert_almost_equal(a2[-1], a[-1], 5)
+        np.testing.assert_almost_equal(aprime2[-1], aprime[-1], 5)
+        np.testing.assert_almost_equal(a3[-1], a[-1], 4)
+        np.testing.assert_almost_equal(aprime3[-1], aprime[-1], 4)
+        np.testing.assert_almost_equal(a4[-1], a[-1], 3)
+        np.testing.assert_almost_equal(aprime4[-1], aprime[-1], 3)
+
+
+        #import matplotlib.pyplot as plt
+        #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        #ax.plot(a [:,0,10],'k-', label='Eq. no dyn')
+        #ax.plot(a2[:,0,10],'--', label='Eq. w/ dyn')
+        #ax.plot(a3[:,0,10], label='no dyn')
+        #ax.plot(a4[:,0,10], label='dyn')
+        #ax.set_xlabel('')
+        #ax.set_ylabel('')
+        #ax.legend()
+        #ax.tick_params(direction='in')
+        #plt.show()
+
 
 
 if __name__ == '__main__':
