@@ -163,6 +163,9 @@ class AeroBEM:
         self.TipLossMethod = 'Glauert'  # type of tip loss model
         self.bDynaStall = True # dynamic stall model
         self.bDynaWake = True # dynamic stall model
+#           1   DBEMT_Mod          - Type of dynamic BEMT (DBEMT) model {1=constant tau1, 2=time-dependent tau1} (-) [used only when WakeMod=2]
+#           4   tau1_const         - Time constant for DBEMT (s) [used only when WakeMod=2 and DBEMT_Mod=1]
+
         self.bYawModel = True # Yaw correction
         self.bAIDrag = True # influence on drag coefficient on normal force coefficient
         self.bTIDrag = True # influence on drag coefficient on tangential force coefficient
@@ -261,11 +264,11 @@ class AeroBEM:
         self.Torque   = np.zeros(nt)
         self.Power    = np.zeros(nt)
         self.chi      = np.zeros(nt)
-        self.RtVAvgxh   = np.zeros(nt)
-        self.RtVAvgyh   = np.zeros(nt)
-        self.RtVAvgzh   = np.zeros(nt)
+        self.chi0     = np.zeros(nt)
+        self.RtVAvg   = np.zeros((nt,3))
         self.psi      = np.zeros(nt)
         self.RtArea   = np.zeros(nt)
+        self.SkewAzimuth  = np.zeros((nt,nB))
         # Blade blades
         self.BladeTorque = np.zeros((nt,nB))
         self.BladeThrust = np.zeros((nt,nB))
@@ -285,8 +288,13 @@ class AeroBEM:
         df['Azimuth_[deg]']   = np.mod(self.psi,360)
         df['RtAeroFxh_[N]']   = self.Thrust
         df['RtAeroMxh_[N-m]'] = self.Torque
-        df['RtVAvgxh_[m/s]']  = self.RtVAvgxh
+        df['RtVAvgxh_[m/s]']  = self.RtVAvg[:,0]
+        df['RtVAvgyh_[m/s]']  = self.RtVAvg[:,1]
+        df['RtVAvgzh_[m/s]']  = self.RtVAvg[:,2]
         df['RtArea_[m^2]']    = self.RtArea
+        df['RtSkew_[deg]']    = self.chi0
+        for iB in np.arange(self.nB):
+            df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.SkewAzimuth[:,iB],360)
 
         Vflw_s = self.Vwnd_s-self.Vstr_s
 
@@ -348,10 +356,10 @@ class AeroBEM:
         return df
 
 
-    def timeStep(self, t, dt, xd0, psi,
-            origin_pos_gl, omega_gl, R_b2g,  # Kinematics of rotor origin
-            R_ntr2g, R_bld2b, # "polar grid to global" for each blade
-            pos_gl, vel_gl, R_s2g, R_a2g,            # Kinematics of nodes
+    def timeStep(self, t, dt, xd0, psi, psiB0,
+            origin_pos_gl, omega_gl, R_r2g,  # Kinematics of rotor origin
+            R_ntr2g, R_bld2r, # "polar grid to global" for each blade
+            pos_gl, Vstr_gl, R_s2g, R_a2g,            # Kinematics of nodes
             Vwnd_gl, # Wind at each positions in global
             firstCallEquilibrium=False
             ):
@@ -366,23 +374,8 @@ class AeroBEM:
             if np.abs((xd0.t+dt-t))>dt/10:
                 raise Exception('timeStep method expects to be called on regular intervals')
 
-# #     dr = WT.Rotor.dr
-# # # normal vectors
-# #     n_thrust_in3 = np.array([[0],[0],[- 1]])
-# #     #n_rotor_in4=[0; 0; 1];         #normal vector to the rotor plan in 4
-# #     n_rotor_in2 = np.array([[0],[0],[1]])
         # Time step storage for vectorization
         nB, nr, _ = pos_gl.shape
-# #     # yaw model initialization
-# #     khi = WT.Aero.last.chi
-# #     psi0 = 0
-# #     ## Elasticity dependence
-# # # Angles between blades updated depending on Dynamic degree of freedom 2
-# #     Vpsi0 = np.mod(np.arange(0,(360 / nB) * (nB - 1)+(360 / nB),(360 / nB)),360)
-# #     Vpsi = np.mod(Vpsi0 + x(2) * 180 / pi,360)
-# #     omega = v(2)
-# #     # Shaft vector coordinates
-# #     rs_in1 = np.transpose(a12) * WT.Shaft.rs_in2
         p = self # alias
         ### Loop on blades
         # --------------------------------------------------------------------------------
@@ -421,7 +414,7 @@ class AeroBEM:
                     # NOTE: inductions from previous time step, in polar grid (more realistic than global)
                     #Vind_g = xd0.Vind_g[iB,ie] # dynamic inductions at previous time step
                     Vind_g = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
-                    Vstr_g = vel_gl[iB,ie]
+                    Vstr_g = Vstr_gl[iB,ie]
                     Vrel_g = Vwnd_g+Vind_g-Vstr_g
                     # Airfoil coordinates
                     Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g)
@@ -430,6 +423,7 @@ class AeroBEM:
                     Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
                     Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_g) # Wind Velocity in polar coordinates
             Vflw_p  = Vwnd_p-Vstr_p # Relative flow velocity, including wind and structural motion
+            Vflw_g  = Vwnd_gl-Vstr_gl # Relative flow velocity, including wind and structural motion
 
             # Velocity norm and Reynolds
             Vrel_norm = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
@@ -550,28 +544,74 @@ class AeroBEM:
             xd1.Vind_dyn_g = xd1.Vind_qs_g.copy()
             xd1.Vind_dyn_p = xd1.Vind_qs_p.copy()
 
+        # --------------------------------------------------------------------------------}
+        # --- Disk averaged quantities
+        # --------------------------------------------------------------------------------{
+        # Average wind in global, and rotor coord
+        Vwnd_avg_g = np.mean(np.mean(Vwnd_gl[:,:,:],axis=0),axis=0)
+        Vwnd_avg_r = (R_r2g.T).dot(Vwnd_avg_g)
+        # Average relative wind (Wnd-Str)
+        Vflw_avg_g = np.mean(np.mean(Vflw_g[:,:,:],axis=0),axis=0)
+        x_hat_disk = R_r2g[:,0]
+        # Coordinate system with "y" in the cross wind direction for skew model
+        V_dot_x  = np.dot(Vflw_avg_g, x_hat_disk)
+        V_ytmp   = V_dot_x * x_hat_disk - Vflw_avg_g
+        V_ynorm  = sqrt(V_ytmp[0]**2+V_ytmp[1]**2+V_ytmp[2]**2)
+        if abs(V_ynorm)<1e-8:
+            y_hat_disk = R_r2g[:,1]
+            z_hat_disk = R_r2g[:,2]
+        else:
+            y_hat_disk = V_ytmp / V_ynorm
+            z_hat_disk = np.cross(Vflw_avg_g, x_hat_disk ) / V_ynorm
+        # Fake "Azimuth angle" used for skew model
+        SkewAzimuth=np.zeros(nB)
+        for iB in np.arange(nB):
+            z_hat = R_ntr2g[iB][:,2]
+            tmp_sz_y = -1.0*np.dot(z_hat,y_hat_disk)
+            tmp_sz   =      np.dot(z_hat,z_hat_disk)
+            if np.abs(tmp_sz_y)<1e-8 and np.abs(tmp_sz)<1e-8:
+                SkewAzimuth[iB]=0
+            else:
+                SkewAzimuth[iB] = arctan2( tmp_sz_y, tmp_sz )
+        # Skew angle without induction
+        Vw_r = (R_r2g.T).dot(Vflw_avg_g)
+        Vw_rn     = Vw_r[0] # normal to disk
+        Vw_r_norm = sqrt(Vw_r[0]**2+Vw_r[1]**2+Vw_r[2]**2)
+        chi0      = np.arccos(Vw_rn / Vw_r_norm)
+
         # --------------------------------------------------------------------------------
         # ---  Yaw model, repartition of the induced velocity
         # --------------------------------------------------------------------------------
         if p.bYawModel:
-           xd1.Vind_g = xd1.Vind_dyn_g.copy() # TODO
-           xd1.Vind_p = xd1.Vind_dyn_p.copy() # TODO
-#                     ### Yaw model, Skew angle and psi0
-#                    # if (e == Rotor.e_ref_for_khi and idB == 1):
-#                    #     ### Determination of psi0
-#                    #     r_hub = WT.Tower.rt_in1 + rs_in1
-#                    #     # Incoming wind at hub
-#                    #     V0_in1 = getPointIncomingWindLegacy02(r_hub,psi,WT,Wind,Algo)
-#                    #     V0_in2 = a12 * V0_in1
-#                    #     # psi0
-#                    #     psi0 = atan2(V0_in2(2),V0_in2(1)) * 180 / pi
-#                    #     ### Determination of skew angle
-#                    #     # Averaging Wn on each blade
-#                    #     meanWn_in4 = np.array([[0],[0],[mean(W0(3,Rotor.e_ref_for_khi,:))]])
-#                    #     meanWn_in2 = np.transpose(a34) * meanWn_in4
-#                    #     V_prime_for_khi_in2 = V0_in2 + meanWn_in2
-#                    #     khi = acosd(np.dot(n_rotor_in2,V_prime_for_khi_in2) / norm(V_prime_for_khi_in2))
-#                    #     W[:,e,idB] = W0(:,e,idB) * (1 + r(e) / R * tand(khi / 2) * np.cos(np.pi/180*Vpsi(idB) - psi0))
+           #xd1.Vind_g = xd1.Vind_dyn_g.copy()
+           #xd1.Vind_p = xd1.Vind_dyn_p.copy()
+           #psi0 = np.arctan( Vwnd_avg_g[2]/Vwnd_avg_r[1])  # TODO
+           # Sections that are about 0.7%R
+           Ir= np.logical_and(r[0]>=0.5*R, r[0] <=0.8*R)
+           if len(Ir)==0:
+               Ir=r[0]>0
+           Vind_avg_g = np.mean(np.mean(xd1.Vind_dyn_g[:,Ir,:],axis=0),axis=0)
+           Vind_avg_r = (R_r2g.T).dot(Vind_avg_g)
+           # Skew angle with induction
+           V_r      = Vwnd_avg_r + Vind_avg_r
+           V_rn     = V_r[0] # normal to disk
+           V_r_norm = sqrt(V_r[0]**2+V_r[1]**2+V_r[2]**2)
+           chi = np.arccos(V_rn/V_r_norm)
+           #print('chi0',chi0*180/pi,'chi',chi*180/pi,'psi0',psi0*180/np.pi)
+           if np.abs(chi)>pi/2:
+               print('>>> chi too large')
+           yawCorrFactor = 15*np.pi/32 # close to 3/2
+           for iB in np.arange(nB):
+               R_p2g = R_ntr2g[iB]
+               for ie in np.arange(nr):
+                   xd1.Vind_p[iB,ie] = xd1.Vind_dyn_p[iB,ie]
+                   xd1.Vind_p[iB,ie,0] = xd1.Vind_dyn_p[iB,ie,0] * (1 + yawCorrFactor*r[iB,ie]/R * np.tan(chi/2)*np.sin(SkewAzimuth[iB])) #* np.cos(psiB0[iB]+psi - psi0))
+                   xd1.Vind_g[iB,ie] = R_p2g.dot(xd1.Vind_p[iB,ie]) # global
+                   # AeroDyn:
+                   #chi = (0.6_ReKi*a + 1.0_ReKi)*chi0
+                   #a = a * (1.0 +  yawCorrFactor * yawCorr_tan * (tipRatio) * sin(azimuth))
+
+
         else:
            xd1.Vind_g = xd1.Vind_dyn_g.copy()
            xd1.Vind_p = xd1.Vind_dyn_p.copy()
@@ -605,7 +645,9 @@ class AeroBEM:
         self.Vwnd_p[it]  = Vwnd_p[:,:,:]
         self.Vflw_p[it]  = Vflw_p[:,:,:]
         self.Vind_qs_p[it] = xd1.Vind_qs_p[:,:,:]
-        self.RtVAvgxh[it]  = np.mean(Vflw_p[:,:,0])
+        self.RtVAvg[it]  = (R_r2g.T).dot(Vflw_avg_g) # in Hub/rotor coordinate
+        self.SkewAzimuth[it]  = SkewAzimuth*180/pi
+        self.chi0[it]  = chi0*180/pi
         # airfoil system
         self.Vrel_xa[it] = Vrel_a[:,:,0]
         self.Vrel_ya[it] = Vrel_a[:,:,1]
@@ -632,7 +674,7 @@ class AeroBEM:
                 #Vwnd_a = (R_a2g[iB,ie].T).dot(Vwnd_gl) # Wind Velocity in airfoil coordinates
                 self.Vwnd_s[it,iB,ie,:]=Vwnd_s
                 ## Structural velocity
-                Vstr_g = vel_gl[iB,ie]
+                Vstr_g = Vstr_gl[iB,ie]
                 #Vstr_a = (R_a2g[iB,ie].T).dot(Vstr_g) # Structural velocity in airfoil coordinates
                 self.Vstr_s[it,iB,ie,:]=(R_s2g[iB,ie].T).dot(Vstr_g)
                 # --- Loads
@@ -709,7 +751,7 @@ class AeroBEM:
             motion.update(t)
             u,v,w = windFunction(motion.pos_gl[:,:,0], motion.pos_gl[:,:,1], motion.pos_gl[:,:,2], t)  
             Vwnd_g = np.moveaxis(np.array([u,v,w]),0,-1) # nB x nr x 3
-            xdBEM = self.timeStep(t, dt, xdBEM, motion.psi,
+            xdBEM = self.timeStep(t, dt, xdBEM, motion.psi, motion.psi_B0,
                     motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
                     motion.R_ntr2g, motion.R_bld2b,
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
@@ -761,9 +803,10 @@ class PrescribedRotorMotion():
         # Orientation of blades with respect to body
         self.R_bld2b = [np.eye(3)]*self.nB
         self.R_ntr2b = [np.eye(3)]*self.nB
+        self.psi_B0  = np.zeros(self.nB)
         for iB in np.arange(self.nB):
-            psi_B= psi0 + -iB*2*np.pi/self.nB
-            R_SB = R_x(psi_B) 
+            self.psi_B0[iB]= psi0 + iB*2*np.pi/self.nB
+            R_SB = R_x(self.psi_B0[iB]) 
             self.R_bld2b[iB] = R_SB.dot(R_y(self.cone)) # blade2shaft
             self.R_ntr2b[iB] = R_SB.dot(np.array([[1,0,0],[0,-1,0],[0,0,1]])) # "n-t-r" to shaft
 
@@ -794,8 +837,6 @@ class PrescribedRotorMotion():
             cone=BEM.cone0
 
         rotorOrigin =[BEM.OverHang*np.cos(-tilt*np.pi/180), 0, BEM.TowerHt+BEM.Twr2Shft-BEM.OverHang*np.sin(-tilt*np.pi/180)]
-        print(rotorOrigin, BEM.TowerHt,tilt, BEM.OverHang, BEM.Twr2Shft)
-
         self.init_from_inputs(BEM.nB, BEM.r, BEM.twist, rotorOrigin, tilt=tilt, cone=cone, psi0=0)
 
     def allocate(self):
@@ -937,21 +978,17 @@ if __name__=="__main__":
 #     BEM.bTipLossCl = False # enable / disable Cl loss model
 #     BEM.TipLossMethod = 'Glauert'  # type of tip loss model
 #     BEM.bDynaStall = True # dynamic stall model
-    BEM.bDynaWake = False # dynamic inflow model
-#     BEM.bDynaWake = True # dynamic inflow model
-#     BEM.bYawModel = True # Yaw correction
+    BEM.bDynaWake = True # dynamic inflow model
+#    BEM.bDynaWake = True # dynamic inflow model
+    BEM.bYawModel = True # Yaw correction
+#     BEM.bYawModel = False # Yaw correction
 #     BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
 #     BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
-    BEM.relaxation = 0.5
-
-
-#          10   HWindSpeed     - Horizontal windspeed                            (m/s)
-#          90   RefHt         - Reference height for horizontal wind speed      (m)
-#         0.1   PLexp          - Power law exponent                              (-)
+    BEM.relaxation = 0.3
 
     time=np.arange(0,10,0.05)
     RPM=10
-    df= BEM.simulationConstantRPM(time, RPM, windSpeed=10, windExponent=0.1, windRefH=90, windFunction=None, cone=None, tilt=None, firstCallEquilibrium=True)
+    df= BEM.simulationConstantRPM(time, RPM, windSpeed=10, windExponent=0.0, windRefH=90, windFunction=None, cone=None, tilt=None, firstCallEquilibrium=True)
     df.to_csv('_BEM.csv', index=False)
 
 #     # --- Read a FAST model to get structural parameters for blade motion
