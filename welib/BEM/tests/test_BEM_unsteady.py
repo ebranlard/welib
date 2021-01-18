@@ -77,78 +77,41 @@ class Test(unittest.TestCase):
     def test_equilibirumDynWake(self):
         # Test that wake reaches the same equilibrium with or without the dynamic wake
         dt       = 0.1
-        # Read a FAST model to get structural parameters for blade motion
-        motion = PrescribedRotorMotion()
-        motion.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'), tilt=0)
-        motion.setType('constantRPM', RPM=10.0)
+        RPM=10
         # Read a FAST model to get Aerodynamic parameters to initialze unstady BEM code
         BEM = AeroBEM()
         BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
-
+        BEM.CTcorrection = 'AeroDyn' 
+        BEM.swirlMethod  = 'AeroDyn' 
+        BEM.bSwirl = True 
 
         # --- Simulation 1, no dynamic inflow, starting at equilibrium 
-        tmax=5*dt
+        time=np.arange(0,5*dt,dt)
         BEM.bDynaWake = False # dynamic inflow model
-        BEM.timeStepInit(0,tmax,dt) 
-        xdBEM = BEM.getInitStates()
-        for it,t in enumerate(BEM.time):
-            motion.update(t)
-            xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
-                    motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_ntr2g, motion.R_bld2b,
-                    motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
-                    firstCallEquilibrium=it==0
-                    )
+        BEM.simulationConstantRPM(time, RPM, windSpeed=10, tilt=0, cone=0, firstCallEquilibrium=True)
         a     = BEM.AxInd.copy()
         aprime= BEM.TnInd.copy()
 
         # --- Simulation 2, dynamic inflow, starting at equilibrium 
-        tmax=5*dt
+        time=np.arange(0,5*dt,dt)
         BEM.bDynaWake = True # dynamic inflow model
-        BEM.timeStepInit(0,tmax,dt) 
-        xdBEM = BEM.getInitStates()
-        for it,t in enumerate(BEM.time):
-            motion.update(t)
-            xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
-                    motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_ntr2g, motion.R_bld2b,
-                    motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
-                    firstCallEquilibrium=it==0
-                    )
+        BEM.simulationConstantRPM(time, RPM, windSpeed=10, tilt=0, cone=0, firstCallEquilibrium=True)
         a2     = BEM.AxInd.copy()
         aprime2= BEM.TnInd.copy()
 
-
-
         # --- Simulation 3, no dynamic inflow
-        tmax     = 6
+        time=np.arange(0,6,dt)
         BEM.bDynaWake = False # dynamic inflow model
-        BEM.timeStepInit(0,tmax,dt) 
-        xdBEM = BEM.getInitStates()
-        for it,t in enumerate(BEM.time):
-            motion.update(t)
-            xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
-                    motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_ntr2g, motion.R_bld2b,
-                    motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g
-                    )
+        BEM.simulationConstantRPM(time, RPM, windSpeed=10, tilt=0, cone=0, firstCallEquilibrium=False)
         a3     = BEM.AxInd.copy()
         aprime3= BEM.TnInd.copy()
 
-
         # --- Simulation 4 Dynamic Wake
-        dt  = 0.5
-        tmax=40
+        dt   = 0.5
+        tmax = 40
         BEM.bDynaWake = True # dynamic inflow model
-        BEM.timeStepInit(0,tmax,dt) 
-        xdBEM = BEM.getInitStates()
-        for it,t in enumerate(BEM.time):
-            motion.update(t)
-            xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
-                    motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_ntr2g, motion.R_bld2b,
-                    motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g
-                    )
+        time=np.arange(0,tmax,dt)
+        BEM.simulationConstantRPM(time, RPM, windSpeed=10, tilt=0, cone=0, firstCallEquilibrium=False)
         a4     = BEM.AxInd.copy()
         aprime4= BEM.TnInd.copy()
 
@@ -159,6 +122,30 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(aprime3[-1], aprime[-1], 4)
         np.testing.assert_almost_equal(a4[-1], a[-1], 3)
         np.testing.assert_almost_equal(aprime4[-1], aprime[-1], 3)
+
+        # --- Compare to OpenFAST results
+        ref=np.array([
+                    [0.12484882167847558,-0.12484882167858927] ,
+                    [0.07148941735475274,-0.07148941735475274] ,
+                    [0.045452333262015865,-0.045452335372029654] ,
+                    [0.026978894053653134,-0.02697889306427509] ,
+                    [0.22237443246870706,0.07000954776715458] ,
+                    [0.25592920384567286,0.06256983163612563] ,
+                    [0.24266023291841535,0.039247204225922976] ,
+                    [0.24048330740511406,0.02711383738474224] ,
+                    [0.24997056119220248,0.02033482153680385] ,
+                    [0.25452610414564325,0.01572931070851829] ,
+                    [0.2704558078731677,0.01280107307435891] ,
+                    [0.28209766740115166,0.010572415678820214] ,
+                    [0.2692735316334735,0.008518274508956024] ,
+                    [0.27581305110135745,0.00722265411000659] ,
+                    [0.2885801768232318,0.006279639976373354] ,
+                    [0.3142335969754894,0.005779832502640239] ,
+                    [0.35345094438673325,0.005556993099299691] ,
+                    [0.3904119259869813,0.005290741120029142] ,
+                    [1.0,0.0]])
+        np.testing.assert_almost_equal(a     [-1][0], ref[:,0], 3)
+        np.testing.assert_almost_equal(aprime[-1][0], ref[:,1], 3)
 
 
         #import matplotlib.pyplot as plt

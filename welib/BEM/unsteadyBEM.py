@@ -179,17 +179,24 @@ class AeroBEM:
         self.rho     = F.AD['AirDens']
         self.kinVisc = F.AD['KinVisc']
 
-        self.nB   =  F.ED['NumBl']
+        # Aerodynamics
+        self.nB    = F.ED['NumBl']
         self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
-        chord = F.AD.Bld1['BldAeroNodes'][:,-2] 
-        self.chord=np.stack([chord]*self.nB)
-        #self.twist = F.AD.Bld1['BldAeroNodes'][:,-3]*nself.pi/180
-        #self.cone = -F.ED['PreCone(1)']*nself.pi/180
+        chord      = F.AD.Bld1['BldAeroNodes'][:,-2]
+        self.chord = np.stack([chord]*self.nB)
+        self.twist = F.AD.Bld1['BldAeroNodes'][:,-3]*np.pi/180
         polars=[]
         ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
         for ipolar in  ProfileID:
             polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
         self.polars = polars
+
+        # Input geometry (may be overriden by motion/simulations)
+        self.cone0     = F.ED['PreCone(1)']
+        self.tilt0     = F.ED['ShftTilt']
+        self.TowerHt   = F.ED['TowerHt']
+        self.OverHang  = F.ED['OverHang']
+        self.Twr2Shft  = F.ED['Twr2Shft']
 
         self._init()
 
@@ -202,7 +209,7 @@ class AeroBEM:
 
     def timeStepInit(self, t0, tmax, dt):
         """ Allocate storage for tiem step values"""
-        self.time=np.arange(t0,tmax,dt)
+        self.time=np.arange(t0,tmax+dt/2,dt)
         nt = len(self.time)
         nB = self.nB
         nr = len(self.r)
@@ -219,27 +226,20 @@ class AeroBEM:
         self.Ct     = np.zeros((nt,nB,nr))
         self.Cq     = np.zeros((nt,nB,nr))
         # Velocities
-        self.Vrel_n = np.zeros((nt,nB,nr)) # Un
-        self.Vrel_t = np.zeros((nt,nB,nr)) # Ut
-        self.Vrel_r = np.zeros((nt,nB,nr)) # Ur
+        self.Vrel_p = np.zeros((nt,nB,nr,3)) # Un,Ut,Ur
         self.Vrel_xa = np.zeros((nt,nB,nr)) # 
         self.Vrel_ya = np.zeros((nt,nB,nr)) # 
         self.Vrel_za = np.zeros((nt,nB,nr)) # 
-        self.Vind_n = np.zeros((nt,nB,nr))
-        self.Vind_t = np.zeros((nt,nB,nr))
-        self.Vind_qs_n = np.zeros((nt,nB,nr))
-        self.Vind_qs_t = np.zeros((nt,nB,nr))
+        self.Vind_p = np.zeros((nt,nB,nr,3))
+        self.Vind_s = np.zeros((nt,nB,nr,3))
+        self.Vind_qs_p = np.zeros((nt,nB,nr,3))
         self.Vflw_p = np.zeros((nt,nB,nr,3)) # Vwnd-Vstr
-        self.Vwnd_n = np.zeros((nt,nB,nr))
-        self.Vwnd_t = np.zeros((nt,nB,nr))
-        self.Vwnd_r = np.zeros((nt,nB,nr))
-        self.Vwnd_xs = np.zeros((nt,nB,nr))
-        self.Vwnd_ys = np.zeros((nt,nB,nr))
-        self.Vwnd_xa = np.zeros((nt,nB,nr))
-        self.Vwnd_ya = np.zeros((nt,nB,nr))
-        self.Vstr_n = np.zeros((nt,nB,nr))
-        self.Vstr_t = np.zeros((nt,nB,nr))
-        self.Vstr_r = np.zeros((nt,nB,nr))
+        self.Vflw_s = np.zeros((nt,nB,nr,3)) # Vwnd-Vstr
+        self.Vwnd_p = np.zeros((nt,nB,nr,3))
+        self.Vwnd_s = np.zeros((nt,nB,nr,3))
+        self.Vwnd_a = np.zeros((nt,nB,nr,3))
+        self.Vstr_p = np.zeros((nt,nB,nr,3))
+        self.Vstr_s = np.zeros((nt,nB,nr,3))
         self.Vstr_xa = np.zeros((nt,nB,nr))
         self.Vstr_ya = np.zeros((nt,nB,nr))
         self.Vrel   = np.zeros((nt,nB,nr))
@@ -250,19 +250,12 @@ class AeroBEM:
         self.D      = np.zeros((nt,nB,nr))
         self.Fn     = np.zeros((nt,nB,nr))
         self.Ft     = np.zeros((nt,nB,nr))
-        self.Fx_a   = np.zeros((nt,nB,nr))
-        self.Fy_a   = np.zeros((nt,nB,nr))
+        self.F_a   = np.zeros((nt,nB,nr,3))
+        self.F_s    = np.zeros((nt,nB,nr,3))
         self.Gamma  = np.zeros((nt,nB,nr))
         self.alpha  = np.zeros((nt,nB,nr))
         self.phi    = np.zeros((nt,nB,nr))
         self.Re     = np.zeros((nt,nB,nr))
-        # Advanced
-        self.Cx_s   = np.zeros((nt,nB,nr))
-        self.Cy_s   = np.zeros((nt,nB,nr))
-        self.Vstr_xs = np.zeros((nt,nB,nr))
-        self.Vstr_ys = np.zeros((nt,nB,nr))
-        self.Px_s   = np.zeros((nt,nB,nr))
-        self.Py_s   = np.zeros((nt,nB,nr))
         # Integrated values
         self.Thrust   = np.zeros(nt)
         self.Torque   = np.zeros(nt)
@@ -294,26 +287,31 @@ class AeroBEM:
         df['RtAeroMxh_[N-m]'] = self.Torque
         df['RtVAvgxh_[m/s]']  = self.RtVAvgxh
         df['RtArea_[m^2]']    = self.RtArea
-        # AeroDyn Fx/ Fy is "section coord" s, but we use polar here
+
+        Vflw_s = self.Vwnd_s-self.Vstr_s
+
+        # AeroDyn x-y is "section coord" s
+        # AeroDyn n-t is "airfoil coord" a
+        # AeroDyn doesn't have polar coord..
         for iB in np.arange(self.nB):
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.Fn[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.F_s[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] = self.Ft[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] =-self.F_s[:,iB,ir,1] # NOTE: weird sign
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] = self.Vflw_p[:,iB,ir,0]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] =      Vflw_s[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =-self.Vflw_p[:,iB,ir,1]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =      Vflw_s[:,iB,ir,1]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] = self.Vwnd_n[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] = self.Vwnd_s[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] =-self.Vwnd_t[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] = self.Vwnd_s[:,iB,ir,1]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_n[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_s[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = - self.Vstr_t[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = self.Vstr_s[:,iB,ir,1]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_r[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_s[:,iB,ir,2]
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vrel_[m/s]'] = self.Vrel[:,iB,ir]
             for ir in np.arange(len(self.r)):
@@ -323,16 +321,16 @@ class AeroBEM:
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Phi_[deg]'] = self.phi[:,iB,ir]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindx_[m/s]'] = self.Vind_n[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindx_[m/s]'] = self.Vind_s[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindy_[m/s]'] =-self.Vind_t[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindy_[m/s]'] = self.Vind_s[:,iB,ir,1]
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Alpha_[deg]'] = self.alpha[:,iB,ir]
         # AeroDyn "n-t", is almost like xa but y is switched
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.Fx_a[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.F_a[:,iB,ir,0]
             for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Ft_[N/m]'] =-self.Fy_a[:,iB,ir]
+                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Ft_[N/m]'] =-self.F_a[:,iB,ir,1]
             for ir in np.arange(len(self.r)):
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cl_[-]'] = self.Cl[:,iB,ir]
             for ir in np.arange(len(self.r)):
@@ -354,6 +352,7 @@ class AeroBEM:
             origin_pos_gl, omega_gl, R_b2g,  # Kinematics of rotor origin
             R_ntr2g, R_bld2b, # "polar grid to global" for each blade
             pos_gl, vel_gl, R_s2g, R_a2g,            # Kinematics of nodes
+            Vwnd_gl, # Wind at each positions in global
             firstCallEquilibrium=False
             ):
         """ 
@@ -385,7 +384,6 @@ class AeroBEM:
 # #     # Shaft vector coordinates
 # #     rs_in1 = np.transpose(a12) * WT.Shaft.rs_in2
         p = self # alias
-        Vwnd_gl = np.array([10,0,0]) # TODo
         ### Loop on blades
         # --------------------------------------------------------------------------------
         # --- Step 0: geometry 
@@ -419,7 +417,7 @@ class AeroBEM:
                 R_p2g = R_ntr2g[iB]
                 for ie in np.arange(nr):
                     # Velocity in global
-                    Vwnd_g = Vwnd_gl # TODO
+                    Vwnd_g = Vwnd_gl[iB,ie]
                     # NOTE: inductions from previous time step, in polar grid (more realistic than global)
                     #Vind_g = xd0.Vind_g[iB,ie] # dynamic inductions at previous time step
                     Vind_g = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
@@ -593,27 +591,21 @@ class AeroBEM:
         self.D[it]    = q_dyn * Cd
         self.Fn[it]   = q_dyn * C_p[:,:,0]
         self.Ft[it]   = q_dyn * C_p[:,:,1]
-        self.Fx_a[it] = q_dyn * C_xa
-        self.Fy_a[it] = q_dyn * C_ya
+        self.F_a[it,:,:,0] = q_dyn * C_xa
+        self.F_a[it,:,:,1] = q_dyn * C_ya
         # --- Velocities
-        #Vrel_a  = np.zeros((nB,nr,3))
-        self.AxInd[it] = a       # TODO TODO TODO >>> THIS SHOULD BE DYNAMIC
-        self.TnInd[it] = aprime       # TODO TODO TODO >>> THIS SHOULD BE DYNAMIC
+        a_dyn      =-xd1.Vind_p[:,:,0]/Vflw_p[:,:,0] 
+        aprime_dyn = xd1.Vind_p[:,:,1]/Vflw_p[:,:,1]
+        self.AxInd[it] = a_dyn      
+        self.TnInd[it] = aprime_dyn 
         self.Vrel[it]  = Vrel_norm
         # polar system (missing Vind)
-        self.Vrel_n[it]  = Vrel_p[:,:,0] # NOTE: Vrel is using previous inductions..
-        self.Vrel_t[it]  = Vrel_p[:,:,1]
-        self.Vrel_r[it]  = Vrel_p[:,:,2]
-        self.Vstr_n[it]  = Vstr_p[:,:,0]
-        self.Vstr_t[it]  = Vstr_p[:,:,1]
-        self.Vstr_r[it]  = Vstr_p[:,:,2]
-        self.Vwnd_n[it]  = Vwnd_p[:,:,0]
-        self.Vwnd_t[it]  = Vwnd_p[:,:,1]
-        self.Vwnd_r[it]  = Vwnd_p[:,:,2]
+        self.Vrel_p[it]  = Vrel_p[:,:,:] # NOTE: Vrel is using previous inductions..
+        self.Vstr_p[it]  = Vstr_p[:,:,:]
+        self.Vwnd_p[it]  = Vwnd_p[:,:,:]
         self.Vflw_p[it]  = Vflw_p[:,:,:]
-        self.Vind_qs_n[it] = xd1.Vind_qs_p[:,:,0]
-        self.Vind_qs_t[it] = xd1.Vind_qs_p[:,:,1]
-        self.RtVAvgxh[it]  = np.mean(Vwnd_p[:,:,0])
+        self.Vind_qs_p[it] = xd1.Vind_qs_p[:,:,:]
+        self.RtVAvgxh[it]  = np.mean(Vflw_p[:,:,0])
         # airfoil system
         self.Vrel_xa[it] = Vrel_a[:,:,0]
         self.Vrel_ya[it] = Vrel_a[:,:,1]
@@ -629,19 +621,25 @@ class AeroBEM:
             R_p2g = R_ntr2g[iB]
             for ie in np.arange(nr):
                 Vind_g = xd1.Vind_g[iB,ie] # dynamic inductions at current time step
-                #Vind_s = (R_s2g[iB,ie].T).dot(Vind_g) # Induced velocity in section coordinates
+                Vind_s = (R_s2g[iB,ie].T).dot(Vind_g) # Induced velocity in section coordinates
                 #Vind_a = (R_a2g[iB,ie].T).dot(Vind_g) # Induced velocity in airfoil coordinates
                 Vind_p = (R_p2g       .T).dot(Vind_g) # Induced velocity in polar coordinates
-                self.Vind_n[it,iB,ie] =Vind_p[0]
-                self.Vind_t[it,iB,ie] =Vind_p[1]
+                self.Vind_p[it,iB,ie,:] =Vind_p
+                self.Vind_s[it,iB,ie,:] =Vind_s
                 ## Wind
-                #Vwnd_g = Vwnd_gl
-                #Vwnd_s = (R_s2g[iB,ie].T).dot(Vwnd_gl) # Wind Velocity in section coordinates
+                Vwnd_g = Vwnd_gl[iB,ie]
+                Vwnd_s = (R_s2g[iB,ie].T).dot(Vwnd_g) # Wind Velocity in section coordinates
                 #Vwnd_a = (R_a2g[iB,ie].T).dot(Vwnd_gl) # Wind Velocity in airfoil coordinates
+                self.Vwnd_s[it,iB,ie,:]=Vwnd_s
                 ## Structural velocity
-                #Vstr_g = vel_gl[iB,ie]
-                #Vstr_s = (R_s2g[iB,ie].T).dot(Vstr_g) # Structural velocity in section coordinates
+                Vstr_g = vel_gl[iB,ie]
                 #Vstr_a = (R_a2g[iB,ie].T).dot(Vstr_g) # Structural velocity in airfoil coordinates
+                self.Vstr_s[it,iB,ie,:]=(R_s2g[iB,ie].T).dot(Vstr_g)
+                # --- Loads
+                F_g = q_dyn[iB,ie] * C_g[iB,ie]
+                self.F_s[it,iB,ie] = (R_s2g[iB,ie].T).dot(F_g)
+
+
             # Blade integrated loads
             self.BladeThrust[it] = np.trapz(self.Fn[it]  , r) # Normal to rotor plane
             self.BladeTorque[it] = np.trapz(self.Ft[it]*r, r) # About shaft 
@@ -668,8 +666,65 @@ class AeroBEM:
                 #  RES.Power = omega * RES.Torque
         return xd1
 
-from welib.yams.utils import R_x, R_y, R_z
+    def simulationConstantRPM(self, time, RPM, windSpeed=None, windExponent=None, windRefH=None, windFunction=None, cone=0, tilt=0, hubHeight=None, firstCallEquilibrium=True):
+        """ 
+        wrapper function to perform a simple simulation at constant RPM
+       
+        IINPUTS:
+        Different ways to specify wind:
+          - windSpeed: scalar, wind speed (at hub height) along x
+          - windExponent power law exponent speed for wind speed (None=uniform wind)
+          - windRefH reference height for power law
+        OR
+          - windFunction: function with interface: f(x,y,z,t)=u,v,w
+                       with x,y,z,u arrays of arbitrary shapes
 
+        - cone: override cone values, in degrees, OpenFAST convention
+        - tilt: override tilt values, in degrees, OpenFAST convention
+        - hubHeight: if provided, override the hubheight that is computed based on OverHang, Twr2Shaft and Tilt
+        - firstCallEquilibrium: if true, the inductions are set to the equilibrium values at t=0 (otherwise,0)
+
+        """
+        # --- Define motion
+        motion = PrescribedRotorMotion()
+        motion.init_from_BEM(self, tilt=tilt, cone=cone, psi0=0)
+        motion.setType('constantRPM', RPM=RPM)
+        if hubHeight is not None:
+            motion.origin_pos_gl0=np.array([0,0,hubHeight])
+
+        # --- Define wind function
+        if windFunction is None:
+            if windExponent is None:
+                windFunction = lambda x,y,z,t : (np.ones(x.shape)*windSpeed, np.zeros(x.shape), np.zeros(y.shape))
+            else:
+                if windRefH is None:
+                    raise Exception('Hub height needs to be provided')
+                windFunction = lambda x,y,z,t : (np.ones(x.shape)*windSpeed*(z/windRefH)**windExponent, np.zeros(x.shape), np.zeros(x.shape))
+
+        # --- Perform time loop
+        dt=time[1]-time[0]
+        xdBEM = self.getInitStates()
+        self.timeStepInit(time[0],time[-1],dt) 
+        for it,t in enumerate(self.time):
+            motion.update(t)
+            u,v,w = windFunction(motion.pos_gl[:,:,0], motion.pos_gl[:,:,1], motion.pos_gl[:,:,2], t)  
+            Vwnd_g = np.moveaxis(np.array([u,v,w]),0,-1) # nB x nr x 3
+            xdBEM = self.timeStep(t, dt, xdBEM, motion.psi,
+                    motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
+                    motion.R_ntr2g, motion.R_bld2b,
+                    motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
+                    Vwnd_g,
+                    firstCallEquilibrium= it==0 and firstCallEquilibrium
+                    )
+            if np.mod(t,1)<dt/2:
+                print(t)
+        df = self.toDataFrame()
+        return df
+
+# --------------------------------------------------------------------------------}
+# --- Helper class to prescribe a motion
+# --------------------------------------------------------------------------------{
+from welib.yams.utils import R_x, R_y, R_z
 class PrescribedRotorMotion():
     """ 
     Class to return:
@@ -691,51 +746,23 @@ class PrescribedRotorMotion():
         # Blades 
         self.R_bld2b=None # rotation matrix from blade to body
 
-    def init_from_FAST(self, FASTFileName, tilt=None, cone=None):
-        """ 
-        Initializes motion from a FAST input deck
-        Possibility to override the tilt and cone geometry:
-        tilt: tilt angle in deg, with OpenFAST convention
-        cone: cone angle in deg, with OpenFAST convention
-        
-        """
-        import welib.weio as weio
-        F=weio.FASTInputDeck(FASTFileName,readlist=['AD','ED'])
-
-        self.nB   =  F.ED['NumBl']
-        if cone is not None:
-            self.cone = -cone*np.pi/180
-        else:
-            self.cone = -F.ED['PreCone(1)']*np.pi/180 
-        self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
-        self.chord = F.AD.Bld1['BldAeroNodes'][:,-2] 
-        self.twist = F.AD.Bld1['BldAeroNodes'][:,-3]*np.pi/180
+    def init_from_inputs(self,  nB, r, twist, rotorOrigin, tilt, cone, psi0=0):
+        self.nB   =  nB
+        self.cone = cone*np.pi/180
+        self.tilt = -tilt*np.pi/180 
+        self.r     = r
+        self.twist = twist
         self.allocate()
+        self.origin_pos_gl0 = rotorOrigin
 
-        # Geometry
-        ED=F.ED
-        r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
-        r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
         # Basic geometries for nacelle
-        if tilt is not None:
-            theta_tilt_y = -tilt*np.pi/180 
-        else:
-            theta_tilt_y = -ED['ShftTilt']*np.pi/180 
-        R_NS = R_y(theta_tilt_y)  # Rotation fromShaft to Nacelle
-        r_NS_inN    = np.array([0             , 0, ED['Twr2Shft']]) # Shaft start in N
-        r_SR_inS    = np.array([ED['OverHang'], 0, 0             ]) # Rotor center in S
-        r_SGhub_inS = np.array([ED['HubCM']   , 0, 0             ]) + r_SR_inS # Hub G in S
-        r_NR_inN    = r_NS_inN + R_NS.dot(r_SR_inS)                 # Rotor center in N
-        r_NGnac_inN = np.array([ED['NacCMxn'],0,ED['NacCMzn']    ]) # Nacelle G in N
-        r_RGhub_inS = - r_SR_inS + r_SGhub_inS
-
-        self.R_b2g0 = R_NS
+        self.R_b2g0 = R_y(self.tilt)  # Rotation fromShaft to Nacelle
 
         # Orientation of blades with respect to body
         self.R_bld2b = [np.eye(3)]*self.nB
         self.R_ntr2b = [np.eye(3)]*self.nB
         for iB in np.arange(self.nB):
-            psi_B= -iB*2*np.pi/self.nB
+            psi_B= psi0 + -iB*2*np.pi/self.nB
             R_SB = R_x(psi_B) 
             self.R_bld2b[iB] = R_SB.dot(R_y(self.cone)) # blade2shaft
             self.R_ntr2b[iB] = R_SB.dot(np.array([[1,0,0],[0,-1,0],[0,0,1]])) # "n-t-r" to shaft
@@ -752,6 +779,24 @@ class PrescribedRotorMotion():
                 R_a2bld = R_z(-self.twist[ir]) # section to blade
                 self.R_a02b[iB,ir,:,:] = self.R_bld2b[iB].dot(R_a2bld)   # TODO curvature
                 self.R_s02b[iB,ir,:,:] = self.R_bld2b[iB]                # TODO curvature
+
+    def init_from_BEM(self, BEM, tilt=None, cone=None, psi0=0):
+        """ 
+        Initializes motion from a BEM class
+        Possibility to override the tilt and cone geometry:
+        tilt: tilt angle in deg, with OpenFAST convention
+        cone: cone angle in deg, with OpenFAST convention
+        
+        """
+        if tilt is None:
+            tilt=BEM.tilt0
+        if cone is None:
+            cone=BEM.cone0
+
+        rotorOrigin =[BEM.OverHang*np.cos(-tilt*np.pi/180), 0, BEM.TowerHt+BEM.Twr2Shft-BEM.OverHang*np.sin(-tilt*np.pi/180)]
+        print(rotorOrigin, BEM.TowerHt,tilt, BEM.OverHang, BEM.Twr2Shft)
+
+        self.init_from_inputs(BEM.nB, BEM.r, BEM.twist, rotorOrigin, tilt=tilt, cone=cone, psi0=0)
 
     def allocate(self):
         nr = len(self.r)
@@ -808,7 +853,7 @@ class PrescribedRotorMotion():
             pos = self.origin_pos_gl0+np.array([x,0,0])
             vel = np.array([xdot,0,0])
             ome = np.array([0,0,0])
-            R_b2g = np.eye(3)
+            R_b2g =self.R_b2g0
             self.rigidbodyKinUpdate(pos, vel, ome, R_b2g)
 
         elif self.sType=='constantRPM x-oscillation':
@@ -820,8 +865,8 @@ class PrescribedRotorMotion():
             psi = t*omegapsi
             pos = self.origin_pos_gl0+np.array([x,0,0])
             vel = np.array([xdot,0,0])
-            ome = np.array([omegapsi,0,0])
-            R_b2g = R_x(psi)
+            ome = self.R_b2g0.dot(np.array([omegapsi,0,0]))
+            R_b2g = self.R_b2g0.dot(R_x(psi))
             self.rigidbodyKinUpdate(pos, vel, ome, R_b2g)
             self.psi=psi # hack
         else:
@@ -893,44 +938,54 @@ if __name__=="__main__":
 #     BEM.TipLossMethod = 'Glauert'  # type of tip loss model
 #     BEM.bDynaStall = True # dynamic stall model
     BEM.bDynaWake = False # dynamic inflow model
-    BEM.bDynaWake = True # dynamic inflow model
+#     BEM.bDynaWake = True # dynamic inflow model
 #     BEM.bYawModel = True # Yaw correction
 #     BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
 #     BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
     BEM.relaxation = 0.5
 
-    # --- Read a FAST model to get structural parameters for blade motion
-    motion = PrescribedRotorMotion()
-    motion.init_from_FAST('./Main_Onshore_OF2.fst', tilt=None, cone=0)
-    motion.setType('constantRPM', RPM=10.0)
-    #motion.setType('constantRPM x-oscillation', RPM=12.1, frequency=1.1, amplitude=20)
 
-    dt=0.05
-    dtRadOut=1.0
-    tmax=10
-    
-    xdBEM = BEM.getInitStates()
+#          10   HWindSpeed     - Horizontal windspeed                            (m/s)
+#          90   RefHt         - Reference height for horizontal wind speed      (m)
+#         0.1   PLexp          - Power law exponent                              (-)
 
-    # Allocate
-    BEM.timeStepInit(0,tmax,dt) 
-
-    for it,t in enumerate(BEM.time):
-        motion.update(t)
-        xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
-                motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                motion.R_ntr2g, motion.R_bld2b,
-                motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
-                firstCallEquilibrium=it==0
-#                 firstCallEquilibrium=it==0
-                )
-        if np.mod(t,dtRadOut)<dt/2:
-            #print(t)
-            #dfRad = BEM.toDataFrameRadial(it)
-            #dfRad.to_csv('_BEMRad_t{:04d}.csv'.format(it), index=False)
-            pass
-    df = BEM.toDataFrame()
+    time=np.arange(0,10,0.05)
+    RPM=10
+    df= BEM.simulationConstantRPM(time, RPM, windSpeed=10, windExponent=0.1, windRefH=90, windFunction=None, cone=None, tilt=None, firstCallEquilibrium=True)
     df.to_csv('_BEM.csv', index=False)
 
-    #ani = motion.plotAnim(0,10,0.01, ylim=[-80,80], zlim=[-80,80])
-    plt.show()
+#     # --- Read a FAST model to get structural parameters for blade motion
+#     motion = PrescribedRotorMotion()
+#     motion.init_from_FAST('./Main_Onshore_OF2.fst', tilt=0, cone=0)
+#     motion.setType('constantRPM', RPM=10.0)
+#     #motion.setType('constantRPM x-oscillation', RPM=12.1, frequency=1.1, amplitude=20)
+# 
+#     dt=0.05
+#     dtRadOut=1.0
+#     tmax=10
+#     
+#     xdBEM = BEM.getInitStates()
+# 
+#     # Allocate
+#     BEM.timeStepInit(0,tmax,dt) 
+# 
+#     for it,t in enumerate(BEM.time):
+#         motion.update(t)
+#         xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
+#                 motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
+#                 motion.R_ntr2g, motion.R_bld2b,
+#                 motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
+#                 firstCallEquilibrium=it==0
+# #                 firstCallEquilibrium=it==0
+#                 )
+#         if np.mod(t,dtRadOut)<dt/2:
+#             #print(t)
+#             #dfRad = BEM.toDataFrameRadial(it)
+#             #dfRad.to_csv('_BEMRad_t{:04d}.csv'.format(it), index=False)
+#             pass
+#     df = BEM.toDataFrame()
+#     df.to_csv('_BEM.csv', index=False)
+# 
+#     #ani = motion.plotAnim(0,10,0.01, ylim=[-80,80], zlim=[-80,80])
+#     plt.show()
 
