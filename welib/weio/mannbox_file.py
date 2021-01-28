@@ -21,7 +21,7 @@ import os
 import struct
 
 try:
-    from .file import EmptyFileError 
+    from .file import File, EmptyFileError 
 except:
     EmptyFileError = type('EmptyFileError', (Exception,),{})
     File=dict
@@ -105,13 +105,21 @@ class MannBoxFile(File):
         pass
 
     # Useful converters
-    def fromTurbSim(self,u,icomp=0):
+    def fromTurbSim(self,u,icomp=0, removeConstant=None, removeAllMean=False):
         """ 
         Assumes: 
              u (3 x nt x ny x nz)
-        Removes the mean of the turbsim file
+        Removes the mean of the turbsim file for the "u" component.
         """
-        self['field'] = u[icomp, :, : ,: ]-np.mean(u[icomp,:,:,:],axis=0)
+        if icomp==0:
+            if removeAllMean is True:
+                self['field'] = u[icomp, :, : ,: ]-np.mean(u[icomp,:,:,:],axis=0)
+            elif removeConstant is not None:
+                self['field'] = u[icomp, :, : ,: ]-removeConstant
+            else:
+                self['field'] = u[icomp, :, : ,: ]
+        else:
+            self['field'] = u[icomp, :, : ,: ]
 
 if __name__=='__main__':
     mb = MannBoxFile('mann_bin/mini-u.bin', N=(2,4,8))

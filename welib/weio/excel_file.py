@@ -24,7 +24,10 @@ class ExcelFile(File):
     def _read(self):
         self.data=dict()
         # Reading all sheets
-        xls = pd.ExcelFile(self.filename)
+        try:
+            xls = pd.ExcelFile(self.filename,  engine='openpyxl')
+        except:
+            xls = pd.ExcelFile(self.filename)
         dfs = {}
         for sheet_name in xls.sheet_names:
             # Reading sheet

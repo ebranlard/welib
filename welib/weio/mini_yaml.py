@@ -3,7 +3,7 @@ from __future__ import print_function
 from io import open
 import numpy as np
 
-def yaml_read(filename):
+def yaml_read(filename,dictIn=None):
     """
     read yaml files only supports:
        - Key value pairs: 
@@ -19,7 +19,11 @@ def yaml_read(filename):
     with open(filename, 'r', errors="surrogateescape") as f:
         lines=f.read().splitlines()
 
-    d=dict()
+
+    if dictIn is None:
+        d=dict()
+    else:
+        d=dictIn
 
     def cleanComment(l):
         """ remove comments from a line"""

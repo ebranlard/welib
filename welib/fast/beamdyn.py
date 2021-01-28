@@ -2,6 +2,14 @@ import numpy as np
 from numpy import cos, sin
 import pandas as pd
 import os
+try:
+    import welib.weio as weio
+except:
+    try:
+        import weio
+    except:
+        print('[WARN] Not possible to write BD main file without weio library (https://github.com/ebranlard/weio)')
+
 
 
 # --------------------------------------------------------------------------------}
@@ -252,15 +260,6 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
 
     # --- Writing BeamDyn main file based on template file
     if BDMainTemplate is not None and BDMainFileOut is not None:
-        try:
-            import welib.weio as weio
-        except:
-            try:
-                import weio
-            except:
-                print('[WARN] Not writing BD main file without weio library (https://github.com/ebranlard/weio)')
-                return
-
         BD=weio.FASTInFile(BDMainTemplate)
         #print(BD.keys())
         BD.data[1]['value']=Label
@@ -397,6 +396,267 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         fig.savefig(BDMainFileOut.replace('.dat','.png'))
 
         plt.show()
+
+
+
+# --------------------------------------------------------------------------------}
+# ---  
+# --------------------------------------------------------------------------------{
+def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=None, E=None, G=None):
+    # --- Read BeamDyn files
+    bdLine = weio.read(BD_mainfile).toDataFrame()
+    bd    = weio.read(BD_bladefile).toDataFrame()
+
+    # --- Extract relevant info
+    prop  = bd['BeamProperties']
+    kp_x  = bdLine['kp_xr_[m]'].values
+    kp_y  = bdLine['kp_yr_[m]'].values
+    kp_z  = bdLine['kp_zr_[m]'].values
+    twist = bdLine['initial_twist_[deg]'].values
+    r_bar = prop['Span'].values
+
+    K = np.zeros((6,6),dtype='object')
+    M = np.zeros((6,6),dtype='object')
+    for i in np.arange(6):
+        for j in np.arange(6):
+            K[i,j]=prop['K{}{}'.format(i+1,j+1)].values
+            M[i,j]=prop['M{}{}'.format(i+1,j+1)].values
+
+    # Map 6x6 data to "beam" data
+    EA, EIx, EIy, kxsGA, kysGA, GKt, x_C, y_C, x_S, y_S, theta_p, theta_s = K66toProps(K)
+    m, Ixi, Iyi, Ip, x_G, y_G, theta_i = M66toProps(M)
+
+    # Convert to Hawc2 system
+    dfMeanLine , dfStructure = BeamDyn2Hawc2_raw(
+            kp_x, kp_y, kp_z, twist, r_bar,
+            m, Ixi, Iyi, x_G, y_G, theta_i,
+            EA, EIx, EIy, GKt, kxsGA, kysGA, x_C, y_C, theta_p, x_S, y_S, theta_s, 
+            A=None, E=None, G=None)
+
+    # --- Rewrite st file
+    with open(H2_stfile, 'w') as f:
+        f.write('%i ; number of sets, Nset\n' % 1)
+        f.write('-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n')
+        f.write('#%i ; set number\n' % 1)
+        f.write('r                m        x_cg       y_cg         ri_x       ri_y         x_sh        y_sh            E                   G               I_x         I_y          I_p         k_x         k_y           A       pitch          x_e        y_e\n')
+        f.write('$%i %i\n' % (1, dfStructure.shape[0]))
+        f.write('\n'.join('\t'.join('%19.13e' %x for x in y) for y in dfStructure.values))
+
+    # --- Rewrite st file
+    def readToMarker(lines, marker, i, nMax=None, noException=False):
+        l_sel=[]
+        if nMax is None: nMax=len(lines)
+        while i<nMax:
+            line=lines[i]
+            if line.replace(' ','').lower().find(marker)>=0:
+                break
+            l_sel.append(line.strip())
+            i+=1
+        if line.strip().replace(' ','').lower().find(marker)<0:
+            if noException:
+                return None, None, None
+            else:
+                raise Exception('Marker not found '+ marker)
+        return l_sel, line, i
+
+    with open(H2_htcfile, 'r') as f:
+        lines_in = f.readlines()
+    lines_out = []
+    bodyNotFound=True
+    while bodyNotFound:
+        _, line, iBodyStart = readToMarker(lines_in, 'beginmain_body',0)
+        _, line, iBodyEnd = readToMarker(lines_in, 'endmain_body', iBodyStart)
+        _, line, iBody = readToMarker(lines_in, 'name'+bodyname, iBodyStart, iBodyEnd, True)
+        if line is None:
+            iBody=-1
+        else:
+            bodyNotFound=False
+
+    _, line, iC2Start = readToMarker(lines_in, 'beginc2_def', iBodyStart, iBodyEnd)
+    _, line, iC2End   = readToMarker(lines_in, 'endc2_def'  , iC2Start, iBodyEnd)
+
+    _, line, iTIStart = readToMarker(lines_in, 'begintimoschenko_input', iBodyStart, iBodyEnd)
+    _, line, iTIEnd   = readToMarker(lines_in, 'endtimoschenko_input'  , iTIStart, iBodyEnd)
+
+
+    simdir        = os.path.dirname(H2_htcfile)
+    H2_stfile_rel = os.path.relpath(H2_stfile, simdir)
+
+    lines_out  = lines_in[:iTIStart+1]
+    lines_out += ['      filename {};\n'.format(H2_stfile_rel)]
+    lines_out += ['      set 1 1 ;\n']
+    lines_out += lines_in[iTIEnd:iC2Start+1]
+    lines_out += ['      nsec {} ;\n'.format(dfMeanLine.shape[0])]
+    for i, row in dfMeanLine.iterrows():
+        lines_out += ['      sec {:4d}\t{:13.6e}\t{:13.6e}\t{:13.6e}\t{:13.6e};\n'.format(i+1, row['X_[m]'],row['Y_[m]'],row['Z_[m]'],row['Twist_[deg]'])]
+    lines_out += lines_in[iC2End:]
+
+    with open(H2_htcfile, 'w') as f:
+        f.write(''.join(lines_out))
+
+
+def BeamDyn2Hawc2_raw(kp_x, kp_y, kp_z, twist, r_bar,
+        m, Ixi, Iyi, x_G, y_G, theta_i, 
+        EA, EIx, EIy, GKt, kxsGA, kysGA, x_C, y_C, theta_p, x_S, y_S, theta_s, 
+        A=None, E=None, G=None):
+    """ """
+    # --- BeamDyn to Hawc2 Structural data
+    if A is None: A = np.ones(x_G.shape)
+    if E is None: E = EA/A
+    if G is None: G = E/2/(1+0.3) # Young modulus
+    # Hawc2 = BeamDyn
+    x_cg    = -y_G
+    y_cg    = x_G
+    x_sh    = -y_S
+    y_sh    = x_S
+    x_e     = -y_C
+    y_e     = x_C
+    I_y     = EIx/E            # [m^4]
+    I_x     = EIy/E            # [m^4]
+    I_p     = GKt/G            # [m^4]
+    k_y     = kxsGA/(G*A)
+    k_x     = kysGA/(G*A)
+    pitch   = theta_p*180/np.pi # [deg] NOTE: could use theta_p, theta_i or theta_s
+    ri_y    = np.sqrt(Ixi/m)    # [m]
+    ri_x    = np.sqrt(Iyi/m)    # [m]
+    r= r_bar * (kp_z[-1]-kp_z[0]) # TODO?
+
+    columns=['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]','ri_y_[m]','x_sh_[m]','y_sh_[m]','E_[N/m^2]','G_[N/m^2]','I_x_[m^4]','I_y_[m^4]','I_p_[m^4]','k_x_[-]','k_y_[-]','A_[m^2]','pitch_[deg]','x_e_[m]','y_e_[m]']
+    data = np.column_stack((r,m,x_cg,y_cg,ri_x, ri_y, x_sh, y_sh, E, G, I_x, I_y, I_p, k_x, k_y, A, pitch, x_e, y_e))
+    dfStructure = pd.DataFrame(data=data, columns=columns)
+
+    # --- BeamDyn to Hawc2 Reference axis
+    X_H2     = -kp_y
+    Y_H2     = kp_x
+    Z_H2     = kp_z
+    twist_H2 = - twist # [deg]
+    columns=['X_[m]', 'Y_[m]', 'Z_[m]', 'Twist_[deg]']
+    data = np.column_stack((X_H2, Y_H2, Z_H2, twist))
+    dfMeanLine = pd.DataFrame(data=data, columns=columns)
+
+    return dfMeanLine, dfStructure
+
+
+# --------------------------------------------------------------------------------}
+# --- Functions for 6x6 matrices 
+# --------------------------------------------------------------------------------{
+def M66toProps(M, convention='BeamDyn'):
+    """ 
+    Convert mass properties of a 6x6 section to beam properties
+    This assumes that the axial and bending loads are decoupled.
+
+    INPUTS:
+     - M : 6x6 array of mass elements. Each element may be an array (e.g. for all spanwise values)
+     OUTPUTS:
+      - m: section mass
+      - Ixx, Iyy, Ixy: area moment of inertia
+      - x_G, y_G
+    """
+    M11=M[0,0]
+    M44=M[3,3]
+    M55=M[4,4]
+    M66=M[5,5]
+    M16=M[0,5]
+    M26=M[1,5]
+    M45=M[3,4]
+
+    m=M11
+    if convention=='BeamDyn':
+        y_G= -M16/m
+        x_G=  M26/m
+        # sanity
+        np.testing.assert_array_almost_equal([M[0,3],M[0,4]],[0*M[0,3],0*M[0,3]])
+        np.testing.assert_array_almost_equal([M[1,3],M[1,4]],[0*M[0,3],0*M[0,3]])
+        np.testing.assert_array_almost_equal([M[3,5],M[4,5]],[0*M[0,3],0*M[0,3]])
+        
+        Ixx =  M44-m*y_G**2
+        Iyy = M55-m*x_G**2
+        Ixy = -M45-m*x_G*y_G
+        Ipp =  M66-m*x_G**2 -m*y_G**2
+
+        if np.all(np.abs(Ixy))<1e-16:
+            # NOTE: Assumes theta_i ==0
+            Ixi     = Ixx
+            Iyi     = Iyy
+            theta_i = Ixx*0
+        else:
+            raise NotImplementedError('Solve for EI and thetap using H')
+
+        np.testing.assert_array_almost_equal(Ipp, Ixx+Iyy)
+        np.testing.assert_array_almost_equal(Ipp, Ixi+Iyi)
+         
+    else:
+        raise NotImplementedError()
+
+    return m, Ixi, Iyi, Ipp, x_G, y_G, theta_i
+
+
+def K66toProps(K, convention='BeamDyn'):
+    """ 
+    Convert stiffness properties of a 6x6 section to beam properties
+    This assumes that the axial and bending loads are decoupled.
+
+    INPUTS:
+     - K : 6x6 array of stiffness elements. Each element may be an array (e.g. for all spanwise values)
+     OUTPUTS:
+     - EA, EIx, EIy: axial and bending stiffnesses
+     - kxGA, kyGA, GKt: shear and torsional stiffness
+     - xC,yC : centroid
+     - xS,yS : shear center
+     - theta_p, theta_s: angle to principal axes and shear axes
+    """
+    K11=K[0,0]
+    K22=K[1,1]
+    K33=K[2,2]
+    K44=K[3,3]
+    K55=K[4,4]
+    K66=K[5,5]
+
+    K12=K[0,1]
+    K16=K[0,5]
+    K26=K[1,5]
+    K34=K[2,3]
+    K35=K[2,4]
+    K45=K[3,4]
+
+    if convention=='BeamDyn':
+        # --- EA, EI, centroid, principal axes
+        EA =  K33
+        yC =  K34/EA
+        xC = -K35/EA
+        Hxx=  K44-EA*yC**2
+        Hyy=  K55-EA*yC**2
+        Hxy= -K45+EA*xC*yC
+
+        if np.all(np.abs(Hxy))<1e-16:
+            # NOTE: Assumes theta_p ==0
+            EIx = Hxx
+            EIy = Hyy
+            theta_p=0*EA
+        else:
+            raise NotImplementedError('Solve for EI and thetap using H')
+
+        # --- Torsion, shear terms, shear center
+        Kxx =  K11
+        Kxy = -K12
+        Kyy =  K22
+        yS  = (Kyy*K16+Kxy*K26)/(-Kyy*Kxx + Kxy**2)
+        xS  = (Kxy*K16+Kxx*K26)/( Kyy*Kxx - Kxy**2)
+        GKt = K66 - Kxx*yS**2 -2*Kxy*xS*yS - Kyy*xS**2
+        if np.all(np.abs(Kxy))<1e-16:
+            # Assumes theta_s=0
+            kxsGA = Kxx
+            kysGA = Kyy
+            theta_s=0*EA
+        else:
+            raise NotImplementedError('Solve for kx and thetas using K')
+        # sanity check
+        np.testing.assert_array_almost_equal(K16, -Kxx*yS-Kxy*xS)
+    else:
+        raise NotImplementedError()
+
+    return EA, EIx, EIy, kxsGA, kysGA, GKt, xC, yC, xS, yS, theta_p, theta_s
+
 # --------------------------------------------------------------------------------}
 # --- Bauchau 
 # --------------------------------------------------------------------------------{
@@ -496,6 +756,7 @@ def MM(m,I_x,I_y,I_p,x_G=0,y_G=0,theta_i=0):
 if __name__=='__main__':
     np.set_printoptions(linewidth=300)
 
+	# ---  Hawc2 to BeamDyn
     H2MeanLine     = '../../data/Hawc2/Blade_Planform_Hawc2.csv' # csv file with c2def columns: ['X_[m]','Y_[m]','Z_[m]','Twist_theta_z_[deg]']
     H2Structure    = '../../data/Hawc2/Blade_Structural_Hawc2.csv' # csv file with columns ['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]',... ,'x_e_[m]','y_e_[m]']
     BDMainTemplate = '../../data/Hawc2/BD.dat'  # template file to write main BD file
@@ -504,5 +765,19 @@ if __name__=='__main__':
     BDBldOut       = 'BD_Blade_Smooth.dat' 
     Mu             = [0.001]*6 # damping
     hawc2tobeamdyn(H2MeanLine, H2Structure, BDBldOut, BDOut, BDMainTemplate, Mu=Mu, poly_exp=[2,3,4,5], bPlot=False)
+
+
+
+    # --- BeamDyn 2 Hawc 2
+    BD_mainfile  = 'solid_beam_BeamDyn.dat'
+    BD_bladefile = '../solid_beam_BeamDyn_Blade.dat'
+    H2_htcfile_old  = './_template.htc'
+    H2_htcfile_new  = './solid_beam_hawc2.htc'
+    H2_stfile    = './solid_beam_st.dat'
+
+    from shutil import copyfile
+    copyfile(H2_htcfile_old, H2_htcfile_new)
+
+    BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile_new, H2_stfile, 'beam_1', A=None, E=None, G=None)
 
 

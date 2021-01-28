@@ -33,7 +33,7 @@ def main(test=False):
         motion.update(t)
         u,v,w = windFunction(motion.pos_gl[:,:,0], motion.pos_gl[:,:,1], motion.pos_gl[:,:,2], t)  
         Vwnd_g = np.moveaxis(np.array([u,v,w]),0,-1) # nB x nr x 3
-        xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
+        xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi, motion.psi_B0,
                 motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
                 motion.R_ntr2g, motion.R_bld2b,
                 motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,

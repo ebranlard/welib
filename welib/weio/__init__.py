@@ -15,18 +15,23 @@ from .hawcstab2_ind_file      import HAWCStab2IndFile
 from .flex_blade_file         import FLEXBladeFile
 from .flex_profile_file       import FLEXProfileFile
 from .flex_out_file           import FLEXOutFile
+from .flex_doc_file           import FLEXDocFile
+from .flex_wavekin_file       import FLEXWaveKinFile
 from .excel_file              import ExcelFile
 from .turbsim_ts_file         import TurbSimTSFile
 from .turbsim_file            import TurbSimFile
 from .netcdf_file             import NetCDFFile
 from .tdms_file               import TDMSFile
+from .tecplot_file            import TecplotFile 
 
 class FormatNotDetectedError(Exception):
     pass
 
 def fileFormats():
+    from .vtk_file import VTKFile
     formats = []
     formats.append(FileFormat(CSVFile))
+    formats.append(FileFormat(TecplotFile))
     formats.append(FileFormat(ExcelFile))
     formats.append(FileFormat(FASTInputFile))
     formats.append(FileFormat(FASTOutputFile))
@@ -43,7 +48,10 @@ def fileFormats():
     formats.append(FileFormat(FLEXBladeFile))
     formats.append(FileFormat(FLEXProfileFile))
     formats.append(FileFormat(FLEXOutFile))
+    formats.append(FileFormat(FLEXWaveKinFile))
+    formats.append(FileFormat(FLEXDocFile))
     formats.append(FileFormat(NetCDFFile))
+    formats.append(FileFormat(VTKFile))
     formats.append(FileFormat(TDMSFile)) 
     return formats
 

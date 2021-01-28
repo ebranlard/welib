@@ -54,11 +54,47 @@ class HAWC2DatFile(File):
         #self.data.to_csv(self.filename,sep=self.false,index=False)
 
     def _toDataFrame(self):
+        import re
+
+        # Simplify output names
+        names=self.info['attribute_names']
+        for i,desc in enumerate(self.info['attribute_descr']):
+            elem = re.findall('E-nr:\s*(\d+)', desc)
+            zrel = re.findall('Z-rel:\s*(\d+.\d+)', desc)
+            node = re.findall('nodenr:\s*(\d+)', desc)
+            mbdy = re.findall('Mbdy:([-a-zA-Z0-9_.]*) ', desc)
+
+            pref=''
+            names[i] = names[i].replace(' ','')
+            names[i] = names[i].replace('coo:global','g').strip()
+            names[i] = names[i].replace('Statepos','').strip()
+            names[i] = names[i].replace('axisangle','rot_').strip()
+
+            if len(mbdy)==1:
+                names[i] = names[i].replace('coo:'+mbdy[0],'b').strip()
+                pref += mbdy[0]
+
+            if len(zrel)==1 and len(elem)==1:
+                ielem=int(elem[0])
+                fzrel=float(zrel[0])
+                if fzrel==0:
+                    pref+= 'N'+str(ielem)
+                elif fzrel==1:
+                    pref+='N'+str(ielem+1)
+                else:
+                    pref+='N'+str(ielem+fzrel)
+
+            if len(node)==1:
+                pref+='N'+node[0]
+            names[i]=pref+names[i]
+
         if self.info['attribute_units'] is not None:
             units = [u.replace('(','').replace(')','').replace('[','').replace(']','') for u in self.info['attribute_units']]
-            cols=[n+'_['+u+']' for n,u in zip(self.info['attribute_names'],units)]
+
+            cols=[n+'_['+u+']' for n,u in zip(names,units)]
         else:
-            cols=self.info['attribute_names']
+            cols=names
+
         return pd.DataFrame(data=self.data,columns=cols)
 #
     def _write(self):

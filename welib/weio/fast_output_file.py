@@ -63,11 +63,13 @@ class FASTOutputFile(File):
 
         ext = os.path.splitext(self.filename.lower())[1]
         self.info={}
+        self['binary']=False
         try:
             if ext in ['.out','.elev']:
                 self.data, self.info = load_ascii_output(self.filename)
             elif ext=='.outb':
                 self.data, self.info = load_binary_output(self.filename)
+                self['binary']=True
             elif ext=='.elm':
                 F=CSVFile(filename=self.filename, sep=' ', commentLines=[0,2],colNamesLine=1)
                 self.data = F.data
@@ -85,8 +87,17 @@ class FASTOutputFile(File):
             self.info['attribute_units'] = [re.sub('[()\[\]]','',u) for u in self.info['attribute_units']]
 
 
-    #def _write(self): # TODO
-    #    pass
+    def _write(self): 
+        if self['binary']:
+            # TODO
+            raise NotImplementedError()
+
+        # ascii output
+        with open(self.filename,'w') as f:
+            f.write('\t'.join(['{:>10s}'.format(c)         for c in self.info['attribute_names']])+'\n')
+            f.write('\t'.join(['{:>10s}'.format('('+u+')') for u in self.info['attribute_units']])+'\n')
+            # TODO better..
+            f.write('\n'.join(['\t'.join(['{:10.4f}'.format(y[0])]+['{:10.3e}'.format(x) for x in y[1:]]) for y in self.data]))
 
     def _toDataFrame(self):
         if self.info['attribute_units'] is not None:
