@@ -438,7 +438,8 @@ def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=
         f.write('%i ; number of sets, Nset\n' % 1)
         f.write('-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n')
         f.write('#%i ; set number\n' % 1)
-        f.write('r                m        x_cg       y_cg         ri_x       ri_y         x_sh        y_sh            E                   G               I_x         I_y          I_p         k_x         k_y           A       pitch          x_e        y_e\n')
+        cols=['r','m','x_cg','y_cg','ri_x','ri_y','x_sh','y_sh','E','G','I_x','I_y','I_p','k_x','k_y','A','pitch','x_e','y_e']
+        f.write('\t'.join(['{:19s}'.format(s) for s in cols])+'\n')
         f.write('$%i %i\n' % (1, dfStructure.shape[0]))
         f.write('\n'.join('\t'.join('%19.13e' %x for x in y) for y in dfStructure.values))
 
@@ -463,14 +464,20 @@ def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=
         lines_in = f.readlines()
     lines_out = []
     bodyNotFound=True
-    while bodyNotFound:
-        _, line, iBodyStart = readToMarker(lines_in, 'beginmain_body',0)
+    iBodyEnd=0
+    nBodies=0
+    while bodyNotFound and nBodies<10:
+        _, line, iBodyStart = readToMarker(lines_in, 'beginmain_body',iBodyEnd)
         _, line, iBodyEnd = readToMarker(lines_in, 'endmain_body', iBodyStart)
         _, line, iBody = readToMarker(lines_in, 'name'+bodyname, iBodyStart, iBodyEnd, True)
+        nBodies+=1
         if line is None:
             iBody=-1
         else:
+            print('Body {} found between lines {} and {} '.format(bodyname, iBodyStart+1, iBodyEnd+1))
             bodyNotFound=False
+    if nBodies>=10:
+        raise Exception('Body {} not found in file'.format(bodyname))
 
     _, line, iC2Start = readToMarker(lines_in, 'beginc2_def', iBodyStart, iBodyEnd)
     _, line, iC2End   = readToMarker(lines_in, 'endc2_def'  , iC2Start, iBodyEnd)
@@ -504,6 +511,7 @@ def BeamDyn2Hawc2_raw(kp_x, kp_y, kp_z, twist, r_bar,
     if A is None: A = np.ones(x_G.shape)
     if E is None: E = EA/A
     if G is None: G = E/2/(1+0.3) # Young modulus
+#     import pdb; pdb.set_trace()
     # Hawc2 = BeamDyn
     x_cg    = -y_G
     y_cg    = x_G
@@ -517,8 +525,12 @@ def BeamDyn2Hawc2_raw(kp_x, kp_y, kp_z, twist, r_bar,
     k_y     = kxsGA/(G*A)
     k_x     = kysGA/(G*A)
     pitch   = theta_p*180/np.pi # [deg] NOTE: could use theta_p, theta_i or theta_s
-    ri_y    = np.sqrt(Ixi/m)    # [m]
-    ri_x    = np.sqrt(Iyi/m)    # [m]
+    if np.all(np.abs(m))<1e-16:
+        ri_y    = m*0
+        ri_x    = m*0
+    else:
+        ri_y    = np.sqrt(Ixi/m)    # [m]
+        ri_x    = np.sqrt(Iyi/m)    # [m]
     r= r_bar * (kp_z[-1]-kp_z[0]) # TODO?
 
     columns=['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]','ri_y_[m]','x_sh_[m]','y_sh_[m]','E_[N/m^2]','G_[N/m^2]','I_x_[m^4]','I_y_[m^4]','I_p_[m^4]','k_x_[-]','k_y_[-]','A_[m^2]','pitch_[deg]','x_e_[m]','y_e_[m]']
@@ -562,6 +574,9 @@ def M66toProps(M, convention='BeamDyn'):
 
     m=M11
     if convention=='BeamDyn':
+        if np.all(np.abs(m)<1e-16):
+            Ixi = Iyi = Ipp = x_G = y_G = theta_i = m*0
+            return m, Ixi, Iyi, Ipp, x_G, y_G, theta_i
         y_G= -M16/m
         x_G=  M26/m
         # sanity
@@ -580,7 +595,18 @@ def M66toProps(M, convention='BeamDyn'):
             Iyi     = Iyy
             theta_i = Ixx*0
         else:
-            raise NotImplementedError('Solve for EI and thetap using H')
+            Ixi = np.zeros(Ixx.shape)
+            Iyi = np.zeros(Ixx.shape)
+            theta_i = np.zeros(Ixx.shape)
+            for i, (hxx, hyy, hxy) in enumerate(zip(Ixx,Iyy,Ixy)):
+                Ixi[i],Iyi[i],theta_i[i] = solvexytheta(hxx,hyy,hxy)
+
+                MM2= MM(m[i],Ixi[i],Iyi[i],Ipp[i],x_G[i],y_G[i],theta_i[i])
+
+                np.testing.assert_allclose(MM2[3,3], M[3,3][i], rtol=1e-3)
+                np.testing.assert_allclose(MM2[4,4], M[4,4][i], rtol=1e-3)
+                np.testing.assert_allclose(MM2[5,5], M[5,5][i], rtol=1e-3)
+                np.testing.assert_allclose(MM2[3,4], M[3,4][i], rtol=1e-3)
 
         np.testing.assert_array_almost_equal(Ipp, Ixx+Iyy)
         np.testing.assert_array_almost_equal(Ipp, Ixi+Iyi)
@@ -589,6 +615,29 @@ def M66toProps(M, convention='BeamDyn'):
         raise NotImplementedError()
 
     return m, Ixi, Iyi, Ipp, x_G, y_G, theta_i
+
+def solvexytheta(Hxx,Hyy,Hxy):
+    """ 
+     Solve for a system of three unknown, used to get:
+       - EIy, EIx and thetap given Hxx,Hyy,Hxy
+       - kxs*GA, kys*GA and thetas given Kxx,Kyy,Kxy
+       - I_x, I_y and theta_is given Ixx,Iyy,Ixy
+    """
+    from scipy.optimize import fsolve
+    def residual(x):
+        EI_x, EI_y, theta_p =x
+        res=np.array([
+            Hxx - EI_x*np.cos(theta_p)**2 - EI_y*np.sin(theta_p)**2 ,
+            Hyy - EI_x*np.sin(theta_p)**2 - EI_y*np.cos(theta_p)**2,
+            Hxy - (EI_y-EI_x)*np.sin(theta_p)*np.cos(theta_p)]
+                ).astype(float)
+        return res
+    x0 = [Hxx,Hyy,0]
+    x_opt   = fsolve(residual, x0)
+    EI_x,EI_y,theta_p = x_opt
+    theta_p = np.mod(theta_p,2*np.pi)
+    return EI_x, EI_y, theta_p
+
 
 
 def K66toProps(K, convention='BeamDyn'):
@@ -633,8 +682,13 @@ def K66toProps(K, convention='BeamDyn'):
             EIx = Hxx
             EIy = Hyy
             theta_p=0*EA
+
         else:
-            raise NotImplementedError('Solve for EI and thetap using H')
+            EIx = np.zeros(Hxx.shape)
+            EIy = np.zeros(Hxx.shape)
+            theta_p = np.zeros(Hxx.shape)
+            for i, (hxx, hyy, hxy) in enumerate(zip(Hxx,Hyy,Hxy)):
+                EIx[i],EIy[i],theta_p[i] = solvexytheta(hxx,hyy,hxy)
 
         # --- Torsion, shear terms, shear center
         Kxx =  K11
@@ -645,13 +699,34 @@ def K66toProps(K, convention='BeamDyn'):
         GKt = K66 - Kxx*yS**2 -2*Kxy*xS*yS - Kyy*xS**2
         if np.all(np.abs(Kxy))<1e-16:
             # Assumes theta_s=0
-            kxsGA = Kxx
+            kxsGA = Kxx # Kxx = kxs*GA
             kysGA = Kyy
             theta_s=0*EA
         else:
-            raise NotImplementedError('Solve for kx and thetas using K')
-        # sanity check
-        np.testing.assert_array_almost_equal(K16, -Kxx*yS-Kxy*xS)
+            kxsGA = np.zeros(Kxx.shape)
+            kysGA = np.zeros(Kxx.shape)
+            theta_s = np.zeros(Hxx.shape)
+            for i, (kxx, kyy, kxy) in enumerate(zip(Kxx,Kyy,Kxy)):
+                kxsGA[i],kysGA[i],theta_p[i] = solvexytheta(kxx,kyy,kxy)
+
+
+
+        # sanity checks
+        KK2= KK(EA, EIx, EIy, GKt, EA*0+1, kxsGA, kysGA, xC, yC, theta_p, xS, yS, theta_s)
+        np.testing.assert_allclose(KK2[0,0], K[0,0], rtol=1e-2)
+        np.testing.assert_allclose(KK2[1,1], K[1,1], rtol=1e-2)
+        np.testing.assert_allclose(KK2[2,2], K[2,2], rtol=1e-2)
+        np.testing.assert_allclose(KK2[3,3], K[3,3], rtol=1e-1)
+#         np.testing.assert_allclose(KK2[4,4], K[4,4], rtol=1e-2)
+        np.testing.assert_allclose(KK2[5,5], K[5,5], rtol=1e-1)
+        np.testing.assert_allclose(KK2[2,3], K[2,3], rtol=1e-2)
+        np.testing.assert_allclose(KK2[2,4], K[2,4], rtol=1e-2)
+
+        np.testing.assert_allclose(K16, -Kxx*yS-Kxy*xS)
+#         np.testing.assert_allclose(KK2[0,5], K[0,5],rtol=1e-3)
+#         np.testing.assert_allclose(KK2[1,5], K[1,5],rtol=5e-2) # Kxy harder to get
+        #np.testing.assert_allclose(KK2[3,4], K[3,4]) # <<< hard to match
+
     else:
         raise NotImplementedError()
 
@@ -722,12 +797,12 @@ def KK(EA, EI_x, EI_y, GKt, GA, kxs, kys, x_C=0, y_C=0, theta_p=0, x_S=0, y_S=0,
     K_yy = GA * ( kxs*sin(theta_s)**2 + kys*cos(theta_s)**2   )
     K_xy = GA * ( (kys-kxs)*sin(theta_s)*cos(theta_s)         )
     return np.array([
-        [K_xx                 , -K_xy               , 0       , 0                  , 0                  , -K_xx*y_S - K_xy*x_S                             ] ,
-        [-K_xy                , K_yy                , 0       , 0                  , 0                  , K_xy*y_S + K_yy*x_S                              ] ,
-        [0                    , 0                   , EA      , EA*y_C             , -EA*x_C            , 0                                                ] ,
-        [0                    , 0                   , EA*y_C  , H_xx + EA*y_C**2   , -H_xy - EA*x_C*y_C , 0                                                ] ,
-        [0                    , 0                   , -EA*x_C , -H_xy - EA*x_C*y_C , H_yy + EA*x_C**2   , 0                                                ] ,
-        [-K_xx*y_S - K_xy*x_S , K_xy*y_S + K_yy*x_S , 0       , 0                  , 0                  , GKt + K_xx*y_S**2 + 2*K_xy*x_S*y_S + K_yy*x_S**2 ] 
+        [K_xx                 , -K_xy               , 0*EA    , 0*EA               , 0*EA               , -K_xx*y_S - K_xy*x_S                             ]    , 
+        [-K_xy                , K_yy                , 0*EA    , 0*EA               , 0*EA               , K_xy*y_S + K_yy*x_S                              ]    , 
+        [0*EA                 , 0*EA                , EA      , EA*y_C             , -EA*x_C            , 0*EA                                                ] , 
+        [0*EA                 , 0*EA                , EA*y_C  , H_xx + EA*y_C**2   , -H_xy - EA*x_C*y_C , 0*EA                                                ] , 
+        [0*EA                 , 0*EA                , -EA*x_C , -H_xy - EA*x_C*y_C , H_yy + EA*x_C**2   , 0*EA                                                ] , 
+        [-K_xx*y_S - K_xy*x_S , K_xy*y_S + K_yy*x_S , 0*EA    , 0*EA               , 0*EA               , GKt + K_xx*y_S**2 + 2*K_xy*x_S*y_S + K_yy*x_S**2 ]
         ])
 
 def MM(m,I_x,I_y,I_p,x_G=0,y_G=0,theta_i=0):
@@ -744,12 +819,12 @@ def MM(m,I_x,I_y,I_p,x_G=0,y_G=0,theta_i=0):
     Ixy = (I_y-I_x)*sin(theta_i)*cos(theta_i)
 
     return np.array([
-        [m      , 0     , 0      , 0                , 0                , -m*y_G]                    , 
-        [0      , m     , 0      , 0                , 0                , m*x_G]                     , 
-        [0      , 0     , m      , m*y_G            , -m*x_G           , 0]                         , 
-        [0      , 0     , m*y_G  , Ixx + m*y_G**2   , -Ixy - m*x_G*y_G , 0]                         , 
-        [0      , 0     , -m*x_G , -Ixy - m*x_G*y_G , Iyy + m*x_G**2   , 0]                         , 
-        [-m*y_G , m*x_G , 0      , 0                , 0                , I_p + m*x_G**2 + m*y_G**2]
+        [m      , 0*m     , 0*m      , 0*m                , 0*m                , -m*y_G]                    , 
+        [0*m      , m     , 0*m      , 0*m                , 0*m                , m*x_G]                     , 
+        [0*m      , 0*m     , m      , m*y_G            , -m*x_G           , 0*m]                         , 
+        [0*m      , 0*m     , m*y_G  , Ixx + m*y_G**2   , -Ixy - m*x_G*y_G , 0*m]                         , 
+        [0*m      , 0*m     , -m*x_G , -Ixy - m*x_G*y_G , Iyy + m*x_G**2   , 0*m]                         , 
+        [-m*y_G , m*x_G , 0*m      , 0*m                , 0*m                , I_p + m*x_G**2 + m*y_G**2]
         ])
 
 
