@@ -59,10 +59,27 @@ def main(test=False):
     if not test:
         dfOut.to_csv(filenameOut,sep='\t',index=False)
         print('>>>',filenameOut)
+        print(dfOut.keys())
+        # --- Plot
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(dfOut['WS_[m/s]'], dfOut['AeroPower_[kW]']    , label='Power')
+        ax.set_xlabel('Wind speed [m/s]')
+        ax.set_ylabel('[-]')
+        ax.legend()
+        ax.set_title('Steady BEM - Performance curve')
+        ax.tick_params(direction='in')
+
+
     return dfOut
 
 
 if __name__=="__main__":
     main()
+    plt.show()
 if __name__=="__test__":
     main(test=True)
+if __name__=="__export__":
+    main()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)

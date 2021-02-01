@@ -8,3 +8,6 @@ dep:
 
 install: dep
 	python -m pip install -e .
+
+export:
+	python -c 'from welib.tools.repo import *; export_figs_rec("welib/");'

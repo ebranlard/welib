@@ -25,9 +25,9 @@ def fIref(IEC_class='A'):
 def sigma1_ETM(WS, IEC_class='A'): 
     # "sigma1" from extreme turbulence model
     Iref = fIref(IEC_class)
-    c    = 2
-    Vave = 10
-    return  c * Iref * (0.072 * (Vave / c + 3) * (WS / c - 4) + 10)
+    c    = 2.
+    Vave = 10.
+    return  c * Iref * (0.072 * (Vave / c + 3.) * (WS / c - 4.) + 10.)
 
 def sigma1_NTM(WS, IEC_class='A'):
     # Normal turbulence model
@@ -38,11 +38,11 @@ def sigma1_NTM(WS, IEC_class='A'):
     
 def ETM(WS, IEC_class='A'): 
     # Turbulence intensity from extreme turbulence model
-    return sigma1_ETM(WS, IEC_class)* WS
+    return sigma1_ETM(WS, IEC_class)/ WS
 
 def NTM(WS, IEC_class='A'):
     # Turbulence intensity from normal turbulence model
-    return sigma1_ETM(WS, IEC_class)* WS
+    return sigma1_NTM(WS, IEC_class)/ WS
 
 def Lambda(zhub, IECedition=3):
     """

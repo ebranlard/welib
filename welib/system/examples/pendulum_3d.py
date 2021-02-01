@@ -195,7 +195,7 @@ def main(formulation='general', angles='Bryant'):
     ## --- Plot angles
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    [ax.plot(time, theta[i,:], label=s) for i,s in enumerate(stheta)]
+    [ax.plot(time, np.mod(theta[i,:],2*np.pi), label=s) for i,s in enumerate(stheta)]
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Orientation coordinates [rad]')
     ax.legend()
@@ -223,6 +223,7 @@ if __name__=="__main__":
     #time, CG3, theta3, omega3 = main(formulation ='general', angles='EulerP')
     time, CG4, theta4, omega4 = main(formulation ='minimal', angles='Bryant')
 
+    #plt.close(1)
     plt.show()
     #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
@@ -233,7 +234,6 @@ if __name__=="__main__":
     #ax.legend()
     #ax.tick_params(direction='in')
     #plt.show()
-
 
 if __name__=="__test__":
     time, CG1, theta1, omega1 = main(formulation ='general', angles='Euler')
@@ -251,4 +251,22 @@ if __name__=="__test__":
     np.testing.assert_almost_equal(omega2[1], omega4[1], 1)
     np.testing.assert_almost_equal(omega2[2], omega4[2], 3)
     pass
+
+if __name__=="__export__":
+    time, CG, theta, omega = main(formulation ='minimal', angles='Bryant')
+    plt.close('all')
+    # --- Plot position
+    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    ax.plot( time, CG[0,:], label='x')
+    ax.plot( time, CG[1,:], label='y')
+    ax.plot( time, CG[2,:], label='z')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('COG position [m]')
+    ax.set_title('3D pendulum - motion')
+    ax.legend()
+    ax.tick_params(direction='in')
+
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
 
