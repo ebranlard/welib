@@ -30,7 +30,7 @@ ax.plot(freq, S)
 ax.plot(freq[iMax], S[iMax], 'ko')
 ax.set_xlabel('Frequency [Hz]')
 ax.set_ylabel(r'Spectral density [m^2 s]')
-ax.set_title('Jonswap spectrum')
+ax.set_title('Hydro - Jonswap spectrum')
 ax.tick_params(direction='in')
 
 if __name__=="__main__":
