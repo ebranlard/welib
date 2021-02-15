@@ -5,6 +5,7 @@
 *.outb
 *.mat
 *.png
+!_figs/*.png
 *.zip
 *.pyc
 *.pyd
