@@ -227,7 +227,7 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         EIxp    = row['E_[N/m^2]']* row['I_y_[m^4]']   # Should be [N.m^2]
         EIyp    = row['E_[N/m^2]']* row['I_x_[m^4]']
         theta_s = row['pitch_[deg]']*np.pi/180
-        theta_p = row['pitch_[deg]']*np.pi/180
+        theta_p = row['pitch_[deg]']*np.pi/180 # NOTE: hawc2 and our convention here for angles are positive around z (whereas beamdyn take them negative around z)
         theta_i = row['pitch_[deg]']*np.pi/180
 
         m       = row['m_[kg/m]']
@@ -402,7 +402,11 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
-def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=None, E=None, G=None):
+def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=None, E=None, G=None, FPM=False):
+    """ 
+    
+     FPM: fully populated matrix, if True, use the FPM format of hawc2
+    """
     # --- Read BeamDyn files
     bdLine = weio.read(BD_mainfile).toDataFrame()
     bd    = weio.read(BD_bladefile).toDataFrame()
@@ -425,21 +429,54 @@ def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=
     # Map 6x6 data to "beam" data
     EA, EIx, EIy, kxsGA, kysGA, GKt, x_C, y_C, x_S, y_S, theta_p, theta_s = K66toProps(K)
     m, Ixi, Iyi, Ip, x_G, y_G, theta_i = M66toProps(M)
+    print('kxGA    {:e}'.format(np.mean(kxsGA)))
+    print('kyGA    {:e}'.format(np.mean(kysGA)))
+    print('EA      {:e}'.format(np.mean(EA)))
+    print('EIx     {:e}'.format(np.mean(EIx)))
+    print('EIy     {:e}'.format(np.mean(EIy)))
+    print('GKt     {:e}'.format(np.mean(GKt)))
+    print('xC    ',np.mean(x_C))
+    print('yC    ',np.mean(y_C))
+    print('xS    ',np.mean(x_S))
+    print('yS    ',np.mean(y_S))
+    print('thetap',np.mean(theta_p))
+    print('thetas',np.mean(theta_s))
+    print('m     ',np.mean(m))
+    print('Ixi   ',np.mean(Ixi))
+    print('Iyi   ',np.mean(Iyi))
+    print('Ip    ',np.mean(Ip))
+    print('x_G   ',np.mean(x_G))
+    print('y_G   ',np.mean(y_G))
+    print('thetai',np.mean(theta_i))
 
     # Convert to Hawc2 system
-    dfMeanLine , dfStructure = BeamDyn2Hawc2_raw(
-            kp_x, kp_y, kp_z, twist, r_bar,
-            m, Ixi, Iyi, x_G, y_G, theta_i,
-            EA, EIx, EIy, GKt, kxsGA, kysGA, x_C, y_C, theta_p, x_S, y_S, theta_s, 
-            A=None, E=None, G=None)
+    if FPM:
+        dfMeanLine , dfStructure = BeamDyn2Hawc2FPM_raw(r_bar,
+                kp_x, kp_y, kp_z, twist, 
+                m, Ixi, Iyi, x_G, y_G, theta_i,
+                x_C, y_C, theta_p, K)
+
+        print(dfStructure.shape)
+
+
+    else:
+
+        dfMeanLine , dfStructure = BeamDyn2Hawc2_raw(r_bar,
+                kp_x, kp_y, kp_z, twist, 
+                m, Ixi, Iyi, x_G, y_G, theta_i,
+                EA, EIx, EIy, GKt, kxsGA, kysGA, x_C, y_C, theta_p, x_S, y_S, theta_s, 
+                A=None, E=None, G=None)
 
     # --- Rewrite st file
     with open(H2_stfile, 'w') as f:
         f.write('%i ; number of sets, Nset\n' % 1)
         f.write('-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n')
         f.write('#%i ; set number\n' % 1)
-        cols=['r','m','x_cg','y_cg','ri_x','ri_y','x_sh','y_sh','E','G','I_x','I_y','I_p','k_x','k_y','A','pitch','x_e','y_e']
-        f.write('\t'.join(['{:19s}'.format(s) for s in cols])+'\n')
+        if FPM:
+            cols=['r','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]','ri_y_[m]','pitch_[deg]','x_e_[m]','y_e_[m]','K11','K12','K13','K14','K15','K16','K22','K23','K24','K25','K26','K33','K34','K35','K36','K44','K45','K46','K55','K56','K66']
+        else:
+            cols=['r','m','x_cg','y_cg','ri_x','ri_y','x_sh','y_sh','E','G','I_x','I_y','I_p','k_x','k_y','A','pitch','x_e','y_e']
+        f.write('\t'.join(['{:20s}'.format(s) for s in cols])+'\n')
         f.write('$%i %i\n' % (1, dfStructure.shape[0]))
         f.write('\n'.join('\t'.join('%19.13e' %x for x in y) for y in dfStructure.values))
 
@@ -491,6 +528,9 @@ def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=
 
     lines_out  = lines_in[:iTIStart+1]
     lines_out += ['      filename {};\n'.format(H2_stfile_rel)]
+    if FPM:
+        lines_out += ['      FPM 1 ;\n']
+    #    lines_out += ['      FPM 0 ;\n']
     lines_out += ['      set 1 1 ;\n']
     lines_out += lines_in[iTIEnd:iC2Start+1]
     lines_out += ['      nsec {} ;\n'.format(dfMeanLine.shape[0])]
@@ -502,7 +542,113 @@ def BeamDyn2Hawc2(BD_mainfile, BD_bladefile, H2_htcfile, H2_stfile, bodyname, A=
         f.write(''.join(lines_out))
 
 
-def BeamDyn2Hawc2_raw(kp_x, kp_y, kp_z, twist, r_bar,
+def BeamDyn2Hawc2FPM_raw(r_bar, kp_x, kp_y, kp_z, twist,
+        m, Ixi, Iyi, x_G, y_G, theta_i, 
+        x_C, y_C, theta_p,  
+        K):
+    """ """
+    import scipy.linalg
+    # --- BeamDyn to Hawc2 Structural data
+#     import pdb; pdb.set_trace()
+    # Hawc2 = BeamDyn
+    x_cg    = -y_G
+    y_cg    = x_G
+    x_e     = -y_C
+    y_e     = x_C
+    pitch   = theta_p*180/np.pi # [deg] NOTE: could use theta_p, theta_i or theta_s
+    if np.all(np.abs(m))<1e-16:
+        ri_y    = m*0
+        ri_x    = m*0
+    else:
+        ri_y    = np.sqrt(Ixi/m)    # [m]
+        ri_x    = np.sqrt(Iyi/m)    # [m]
+    # Curvilinear position of keypoints (only used to get max radius...)
+    dr= np.sqrt((kp_x[1:]-kp_x[0:-1])**2 +(kp_y[1:]-kp_y[0:-1])**2 +(kp_z[1:]-kp_z[0:-1])**2)
+    r_p= np.concatenate(([0],np.cumsum(dr)))
+    r=r_bar * r_p[-1]
+
+    RotMat=np.array([  # From Hawc2 to BeamDyn
+            [0 ,1,0],
+            [-1,0,0],
+            [0,0,1]])
+    RR= scipy.linalg.block_diag(RotMat,RotMat)
+
+    nSpan = len(K[0,0])
+    KH2=np.zeros((6,6,nSpan))
+    for iSpan in np.arange(nSpan):
+        Kbd = np.zeros((6,6))
+        for i in np.arange(6):
+            for j in np.arange(6):
+                Kbd[i,j] = K[i,j][iSpan]
+        Kh2 = (RR.T).dot(Kbd).dot(RR)
+        for i in np.arange(6):
+            for j in np.arange(6):
+                KH2[i,j][iSpan]=Kh2[i,j]
+
+    K11 = KH2[0,0]
+    K22 = KH2[1,1]
+    K33 = KH2[2,2]
+    K44 = KH2[3,3]
+    K55 = KH2[4,4]
+    K66 = KH2[5,5]
+
+    K12 = KH2[0,1]
+    K13 = KH2[0,2]
+    K14 = KH2[0,3]
+    K15 = KH2[0,4]
+    K16 = KH2[0,5]
+    K23 = KH2[1,2]
+    K24 = KH2[1,3]
+    K25 = KH2[1,4]
+    K26 = KH2[1,5]
+    K34 = KH2[2,3]
+    K35 = KH2[2,4]
+    K36 = KH2[2,5]
+    K44 = KH2[3,3]
+    K45 = KH2[3,4]
+    K46 = KH2[3,5]
+    K55 = KH2[4,4]
+    K56 = KH2[4,5]
+
+
+    columns=['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]','ri_y_[m]','pitch_[deg]','x_e_[m]','y_e_[m]','K11','K12','K13','K14','K15','K16','K22','K23','K24','K25','K26','K33','K34','K35','K36','K44','K45','K46','K55','K56','K66']
+    data = np.column_stack((r, m, x_cg, y_cg, ri_x, ri_y, pitch, x_e, y_e, K11,K12,K13,K14,K15,K16,K22,K23,K24,K25,K26,K33,K34,K35,K36,K44,K45,K46,K55,K56,K66))
+    dfStructure = pd.DataFrame(data=data, columns=columns)
+
+#     #      Siemens z ->  BeamDyn z
+#     #      Siemens x -> -BeamDyn y
+#     #      Siemens y ->  BeamDyn x
+#     KSiemens = np.zeros((nSpan,6,6))
+#     for i in np.arange(6):
+#         for j in np.arange(6):
+#             if j>=i:
+#                 key='d{}{}'.format(i+1,j+1)
+#             else:
+#                 key='d{}{}'.format(j+1,i+1)
+#             KSiemens[:,i,j] = sd[key]
+# 
+#     for i in np.arange(len(bp['span'])):
+#         K = bp['K'][i]*0
+#         Ks= KSiemens[i]
+#         K = RR.dot(Ks).dot(RR.T)
+#         bp['K'][i] = K
+
+
+
+    # --- BeamDyn to Hawc2 Reference axis
+    X_H2     = -kp_y
+    Y_H2     = kp_x
+    Z_H2     = kp_z
+    twist_H2 = - twist # [deg]
+    columns=['X_[m]', 'Y_[m]', 'Z_[m]', 'Twist_[deg]']
+    data = np.column_stack((X_H2, Y_H2, Z_H2, twist))
+    dfMeanLine = pd.DataFrame(data=data, columns=columns)
+
+    return dfMeanLine, dfStructure
+
+
+
+def BeamDyn2Hawc2_raw(r_bar, kp_x, kp_y, kp_z, twist,
         m, Ixi, Iyi, x_G, y_G, theta_i, 
         EA, EIx, EIy, GKt, kxsGA, kysGA, x_C, y_C, theta_p, x_S, y_S, theta_s, 
         A=None, E=None, G=None):
@@ -531,7 +677,10 @@ def BeamDyn2Hawc2_raw(kp_x, kp_y, kp_z, twist, r_bar,
     else:
         ri_y    = np.sqrt(Ixi/m)    # [m]
         ri_x    = np.sqrt(Iyi/m)    # [m]
-    r= r_bar * (kp_z[-1]-kp_z[0]) # TODO?
+    # Curvilinear position of keypoints (only used to get max radius...)
+    dr= np.sqrt((kp_x[1:]-kp_x[0:-1])**2 +(kp_y[1:]-kp_y[0:-1])**2 +(kp_z[1:]-kp_z[0:-1])**2)
+    r_p= np.concatenate(([0],np.cumsum(dr)))
+    r=r_bar * r_p[-1]
 
     columns=['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]','ri_y_[m]','x_sh_[m]','y_sh_[m]','E_[N/m^2]','G_[N/m^2]','I_x_[m^4]','I_y_[m^4]','I_p_[m^4]','k_x_[-]','k_y_[-]','A_[m^2]','pitch_[deg]','x_e_[m]','y_e_[m]']
     data = np.column_stack((r,m,x_cg,y_cg,ri_x, ri_y, x_sh, y_sh, E, G, I_x, I_y, I_p, k_x, k_y, A, pitch, x_e, y_e))
@@ -547,6 +696,8 @@ def BeamDyn2Hawc2_raw(kp_x, kp_y, kp_z, twist, r_bar,
     dfMeanLine = pd.DataFrame(data=data, columns=columns)
 
     return dfMeanLine, dfStructure
+
+
 
 
 # --------------------------------------------------------------------------------}
@@ -690,6 +841,8 @@ def K66toProps(K, convention='BeamDyn'):
             for i, (hxx, hyy, hxy) in enumerate(zip(Hxx,Hyy,Hxy)):
                 EIx[i],EIy[i],theta_p[i] = solvexytheta(hxx,hyy,hxy)
 
+        theta_p[theta_p>np.pi]=theta_p[theta_p>np.pi]-2*np.pi
+
         # --- Torsion, shear terms, shear center
         Kxx =  K11
         Kxy = -K12
@@ -707,8 +860,9 @@ def K66toProps(K, convention='BeamDyn'):
             kysGA = np.zeros(Kxx.shape)
             theta_s = np.zeros(Hxx.shape)
             for i, (kxx, kyy, kxy) in enumerate(zip(Kxx,Kyy,Kxy)):
-                kxsGA[i],kysGA[i],theta_p[i] = solvexytheta(kxx,kyy,kxy)
+                kxsGA[i],kysGA[i],theta_s[i] = solvexytheta(kxx,kyy,kxy)
 
+        theta_s[theta_s>np.pi]=theta_s[theta_s>np.pi]-2*np.pi
 
 
         # sanity checks
