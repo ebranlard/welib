@@ -604,6 +604,9 @@ def spanwiseColAD(Cols):
         ADSpanMap['^[A]*'+sB+'N(\d*)VDisx_\[m/s\]']=sB+'VDisx_[m/s]'
         ADSpanMap['^[A]*'+sB+'N(\d*)VDisy_\[m/s\]']=sB+'VDisy_[m/s]'
         ADSpanMap['^[A]*'+sB+'N(\d*)VDisz_\[m/s\]']=sB+'VDisz_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)STVx_\[m/s\]' ]=sB+'STVx_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)STVy_\[m/s\]' ]=sB+'STVy_[m/s]'
+        ADSpanMap['^[A]*'+sB+'N(\d*)STVz_\[m/s\]' ]=sB+'STVz_[m/s]'
         ADSpanMap['^[A]*'+sB+'N(\d*)Vx_\[m/s\]'   ]=sB+'Vx_[m/s]'
         ADSpanMap['^[A]*'+sB+'N(\d*)Vy_\[m/s\]'   ]=sB+'Vy_[m/s]'
         ADSpanMap['^[A]*'+sB+'N(\d*)Vz_\[m/s\]'   ]=sB+'Vz_[m/s]'
@@ -677,7 +680,7 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     """
     # --- Opens Fast output  and performs averaging
     if df is None:
-        df = FASTOutputFile(FST_In.replace('.fst',out_ext)).toDataFrame()
+        df = FASTOutputFile(FST_In.replace('.fst',out_ext).replace('.dvr',out_ext)).toDataFrame()
         returnDF=True
     else:
         returnDF=False
@@ -873,6 +876,10 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
                     else:
                         r_AD,_ = AD_BldGag(fst.AD,fst.AD.Bld1, chordOut = True) # Only at Gages locations
                         r_AD   += r_hub
+
+                    if R is None:
+                        # ElastoDyn was not read, we use R from AD
+                        R = fst.AD.Bld1['BldAeroNodes'][-1,0]
 
                 elif fst.ADversion == 'AD14':
                     r_AD,IR_AD = AD14_BldGag(fst.AD)
