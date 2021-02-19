@@ -115,9 +115,9 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "ES10.3E2"    OutFmt      - Format used for text tabular output (except time).  Resulting field should be 10 characters. (quoted string) (currently unused)
          30   TStart      - Time to begin tabular output (s) (currently unused)
           1   DecFact     - Decimation factor for tabular output {1: output every time step} (-) (currently unused)
-          1   NTwGages    - Number of tower nodes that have strain gages for output [0 to 9] (-)
+          0   NTwGages    - Number of tower nodes that have strain gages for output [0 to 9] (-)
          10   TwrGagNd    - List of tower nodes that have strain gages [1 to TwrNodes] (-) [unused if NTwGages=0]
-          1   NBlGages    - Number of blade nodes that have strain gages for output [0 to 9] (-)
+          0   NBlGages    - Number of blade nodes that have strain gages for output [0 to 9] (-)
           9   BldGagNd    - List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
               OutList     - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
 "BldPitch1"               - Pitch angles for blades 1, 2, and 3
@@ -211,4 +211,13 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "RootMyb1"
 "NcIMUTVxs"
 END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
----------------------------------------------------------------------------------------
+---------------------- NODE OUTPUTS --------------------------------------------
+          1   BldNd_BladesOut  - Blades to output
+         99   BldNd_BlOutNd   - Blade nodes on each blade (currently unused)
+              OutList     - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx, ElastoDyn_Nodes tab for a listing of available output channels, (-)
+"TDx"    - local flapwise (translational) deflection (relative to the undeflected position) of node
+"TDy"    - local edgewise (translational) deflection (relative to the undeflected position) of node
+"MLxNT"  - Edgewise moment in local coordinate system (initial structural twist removed)
+"MLyNT"  - Flapwise shear moment in local coordinate system (initial structural twist removed)
+END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

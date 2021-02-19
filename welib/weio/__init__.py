@@ -1,7 +1,8 @@
 from .file  import File, WrongFormatError, BrokenFormatError, FileNotFoundError, EmptyFileError
 from .file_formats  import FileFormat
 # User defined formats
-from .fast_input_file         import FASTInputFile, FASTInputDeck
+# --- TODO all these imports will likely be removed in the future to avoid loading them all at init
+from .fast_input_file         import FASTInputFile
 from .fast_output_file        import FASTOutputFile
 from .fast_wind_file          import FASTWndFile
 from .fast_linearization_file import FASTLinearizationFile

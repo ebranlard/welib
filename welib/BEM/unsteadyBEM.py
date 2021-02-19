@@ -175,8 +175,8 @@ class AeroBEM:
         self.bRoughProfiles = False # use rough profiles for input airfoil data
 
     def init_from_FAST(self, FASTFileName):
-        import welib.weio as weio
-        F=weio.FASTInputDeck(FASTFileName,readlist=['AD','ED'])
+        from welib.weio.fast_input_deck import FASTInputDeck
+        F = FASTInputDeck(FASTFileName,readlist=['AD','ED'])
 
         # Environment
         self.rho     = F.AD['AirDens']

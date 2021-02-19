@@ -63,6 +63,8 @@ class HAWC2DatFile(File):
             zrel = re.findall('Z-rel:\s*(\d+.\d+)', desc)
             node = re.findall('nodenr:\s*(\d+)', desc)
             mbdy = re.findall('Mbdy:([-a-zA-Z0-9_.]*) ', desc)
+            s    = re.findall('s=\s*(\d+.\d+)\[m\]', desc)
+            sS   = re.findall('s/S=\s*(\d+.\d+)', desc)
 
             pref=''
             names[i] = names[i].replace(' ','')
@@ -83,6 +85,8 @@ class HAWC2DatFile(File):
                     pref+='N'+str(ielem+1)
                 else:
                     pref+='N'+str(ielem+fzrel)
+            if len(s)==1 and len(sS)==1:
+                pref+='r'+str(sS[0])
 
             if len(node)==1:
                 pref+='N'+node[0]
