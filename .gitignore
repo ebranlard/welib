@@ -5,7 +5,6 @@
 *.outb
 *.mat
 *.png
-!_figs/*.png
 *.zip
 *.pyc
 *.pyd
@@ -18,7 +17,9 @@ _IGNORE
 TODO
 *TODO*
 _*
-!__*__.py
 *.pdf
 *Copy.py
+!_figs
+!_figs/*.png
+!__*__.py
 
