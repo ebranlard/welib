@@ -2,15 +2,8 @@ import numpy as np
 from numpy import cos, sin
 import pandas as pd
 import os
-try:
-    import welib.weio as weio
-except:
-    try:
-        import weio
-    except:
-        print('[WARN] Not possible to write BD main file without weio library (https://github.com/ebranlard/weio)')
-
-
+import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 
 # --------------------------------------------------------------------------------}
 # --- Writer function 
@@ -113,7 +106,8 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         - nRootZeros: number of points that are set to have zero x and y at the root
     """
     # --- Mean line definition (position and orientation)  - Hawc2 "c2-def file", BeanDyn point "O"
-    c2def = pd.read_csv(H2MeanLineFile,delim_whitespace=True)
+
+    c2def = weio.csv_file.CSVFile(H2MeanLineFile).toDataFrame()
     # For the equations below to be generic we force the column names
     c2def.columns.values[0:4]=['X_[m]','Y_[m]','Z_[m]','Twist_theta_z_[deg]']
 
@@ -121,7 +115,7 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
     c2def_old = c2def.copy()
     if zref is None:
         # we dont interpolate
-        zref=c2def['Z_[m]']
+        zref=c2def['Z_[m]'].values
     else:
         z_old = c2def_old['Z_[m]'].values
         # safety checks
@@ -178,7 +172,7 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
 
 
     # --- Cross section properties 
-    hwc_in = pd.read_csv(H2StructureFile,delim_whitespace=True)
+    hwc_in = weio.csv_file.CSVFile(H2StructureFile).toDataFrame()
     # For the equations below to be generic we force the column names
     hwc_in.columns=['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]','ri_y_[m]','x_sh_[m]','y_sh_[m]','E_[N/m^2]','G_[N/m^2]','I_x_[m^4]','I_y_[m^4]','I_p_[m^4]','k_x_[-]','k_y_[-]','A_[m^2]','pitch_[deg]','x_e_[m]','y_e_[m]']
     # --- Interpolating to match c2def positions
@@ -260,7 +254,7 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
 
     # --- Writing BeamDyn main file based on template file
     if BDMainTemplate is not None and BDMainFileOut is not None:
-        BD=weio.FASTInFile(BDMainTemplate)
+        BD=FASTInputFile(BDMainTemplate)
         #print(BD.keys())
         BD.data[1]['value']=Label
         BD['MemberGeom'] = np.column_stack((x_O,y_O,z_O,twist))
@@ -280,8 +274,8 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         EdgStiff= np.array([K[3,3] for K in lK])
         FlpStiff= np.array([K[4,4] for K in lK])
 
-        EIxp    = hwc['E_[N/m^2]']*hwc['I_y_[m^4]']   # Should be [N.m^2]
-        EIyp    = hwc['E_[N/m^2]']*hwc['I_x_[m^4]']
+        EIxp    = hwc['E_[N/m^2]']*hwc['I_y_[m^4]'].values   # Should be [N.m^2]
+        EIyp    = hwc['E_[N/m^2]']*hwc['I_x_[m^4]'].values
 
 #         fig=plt.figure()
         fig,axes = plt.subplots(4, 2, sharex=True, figsize=(12.4,09.)) # (6.4,4.8)
@@ -290,10 +284,10 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
             ax.tick_params(direction='in')
 
         # --- Plot mean line from hawc2 and beamdyn
-        x_O_h2 =   c2def_old['Y_[m]']   # kp_xr  
-        y_O_h2 =  -c2def_old['X_[m]']   # kp_yr  
-        z_O_h2 =   c2def_old['Z_[m]']   # kp_zr
-        twist  =  -c2def_old['Twist_theta_z_[deg]'] # initial_twist [deg]
+        x_O_h2 =   c2def_old['Y_[m]'].values   # kp_xr  
+        y_O_h2 =  -c2def_old['X_[m]'].values   # kp_yr  
+        z_O_h2 =   c2def_old['Z_[m]'].values   # kp_zr
+        twist  =  -c2def_old['Twist_theta_z_[deg]'].values # initial_twist [deg]
 #         fig,axes = plt.subplots(2, 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
 #         ax=axes[0,0]
 
@@ -393,9 +387,9 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         ax.set_ylabel('Stiffness [Nm^2]')
         ax.legend(fontsize=8)
 
-        fig.savefig(BDMainFileOut.replace('.dat','.png'))
-
-        plt.show()
+        return fig 
+        #fig.savefig(BDMainFileOut.replace('.dat','.png'))
+        #plt.show()
 
 
 
