@@ -53,7 +53,7 @@ if __name__=='__test__':
     main()
 
 if __name__=='__export__':
-    # Need openfast.exe, doing nothing
+    main()
     from welib.tools.repo import export_figs_callback
     export_figs_callback(__file__)
 
