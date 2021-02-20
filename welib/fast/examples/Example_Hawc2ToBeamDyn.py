@@ -25,8 +25,8 @@ def main():
     #            'straight': the reference axis is straight (prebend and sweep are still included as offsets) 
 
     # NOTE: these hawc2 5MW data were downloaded form hawc2's website
-    H2MeanLine     = os.path.join(MyDir,'../../../data/NREL5MW/Hawc2/Blade_Planform_Hawc2.csv')   # csv file with c2def columns: ['X_[m]','Y_[m]','Z_[m]','Twist_theta_z_[deg]' (optional: Relative_thickness_[%] and Chord_[m])
-    H2Structure    = os.path.join(MyDir,'../../../data/NREL5MW/Hawc2/Blade_Structural_Hawc2.csv') # csv file with columns ['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]',... ,'x_e_[m]','y_e_[m]']
+    H2MeanLine     = os.path.join(MyDir,'../../../data/NREL5MW/hawc2/Blade_Planform_Hawc2.csv')   # csv file with c2def columns: ['X_[m]','Y_[m]','Z_[m]','Twist_theta_z_[deg]' (optional: Relative_thickness_[%] and Chord_[m])
+    H2Structure    = os.path.join(MyDir,'../../../data/NREL5MW/hawc2/Blade_Structural_Hawc2.csv') # csv file with columns ['Radius_[m]','m_[kg/m]','x_cg_[m]','y_cg_[m]','ri_x_[m]',... ,'x_e_[m]','y_e_[m]']
 
     BDMainTemplate = os.path.join(MyDir,'../../../data/NREL5MW/data/NRELOffshrBsline5MW_BeamDyn.dat')  # template file to write main BD file
 

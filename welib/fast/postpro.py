@@ -6,11 +6,12 @@ import numpy as np
 import re
 
 # --- fast libraries
-import welib.weio as weio
-# import pyFAST.input_output as weio
-from weio.fast_input_file import FASTInputFile
-from weio.fast_output_file import FASTOutputFile
-from weio.fast_input_deck import FASTInputDeck
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.fast_output_file import FASTOutputFile
+from welib.weio.fast_input_deck import FASTInputDeck
+# from pyFAST.input_output.fast_input_file import FASTInputFile
+# from pyFAST.input_output.fast_output_file import FASTOutputFile
+# from pyFAST.input_output.fast_input_deck import FASTInputDeck
 
 # --------------------------------------------------------------------------------}
 # --- Tools for IO 
@@ -323,9 +324,9 @@ def spanwiseColBD(Cols):
     """ Return column info, available columns and indices that contain BD spanwise data"""
     BDSpanMap=dict()
     for sB in ['B1','B2','B3']:
-        BDSpanMap['^'+sB+'N(\d)TDxr_\[m\]']=sB+'TDxr_[m]'
-        BDSpanMap['^'+sB+'N(\d)TDyr_\[m\]']=sB+'TDyr_[m]'
-        BDSpanMap['^'+sB+'N(\d)TDzr_\[m\]']=sB+'TDzr_[m]'
+        BDSpanMap['^'+sB+r'N(\d)TDxr_\[m\]']=sB+'TDxr_[m]'
+        BDSpanMap['^'+sB+r'N(\d)TDyr_\[m\]']=sB+'TDyr_[m]'
+        BDSpanMap['^'+sB+r'N(\d)TDzr_\[m\]']=sB+'TDzr_[m]'
     return find_matching_columns(Cols, BDSpanMap)
 
 def spanwiseColED(Cols):
@@ -333,114 +334,114 @@ def spanwiseColED(Cols):
     EDSpanMap=dict()
     # All Outs
     for sB in ['B1','B2','B3']:
-        EDSpanMap['^[A]*'+sB+'N(\d*)ALx_\[m/s^2\]' ] = sB+'ALx_[m/s^2]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)ALy_\[m/s^2\]' ] = sB+'ALy_[m/s^2]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)ALz_\[m/s^2\]' ] = sB+'ALz_[m/s^2]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)TDx_\[m\]'     ] = sB+'TDx_[m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)TDy_\[m\]'     ] = sB+'TDy_[m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)TDz_\[m\]'     ] = sB+'TDz_[m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)RDx_\[deg\]'   ] = sB+'RDx_[deg]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)RDy_\[deg\]'   ] = sB+'RDy_[deg]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)RDz_\[deg\]'   ] = sB+'RDz_[deg]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)MLx_\[kN-m\]'  ] = sB+'MLx_[kN-m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)MLy_\[kN-m\]'  ] = sB+'MLy_[kN-m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)MLz_\[kN-m\]'  ] = sB+'MLz_[kN-m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)FLx_\[kN\]'    ] = sB+'FLx_[kN]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)FLy_\[kN\]'    ] = sB+'FLy_[kN]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)FLz_\[kN\]'    ] = sB+'FLz_[kN]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)FLxNT_\[kN\]'  ] = sB+'FLxNT_[kN]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)FLyNT_\[kN\]'  ] = sB+'FLyNT_[kN]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)FlyNT_\[kN\]'  ] = sB+'FLyNT_[kN]'   # <<< Unfortunate
-        EDSpanMap['^[A]*'+sB+'N(\d*)MLxNT_\[kN-m\]'] = sB+'MLxNT_[kN-m]'
-        EDSpanMap['^[A]*'+sB+'N(\d*)MLyNT_\[kN-m\]'] = sB+'MLyNT_[kN-m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)ALx_\[m/s^2\]' ] = sB+'ALx_[m/s^2]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)ALy_\[m/s^2\]' ] = sB+'ALy_[m/s^2]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)ALz_\[m/s^2\]' ] = sB+'ALz_[m/s^2]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)TDx_\[m\]'     ] = sB+'TDx_[m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)TDy_\[m\]'     ] = sB+'TDy_[m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)TDz_\[m\]'     ] = sB+'TDz_[m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)RDx_\[deg\]'   ] = sB+'RDx_[deg]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)RDy_\[deg\]'   ] = sB+'RDy_[deg]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)RDz_\[deg\]'   ] = sB+'RDz_[deg]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)MLx_\[kN-m\]'  ] = sB+'MLx_[kN-m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)MLy_\[kN-m\]'  ] = sB+'MLy_[kN-m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)MLz_\[kN-m\]'  ] = sB+'MLz_[kN-m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)FLx_\[kN\]'    ] = sB+'FLx_[kN]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)FLy_\[kN\]'    ] = sB+'FLy_[kN]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)FLz_\[kN\]'    ] = sB+'FLz_[kN]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)FLxNT_\[kN\]'  ] = sB+'FLxNT_[kN]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)FLyNT_\[kN\]'  ] = sB+'FLyNT_[kN]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)FlyNT_\[kN\]'  ] = sB+'FLyNT_[kN]'   # <<< Unfortunate
+        EDSpanMap['^[A]*'+sB+r'N(\d*)MLxNT_\[kN-m\]'] = sB+'MLxNT_[kN-m]'
+        EDSpanMap['^[A]*'+sB+r'N(\d*)MLyNT_\[kN-m\]'] = sB+'MLyNT_[kN-m]'
     # Old
     for sB in ['b1','b2','b3']:
         SB=sB.upper()
-        EDSpanMap['^Spn(\d)ALx'+sB+'_\[m/s^2\]']=SB+'ALx_[m/s^2]'
-        EDSpanMap['^Spn(\d)ALy'+sB+'_\[m/s^2\]']=SB+'ALy_[m/s^2]'
-        EDSpanMap['^Spn(\d)ALz'+sB+'_\[m/s^2\]']=SB+'ALz_[m/s^2]'
-        EDSpanMap['^Spn(\d)TDx'+sB+'_\[m\]'    ]=SB+'TDx_[m]'
-        EDSpanMap['^Spn(\d)TDy'+sB+'_\[m\]'    ]=SB+'TDy_[m]'
-        EDSpanMap['^Spn(\d)TDz'+sB+'_\[m\]'    ]=SB+'TDz_[m]'
-        EDSpanMap['^Spn(\d)RDx'+sB+'_\[deg\]'  ]=SB+'RDx_[deg]'
-        EDSpanMap['^Spn(\d)RDy'+sB+'_\[deg\]'  ]=SB+'RDy_[deg]'
-        EDSpanMap['^Spn(\d)RDz'+sB+'_\[deg\]'  ]=SB+'RDz_[deg]'
-        EDSpanMap['^Spn(\d)FLx'+sB+'_\[kN\]'   ]=SB+'FLx_[kN]'
-        EDSpanMap['^Spn(\d)FLy'+sB+'_\[kN\]'   ]=SB+'FLy_[kN]'
-        EDSpanMap['^Spn(\d)FLz'+sB+'_\[kN\]'   ]=SB+'FLz_[kN]'
-        EDSpanMap['^Spn(\d)MLy'+sB+'_\[kN-m\]' ]=SB+'MLx_[kN-m]'
-        EDSpanMap['^Spn(\d)MLx'+sB+'_\[kN-m\]' ]=SB+'MLy_[kN-m]'  
-        EDSpanMap['^Spn(\d)MLz'+sB+'_\[kN-m\]' ]=SB+'MLz_[kN-m]'
+        EDSpanMap[r'^Spn(\d)ALx'+sB+r'_\[m/s^2\]']=SB+'ALx_[m/s^2]'
+        EDSpanMap[r'^Spn(\d)ALy'+sB+r'_\[m/s^2\]']=SB+'ALy_[m/s^2]'
+        EDSpanMap[r'^Spn(\d)ALz'+sB+r'_\[m/s^2\]']=SB+'ALz_[m/s^2]'
+        EDSpanMap[r'^Spn(\d)TDx'+sB+r'_\[m\]'    ]=SB+'TDx_[m]'
+        EDSpanMap[r'^Spn(\d)TDy'+sB+r'_\[m\]'    ]=SB+'TDy_[m]'
+        EDSpanMap[r'^Spn(\d)TDz'+sB+r'_\[m\]'    ]=SB+'TDz_[m]'
+        EDSpanMap[r'^Spn(\d)RDx'+sB+r'_\[deg\]'  ]=SB+'RDx_[deg]'
+        EDSpanMap[r'^Spn(\d)RDy'+sB+r'_\[deg\]'  ]=SB+'RDy_[deg]'
+        EDSpanMap[r'^Spn(\d)RDz'+sB+r'_\[deg\]'  ]=SB+'RDz_[deg]'
+        EDSpanMap[r'^Spn(\d)FLx'+sB+r'_\[kN\]'   ]=SB+'FLx_[kN]'
+        EDSpanMap[r'^Spn(\d)FLy'+sB+r'_\[kN\]'   ]=SB+'FLy_[kN]'
+        EDSpanMap[r'^Spn(\d)FLz'+sB+r'_\[kN\]'   ]=SB+'FLz_[kN]'
+        EDSpanMap[r'^Spn(\d)MLy'+sB+r'_\[kN-m\]' ]=SB+'MLx_[kN-m]'
+        EDSpanMap[r'^Spn(\d)MLx'+sB+r'_\[kN-m\]' ]=SB+'MLy_[kN-m]'  
+        EDSpanMap[r'^Spn(\d)MLz'+sB+r'_\[kN-m\]' ]=SB+'MLz_[kN-m]'
     return find_matching_columns(Cols, EDSpanMap)
 
 def spanwiseColAD(Cols):
     """ Return column info, available columns and indices that contain AD spanwise data"""
     ADSpanMap=dict()
     for sB in ['B1','B2','B3']:
-        ADSpanMap['^[A]*'+sB+'N(\d*)Alpha_\[deg\]']=sB+'Alpha_[deg]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)AOA_\[deg\]'  ]=sB+'Alpha_[deg]' # DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)AxInd_\[-\]'  ]=sB+'AxInd_[-]'  
-        ADSpanMap['^[A]*'+sB+'N(\d*)TnInd_\[-\]'  ]=sB+'TnInd_[-]'  
-        ADSpanMap['^[A]*'+sB+'N(\d*)AIn_\[deg\]'  ]=sB+'AxInd_[-]'   # DBGOuts NOTE BUG Unit
-        ADSpanMap['^[A]*'+sB+'N(\d*)ApI_\[deg\]'  ]=sB+'TnInd_[-]'   # DBGOuts NOTE BUG Unit
-        ADSpanMap['^[A]*'+sB+'N(\d*)AIn_\[-\]'    ]=sB+'AxInd_[-]'   # DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)ApI_\[-\]'    ]=sB+'TnInd_[-]'   # DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)Uin_\[m/s\]'  ]=sB+'Uin_[m/s]'     # DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)Uit_\[m/s\]'  ]=sB+'Uit_[m/s]'     # DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)Uir_\[m/s\]'  ]=sB+'Uir_[m/s]'     # DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)Cl_\[-\]'     ]=sB+'Cl_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Cd_\[-\]'     ]=sB+'Cd_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Cm_\[-\]'     ]=sB+'Cm_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Cx_\[-\]'     ]=sB+'Cx_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Cy_\[-\]'     ]=sB+'Cy_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Cn_\[-\]'     ]=sB+'Cn_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Ct_\[-\]'     ]=sB+'Ct_[-]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Re_\[-\]'     ]=sB+'Re_[-]' 
-        ADSpanMap['^[A]*'+sB+'N(\d*)Vrel_\[m/s\]' ]=sB+'Vrel_[m/s]' 
-        ADSpanMap['^[A]*'+sB+'N(\d*)Theta_\[deg\]']=sB+'Theta_[deg]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Phi_\[deg\]'  ]=sB+'Phi_[deg]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Twst_\[deg\]' ]=sB+'Twst_[deg]' #DBGOuts
-        ADSpanMap['^[A]*'+sB+'N(\d*)Curve_\[deg\]']=sB+'Curve_[deg]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Vindx_\[m/s\]']=sB+'Vindx_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Vindy_\[m/s\]']=sB+'Vindy_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Fx_\[N/m\]'   ]=sB+'Fx_[N/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Fy_\[N/m\]'   ]=sB+'Fy_[N/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Fl_\[N/m\]'   ]=sB+'Fl_[N/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Fd_\[N/m\]'   ]=sB+'Fd_[N/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Fn_\[N/m\]'   ]=sB+'Fn_[N/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Ft_\[N/m\]'   ]=sB+'Ft_[N/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)VUndx_\[m/s\]']=sB+'VUndx_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)VUndy_\[m/s\]']=sB+'VUndy_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)VUndz_\[m/s\]']=sB+'VUndz_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)VDisx_\[m/s\]']=sB+'VDisx_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)VDisy_\[m/s\]']=sB+'VDisy_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)VDisz_\[m/s\]']=sB+'VDisz_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)STVx_\[m/s\]' ]=sB+'STVx_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)STVy_\[m/s\]' ]=sB+'STVy_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)STVz_\[m/s\]' ]=sB+'STVz_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Vx_\[m/s\]'   ]=sB+'Vx_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Vy_\[m/s\]'   ]=sB+'Vy_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)Vz_\[m/s\]'   ]=sB+'Vz_[m/s]'
-        ADSpanMap['^[A]*'+sB+'N(\d*)DynP_\[Pa\]'  ]=sB+'DynP_[Pa]' 
-        ADSpanMap['^[A]*'+sB+'N(\d*)M_\[-\]'      ]=sB+'M_[-]' 
-        ADSpanMap['^[A]*'+sB+'N(\d*)Mm_\[N-m/m\]' ]=sB+'Mm_[N-m/m]'   
-        ADSpanMap['^[A]*'+sB+'N(\d*)Gam_\['       ]=sB+'Gam_[m^2/s]' #DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Alpha_\[deg\]']=sB+'Alpha_[deg]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)AOA_\[deg\]'  ]=sB+'Alpha_[deg]' # DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)AxInd_\[-\]'  ]=sB+'AxInd_[-]'  
+        ADSpanMap['^[A]*'+sB+r'N(\d*)TnInd_\[-\]'  ]=sB+'TnInd_[-]'  
+        ADSpanMap['^[A]*'+sB+r'N(\d*)AIn_\[deg\]'  ]=sB+'AxInd_[-]'   # DBGOuts NOTE BUG Unit
+        ADSpanMap['^[A]*'+sB+r'N(\d*)ApI_\[deg\]'  ]=sB+'TnInd_[-]'   # DBGOuts NOTE BUG Unit
+        ADSpanMap['^[A]*'+sB+r'N(\d*)AIn_\[-\]'    ]=sB+'AxInd_[-]'   # DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)ApI_\[-\]'    ]=sB+'TnInd_[-]'   # DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Uin_\[m/s\]'  ]=sB+'Uin_[m/s]'     # DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Uit_\[m/s\]'  ]=sB+'Uit_[m/s]'     # DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Uir_\[m/s\]'  ]=sB+'Uir_[m/s]'     # DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Cl_\[-\]'     ]=sB+'Cl_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Cd_\[-\]'     ]=sB+'Cd_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Cm_\[-\]'     ]=sB+'Cm_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Cx_\[-\]'     ]=sB+'Cx_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Cy_\[-\]'     ]=sB+'Cy_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Cn_\[-\]'     ]=sB+'Cn_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Ct_\[-\]'     ]=sB+'Ct_[-]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Re_\[-\]'     ]=sB+'Re_[-]' 
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vrel_\[m/s\]' ]=sB+'Vrel_[m/s]' 
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Theta_\[deg\]']=sB+'Theta_[deg]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Phi_\[deg\]'  ]=sB+'Phi_[deg]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Twst_\[deg\]' ]=sB+'Twst_[deg]' #DBGOuts
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Curve_\[deg\]']=sB+'Curve_[deg]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vindx_\[m/s\]']=sB+'Vindx_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vindy_\[m/s\]']=sB+'Vindy_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fx_\[N/m\]'   ]=sB+'Fx_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fy_\[N/m\]'   ]=sB+'Fy_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fl_\[N/m\]'   ]=sB+'Fl_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fd_\[N/m\]'   ]=sB+'Fd_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fn_\[N/m\]'   ]=sB+'Fn_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Ft_\[N/m\]'   ]=sB+'Ft_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)VUndx_\[m/s\]']=sB+'VUndx_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)VUndy_\[m/s\]']=sB+'VUndy_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)VUndz_\[m/s\]']=sB+'VUndz_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)VDisx_\[m/s\]']=sB+'VDisx_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)VDisy_\[m/s\]']=sB+'VDisy_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)VDisz_\[m/s\]']=sB+'VDisz_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)STVx_\[m/s\]' ]=sB+'STVx_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)STVy_\[m/s\]' ]=sB+'STVy_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)STVz_\[m/s\]' ]=sB+'STVz_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vx_\[m/s\]'   ]=sB+'Vx_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vy_\[m/s\]'   ]=sB+'Vy_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vz_\[m/s\]'   ]=sB+'Vz_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)DynP_\[Pa\]'  ]=sB+'DynP_[Pa]' 
+        ADSpanMap['^[A]*'+sB+r'N(\d*)M_\[-\]'      ]=sB+'M_[-]' 
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Mm_\[N-m/m\]' ]=sB+'Mm_[N-m/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Gam_\['       ]=sB+'Gam_[m^2/s]' #DBGOuts
     # --- AD 14
-    ADSpanMap['^Alpha(\d*)_\[deg\]'  ]='Alpha_[deg]'  
-    ADSpanMap['^DynPres(\d*)_\[Pa\]' ]='DynPres_[Pa]' 
-    ADSpanMap['^CLift(\d*)_\[-\]'    ]='CLift_[-]'    
-    ADSpanMap['^CDrag(\d*)_\[-\]'    ]='CDrag_[-]'    
-    ADSpanMap['^CNorm(\d*)_\[-\]'    ]='CNorm_[-]'    
-    ADSpanMap['^CTang(\d*)_\[-\]'    ]='CTang_[-]'    
-    ADSpanMap['^CMomt(\d*)_\[-\]'    ]='CMomt_[-]'    
-    ADSpanMap['^Pitch(\d*)_\[deg\]'  ]='Pitch_[deg]'  
-    ADSpanMap['^AxInd(\d*)_\[-\]'    ]='AxInd_[-]'    
-    ADSpanMap['^TanInd(\d*)_\[-\]'   ]='TanInd_[-]'   
-    ADSpanMap['^ForcN(\d*)_\[N\]'    ]='ForcN_[N]'    
-    ADSpanMap['^ForcT(\d*)_\[N\]'    ]='ForcT_[N]'    
-    ADSpanMap['^Pmomt(\d*)_\[N-m\]'  ]='Pmomt_[N-N]'  
-    ADSpanMap['^ReNum(\d*)_\[x10^6\]']='ReNum_[x10^6]'
-    ADSpanMap['^Gamma(\d*)_\[m^2/s\]']='Gamma_[m^2/s]'
+    ADSpanMap[r'^Alpha(\d*)_\[deg\]'  ]='Alpha_[deg]'  
+    ADSpanMap[r'^DynPres(\d*)_\[Pa\]' ]='DynPres_[Pa]' 
+    ADSpanMap[r'^CLift(\d*)_\[-\]'    ]='CLift_[-]'    
+    ADSpanMap[r'^CDrag(\d*)_\[-\]'    ]='CDrag_[-]'    
+    ADSpanMap[r'^CNorm(\d*)_\[-\]'    ]='CNorm_[-]'    
+    ADSpanMap[r'^CTang(\d*)_\[-\]'    ]='CTang_[-]'    
+    ADSpanMap[r'^CMomt(\d*)_\[-\]'    ]='CMomt_[-]'    
+    ADSpanMap[r'^Pitch(\d*)_\[deg\]'  ]='Pitch_[deg]'  
+    ADSpanMap[r'^AxInd(\d*)_\[-\]'    ]='AxInd_[-]'    
+    ADSpanMap[r'^TanInd(\d*)_\[-\]'   ]='TanInd_[-]'   
+    ADSpanMap[r'^ForcN(\d*)_\[N\]'    ]='ForcN_[N]'    
+    ADSpanMap[r'^ForcT(\d*)_\[N\]'    ]='ForcT_[N]'    
+    ADSpanMap[r'^Pmomt(\d*)_\[N-m\]'  ]='Pmomt_[N-N]'  
+    ADSpanMap[r'^ReNum(\d*)_\[x10^6\]']='ReNum_[x10^6]'
+    ADSpanMap[r'^Gamma(\d*)_\[m^2/s\]']='Gamma_[m^2/s]'
 
     return find_matching_columns(Cols, ADSpanMap)
 

@@ -12,9 +12,11 @@ import shutil
 import stat
 import re
 
-# --- External library for io
-from pyFAST.input_output import FASTInputFile
-from pyFAST.input_output import FASTOutputFile
+# --- Fast libraries
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.fast_output_file import FASTOutputFile
+# from pyFAST.input_output.fast_input_file import FASTInputFile
+# from pyFAST.input_output.fast_output_file import FASTOutputFile
 
 FAST_EXE='openfast'
 
