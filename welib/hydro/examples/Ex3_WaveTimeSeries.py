@@ -1,5 +1,5 @@
 """
-Plot the JONSWAP spectrum for a given sea state
+Generate wave time series based on the Jonswap spectrum
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,8 +17,6 @@ Hs = 8.1                   # Significant wave height [m]
 Tp = 12.7                  # Peak period [s]
 h  = 30.                   # Water depth [m]
 g  = 9.81 # Gravity[m/s2]  
-
-
 
 # --- Jonswap spectrum
 dt       = t[1]-t[0]                   # timestep [s]
