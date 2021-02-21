@@ -245,7 +245,7 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
     # --- Writing BeamDyn blade file
     span=hwc['Radius_[m]'].values
     s_bar=span/span[-1]
-    print('Writing BeamDyn file:',BDBldFileOut)
+    #print('Writing BeamDyn file:',BDBldFileOut)
     write_beamdyn_sections(BDBldFileOut,s_bar,lK,lM,Mu,Label=Label)
 
     # --- db
@@ -262,7 +262,7 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         BD['BldFile']    = '"'+os.path.basename(BDBldFileOut)+'"' 
         BD.data[BD.getID('kp_total')+1]['value']= '1 {}'.format(len(x_O))
 
-        print('Writing BeamDyn file:',BDMainFileOut)
+        #print('Writing BeamDyn file:',BDMainFileOut)
         BD.write(BDMainFileOut)
 
 
@@ -326,29 +326,29 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         axes[1,0].plot(z_O              , x_O    + vx_G           , 'd' , ms=6, color=None, markeredgecolor=colrs[1], markerfacecolor="None", label = 'G (COG)') 
         axes[1,0].plot(z_O              , x_O    + vx_S           , 's' , ms=6, color=None, markeredgecolor=colrs[2], markerfacecolor="None", label = 'S (shear center)') 
         axes[1,0].plot(z_O              , x_O    + vx_C           , 'o' , ms=6, color=None, markeredgecolor=colrs[3], markerfacecolor="None", label = 'C (elastic center)') 
-        axes[1,0].plot(hwc['Radius_[m]'], x_O_h2 + hwc['y_cg_[m]'], 'd' , ms=1, color=colrs[1] , label='HAWC2')
-        axes[1,0].plot(hwc['Radius_[m]'], x_O_h2 + hwc['y_sh_[m]'], 's' , ms=1, color=colrs[2] )
-        axes[1,0].plot(hwc['Radius_[m]'], x_O_h2 + hwc['y_e_[m]'] , 'o' , ms=1, color=colrs[3] )
+        axes[1,0].plot(hwc['Radius_[m]'].values, x_O_h2 + hwc['y_cg_[m]'].values, 'd' , ms=1, color=colrs[1] , label='HAWC2')
+        axes[1,0].plot(hwc['Radius_[m]'].values, x_O_h2 + hwc['y_sh_[m]'].values, 's' , ms=1, color=colrs[2] )
+        axes[1,0].plot(hwc['Radius_[m]'].values, x_O_h2 + hwc['y_e_[m]' ].values , 'o' , ms=1, color=colrs[3] )
         axes[1,1].plot(z_O, y_O     , '-' , label = 'BD y (smooth)')
         axes[1,1].plot(z_O              , y_O    + vy_G           , 'd' , ms=6, color=None, markeredgecolor=colrs[1], markerfacecolor="None", label = 'G (COG)') 
         axes[1,1].plot(z_O              , y_O    + vy_S           , 's' , ms=6, color=None, markeredgecolor=colrs[2], markerfacecolor="None", label = 'S (shear center)') 
         axes[1,1].plot(z_O              , y_O    + vy_C           , 'o' , ms=6, color=None, markeredgecolor=colrs[3], markerfacecolor="None", label = 'C (elastic center)') 
-        axes[1,1].plot(hwc['Radius_[m]'], y_O_h2 - hwc['x_cg_[m]'], 'd' , ms=1, color=colrs[1] )
-        axes[1,1].plot(hwc['Radius_[m]'], y_O_h2 - hwc['x_sh_[m]'], 's' , ms=1, color=colrs[2] )
-        axes[1,1].plot(hwc['Radius_[m]'], y_O_h2 - hwc['x_e_[m]'] , 'o' , ms=1, color=colrs[3] )
+        axes[1,1].plot(hwc['Radius_[m]'].values, y_O_h2 - hwc['x_cg_[m]'].values, 'd' , ms=1, color=colrs[1] )
+        axes[1,1].plot(hwc['Radius_[m]'].values, y_O_h2 - hwc['x_sh_[m]'].values, 's' , ms=1, color=colrs[2] )
+        axes[1,1].plot(hwc['Radius_[m]'].values, y_O_h2 - hwc['x_e_[m]'].values, 'o' , ms=1, color=colrs[3] )
 #         axes[1,0].set_xlabel('z [m]')
 #         axes[1,1].set_xlabel('z [m]')
         axes[1,0].set_ylabel('x [m]')
         axes[1,1].set_ylabel('y [m]')
         axes[1,0].legend(loc='upper right', fontsize=8)
         if 'Relative_thickness_[%]' and 'Chord_[m]' in c2def.columns.values:
-            c = c2def['Chord_[m]']
-            t = c2def['Relative_thickness_[%]'] *c/100
+            c = c2def['Chord_[m]'].values
+            t = c2def['Relative_thickness_[%]'].values *c/100
             axes[1,0].plot(z_O, x_O_h2+c/2*np.sin(twist*np.pi/180), '-', color=[0.5,0.5,0.5] )
             axes[1,0].plot(z_O, x_O_h2-c/2*np.sin(twist*np.pi/180), '-', color=[0.5,0.5,0.5] )
             axes[1,1].plot(z_O, y_O_h2+c/2*np.cos(twist*np.pi/180), '-', color=[0.5,0.5,0.5] )
             axes[1,1].plot(z_O, y_O_h2-c/2*np.cos(twist*np.pi/180), '-', color=[0.5,0.5,0.5] )
-
+# 
 
         # --- Positions rel to mean line
         axes[2,0].text(0.5, 1.01, r'Pos. wrt. meanline, x', horizontalalignment='center', verticalalignment='bottom', transform = axes[2,0].transAxes)
@@ -374,15 +374,15 @@ def hawc2tobeamdyn(H2MeanLineFile, H2StructureFile, BDBldFileOut, BDMainFileOut=
         axes[2,0].set_ylabel(r'$\Delta x$ [m]')
         axes[2,1].set_ylabel(r'$\Delta y$ [m]')
         axes[2,0].legend(loc='upper right', fontsize=8)
-
+# 
         # --- Plot Stiffness
 #         ax=fig.add_subplot(111)
         ax=axes[3,0]
         ax.text(0.5, 1.01, 'Stiffnesses', horizontalalignment='center', verticalalignment='bottom', transform = ax.transAxes)
         ax.plot(z_O,EdgStiff,'-' , color=colrs[0], label='Edge Stiffness (K_44)')
-        ax.plot(z_O,EIxp    ,'--', color=colrs[0], label='EIx "edge" at elastic center')
+        ax.plot(z_O,EIxp.values    ,'--', color=colrs[0], label='EIx "edge" at elastic center')
         ax.plot(z_O,FlpStiff,'-' , color=colrs[1], label='Flap Stiffness (K_55)')
-        ax.plot(z_O,EIyp    ,'--', color=colrs[1], label='EIy "flap" at elastic center')
+        ax.plot(z_O,EIyp.values    ,'--', color=colrs[1], label='EIy "flap" at elastic center')
         ax.set_xlabel('z [m]')
         ax.set_ylabel('Stiffness [Nm^2]')
         ax.legend(fontsize=8)

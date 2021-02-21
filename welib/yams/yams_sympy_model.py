@@ -547,7 +547,7 @@ class EquationsOfMotionQ(object):
         if replaceDict is None: 
             replaceDict=OrderedDict()
         replaceDict.update(self.bodyReplaceDict)
-        print(replaceDict)
+        #print(replaceDict)
 
         with Timer('Python to {}'.format(filename),True):
             with open(filename,'w') as f:

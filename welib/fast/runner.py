@@ -15,8 +15,8 @@ import re
 # --- Fast libraries
 from welib.weio.fast_input_file import FASTInputFile
 from welib.weio.fast_output_file import FASTOutputFile
-# from pyFAST.input_output.fast_input_file import FASTInputFile
-# from pyFAST.input_output.fast_output_file import FASTOutputFile
+#from pyFAST.input_output.fast_input_file import FASTInputFile
+#from pyFAST.input_output.fast_output_file import FASTOutputFile
 
 FAST_EXE='openfast'
 
@@ -155,7 +155,6 @@ def writeBatch(batchfile, fastfiles, fastExe=None):
             ff_rel = os.path.relpath(ff_abs, batchdir)
             l = fastExe_rel + ' '+ ff_rel
             f.write("%s\n" % l)
-
 
 def removeFASTOuputs(workDir):
     # Cleaning folder

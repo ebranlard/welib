@@ -6,18 +6,47 @@ from numpy import mod
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import re
-# from cycler import cycler
-# from .colors import rgb2hex, fColrs
-# Should be placed in some kind of InitClear
-# mpl.rcParams['lines.linewidth'] = 1.55
-# mpl.rcParams['font.size'] = 15
-# # mpl.rcParams['axes.color_cycle']=[rgb2hex((c*255).astype(int)) for c in fColrs()]
-# mpl.rcParams['axes.prop_cycle']=cycler(color=[rgb2hex((c*255).astype(int)) for c in fColrs()])
-# mpl.rcParams['font.family'] = 'helvetica'
-# line.set_dashes([8, 4, 2, 4, 2, 4]) 
-#lg = a.legend()
-# fr = lg.get_frame()
-# fr.set_lw(0.2)
+
+# --- On load, set default rcParams
+def defaultRC():
+    # --- Ticks
+    # ax.tick_params(direction='in', top='True, left='True', labelright=False, labeltop=False)
+    mpl.rcParams['xtick.direction'] = 'in'
+    mpl.rcParams['ytick.direction'] = 'in'
+    mpl.rcParams['xtick.top']  = True
+    mpl.rcParams['ytick.right'] = True
+
+    # --- Axes limits
+    # ax.autoscale(enable=True, axis='both', tight=True)
+    mpl.rcParams['axes.autolimit_mode'] ='round_numbers'
+    mpl.rcParams['axes.xmargin'] = 0
+    mpl.rcParams['axes.ymargin'] = 0
+
+    # --- Grid
+    # ax.grid(True, linestyle=':')
+    #mpl.rcParams['axes.grid']     = True
+    #mpl.rcParams['grid.alpha']     = 1.0,
+    mpl.rcParams['grid.color']     = '#b0b0b0'
+    mpl.rcParams['grid.linestyle'] = ':'
+    mpl.rcParams['grid.linewidth'] = 0.5 # default 0.8
+
+    # --- Linewidth
+    mpl.rcParams['lines.linewidth'] = 1.2  # default 1.5
+
+    # --- Fontsize
+    #mpl.rcParams['font.size'] = 15
+
+    # --- Colors
+    # from cycler import cycler
+    # from .colors import rgb2hex, fColrs
+    # Should be placed in some kind of InitClear
+    # # mpl.rcParams['axes.color_cycle']=[rgb2hex((c*255).astype(int)) for c in fColrs()]
+    # mpl.rcParams['axes.prop_cycle']=cycler(color=[rgb2hex((c*255).astype(int)) for c in fColrs()])
+    # mpl.rcParams['font.family'] = 'helvetica'
+    # line.set_dashes([8, 4, 2, 4, 2, 4]) 
+    #lg = a.legend()
+    # fr = lg.get_frame()
+    # fr.set_lw(0.2)
 
 # --------------------------------------------------------------------------------
 # ---  

@@ -58,7 +58,7 @@ def python_colors(i=None):
         return plt.rcParams['axes.prop_cycle'].by_key()['color']
     else:
         Colrs=plt.rcParams['axes.prop_cycle'].by_key()['color']
-        return Colrs[ mod(i,len(Colrs)) ]
+        return Colrs[ np.mod(i,len(Colrs)) ]
 
 # ---- ColorMap
 def make_colormap(seq,values=None):

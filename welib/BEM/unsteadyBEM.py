@@ -758,8 +758,8 @@ class AeroBEM:
                     Vwnd_g,
                     firstCallEquilibrium= it==0 and firstCallEquilibrium
                     )
-            if np.mod(t,1)<dt/2:
-                print(t)
+            #if np.mod(t,1)<dt/2:
+            #    print(t)
         df = self.toDataFrame()
         return df
 

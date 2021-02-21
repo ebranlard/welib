@@ -266,7 +266,6 @@ class FASTInputFile(File):
                 # --- Here we cheat and force an exit of the input file
                 # The reason for this is that some files have a lot of things after the END, which will result in the file being intepreted as a wrong format due to too many comments
                 if i+2<len(lines) and lines[i+2].lower().find('bldnd_bladesout')>0:
-                    print('>>>Bld Nodal outputs present')
                     self.hasNodal=True
                 else:
                     self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
@@ -478,7 +477,7 @@ class FASTInputFile(File):
 
         # --- PostReading checks
         labels = self.keys()
-        duplicates = set([x for x in labels if labels.count(x) > 1])
+        duplicates = set([x for x in labels if (labels.count(x) > 1) and x!='OutList'])
         if len(duplicates)>0:
             print('[WARN] Duplicate labels found in file: '+self.filename)
             print('       Duplicates: '+', '.join(duplicates))

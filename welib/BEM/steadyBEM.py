@@ -107,7 +107,7 @@ class SteadyBEM_Outputs:
     def StoreIntegratedValues(BEM,df=None):
         if df is None:
             df = pd.DataFrame(columns=['WS_[m/s]','RotSpeed_[rpm]','Pitch_[deg]','AeroThurst_[kN]','AeroTorque_[kNm]','AeroPower_[kW]','AeroCP_[-]','AeroCT_[-]','AeroCQ_[-]','AeroFlap_[kNm]', 'AeroEdge_[kNm]'])
-        df = df.append(pd.Series(), ignore_index=True)
+        df = df.append(pd.Series(dtype='float64'), ignore_index=True)
         i=len(df)-1
         df.loc[i,'WS_[m/s]']         = BEM.V0
         df.loc[i,'RotSpeed_[rpm]']   = BEM.Omega *60/(2*np.pi)

@@ -308,7 +308,7 @@ class BeamBody(FlexibleBody):
 
         B.KK=B.KK0+B.KKg
         if len(np.isnan(B.KK))>0:
-            print('>>> WARNING, some stiffness matrix values are nan, replacing with 0')
+            #print('>>> WARNING, some stiffness matrix values are nan, replacing with 0')
             B.KK[np.isnan(B.KK)]=0
 
     def computeDampingMatrix(self, damp_zeta=None):
@@ -324,7 +324,7 @@ class BeamBody(FlexibleBody):
             self.DD[6+j,6+j] = c
 
         if len(np.isnan(self.DD))>0:
-            print('>>> WARNING, some damping matrix values are nan, replacing with 0')
+            #print('>>> WARNING, some damping matrix values are nan, replacing with 0')
             self.DD[np.isnan(self.DD)]=0
 
 
@@ -399,7 +399,7 @@ class BeamBody(FlexibleBody):
     def computeMassMatrix(B):
         B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
         if len(np.isnan(B.MM))>0:
-            print('>>> WARNING, some mas matrix values are nan, replacing with 0')
+            #print('>>> WARNING, some mass matrix values are nan, replacing with 0')
             B.MM[np.isnan(B.MM)]=0
 
     @property

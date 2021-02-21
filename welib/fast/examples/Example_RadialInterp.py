@@ -44,9 +44,9 @@ def main():
     # --- Plot
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    ax.plot(df['Time_[s]'], df['AB1N017Cl_[-]'], label='Section before (r={}m)'.format(r_AD[16]))
-    ax.plot(df['Time_[s]'], Cl_interp          , label='Interpolated (r={}m)'.format(r))
-    ax.plot(df['Time_[s]'], df['AB1N018Cl_[-]'], label='Section after (r={}m)'.format(r_AD[17]))
+    ax.plot(df['Time_[s]'].values, df['AB1N017Cl_[-]'].values, label='Section before (r={}m)'.format(r_AD[16]))
+    ax.plot(df['Time_[s]'].values, Cl_interp.values          , label='Interpolated (r={}m)'.format(r))
+    ax.plot(df['Time_[s]'].values, df['AB1N018Cl_[-]'].values, label='Section after (r={}m)'.format(r_AD[17]))
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Cl [-]')
     ax.set_xlim([7,10])

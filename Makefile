@@ -11,3 +11,4 @@ install: dep
 
 export:
 	python -c 'from welib.tools.repo import *; export_figs_rec("welib/");'
+

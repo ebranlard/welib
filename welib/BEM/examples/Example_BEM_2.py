@@ -63,7 +63,7 @@ def main(test=False):
         # --- Plot
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        ax.plot(dfOut['WS_[m/s]'], dfOut['AeroPower_[kW]']    , label='Power')
+        ax.plot(dfOut['WS_[m/s]'].values, dfOut['AeroPower_[kW]'].values, label='Power')
         ax.set_xlabel('Wind speed [m/s]')
         ax.set_ylabel('[-]')
         ax.legend()

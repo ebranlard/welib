@@ -40,7 +40,7 @@ def main():
     KK = np.array([[2.395E+07]])
     CC = KK*0.000
     k_h_mm1 = k_h/MM[0]
-    print('k_h/m',k_h_mm1)
+    #print('k_h/m',k_h_mm1)
 
 
     # --- Define names of physical states, augmented states, measurements, and inputs
@@ -134,14 +134,16 @@ def main():
             print('Time step %8.0f t=%10.3f ' % (it,KF.time[it]))
 
     # --- 
-    print(KF)
-    KF.print_sigmas()
     KF.plot_X()
     # KF.plot_Y()
     KF.plot_S()
 
+    return KF
+
 if __name__ == '__main__':
     main()
+    KF.print_sigmas()
+    print(KF)
     plt.show()
 
 if __name__ == '__test__':

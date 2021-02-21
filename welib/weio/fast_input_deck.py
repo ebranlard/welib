@@ -33,7 +33,7 @@ class FASTInputDeck(object):
         self.inputfiles = {}
         # read master file
         self.fst = FASTInputFile(fstfile)
-        print('Read',fstfile)
+        #print('Read',fstfile)
         self.Attributes=['fst']
 
         def sub_read(file_obj,store_obj,expected_keys,names):
