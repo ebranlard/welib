@@ -1,6 +1,5 @@
 import numpy as np
-from numpy.random import uniform, seed
-seed(11)
+from numpy.random import uniform
 
 def pointTS(f, S):
     """ 
@@ -30,7 +29,7 @@ def pointTSKaimal(tMax, dt, U0, sigma, L, method='ifft', fCutInput=None):
 
     if method=='sum':
         # --- Method 1
-        ap = np.sqrt(2*S*df)      # Wave amplitude [m]
+        ap = np.sqrt(2*S*df)      # amplitude 
         omega = 2*np.pi*f
         eps = uniform(0,2*np.pi,len(f))  # random phases between 0 and 2pi
         u = np.zeros(t.shape)
@@ -48,7 +47,7 @@ def pointTSKaimal(tMax, dt, U0, sigma, L, method='ifft', fCutInput=None):
         #  Value sets of two random normal distributed variables
         N = int(tMax2* fMax + 1)
         Nh= int(N/2) 
-        print('N',N)
+        #print('N',N)
         a = np.random.randn(Nh+1)
         b = np.random.randn(Nh+1)
         # First part of the complex vector
@@ -59,8 +58,8 @@ def pointTSKaimal(tMax, dt, U0, sigma, L, method='ifft', fCutInput=None):
         Sw = kaimal(omega, U0, sigma, L) # S(omega)
         sig = np.sqrt(tMax2/(2*np.pi)* Sw) # see a= np.sqrt(2*S*df)
         xlhalf1 *= sig
-        print(N)
-        print(sig[0:5], sig[-1])
+        #print(N)
+        #print(sig[0:5], sig[-1])
 
         xlhalf2 = np.flipud(xlhalf1[1:])
 
@@ -112,10 +111,10 @@ def pointTSKaimal(tMax, dt, U0, sigma, L, method='ifft', fCutInput=None):
 
     # Setting mean to U0
     u=u-np.mean(u) + U0
-    print('u', u.shape)
-    print('t', t.shape)
-    print('f', f.shape)
-    print('S', S.shape)
+    #print('u', u.shape)
+    #print('t', t.shape)
+    #print('f', f.shape)
+    #print('S', S.shape)
 
     return t, u, f, S
 
@@ -123,6 +122,8 @@ if __name__ == '__main__':
 
     from welib.tools.spectral import fft_wrap
     from welib.tools.tictoc import Timer
+
+    seed(11)
 
     U0    = 8      # Wind speed [m/s], for Kaimal spectrum
     I     = 0.14   # Turbulence intensity [-], for Kaimal spectrum
@@ -134,7 +135,7 @@ if __name__ == '__main__':
         with Timer(method):
             t, u, freq, S =pointTSKaimal(tMax, dt, U0, U0*I, L, method=method)
 
-        # --- Compute FFT of wave elevation
+        # --- Compute FFT of wind speed
         f_fft, S_fft, Info = fft_wrap(t, u, output_type='PSD', averaging='none')
 
         # --- Plots
@@ -147,12 +148,12 @@ if __name__ == '__main__':
         ax.tick_params(direction='in')
         ax.autoscale(enable=True, axis='both', tight=True)
         ax.set_xlabel('Time [s]')
-        ax.set_ylabel(r'Wave elevation [m]')
-        ax.set_title('Hydro - wave generation')
+        ax.set_ylabel(r'Wind speed [m/s]')
+        ax.set_title('Wind - wind generation at point')
 
         ax=axes[1]
         ax.plot(f_fft, S_fft, '-', label='Generated')
-        ax.plot(freq, S     , 'k', label='Jonswap')
+        ax.plot(freq, S     , 'k', label='Kaimal')
         ax.set_yscale('log')
         ax.set_xscale('log')
         ax.legend()
@@ -162,12 +163,3 @@ if __name__ == '__main__':
         ax.autoscale(enable=True, axis='both', tight=True)
     
     plt.show()
-#     # --- Plots
-#     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-#     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-#     ax.plot(freq, S)
-#     ax.plot(freq[iMax], S[iMax], 'ko')
-#     ax.set_xlabel('Frequency [Hz]')
-#     ax.set_ylabel(r'Spectral density [m^2 s]')
-#     ax.set_title('Hydro - Jonswap spectrum')
-#     ax.tick_params(direction='in')
