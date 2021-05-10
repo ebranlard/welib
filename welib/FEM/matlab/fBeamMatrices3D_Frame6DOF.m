@@ -100,6 +100,8 @@ for i=1:nel
     % --- Element matrix
     [ke,me]=fElementMatricesFrame3D_6DOF(E,G,Kte(i),EAe(i),EIxe(i),EIye(i),EIze(i),Le(i),Ae(i),Mass(i));
     % TODO: geometric stiffness
+    me
+    ke
     % --- Build global matrices
     MM =fBuildGlobalMatrix(MM ,me  ,DOFindex);
     KK =fBuildGlobalMatrix(KK ,ke  ,DOFindex);

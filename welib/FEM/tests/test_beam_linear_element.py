@@ -7,7 +7,7 @@ from numpy.linalg import inv
 from welib.FEM.fem_beam import applyBC, generalizedMassMatrix, shapeIntegrals
 from welib.FEM.fem_beam import geometricalStiffening
 from welib.FEM.fem_beam import orthogonalizeModePair, normalize_to_last
-from welib.FEM.fem_beam import cbeam_frame3dlin, cbeam_frame3dlin_Kg
+from welib.FEM.fem_beam import cbeam_assembly_frame3dlin, cbeam_frame3dlin_Kg
 from welib.FEM.frame3dlin import frame3dlin_Mcross, frame3dlin_Kg
 import welib.weio as weio
 from welib.system.eva import eig
@@ -50,7 +50,7 @@ class Test(unittest.TestCase):
         xNodes = np.zeros((3,nNodes))
         xNodes[2,:]=z
 
-        MM, KK, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF = cbeam_frame3dlin(xNodes, m, Iy, Iz=Iz, A=A, Kv=Kv, E=E)
+        MM, KK, xNodes, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF = cbeam_assembly_frame3dlin(xNodes, m, Iy, Iz=Iz, A=A, Kv=Kv, E=E)
 
         np.testing.assert_almost_equal(MM[0,0], 17921.9563543, 5)
         np.testing.assert_almost_equal(MM[-1,-1], 7590.2188  , 5)
