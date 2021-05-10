@@ -1,0 +1,11 @@
+*.out
+*.outb
+*.sum
+*.ech
+*.exe
+*.dll
+*.res
+*.lin
+*.sum.yaml
+*Copy*
+Sensor
