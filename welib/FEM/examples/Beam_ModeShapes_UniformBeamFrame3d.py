@@ -116,8 +116,8 @@ if __name__=='__main__':
 
 if __name__=='__test__':
     FEM, _ = UniformBeam()
-    MMr       = FEM['MMr']
-    KKr       = FEM['KKr']
+    MM        = FEM['MMr']
+    KK        = FEM['KKr']
     xNodes    = FEM['xNodes']
     Q         = FEM['Q']
     freq      = FEM['freq']
