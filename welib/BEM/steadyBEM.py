@@ -265,7 +265,7 @@ def SteadyBEM(Omega,pitch,V0,xdot,u_turb,
 
 def FASTFile2SteadyBEM(FASTFileName):
     from welib.weio.fast_input_deck import FASTInputDeck
-    F = FASTInputDeck(FASTFileName,readlist=['AD','ED'])
+    F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
 
     rho     = F.AD['AirDens']
     KinVisc = F.AD['KinVisc']

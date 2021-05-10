@@ -176,7 +176,7 @@ class AeroBEM:
 
     def init_from_FAST(self, FASTFileName):
         from welib.weio.fast_input_deck import FASTInputDeck
-        F = FASTInputDeck(FASTFileName,readlist=['AD','ED'])
+        F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
 
         # Environment
         self.rho     = F.AD['AirDens']

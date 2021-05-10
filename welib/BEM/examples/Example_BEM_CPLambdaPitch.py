@@ -58,7 +58,6 @@ def main(test=False,extra=False):
         np.savetxt('_Lambda.csv', vlambda, delimiter=',')
         np.savetxt('_Pitch.csv' , vpitch , delimiter=',')
 
-
         # --- Plotting matrix of CP values
         from mpl_toolkits.mplot3d import Axes3D
         from matplotlib import cm
@@ -74,7 +73,7 @@ def main(test=False,extra=False):
         ax.set_xlabel('Lambda [-]')
         ax.set_ylabel('Pitch [deg]')
         ax.set_zlabel(r'Power coefficient [-]')
-        ax.set_title('Steady BEM - CP-lambda-pitch ')
+        ax.set_title('BEM - CP-lambda-pitch ')
         #fig.colorbar(surf, shrink=0.5, aspect=5)
 
 

@@ -25,9 +25,9 @@ def OLAFParams(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPer
     omega = omega_rpm*2*np.pi/60
     T = 2*np.pi/omega
     if nPerRot is not None:
-        dt_wanted    = np.around(T/nPerRot,4)
+        dt_wanted    = np.around(T/nPerRot,5)
     else:
-        dt_wanted    = np.around(deltaPsiDeg/(6*omega_rpm),4)
+        dt_wanted    = np.around(deltaPsiDeg/(6*omega_rpm),5)
         nPerRot = int(2*np.pi /(deltaPsiDeg*np.pi/180))
 
     nNWPanel     = nNWrot*nPerRot
@@ -47,3 +47,7 @@ def OLAFParams(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPer
         print(tMax              , '  Tmax ({} rotations)'.format(totalRot))
 
     return dt_wanted, tMax, nNWPanel, nFWPanel, nFWPanelFree
+
+
+if __name__ == '__main__':
+    OLAFParams(omega_rpm = 4.87558, deltaPsiDeg=6, show=True)

@@ -4,6 +4,7 @@ Performs simple BEM simulations of the NREL 5MW turbine for two operating condit
 # --- Common libraries 
 from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
 import os
+import glob
 import matplotlib.pyplot as plt
 
 MyDir=os.path.dirname(__file__)
@@ -47,6 +48,7 @@ if __name__=="__main__":
     main()
 if __name__=="__test__":
     main(test=True)
+    [os.remove(f) for f in glob.glob(os.path.join(MyDir,'_*.csv'))]
 if __name__=="__export__":
     pass
     #main()

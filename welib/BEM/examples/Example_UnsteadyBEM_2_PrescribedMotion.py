@@ -3,9 +3,11 @@ Performs a simple Unsteady BEM simulations of the NREL 5MW turbine
 with a predefined motion
 """
 # --- Common libraries 
-from welib.BEM.unsteadyBEM import *
 import os
 import matplotlib.pyplot as plt
+# --- Local libraries
+from welib.BEM.unsteadyBEM import *
+from welib.tools.figure import defaultRC; defaultRC();
 
 MyDir=os.path.dirname(__file__)
 
@@ -59,7 +61,7 @@ def main(test=False):
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Axial induction [-]')
         ax.legend()
-        ax.set_title('Unsteady BEM - Prescribed surge motion')
+        ax.set_title('BEM (unsteady) - Prescribed surge motion')
         ax.tick_params(direction='in')
     #import matplotlib.pyplot as plt
     #from mpl_toolkits.mplot3d import Axes3D

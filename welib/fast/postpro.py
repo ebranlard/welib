@@ -27,7 +27,7 @@ def ED_BldStations(ED):
         - bld_fract: fraction of the blade length were stations are defined
         - r_nodes: spanwise position from the rotor apex of the Blade stations
     """
-    if not isinstance(ED,FASTInputFile):
+    if hasattr(ED,'startswith'): # if string
         ED = FASTInputFile(ED)
 
     nBldNodes = ED['BldNodes']
@@ -46,7 +46,7 @@ def ED_TwrStations(ED):
         - r_fract: fraction of the towet length were stations are defined
         - h_nodes: height from the *ground* of the stations  (not from the Tower base)
     """
-    if not isinstance(ED,FASTInputFile):
+    if hasattr(ED,'startswith'): # if string
         ED = FASTInputFile(ED)
 
     nTwrNodes = ED['TwrNodes']
@@ -63,7 +63,7 @@ def ED_BldGag(ED):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if not isinstance(ED,FASTInputFile):
+    if hasattr(ED,'startswith'): # if string
         ED = FASTInputFile(ED)
     _,r_nodes= ED_BldStations(ED)
     
@@ -88,7 +88,7 @@ def ED_TwrGag(ED):
     OUTPUTS:
        - h_gag: The heights of the gages, given from the ground height (tower base + TowerBsHt)
     """
-    if not isinstance(ED,FASTInputFile):
+    if hasattr(ED,'startswith'): # if string
         ED = FASTInputFile(ED)
     _,h_nodes= ED_TwrStations(ED)
     nOuts = ED['NTwGages']
@@ -111,7 +111,7 @@ def AD14_BldGag(AD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if not isinstance(AD,FASTInputFile):
+    if hasattr(ED,'startswith'): # if string
         AD = FASTInputFile(AD)
 
     Nodes=AD['BldAeroNodes']  
@@ -136,9 +136,9 @@ def AD_BldGag(AD,AD_bld,chordOut=False):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if not isinstance(AD,FASTInputFile):
+    if hasattr(AD,'startswith'): # if string
         AD = FASTInputFile(AD)
-    if not isinstance(AD_bld,FASTInputFile):
+    if hasattr(AD_bld,'startswith'): # if string
         AD_bld = FASTInputFile(AD_bld)
     #print(AD_bld.keys())
     nOuts=AD['NBlOuts']
@@ -164,7 +164,7 @@ def BD_BldGag(BD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if not isinstance(BD,FASTInputFile):
+    if hasattr(BD,'startswith'): # if string
         BD = FASTInputFile(BD)
 
     M       = BD['MemberGeom']
@@ -638,7 +638,7 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
     IR_BD       = None
     fst=None
     if FST_In is not None:
-        fst = FASTInputDeck(FST_In, readlist=['AD','ED','BD'])
+        fst = FASTInputDeck(FST_In, readlist=['AD','ADbld','ED','BD'])
         # NOTE: all this below should be in FASTInputDeck
         if fst.version == 'F7':
             # --- FAST7
@@ -655,7 +655,14 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
             R = None
 
             # --- ElastoDyn
-            if  not hasattr(fst,'ED'):
+            if 'NumTurbines' in fst.fst.keys():
+                # AeroDyn driver...
+                if 'HubRad(1)' in fst.fst.keys():
+                    r_hub       = fst.fst['HubRad(1)']
+                else:
+                    r_hub       = fst.fst['BldHubRad_bl(1_1)']
+
+            elif  not hasattr(fst,'ED'):
                 print('[WARN] The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
                 #raise Exception('The Elastodyn file couldn''t be found or read, from main file: '+FST_In)
             else:
@@ -668,20 +675,19 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
                     r_ED, IR_ED = ED_BldGag(fst.ED)
 
             # --- BeamDyn
-            if  hasattr(fst,'BD'):
+            if  fst.BD is not None:
                 r_BD, IR_BD, r_BD_All = BD_BldGag(fst.BD)
                 r_BD= r_BD+r_hub
                 if R is None:
                     R = r_BD_All[-1] # just in case ED file missing
 
             # --- AeroDyn
-            if  not hasattr(fst,'AD'):
+            if  fst.AD is None:
                 print('[WARN] The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
                 #raise Exception('The AeroDyn file couldn''t be found or read, from main file: '+FST_In)
             else:
-
                 if fst.ADversion == 'AD15':
-                    if  not hasattr(fst.AD,'Bld1'):
+                    if  fst.AD.Bld1 is None:
                         raise Exception('The AeroDyn blade file couldn''t be found or read, from main file: '+FST_In)
                     
                     if 'B1N001Cl_[-]' in OutputCols or np.any(np.char.find(list(OutputCols),'AB1N')==0):
