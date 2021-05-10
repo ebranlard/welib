@@ -134,9 +134,10 @@ if __name__=='__test__':
     np.testing.assert_almost_equal(freq[1],     0.71050, 5)
     np.testing.assert_almost_equal(freq[2],     4.45278, 5)
     np.testing.assert_almost_equal(freq[-1], 1209.98056, 5)
-    np.testing.assert_equal(modeNames[0], 'uz1')
-    np.testing.assert_equal(modeNames[1], 'uy1')
-    np.testing.assert_equal(modeNames[2], 'uy2')
+    if modeNames[0] not in ['uz1','uy1']:
+        raise Exception('First mode not labelled properly')
+    if modeNames[2] not in ['uz2','uy2']:
+        raise Exception('Second mode not labelled properly')
     np.testing.assert_equal(modeNames[7], 'vx1')
 
 if __name__=='__export__':
