@@ -21,7 +21,7 @@ g  = 9.81 # Gravity[m/s2]
 # --- Jonswap spectrum
 dt       = t[1]-t[0]                   # timestep [s]
 df       = 1/np.max(t)                 # step size for frequency
-fHighCut = dt/2.                       # Highest frequency in calculations
+fHighCut = 1/(dt)/2.                   # Highest frequency in calculations
 freq     = np.arange(df, fHighCut, df)
 S = jonswap(freq, Hs, Tp=Tp, g=9.81)
 

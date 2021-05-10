@@ -104,6 +104,11 @@ def setFigurePath(path):
         _global_params.path=path
     else:
         _global_params.path=[path]
+    for i,p in enumerate(_global_params.path):
+        if p[-1]=='/' or p[-1]=='\\':
+            pass
+        else:
+            _global_params.path[i] = p+'/'
 
 def setFigureTitle(btitle):
     _global_params.btitle=btitle

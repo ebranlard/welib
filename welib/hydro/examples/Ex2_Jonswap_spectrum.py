@@ -12,9 +12,9 @@ Hs = 8.1                      # Significant wave height [m]
 Tp = 12.7                     # Peak period [s]
 
 # --- Derived parameters
-df   = 1/np.max(t) # Step size for frequency
-fMax = dt/2        # Highest frequency 
-freq = np.arange(df, fMax, df)
+df   = 1./np.max(t) # Step size for frequency
+fMax = (1./dt)/2    # Highest frequency 
+freq = np.arange(df, fMax+df/2, df)
 
 # --- Spectrum and amplitude
 S = jonswap(freq, Hs, Tp) # Spectral density [m^2.s]
