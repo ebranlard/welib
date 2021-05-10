@@ -33,7 +33,7 @@ def main():
     BDOut          = '_BD_Smooth.dat'        # Name of BeamDyn file to be written
     BDBldOut       = '_BD_Blade_Smooth.dat'  # Name of BeamDyn blade file to be written
     Mu             = [0.001]*6               # stiffness proportional damping values
-    fig = bd.hawc2tobeamdyn(H2MeanLine, H2Structure, BDBldOut, BDOut, BDMainTemplate, Mu=Mu, poly_exp=[2,3,4,5,6], ref_axis='straight', bPlot=True)
+    fig = bd.hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldOut, BDOut, BDMainTemplate, Mu=Mu, poly_exp=[2,3,4,5,6], ref_axis='straight', bPlot=True)
 
 
 if __name__=='__main__':

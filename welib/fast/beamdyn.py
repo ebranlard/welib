@@ -203,7 +203,7 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
     # transform offset from global to local axis orientation
     theta_z = -twist
     x_off_s =   x_off_g * np.cos(theta_z) + y_off_g * np.sin(theta_z)
-    x_off_s =  -x_off_g * np.sin(theta_z) + y_off_g * np.cos(theta_z)
+    y_off_s =  -x_off_g * np.sin(theta_z) + y_off_g * np.cos(theta_z)
 
 
 
@@ -336,7 +336,7 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
         axes[0,0].plot(z_O, x_off_g, ':', label = r'"$\Delta$" to c2def', color=colrs[6])
         axes[0,1].plot(z_O, y_O   , '-' , label = 'BD y (smooth)')
         axes[0,1].plot(z_O, y_O_h2, '--' , label = 'H2 "y"', ms=3, color='k')
-        axes[0,1].plot(z_O, y_off , ':', label = 'y_off', color=colrs[6])
+        axes[0,1].plot(z_O, y_off_g , ':', label = 'y_off', color=colrs[6])
         if 'Relative_thickness_[%]' and 'Chord_[m]' in c2def.columns.values:
             c = c2def['Chord_[m]']
             t = c2def['Relative_thickness_[%]'] *c/100
@@ -403,7 +403,7 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
         axes[2,1].plot(z_O              , vy_G        , 'd' , ms=6, color=None, markeredgecolor=colrs[1], markerfacecolor="None", label = 'G (COG)') 
         axes[2,1].plot(z_O              , vy_S        , 's' , ms=6, color=None, markeredgecolor=colrs[2], markerfacecolor="None", label = 'S (shear center)') 
         axes[2,1].plot(z_O              , vy_C        , 'o' , ms=6, color=None, markeredgecolor=colrs[3], markerfacecolor="None", label = 'C (elastic center)') 
-        axes[2,1].plot(z_O              , y_off       , ':', label = r'"$\Delta$" to c2def', color=colrs[6])
+        axes[2,1].plot(z_O              , y_off_g     , ':', label = r'"$\Delta$" to c2def', color=colrs[6])
 #         axes[1,1].plot(hwc['r_[m]'], y_O_h2 - hwc['x_cg_[m]'], 'o' , ms=1, color=colrs[1] )
 #         axes[1,1].plot(hwc['r_[m]'], y_O_h2 - hwc['x_sh_[m]'], 's' , ms=1, color=colrs[2] )
 #         axes[1,1].plot(hwc['r_[m]'], y_O_h2 - hwc['x_e_[m]'] , 'd' , ms=1, color=colrs[3] )
