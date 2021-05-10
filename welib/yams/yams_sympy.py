@@ -1032,7 +1032,7 @@ class YAMSFlexibleBody(YAMSBody):
 
         elif form=='TaylorExpanded':
             # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.eval(q))
+            self.M[0:3,3:6] = skew(self.mdCM.eval(q)) # NOTE: sign convention is opposite wallrapp, change convention
             self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
             # Mrr
             self.M[3:6,3:6] = self.J.eval(q)
@@ -1119,7 +1119,7 @@ class YAMSFlexibleBody(YAMSBody):
         if form=='TaylorExpanded':
             # k_omega_t
             k_omega[0:3,0] = 2 *om_til * transpose(self.Ct.eval(q)) * qd # TODO does star work? or dot!
-            k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega
+            k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: mdCM sign convention is opposite Wallrap
             # k_omega_r
             k_omega[3:6,0] = om_til * self.J.eval(q) * omega
             for k in np.arange(nq):

@@ -263,7 +263,7 @@ def rigidBlades(blds, hub=None, r_O=[0,0,0]):
 # --------------------------------------------------------------------------------}
 # --- Converters 
 # --------------------------------------------------------------------------------{
-def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, algo=''):
+def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, nSpanBld=None, algo=''):
     """
 
     """
@@ -311,7 +311,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     jxxG = m     # NOTE: unknown
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
-    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False) 
+    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, nSpan=nSpanBld) 
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
         bld[iB+1].R_b2g
