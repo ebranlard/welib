@@ -37,9 +37,10 @@ def polyshape(x, coeff, exp, x_max=None):
     dmode  = np.zeros(x.shape)
     ddmode = np.zeros(x.shape)
     # Polynomials assume x to be dimensionless
+    # TODO TODO TODO substract x[0]
     if x_max is None: 
-        x_max= x[-1]  # Miht not alsways be desired if "x" are mid-points
-    x_bar=x/x_max
+        x_max= (x[-1]-0)  # Might not alsways be desired if "x" are mid-points
+    x_bar=(x-0)/x_max
     mode_max =0   #  value of shape function at max x
     for i in range(0,len(coeff)):
         mode     += coeff[i]*x_bar**exp[i]
@@ -80,7 +81,7 @@ def integrationWeights(s_span,m):
     return IW,IW_x,IW_m,IW_xm
 
 
-def GKBeamStiffnening(s_span, dU, gravity, m, Mtop, bSelfWeight=True, bMtop=True, main_axis='x'):
+def GKBeamStiffnening(s_span, dU, gravity, m, Mtop, Omega=0, bSelfWeight=True, bMtop=True, bRot=True, main_axis='x'):
     """ 
        Computes geometrical stiffnening for a beam
 
@@ -91,14 +92,17 @@ def GKBeamStiffnening(s_span, dU, gravity, m, Mtop, bSelfWeight=True, bMtop=True
     nf    = len(dU)
     KKg = np.zeros((6+nf,6+nf))
     # --- Axial force 
-    Pacc_SW = fcumtrapzlr(s_span, -m * gravity)
-    Pacc_MT = -Mtop * gravity*np.ones(nSpan)
     Pacc    = np.zeros(nSpan) 
     # TopMass contribution to Pacc
     if bMtop:
+        Pacc_MT = -Mtop * gravity*np.ones(nSpan)
         Pacc=Pacc+Pacc_MT
     if bSelfWeight:
+        Pacc_SW  = fcumtrapzlr(s_span, -m * gravity)
         Pacc=Pacc+Pacc_SW
+    if bRot:
+        Pacc_Rot = fcumtrapzlr(s_span,  m * Omega**2 * s_span)
+        Pacc=Pacc+Pacc_Rot
     # Method 2
     KKCorr = np.zeros((nf,nf))
     for i in range(0,nf):
@@ -397,7 +401,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         else:
             return MM
 
-def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxxG=None, gravity=None, Mtop=0, nSpan=None, bAxialCorr=False, bStiffening=True, main_axis='z', shapes=[0,1,2,3], algo=''):
+def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxxG=None, gravity=None, Mtop=0, Omega=0, nSpan=None, bAxialCorr=False, bStiffening=True, main_axis='z', shapes=[0,1,2,3], algo=''):
     """ 
     Compute generalized mass, stiffness and damping matrix, and shape integrals for a beam defined using polynomial coefficients
     The shape functions of the beam are defined as:
@@ -416,6 +420,7 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
        jxxG      : cross section moment of inertia about G
        gravity   : acceleration of gravity
        Mtop      : mass on top of beam if any
+       Omega     : rotational speed of the beam, if any [rad/s]
        nSpan     : number of spanwise station desired (will be interpolated)
     """
     def skew(x):
@@ -433,7 +438,6 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     s_min = np.min(s_span)
     s_max = np.max(s_span)
     if algo=='ElastoDyn':
-        print('>>>>>>>')
         # Settting up nodes like ElastoDyn
         s_span0 = s_span
 
@@ -449,6 +453,8 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
 
     else:
         if nSpan is not None:
+            if s_min>0:
+                print('TODO flexibility.py, support s_span0/=0')
             s_span0 = s_span
             s_span  = np.linspace(0,np.max(s_span),nSpan)
             m       = np.interp(s_span, s_span0, m)
@@ -476,7 +482,7 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
         # Third shape along along y (edgewise/Side-Side) Sign...
         shape2Dir = np.array([0,0,1,1])
         ShapeDir = shape2Dir[shapes]
-        EI[0,:] = EIFlp
+        EI[0,:] = EIFlp # EIFlp is EIy But formulae are reversed in GKBeam
         EI[1,:] = EIEdg
     else:
         raise NotImplementedError()
@@ -499,9 +505,16 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     # --- Generalized stiffness
     KK0 = GKBeam(s_span, EI, PhiK, bOrth=False)
     if bStiffening:
-        KKg = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, main_axis=main_axis)
+        KKg     = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis)
+        KKg_self= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=True , bMtop=False, bRot=False)
+        KKg_Mtop= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=True,  bRot=False)
+        KKg_rot = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=False, bRot=True)
     else:
-        KKg=KK0*0
+        KKg      = KK0*0
+        KKg_self = KK0*0
+        KKg_Mtop = KK0*0
+        KKg_rot = KK0*0
+
     KK=KK0+KKg
 
     # --- Generalized mass
@@ -539,7 +552,7 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
 
 
     # --- Return dict
-    return {'MM':MM, 'KK':KK, 'DD':DD, 'KK0':KK0, 'KKg':KKg, 
+    return {'MM':MM, 'KK':KK, 'DD':DD, 'KK0':KK0, 'KKg':KKg, 'KKg_self':KKg_self,'KKg_Mtop':KKg_Mtop, 'KKg_rot':KKg_rot,
             'Oe':Oe, 'Oe6':Oe6, 'Gr':Gr, 'Ge':Ge,
             'PhiU':PhiU, 'PhiV':PhiV, 'PhiK':PhiK,
             's_P0':s_P0, 's_G':s_G0, 's_span':s_span, 's_min':s_min, 's_max':s_max,

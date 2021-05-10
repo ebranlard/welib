@@ -22,6 +22,9 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
       Blds:  List of BeamBodies
 
       MM, KK, DD : mass, stiffness and damping matrix of full system
+
+
+      NOTE/TODO: compare this with "windturbine.py"
     """
     
     nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
@@ -120,6 +123,10 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     #print('Stiffnening', bStiffening)
     #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
     if DEBUG:
+        print('HubMass',Sft.Mass)
+        print('NacMass',Nac.Mass)
+        print('RotMass',M_rot)
+        print('RNAMass',M_RNA)
         print('IG_hub')
         print(IG_hub)
         print('IG_nac')

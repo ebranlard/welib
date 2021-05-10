@@ -181,7 +181,7 @@ class RigidBody(Body):
         return rigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
 
     def mass_matrix_at(self, s_OP):
-        """ Body mass matrix at a ginve point"""
+        """ Body mass matrix at a given point"""
         J = self.inertia_at(s_OP)
         s_PG = -np.asarray(s_OP)+ self._s_OG
         return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
@@ -248,7 +248,7 @@ class BeamBody(FlexibleBody):
             s_min=None, s_max=None,
             r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
             damp_zeta=None,
-            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None, main_axis='z'):
+            bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z'):
         """
         Creates a Flexible Beam body 
           Points P0 - Undeformed mean line of the body
@@ -282,6 +282,7 @@ class BeamBody(FlexibleBody):
         self.bOrth      = bOrth
         self.bStiffening= bStiffening
         self.Mtop       = Mtop
+        self.Omega      = Omega # rad/s
         self.gravity    = gravity
 
         self.computeMassMatrix()
@@ -299,12 +300,24 @@ class BeamBody(FlexibleBody):
         """ Create a rigid body from a flexible body """
         return RigidBody(self.name+'_rigid', self.mass, self.masscenter_inertia, self.masscenter, r_O=self.pos_global, R_b2g=self.R_b2g)
 
-    def computeStiffnessMatrix(B):
+    def computeStiffnessMatrix(B, Mtop=None, Omega=None):
         B.KK0 = GKBeam(B.s_span, B.EI, B.PhiK, bOrth=B.bOrth)
+
+        if Mtop is not None:
+            B.Mtop=Mtop
+        if Omega is not None:
+            B.Omega=Omega
+
         if B.bStiffening:
-            B.KKg = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, main_axis=B.main_axis)
+            B.KKg_self = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, B.Omega, main_axis=B.main_axis, bSelfWeight=True,  bMtop=False, bRot=False)
+            B.KKg_Mtop = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, B.Omega, main_axis=B.main_axis, bSelfWeight=False, bMtop=True , bRot=False)
+            B.KKg_rot  = GKBeamStiffnening(B.s_span, B.PhiV, B.gravity, B.m, B.Mtop, B.Omega, main_axis=B.main_axis, bSelfWeight=False, bMtop=False, bRot=True)
+            B.KKg = B.KKg_self+B.KKg_Mtop+B.KKg_rot
         else:
-            B.KKg=B.KK0*0
+            B.KKg      = B.KK0*0
+            B.KKg_self = B.KK0*0
+            B.KKg_Mtop = B.KK0*0
+            B.KKg_rot  = B.KK0*0
 
         B.KK=B.KK0+B.KKg
         if len(np.isnan(B.KK))>0:
@@ -447,14 +460,16 @@ class BeamBody(FlexibleBody):
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
-        s+='Useful getters: inertia_at, mass_matrix_at, toRigidBody \n'
+        s+=' - Properties: s_span, m, EI, Mtop, PhiU, PhiV, PhiW\n'
+        s+='               MM, KK, KK0, KKg, KKg_Mtop, KKg_self\n'
+        s+='Usefull getters: inertia_at, mass_matrix_at, toRigidBody \n'
         return s
 
 # --------------------------------------------------------------------------------}
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody):
-    def __init__(self, ED, inp, Mtop=0, shapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, spanFrom0=False, algo=''):
+    def __init__(self, ED, inp, Mtop=0, shapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, Omega=0, spanFrom0=False, algo=''):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
@@ -492,6 +507,9 @@ class FASTBeamBody(BeamBody):
             else:
                 s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
             r_O = [0,0,0] # NOTE: blade defined wrt point R for now
+            print(s_span)
+
+
 
             psi_B= 0
             if main_axis=='x':
@@ -533,10 +551,13 @@ class FASTBeamBody(BeamBody):
 
         gravity=ED['Gravity']
 
-        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, gravity=gravity, Mtop=Mtop, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis, shapes=shapes, algo=algo)
+        p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, 
+                gravity=gravity, Mtop=Mtop, Omega=Omega, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis, shapes=shapes, algo=algo)
+
+        # TODO TODO sort out span for Blades and HubRad 
 
         BeamBody.__init__(self, name, p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
                 s_min=p['s_min'], s_max=p['s_max'],
                 r_O = r_O, R_b2g=R_b2g,
                 damp_zeta=damp_zeta,
-                bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity, Mtop=Mtop, bStiffening=bStiffening, main_axis=main_axis)
+                bAxialCorr=bAxialCorr, bOrth=body_type=='blade', gravity=gravity, Mtop=Mtop, Omega=Omega, bStiffening=bStiffening, main_axis=main_axis)
