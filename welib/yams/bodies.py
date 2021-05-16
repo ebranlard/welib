@@ -510,7 +510,7 @@ class FASTBeamBody(BeamBody):
             else:
                 s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
             r_O = [0,0,0] # NOTE: blade defined wrt point R for now
-            print(s_span)
+            #print(s_span)
 
 
 
@@ -592,8 +592,9 @@ class FASTBeamBody(BeamBody):
 
             # --- Perform Craig-Bampton reduction, fixing the top node of the beam
             Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = femb.CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x') # TODO main_axis
-            print('CB MM\n',CB['MM'])
-            print('CB KK\n',CB['KK'])
+            # TODO TODO finda way to use these matrices instead of the ones computed with flexibility
+            #print('CB MM\n',CB['MM'])
+            #print('CB KK\n',CB['KK'])
             if main_axis=='x':
                 raise NotImplementedError('')
             else:

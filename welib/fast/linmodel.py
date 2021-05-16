@@ -144,6 +144,11 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
             Mat.rename(nameMap, axis='columns', inplace=True)
             Mat.rename(nameMap, axis='index', inplace=True)
 
+    # --- Numerics, 0
+    for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
+        Mat[np.abs(Mat)<1e-14]=0
+
+
     if model=='FNS':
         pass
         #print(C)

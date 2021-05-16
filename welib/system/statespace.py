@@ -11,7 +11,6 @@ def StateMatrix(Minv,C,K):
     A[n:,n:] = -np.dot(Minv,C)
     return A
 
-
 def vec_interp(t,vTime,vF):
     """ Interpolate vector known at discrete values (vTime, vF) to a given time `t` """
     F    = np.zeros(vF.shape[0])

@@ -10,12 +10,11 @@ class FASTPeriodicOP(object):
     """ Class for a set of *.lin files, all assumed to be for the same periodic operating point"""
     def __init__(self,prefix,nLin=None):
         if nLin is None:
-            linfiles= glob.glob(prefix + '*.*.lin')
+            linfiles= glob.glob(prefix + '.*.lin') # TODO we want a more rigorous regexp
             self.nLinTimes = len(linfiles)
         else:
             self.nLinTimes = nLin
-
-        print(prefix, self.nLinTimes)
+        #print(prefix, self.nLinTimes)
 
         self.prefix   = prefix
         self.Data     = []
@@ -78,7 +77,7 @@ class FASTLin(object):
             if not all(extsOK):
                 raise Exception('Not all inputs have the .lin extension. Provide a list of .lin files, or a folder and a prefix')
         else:
-            linfiles= list(glob.glob(folder + prefix + '*.*.lin'))
+            linfiles= list(glob.glob(folder + prefix + '*.*.lin')) # TODO we want a more rigorous regexp
             linfiles.sort()
 
         Sim_Prefix=np.unique(['.'.join(f.split('.')[:-2]) for f in linfiles])

@@ -3,7 +3,7 @@ from numpy.linalg import inv
 from scipy.integrate import  solve_ivp #odeint
 
 
-from .statespace import *
+from .statespace import vec_interp, B_interp, StateMatrix
 
 
 # --------------------------------------------------------------------------------}
@@ -89,6 +89,9 @@ class MechSystem():
         self.q0 = q0
 
     def setForceTimeSeries(self,vTime,vF):
+        """ 
+        
+        """
         vTime = np.asarray(vTime)
         vF    = np.asarray(vF)
         if vF.shape[0]!=self.nDOF:
@@ -100,6 +103,9 @@ class MechSystem():
         self._time_ts  = vTime
 
     def setForceFunction(self,fn):
+        """ 
+        
+        """
         self._force_fn = fn
 
     def Force(self,t,x=None,xdot=None):

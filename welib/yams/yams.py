@@ -118,8 +118,8 @@ class Body(GenericBody):
             n=child.setupDOFIndex(n)
         return n
 
-    def __repr__(B):
-        pass
+    #def __repr__(B):
+    #    return GenericBody.__repr__(B)
 
     @property
     def R_bc(self):
@@ -254,8 +254,8 @@ class Body(GenericBody):
 # --------------------------------------------------------------------------------{
 class GroundBody(Body, GenericInertialBody):
     def __init__(B):
-        GenericInertialBody.__init__(B)
         Body.__init__(B, 'Grd')
+        GenericInertialBody.__init__(B)
 
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
@@ -265,8 +265,8 @@ class RigidBody(Body,GenericRigidBody):
         """
         Creates a rigid body 
         """
+        Body.__init__(B,name)
         GenericRigidBody.__init__(B, name, Mass, J_G, rho_G)
-        Body.__init__(B)
         B.s_G_inB = rho_G
         B.J_G_inB = J_G
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, -B.s_G_inB)
