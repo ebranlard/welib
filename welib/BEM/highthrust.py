@@ -73,6 +73,7 @@ def a_Ct(Ct, a=None, F=None, method='AeroDyn'):
         raise NotImplementedError('High correcton method '+method)
     return a
 
+
 def Ct_a(a, F=None, method='Glauert', ac=None):
     """ 
     High thrust corrections of the form: Ct = Ct(a)

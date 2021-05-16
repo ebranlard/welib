@@ -25,7 +25,7 @@ def fastToGraph(data):
     raise NotImplementedError('Graph for object with keys: {}'.format(data.keys()))
 
 # --------------------------------------------------------------------------------}
-# --- HydroDyn
+# --- SubDyn
 # --------------------------------------------------------------------------------{
 def subdynToGraph(sd):
     """
@@ -38,9 +38,6 @@ def subdynToGraph(sd):
             (0.753,0.05,0.204),  # 3 Rigid
             (0.918,0.702,0.125), # 3 Rigid
         ]
-
-
-
 
     Graph = GraphModel()
     # --- Properties

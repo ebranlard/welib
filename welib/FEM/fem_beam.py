@@ -11,6 +11,7 @@ References:
 
 
 """
+import pandas as pd
 import numpy as np
 import scipy
 from welib.FEM.utils import skew 
@@ -83,22 +84,101 @@ def cbeam(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=None, E=N
         - freq : (nr) Frequencies
     """
     # --- Assembly full FEM system
-    MM, KK, xNodes, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF=cbeam_assembly(xNodes,m,EIx=EIx,EIy=EIy,EIz=EIz,EA=EA,A=A,E=E,G=G,Kt=Kt,phi=phi,nel=nel,element=element)
+    MM_, KK_, xNodes, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF=cbeam_assembly(xNodes,m,EIx=EIx,EIy=EIy,EIz=EIz,EA=EA,A=A,E=E,G=G,Kt=Kt,phi=phi,nel=nel,element=element)
 
     # --- Apply boundary conditions (clamped at root, free at tip)
-    MMr, KKr, Tr = applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC=BC, K_root=K_root, M_root=M_root, K_tip=K_tip, M_tip=M_tip)
+    MM, KK, Tr, IFull2BC, IBC2Full = applyBC(MM_, KK_, Elem2Nodes, Nodes2DOF, BC=BC, K_root=K_root, M_root=M_root, K_tip=K_tip, M_tip=M_tip)
 
     # --- Compute modes and frequencies
-    [Q, freq]= eig(KKr, MMr, freq_out=True)
+    [Q, freq]= eig(KK, MM, freq_out=True)
 
     # --- Compute modes and frequencies
     Q = insertBCinModes(Q, Tr)
     Q, modeNames = identifyAndNormalizeModes(Q, nModes=20)
 
     # --- Return a dictionary
-    FEM={'xNodes':xNodes, 'MM':MM, 'KK':KK, 'MMr':MMr,'KKr':KKr,'Tr':Tr,
-         'Q':Q,'freq':freq, 'modeNames':modeNames}
+    FEM={'xNodes':xNodes, 'MM':MM, 'KK':KK, 'MM_full':MM_,'KK_full':KK_,'Tr':Tr,
+        'IFull2BC':IFull2BC, 'IBC2Full':IBC2Full,
+        'Elem2Nodes':Elem2Nodes, 'Nodes2DOF':Nodes2DOF, 'Elem2DOF':Elem2DOF,
+        'Q':Q,'freq':freq, 'modeNames':modeNames}
     return FEM
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Craig Bampton 
+# --------------------------------------------------------------------------------{
+def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
+    """
+    Perform a Craig-Bampton reduction assume the top node is constrained
+    """
+    from welib.FEM.reduction import CraigBampton
+    MM     = FEM['MM']
+    KK     = FEM['KK']
+    xNodes = FEM['xNodes']
+    # Find top node DOF
+    IDOF_tip = FEM['Nodes2DOF'][FEM['Elem2Nodes'][-1,:][1],:] # NOTE: index in full system
+    Ileader=FEM['IFull2BC'][IDOF_tip] # NOTE: index in system with BC
+    # --- Craig-Bampton reduction
+    MMr, KKr, Phi_G, Phi_CB, f_G, f_CB = CraigBampton(MM, KK, Ileader, nModesCB=nCB, Ifollow=None, F=None, DD=None, fullModesOut=True)
+
+    CB=dict()
+    CB['MM']     = MMr
+    CB['KK']     = KKr
+    CB['Phi_G']  = Phi_G
+    CB['Phi_CB'] = Phi_CB
+    CB['f_G']    = f_G
+    CB['f_CB']   = f_CB
+
+
+    # Insert Boundary conditions back in mode
+    Q_G  = insertBCinModes(Phi_G, FEM['Tr'])
+    Q_CB = insertBCinModes(Phi_CB, FEM['Tr'])
+
+    # Identify modes for convenience
+    _, names_G= identifyAndNormalizeModes(Q_G, element=element, normalize=False)
+    _, names_CB= identifyAndNormalizeModes(Q_CB, element=element, normalize=False)
+
+    if main_axis!='x':
+        # Perform permutations
+        raise NotImplementedError()
+
+    if element =='frame3d':
+        DN = ['ux','uy','uz','tx','ty','tz']
+    else:
+        raise NotImplementedError()
+
+    # --- Create dataframe and mode dict for Guyan modes
+    MN = ['G{}'.format(i+1) for i in np.arange(Q_G.shape[1])]
+    M=FEM['xNodes'][0,:]
+    Modes_G=dict()
+    for i,mn in enumerate(names_G):
+        ModeComp = [Q_G[0::6,i],Q_G[1::6,i], Q_G[2::6,i], Q_G[3::6,i], Q_G[4::6,i], Q_G[5::6,i]]
+        Modes_G[mn]=dict()
+        Modes_G[mn]['label'] = names_G[i]
+        Modes_G[mn]['comp']  = np.column_stack(ModeComp)
+        Modes_G[mn]['raw']   = Q_G[:,i]
+
+        M= np.column_stack([M]+ModeComp)
+    colnames=['x']+[m+'_'+d for m in MN for d in DN]
+    df_G=pd.DataFrame(data=M, columns=colnames)
+
+    # --- Create dataframe and mode dict for CB modes
+    MN = ['CB{}'.format(i+1) for i in np.arange(Q_CB.shape[1])]
+    M=FEM['xNodes'][0,:]
+    Modes_CB=dict()
+    for i,mn in enumerate(names_CB):
+        ModeComp = [Q_CB[0::6,i],Q_CB[1::6,i], Q_CB[2::6,i], Q_CB[3::6,i], Q_CB[4::6,i], Q_CB[5::6,i]]
+        Modes_CB[mn]=dict()
+        Modes_CB[mn]['label'] = names_CB[i]
+        Modes_CB[mn]['comp']  = np.column_stack(ModeComp)
+        Modes_CB[mn]['raw']   = Q_CB[:,i]
+        M= np.column_stack([M]+ModeComp)
+    colnames=['x']+[m+'_'+d for m in MN for d in DN]
+    df_CB=pd.DataFrame(data=M, columns=colnames)
+
+    return Q_G, Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB
+
 
 
 # --------------------------------------------------------------------------------}
@@ -184,7 +264,7 @@ def BuildGlobalMatrix(KK, Ke, index):
         for j,jj in enumerate(index):
             KK[ii,jj] += Ke[i,j]
     #
-    #KK[index,index] += Ke
+    #KK[np.ix_(index,index)] += Ke
     return KK
 
 
@@ -282,22 +362,39 @@ def cbeam_assembly(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=
         Kt     = np.array([1, 1])*Kt
         A      = np.array([1, 1])*A  
         m      = np.array([1, 1])*m  
+    elif len(xNodes.shape)==1:
+        xNodes0=xNodes
+        xNodes=np.zeros((3,len(xNodes)))
+        xNodes[0,:]=xNodes0
 
-    # --- Interpolate properties based on curvilinear length along the beam to get nel Elements
-    # NOTE: interpolation does nothing if nel is None
+
+    # --- Create node locations if user specified nElem
     le0 = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
     s_span0 = np.concatenate(([0],np.cumsum(le0)))
 
     if nel is None:
-        nel=len(m-1)
+        # we will use xNodes provided by the user
+        nel=xNodes.shape[0]-1
+        interp_needed=False
     else:
+        # We create elements with linear spacing along the curvilinear span
         xNodes0=xNodes
         xNodes=np.zeros((3,nel+1))
         s_span     = np.linspace(0,s_span0[-1],nel+1)
-        s_span_mid = s_span[:-1]+np.diff(s_span0)/2
         xNodes[0,:] = np.interp(s_span, s_span0, xNodes0[0,:])
         xNodes[1,:] = np.interp(s_span, s_span0, xNodes0[1,:])
         xNodes[2,:] = np.interp(s_span, s_span0, xNodes0[2,:])
+        interp_needed=True
+
+    # Recompute spanwise
+    le = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
+    s_span = np.concatenate(([0],np.cumsum(le)))
+    s_span_mid = s_span[:-1]+np.diff(s_span)/2
+
+    # --- Interpolate properties based on curvilinear length along the beam to get nel Elements
+    if interp_needed or element=='frame3d':
+        # NOTE: frame3d needs values at mid points
+    
         if element=='frame3dlin':
             # then we interpolate at nodes
             s_span_e = s_span
@@ -329,8 +426,8 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
 
     INPUTS
       xNodes: (3x n+1) Nodes positions x,y,z along the beam for 3d beam [m]
-      G   : (scalar) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
-      E   : (scalar) Elastic (Young) modulus
+      G   : (scalar or n) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
+      E   : (scalar or n) Elastic (Young) modulus
       me   : (n) Mass per length of elements [kg/m]
       A    : (n) Beam cross section area along the beam, for elements [m^2]
       EIy  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
@@ -361,6 +458,9 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
     if np.any(xNodes[2,:]!=0):
         raise NotImplementedError('Only straight beam along x supported')
 
+    if np.isscalar(E): E=me*0 + E
+    if np.isscalar(G): G=me*0 + G
+
 
     # --- Coordinates system / direction cosine of each element
     DCM = elementDCMfromBeamNodes(xNodes,phi=phi)
@@ -382,7 +482,7 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
         Le = np.linalg.norm(P2-P1)
         Me = Le*me[i]
         # --- Element matrix
-        Ke,Me,Kg = frame3d_KeMe(E,G,Kte[i],EAe[i],EIxe[i],EIye[i],EIze[i],Le,Ae[i],Me,T=0,R=None)
+        Ke,Me,Kg = frame3d_KeMe(E[i],G[i],Kte[i],EAe[i],EIxe[i],EIye[i],EIze[i],Le,Ae[i],Me,T=0,R=None)
         # --- Build global matrices
         MM = BuildGlobalMatrix(MM, Me, DOFindex)
         KK = BuildGlobalMatrix(KK, Ke, DOFindex)
@@ -417,7 +517,7 @@ def cbeam_assembly_frame3dlin(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=None, G
 
     # --- Default values
     if Iz is None: Iz=Iy
-    if E is None:  E = 211e9       # Young modulus
+    if E is None:  E = m*0+211e9       # Young modulus
     if G is None:  G = E/2/(1+0.3) # Young modulus
     if A is None:  A= m*0+100      # Area
     if Kv is None: Kv= m*0+100     # Saint Venant torsion
@@ -543,6 +643,8 @@ def applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC=None, BC_root=[0,0,0,0,0,0], BC_ti
     OUTPUTS:
         Mr, Kr : (nr x nr) reduced mass and stiffness matrix
         Tr     : (n x nr) reduction matrix such that  Mr = Tr' MM Tr
+        IFull2BC: (n) Mapping from index of full matrix to matrix where DOF have been removed
+        IBC2Full: (nr) Mapping from index of reduced matrix to full matrix 
  
     """
     if BC is not None:
@@ -555,6 +657,8 @@ def applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC=None, BC_root=[0,0,0,0,0,0], BC_ti
 
 
     nDOF_tot = MM.shape[0]
+    IDOF_All = np.arange(0,nDOF_tot)
+
     # Tip and root degrees of freedom
     IDOF_root = Nodes2DOF[Elem2Nodes[0,:][0] ,:]
     IDOF_tip  = Nodes2DOF[Elem2Nodes[-1,:][1],:]
@@ -576,16 +680,30 @@ def applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC=None, BC_root=[0,0,0,0,0,0], BC_ti
 
     # --- Boundary condition transformation matrix (removes row/columns)
     Tr=np.eye(nDOF_tot)
-    # Root BC
-    IDOF_to_remove = [i for i,iBC in zip(IDOF_root, BC_root) if iBC==0]
-    Tr = np.delete(Tr, IDOF_to_remove, axis=1) # removing columns
-    # Tip BC
-    IDOF_to_remove = [i for i,iBC in zip(IDOF_tip, BC_tip) if iBC==0]
-    Tr = np.delete(Tr, IDOF_to_remove, axis=1) # removing columns
+
+    # Root and Tip BC
+    IDOF_removed = [i for i,iBC in zip(IDOF_root, BC_root) if iBC==0]
+    IDOF_removed += [i for i,iBC in zip(IDOF_tip, BC_tip) if iBC==0]
+    Tr = np.delete(Tr, IDOF_removed, axis=1) # removing columns
 
     Mr = (Tr.T).dot(MM).dot(Tr)
     Kr = (Tr.T).dot(KK).dot(Tr)
-    return Mr, Kr, Tr
+
+    # --- Create mapping from M to Mr
+    nDOF_r = Mr.shape[0]
+    IDOF_BC = list(np.setdiff1d(IDOF_All, IDOF_removed))
+    IFull2BC = np.zeros(nDOF_tot,dtype=int)
+    IBC2Full = np.zeros(nDOF_r,dtype=int)
+    k=0
+    for i in IDOF_All:
+        if i in IDOF_removed:
+            IFull2BC[i]=-1
+        else:
+            IFull2BC[i]=k
+            IBC2Full[k]=i
+            k+=1
+
+    return Mr, Kr, Tr, IFull2BC, IBC2Full
 
 
 
@@ -855,7 +973,7 @@ def insertBCinModes(Qr, Tr):
     """
     return Tr.dot(Qr)
 
-def identifyAndNormalizeModes(Q, nModes=None, element='frame3d'):
+def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True):
     """ 
     Attempts to identify and normalized the first `nModes` modes
     Modes are normalized by last values unless this value is too small compared to the max
@@ -908,7 +1026,8 @@ def identifyAndNormalizeModes(Q, nModes=None, element='frame3d'):
         else:
             # Normalize by last
             fact = Ulast*np.sign(U[-1])
-        Q[:,i]= Q[:,i]/fact
+        if normalize:
+            Q[:,i]= Q[:,i]/fact
     return Q, modeNames
 
 

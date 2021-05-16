@@ -237,8 +237,6 @@ class Body(GenericBody):
             return 0
         return B.MM[0,0]
 
-
-
     def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
         # Updating position of body origin in global coordinates
         o.r_O = x_0[0:3]
@@ -432,19 +430,22 @@ class UniformBeamBody(BeamBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
-    def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, spanFrom0=False):
+    def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, spanFrom0=False):
         """ 
         """
-        if nShapes==2:
-            shapes=[0,1]
-        elif nShapes==0:
-            shapes=[]
-        elif nShapes==1:
-            shapes=[0]
-        else:
-            raise NotImplementedError('>> TODO')
+        if shapes is None:
+            if nShapes==2:
+                shapes=[0,1]
+            elif nShapes==0:
+                shapes=[]
+            elif nShapes==1:
+                shapes=[0]
+            else:
+                raise NotImplementedError('>> TODO')
         GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, spanFrom0=spanFrom0)
+        # We need to inherit from "YAMS" Beam not just generic Beam
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
+                # NOTE: r_O, r_b2g is lost here
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
 

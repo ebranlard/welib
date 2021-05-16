@@ -268,20 +268,29 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
     CxT=  np.zeros(Twr.nf)
     CyT=  np.zeros(Twr.nf)
     CzT=  np.zeros(Twr.nf)
-    for j,v in enumerate(Twr.PhiV):
+    UxT=  np.zeros(Twr.nf)
+    UyT=  np.zeros(Twr.nf)
+    UzT=  np.zeros(Twr.nf)
+    for j,(u,v) in enumerate(zip(Twr.PhiU,Twr.PhiV)):
         if main_axis=='x':
             CyT[j]=-v[2,-1] # A deflection along z gives a negative angle around y
             CzT[j]= v[1,-1] # A deflection along y gives a positive angle around z # TODO TODO CHECK ME
+            UyT[j]= u[1,-1] 
+            UzT[j]= u[2,-1] 
             #print('Alpha y - mode {}:'.format(j+1),CyT[j])
         elif main_axis=='z':
             CxT[j]=-v[1,-1] # A deflection along y gives a negative angle around x # TODO TODO CHECK ME
             CyT[j]= v[0,-1] # A deflection along x gives a positive angle around y
+            UxT[j]= u[0,-1] 
+            UyT[j]= u[1,-1] 
     CyT=CyT[:Twr.nf]
-    #                     Bt_pc=zeros(3,p.nf);
-    #                     for j=1:p.nf
-    #                         Bx_pc(:,j)=p.PhiU{j}(:,iNode);
-    #                         Bt_pc(:,j)=[0; -p.PhiV{j}(3,iNode); p.PhiV{j}(2,iNode)];
-    #                     end
+    UxT=UxT[:Twr.nf]
+    # TODO:
+    #  Bt_pc=zeros(3,p.nf);
+    #  for j=1:p.nf
+    #      Bx_pc(:,j)=p.PhiU{j}(:,iNode);
+    #      Bt_pc(:,j)=[0; -p.PhiV{j}(3,iNode); p.PhiV{j}(2,iNode)];
+    #  end
 
     # --------------------------------------------------------------------------------}
     ## --- "Manual connection"
@@ -311,17 +320,17 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
         alpha_y=0
     elif Twr.nf == 1:
         if main_axis=='x':
-            Bx_TN = np.array([[0],[0],[1]])
+            Bx_TN = np.array([[0],[0],[UzT[0]]])
         elif main_axis=='z':
-            Bx_TN = np.array([[1],[0],[0]])
+            Bx_TN = np.array([[UxT[0]],[0],[0]])
         Bt_TN = np.array([[0],[CyT[0]],[0]])
         Twr.gzf = q[0,0]
         alpha_y = np.dot(CyT.ravel(), q[0,0].ravel())
     elif Twr.nf == 2:
         if main_axis=='x':
-            Bx_TN = np.array([[0,0],[0,0],[1,1]])
+            Bx_TN = np.array([[0,0],[0,0],[UzT[0],UzT[1]]])
         elif main_axis=='z':
-            Bx_TN = np.array([[1,1],[0,0],[0,0]])
+            Bx_TN = np.array([[UxT[0],UxT[1]],[0,0],[0,0]])
         Twr.gzf = q[0:2,0]
         Bt_TN = np.array([[0,0],[CyT[0],CyT[1]],[0,0]])
         alpha_y = np.dot(CyT.ravel() , q[:2,0].ravel())

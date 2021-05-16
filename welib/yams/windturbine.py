@@ -267,6 +267,8 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     """
 
     """
+    # TODO TODO TODO  Harmonize with TNSB.py
+
     # --- Reading main OpenFAST files
     ext     = os.path.splitext(fstFilename)[1]
     FST     = weio.read(fstFilename)

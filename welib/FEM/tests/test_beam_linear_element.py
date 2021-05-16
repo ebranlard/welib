@@ -61,7 +61,7 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(KK[11,11]/1e12, 1.87917, 5)
 
         # --- Constraints/ BC
-        MMr, KKr, Tr = applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC_root=[0,0,0,0,0,0], BC_tip=[1,1,1,1,1,1])
+        MMr, KKr, Tr,_,_ = applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC_root=[0,0,0,0,0,0], BC_tip=[1,1,1,1,1,1])
         iStart= 0; 
 
         # --- Eigenvalues/vectors
@@ -161,5 +161,5 @@ class Test(unittest.TestCase):
 
 
 if __name__=='__main__':
-    #unittest.main()
-    Test.test_fast2sid()
+    unittest.main()
+    #Test.test_fast2sid()

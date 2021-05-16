@@ -64,56 +64,117 @@ class FASTLinModel():
         return s
 
 
-# Temporary hack, loading model from state file
-def loadLinStateMatModel(StateFile,nDOF=2, Adapt=True, ExtraZeros=False):
+def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, ):
+    """ 
+    Load a pickle file contains A,B,C,D matrices either as sequence or dictionary.
+    Specific treatments are possible:
+       - ScaleUnits: convert to SI units deg->rad, rpm-> rad/s, kN->N
+       - Adapt: 
+       - Adapt: 
+       - nameMap: rename columns and indices
+
+    If a "model" is given specific treatments can be done
+    
+    """
     import pickle
+    # --- Subfunctions
+    def unit(s):
+        iu=s.rfind('[')
+        if iu>1:
+            return s[iu+1:].replace(']','')
+        else:
+            return ''
+    def no_unit(s):
+        s=s.replace('_[',' [')
+        iu=s.rfind(' [')
+        if iu>1:
+            return s[:iu]
+        else:
+            return s
     def load(filename):
         with open(filename,'rb') as f:
             dat=pickle.load(f)
         return dat
 
-    try:
-        (A,B,C,D,M) = load(StateFile)
-    except:
+    # --- Load model
+    dat = load(StateFile)
+    if isinstance(dat,dict):
+        A=dat['A']
+        B=dat['B']
+        C=dat['C']
+        D=dat['D']
         M=None
-        (A,B,C,D) = load(StateFile)
-    if Adapt==True:
-        A.iloc[3,:]=0 # No state influence of ddpsi ! <<<< Important
-        A.iloc[2,1]=0 # No psi influence of  ddqt
-        A.iloc[2,3]=0 # No psi_dot influence of ddqt
+        model =dat['model']
+    else:
+        model='TNSB'
+        if len(dat)==4:
+            M=None
+            (A,B,C,D) = dat
+        else:
+            (A,B,C,D,M) = dat
 
+    # --- Scale units
+    if ScaleUnits:
+        # Changing rows
+        for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
+            for irow,row in enumerate(Mat.index.values):
+                # Changing names
+                if row=='SvDGenTq_[kNm]':
+                    Mat.index.values[irow]='Qgen_[kNm]'
+                    row='Qgen_[kNm]'
 
-        if ExtraZeros:
-            B.iloc[0,:]=0 # No thrust influence on dqt
-            B.iloc[1,:]=0 # No thrust influence on dpsi
-        B.iloc[:,2]=0 # no pitch influence on states ! <<<< Important since value may only be valid around a given pitch
-        if ExtraZeros:
-            B.iloc[2,1]=0 # No Qgen influence on qtdot
-            B.iloc[3,0]=0 # No thrust influence on psi
-            D.iloc[0,1]=0  # No Qgen influence on IMU
-        D.iloc[0,2]=0  # No pitch influences on IMU
+                # Scaling based on units
+                u  = unit(row).lower()
+                nu = no_unit(row)
+                if u=='deg':
+                    print('Mat {} - scaling deg2rad   for row {}'.format(S,row))
+                    Mat.iloc[irow,:] /=180/np.pi # deg 2 rad
+                    Mat.index.values[irow]=nu+'_[rad]'
+                elif u=='rpm':
+                    print('Mat {} - scaling rpm2rad/s for row {}'.format(S,row))
+                    Mat.iloc[irow,:] /=60/(2*np.pi) # rpm 2 rad/s
+                    Mat.index.values[irow]=nu+'_[rad/s]'
+                elif u=='knm':
+                    print('Mat {} - scaling kNm to Nm for row {}'.format(S,row))
+                    Mat.iloc[irow,:] /=1000 # to Nm
+                    Mat.index.values[irow]=nu+'_[Nm]'
+    # --- ColMap
+    if nameMap is not None:
+        for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
+            Mat.rename(nameMap, axis='columns', inplace=True)
+            Mat.rename(nameMap, axis='index', inplace=True)
 
-        #A.index.values[1]='psi_rot_[rad]'
-        #A.columns.values[1]='psi_rot_[rad]'
-        #A.index.values[3]='d_psi_rot_[rad]'
-        #A.columns.values[3]='d_psi_rot_[rad]'
-        #C.columns.values[1]='psi_rot_[rad]'
-        #C.columns.values[3]='d_psi_rot_[rad]'
+    if model=='FNS':
+        pass
+        #print(C)
+        #print(D)
+    elif model=='FN' and A.shape[0]==4:
+        pass
+        
+    elif model=='TNSB' and A.shape[0]==4:
+        if Adapt==True:
+            A.iloc[3,:]=0 # No state influence of ddpsi ! <<<< Important
+            A.iloc[2,1]=0 # No psi influence of  ddqt
+            A.iloc[2,3]=0 # No psi_dot influence of ddqt
+            if ExtraZeros:
+                B.iloc[0,:]=0 # No thrust influence on dqt
+                B.iloc[1,:]=0 # No thrust influence on dpsi
+            B.iloc[:,2]=0 # no pitch influence on states ! <<<< Important since value may only be valid around a given pitch
+            if ExtraZeros:
+                B.iloc[2,1]=0 # No Qgen influence on qtdot
+                B.iloc[3,0]=0 # No thrust influence on psi
+                D.iloc[0,1]=0  # No Qgen influence on IMU
+            D.iloc[0,2]=0  # No pitch influences on IMU
 
-        C.iloc[3,:]=0 # No states influence pitch
-        C.iloc[2,3]=0 # No influence of psi on Qgen !<<< Important
-        C.index.values[1]='RotSpeed_[rad/s]'
-        D.index.values[1]='RotSpeed_[rad/s]'
-        C.index.values[2]='Qgen_[Nm]'
-        D.index.values[2]='Qgen_[Nm]'
-        C.index.values[3]='BPitch1_[rad]'
-        D.index.values[3]='BPitch1_[rad]'
-        C.iloc[1,:]/=60/(2*np.pi) # RotSpeed output in radian/s
-        D.iloc[1,:]/=60/(2*np.pi) # RotSpeed output in radian/s
-        C.iloc[2,:]*=1000 # GenTq in Nm
-        D.iloc[2,:]*=1000 # GenTq in Nm
+            C.iloc[3,:]=0 # No states influence pitch
+            C.iloc[2,3]=0 # No influence of psi on Qgen !<<< Important
+    else:
+        raise NotImplementedError('Model {} shape {}'.format(model,A.shape))
+
+    # ---
+    try:
         D['Qgen_[Nm]']['Qgen_[Nm]']=1
-        C.iloc[3,:]/=180/np.pi # Pitch output in radian
-        D.iloc[3,:]/=180/np.pi # Pitch output in radian
+    except:
+        pass
 
     return A,B,C,D,M

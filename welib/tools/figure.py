@@ -10,7 +10,7 @@ import re
 # --- On load, set default rcParams
 def defaultRC():
     # --- Ticks
-    # ax.tick_params(direction='in', top='True, left='True', labelright=False, labeltop=False)
+    # ax.tick_params(direction='in', top=True, right=True, labelright=False, labeltop=False, which='both')
     mpl.rcParams['xtick.direction'] = 'in'
     mpl.rcParams['ytick.direction'] = 'in'
     mpl.rcParams['xtick.top']  = True

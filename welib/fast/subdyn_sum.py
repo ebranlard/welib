@@ -111,7 +111,7 @@ class SubDynModel(FEMModel):
 
     def toDataFrame(self):
         dfs={}
-#         Mr, Kr, Phi_G, Phi_CB, f_CB = self.CraigBampton(Ileader=DOF_B, Ifollow=DOF_L)
+#         Mr, Kr, Phi_G, Phi_CB, f_CB, f_G = self.CraigBampton(Ileader=DOF_B, Ifollow=DOF_L)
 #         print(data['PhiL'])
 
     def NodesDisp(self, IDOF, UDOF, maxDisp=None, sortDim=None):

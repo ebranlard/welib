@@ -477,7 +477,7 @@ class FASTInputFile(File):
 
         # --- PostReading checks
         labels = self.keys()
-        duplicates = set([x for x in labels if (labels.count(x) > 1) and x!='OutList'])
+        duplicates = set([x for x in labels if (labels.count(x) > 1) and x!='OutList' and x.strip()!='-'])
         if len(duplicates)>0:
             print('[WARN] Duplicate labels found in file: '+self.filename)
             print('       Duplicates: '+', '.join(duplicates))

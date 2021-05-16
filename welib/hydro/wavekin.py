@@ -90,6 +90,9 @@ def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None):
     omega = 2 * np.pi * f  # angular frequency
 
     if Wheeler:
+        if eta is None:
+            raise Exception('Provide wave elevation (eta), scalar, for Wheeler')
+
         # User need to provide eta for wheeler stretching
         if len(t)==1:
             z = (z-eta)*h/(h+eta)
@@ -122,12 +125,12 @@ def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None):
 
 
 
-def fcalc(f, h, g, D, ap, CD, CM , rho, t, z, x, k, eps, phi, u_struct):       #ONLY DOES HYDRO FORCES
-    t = np.atleast_1d(t)                                                       #Set dimensions so t, f, and ap can be sclar or 1D Inputs 
+def fcalc(f, h, g, D, ap, CD, CM , rho, t, z, x, k, eps, phi, u_struct): 
+    t = np.atleast_1d(t)                                                 
     f = np.asarray([f])
     ap = np.asarray([ap])
-        
-    zindex = sum(z<0) #+ 1                                                          #Cut Phi and Z at water level z = 0 (waves dont act above water height)
+    # Cut Phi and Z at water level z = 0 (waves dont act above water height)
+    zindex = sum(z<0)
     phi = phi[0:zindex]
     D = D[0:zindex]
     CD = CD[0:zindex]
@@ -135,23 +138,17 @@ def fcalc(f, h, g, D, ap, CD, CM , rho, t, z, x, k, eps, phi, u_struct):       #
     z = z[0:zindex]
     u_struct = u_struct[0:zindex]
     
-    omega = 2 * np.pi * f                                                      #Define angular frequency
-        
-    ut = np.zeros([len(z), len(t), len(f)])                                    #Initiate vectors
-    dut =np.zeros([len(z), len(t), len(f)]) 
-    
-    for m in range(len(f)):                                                    #Solve for u, du at every t and z
-        ut[:,0,m] = omega[m]*ap[m] * np.cosh(k[m]*(z+h)) / np.sinh(k[m]*h) * np.cos(omega[m]*t-k[m]*x + eps[m])
-        dut[:,0,m] = omega[m]**2*ap[m] * np.cosh(k[m]*(z+h)) / np.sinh(k[m]*h) * np.sin(omega[m]*t-k[m]*x + eps[m]) * (-1)
-    u = np.sum(ut, axis=2) - u_struct.reshape(len(u_struct),1)                 #Add along z axis to solve for total u at time t
-    du = np.sum(dut, axis=2) # ## !!!!!! Change to TRAPZ?? CONSIDER 
+    # Wave kinematics
+    u,du = kinematics2d(ap, f, k, eps, h, t, z, x=x, Wheeler=False)
+    u=u.reshape(len(z),1) - u_struct.reshape(len(z),1)
+    du=du.reshape(len(z),1)
 
-    P = (.5 * rho * CD * D * u * np.abs(u)) + (rho * CM * np.pi*(D**2)/4 * du) #N/m #Force from wave
+    # Morison
+    P = (.5 * rho * CD * D * u * np.abs(u)) + (rho * CM * np.pi*(D**2)/4 * du) #N/m inline Force from wave
     GF = np.trapz((P*phi.reshape(len(phi), 1)), z , axis = 0 ) #work - N       #Generalized force
     M = P * (z.reshape(len(z), 1) + h) #Nm/m [N]
-     
 
-    F_total = np.trapz(P, z, axis=0)                                           #F total from waves ???
+    F_total = np.trapz(P, z, axis=0)                                           
     M_total = np.trapz(M, z, axis=0) #[Nm]
 
     return u, du, GF, P, M, F_total, M_total

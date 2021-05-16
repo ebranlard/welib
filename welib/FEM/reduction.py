@@ -3,10 +3,10 @@ import numpy as np
 from welib.system.eva import eig
 
 
-def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None): 
+def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, fullModesOut=False): 
     """
-    Performs the CraigBampton reduction of a system given some input master dofs index
-    and a number of modes
+    Performs the CraigBampton (CB) reduction of a system given some input master dofs index
+    and a number of modes. Reduced matrices, and Guyan and Craig-Bampton modes are returned.
         
     INPUTS
       Ileader : index of leader DOFs
@@ -16,6 +16,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None):
     INPUTS (Optional)
       nModesCB: number of CB modes to keep. Default: all
       Ifollow: indices of follower DOFs. Default: complementary set to Ileader
+      fullModesOut: if true, the Guyan and CB modes
         
     OUTPUTS
       fc: critical frequency
@@ -75,17 +76,51 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None):
     Mr12 = (Mlf - (np.transpose(Kff1Kfl)).dot(Mff)).dot(Phi_CB)
     ZZ   = np.zeros((len(Ileader),nModesCB))
 
+    # --- Guyan frequencies
+    Phi_G2, Lambda_G = eig(Kr11,Mr11)
+    Omega2 = np.diag(Lambda_G).copy()
+    Omega2[Omega2<0]=0.0
+    f_G  = np.sqrt(Omega2)/(2*np.pi)
+
     # Building reduced matrix 
     Mr = np.block( [ [Mr11 , Mr12 ], [ Mr12.T, np.eye(nModesCB)       ] ])
     Kr = np.block( [ [Kr11  , ZZ  ], [ ZZ.T  ,  Lambda_CB[:nModesCB,:]] ])
 
-    if DD is not None:
-        raise Exception('Not done')
-    if F is not None:
-        raise Exception('Not done')
+    # --- Augmenting modes so that they have the same dimension as MM
+    # Add "1" for Guyan modes, and "0" for CB modes
+    if fullModesOut:
+        Phi_G, Phi_CB = augmentModes(Ileader, Phi_G, Phi_CB, Ifollow=Ifollow)
 
-#     import pdb; pdb.set_trace()
-    return Mr, Kr, Phi_G, Phi_CB, f_CB
+    if DD is not None:
+        raise NotImplementedError('Not done')
+    if F is not None:
+        raise NotImplementedError('Not done')
+
+    return Mr, Kr, Phi_G, Phi_CB, f_G, f_CB
+
+
+def augmentModes(Ileader, Phi_G, Phi_CB, Ifollow=None):
+    """ 
+    Augment Guyan and Craig Bampton modes, so as to return full DOF vectors
+    going back to the original size
+    """
+    # --- Augment modes so that they go back to same size after BC
+    nl   = len(Ileader)
+    nall = nl+Phi_G.shape[0]
+    nf   = nall-nl
+    if Ifollow is None:
+        Iall    = np.arange(nall)
+        Ifollow = list(np.setdiff1d(Iall, Ileader))
+    # Guyan
+    Phi_G_aug = np.zeros((nall, nl))
+    Phi_G_aug[Ileader,:] = np.eye(nl)
+    Phi_G_aug[Ifollow,:] = Phi_G
+    # 
+    Phi_CB_aug = np.zeros((nall, Phi_CB.shape[1]))
+    Phi_CB_aug[Ileader,:] = 0
+    Phi_CB_aug[Ifollow,:] = Phi_CB
+
+    return Phi_G_aug, Phi_CB_aug
 
 
 
@@ -97,7 +132,7 @@ if __name__=='__main__':
     KK = EI / (L ** 3) * np.array([[12,6 * L,- 12,6 * L],[6 * L,4 * L ** 2,- 6 * L,2 * L ** 2],[- 12,- 6 * L,12,- 6 * L],[6 * L,2 * L ** 2,- 6 * L,4 * L ** 2]])
     MM = Maff / 420 * np.array([[156,22 * L,54,- 13 * L],[22 * L,4 * L ** 2,13 * L,- 3 * L ** 2],[54,13 * L,156,- 22 * L],[- 13 * L,- 3 * L ** 2,- 22 * L,4 * L ** 2]])
     print(MM)
-    Mr,Kr,Phi_G,Phi_CB,f_CB = CraigBampton(MM,KK,[2], nModesCB=2)
+    Mr,Kr,Phi_G,Phi_CB,f_CB,f_G = CraigBampton(MM,KK,[2], nModesCB=2)
     print(Mr)
     print(Kr)
     print(Phi_G)

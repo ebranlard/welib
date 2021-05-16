@@ -62,7 +62,8 @@ class TabulatedWSEstimator():
     def __init__(self, R=None, rho_air=1.225, fst_file=''):
         if len(fst_file)>0:
             import weio
-            fst=weio.FASTInputDeck(fst_file)
+            import weio.fast_input_deck
+            fst=weio.fast_input_deck.FASTInputDeck(fst_file)
             R       = fst.ED['TipRad']
             rho_air = fst.AD['AirDens']
         self.R       = R
@@ -76,12 +77,12 @@ class TabulatedWSEstimator():
             CPFile     = base+'_CP'+suffix+'.csv'
             CTFile     = base+'_CT'+suffix+'.csv'
             OperFile   = base+'_Oper'+suffix+'.csv'
-        self.PITCH  = pd.read_csv(PitchFile ,header = -1).values.ravel()
-        self.LAMBDA = pd.read_csv(LambdaFile,header = -1).values.ravel()
-        self.CP     = pd.read_csv(CPFile,header     = -1).values
+        self.PITCH  = pd.read_csv(PitchFile ,header = None).values.ravel()
+        self.LAMBDA = pd.read_csv(LambdaFile,header = None).values.ravel()
+        self.CP     = pd.read_csv(CPFile,header     = None).values
         self.CP[self.CP<=0]=0
         if CTFile is not None:
-            self.CT     = pd.read_csv(CTFile,header     = -1).values
+            self.CT     = pd.read_csv(CTFile,header     = None).values
             self.CT[self.CT<=0]=0
         else:
             self.CT=None

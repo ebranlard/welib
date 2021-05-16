@@ -6,7 +6,7 @@ import os
 
 from welib.yams.yams import FASTBeamBody, RigidBody
 from welib.yams.utils import *
-from welib.yams.TNSB import *
+from welib.yams.TNSB import manual_assembly, auto_assembly
 
 import welib.weio as weio
 
