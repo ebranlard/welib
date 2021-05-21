@@ -108,10 +108,13 @@ class MechSystem():
         """
         self._force_fn = fn
 
-    def Force(self,t,x=None,xdot=None):
+    def Force(self,t,x=None,xdot=None,q=None):
         if hasattr(self,'_force_ts'):
             return vec_interp(t,self._time_ts,self._force_ts)
         elif hasattr(self,'_force_fn'):
+            if q is not None:
+                x    = q[0:self.nDOF]
+                xdot = q[self.nDOF:]
             return self._force_fn(t,x,xdot)
         else:
             raise NotImplementedError('Please specify a time series of force first')
@@ -153,15 +156,19 @@ class MechSystem():
         return res
 
     def dqdt(self, t, q):
-        dqdt = np.zeros(q.shape)
-        x  = q[0:self.nDOF]
-        xd = q[self.nDOF:]
+        if self.has_A:
+            A=self.A
+            return np.dot(A,q)+self.B(t,q)
+        else:
+            dqdt_ = np.zeros(q.shape)
+            x  = q[0:self.nDOF]
+            xd = q[self.nDOF:]
 
-        dqdt[0:self.nDOF]=  xd
-        Minv = self._fMinv(x)
-        F = self._force_fn(t,x,xd)
-        dqdt[self.nDOF:] =  Minv.dot(F)
-        return dqdt
+            dqdt_[0:self.nDOF]=  xd
+            Minv = self._fMinv(x)
+            F = self._force_fn(t,x,xd)
+            dqdt_[self.nDOF:] =  Minv.dot(F)
+            return dqdt_
 
 
 

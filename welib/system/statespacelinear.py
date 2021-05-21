@@ -53,9 +53,6 @@ class LinearStateSpace():
         else:
             raise NotImplementedError('Please specify a time series of inputs first')
 
-    def RHS(self,t,q=None):
-        return np.dot(self.A, q) + np.dot(self.B, self.Inputs(t,q))
-        #return np.dot(self.A, q) 
 
     def integrate(self, t_eval, method='RK4', y0=None, **options):
         #
@@ -72,6 +69,13 @@ class LinearStateSpace():
 
 
         return res
+
+    def dqdt(self, t, q):
+        # NOTE: this can cause issues if q is not flat
+        return np.dot(self.A, q) + np.dot(self.B, self.Inputs(t,q))
+
+    def RHS(self,t,q):
+        return self.dqdt(t,q)
 
     @property
     def nStates(self):

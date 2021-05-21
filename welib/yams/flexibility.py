@@ -401,6 +401,154 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         else:
             return MM
 
+
+
+def beamSectionLoads1D(z, p, Ftop=0, Mtop=0, s=1, F_lumped=None, method='plin'):
+    """ 
+    Integrate section loads along a beam based on inline and lumped loads and top load.
+
+    S(z) = int_z^L p(z') dz',   dS/dz = - p(z)
+    M(z) =-int_z^L S(z') dz',   dM/dz = - S(z)
+
+    Lumped forces can be inserted in the integral p= F_i \delta(x_i) with delta a Dirac
+
+    Loads are integrated from "top" (z=L) to "bottom" (z=0)
+
+    - z: array, linear station along the beam (typically from 0 to L)
+    - p: array, inline load, assumed to go from z=0 to z=L
+    - Ftop: Mtop: force and moment at top of Beam
+    - s: sign +/-1
+    - F: array, lumped forces along the span of the beam
+    
+    """
+    n=len(z)
+    Fsec=np.zeros(n)
+    Msec=np.zeros(n)
+    if F_lumped is None:
+        F_lumped=np.zeros(n)
+
+    if method=='plin':
+        """ 
+        Analytical results assuming linear variation of p:
+            p(z) = (p_i-p_{i-1}) \tilde{z} + p_{i-1}
+        """
+        Fsec[-1]=Ftop 
+        Msec[-1]=Mtop 
+        for i in np.arange(n-2,-1,-1): # TODO vectorize me
+            i1      = i+1
+            dz      = z[i1]-z[i]
+            Fsec[i] = Fsec[i1] +                 (p[i1]   +p[i] )/2.*dz   + F_lumped[i]
+            Msec[i] = Msec[i1] + s*Fsec[i1]*dz+s*(p[i1]/3.+p[i]/6.)*dz*dz
+
+    elif method=='manual':
+
+        for i in np.arange(len(z)):
+            zcur=z[i]
+            Iabove = z>=zcur
+            zabove = z[Iabove]
+            pabove = p[Iabove]
+            Fabove = F_lumped[Iabove]
+            Fsec[i]=np.trapz(pabove, zabove) + Ftop + np.sum(Fabove)
+            Msec[i]=np.trapz(pabove*(zabove-zcur), zabove)+Ftop*(z[-1]-zcur) + np.sum(Fabove*(zabove-zcur))
+        Msec+=Mtop
+
+    elif method=='cumtrapz':
+        # NOTE: might not work as well when lumped forces are present
+        zn = z[-1::-1]  # flip z so it goes from top to bottom for cumtrapz
+        Fsec[:]  = Ftop
+        Msec[:]  = Mtop
+        Fsec      += np.cumsum(F_lumped[-1::-1])[-1::-1]
+        Fsec[:-1] +=  - sciint.cumtrapz(p[-1::-1], zn)[-1::-1]    
+        Msec[:-1] +=  - sciint.cumtrapz(Fsec[-1::-1], zn)[-1::-1] 
+
+    else:
+        raise NotImplementedError()
+
+    return Fsec, Msec
+
+
+
+def beamSectionLoads(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m, 
+        M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, corrections=1):
+    """ 
+    
+    """
+    # Main dimensions
+    shapeDisp = PhiU[0].shape
+    nf        = len(PhiU)
+    nSpan     = shapeDisp[1]
+
+    # Default values
+    if m_hydro is None:
+        m_hydro  = np.zeros(nSpan)           # added mass, only on wet surface of structure
+    if M_lumped is None:
+        M_lumped = np.zeros(nSpan)
+    if F_ext_lumped is None:
+        F_ext_lumped=np.zeros(nSpan)
+
+    # Linear Translation, Velocity, Acceleration
+    U        = np.zeros(shapeDisp)
+    V        = np.zeros(shapeDisp)
+    #v_struct = np.zeros(shapeDisp)
+    a_struct = np.zeros(shapeDisp)
+    for j in np.arange(nf):
+        U         += x  [j] * PhiU[j] # Deflections
+        V         += x  [j] * PhiV[j] # Slopes
+        #v_struct  += xd [j] * PhiU[j]
+        a_struct  += xdd[j] * PhiU[j]
+    if a_ext is not None:
+        # Typically gravity
+        # TODO Body root acceleration!
+        a_struct[0,:] -= a_ext[0]
+        a_struct[1,:] -= a_ext[1]
+        a_struct[2,:] -= a_ext[2]
+
+    # --- Inertial loads
+    m_struct = m
+    m_tot = m_struct + m_hydro
+    p_inertia        = m_tot    * a_struct
+    F_inertia_lumped = M_lumped * a_struct
+
+    # --- Total loads from external forces and inertia (inline and lumped)
+    p_all        = p_ext        - p_inertia 
+    F_lumped_all = F_ext_lumped - F_inertia_lumped
+
+    # --- Section Loads
+    z  = s_span-s_span[0]
+    zn = z[-1::-1]  # flip z so it goes from top to bottom for cumtrapz
+    F_sec=np.zeros((3,len(z)))
+    M_sec=np.zeros((3,len(z)))
+    # Bending momemts 
+    F_sec[0,:], M_sec[1,:] = beamSectionLoads1D(z, p_all[0,:], F_top[0], M_top[1], s=1,  F_lumped = F_lumped_all[0,:])
+    F_sec[1,:], M_sec[0,:] = beamSectionLoads1D(z, p_all[1,:], F_top[1], M_top[0], s=-1, F_lumped = F_lumped_all[1,:])
+    # Axial force
+    F_sec[2,:-1] =- sciint.cumtrapz(p_all[2, -1::-1], zn)[-1::-1] # NOTE: mostly m*acc, can use FXG
+    F_sec[2,:] += F_top[2] 
+    # Torsion moment
+    M_sec[2,:] += M_top[2]  # TODO integrate external torsions - torsional inertias and contributions from sectionn loads due to lever arm of deflection
+
+    # Additional forces and moments from top loads due to deflections (ExtraLeverArm)
+    if corrections>=1:
+        F_sec[0,:] +=  F_top[2] * V[1,:] # Fx = Fz v_y 
+        F_sec[1,:] +=  F_top[2] * V[0,:] # Fy = Fz v_x  # TODO check sign
+        dx = U[0,-1] - U[0,:]
+        dy = U[1,-1] - U[1,:]
+        M_sec[1,:] += -F_top[2] * dx # My =-Fz dx 
+        M_sec[0,:] += +F_top[2] * dy # Mx = Fz dy 
+        M_sec[2,:] +=  F_top[1]*dx - F_top[0]*dy # Mz = Fy dx - Fx dy 
+
+    # Torsion correction
+    if corrections>=2:
+        M_sec[2,1:] +=- V[1,1:]*M_sec[0,1:]-V[0,1:]*M_sec[1,1:] # Mx = - Vy Mx - Vx My # TODO check sign
+
+    # KEEP ME: M_y approximation
+    #M_sec[1,0] = F_top[1]*z[-1] + M_top[1] # approximation
+
+    return F_sec, M_sec
+
+
+
+
 def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxxG=None, gravity=None, Mtop=0, Omega=0, nSpan=None, bAxialCorr=False, bStiffening=True, main_axis='z', shapes=[0,1,2,3], algo=''):
     """ 
     Compute generalized mass, stiffness and damping matrix, and shape integrals for a beam defined using polynomial coefficients
