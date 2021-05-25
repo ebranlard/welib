@@ -283,14 +283,17 @@ class RigidBody(Body,GenericRigidBody):
 class BeamBody(GenericBeamBody, Body):
     def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
-            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z'):
+            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
+            massExpected=None
+            ):
         """ 
           Points P0 - Undeformed mean line of the body
         """
         # --- nherit from BeamBody and Body 
         Body.__init__(B)
         GenericBeamBody.__init__(B,'dummy', s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
-                 bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis
+                 bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
+                 massExpected=massExpected
                 )
 
         B.gzf   = np.zeros((B.nf,1))
@@ -430,7 +433,9 @@ class UniformBeamBody(BeamBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
-    def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, spanFrom0=False):
+    def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
+            spanFrom0=False, massExpected=None
+            ):
         """ 
         """
         if shapes is None:
@@ -442,12 +447,17 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
                 shapes=[0]
             else:
                 raise NotImplementedError('>> TODO')
-        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, spanFrom0=spanFrom0)
+        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
+                spanFrom0=spanFrom0,
+                massExpected=massExpected
+                )
         # We need to inherit from "YAMS" Beam not just generic Beam
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
                 # NOTE: r_O, r_b2g is lost here
                 s_min=B.s_min, s_max=B.s_max,
-                bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
+                bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
+                massExpected=massExpected
+                )
 
 # --------------------------------------------------------------------------------}
 # --- B Matrices 

@@ -167,5 +167,5 @@ class TestTNSB(unittest.TestCase):
 
 if __name__=='__main__':
     np.set_printoptions(linewidth=500)
-    #unittest.main()
-    Struct=main(DEBUG=True,main_axis='x',nShapes_twr=1,bInit=1)
+    unittest.main()
+    #Struct=main(DEBUG=True,main_axis='x',nShapes_twr=1,bInit=1)

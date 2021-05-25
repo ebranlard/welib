@@ -55,7 +55,7 @@ class Body(object):
 
     @pos_global.setter
     def pos_global(self, r_O):
-        self._r_O = r_O
+        self._r_O = np.asarray(r_O).ravel()
         
     @property
     def R_b2g(self):
@@ -150,7 +150,10 @@ class RigidBody(Body):
     @property
     def masscenter_pos_global(self):
         """ return masscenter position from inertial frame """
-        return self._r_O + self.R_b2g.dot(self._s_OG)
+        try:
+            return self._r_O + self.R_b2g.dot(self._s_OG)
+        except:
+            import pdb; pdb.set_trace()
 
     @property    
     def inertia(self):
@@ -248,7 +251,7 @@ class BeamBody(FlexibleBody):
             s_min=None, s_max=None,
             r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
             damp_zeta=None, RayleighCoeff=None, DampMat=None,
-            bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z'):
+            bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z', massExpected=None):
         """
         Creates a Flexible Beam body 
           Points P0 - Undeformed mean line of the body
@@ -288,6 +291,14 @@ class BeamBody(FlexibleBody):
         self.damp_zeta  = damp_zeta
         self.RayleighCoeff  = RayleighCoeff
         self.DampMat        = DampMat
+
+        if massExpected is not None:
+            self.computeMassMatrix()
+            Mass = self.MM[0,0]
+            factor = Mass/massExpected
+            if np.abs(factor-1)>1e-5:
+                print('>>>BeamBody: Scaling mass distribution with factor {:.4f} in order to get a desired mass of {}'.format(factor,massExpected))
+                self.m /= factor
 
         self.computeMassMatrix()
         self.computeStiffnessMatrix()
@@ -471,7 +482,10 @@ class BeamBody(FlexibleBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody):
-    def __init__(self, ED, inp, Mtop=0, shapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, Omega=0, spanFrom0=False, algo=''):
+    def __init__(self, ED, inp, Mtop=0, shapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, Omega=0,
+            spanFrom0=False,
+            massExpected=None,
+            algo=''):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
@@ -505,8 +519,18 @@ class FASTBeamBody(BeamBody):
             prop      = inp['BldProp']  
             s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
 
+            # TODO we need two or three options with better naming
             if spanFrom0:
-                s_span=s_bar*ED['TipRad'] # NOTE: this is a wrong scaling
+                s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
+                if np.abs(s_span[0])<1e-6:
+                    pass    
+                else:
+                    # We add two positions with zero before
+                    s_span = np.concatenate(([0,s_span[0]*0.99],s_span))
+                    m      = np.concatenate(([0,0],m))
+                    EIFlp  = np.concatenate(([0,0],EIFlp))
+                    EIEdg  = np.concatenate(([0,0],EIEdg))
+                #s_span=s_bar*ED['TipRad'] # NOTE: this is a wrong scaling
             else:
                 s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
             r_O = [0,0,0] # NOTE: blade defined wrt point R for now
@@ -681,4 +705,6 @@ class FASTBeamBody(BeamBody):
                 s_min=p['s_min'], s_max=p['s_max'],
                 r_O = r_O, R_b2g=R_b2g,  # NOTE: this is lost in YAMS
                 damp_zeta=damp_zeta, RayleighCoeff=RayleighCoeff, DampMat=DampMat,
-                bAxialCorr=bAxialCorr, bOrth=name=='bld', gravity=gravity, Mtop=Mtop, Omega=Omega, bStiffening=bStiffening, main_axis=main_axis)
+                bAxialCorr=bAxialCorr, bOrth=name=='bld', gravity=gravity, Mtop=Mtop, Omega=Omega, bStiffening=bStiffening, main_axis=main_axis,
+                massExpected=massExpected
+                )

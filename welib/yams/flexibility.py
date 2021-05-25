@@ -503,15 +503,17 @@ def beamSectionLoads(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m,
         a_struct[1,:] -= a_ext[1]
         a_struct[2,:] -= a_ext[2]
 
+    #print('a2',a_struct[0,:])
     # --- Inertial loads
     m_struct = m
     m_tot = m_struct + m_hydro
-    p_inertia        = m_tot    * a_struct
+    p_inertia        = m_tot    * a_struct # TODO is it really m_tot
     F_inertia_lumped = M_lumped * a_struct
 
     # --- Total loads from external forces and inertia (inline and lumped)
     p_all        = p_ext        - p_inertia 
     F_lumped_all = F_ext_lumped - F_inertia_lumped
+#     print('p2',p_all[0,:])
 
     # --- Section Loads
     z  = s_span-s_span[0]
@@ -519,6 +521,8 @@ def beamSectionLoads(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m,
     F_sec=np.zeros((3,len(z)))
     M_sec=np.zeros((3,len(z)))
     # Bending momemts 
+    #print('p_inertia[0,:]',p_inertia[0,:])
+    #print('p_all[0,:]',p_all[0,:])
     F_sec[0,:], M_sec[1,:] = beamSectionLoads1D(z, p_all[0,:], F_top[0], M_top[1], s=1,  F_lumped = F_lumped_all[0,:])
     F_sec[1,:], M_sec[0,:] = beamSectionLoads1D(z, p_all[1,:], F_top[1], M_top[0], s=-1, F_lumped = F_lumped_all[1,:])
     # Axial force

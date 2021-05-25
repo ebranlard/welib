@@ -20,6 +20,7 @@ try:
 except:
     from yams import *
 
+from welib.yams.windturbine import rigidBlades
 
 class Structure():
     def __init__(self,main_axis='x',theta_tilt=0,theta_yaw=0,theta_cone=0,bTiltBeforeNac=False):
@@ -34,8 +35,35 @@ class Structure():
         s.M_RNA= s.M_rot + s.Sft.Mass + s.Nac.Mass;
         s.r_NGnac_inN = s.Nac.s_G_inB
         s.r_NGhub_inN = s.r_NS_inN + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.Sft.s_G_inB))
-        s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
-        s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.Mass*s.r_NGnac_inN + s.Sft.Mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
+
+        try:
+            # --------------------------------------------------------------------------------}
+            # --- New method, requires blade to have "toRigidBody"
+            # --------------------------------------------------------------------------------{
+            # --- Rigid Blades (with origin R, using N as "global" ref)
+            blades = rigidBlades(s.Blds, r_O = [0,0,0]) # TODO blade origins might be wrong in TNSB
+            blades.pos_global = s.r_NR_inN.ravel()
+            R_NS = R_y(s.theta_tilt)  # Rotation fromShaft to Nacelle
+            blades.R_b2g      = R_NS
+
+            #M_hub  = ED['HubMass']
+            #JxxHub_atR = ED['HubIner']
+            #hub = RigidBody('Hub', M_hub, (JxxHub_atR,0,0), s_OG=r_SGhub_inS, R_b2g=R_NS, s_OP=r_SR_inS, r_O=r_NS_inN) 
+
+            # --- Rotor = Hub + Blades (with origin R, using N as global ref)
+            rot = blades.combine(s.Sft, R_b2g=R_NS, r_O=blades.pos_global)
+            rot.name='rotor'
+            #rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blades.pos_global)
+            #RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
+            RNA = rot.combine(s.Nac,r_O=[0,0,0])
+            s.RNA=RNA
+            s.r_NGrna_inN=RNA.masscenter # in N
+            s.r_NGrot_inN = rot.masscenter
+        except:
+            s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
+            s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.Mass*s.r_NGnac_inN + s.Sft.Mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
+
+
 
     def init_trigger(s):
         s.alpha = s.Twr.alpha_couplings

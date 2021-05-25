@@ -123,19 +123,26 @@ class TestTNSB(unittest.TestCase):
         #print(StructA.Sft.r_O)
 
         # ---  Blade 1
+        #Bld_MMref = np.array(
+        #                [[   18035.37974224,       0.          ,     0.        ,       0.        ,  379123.07769825   ,   -0.        ],
+        #                 [       0.        ,   18035.37974224  ,     0.        , -379123.07769825,       0.           ,    0.        ],
+        #                 [       0.        ,       0.          , 18035.37974224,       0.        ,      -0.           ,    0.        ],
+        #                 [       0.        , -379123.07769825  ,     0.        ,12574210.91752538,      -0.           ,   -0.        ],
+        #                 [  379123.07769825,       0.          ,    -0.        ,      -0.        ,12574210.91752538   ,   -0.        ],
+        #                 [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
         Bld_MMref = np.array(
-                        [[   18035.37974224,       0.          ,     0.        ,       0.        ,  379123.07769825   ,   -0.        ],
-                         [       0.        ,   18035.37974224  ,     0.        , -379123.07769825,       0.           ,    0.        ],
-                         [       0.        ,       0.          , 18035.37974224,       0.        ,      -0.           ,    0.        ],
-                         [       0.        , -379123.07769825  ,     0.        ,12574210.91752538,      -0.           ,   -0.        ],
-                         [  379123.07769825,       0.          ,    -0.        ,      -0.        ,12574210.91752538   ,   -0.        ],
+                        [[   17554.26027731,       0.          ,     0.        ,       0.        ,  387727.67680019   ,   -0.        ],
+                         [       0.        ,   17554.26027731  ,     0.        , -387727.67680019,       0.           ,    0.        ],
+                         [       0.        ,       0.          , 17554.26027731,       0.        ,      -0.           ,    0.        ],
+                         [       0.        , -387727.67680019  ,     0.        ,12819694.4476355 ,      -0.           ,   -0.        ],
+                         [  387727.67680019,       0.          ,    -0.        ,      -0.        ,12819694.4476355    ,   -0.        ],
                          [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
 
-        np.testing.assert_almost_equal(StructA.Blds[0].Mass,18035.37974224252)
+        np.testing.assert_almost_equal(StructA.Blds[0].Mass,Bld_MMref[0,0])
         np.testing.assert_almost_equal(StructA.Blds[0].r_O.ravel(),(-4.67840431,0,90.57868401))
         np.testing.assert_almost_equal(StructA.Blds[0].MM,Bld_MMref)
 
-        np.testing.assert_almost_equal(StructA.Blds[2].Mass,18035.37974224252)
+        np.testing.assert_almost_equal(StructA.Blds[2].Mass,Bld_MMref[0,0])
         np.testing.assert_almost_equal(StructA.Blds[2].r_O.ravel(),(-4.67840431,0,90.57868401))
         np.testing.assert_almost_equal(StructA.Blds[2].MM,Bld_MMref)
 
@@ -185,9 +192,14 @@ class TestTNSB(unittest.TestCase):
         # print(StructM.DD-StructA.DD)
 
         # --- Stiff matrix
-        KKref = np.array([[2.68290366e+06, 3.90886251e+06, 0.00000000e+00],
-                          [3.90886251e+06, 1.46504591e+10, 0.00000000e+00],
-                          [0.00000000e+00 , 0.00000000e+00, 0.00000000e+00]])
+        #KKref = np.array([[2.68290366e+06, 3.90886251e+06, 0.00000000e+00],
+        #                  [3.90886251e+06, 1.46504591e+10, 0.00000000e+00],
+        #                  [0.00000000e+00, 0.00000000e+00, 0.00000000e+00]])
+        KKref = np.array([[2.68314382e+06, 3.91184920e+06, 0.00000000e+00],
+                          [3.91184920e+06, 1.46506882e+10, 0.00000000e+00],
+                          [0.00000000e+00, 0.00000000e+00, 0.00000000e+00]])
+
+
         np.testing.assert_almost_equal(StructM.KK,StructA.KK)
         np.testing.assert_almost_equal(StructM.KK[:2,:2]/1e6,KKref[:2,:2]/1e6, 4)
         # print('Stiff matrix:')
@@ -195,11 +207,15 @@ class TestTNSB(unittest.TestCase):
         # print(StructM.KK-StructA.KK)
 
         # --- Mass matrix
-        MMref=np.array([[  438088.11216229,   744761.80802459,        0.        ],
-                        [  744761.80802459, 48008244.21035789,        0.        ],
-                        [       0.        ,        0.        , 42635774.95525602]])
-        np.testing.assert_almost_equal(StructA.MM,MMref)
-        np.testing.assert_almost_equal(StructM.MM,StructA.MM)
+        #MMref=np.array([[  438088.11216229,   744761.80802459,        0.        ],
+        #                [  744761.80802459, 48008244.21035789,        0.        ],
+        #                [       0.        ,        0.        , 42635774.95525602]])
+
+        MMref=np.array([[ 4.36621608e+05,  7.46151067e+05,  0.00000000e+00],
+                        [ 7.46151067e+05,  4.83252038e+07, -1.16415322e-09],
+                        [ 0.00000000e+00,  0.00000000e+00,  4.33678529e+07]])
+        np.testing.assert_almost_equal(StructA.MM/1e5,     MMref/1e5 , 5)
+        np.testing.assert_almost_equal(StructM.MM/1e5,StructA.MM/1e5 , 5)
         # print('Mass matrix:')
         # print(StructA.MM)
         # print(StructM.MM)

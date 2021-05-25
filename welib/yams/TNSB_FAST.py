@@ -13,7 +13,10 @@ import welib.weio as weio
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model
 # --------------------------------------------------------------------------------{
-def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False):
+def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+        spanFrom0=True, # TODO for legacy, we keep this for now..
+        bladeMassExpected=None
+        ):
     """ 
     Returns the following structure
       Twr :  BeamBody
@@ -108,10 +111,21 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --------------------------------------------------------------------------------{
     # Bld
     Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=True)) # NOTE: legacy spanfrom0
+    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected)) # NOTE: legacy spanfrom0
     Blds[0].MM *=bBldMass
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))
+    # IMPORTANT FOR RNA set R_b2g
+    for iB,B in enumerate(Blds):
+        B.name='bld'+str(iB+1)
+        psi_B= -iB*2*np.pi/len(Blds) 
+        if main_axis=='x':
+            R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
+        elif main_axis=='z':
+            R_SB = R_x(0*np.pi + psi_B) # TODO psi0
+        R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
+        B.R_b2g= R_SB
+
     # ShaftHub Body 
     Sft=RigidBody('ShaftHub',M_hub,IG_hub,r_SGhub_inS);
     # Nacelle Body
