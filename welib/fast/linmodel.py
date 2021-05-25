@@ -149,12 +149,22 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
         Mat[np.abs(Mat)<1e-14]=0
 
 
-    if model=='FNS':
+    if model=='FNS' and A.shape[0]==6:
         pass
         #print(C)
         #print(D)
+    elif model=='F1NS' and A.shape[0]==4:
+        pass
+    elif model=='F010000NS' and A.shape[0]==4:
+        pass
+    elif model=='F010010NS' and A.shape[0]==6:
+        pass
+    elif model=='F011010NS' and A.shape[0]==6:
+        pass
+
     elif model=='FN' and A.shape[0]==4:
         pass
+
         
     elif model=='TNSB' and A.shape[0]==4:
         if Adapt==True:

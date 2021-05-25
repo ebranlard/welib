@@ -63,8 +63,10 @@ class TabulatedWSEstimator():
         if len(fst_file)>0:
             import weio
             import weio.fast_input_deck
-            fst=weio.fast_input_deck.FASTInputDeck(fst_file)
+            fst=weio.fast_input_deck.FASTInputDeck(fst_file, )
             R       = fst.ED['TipRad']
+            if fst.AD is None:
+                raise Exception('AeroDyn file not read but needed for wind speed estimator, while reading {}'.format(fst_file))
             rho_air = fst.AD['AirDens']
         self.R       = R
         self.rho_air = rho_air
