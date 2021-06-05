@@ -210,6 +210,10 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "TwrBsMzt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
 "RootMyb1"
 "NcIMUTVxs"
+"Q_DrTr"	Displacement of drivetrain rotational-flexibility DOF
+"Q_GeAz"	Displacement of variable speed generator DOF
+"QD_DrTr"		Velocity of drivetrain rotational-flexibility DOF
+"QD_GeAz"		Velocity of variable speed generator DOF
 END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
 ---------------------- NODE OUTPUTS --------------------------------------------
           1   BldNd_BladesOut  - Blades to output

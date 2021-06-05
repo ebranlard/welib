@@ -23,10 +23,31 @@ from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
 
 class WindTurbineStructure():
     def __init__(self):
+        self.bld = None # list of blades
         self.hub = None
         self.gen = None
+        self.rot = None # hub+blds
         self.nac = None
         self.twr = None
+        self.fnd = None
+
+
+    def __repr__(B):
+        s='<Generic {} object>:\n'.format(type(B).__name__)
+        try:
+            s+=' - DOF: list of dict with keys {} \n'.format(B.DOF[0].keys())
+        except:
+            pass
+        s+=' * DOFname: {} \n'.format(B.DOFname)
+        s+=' * q0     : {}\n'.format(B.q0)
+        s+=' * qd0    : {}\n'.format(B.qd0)
+        s+=' Bodies: bld, hub, gen, rot, nac, twr, fnd \n'
+
+        s+=' useful getters: activeDOFs, channels:\n'
+        s+=' useful functions:  \n'
+        s+='    simulate_py\n'
+        s+='    simulate_py_lin\n'
+        return s
 
     @staticmethod
     def fromFAST(fstFilename):
@@ -399,14 +420,14 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     # --- Return
     WT = WindTurbineStructure()
+    WT.bld = bld # origin at R
     WT.hub = hub # origin at S
+    WT.rot = rot # origin at R, rigid body bld+hub
+    WT.rotgen = rotgen # origin at R, rigid body bld+hub+genLSS
     WT.gen = gen # origin at S
     WT.nac = nac # origin at N
     WT.twr = twr # origin at T
     WT.fnd = fnd # origin at T
-    WT.bld = bld # origin at R
-    WT.rot = rot # origin at R, rigid body bld+hub
-    WT.rotgen = rotgen # origin at R, rigid body bld+hub+genLSS
     WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
     WT.WT_rigid = WT_rigid # rigid wind turbine body, origin at MSL
 
