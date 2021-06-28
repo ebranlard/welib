@@ -108,6 +108,25 @@ class TestYAMSSPTools(unittest.TestCase):
         expr0     = linearize(expr, [(x,0),(y,0)], order=1 )
         self.assertEqual(expr0, expr0_ref)
 
+    def test_jacobian(self):
+
+        from welib.yams.yams_sympy_tools import myjacobian
+        from sympy import Symbol, Matrix
+        x,y   = symbols('x, y')
+        x0,y0 = symbols('x0, y0')
+        a,b   = symbols('a, b')
+
+        f1= a*x + b*y**2
+        f2= a*x + b*x**2
+        f = Matrix([[f1],[f2]])
+        J = myjacobian(f, [x,y], [x0,y0])
+        self.assertEqual(J[0,0], a)
+        self.assertEqual(J[1,0], a+2*b*x0)
+
+        J = myjacobian(f1, [x,y], [x0,y0])
+        self.assertEqual(J[0,0], a)
+
 
 if __name__=='__main__':
-    unittest.main()
+    TestYAMSSPTools().test_jacobian()
+#     unittest.main()

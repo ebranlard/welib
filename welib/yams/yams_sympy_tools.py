@@ -100,9 +100,26 @@ def mycollect(expr, var_list, evaluate=True, **kwargs):
         d[k]=v
     return d
 
-def myjacobian(expr, var_list):
+def myjacobian(expr, var_list, value_list=None):
     """ Compute jacobian of expression, matrix or not. 
     Perform symbol substitution first to have support for derivatives
+
+    J = [ \partial fi / \partial_xj ]_x0
+
+    Inputs:
+      - expr:  (f_i) expression to compute the jacobian of. Scalar, list or matrix,
+      - var_list: (x_j) list of variables 
+    Optional:
+      - value_list: (x0): values at operating point (same length as var_list)
+    
+    Examples:
+        x,y = symbols('x, y')
+        a,b = symbols('a, b')
+        f1  = a*x + b*y**2
+        f2  = a*y + b*x**2
+        f = Matrix([[f1],[f2]])
+        J = myjacobian(f, [x,y])
+
     """
     if not hasattr(var_list, '__len__'):
         var_list=[var_list]
@@ -110,13 +127,18 @@ def myjacobian(expr, var_list):
     Dummies=symarray('DUM', len(var_list))
     Var2Dummy=[(var, Dummies[i]) for i,var in enumerate(var_list)]
     Dummy2Var=[(b,a) for a,b in Var2Dummy]
+    if isinstance(expr, list):
+        expr = Matrix(expr)
     expr = expr.expand().doit()
     expr = expr.subs(Var2Dummy)
     if hasattr(expr, '__len__'):
         jac = expr.jacobian(Dummies)
     else:
-        jac = Matrix(expr).jacobian(Dummies)
+        jac = Matrix([expr]).jacobian(Dummies)
     jac = jac.subs(Dummy2Var)
+    if value_list is not None:
+        sub_list = [(var,val) for var,val in zip(var_list, value_list)]
+        jac = jac.subs(sub_list)
     return jac
 
 def linearize(expr, x0, order=1, sym=False):
