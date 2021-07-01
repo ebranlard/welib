@@ -197,28 +197,28 @@ class MechSystem():
 
     def __repr__(self):
         s='<MechSystem object>\n'
-        s+='Read-only attributes:\n'
-        s+=' - nDOF: {}, nState:{} \n'.format(self.nDOF,self.nStates)
+        s+='|Read-only attributes:\n'
+        s+='| - nDOF: {}, nState:{} \n'.format(self.nDOF,self.nStates)
         if hasattr(self,'_force_ts'):
             if len(self._time_ts)>1:
                 dt=self._time_ts[1]-self._time_ts[0]
             else:
                 dt=np.nan
-            s+='Force time series \n'
-            s+=' - Time: [{} ... {}],  dt: {}, n: {} \n'.format(self._time_ts[0],self._time_ts[-1],dt,len(self._time_ts))
-            s+=' - Force t0  : {} \n'.format(self._force_ts[:,0])
-            s+=' - Force tend: {} \n'.format(self._force_ts[:,-1])
-        s+='Attributes:\n'
-        s+=' - M: Mass Matrix  \n'
+            s+='|Force time series \n'
+            s+='| - Time: [{} ... {}],  dt: {}, n: {} \n'.format(self._time_ts[0],self._time_ts[-1],dt,len(self._time_ts))
+            s+='| - Force t0  : {} \n'.format(self._force_ts[:,0])
+            s+='| - Force tend: {} \n'.format(self._force_ts[:,-1])
+        s+='|Attributes:\n'
+        s+='| - M: Mass Matrix  \n'
         s+=str(self.M)+'\n'
-        s+=' - C: Damping Matrix  \n'
+        s+='| - C: Damping Matrix  \n'
         s+=str(self.C)+'\n'
-        s+=' - K: Stiffness Matrix  \n'
+        s+='| - K: Stiffness Matrix  \n'
         s+=str(self.K)+'\n'
-        s+=' - q0: Initial conditions (state) \n'
+        s+='| - q0: Initial conditions (state) \n'
         s+=str(self.q0)+'\n'
         if self.has_A:
-            s+=' - A:  \n'
+            s+='| - A:  \n'
             s+=str(self.A)+'\n'
 
         return s
