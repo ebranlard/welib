@@ -1,0 +1,8 @@
+*.pyc
+*.egg-info
+*.pdf
+
+*_TODO
+*_BKP
+_*
+!__init__.py
