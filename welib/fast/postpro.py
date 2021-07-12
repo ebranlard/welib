@@ -882,7 +882,7 @@ def find_matching_pattern(List, pattern):
         
 
 def extractSpanTSReg(ts, col_pattern, colname, IR=None):
-    """ Helper function to extract spanwise results, like B1N1Cl B1N2Cl etc. 
+    r""" Helper function to extract spanwise results, like B1N1Cl B1N2Cl etc. 
 
     Example
         col_pattern: r'B1N(\d*)Cl_\[-\]'

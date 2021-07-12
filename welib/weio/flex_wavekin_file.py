@@ -25,7 +25,7 @@ class FLEXWaveKinFile(File):
         return 'FLEX WaveKin file'
 
     def _read(self):
-        numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
+        numeric_const_pattern = r'[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
         rx = re.compile(numeric_const_pattern, re.VERBOSE)
         def extract_floats(s):
             v=np.array(rx.findall(s))

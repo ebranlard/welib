@@ -158,7 +158,7 @@ class CSVFile(File):
                 elif head[1].find('\t')>0:
                     self.sep='\t'
                 else:
-                    self.sep='\s+'
+                    self.sep=r'\s+'
             except:
                 # most likely an empty file
                 pass
@@ -228,7 +228,7 @@ class CSVFile(File):
         skiprows =list(sorted(set(skiprows)))
         if self.sep is not None:
             if self.sep=='\t':
-                self.sep='\s+'
+                self.sep=r'\s+'
         #print(skiprows)
         try:
 #             self.data = pd.read_csv(self.filename,sep=self.sep,skiprows=skiprows,header=None,comment=self.commentChar,encoding=self.encoding)

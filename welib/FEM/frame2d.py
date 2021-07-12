@@ -32,7 +32,7 @@ def h(x, u_2, u_3, u_5, u_6, L):
 # --------------------------------------------------------------------------------{
 
 def frame2d_KeMe(EA,EI,L,Mass,T=0,theta=None, MMFormulation='consistent'):
-    """ 
+    r""" 
     Stiffness and mass matrices for Hermitian beam element with 3DOF per node.
       - Elongation (along x)
       - Bending in one transverse direction (y)

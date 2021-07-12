@@ -95,7 +95,7 @@ def prescribed_oscillations_ris_r_1792():
     fig=plt.figure();exec("try:import pybra.figlib;pybra.figlib.fig_move(fig)\nexcept:pass")
     for ia,alpham in enumerate(valpha_mean):
         ax = fig.add_subplot(3,2,ia+1)
-        ax.plot(P.alpha/deg_scale  , P.cl  , label='Cl static', LineWidth=2)
+        ax.plot(P.alpha/deg_scale  , P.cl  , label='Cl static', linewidth=2)
         #ax.plot(valpha_t[ia,:]/deg_scale,Cl_oye[ia,:],'k--' ,label='Cl dynamic (Oye)')
         ax.plot(valpha_t[ia,:]/deg_scale,Cl_mhh[ia,:],'k-',label = 'Cl dynamic (MHH)')
         ax.set_ylabel('Cl [-]')
@@ -106,7 +106,7 @@ def prescribed_oscillations_ris_r_1792():
     YLIM=[np.array([-0.005,0.020]),np.array([-0.02,0.1])]
     for ia,alpham in enumerate(valpha_mean):
         ax = fig.add_subplot(3,2,ia+1+2)
-        ax.plot(P.alpha/deg_scale  , P.cd  , label='Cd static', LineWidth=2)
+        ax.plot(P.alpha/deg_scale  , P.cd  , label='Cd static', linewidth=2)
         ax.plot(valpha_t[ia,:]/deg_scale,Cd_mhh[ia,:],'k-',label = 'Cd dynamic (MHH)')
         ax.set_ylabel('Cd [-]')
         ax.set_xlim(XLIM[ia])
@@ -116,7 +116,7 @@ def prescribed_oscillations_ris_r_1792():
     YLIM=[np.array([-0.15,-0.115]),np.array([-0.14,-0.08])]
     for ia,alpham in enumerate(valpha_mean):
         ax = fig.add_subplot(3,2,ia+1+4)
-        ax.plot(P.alpha/deg_scale  , P.cm  , label='Static', LineWidth=2)
+        ax.plot(P.alpha/deg_scale  , P.cm  , label='Static', linewidth=2)
         ax.plot(valpha_t[ia,:]/deg_scale,Cm_mhh[ia,:],'k-',label = 'Dynamic (MHH)')
         ax.set_xlabel('Alpha [deg]')
         ax.set_ylabel('Cm [-]')

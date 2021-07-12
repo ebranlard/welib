@@ -84,7 +84,7 @@ class FASTOutputFile(File):
             raise WrongFormatError('FAST Out File {}: {}'.format(self.filename,e.args))
 
         if self.info['attribute_units'] is not None:
-            self.info['attribute_units'] = [re.sub('[()\[\]]','',u) for u in self.info['attribute_units']]
+            self.info['attribute_units'] = [re.sub(r'[()\[\]]','',u) for u in self.info['attribute_units']]
 
 
     def _write(self): 
