@@ -267,8 +267,8 @@ class RigidBody(Body,GenericRigidBody):
         """
         Body.__init__(B,name)
         GenericRigidBody.__init__(B, name, Mass, J_G, rho_G)
-        B.s_G_inB = rho_G
-        B.J_G_inB = J_G
+        B.s_G_inB = B.masscenter
+        B.J_G_inB = B.masscenter_inertia
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, -B.s_G_inB)
         B.MM = rigidBodyMassMatrix(Mass, B.J_O_inB, B.s_G_inB) # TODO change interface
         B.DD = np.zeros((6,6))

@@ -349,18 +349,23 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
         B.R_b2g= R_SB
 
     # --- Blades (with origin R, using N as "global" ref)
-    blades = rigidBlades(bld, r_O = [0,0,0])
-    blades.pos_global = r_NR_inN
-    blades.R_b2g      = R_NS
+    blds_rigid = rigidBlades(bld, r_O = [0,0,0])
+    blds_rigid.pos_global = r_NR_inN
+    blds_rigid.R_b2g      = R_NS
 
     # --- Rotor = Hub + Blades (with origin R, using N as global ref)
-    rot = blades.combine(hub, R_b2g=R_NS, r_O=blades.pos_global)
+    rot = blds_rigid.combine(hub, R_b2g=R_NS, r_O=blds_rigid.pos_global)
     rot.name='rotor'
-    rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blades.pos_global)
+    rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blds_rigid.pos_global)
     #print(rotgen)
 
-    # --- RNA
-    RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
+    #--- Yaw bearing, at tower top
+    M_yawBr = ED['YawBrMass']
+    yawBr = RigidBody('YawBr', M_yawBr, J=(0,0,0), s_OG=(0,0,0))
+
+
+    # --- RNA 
+    RNA = rot.combine(gen).combine(nac,r_O=[0,0,0]).combine(yawBr, r_O=[0,0,0])
     RNA.name='RNA'
     #print(RNA)
     M_RNA = RNA.mass
@@ -420,16 +425,18 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     # --- Return
     WT = WindTurbineStructure()
-    WT.bld = bld # origin at R
-    WT.hub = hub # origin at S
-    WT.rot = rot # origin at R, rigid body bld+hub
-    WT.rotgen = rotgen # origin at R, rigid body bld+hub+genLSS
-    WT.gen = gen # origin at S
-    WT.nac = nac # origin at N
-    WT.twr = twr # origin at T
-    WT.fnd = fnd # origin at T
-    WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
-    WT.WT_rigid = WT_rigid # rigid wind turbine body, origin at MSL
+    WT.bld        = bld        # origin at R
+    WT.blds_rigid = blds_rigid # origin at R
+    WT.hub        = hub        # origin at S
+    WT.rot        = rot        # origin at R, rigid body bld+hub
+    WT.rotgen     = rotgen     # origin at R, rigid body bld+hub+genLSS
+    WT.gen        = gen        # origin at S
+    WT.nac        = nac        # origin at N
+    WT.yawBr      = yawBr      # origin at N
+    WT.twr        = twr        # origin at T
+    WT.fnd        = fnd        # origin at T
+    WT.RNA        = RNA        # origin at N, rigid body bld+hub+gen+nac
+    WT.WT_rigid   = WT_rigid   # rigid wind turbine body, origin at MSL
 
     WT.DOF= DOFs
 

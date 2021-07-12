@@ -36,7 +36,7 @@ class Body(object):
         self._mass=None
         self.MM  = None # To be defined by children
 
-    def __repr__(B):
+    def __repr__(self):
         s='<Generic {} object>:\n'.format(type(self).__name__)
         return s
 
@@ -56,7 +56,7 @@ class Body(object):
     @pos_global.setter
     def pos_global(self, r_O):
         self._r_O = np.asarray(r_O).ravel()
-        
+
     @property
     def R_b2g(self):
         """ Transformation matrix from body to global """
@@ -536,8 +536,6 @@ class FASTBeamBody(BeamBody):
             r_O = [0,0,0] # NOTE: blade defined wrt point R for now
             #print(s_span)
 
-
-
             psi_B= 0
             if main_axis=='x':
                 R_SB = R_z(0*np.pi + psi_B)
@@ -572,117 +570,14 @@ class FASTBeamBody(BeamBody):
             s_span=s_bar*span_max
 
         elif 'SttcSolve' in inp.keys():
-            import welib.FEM.fem_beam as femb
-            # --- Tower
+            # --- Substructure / fnd
+            from welib.fast.subdyn import SubDyn   
             name = 'fnd'
-            # --- Option 1 - Read data from SubDyn
-            # Read SubDyn file
-            # Convert to "welib.fem.Graph" class to easily handle the model (overkill for a monopile)
-            graph = inp.toGraph()
-            graph.divideElements(inp['NDiv'])
-            graph.sortNodesBy('z')
-            df = graph.nodalDataFrame()
-            x   = df['z'].values # NOTE: FEM uses "x" as main axis
-            if np.any(df['y']!=0): 
-                raise NotImplementedError('FASTBeamBody for substructure only support monopile, structure not fully vertical in file: {}'.format(inp.filename))
-            if np.any(df['x']!=0): 
-                raise NotImplementedError('FASTBeamBody for substructure only support monopile, structure not fully vertical in file: {}'.format(inp.filename))
-            D   = df['D'].values # Diameter [m]
-            t   = df['t'].values # thickness [m]
-            E   = df['E'].values # Young modules [N/m^2]
-            G   = df['G'].values # Shear modules [N/m^2]
-            rho = df['rho'].values # material density [kg/m^3]
-            # NOTE: interpolate to nSpan to get uniform spacing
-            nSpan  = len(D)
-            xOld = x
-            x    = np.linspace(np.min(x),np.max(x), nSpan)
-            D       = np.interp(x, xOld, D)
-            t       = np.interp(x, xOld, t)
-            E       = np.interp(x, xOld, E)
-            G       = np.interp(x, xOld, G)
-            rho     = np.interp(x, xOld, rho)
+            sd = SubDyn(sdData = inp)
+            p, damp_zeta, RayleighCoeff, DampMat = sd.toYAMSData(shapes)
+            r_O   = p['r_O']
+            R_b2g = p['R_b2g']
 
-            # Derive section properties for a hollow cylinder based on diameter and thickness
-            A   = np.pi*( (D/2)**2 - (D/2-t)**2) # Area for annulus [m^2] 
-            I   = np.pi/64*(D**4-(D-2*t)**4) # Second moment of area for annulus (m^4)
-            Kt  = I                     # Torsion constant, same as I for annulus [m^4]
-            Ip  = 2*I                   # Polar second moment of area [m^4]
-            L = np.max(x)-np.min(x) # Monopile length
-            m=rho*A
-
-            # --- Compute FEM model and mode shapes
-            FEM=femb.cbeam(x,m=m,EIx=E*Ip,EIy=E*I,EIz=E*I,EA=E*A,A=A,E=E,G=G,Kt=Kt,
-                        element='frame3d', BC='clamped-free', M_tip=None)
-
-            # --- Perform Craig-Bampton reduction, fixing the top node of the beam
-            Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = femb.CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x') # TODO main_axis
-            # TODO TODO finda way to use these matrices instead of the ones computed with flexibility
-            #print('CB MM\n',CB['MM'])
-            #print('CB KK\n',CB['KK'])
-            if main_axis=='x':
-                raise NotImplementedError('')
-            else:
-                pass
-                # we need to swap the CB modes
-            nShapes=len(shapes)
-            PhiU = np.zeros((nShapes,3,nSpan)) # Shape
-            PhiV = np.zeros((nShapes,3,nSpan)) # Shape
-            PhiK = np.zeros((nShapes,3,nSpan)) # Shape
-            dx=np.unique(np.around(np.diff(x),4))
-            if len(dx)>1:
-                print(x)
-                print(dx)
-                raise NotImplementedError()
-            from welib.mesh.gradient import gradient_regular
-            for iShape, idShape in enumerate(shapes):
-                if idShape==0:
-                    # shape 0 "ux"  (uz in FEM)
-                    PhiU[iShape][0,:] = df_G['G3_uz'].values
-                    PhiV[iShape][0,:] =-df_G['G3_ty'].values
-                    PhiK[iShape][0,:] = gradient_regular(PhiV[iShape][0,:],dx=dx[0],order=4)
-                elif idShape==1:
-                    # shape 1,  "uy"
-                    PhiU[iShape][1,:] = df_G['G2_uy'].values
-                    PhiV[iShape][1,:] = df_G['G2_tz'].values
-                    PhiK[iShape][1,:] = gradient_regular(PhiV[iShape][1,:],dx=dx[0],order=4)
-                elif idShape==4:
-                    # shape 4,  "vy"  (vz in FEM)
-                    PhiU[iShape][0,:] = df_G['G6_uy'].values
-                    PhiV[iShape][0,:] = df_G['G6_tz'].values
-                    PhiK[iShape][0,:] = gradient_regular(PhiV[iShape][0,:],dx=dx[0],order=4)
-                else:
-                    raise NotImplementedError()
-            
-
-
-            p=dict()
-            p['s_span']=x-np.min(x)
-            p['s_P0']=np.zeros((3,nSpan))
-            if main_axis=='z':
-                p['s_P0'][2,:]=x-np.min(x)
-                r_O   = (df['x'].values[0], df['y'].values[0], df['z'].values[0])
-                R_b2g = np.eye(3)
-            print('r_O',r_O)
-            p['m']=m
-            p['EI']=np.zeros((3,nSpan))
-            if main_axis=='z':
-                p['EI'][0,:]=E*I
-                p['EI'][1,:]=E*I
-            p['jxxG']=rho*Ip # TODO verify
-            p['s_min']=p['s_span'][0]
-            p['s_max']=p['s_span'][-1]
-            p['PhiU']=PhiU
-            p['PhiV']=PhiV
-            p['PhiK']=PhiK
-            if inp['GuyanDampMod']==1:
-                # Rayleigh Damping
-                RayleighCoeff=inp['RayleighDamp']
-                #if RayleighCoeff[0]==0:
-                #    damp_zeta=omega*RayleighCoeff[1]/2. 
-            elif inp['GuyanDampMod']==2:
-                # Full matrix
-                DampMat = inp['GuyanDampMatrix']
-                DampMat=DampMat[np.ix_(shapes,shapes)]
         else:
             print(inp.keys())
             raise Exception('Body type not supported, key `BldProp`, `TowProp`, or `SttcSolve` not found in file')

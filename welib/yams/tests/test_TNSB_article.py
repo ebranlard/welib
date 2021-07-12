@@ -7,6 +7,7 @@ Test that builds the 5 DOF model presented in the article:
 import numpy as np
 import copy
 import unittest
+from welib.yams.bodies import FlexibleBody
 from welib.yams.yams import *
 from welib.yams.TNSB import manual_assembly
 
@@ -77,12 +78,13 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # --------------------------------------------------------------------------------}
     ## --- Creating bodies
     # --------------------------------------------------------------------------------{
+    Yaw=RigidBody('YawBearing',0,(0,0,0),(0,0,0));
     # Bld
     # TODO
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
     #Bld=UniformBeamBody('Blade', nShapes_bld, nSpan_bld, L_bld, EI_bld , m_bld, Mtop=0, jxxG=jxx_bld, GKt=GKt_bld, bCompatibility=bCompat)
     Blds=[]
-    Blds.append(Body())
+    Blds.append(Body('B1'))
     #Blds[0].MM = np.array([
     # [  3.0000E+04,   0.0000E+00,   0.0000E+00,   0.0000E+00,   5.2444E+03,   0.0000E+00,  -2.4905E+02,  -1.1333E+03],
     # [  0.0000E+00,   3.0000E+04,   0.0000E+00,  -5.2401E+03,   0.0000E+00,   9.0000E+05,   0.0000E+00,   0.0000E+00],
@@ -112,8 +114,11 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     Blds[0].DD = np.zeros((6+nShapes_bld, 6+nShapes_bld))
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))
+
+    # Generator only
+    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
     # ShaftHub Body 
-    Sft=RigidBody('ShaftHub',M_hub,IG_hub,r_SGhub_inS);
+    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS);
     Sft.MM*=bSftMass
     # Nacelle Body
     Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
@@ -135,7 +140,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # --------------------------------------------------------------------------------}
     # --- Manual assembly 
     # --------------------------------------------------------------------------------{
-    Struct = manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,DEBUG=DEBUG)
+    Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,DEBUG=DEBUG)
     return Struct
 
 

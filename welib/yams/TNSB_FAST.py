@@ -90,6 +90,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
 
     M_hub   = ED['HubMass']*bHubMass
     M_nac   = ED['NacMass'] *bNacMass
+    M_yaw   = ED['YawBrMass']
     IR_hub = np.zeros((3,3))
     I0_nac=np.zeros((3,3)) 
 
@@ -103,7 +104,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     I0_nac = I0_nac * bNacMass
 
     # Inertias not at COG...
-    IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
+    IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG=r_RGhub_inS)
     IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, r_NGnac_inN)
 
     # --------------------------------------------------------------------------------}
@@ -126,12 +127,21 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
         R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
         B.R_b2g= R_SB
 
-    # ShaftHub Body 
-    Sft=RigidBody('ShaftHub',M_hub,IG_hub,r_SGhub_inS);
+    # ShaftHubGen Body  NOTE: generator!!!
+    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
+    # Gen only
+    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+
+    print('>>> IG_hub',IG_hub, r_SGhub_inS)
     # Nacelle Body
     Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
+    # Yaw Bearing # TODO TODO TODO
+    Yaw=RigidBody('YawBearing',M_yaw,(0,0,0),(0,0,0));
+    if M_yaw>0:
+        print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
+
     M_rot= sum([B.Mass for B in Blds])
-    M_RNA= M_rot + Sft.Mass + Nac.Mass;
+    M_RNA= M_rot + Sft.Mass + Nac.Mass + Yaw.Mass
     # Tower Body
     Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening)
     #print('Stiffnening', bStiffening)
@@ -155,9 +165,9 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --- Assembly 
     # --------------------------------------------------------------------------------{
     if assembly=='manual':
-        Struct = manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
     else:
-        Struct = auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
 
     # --- Initial conditions
     omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s

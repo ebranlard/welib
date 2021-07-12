@@ -160,12 +160,10 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
      - s_G    : [m] 3 x nSpan , location of cross sections COG
      - s_span : [m] span integration variable (e.g. s_G(1,:))
      - m      : [kg/m] cross section mass along the beam
-     - jxxG   : [kg.m] second moment of inertia of cross section # TODO
-
 
     OPTIONAL INPUTS:
+     - jxxG   : [kg.m] second moment of inertia of cross section # TODO
      - bOrth : if true, enforce orthogonality of modes
-     - JxxG, if omitted, assumed to be 0 # TODO
      - U , if omitted, then rigid body (6x6) mass matrix is returned
      - split_outputs: if false (default) return MM, else returns Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
      - rot_terms : if True, outputs the rotational terms as well
@@ -505,10 +503,13 @@ def beamSectionLoads(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m,
 
     #print('a2',a_struct[0,:])
     # --- Inertial loads
-    m_struct = m
-    m_tot = m_struct + m_hydro
-    p_inertia        = m_tot    * a_struct # TODO is it really m_tot
-    F_inertia_lumped = M_lumped * a_struct
+    try:
+        m_struct = m
+        m_tot = m_struct + m_hydro
+        p_inertia        = m_tot    * a_struct # TODO is it really m_tot
+        F_inertia_lumped = M_lumped * a_struct
+    except:
+        import pdb; pdb.set_trace()
 
     # --- Total loads from external forces and inertia (inline and lumped)
     p_all        = p_ext        - p_inertia 
