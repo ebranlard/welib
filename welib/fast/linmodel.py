@@ -63,6 +63,47 @@ class FASTLinModel():
         s+=str(self.q_init)+'\n'
         return s
 
+def unit(s):
+    iu=s.rfind('[')
+    if iu>1:
+        return s[iu+1:].replace(']','')
+    else:
+        return ''
+def no_unit(s):
+    s=s.replace('_[',' [')
+    iu=s.rfind(' [')
+    if iu>1:
+        return s[:iu]
+    else:
+        return s
+
+def matToSIunits(Mat, name='', verbose=False):
+    """ 
+    Scale a matrix (pandas dataframe) such that is has standard units
+
+    """
+    # TODO columns
+    for irow,row in enumerate(Mat.index.values):
+        # Scaling based on units
+        u  = unit(row).lower()
+        nu = no_unit(row)
+        if u in['deg','deg/s','deg/s^2']:
+            if verbose:
+                print('Mat {} - scaling deg2rad   for row {}'.format(name,row))
+            Mat.iloc[irow,:] /=180/np.pi # deg 2 rad
+            Mat.index.values[irow]=Mat.index.values[irow].replace('rad','deg')
+        elif u=='rpm':
+            if verbose:
+                print('Mat {} - scaling rpm2rad/s for row {}'.format(name,row))
+            Mat.iloc[irow,:] /=60/(2*np.pi) # rpm 2 rad/s
+            Mat.index.values[irow]=nu+'_[rad/s]'
+        elif u=='knm':
+            if verbose:
+                print('Mat {} - scaling kNm to Nm for row {}'.format(name,row))
+            Mat.iloc[irow,:] /=1000 # to Nm
+            Mat.index.values[irow]=nu+'_[Nm]'
+    return Mat
+
 
 def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, ):
     """ 
@@ -78,19 +119,6 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
     """
     import pickle
     # --- Subfunctions
-    def unit(s):
-        iu=s.rfind('[')
-        if iu>1:
-            return s[iu+1:].replace(']','')
-        else:
-            return ''
-    def no_unit(s):
-        s=s.replace('_[',' [')
-        iu=s.rfind(' [')
-        if iu>1:
-            return s[:iu]
-        else:
-            return s
     def load(filename):
         with open(filename,'rb') as f:
             dat=pickle.load(f)
@@ -113,31 +141,21 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
         else:
             (A,B,C,D,M) = dat
 
+    # --- Renaming
+    for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
+        for irow,row in enumerate(Mat.index.values):
+            # Changing names
+            if row=='SvDGenTq_[kNm]':
+                Mat.index.values[irow]='Qgen_[kNm]'
+                row='Qgen_[kNm]'
+
+
+
     # --- Scale units
     if ScaleUnits:
         # Changing rows
         for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
-            for irow,row in enumerate(Mat.index.values):
-                # Changing names
-                if row=='SvDGenTq_[kNm]':
-                    Mat.index.values[irow]='Qgen_[kNm]'
-                    row='Qgen_[kNm]'
-
-                # Scaling based on units
-                u  = unit(row).lower()
-                nu = no_unit(row)
-                if u=='deg':
-                    print('Mat {} - scaling deg2rad   for row {}'.format(S,row))
-                    Mat.iloc[irow,:] /=180/np.pi # deg 2 rad
-                    Mat.index.values[irow]=nu+'_[rad]'
-                elif u=='rpm':
-                    print('Mat {} - scaling rpm2rad/s for row {}'.format(S,row))
-                    Mat.iloc[irow,:] /=60/(2*np.pi) # rpm 2 rad/s
-                    Mat.index.values[irow]=nu+'_[rad/s]'
-                elif u=='knm':
-                    print('Mat {} - scaling kNm to Nm for row {}'.format(S,row))
-                    Mat.iloc[irow,:] /=1000 # to Nm
-                    Mat.index.values[irow]=nu+'_[Nm]'
+            Mat = matToSIunits(Mat, name=S, verbose=True)
     # --- ColMap
     if nameMap is not None:
         for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):

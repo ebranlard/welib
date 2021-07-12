@@ -39,7 +39,15 @@ def curve_extract(line,spacing,offset=None):
 
 
 def curve_interp(x=None,y=None,n=3,line=None):
-    """ Interpolate a curves to equidistant curvilinear space between points"""
+    """ Interpolate a curves to equidistant curvilinear space between points
+
+    INPUTS:
+      either:
+        x,y : 1d arrays 
+      or
+        line: (n_in x 2) array
+      n : number of points to interpolate
+    """
     MatOut=False
     if line is None:
         line = np.array([x,y]).T

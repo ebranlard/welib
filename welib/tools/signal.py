@@ -52,6 +52,13 @@ def reject_outliers(y, x=None, m = 2., replaceNaN=True):
 # --- Resampling 
 # --------------------------------------------------------------------------------{
 def multiInterp(x, xp, fp, extrap='bounded'):
+    """ 
+    Interpolate all the columns of a matrix `fp` based on new values `x`
+    INPUTS:
+      - x  : array ( n ), new values
+      - xp : array ( np ), old values
+      - fp : array ( np x ncol), matrix values to be interpolated
+    """
     j   = np.searchsorted(xp, x) - 1
     dd  = np.zeros(len(x))
     bOK = np.logical_and(j>=0, j< len(xp)-1)
