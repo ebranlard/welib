@@ -33,7 +33,7 @@ class Polar(object):
         - cl_fully_separated: fully separated cl
     """
 
-    def __init__(self, Re, alpha, cl, cd, cm=None, compute_params=False, radians=None):
+    def __init__(self, FileName_or_Re, alpha=None, cl=None, cd=None, cm=None, compute_params=False, radians=None):
         """Constructor
 
         Parameters
@@ -49,8 +49,10 @@ class Polar(object):
         cm : ndarray
             moment coefficient
         """
+        if isinstance(FileName_or_Re,str):
+            alpha, cl, cd, cm, Re = loadPolarFile(FileName_or_Re, fformat='auto', to_radians=False)
 
-        self.Re = Re
+        self.Re = FileName_or_Re
         self.alpha = np.array(alpha)
         self.cl = np.array(cl)
         self.cd = np.array(cd)
@@ -70,6 +72,21 @@ class Polar(object):
             self._linear_slope,self._alpha0=self.cl_linear_slope(method='max') 
             self.cl_fully_separated()
             self.cl_inv = self._linear_slope*(self.alpha - self._alpha0)
+
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+        s+=' - alpha, cl, cd, cm  \n'
+        s+=' - Re     :            {} \n'.format(self.Re)
+        s+=' - _alpha0:            {} \n'.format(self._alpha0)
+        s+=' - _linear_slope:      {} \n'.format(self._linear_slope)
+        s+=' * alpha0 :            {} \n'.format(self.alpha0())
+        s+=' * cl_linear_slope :   {} \n'.format(self.cl_linear_slope())
+        s+=' * cl_max :            {} \n'.format(self.cl_max())
+        s+=' * unsteadyParams :    {} \n'.format(self.unsteadyParams())
+        s+=' useful functions:   cl_interp, cd_interp, cm_interp, f_st_interp \n'
+        s+='                      plot, extrapolate\n'
+        return s
+
 
     def cl_interp(self,alpha):
         return np.interp(alpha, self.alpha, self.cl)
@@ -109,44 +126,12 @@ class Polar(object):
             return self.cl*np.cos(self.alpha*np.pi/180) + self.cd*np.sin(self.alpha*np.pi/180)
 
 
+
+
     @classmethod
     def fromfile(cls,filename,fformat='auto',compute_params=False, to_radians=False):
         """Constructor based on a filename"""
-        if not os.path.exists(filename):
-            raise Exception('File not found:',filename)
-        try: 
-            import welib.weio as weio
-        except:
-            print('[WARN] Module `weio` not present, only delimited file format supported ')
-            fformat='delimited'
-        if fformat=='delimited':
-            try:
-                M=np.loadtxt(filename,comments=['#','!'])
-            except:
-                # Trying an AD15 file
-                M=pd.read_csv(filename, skiprows = 53, header=None, delim_whitespace=True, names=['Alpha','Cl','Cd','Cm']).values
-            Re    = np.nan
-        elif fformat=='auto':
-            try:
-                M = weio.CSVFile(filename).toDataFrame().values
-            except:
-                df = weio.read(filename).toDataFrame()
-                if type(df) is dict:
-                    M=df[list(df.keys())[0]].values
-                else:
-                    M=df.values
-        else:
-            raise NotImplementedError('Format not implemented: {}'.format(fformat))
-
-        if M.shape[1]!=4:
-            raise Exception('Only supporting polars with 4 columns: alpha cl cd cm')
-        if to_radians:
-            M[:,0]=M[:,0]*np.pi/180
-        alpha = M[:,0]
-        cl    = M[:,1]
-        cd    = M[:,2]
-        cm    = M[:,3]
-        Re    = np.nan
+        alpha, cl, cd, cm, Re = loadPolarFile(filename, fformat=fformat, to_radians=to_radians)
         return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
 
     def correction3D(self, r_over_R, chord_over_r, tsr, alpha_max_corr=30,
@@ -744,7 +729,7 @@ class Polar(object):
             return self.cl, self.alpha
 
         # Ensuring window is within our alpha values
-        window = _alpha_window_in_bounds(alpha,window)
+        window = _alpha_window_in_bounds(self.alpha,window)
         
         # Finding max within window
         iwindow=np.where((self.alpha>=window[0]) & (self.alpha<=window[1]))
@@ -820,7 +805,8 @@ class Polar(object):
             # Looking at slope around alpha 0 to see if we are too far off
             slope_FD,off_FD =  _find_slope(self.alpha,self.cl,xi=alpha0,window=window,method='finitediff_1c')
             if abs(slope-slope_FD)/slope_FD*100>20:
-                raise Exception('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
+                #raise Exception('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
+                print('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
 #         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
 
         return myret(slope,off)
@@ -866,6 +852,81 @@ class Polar(object):
         fs = f_st + (fs_prev-f_st)*np.exp(-dt/tau)
         Cl = fs*Clinv+(1-fs)*Clfs               
         return Cl,fs
+
+    def toAeroDyn(self, filenameOut=None, templateFile=None):
+        from welib.weio.fast_input_file import FASTInputFile
+        # Read a template file for AeroDyn polars
+        if templateFile is None:
+            MyDir=os.path.dirname(__file__)
+            templateFile = os.path.join(MyDir,'../../data/NREL5MW/data/Airfoils/Cylinder1.dat')
+        ADpol = FASTInputFile(templateFile)
+
+        # Compute unsteady parameters
+        (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=self.unsteadyParams()
+
+        # --- Updating the AD polar file 
+        # Setting unsteady parameters
+        ADpol['Re'] = 1.0000 # TODO UNKNOWN
+        if np.isnan(alpha0):
+            ADpol['alpha0'] = 0
+        else:
+            ADpol['alpha0'] = np.around(alpha0, 4)
+        ADpol['alpha1']    = np.around(alpha1, 4) # TODO approximate
+        ADpol['alpha2']    = np.around(alpha2, 4) # TODO approximate
+        ADpol['C_nalpha']  = np.around(cnSlope ,4)
+        ADpol['Cn1']       = np.around(cn1, 4)    # TODO verify
+        ADpol['Cn2']       = np.around(cn2, 4)
+        ADpol['Cd0']       = np.around(cd0, 4)
+        ADpol['Cm0']       = np.around(cm0, 4)
+
+        # Setting polar 
+        PolarTable = np.column_stack((self.alpha,self.cl,self.cd,self.cm))
+        ADpol['NumAlf'] = self.cl.shape[0]
+        ADpol['AFCoeff'] = np.around(PolarTable, 5)
+
+        if filenameOut is not None:
+            ADpol.write(filenameOut)
+        return ADpol
+
+
+
+def loadPolarFile(filename, fformat='auto', to_radians=False):
+    if not os.path.exists(filename):
+        raise Exception('File not found:',filename)
+    try: 
+        import welib.weio as weio
+    except:
+        print('[WARN] Module `weio` not present, only delimited file format supported ')
+        fformat='delimited'
+    if fformat=='delimited':
+        try:
+            M=np.loadtxt(filename,comments=['#','!'])
+        except:
+            # Trying an AD15 file
+            M=pd.read_csv(filename, skiprows = 53, header=None, delim_whitespace=True, names=['Alpha','Cl','Cd','Cm']).values
+        Re    = np.nan
+    elif fformat=='auto':
+        try:
+            M = weio.CSVFile(filename).toDataFrame().values
+        except:
+            df = weio.read(filename).toDataFrame()
+            if type(df) is dict:
+                M=df[list(df.keys())[0]].values
+            else:
+                M=df.values
+    else:
+        raise NotImplementedError('Format not implemented: {}'.format(fformat))
+
+    if M.shape[1]<4:
+        raise Exception('Only supporting polars with 4 columns: alpha cl cd cm')
+    if to_radians:
+        M[:,0]=M[:,0]*np.pi/180
+    alpha = M[:,0]
+    cl    = M[:,1]
+    cd    = M[:,2]
+    cm    = M[:,3]
+    Re    = np.nan
+    return alpha, cl, cd, cm, Re
 
 
 def blend(pol1, pol2, weight):
@@ -1107,13 +1168,19 @@ def _find_slope(x,y,xi=None,x0=None,window=None,method='max',opts=None):
         (a,x0): such that the slope is a(x-x0)
                 (x0=-b/a where y=ax+b)
     """
-    if window is not None:
-        I = np.where(np.logical_and(x>=window[0],x<=window[1]))
-        x = x[I]
-        y = y[I]
 
-    if len(y)<=0:
-        raise Exception('Cannot find slope, no data in y (after window selection)')
+    if window is not None:
+        x_=x
+        y_=y
+        x_ = np.linspace(x[0], x[-1], max(721,len(x))) # using 0.5deg resolution at least
+        y_ = np.interp(x_, x, y)
+        I = np.where(np.logical_and(x_>=window[0],x_<=window[1]))
+        x = x_[I]
+        y = y_[I]
+
+
+    if len(y)<=1:
+        raise Exception('Cannot find slope, two points needed ({} after window selection)'.format(len(y)))
 
 
     if len(y)<4 and method=='optim':

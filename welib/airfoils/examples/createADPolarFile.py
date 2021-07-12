@@ -11,6 +11,16 @@ import welib.weio as weio
 
 MyDir=os.path.dirname(__file__)
 
+
+def main_wrap(test=False):
+    polarFile_in = os.path.join(MyDir,'../data/DU21_A17.csv')
+    polarFile_AD='_Polar_out.dat.ignore'
+
+    polar = Polar(polarFile_in)
+    ADpol = polar.toAeroDyn(polarFile_AD)
+
+    return ADpol, polar
+
 def main(test=False):
 
     # --- Reading a existing AD file, just as a template, we'll replace things in it
@@ -50,8 +60,13 @@ def main(test=False):
 
     return ADpol, polar
 
+
+
+
 if __name__ == '__main__':
-    ADpol,polar = main()
+    #ADpol,polar = main()
+
+    ADpol,polar = main_wrap()
 
     import matplotlib.pyplot as plt
     plt.plot(polar.alpha   ,polar.cl   ,label= 'cl')

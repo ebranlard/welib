@@ -190,6 +190,7 @@ class TestPolarParams(unittest.TestCase):
         # Singularity at i=63
         np.testing.assert_almost_equal(cl_fs[63],P.cl[63]/2)
         np.testing.assert_almost_equal(f_st[63],1.0)
+        #np.testing.assert_almost_equal(f_st[63],1.0023744)
         # Close to singularity, should be not far from cl/2
         np.testing.assert_almost_equal(cl_fs[64],P.cl[64]/2*1.004,decimal=4)
         np.testing.assert_almost_equal(cl_fs[62],P.cl[62]/2*0.998,decimal=4)

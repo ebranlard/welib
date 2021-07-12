@@ -175,7 +175,7 @@ def dynstall_mhh_outputs(t,x,u,p,more=False):
 #         print(Cl_dyn)
 #         print(x4#         print(alphaE)
     if more:
-        return Cl_dyn, Cd_dyn, Cm_dyn, alphaE
+        return Cl_dyn, Cd_dyn, Cm_dyn, alphaE, Tu, faE, Cl_fs(alphaE), alpha_34, alpha_dot, U
     else:
         return Cl_dyn, Cd_dyn, Cm_dyn
 
