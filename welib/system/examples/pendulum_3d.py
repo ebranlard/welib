@@ -22,7 +22,7 @@ from welib.yams.rotations import *
 from scipy.integrate import  solve_ivp #odeint
 
 
-def main(formulation='general', angles='Bryant'):
+def main(formulation='general', angles='Bryant', tmax=5):
     """ 
     formulation: formulation for equations of motions (general or minimal)
     angles:     choice for angle coordinates (Bryant, Euler, EulerP)
@@ -159,7 +159,7 @@ def main(formulation='general', angles='Bryant'):
 
 
     # time integration
-    time=np.linspace(0,5,1000)
+    time=np.arange(0,tmax,0.005)
 
     res = solve_ivp(fun=dzdt, t_span=[time[0], time[-1]], y0=z0, t_eval=time, method='RK45')
     if formulation =='general':
@@ -236,10 +236,10 @@ if __name__=="__main__":
     #plt.show()
 
 if __name__=="__test__":
-    time, CG1, theta1, omega1 = main(formulation ='general', angles='Euler')
-    time, CG2, theta2, omega2 = main(formulation ='general', angles='Bryant')
-    time, CG3, theta3, omega3 = main(formulation ='general', angles='EulerP')
-    time, CG4, theta4, omega4 = main(formulation ='minimal', angles='Bryant')
+    time, CG1, theta1, omega1 = main(formulation ='general', angles='Euler' ,tmax=0.1)
+    time, CG2, theta2, omega2 = main(formulation ='general', angles='Bryant',tmax=0.1)
+    time, CG3, theta3, omega3 = main(formulation ='general', angles='EulerP',tmax=0.1)
+    time, CG4, theta4, omega4 = main(formulation ='minimal', angles='Bryant',tmax=0.1)
 
     np.testing.assert_almost_equal(CG1, CG2, 3)
     np.testing.assert_almost_equal(CG2, CG3, 3)
