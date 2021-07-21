@@ -175,8 +175,8 @@ class AeroBEM:
         self.bRoughProfiles = False # use rough profiles for input airfoil data
 
     def init_from_FAST(self, FASTFileName):
-        import welib.weio as weio
-        F=weio.FASTInputDeck(FASTFileName,readlist=['AD','ED'])
+        from welib.weio.fast_input_deck import FASTInputDeck
+        F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
 
         # Environment
         self.rho     = F.AD['AirDens']
@@ -758,8 +758,8 @@ class AeroBEM:
                     Vwnd_g,
                     firstCallEquilibrium= it==0 and firstCallEquilibrium
                     )
-            if np.mod(t,1)<dt/2:
-                print(t)
+            #if np.mod(t,1)<dt/2:
+            #    print(t)
         df = self.toDataFrame()
         return df
 

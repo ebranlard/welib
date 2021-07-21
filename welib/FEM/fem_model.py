@@ -2,8 +2,6 @@ import numpy as np
 import pandas as pd
 
 from welib.tools.clean_exceptions import *
-from welib.system.eva import eig
-from welib.FEM.reduction import CraigBampton
 from welib.FEM.graph import Node as GraphNode
 from welib.FEM.graph import Element as GraphElement
 from welib.FEM.graph import NodeProperty
@@ -57,6 +55,7 @@ class FEMModel(GraphModel):
 
     def CraigBampton(self, Ileader, Ifollow=None, Ifixed=None):
         """ """
+        from welib.FEM.reduction import CraigBampton
         if Ifixed is not None:
             M,K = self.applyFixBC()
         else:

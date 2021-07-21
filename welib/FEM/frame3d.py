@@ -72,6 +72,7 @@ def h(x, u_2, u_3, u_5, u_6, L):
 def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None): 
     """ 
     Stiffness and mass matrices for Hermitian beam element with 6DOF per node
+    Beam directed along x
     See folder derivation for sympy derivations.
 
     Euler-Bernoulli beam model. The torsion is de-coupled to the rest, not like Timoshenko.

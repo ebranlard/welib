@@ -11,7 +11,6 @@ def StateMatrix(Minv,C,K):
     A[n:,n:] = -np.dot(Minv,C)
     return A
 
-
 def vec_interp(t,vTime,vF):
     """ Interpolate vector known at discrete values (vTime, vF) to a given time `t` """
     F    = np.zeros(vF.shape[0])
@@ -19,12 +18,17 @@ def vec_interp(t,vTime,vF):
         F[iDOF] = np.interp(t,vTime,F_DOF)
     return F
 
-def B_interp(t,Minv,vTime,vF):
+def B_interp(t,Minv,vTime,vF, flat=False):
     """ Interpolate B-vector from loads known at discrete values (vTime, vF) at a given time `t` """
     nDOF=len(vF)
-    B = np.zeros((2*nDOF,1))
-    F = vec_interp(t,vTime,vF)
-    B[nDOF:,0] = np.dot(Minv,F)
+    if flat:
+        B = np.zeros(2*nDOF)
+        F = vec_interp(t,vTime,vF)
+        B[nDOF:] = np.dot(Minv,F)
+    else:
+        B = np.zeros((2*nDOF,1))
+        F = vec_interp(t,vTime,vF)
+        B[nDOF:,0] = np.dot(Minv,F)
     return B
 
 def B_reg(t,Minv,F):

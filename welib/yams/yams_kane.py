@@ -323,7 +323,10 @@ class YAMSKanesMethod(object):
         b = len(f_list)
         FR = zeros(o, 1)
         partials = partial_velocity(vel_list, self.u, N)
+        self._fr_products=[]
         for i in range(o):
+            for j in range(b):
+                self._fr_products.append((partials[j][i] , f_list[j]))
             FR[i] = sum(partials[j][i] & f_list[j] for j in range(b))
 
         # In case there are dependent speeds

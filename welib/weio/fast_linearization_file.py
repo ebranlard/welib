@@ -89,7 +89,7 @@ class FASTLinearizationFile(File):
 
         def readMat(fid, n, m):
             vals=[f.readline().strip().split() for i in np.arange(n)]
-            return np.array(vals).astype(np.float)
+            return np.array(vals).astype(float)
 
         # Reading 
         with open(self.filename, 'r', errors="surrogateescape") as f:
@@ -103,17 +103,17 @@ class FASTLinearizationFile(File):
             ny  = int(extractVal(self['header'],'Number of outputs:'          ))
             bJac = extractVal(self['header'],'Jacobians included in this file?')
             try:
-                self.Azimuth = float(extractVal(self['header'],'Azimuth:'))
+                self['Azimuth'] = float(extractVal(self['header'],'Azimuth:'))
             except:
-                self.Azimuth = None
+                self['Azimuth'] = None
             try:
-                self.RotSpeed = float(extractVal(self['header'],'Rotor Speed:')) # rad/s
+                self['RotSpeed'] = float(extractVal(self['header'],'Rotor Speed:')) # rad/s
             except:
-                self.RotSpeed = None
+                self['RotSpeed'] = None
             try:
-                self.WindSpeed = float(extractVal(self['header'],'Wind Speed:'))
+                self['WindSpeed'] = float(extractVal(self['header'],'Wind Speed:'))
             except:
-                self.WindSpeed = None
+                self['WindSpeed'] = None
 
             KEYS=['Order of','A:','B:','C:','D:','ED M:']
 
@@ -161,6 +161,7 @@ class FASTLinearizationFile(File):
             s = s.replace('(kN)'  , '_[kN]' );
             s = s.replace('(rpm)'   , '_[rpm]'  );
             s = s.replace('(m/s^2)' , '_[m/s^2]');
+            s = s.replace('(deg/s^2)','_[deg/s^2]');
             s = s.replace('(m)'     , '_[m]'    );
             s = s.replace(', m/s^2','_[m/s^2]');
             s = s.replace(', m/s','_[m/s]');
@@ -221,6 +222,19 @@ class FASTLinearizationFile(File):
             s = s.replace('X moment, node','MxN')
             s = s.replace('Y moment, node','MyN')
             s = s.replace('Z moment, node','MzN')
+            s = s.replace('FX', 'Fx')
+            s = s.replace('FY', 'Fy')
+            s = s.replace('FZ', 'Fz')
+            s = s.replace('MX', 'Mx')
+            s = s.replace('MY', 'My')
+            s = s.replace('MZ', 'Mz')
+            s = s.replace('FKX', 'FKx')
+            s = s.replace('FKY', 'FKy')
+            s = s.replace('FKZ', 'FKz')
+            s = s.replace('MKX', 'MKx')
+            s = s.replace('MKY', 'MKy')
+            s = s.replace('MKZ', 'MKz')
+            s = s.replace('Nodes motion','')
             s = s.replace('cosine','cos'   );
             s = s.replace('sine','sin'   );
             s = s.replace('collective','coll.');
@@ -232,6 +246,12 @@ class FASTLinearizationFile(File):
             s = s.replace('rotY','FLAP-R');
             s = s.replace('flapwise','FLAP');
             s = s.replace('edgewise','EDGE');
+            s = s.replace('horizontal surge translation DOF','Surge');
+            s = s.replace('horizontal sway translation DOF','Sway');
+            s = s.replace('vertical heave translation DOF','Heave');
+            s = s.replace('roll tilt rotation DOF','Roll');
+            s = s.replace('pitch tilt rotation DOF','Pitch');
+            s = s.replace('yaw rotation DOF','Yaw');
             s = s.replace('vertical power-law shear exponent','alpha')
             s = s.replace('horizontal wind speed ','WS')
             s = s.replace('propagation direction','WD')
@@ -245,6 +265,7 @@ class FASTLinearizationFile(File):
             s = s.replace('SrvD','SvD')
             s = s.replace('Generator torque','Qgen')
             s = s.replace('coll. blade-pitch command','PitchColl')
+            s = s.replace('wave elevation at platform ref point','WaveElevRefPoint')
             s = s.replace('1)','1');
             s = s.replace('2)','2');
             s = s.replace('3)','3');
@@ -282,8 +303,14 @@ class FASTLinearizationFile(File):
             dfs['D'] = pd.DataFrame(data = self['D'], index=ydescr_short, columns=udescr_short)
         except:
             pass
-        dfs['x'] = pd.DataFrame(data = np.asarray(self['x']).reshape((1,-1)), columns=xdescr_short)
-        dfs['u'] = pd.DataFrame(data = np.asarray(self['u']).reshape((1,-1)), columns=udescr_short)
+        try:
+            dfs['x'] = pd.DataFrame(data = np.asarray(self['x']).reshape((1,-1)), columns=xdescr_short)
+        except:
+            pass
+        try:
+            dfs['u'] = pd.DataFrame(data = np.asarray(self['u']).reshape((1,-1)), columns=udescr_short)
+        except:
+            pass
         try:
             dfs['y'] = pd.DataFrame(data = np.asarray(self['y']).reshape((1,-1)), columns=ydescr_short)
         except:

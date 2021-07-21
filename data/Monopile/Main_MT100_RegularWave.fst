@@ -6,8 +6,8 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
        100    TMax            - Total run time (s)
       0.002   DT              - Recommended module time step (s)
           2   InterpOrder     - Interpolation order for input/output time history (-) {1=linear, 2=quadratic}
-          0   NumCrctn        - Number of correction iterations (-) {0=explicit calculation, i.e., no corrections}
-      99999   DT_UJac         - Time between calls to get Jacobians (s)
+          1   NumCrctn        - Number of correction iterations (-) {0=explicit calculation, i.e., no corrections}
+          1   DT_UJac         - Time between calls to get Jacobians (s)
       1E+06   UJacSclFact     - Scaling factor used in Jacobians (-)
 ---------------------- FEATURE SWITCHES AND FLAGS ------------------------------
           1   CompElast       - Compute structural dynamics (switch) {1=ElastoDyn; 2=ElastoDyn + BeamDyn for blades}
@@ -26,7 +26,7 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
 "NA"    InflowFile      - Name of file containing inflow wind input parameters (quoted string)
 "NA"    AeroFile        - Name of file containing aerodynamic input parameters (quoted string)
 "NA"    ServoFile       - Name of file containing control and electrical-drive input parameters (quoted string)
-"MT100_HD.dat"    HydroFile       - Name of file containing hydrodynamic input parameters (quoted string)
+"MT100_HD_RegularWave.dat"    HydroFile       - Name of file containing hydrodynamic input parameters (quoted string)
 "MT100_SD.dat"    SubFile         - Name of file containing sub-structural input parameters (quoted string)
 "NA"    MooringFile     - Name of file containing mooring system input parameters (quoted string)
 "NA"    IceFile         - Name of file containing ice input parameters (quoted string)
@@ -47,12 +47,12 @@ False         CalcSteady      - Calculate a steady-state periodic operating poin
        0.01   TrimGain        - Proportional gain for the rotational speed error (>0) [used only if CalcSteady=True] (rad/(rad/s) for yaw or pitch; Nm/(rad/s) for torque)
           0   Twr_Kdmp        - Damping factor for the tower [used only if CalcSteady=True] (N/(m/s))
           0   Bld_Kdmp        - Damping factor for the blades [used only if CalcSteady=True] (N/(m/s))
-          2   NLinTimes       - Number of times to linearize (-) [>=1] [unused if Linearize=False]
+          1   NLinTimes       - Number of times to linearize (-) [>=1] [unused if Linearize=False]
      0,  5    LinTimes        - List of times at which to linearize (s) [1 to NLinTimes] [unused if Linearize=False]
           2   LinInputs       - Inputs included in linearization (switch) {0=none; 1=standard; 2=all module inputs (debug)} [unused if Linearize=False]
           2   LinOutputs      - Outputs included in linearization (switch) {0=none; 1=from OutList(s); 2=all module outputs (debug)} [unused if Linearize=False]
-True          LinOutJac       - Include full Jacobians in linearization output (for debug) (flag) [unused if Linearize=False; used only if LinInputs=LinOutputs=2]
-True          LinOutMod       - Write module-level linearization output files in addition to output for full system? (flag) [unused if Linearize=False]
+False         LinOutJac       - Include full Jacobians in linearization output (for debug) (flag) [unused if Linearize=False; used only if LinInputs=LinOutputs=2]
+False         LinOutMod       - Write module-level linearization output files in addition to output for full system? (flag) [unused if Linearize=False]
 ---------------------- VISUALIZATION ------------------------------------------
           0   WrVTK           - VTK visualization data output: (switch) {0=none; 1=initialization data only; 2=animation}
           3   VTK_type        - Type of VTK visualization data: (switch) {1=surfaces; 2=basic meshes (lines/points); 3=all meshes (debug)} [unused if WrVTK=0]

@@ -6,18 +6,47 @@ from numpy import mod
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import re
-# from cycler import cycler
-# from .colors import rgb2hex, fColrs
-# Should be placed in some kind of InitClear
-# mpl.rcParams['lines.linewidth'] = 1.55
-# mpl.rcParams['font.size'] = 15
-# # mpl.rcParams['axes.color_cycle']=[rgb2hex((c*255).astype(int)) for c in fColrs()]
-# mpl.rcParams['axes.prop_cycle']=cycler(color=[rgb2hex((c*255).astype(int)) for c in fColrs()])
-# mpl.rcParams['font.family'] = 'helvetica'
-# line.set_dashes([8, 4, 2, 4, 2, 4]) 
-#lg = a.legend()
-# fr = lg.get_frame()
-# fr.set_lw(0.2)
+
+# --- On load, set default rcParams
+def defaultRC():
+    # --- Ticks
+    # ax.tick_params(direction='in', top=True, right=True, labelright=False, labeltop=False, which='both')
+    mpl.rcParams['xtick.direction'] = 'in'
+    mpl.rcParams['ytick.direction'] = 'in'
+    mpl.rcParams['xtick.top']  = True
+    mpl.rcParams['ytick.right'] = True
+
+    # --- Axes limits
+    # ax.autoscale(enable=True, axis='both', tight=True)
+    mpl.rcParams['axes.autolimit_mode'] ='round_numbers'
+    mpl.rcParams['axes.xmargin'] = 0
+    mpl.rcParams['axes.ymargin'] = 0
+
+    # --- Grid
+    # ax.grid(True, linestyle=':')
+    #mpl.rcParams['axes.grid']     = True
+    #mpl.rcParams['grid.alpha']     = 1.0,
+    mpl.rcParams['grid.color']     = '#b0b0b0'
+    mpl.rcParams['grid.linestyle'] = ':'
+    mpl.rcParams['grid.linewidth'] = 0.5 # default 0.8
+
+    # --- Linewidth
+    mpl.rcParams['lines.linewidth'] = 1.2  # default 1.5
+
+    # --- Fontsize
+    #mpl.rcParams['font.size'] = 15
+
+    # --- Colors
+    # from cycler import cycler
+    # from .colors import rgb2hex, fColrs
+    # Should be placed in some kind of InitClear
+    # # mpl.rcParams['axes.color_cycle']=[rgb2hex((c*255).astype(int)) for c in fColrs()]
+    # mpl.rcParams['axes.prop_cycle']=cycler(color=[rgb2hex((c*255).astype(int)) for c in fColrs()])
+    # mpl.rcParams['font.family'] = 'helvetica'
+    # line.set_dashes([8, 4, 2, 4, 2, 4]) 
+    #lg = a.legend()
+    # fr = lg.get_frame()
+    # fr.set_lw(0.2)
 
 # --------------------------------------------------------------------------------
 # ---  
@@ -75,6 +104,11 @@ def setFigurePath(path):
         _global_params.path=path
     else:
         _global_params.path=[path]
+    for i,p in enumerate(_global_params.path):
+        if p[-1]=='/' or p[-1]=='\\':
+            pass
+        else:
+            _global_params.path[i] = p+'/'
 
 def setFigureTitle(btitle):
     _global_params.btitle=btitle
@@ -127,22 +161,19 @@ class FigureExporter:
             print(' ')
 
     @staticmethod
-    def export(fig,figformat,i=1,n=1,width=None,height=None,figNameLast='',script_name='',script_run_dir='',script_run_date=''):
+    def export(fig,figformat,i=1,n=1,width=None,height=None,figNameLast='',script_name='',script_run_dir='',script_run_date='', print_latex=True):
         if i is None:
             i=1
         # params (for now, using global params)
         params=_global_params
-
-
         title,axTitle=findtitle(fig)
         titleLatexSafe = re.sub(r"[_%^]", "", title)
-        print('>>>>> TITLE',title)
+        #print('>>>>> TITLE',title)
         # figure name from title or figure number
         if title=='' or (title is None):
             figName='%d'%i
         else:
             figName=title2filename(title);
-
 
         # remove figure title if needed
         if not params.btitle:
@@ -179,21 +210,22 @@ class FigureExporter:
                 fig.suptitle(title)
 
         # --- Generating latex code 
-        if mod(n,2)==0:
-            if mod(i,2)==0:
-                FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
-        else:
-            if mod(i,2)==0:
-                FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
+        if print_latex:
+            if mod(n,2)==0:
+                if mod(i,2)==0:
+                    FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
             else:
-                if i==n:
-                    FigureExporter.print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date)
+                if mod(i,2)==0:
+                    FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
+                else:
+                    if i==n:
+                        FigureExporter.print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date)
 
         figNameLast=figName;
-        return figNameLast
+        return figNameLast, filename, title
 
 # --- Export call wrapper 
-def export(figformat,fig=None,i=None,width=None,height=None):
+def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True):
     import pylab
     import inspect
     import os
@@ -205,29 +237,37 @@ def export(figformat,fig=None,i=None,width=None,height=None):
     script_run_date=datetime.datetime.now().strftime('%Y/%m/%d')
     __exporter = FigureExporter()  
 
+    figNames  = []
+    fileNames = []
+    titles = []
     if fig is None:
         # We'll loop over all figures
         figures=[manager.canvas.figure for manager in pylab.matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
         figNameLast=''
         for i, figure in enumerate(figures):
-            figNameLast=__exporter.export(fig=figure,figformat=figformat,i=(i+1),n=len(figures),width=width,height=height,figNameLast=figNameLast,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date)
+            figNameLast, filename, title=__exporter.export(fig=figure,figformat=figformat,i=(i+1),n=len(figures),width=width,height=height,figNameLast=figNameLast,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date,print_latex=print_latex)
+            figNames.append(figNameLast)
+            fileNames.append(filename)
+            titles.append(title)
 
     else:
-        __exporter.export(fig=fig,figformat=figformat,i=i,width=width,height=height,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date)
-        pass
+        figNameLast, filename, title = __exporter.export(fig=fig,figformat=figformat,i=i,width=width,height=height,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date, print_latex=print_latex)
+        figNames.append(figNameLast)
+        fileNames.append(filename)
+        titles.append(title)
     
     for ifp in range(len(_global_params.path)):
         print('Figure saved in: %s'%_global_params.path[ifp]);
     print(' ');
 
-    pass
+    return figNames, fileNames, titles
 
-def export2pdf(fig=None,i=None,width=None,height=None):
-    export('pdf',fig=fig,i=i,width=width,height=height)
-def export2png(fig=None,i=None,width=None,height=None):
-    export('png',fig=fig,i=i,width=width,height=height)
-def export2eps(fig=None,i=None,width=None,height=None):
-    export('png',fig=fig,i=i,width=width,height=height)
+def export2pdf(fig=None,i=None,width=None,height=None,print_latex=True):
+    return export('pdf',fig=fig,i=i,width=width,height=height,print_latex=print_latex)
+def export2png(fig=None,i=None,width=None,height=None,print_latex=True):
+    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex)
+def export2eps(fig=None,i=None,width=None,height=None,print_latex=True):
+    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex)
 
 
 # --------------------------------------------------------------------------------}

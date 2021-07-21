@@ -201,7 +201,7 @@ class YAMSModel(object):
 
         return EquationsOfMotionQ(EOM, self.coordinates, self.name, replaceDict)
 
-    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=[], header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa'], doSimplify=False, velSubs=[(0,0)]):
+    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=[], header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
         """ 
         Save forcing and mass matrix to latex file
         """
@@ -247,8 +247,30 @@ class YAMSModel(object):
                     toTex(f, self._sa_C, label='Linearized damping matrix small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'Ksa' in variables:
                     toTex(f, self._sa_K, label='Linearized stiffness matrix small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
-                if 'Bsa' in variables:
-                    toTex(f, self._sa_K, label='Linearized forcing small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                if 'body_details' in variables:
+                    for b in self.bodies:
+                        print('b.name',b.name)
+                        print('Jv',b._Jv_vect)
+                        print('Jo',b._Jo_vect)
+                        toTex(f, b._vel, label='Body {} vel'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        toTex(f, b._acc, label='Body {} acc'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        toTex(f, b._omega, label='Body {} omega'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        toTex(f, b._inertial_force, label='Body {} inertialforce'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        toTex(f, b._inertial_torque, label='Body {} inertialtorque'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        try:
+                            toTex(f, b.inertial_elast, label='Body {} inertialelast'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        except:
+                            pass
+#                         try:
+                        toTex(f, b._Jv_vect, label='Body {} JvVect'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                        toTex(f, b._Jo_vect, label='Body {} JoVect'.format(b.name), fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+#                         except:
+#                             pass
+                    for (jac,force) in self.kane._fr_products:
+                        if jac!=0:
+                            toTex(f, jac, label='frproducts jac', fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                            toTex(f, force, label='frproducts force', fullPage=False, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+
 
     # --------------------------------------------------------------------------------}
     # --- Export to Python script 
@@ -547,7 +569,7 @@ class EquationsOfMotionQ(object):
         if replaceDict is None: 
             replaceDict=OrderedDict()
         replaceDict.update(self.bodyReplaceDict)
-        print(replaceDict)
+        #print(replaceDict)
 
         with Timer('Python to {}'.format(filename),True):
             with open(filename,'w') as f:
@@ -736,8 +758,13 @@ def infoToPy(f, name, q, u):
 
 
 def toTex(f, FF, label='', fullPage=False, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
-    FF = subs_no_diff(FF,extraSubs)
-    FF = FF.subs(velSubs)
+    if isinstance(FF,list):
+        for i,ff in enumerate(FF):
+            FF[i] = subs_no_diff(ff,extraSubs)
+            FF[i] = FF[i].subs(velSubs)
+    else:
+        FF = subs_no_diff(FF,extraSubs)
+        FF = FF.subs(velSubs)
     if doSimplify:
         FF=trigsimp(FF)
     if len(label)>0:
@@ -745,7 +772,11 @@ def toTex(f, FF, label='', fullPage=False, extraSubs=[], velSubs=[(0,0)], doSimp
     f.write('\\begin{equation*}\n')
     if fullPage:
         f.write('\\resizebox{\\textwidth}{!}{$\n')
-    f.write(cleantex(FF))
+    if isinstance(FF,list):
+        for i,ff in enumerate(FF):
+            f.write('a[{:}]='.format(i)+cleantex(ff)+'\n')
+    else:
+        f.write(cleantex(FF))
     if fullPage:
         f.write('$}\n')
     f.write('\\end{equation*}\n')

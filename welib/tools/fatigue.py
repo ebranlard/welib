@@ -98,7 +98,7 @@ def rainflow_windap(signal, levels=255., thresshold=(255 / 50)):
     if np.nanmax(signal) > 0:
         gain = np.nanmax(signal) / levels
         signal = signal / gain
-        signal = np.round(signal).astype(np.int)
+        signal = np.round(signal).astype(int)
 
 
         # If possible the module is compiled using cython otherwise the python implementation is used
@@ -468,7 +468,7 @@ def peak_trough(x, R):  #cpdef np.ndarray[long,ndim=1] peak_trough(np.ndarray[lo
     MINZO = 1
     MAXZO = 2
     ENDZO = 3
-    S = np.zeros(x.shape[0] + 1, dtype=np.int)
+    S = np.zeros(x.shape[0] + 1, dtype=int)
 
     L = x.shape[0]
     goto = BEGIN
@@ -789,9 +789,7 @@ class TestFatigue(unittest.TestCase):
             np.testing.assert_allclose(r_eq_1hz, r_eq_1hz2)
 
     def test_rainflow_combi(self):
-        """Signal with two frequencies and amplitudes
-        """
-
+        # Signal with two frequencies and amplitudes
         amplitude = 1
         # peak2peak = amplitude * 2
         m = 1

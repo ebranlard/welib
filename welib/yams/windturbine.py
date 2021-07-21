@@ -23,10 +23,31 @@ from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
 
 class WindTurbineStructure():
     def __init__(self):
+        self.bld = None # list of blades
         self.hub = None
         self.gen = None
+        self.rot = None # hub+blds
         self.nac = None
         self.twr = None
+        self.fnd = None
+
+
+    def __repr__(B):
+        s='<Generic {} object>:\n'.format(type(B).__name__)
+        try:
+            s+=' - DOF: list of dict with keys {} \n'.format(B.DOF[0].keys())
+        except:
+            pass
+        s+=' * DOFname: {} \n'.format(B.DOFname)
+        s+=' * q0     : {}\n'.format(B.q0)
+        s+=' * qd0    : {}\n'.format(B.qd0)
+        s+=' Bodies: bld, hub, gen, rot, nac, twr, fnd \n'
+
+        s+=' useful getters: activeDOFs, channels:\n'
+        s+=' useful functions:  \n'
+        s+='    simulate_py\n'
+        s+='    simulate_py_lin\n'
+        return s
 
     @staticmethod
     def fromFAST(fstFilename):
@@ -263,10 +284,12 @@ def rigidBlades(blds, hub=None, r_O=[0,0,0]):
 # --------------------------------------------------------------------------------}
 # --- Converters 
 # --------------------------------------------------------------------------------{
-def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, algo=''):
+def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, nSpanBld=None, algo=''):
     """
 
     """
+    # TODO TODO TODO  Harmonize with TNSB.py
+
     # --- Reading main OpenFAST files
     ext     = os.path.splitext(fstFilename)[1]
     FST     = weio.read(fstFilename)
@@ -311,7 +334,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
     jxxG = m     # NOTE: unknown
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
-    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False) 
+    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, nSpan=nSpanBld) 
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
         bld[iB+1].R_b2g
@@ -326,18 +349,23 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
         B.R_b2g= R_SB
 
     # --- Blades (with origin R, using N as "global" ref)
-    blades = rigidBlades(bld, r_O = [0,0,0])
-    blades.pos_global = r_NR_inN
-    blades.R_b2g      = R_NS
+    blds_rigid = rigidBlades(bld, r_O = [0,0,0])
+    blds_rigid.pos_global = r_NR_inN
+    blds_rigid.R_b2g      = R_NS
 
     # --- Rotor = Hub + Blades (with origin R, using N as global ref)
-    rot = blades.combine(hub, R_b2g=R_NS, r_O=blades.pos_global)
+    rot = blds_rigid.combine(hub, R_b2g=R_NS, r_O=blds_rigid.pos_global)
     rot.name='rotor'
-    rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blades.pos_global)
+    rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blds_rigid.pos_global)
     #print(rotgen)
 
-    # --- RNA
-    RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
+    #--- Yaw bearing, at tower top
+    M_yawBr = ED['YawBrMass']
+    yawBr = RigidBody('YawBr', M_yawBr, J=(0,0,0), s_OG=(0,0,0))
+
+
+    # --- RNA 
+    RNA = rot.combine(gen).combine(nac,r_O=[0,0,0]).combine(yawBr, r_O=[0,0,0])
     RNA.name='RNA'
     #print(RNA)
     M_RNA = RNA.mass
@@ -365,26 +393,26 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
 
     # --- Degrees of freedom
     DOFs=[]
-    DOFs+=[{'name':'x'      , 'active':ED['PtfmSgDOF'][0] in ['t','T'], 'q0': ED['PtfmSurge']  , 'qd0':0 , 'q_channel':'PtfmSurge_[m]' , 'qd_channel':'QD_Sg_[m/s]'}]
-    DOFs+=[{'name':'y'      , 'active':ED['PtfmSwDOF'][0] in ['t','T'], 'q0': ED['PtfmSway']   , 'qd0':0 , 'q_channel':'PtfmSway_[m]'  , 'qd_channel':'QD_Sw_[m/s]'}]
-    DOFs+=[{'name':'z'      , 'active':ED['PtfmHvDOF'][0] in ['t','T'], 'q0': ED['PtfmHeave']  , 'qd0':0 , 'q_channel':'PtfmHeave_[m]' , 'qd_channel':'QD_Hv_[m/s]'}]
+    DOFs+=[{'name':'x'      , 'active':ED['PtfmSgDOF'], 'q0': ED['PtfmSurge']  , 'qd0':0 , 'q_channel':'PtfmSurge_[m]' , 'qd_channel':'QD_Sg_[m/s]'}]
+    DOFs+=[{'name':'y'      , 'active':ED['PtfmSwDOF'], 'q0': ED['PtfmSway']   , 'qd0':0 , 'q_channel':'PtfmSway_[m]'  , 'qd_channel':'QD_Sw_[m/s]'}]
+    DOFs+=[{'name':'z'      , 'active':ED['PtfmHvDOF'], 'q0': ED['PtfmHeave']  , 'qd0':0 , 'q_channel':'PtfmHeave_[m]' , 'qd_channel':'QD_Hv_[m/s]'}]
 
-    DOFs+=[{'name':'\phi_x' , 'active':ED['PtfmRDOF'][0]  in ['t','T'], 'q0': ED['PtfmRoll']*np.pi/180  , 'qd0':0 , 'q_channel':'PtfmRoll_[deg]'  , 'qd_channel':'QD_R_[rad/s]'}]
-    DOFs+=[{'name':'\phi_y' , 'active':ED['PtfmPDOF'][0]  in ['t','T'], 'q0': ED['PtfmPitch']*np.pi/180 , 'qd0':0 , 'q_channel':'PtfmPitch_[deg]' , 'qd_channel':'QD_P_[rad/s]'}]
-    DOFs+=[{'name':'\phi_z' , 'active':ED['PtfmYDOF'][0]  in ['t','T'], 'q0': ED['PtfmYaw']*np.pi/180   , 'qd0':0 , 'q_channel':'PtfmYaw_[deg]'   , 'qd_channel':'QD_Y_[rad/s]'}]
+    DOFs+=[{'name':'\phi_x' , 'active':ED['PtfmRDOF'] , 'q0': ED['PtfmRoll']*np.pi/180  , 'qd0':0 , 'q_channel':'PtfmRoll_[deg]'  , 'qd_channel':'QD_R_[rad/s]'}]
+    DOFs+=[{'name':'\phi_y' , 'active':ED['PtfmPDOF'] , 'q0': ED['PtfmPitch']*np.pi/180 , 'qd0':0 , 'q_channel':'PtfmPitch_[deg]' , 'qd_channel':'QD_P_[rad/s]'}]
+    DOFs+=[{'name':'\phi_z' , 'active':ED['PtfmYDOF'] , 'q0': ED['PtfmYaw']*np.pi/180   , 'qd0':0 , 'q_channel':'PtfmYaw_[deg]'   , 'qd_channel':'QD_Y_[rad/s]'}]
 
-    DOFs+=[{'name':'q_FA1'  , 'active':ED['TwFADOF1'][0]  in ['t','T'], 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA1_[m]', 'qd_channel':'QD_TFA1_[m/s]'}]
-    DOFs+=[{'name':'q_SS1'  , 'active':ED['TwSSDOF1'][0]  in ['t','T'], 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]'}]
-    DOFs+=[{'name':'q_FA2'  , 'active':ED['TwFADOF2'][0]  in ['t','T'], 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA2_[m]', 'qd_channel':'QD_TFA2_[m/s]'}]
-    DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'][0]  in ['t','T'], 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]'}]
+    DOFs+=[{'name':'q_FA1'  , 'active':ED['TwFADOF1'] , 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA1_[m]', 'qd_channel':'QD_TFA1_[m/s]'}]
+    DOFs+=[{'name':'q_SS1'  , 'active':ED['TwSSDOF1'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]'}]
+    DOFs+=[{'name':'q_FA2'  , 'active':ED['TwFADOF2'] , 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA2_[m]', 'qd_channel':'QD_TFA2_[m/s]'}]
+    DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]'}]
 
-    DOFs+=[{'name':'\\theta_y','active':ED['YawDOF'][0]   in ['t','T'], 'q0': ED['NacYaw']*np.pi/180   , 'qd0':0 ,          'q_channel':'NacYaw_[deg]' , 'qd_channel':'QD_Yaw_[rad/s]'}]
-    DOFs+=[{'name':'\\psi'    ,'active':ED['GenDOF'][0]   in ['t','T'], 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]'}]
+    DOFs+=[{'name':'\\theta_y','active':ED['YawDOF']  , 'q0': ED['NacYaw']*np.pi/180   , 'qd0':0 ,          'q_channel':'NacYaw_[deg]' , 'qd_channel':'QD_Yaw_[rad/s]'}]
+    DOFs+=[{'name':'\\psi'    ,'active':ED['GenDOF']  , 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]'}]
 
-    DOFs+=[{'name':'\\nu'     ,'active':ED['DrTrDOF'][0]  in ['t','T'], 'q0': 0  , 'qd0':0 , 'q_channel':'Q_DrTr_[rad]', 'qd_channel':'QD_DrTr_[rad/s]'}]
+    DOFs+=[{'name':'\\nu'     ,'active':ED['DrTrDOF'] , 'q0': 0  , 'qd0':0 , 'q_channel':'Q_DrTr_[rad]', 'qd_channel':'QD_DrTr_[rad/s]'}]
 
-    DOFs+=[{'name':'q_Fl1'  , 'active':ED['FlapDOF1'][0]  in ['t','T'], 'q0': ED['OOPDefl']  , 'qd0':0 , 'q_channel':'Q_B1F1_[m]', 'qd_channel':'QD_B1F1_[m/s]'}]
-    DOFs+=[{'name':'q_Ed1'  , 'active':ED['EdgeDOF'][0]   in ['t','T'], 'q0': ED['IPDefl']   , 'qd0':0 , 'q_channel':'Q_B1E1_[m]', 'qd_channel':'QD_B1E1_[m/s]'}]
+    DOFs+=[{'name':'q_Fl1'  , 'active':ED['FlapDOF1'] , 'q0': ED['OOPDefl']  , 'qd0':0 , 'q_channel':'Q_B1F1_[m]', 'qd_channel':'QD_B1F1_[m/s]'}]
+    DOFs+=[{'name':'q_Ed1'  , 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl']   , 'qd0':0 , 'q_channel':'Q_B1E1_[m]', 'qd_channel':'QD_B1E1_[m/s]'}]
 
 # ---------------------- DEGREES OF FREEDOM --------------------------------------
 # False          FlapDOF1    - First flapwise blade mode DOF (flag)
@@ -397,16 +425,18 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, a
 
     # --- Return
     WT = WindTurbineStructure()
-    WT.hub = hub # origin at S
-    WT.gen = gen # origin at S
-    WT.nac = nac # origin at N
-    WT.twr = twr # origin at T
-    WT.fnd = fnd # origin at T
-    WT.bld = bld # origin at R
-    WT.rot = rot # origin at R, rigid body bld+hub
-    WT.rotgen = rotgen # origin at R, rigid body bld+hub+genLSS
-    WT.RNA = RNA # origin at N, rigid body bld+hub+gen+nac
-    WT.WT_rigid = WT_rigid # rigid wind turbine body, origin at MSL
+    WT.bld        = bld        # origin at R
+    WT.blds_rigid = blds_rigid # origin at R
+    WT.hub        = hub        # origin at S
+    WT.rot        = rot        # origin at R, rigid body bld+hub
+    WT.rotgen     = rotgen     # origin at R, rigid body bld+hub+genLSS
+    WT.gen        = gen        # origin at S
+    WT.nac        = nac        # origin at N
+    WT.yawBr      = yawBr      # origin at N
+    WT.twr        = twr        # origin at T
+    WT.fnd        = fnd        # origin at T
+    WT.RNA        = RNA        # origin at N, rigid body bld+hub+gen+nac
+    WT.WT_rigid   = WT_rigid   # rigid wind turbine body, origin at MSL
 
     WT.DOF= DOFs
 

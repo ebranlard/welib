@@ -19,7 +19,5 @@ TODO
 _*
 *.pdf
 *Copy.py
-!_figs
-!_figs/*.png
-!__*__.py
+tags
 

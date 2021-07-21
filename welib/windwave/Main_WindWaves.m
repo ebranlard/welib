@@ -18,8 +18,8 @@ SigmaApprox=Hs/4;
 
 nt=3601;
 vt=linspace(0,3600,nt); % time vector [s]
-T = vt(2)-vt(1);          % Sample time
-Fs = 1/T;          % Sampling frequency [Hz}
+dt = vt(2)-vt(1);          % Sample time
+Fs = 1/dt;          % Sampling frequency [Hz}
 df=1/max(vt);      % smallest frequency 
 fHighCut=Fs/2;     % Nyquist 
 [ vf_Jonswap,S_Jonswap ] = fJonswap( Hs,Tp,df,fHighCut );

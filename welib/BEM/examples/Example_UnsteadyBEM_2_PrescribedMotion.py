@@ -3,8 +3,11 @@ Performs a simple Unsteady BEM simulations of the NREL 5MW turbine
 with a predefined motion
 """
 # --- Common libraries 
-from welib.BEM.unsteadyBEM import *
 import os
+import matplotlib.pyplot as plt
+# --- Local libraries
+from welib.BEM.unsteadyBEM import *
+from welib.tools.figure import defaultRC; defaultRC();
 
 MyDir=os.path.dirname(__file__)
 
@@ -47,7 +50,19 @@ def main(test=False):
 
     df = BEM.toDataFrame()
     if not test:
+        # --- Export
         df.to_csv('_UnsteadyBEM_Example2.csv', index=False)
+        # --- Plot
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(df['Time_[s]'], df['AB3N008AxInd_[-]'], label='r/R={:3.1f}'.format((2.25E+01+1.5)/63))
+        ax.plot(df['Time_[s]'], df['AB3N012AxInd_[-]'], label='r/R={:3.1f}'.format((3.89E+01+1.5)/63))
+        ax.plot(df['Time_[s]'], df['AB3N016AxInd_[-]'], label='r/R={:3.1f}'.format((5.46E+01+1.5)/63))
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Axial induction [-]')
+        ax.legend()
+        ax.set_title('BEM (unsteady) - Prescribed surge motion')
+        ax.tick_params(direction='in')
     #import matplotlib.pyplot as plt
     #from mpl_toolkits.mplot3d import Axes3D
     #from matplotlib.animation import FuncAnimation
@@ -55,12 +70,18 @@ def main(test=False):
     #plt.show()
 
 
+
 if __name__=="__main__":
     main()
+    plt.show()
 if __name__=="__test__":
     main(True)
     try:
         os.remove('./_UnsteadyBEM_Example2.csv')
     except:
         pass
+if __name__=="__export__":
+    main()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
 

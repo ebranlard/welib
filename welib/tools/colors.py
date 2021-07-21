@@ -58,13 +58,15 @@ def python_colors(i=None):
         return plt.rcParams['axes.prop_cycle'].by_key()['color']
     else:
         Colrs=plt.rcParams['axes.prop_cycle'].by_key()['color']
-        return Colrs[ mod(i,len(Colrs)) ]
+        return Colrs[ np.mod(i,len(Colrs)) ]
 
 # ---- ColorMap
-def make_colormap(seq,values=None):
+def make_colormap(seq,values=None,name='CustomMap'):
     """Return a LinearSegmentedColormap
     seq: RGB-tuples. 
     values: corresponding values (location betwen 0 and 1)
+
+    cmap=make_colormap([MW_Blue, [1.0,1.0,1.0],MW_Red])
     """
     hasAlpha=len(seq[0])==4
     if hasAlpha:
@@ -79,7 +81,9 @@ def make_colormap(seq,values=None):
     doubled     = list(itertools.chain.from_iterable(itertools.repeat(s, 2) for s in seq))
     doubled[0]  = (None,)* nComp
     doubled[-1] = (None,)* nComp
-    cdict = {'red': [], 'green': [], 'blue': [], 'alpha':[]}
+    cdict = {'red': [], 'green': [], 'blue': []}
+    if hasAlpha:
+        cdict['alpha']=[]
     for i,v in enumerate(values):
         if hasAlpha:
             r1, g1, b1, a1 = doubled[2*i]
@@ -87,13 +91,13 @@ def make_colormap(seq,values=None):
         else:
             r1, g1, b1 = doubled[2*i]
             r2, g2, b2 = doubled[2*i + 1]
-        cdict['red'].append([v, r1, r2])
-        cdict['green'].append([v, g1, g2])
-        cdict['blue'].append([v, b1, b2])
+        cdict['red'].append((v, r1, r2))
+        cdict['green'].append((v, g1, g2))
+        cdict['blue'].append((v, b1, b2))
         if hasAlpha:
-            cdict['alpha'].append([v, a1, a2])
-    #print(cdict)
-    return mcolors.LinearSegmentedColormap('CustomMap', cdict)
+            cdict['alpha'].append((v, a1, a2))
+    print(cdict)
+    return mcolors.LinearSegmentedColormap(name, cdict)
 
 
 
@@ -125,6 +129,30 @@ MW_Purple   =     np.array([107,76,154])/255.
 MW_DarkRed  =     np.array([146,36,40])/255.
 MW_Kaki     =     np.array([148,139,61])/255.
 
+MathematicaBlue       = np.array([63 ,63 ,153 ])/255.;
+MathematicaRed        = np.array([153,61 ,113 ])/255.;
+MathematicaGreen      = np.array([61 ,153,86  ])/255.;
+MathematicaYellow     = np.array([152,140,61  ])/255.;
+MathematicaLightBlue  = np.array([159,159,204 ])/255.;
+MathematicaLightRed   = np.array([204,158,184 ])/255.;
+MathematicaLightGreen = np.array([158,204,170 ])/255.;
+# 
+ManuDarkBlue    = np.array([0   ,0  ,0.7 ])     ;
+ManuDarkRed     = np.array([138 ,42 ,93  ])/255.;
+ManuDarkOrange  = np.array([245 ,131,1   ])/255.;
+ManuDarkOrange  = np.array([198 ,106,1   ])/255.;
+ManuLightOrange = np.array([255.,212,96  ])/255.;
+# 
+Red    = np.array([1  ,0  ,0]);
+Blue   = np.array([0  ,0  ,1]);
+Green  = np.array([0  ,0.6,0]);
+Yellow = np.array([0.8,0.8,0]);
+
+MatlabGreen   = np.array([0         ,0.5      ,1        ]);
+MatlabCyan    = np.array([0.0e+0    ,750.0e-03,750.0e-03]);
+MatlabMagenta = np.array([ 750.0e-03,0.0e+0   ,750.0e-03]);
+MatlabYellow  = np.array([750.0e-03 ,750.0e-03,0.0e+0   ]);
+MatlabGrey    = np.array([250.0e-03 ,250.0e-03,250.0e-03]);
 
 # cRed=plt.cm.Reds(np.linspace(0.9,1,2))
 # cGreen=plt.cm.Greens(np.linspace(0.9,1,2))
@@ -132,12 +160,13 @@ MW_Kaki     =     np.array([148,139,61])/255.
 # cGray=plt.cm.Greys(np.linspace(0.9,1,2))
 
 # --- Mathematica darkrainbow colormap:
-darkrainbow=mcolors.LinearSegmentedColormap('CustomMap',{'red': [[0.0, None, 0.23529411764705882], [0.1111111111111111, 0.25098039215686274, 0.25098039215686274], [0.2222222222222222, 0.2627450980392157, 0.2627450980392157], [0.3333333333333333, 0.2901960784313726, 0.2901960784313726], [0.4444444444444444, 0.41568627450980394, 0.41568627450980394], [0.5555555555555556, 0.6235294117647059, 0.6235294117647059], [0.6666666666666666, 0.8117647058823529, 0.8117647058823529], [0.7777777777777777, 0.8745098039215686, 0.8745098039215686], [0.8888888888888888, 0.807843137254902, 0.807843137254902], [1.0, 0.7294117647058823, None]],
-            'green': [[0.0, None, 0.33725490196078434], [0.1111111111111111, 0.3411764705882353, 0.3411764705882353], [0.2222222222222222, 0.4196078431372549, 0.4196078431372549], [0.3333333333333333, 0.4745098039215686, 0.4745098039215686], [0.4444444444444444, 0.5529411764705883, 0.5529411764705883], [0.5555555555555556, 0.6705882352941176, 0.6705882352941176], [0.6666666666666666, 0.7647058823529411, 0.7647058823529411], [0.7777777777777777, 0.7294117647058823, 0.7294117647058823], [0.8888888888888888, 0.5019607843137255, 0.5019607843137255], [1.0, 0.23921568627450981, None]] ,
-            'blue': [[0.0, None, 0.5725490196078431], [0.1111111111111111, 0.5568627450980392, 0.5568627450980392], [0.2222222222222222, 0.3843137254901961, 0.3843137254901961], [0.3333333333333333, 0.27058823529411763, 0.27058823529411763], [0.4444444444444444, 0.23921568627450981, 0.23921568627450981], [0.5555555555555556, 0.2627450980392157, 0.2627450980392157], [0.6666666666666666, 0.30196078431372547, 0.30196078431372547], [0.7777777777777777, 0.3254901960784314, 0.3254901960784314], [0.8888888888888888, 0.2980392156862745, 0.2980392156862745], [1.0, 0.22745098039215686, None]]})
+darkrainbow=mcolors.LinearSegmentedColormap('CustomMap',
+        {'red': [[0.0, None, 0.23529411764705882], [0.1111111111111111, 0.25098039215686274, 0.25098039215686274], [0.2222222222222222, 0.2627450980392157, 0.2627450980392157], [0.3333333333333333, 0.2901960784313726, 0.2901960784313726], [0.4444444444444444, 0.41568627450980394, 0.41568627450980394], [0.5555555555555556, 0.6235294117647059, 0.6235294117647059], [0.6666666666666666, 0.8117647058823529, 0.8117647058823529], [0.7777777777777777, 0.8745098039215686, 0.8745098039215686], [0.8888888888888888, 0.807843137254902, 0.807843137254902], [1.0, 0.7294117647058823, None]],
+        'green': [[0.0, None, 0.33725490196078434], [0.1111111111111111, 0.3411764705882353, 0.3411764705882353], [0.2222222222222222, 0.4196078431372549, 0.4196078431372549], [0.3333333333333333, 0.4745098039215686, 0.4745098039215686], [0.4444444444444444, 0.5529411764705883, 0.5529411764705883], [0.5555555555555556, 0.6705882352941176, 0.6705882352941176], [0.6666666666666666, 0.7647058823529411, 0.7647058823529411], [0.7777777777777777, 0.7294117647058823, 0.7294117647058823], [0.8888888888888888, 0.5019607843137255, 0.5019607843137255], [1.0, 0.23921568627450981, None]] ,
+        'blue': [[0.0, None, 0.5725490196078431], [0.1111111111111111, 0.5568627450980392, 0.5568627450980392], [0.2222222222222222, 0.3843137254901961, 0.3843137254901961], [0.3333333333333333, 0.27058823529411763, 0.27058823529411763], [0.4444444444444444, 0.23921568627450981, 0.23921568627450981], [0.5555555555555556, 0.2627450980392157, 0.2627450980392157], [0.6666666666666666, 0.30196078431372547, 0.30196078431372547], [0.7777777777777777, 0.3254901960784314, 0.3254901960784314], [0.8888888888888888, 0.2980392156862745, 0.2980392156862745], [1.0, 0.22745098039215686, None]]})
 # NOTE: generated with:
-# MathematicaDarkRainbow=[(60 /255,86 /255,146/255), (64 /255,87 /255,142/255), (67 /255,107/255,98 /255), (74 /255,121/255,69 /255), (106/255,141/255,61 /255), (159/255,171/255,67 /255), (207/255,195/255,77 /255), (223/255,186/255,83 /255), (206/255,128/255,76 /255), (186/255,61 /255,58 /255)]
-# darkrainbow = make_colormap(MathematicaDarkRainbow)
+MathematicaDarkRainbow=[(60 /255,86 /255,146/255), (64 /255,87 /255,142/255), (67 /255,107/255,98 /255), (74 /255,121/255,69 /255), (106/255,141/255,61 /255), (159/255,171/255,67 /255), (207/255,195/255,77 /255), (223/255,186/255,83 /255), (206/255,128/255,76 /255), (186/255,61 /255,58 /255)]
+# darkrainbow2= make_colormap(MathematicaDarkRainbow)
 # --- Another rainbow:
 # Colrs=[(152/255,0,0),(152/255,69 /255,0 /255), (167/255,127/255,3  /255), (12 /255,137/255,0  /255), (0  /255,75 /255,131/255)]
 # Colrs.reverse()
@@ -156,30 +185,6 @@ def fColrs(i=-1,n=-1,bBW=True):
     # % Thrid argument add a switch possibility between black and white or colors:
     # % G=fColrs(i,n,1) : return a grey color (out of n), where i=1 is black
     # % G=fColrs(i,n,0) : cycle through colors
-    MathematicaBlue       = np.array([63 ,63 ,153 ])/255.;
-    MathematicaRed        = np.array([153,61 ,113 ])/255.;
-    MathematicaGreen      = np.array([61 ,153,86  ])/255.;
-    MathematicaYellow     = np.array([152,140,61  ])/255.;
-    MathematicaLightBlue  = np.array([159,159,204 ])/255.;
-    MathematicaLightRed   = np.array([204,158,184 ])/255.;
-    MathematicaLightGreen = np.array([158,204,170 ])/255.;
-    # 
-    ManuDarkBlue    = np.array([0   ,0  ,0.7 ])     ;
-    ManuDarkRed     = np.array([138 ,42 ,93  ])/255.;
-    ManuDarkOrange  = np.array([245 ,131,1   ])/255.;
-    ManuDarkOrange  = np.array([198 ,106,1   ])/255.;
-    ManuLightOrange = np.array([255.,212,96  ])/255.;
-    # 
-    Red    = np.array([1  ,0  ,0]);
-    Blue   = np.array([0  ,0  ,1]);
-    Green  = np.array([0  ,0.6,0]);
-    Yellow = np.array([0.8,0.8,0]);
-
-    MatlabGreen   = np.array([0         ,0.5      ,1        ]);
-    MatlabCyan    = np.array([0.0e+0    ,750.0e-03,750.0e-03]);
-    MatlabMagenta = np.array([ 750.0e-03,0.0e+0   ,750.0e-03]);
-    MatlabYellow  = np.array([750.0e-03 ,750.0e-03,0.0e+0   ]);
-    MatlabGrey    = np.array([250.0e-03 ,250.0e-03,250.0e-03]);
 
     # Table of Color used
     mcolrs=np.array([

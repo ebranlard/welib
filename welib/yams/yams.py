@@ -118,8 +118,8 @@ class Body(GenericBody):
             n=child.setupDOFIndex(n)
         return n
 
-    def __repr__(B):
-        pass
+    #def __repr__(B):
+    #    return GenericBody.__repr__(B)
 
     @property
     def R_bc(self):
@@ -237,8 +237,6 @@ class Body(GenericBody):
             return 0
         return B.MM[0,0]
 
-
-
     def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
         # Updating position of body origin in global coordinates
         o.r_O = x_0[0:3]
@@ -256,8 +254,8 @@ class Body(GenericBody):
 # --------------------------------------------------------------------------------{
 class GroundBody(Body, GenericInertialBody):
     def __init__(B):
-        GenericInertialBody.__init__(B)
         Body.__init__(B, 'Grd')
+        GenericInertialBody.__init__(B)
 
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
@@ -267,10 +265,10 @@ class RigidBody(Body,GenericRigidBody):
         """
         Creates a rigid body 
         """
+        Body.__init__(B,name)
         GenericRigidBody.__init__(B, name, Mass, J_G, rho_G)
-        Body.__init__(B)
-        B.s_G_inB = rho_G
-        B.J_G_inB = J_G
+        B.s_G_inB = B.masscenter
+        B.J_G_inB = B.masscenter_inertia
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, -B.s_G_inB)
         B.MM = rigidBodyMassMatrix(Mass, B.J_O_inB, B.s_G_inB) # TODO change interface
         B.DD = np.zeros((6,6))
@@ -285,14 +283,17 @@ class RigidBody(Body,GenericRigidBody):
 class BeamBody(GenericBeamBody, Body):
     def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
-            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z'):
+            bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
+            massExpected=None
+            ):
         """ 
           Points P0 - Undeformed mean line of the body
         """
         # --- nherit from BeamBody and Body 
         Body.__init__(B)
         GenericBeamBody.__init__(B,'dummy', s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
-                 bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis
+                 bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
+                 massExpected=massExpected
                 )
 
         B.gzf   = np.zeros((B.nf,1))
@@ -432,21 +433,31 @@ class UniformBeamBody(BeamBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
-    def __init__(B,body_type,ED,inp,Mtop,nShapes=2,main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, spanFrom0=False):
+    def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
+            spanFrom0=False, massExpected=None
+            ):
         """ 
         """
-        if nShapes==2:
-            shapes=[0,1]
-        elif nShapes==0:
-            shapes=[]
-        elif nShapes==1:
-            shapes=[0]
-        else:
-            raise NotImplementedError('>> TODO')
-        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, spanFrom0=spanFrom0)
+        if shapes is None:
+            if nShapes==2:
+                shapes=[0,1]
+            elif nShapes==0:
+                shapes=[]
+            elif nShapes==1:
+                shapes=[0]
+            else:
+                raise NotImplementedError('>> TODO')
+        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
+                spanFrom0=spanFrom0,
+                massExpected=massExpected
+                )
+        # We need to inherit from "YAMS" Beam not just generic Beam
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
+                # NOTE: r_O, r_b2g is lost here
                 s_min=B.s_min, s_max=B.s_max,
-                bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis)
+                bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
+                massExpected=massExpected
+                )
 
 # --------------------------------------------------------------------------------}
 # --- B Matrices 

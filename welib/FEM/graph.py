@@ -13,7 +13,7 @@ print('WARNING, using graph from welib.FEM, right now weio has priority')
 
 
 # --------------------------------------------------------------------------------}
-# ---  
+# --- Node
 # --------------------------------------------------------------------------------{
 class Node(object):
     def __init__(self, ID, x, y, z=0, **kwargs):
@@ -97,6 +97,25 @@ class Element(dict):
             s+=' l={:.2f}'.format(self.length)
         return s
 
+
+# --------------------------------------------------------------------------------}
+# --- Mode 
+# --------------------------------------------------------------------------------{
+class Mode(dict):
+    def __init__(self, data, name, freq=1, **kwargs):
+        dict.__init__(self)
+
+        self['name']=name
+        self['freq']=freq
+        self['data']=data # displacements nNodes x 3 assuming a given sorting of nodes
+
+    def __repr__(self):
+        s='<Mode> name:{:4s} freq:{:} '.format(self['name'], self['freq'])
+        return s
+
+    def reSort(self,I):
+        self['data']=self['data'][I,:]
+
 # --------------------------------------------------------------------------------}
 # --- Graph
 # --------------------------------------------------------------------------------{
@@ -107,6 +126,9 @@ class GraphModel(object):
         self.NodePropertySets= dict()
         self.ElemPropertySets= dict()
         self.MiscPropertySets= dict()
+        # Dynamics
+        self.Modes   = []
+        self.Motions = []
 
     def addNode(self,node):
         self.Nodes.append(node)
@@ -221,6 +243,11 @@ class GraphModel(object):
         for k,v in self.MiscPropertySets.items():
             s+='\n> {} ({}):\n'.format(k, len(v))
             s+='\n'.join(str(p) for p in v)
+        s+='\n- Modes ({}):\n'.format(len(self.Modes))
+        s+='\n'.join(str(m) for m in self.Modes)
+        s+='\n- Motions ({}):'.format(len(self.Motions))
+        for m in self.Motions:
+            s+='\n> {}\n'.format({k:v for k,v in m.items() if not isintance(v,np.ndarray)})
         return s
 
     # --------------------------------------------------------------------------------}
@@ -286,6 +313,12 @@ class GraphModel(object):
     # --------------------------------------------------------------------------------{
     def divideElement(self, elemID, nPerElement):
         """ divide a given element by nPerElement (add nodes and elements to graph) """ 
+        if len(self.Modes)>0:
+            raise Exception('Cannot divide graph when mode data is present')
+        if len(self.Motions)>0:
+            raise Exception('Cannot divide graph when motion data is present')
+
+
         maxNodeId=np.max([n.ID for n in self.Nodes])
         maxElemId=np.max([e.ID for e in self.Nodes])
         e = self.getElement(elemID)
@@ -319,6 +352,16 @@ class GraphModel(object):
                 self.addElement(elem)
 
     def sortNodesBy(self,key):
+        """ 
+        z
+        """
+
+        # TODO, that's quite doable
+        if len(self.Modes)>0:
+            raise Exception('Cannot sort nodes when mode data is present')
+        if len(self.Motions)>0:
+            raise Exception('Cannot sort nodes when motion data is present')
+
         nNodes = len(self.Nodes)
         if key=='x':
             values=[n.x for n in self.Nodes]
@@ -345,6 +388,19 @@ class GraphModel(object):
             elemID = self.Elements[ie].ID
             self.divideElement(elemID, nPerElement)
                     
+    # --------------------------------------------------------------------------------}
+    # --- Dynamics
+    # --------------------------------------------------------------------------------{
+    def addMode(self,displ,name=None,freq=1):
+        if name is None:
+            name='Mode '+str(len(self.Modes))
+        mode = Mode(data=displ, name=name, freq=freq)
+        self.Modes.append(mode)
+
+
+    # --------------------------------------------------------------------------------}
+    # --- Ouputs / converters
+    # --------------------------------------------------------------------------------{
     def nodalDataFrame(self, sortBy=None):
         """ return a DataFrame of all the nodal data """
         data=dict()
@@ -375,3 +431,43 @@ class GraphModel(object):
         return df
 
 
+    def toJSON(self,outfile=None):
+        d=dict();
+        Points=self.points
+        d['Connectivity'] = self.connectivity
+        d['Nodes']        = Points.tolist()
+        
+        d['ElemProps']=list()
+        for iElem,elem in enumerate(self.Elements):
+            Shape = elem.data['shape'] if 'shape' in elem.data.keys() else 'cylinder'
+            Type  = elem.data['Type'] if 'Type' in elem.data.keys() else 1
+            Diam  = elem.data['D'] if 'D' in elem.data.keys() else 1
+            if Shape=='cylinder':
+                d['ElemProps'].append({'shape':'cylinder','type':Type, 'Diam':Diam})
+            else:
+                raise NotImplementedError()
+
+
+        d['Modes']=[
+                {
+                    'name': self.Modes[iMode]['name'],
+                    'omega':self.Modes[iMode]['freq']*2*np.pi, #in [rad/s]
+                    'Displ':self.Modes[iMode]['data'].tolist()
+                }  for iMode,mode in enumerate(self.Modes)]
+        d['groundLevel']=np.min(Points[:,2]) # TODO
+
+        if outfile is not None:
+            import json
+            from io import open
+            jsonFile=outfile
+            with open(jsonFile, 'w', encoding='utf-8') as f:
+                try:
+                    #f.write(unicode(json.dumps(d, ensure_ascii=False))) #, indent=2)
+                    #f.write(json.dumps(d, ensure_ascii=False)) #, indent=2)
+                    f.write(json.dumps(d, ensure_ascii=False))
+                except:
+                    print('>>> FAILED')
+                    json.dump(d, f, indent=0) 
+        return d
+
+# 

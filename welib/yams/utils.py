@@ -28,15 +28,78 @@ def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
     return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
-def rigidBodyMassMatrix(Mass,J,rho): # TODO change interface
-    """ Mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] """
-    S=Mass*skew(rho)
+def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
+    """ Mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] 
+    INPUTS:
+      - Mass: (scalar) mass of the body
+      - J: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix at COG
+      - COG: (3-vector) x,y,z position of center of mass
+    """
+    S=Mass*skew(COG)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);
     MM[0:3,3:6] = -S;
     MM[3:6,0:3] = S ; # transpose(S)=-S;
     MM[3:6,3:6] = J ;
     return MM
+
+def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None):
+    """ 
+    Rigid body mass matrix (6x6) at a given reference point: 
+      the center of gravity (if Ref2COG is None) 
+
+
+    INPUTS:
+     - m/tip: (scalar) body mass 
+                     default: None, no mass
+     - J_G: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix
+                     with respect to COG of body! 
+                     The inertia is transferred to the reference point if Ref2COG is not None
+                     default: None 
+     - Ref2COG: (3-vector) x,y,z position of center of gravity (COG) with respect to a reference point
+                     default: None, at first/last node.
+    OUTPUTS:
+      - M66 (6x6) : rigid body mass matrix at COG or given point 
+    """
+    # Default values
+    if m is None: m=0
+    if Ref2COG is None: Ref2COG=(0,0,0)
+    if J_G is None: J_G=np.zeros((3,3))
+    if len(J_G.flatten()==3): J_G = np.eye(3).dot(J_G)
+
+    M66 = np.zeros((6,6))
+    x,y,z = Ref2COG
+    Jxx,Jxy,Jxz = J_G[0,:]
+    _  ,Jyy,Jyz = J_G[1,:]
+    _  ,_  ,Jzz = J_G[2,:]
+    M66[0, :] =[   m     ,   0     ,   0     ,   0                 ,  z*m                , -y*m                 ]
+    M66[1, :] =[   0     ,   m     ,   0     , -z*m                ,   0                 ,  x*m                 ]
+    M66[2, :] =[   0     ,   0     ,   m     ,  y*m                , -x*m                ,   0                  ]
+    M66[3, :] =[   0     , -z*m    ,  y*m    , Jxx + m*(y**2+z**2) , Jxy - m*x*y         , Jxz  - m*x*z         ]
+    M66[4, :] =[  z*m    ,   0     , -x*m    , Jxy - m*x*y         , Jyy + m*(x**2+z**2) , Jyz  - m*y*z         ]
+    M66[5, :] =[ -y*m    , x*m     ,   0     , Jxz - m*x*z         , Jyz - m*y*z         , Jzz  + m*(x**2+y**2) ]
+    return M66
+
+def identifyRigidBodyMM(MM):
+    """ 
+    Based on a 6x6 mass matrix at a reference point:
+     - Identify the position of the center of mass
+     - Compute the inertia at the center of mass
+    """
+    mass = MM[0,0]
+    # Using average of two coeffs to get estimate of COG
+    xCM = 0.5*( MM[1,5]-MM[2,4])/mass
+    zCM = 0.5*( MM[0,4]-MM[1,3])/mass
+    yCM = 0.5*(-MM[0,5]+MM[2,3])/mass
+    # Destance from refopint to COG
+    Ref2COG=np.array((xCM,yCM,zCM))
+    # Inertia at ref oint
+    J_P = MM[3:6,3:6].copy()
+    # Inertia at COG
+    J_G = translateInertiaMatrixToCOG(J_P, mass, r_PG=Ref2COG ) 
+    return mass, J_G, Ref2COG
+
+
 # --------------------------------------------------------------------------------}
 # --- Inertia functions 
 # --------------------------------------------------------------------------------{
@@ -60,7 +123,12 @@ def translateInertiaMatrix(I_A, Mass, r_BG, r_AG = np.array([0,0,0])):
         r_AG = np.array([0,0,0])
     if len(r_BG) < 3:
         r_BG = np.array([0,0,0])   
-    return I_A - Mass*(np.dot(skew(r_BG), skew(r_BG))-np.dot(skew(r_AG),skew(r_AG)))
+    I_B = I_A - Mass*(np.dot(skew(r_BG), skew(r_BG))-np.dot(skew(r_AG),skew(r_AG)))
+    #I_G = translateInertiaMatrixToCOG(I_A, Mass, r_AG)
+    #I_B = translateInertiaMatrixFromCOG(I_G, Mass, -np.array(r_BG))
+    return I_B
+
+
 
 def translateInertiaMatrixToCOG(I_P, Mass, r_PG): 
     """ Transform inertia matrix with respect to point P to the inertia matrix with respect to the COG

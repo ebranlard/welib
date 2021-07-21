@@ -130,12 +130,18 @@ def prescribed_oscillations():
     ax.tick_params(direction='in')
     ax.set_xlabel('Alpha [deg]')
     ax.set_ylabel('Cl [-]')
-    plt.xlim(XLIM)
-    plt.ylim(YLIM)
-    plt.legend()
+    ax.set_xlim(XLIM)
+    ax.set_ylim(YLIM)
+    ax.legend()
+    ax.set_title('MGH dynamic stall model')
 
 if __name__ == '__main__':
     prescribed_oscillations()
     plt.show()
 if __name__ == '__test__':
     prescribed_oscillations()
+if __name__=="__export__":
+    prescribed_oscillations()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
+

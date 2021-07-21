@@ -7,79 +7,15 @@ from welib.yams.flexibility import GeneralizedMCK_PolyBeam, GMBeam
 from welib.yams.windturbine import FASTWindTurbine
 from welib.tools.clean_exceptions import *
 from welib.system.mech_system import MechSystem
+from welib.system.eva import *
 import welib.weio as weio
 
 MyDir=os.path.dirname(__file__)
 
 def FAST2StructureInputs(FST_file, model_name=None):
-    
     #WT = FASTWindTurbine(FST_file, twrShapes=[0,2], nSpanTwr=4, algo='ElastoDyn')
     WT = FASTWindTurbine(FST_file, twrShapes=[0,2], nSpanTwr=50)
-    # --- Dict needed by structural script 
-    p = dict()
-    p['z_FG']     = WT.fnd.masscenter[2]
-    p['M_F']      = WT.fnd.mass
-    p['J_xx_F']   = WT.fnd.masscenter_inertia[0,0]
-    p['J_yy_F']   = WT.fnd.masscenter_inertia[1,1]
-    p['J_zz_F']   = WT.fnd.masscenter_inertia[2,2]
-    p['g']        = WT.ED['Gravity']
-    p['tilt']     =-WT.ED['ShftTilt']
-    p['x_NR']     = WT.r_NR_inN[0]                    # x-coord from N to R in nac-coord
-    p['z_NR']     = WT.r_NR_inN[2]                    # z-coord from N to R in nac-coord
-    p['x_RNAG']   = WT.RNA.masscenter[0]            # x-coord from N to RNA_G in nac-coord
-    p['z_RNAG']   = WT.RNA.masscenter[2]            # z-coord from N to RNA_G in nac-coord
-    p['M_RNA']    = WT.RNA.mass                   # Total mass of RNA
-    p['J_xx_RNA'] = WT.RNA.masscenter_inertia[0,0]           # Inertia of RNA at RNA_G in nac-coord
-    p['J_yy_RNA'] = WT.RNA.masscenter_inertia[1,1]           # Inertia of RNA at RNA_G in nac-coord
-    p['J_zz_RNA'] = WT.RNA.masscenter_inertia[2,2]           # Inertia of RNA at RNA_G in nac-coord
-    p['J_zx_RNA'] = WT.RNA.masscenter_inertia[0,2]           # Inertia of RNA at RNA_G in nac-coord
-    p['L_T']      = WT.twr.length
-    p['z_OT']     = WT.twr.pos_global[2]         # distance from "Origin" (MSL) to tower base
-    p['M_T']      = WT.twr.MM[0,0]
-    p['z_TG']     = WT.twr.masscenter[2]
-    p['J_xx_T']   = WT.twr.masscenter_inertia[0,0]
-    p['J_yy_T']   = WT.twr.masscenter_inertia[1,1]
-    p['J_zz_T']   = WT.twr.masscenter_inertia[2,2]
-    p['Oe_T']     = WT.twr.Oe6
-    p['Gr_T']     = WT.twr.Gr
-    p['Ge_T']     = WT.twr.Ge
-    p['MM_T']     = WT.twr.MM
-    p['v_yT1c']   = WT.twr.Bhat_t_bc[1,0]  # Mode 1  3 x nShapes
-    p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
-    p['DD_T']     = WT.twr.DD
-    p['KK_T']     = WT.twr.KK
-    # Rotor (blades + hub)
-    p['Jxx_R']    = WT.rotgen.masscenter_inertia[0,0]
-    p['JO_R']     = WT.rotgen.masscenter_inertia[1,1]
-    p['M_R']      = WT.rot.mass
-    # Nacelle 
-    p['J_xx_N']   = WT.nac.masscenter_inertia[0,0]
-    p['J_yy_N']   = WT.nac.masscenter_inertia[1,1]
-    p['J_zz_N']   = WT.nac.masscenter_inertia[2,2]
-    p['M_N']      = WT.nac.mass
-    p['x_NG']     = WT.nac.masscenter[0]            # x-coord from N to nac G in nac-coord
-    p['z_NG']     = WT.nac.masscenter[2]            # z-coord from N to nac G in nac-coord
-    # One body for all turbine
-    p['M_B']      = WT.WT_rigid.mass
-    p['x_BG']     = WT.fnd.masscenter[0]
-    p['y_BG']     = WT.fnd.masscenter[1]
-    p['z_BG']     = WT.fnd.masscenter[2]
-    p['J_xx_B']   = WT.WT_rigid.masscenter_inertia[0,0]
-    p['J_yy_B']   = WT.WT_rigid.masscenter_inertia[1,1]
-    p['J_zz_B']   = WT.WT_rigid.masscenter_inertia[2,2]
-
-    # Mooring restoring
-    p['z_TM']      = 0
-    p['K_x_M']     = 0
-    p['K_y_M']     = 0
-    p['K_z_M']     = 0
-    p['K_phi_x_M'] = 0
-    p['K_phi_y_M'] = 0
-    p['K_phi_z_M'] = 0
-    # Buoyancy
-    p['z_TB']      = 0
-
-
+    p = WT.yams_parameters()
     return p,WT
 
 def readEDSummaryFile(filename):
@@ -90,22 +26,34 @@ def readEDSummaryFile(filename):
             if l.find('Full system mass matrix')>=0:
                 M=np.zeros((24,24))
                 for j in np.arange(24):
-                    v=np.asarray(lines[j+i+1].strip()[3:].split()).astype(float)
+                    v=np.asarray(lines[j+i+1].strip()[2:].split()).astype(float)
                     M[j,:]=v
                 I = ~np.all(M==0, axis=0)
                 M = M[I][:,I]
                 return M
             i+=1
+def readFSTLin(filename):
+    try:
+        lin = weio.FASTLinearizationFile(filename)
+    except:
+        return None
+    A = lin['A']
+
+    return lin
+
 
 def simulate(fstFilename, model_name, sims, sim_name):
-
     # ---
     p, WT = FAST2StructureInputs(fstFilename, model_name)
 
+    print('>>>>>',p['tilt'])
     import importlib
     model= importlib.import_module('_py.{}'.format(model_name))
 
+
     MM_ED = readEDSummaryFile(fstFilename.replace('.fst','.ED.sum'))
+    lin   = readFSTLin(fstFilename.replace('.fst','.1.lin'))
+#     freq_d2, zeta2, Q2, freq02  = eigA(lin['A'])
 
     # --- Reference simulation
     df=weio.read(fstFilename.replace('.fst','.out')).toDataFrame()
@@ -134,10 +82,10 @@ def simulate(fstFilename, model_name, sims, sim_name):
     u0['M_z_a']= 0 #+0*np.sin(0.1*t)  # aerodynamic "yawing" moment
     u0['F_B']= 0 # Buoyancy t(at operating point
 
-#     M_lin   = model.M_lin(q0l,p)
-#     C_lin   = model.C_lin(q0l,qd0l,p,u0)
-#     K_lin   = model.K_lin(q0l,qd0l,p,u0) 
-#     B_lin   = model.B_lin(q0l,qd0l,p,u0)
+    M_lin   = model.M_lin(q0l,p)
+    C_lin   = model.C_lin(q0l,qd0l,p,u0)
+    K_lin   = model.K_lin(q0l,qd0l,p,u0) 
+    B_lin   = model.B_lin(q0l,qd0l,p,u0)
 
     # --- Print linearized mass damping 
 #     print('--------------------')
@@ -163,44 +111,20 @@ def simulate(fstFilename, model_name, sims, sim_name):
     t=0
     MM      = model.mass_matrix(q0,p)
     forcing = model.forcing(t,q0,qd0,p,u)
-    print(WT.WT_rigid)
+    #print(WT.WT_rigid)
     print('--------------------')
     print('Mass Matrix: ')
     print(MM)
     print(MM_ED)
     M_Ref=MM_ED.copy()
     print(' Rel Error')
-    M_Ref[np.abs(M_Ref)<1e-5]=1
+    MM   [np.abs(MM   )<1e-1]=1
+    MM_ED[np.abs(MM_ED)<1e-1]=1
+    M_Ref[np.abs(M_Ref)<1e-1]=1
     print(np.around(np.abs((MM_ED-MM))/M_Ref*100,1))
     print('--------------------')
     print('Forcing: ')
     print(forcing)
-
-    #print('MT\n',WT.twr.MM[6:,6:])
-
-#     print('>>>>>>>>> HACK')
-#     p['Jxx_R']=4.370255E+07
-#     p['Jxx_R']=3.863464E+07
-    # 38677056
-#  8.066928E+06   -7.943743E+08   0.000000E+00 
-# -7.943743E+08    9.692683E+10   0.000000E+00
-#  0.000000E+00    0.000000E+00   4.370255E+07  
-#      x                y           tx            ty             tz                psi
-#[x   8.066928E+06   0.000000E+00  0.000000E+00 -7.943743E+08   0.000000E+00    0.000000E+00
-#[y   0.000000E+00   8.066928E+06  7.943743E+08  0.000000E+00 >-1.415862E+05    0.000000E+00
-#[tx  0.000000E+00   7.943743E+08  9.694190E+10 -1.093750E-01 > 8.551839E+06  > 3.858149E+07
-#[ty -7.943743E+08   0.000000E+00 -1.093750E-01  9.692683E+10   0.000000E+00    0.000000E+00
-#[tz  0.000000E+00 >-1.415862E+05 >8.551839E+06  0.000000E+00 > 1.853499E+08  >-3.375442E+06
-#[psi 0.000000E+00  0.000000E+00  >3.858149E+07  0.000000E+00 >-3.375442E+06    4.370255E+07
-
-
-#         y           tx              tz                psi
-#[y    8.066928E+06  7.943743E+08  >-1.415862E+05    0.000000E+00
-#[tx   7.943743E+08  9.694190E+10  > 8.551839E+06  > 3.858149E+07
-#[tz >-1.415862E+05 >8.551839E+06  > 1.853499E+08  >-3.375442E+06
-#[psi 0.000000E+00  >3.858149E+07  >-3.375442E+06    4.370255E+07
-
-
 
     if sims is False:
         return p, WT, None, None, None, None 
@@ -214,26 +138,37 @@ def simulate(fstFilename, model_name, sims, sim_name):
 
     # --- integrate linear system
     fF = lambda t,x,xd: np.array([0]*len(q0))
-#     sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=q0, xdot0=qd0)
-#     resLI=sysLI.integrate(time, method='RK45') # **options):
+    sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=q0, xdot0=qd0)
+    resLI=sysLI.integrate(time, method='RK45') # **options):
     
     # --- Convert results to dataframe and save to file
     channels = WT.channels
-    DOFscales=[]
-    for s in channels:
-        if s.find('[deg]')>0:
-            DOFscales.append(180/np.pi)
-        elif s.find('TSS1')>0:
-            DOFscales.append(-1)
-        elif s.find('[rpm]')>0:
-            DOFscales.append(60/(2*np.pi))
-        else:
-            DOFscales.append(1)
-
+    DOFscales= WT.FASTDOFScales
     dfNL = sysNL.toDataFrame(WT.channels, DOFscales)
-#     dfLI = sysLI.toDataFrame(WT.channels, DOFscales)
+    dfLI = sysLI.toDataFrame(WT.channels, DOFscales)
     sysNL.save(fstFilename.replace('.fst','_NonLinear.csv'), WT.channels, DOFscales)
-#     sysLI.save(fstFilename.replace('.fst','_Linear.csv'), WT.channels, DOFscales)
+    sysLI.save(fstFilename.replace('.fst','_Linear.csv'), WT.channels, DOFscales)
+
+    try:
+        print('>>>>> A')
+        print(sysLI.A)
+        print('>>>>> A')
+        print(lin['A'])
+        freq_d, zeta, Q, freq0  = eigA(sysLI.A)
+        freq_d2, zeta2, Q2, freq02  = eigA(lin['A'])
+        print(freq_d)
+        print(freq_d2)
+        print(zeta)
+        print(zeta2)
+    except:
+        print('>> No lin')
+
+    for c in dfNL.columns:
+        if c.find('[deg]')>1: 
+            if np.max(dfNL[c])>90:
+                dfNL[c]= np.mod(dfNL[c],360)
+                dfLI[c]= np.mod(dfLI[c],360)
+
 
     # --- Plot
     # sys.plot()
@@ -246,7 +181,7 @@ def simulate(fstFilename, model_name, sims, sim_name):
         # Positions
         chan=channels[idof]
         axes[idof,0].plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
-#         axes[idof,0].plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
+        axes[idof,0].plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
         if chan in df.columns:
             axes[idof,0].plot(df['Time_[s]'], df[chan], 'k:' , label='OpenFAST')
             if not legDone:
@@ -259,7 +194,7 @@ def simulate(fstFilename, model_name, sims, sim_name):
         vdof = idof+nDOF
         chan=channels[vdof]
         axes[idof,1].plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
-#         axes[idof,1].plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
+        axes[idof,1].plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
         if chan in df.columns:
             axes[idof,1].plot(df['Time_[s]'], df[chan], 'k:' , label='OpenFAST')
         axes[idof,1].tick_params(direction='in')
@@ -293,9 +228,12 @@ def main():
 
     # Phi x phi y phi z 
     #fstFilename = '_F000111T0RNA/Main_Spar_ED.fst'; model_name='B000111'; sim_name=model_name
+    #fstFilename = '_F000111T0RNA/Main_Spar_ED.fst'; model_name='F000111T0RNA_fnd'; sim_name=model_name
 
-    # --- Rigid "F5"
+    # --- Rotor
+    #fstFilename = '_F000111T0N0S1/Main_Spar_ED.fst'; model_name='F000111T0N0S1_fnd'; sim_name=model_name
     #fstFilename = '_F5T0N0S1/Main_Spar_ED.fst'; model_name='F5T0N0S1_fnd'; sim_name='F5T0N0S1'
+    fstFilename = '_F5T1N0S1/Main_Spar_ED.fst'; model_name='F5T1N0S1_fnd'; sim_name='F5T1N0S1'
 
     # --- Flexibility "T1, T2"
     #fstFilename = '_F0T1RNA/Main_Spar_ED.fst'; model_name='F0T1RNA'; sim_name='F0T1RNA'
@@ -305,6 +243,8 @@ def main():
 
     #fstFilename = '_F0T2RNA/Main_Spar_ED.fst'; model_name='F0T2RNA'; sim_name='F0T2RNA'
     #fstFilename = '_F0T2RNA_sym/Main_Spar_ED.fst'; model_name='F0T2RNA'; sim_name='F0T2RNA_sym'
+
+    fstFilename = '_F0T2N0S1/Main_Spar_ED.fst'; model_name='_F0T2N0S1'; sim_name=model_name;
 
     # --- Floater + Flexibility "F2T1"
     #fstFilename = '_F2T1RNANoRefH/Main_Spar_ED.fst'; model_name='F2T1RNA_fnd'; sim_name='F2T1RNA_NoRefH'

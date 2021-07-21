@@ -9,15 +9,22 @@ try:
 except:
     from welib.fastlib import fastlib
 
-def campbell(caseFile, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabExe, fastExe,  
-             baseDict=None, generateInputs=True, runFast=True, runMBC=True, prefix='',sortedSuffix=None, ylim=None):
+import welib.fast.runner as runner
+from welib.weio.fast_input_file import FASTInputFile
+from welib.fast.case_gen import templateReplace
+
+def campbell(templateFstFile, operatingPointsFile, workDir, toolboxDir, fastExe,  
+             nPerPeriod=36, baseDict=None, tStart=5400, trim=True, viz=False,
+             trimGainPitch = 0.001, trimGainGenTorque = 300,
+             MaxTrq= None, 
+             generateInputs=True, runFast=True, runMBC=True, prefix='',sortedSuffix=None, ylim=None):
     """ 
     Wrapper function to perform a Campbell diagram study
-       see: writeFASTLinInputs, matlabMBC, and postproMBC for more description of inputs.
+       see: writeLinearizationFiles, postproLinearization and postproMBC for more description of inputs.
 
     INPUTS:
-      - caseFile     pandas DataFrame with WS, RPM, Pitch, and potentially gen torque and tower top FA
-      - mainFst      Main file, used as a template
+      - templateFstFile  Main file, used as a template
+      - operatingPointsFile  input file with WS, RPM, Pitch, and potentially gen torque and tower top FA
       - tStart       Time after which linearization is done (need to reach periodic steady state)
       - nPerPeriod   Number of linearizations per revolution
       - workDir      Output folder for FAST input files and linearization (will be created)
@@ -28,68 +35,95 @@ def campbell(caseFile, mainFst, tStart, nPerPeriod, workDir, toolboxDir, matlabE
       - sortedSuffix use a separate file where IDs have been sorted
       - runFast      Logical to specify whether to run the simulations or not
     """
-    Cases=pd.read_csv(caseFile); Cases.rename(columns=lambda x: x.strip(), inplace=True)
-
     # --- Generating input files
     if generateInputs:
-        WS, RPM, Pitch = Cases['WindSpeed_[m/s]'], Cases['Omega_[RPM]'], Cases['Pitch_[deg]']
-        try:
-            TT = Cases['TTDispFA_[m]'] # Optional
-        except:
-            TT = None
         #GenTorq = Cases['GenTrq_[kNm]'] # TODO
         # Generate input files
-        fastfiles= writeFASTLinInputs(mainFst, workDir, WS, RPM, Pitch, TT=TT, nPerPeriod=nPerPeriod, baseDict=baseDict, tStart=tStart, prefix=prefix)
+        fastfiles= writeLinearizationFiles(templateFstFile, workDir, operatingPointsFile, 
+                    nPerPeriod=nPerPeriod, baseDict=baseDict, tStart=tStart, trim=trim, viz=viz)
+                    
         # Create a batch script (optional)
-        fastlib.writeBatch(os.path.join(workDir,'_RUN_ALL.bat'),fastfiles,fastExe=fastExe)
+        runner.writeBatch(os.path.join(workDir,'_RUN_ALL.bat'),fastfiles,fastExe=fastExe)
 
     # --- Run the simulations
     if runFast:
-        fastlib.run_fastfiles(fastfiles, fastExe=fastExe, parallel=True, showOutputs=True, nCores=3)
+        runner.run_fastfiles(fastfiles, fastExe=fastExe, parallel=True, showOutputs=True, nCores=3)
 
     # --- Postprocess linearization outputs (MBC + modes ID)
     if runMBC:
-        outBase = matlabMBC(caseFile, workDir, toolboxDir, matlabExe, prefix=prefix)
-    OP, Freq, Damp, UnMapped, _ = postproMBC(csvBase=os.path.join(workDir,prefix), sortedSuffix=sortedSuffix)
+        OP, Freq, Damp, _, _, modeID_file = lin.postproCampbell(FSTfilenames)
 
-    # ---  Plot Campbell
-    fig, axes = plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=UnMapped, ylim=ylim)
-    #fig, axes = fastlib.plotCampbell(Freq, Damp, sx='RPM_[rpm]', UnMapped=UnMapped)
-    #  fig.savefig('{:s}CampbellWS.png'.format(suffix))
+        # ---  Plot Campbell
+        fig, axes = plotCampbell(OP, Freq, Damp, sx='WS_[m/s]', UnMapped=UnMapped, ylim=ylim)
+        #fig, axes = plotCampbell(Freq, Damp, sx='RPM_[rpm]', UnMapped=UnMapped)
+        #  fig.savefig('{:s}CampbellWS.png'.format(suffix))
+    else:
+        OP=None
+        Freq=None
+        Damp=None
+        fig=None
     return OP, Freq, Damp, fig
 
 def readOperatingPoints(OP_file):
     """ 
     Reads an "Operating Point" delimited file to a pandas DataFrame
+
+    The standard column names are (in any order):
+      - RotorSpeed_[rpm], WindSpeed_[m/s], PitchAngle_[deg], GeneratorTorque_[Nm], Filename_[-]
+
     """
     OP=pd.read_csv(OP_file);
-    OP.rename(columns=lambda x: x.strip().lower().replace(' ','').replace('_','').replace('(','[').split['['][0], inplace=True)
+    OP.rename(columns=lambda x: x.strip().lower().replace(' ','').replace('_','').replace('(','[').split('[')[0], inplace=True)
+    # Perform column replacements (tolerating small variations)
+    OP.rename(columns={'wind':'windspeed','ws': 'windspeed'}, inplace=True)
+    OP.rename(columns={'rotorspeed': 'rotorspeed', 'rpm': 'rotorspeed','omega':'rotorspeed'}, inplace=True)
+    OP.rename(columns={'file': 'filename'}, inplace=True)
+    OP.rename(columns={'pitch': 'pitchangle', 'bldpitch':'pitchangle'}, inplace=True)
+    OP.rename(columns={'gentrq': 'generatortorque', 'gentorque':'generatortorque'}, inplace=True)
+    # Standardizing column names
+    OP.rename(columns={
+         'rotorspeed': 'RotorSpeed_[rpm]', 
+         'rotspeed': 'RotorSpeed_[rpm]', 
+         'windspeed' : 'WindSpeed_[m/s]',
+         'pitchangle': 'PitchAngle_[deg]',
+         'generatortorque': 'GeneratorTorque_[Nm]',
+         'filename'  : 'Filename_[-]'
+         }, inplace=True)
+    if 'FileName_[-]' not in OP.columns:
+        OP['Filename_[-]']=defaultFilenames(OP)
+    print('readOperatingPoints:')
     print(OP)
-    # TODO perform column replacements
-    #df.rename(columns={'oldName1': 'newName1', 'oldName2': 'newName2'}, inplace=True)
-    # TODO Default filenames
     return OP
 
-def defaultFilenames(OP, rpmSweep=False):
-    pass
-    #if ~exist('rpmSweep','var'); 
-    #    rpmSweep = isfield(OP,'WindSpeed');
-    #end
-    #nOP=length(OP.RotorSpeed);
-    #filenames=cell(1,nOP);
-    #for iOP=1:nOP
-    #    if rpmSweep
-    #        filenames{iOP}=sprintf('rpm%05.2f.fst',OP.RotSpeed(iOP));
-    #    else
-    #        filenames{iOP}=sprintf('ws%04.1f.fst',OP.WindSpeed(iOP));
-    #    end
-    #end
+def defaultFilenames(OP, rpmSweep=None):
+    """
+    Generate default filenames for linearization based on RotorSpeed (for rpmSweep) or WindSpeed 
+    If RotorSpeed is a field, windspeed is preferred for filenames, unless, rpmSweep is set to true as input
 
+    INPUTS:
+      - OP: structure with field RotorSpeed, and optionally WindSpeed
+    OPTIONAL INPUTS:
+      - rpmSweep : if present, overrides the logic: if true, rpm is used, otherwise ws
+    OUTPUTS:
+      - filenames: list of strings with default filenames for linearization simulations
+    """
 
-def writeFASTLinInputs(main_fst, workDir, operatingPointsFile, 
-        nPerPeriod=36, baseDict=None, tStart=100,
-        LinInputs=0, LinOutputs=0,
-        prefix='', suffix=''):
+    if rpmSweep is None:
+       rpmSweep = 'WindSpeed_[m/s]' not in OP.columns
+    nOP=len(OP['RotorSpeed_[rpm]']);
+    filenames=['']*nOP;
+    for iOP, line in OP.iterrows():
+        if rpmSweep:
+            filenames[iOP]='rpm{:05.2f}.fst'.format(line['RotSpeed_[rpm]'])
+        else:
+            filenames[iOP]='ws{:04.1f}.fst'.format(line['WindSpeed_[m/s]'])
+    return filenames
+
+def writeLinearizationFiles(main_fst, workDir, operatingPointsFile, 
+        nPerPeriod=36, baseDict=None, tStart=5400, trim=True, viz=False,
+        trimGainPitch = 0.001, trimGainGenTorque = 300,
+        MaxTrq= None, 
+        LinInputs=0, LinOutputs=0):
     """
     Write FAST inputs files for linearization, to a given directory `workDir`.
 
@@ -110,6 +144,11 @@ def writeFASTLinInputs(main_fst, workDir, operatingPointsFile,
       - tStart: time at which the linearization will start. 
                 When triming option is not available, this needs to be sufficiently large for
                 the rotor to reach an equilibrium
+      - trim: flag to use the trim option (more TODO)
+      - viz : flag to setup the files to use VTK vizualization of modes (more TODO)
+      - trimGainPitch     : [only for OpenFAST>2.3] Gain for Pitch trim (done around Max Torque)
+      - trimGainGenTorque : [only for OpenFAST>2.3] Gain for GenTrq trim (done below Max Torque)
+      - maxTrq: maximum/rated generator torque in Nm, we'll use this to determine which trim to do 
       - LinInputs:  linearize wrt. inputs (see OpenFAST documentation). {0,1,2, default:1}
       - LinOutputs: linearize wrt. outputs (see OpenFAST documentation). {0,1, default:0}
 
@@ -120,53 +159,105 @@ def writeFASTLinInputs(main_fst, workDir, operatingPointsFile,
     if baseDict is None:
         baseDict=dict()
 
-    # --- Checking main fst file
-    fst = fastlib.FASTInFile(main_fst)
-    hasTrim = 'TrimCase' in fst.keys()
-    if fst['CompServo']==1:
-        print('[WARN] For now linearization is done without controller.')
-        baseDict['CompServo']=0
-
     # --- Reading operating points
     OP = readOperatingPoints(operatingPointsFile)
-    WS, RPM, Pitch = OP['WindSpeed_[m/s]'], OP['RotorSpeed_[rpm]'], OP['PitchAngle_[deg]'] # <<< TODO
+
+    # --- Checking main fst file
+    fst = FASTInputFile(main_fst) # TODO TODO use fast input deck
+    hasTrim = 'TrimCase' in fst.keys()
+    if fst['CompServo']==1:
+        if 'GeneratorTorque_[Nm]' not in OP:
+            raise Exception('`GeneratorTorque_[Nm]` not found in operating point file. It needs to be provided when the controller is active (`CompServo>0`).')
+        if maxTrq is None:
+            maxTrq = np.max(OP['GeneratorTorque_[Nm]'])
+        # TODO, safety checks
+        #         if SD['PCMode'),[0])
+        #             error('When CompServo is 1, the PCMode should be 0 or 1');
+        #         if ~ismember(GetFASTPar(paramSD,'VSContrl'),[0,1])
+        #             error('When CompServo is 1, the VSContrl should be 0 or 1');
+
+    if trim and not hasTrim:
+        trim=False
+        print('[WARN] Desactivating trim since not available in this version of OpenFAST')
+    if viz and not hasTrim:
+        viz=False
+        print('[WARN] Desactivating VTK vizualization since not available in this version of OpenFAST')
+
 
     # --- Generating list of parameters that vary based on the operating conditions provided
     PARAMS     = []
-    for i,(ws,rpm,pitch) in enumerate(zip(WS,RPM,Pitch)):
+    for i, op in OP.iterrows():
+        # Extract operating conditions (TODO, handling of missing fields)
+        ws       = op['WindSpeed_[m/s]']
+        rpm      = op['RotorSpeed_[rpm]']
+        pitch    = op['PitchAngle_[deg]']
+        filename = op['Filename_[-]']
+        # TODO gen trq or Tower top displacement
+
+        # Main Flags
+        noAero=abs(ws)<0.001
+
+        nLinTimes = nPerPeriod
+        if noAero:
+            nLinTimes=1
+            ws=1e-4
+
         # Determine linearization times based on RPM and nPerPeriod
         Omega = rpm/60*2*np.pi
-        if abs(Omega)<0.001:
-            LinTimes = [tStart]
-            Tmax     = tStart+1
+        if trim:
+            LinTimes=[9999]*nLinTimes
+            Tmax   = tStart
         else:
-            T = 2*np.pi/Omega
-            LinTimes = np.linspace(tStart,tStart+T,nPerPeriod+1)[:-1]
-            Tmax       = tStart+1.01*T
+            if abs(Omega)<0.001:
+                LinTimes = [tStart]
+                Tmax     = tStart+1
+            else:
+                T = 2*np.pi/Omega
+                LinTimes = np.linspace(tStart,tStart+T,nLinTimes+1)[:-1]
+                Tmax       = tStart+1.01*T
         # --- Creating "linDict", dictionary of changes to fast input files for linearization
         linDict=dict()
-        linDict['__name__']     = prefix+'ws{:04.1f}_rpm{:05.2f}'.format(ws,rpm)+suffix
+        linDict['__name__']     = os.path.splitext(filename)[0]
         # --- Main fst options
         linDict['TMax']         = Tmax
         linDict['TStart']       = 0
-        if abs(ws)<0.001:
-            linDict['CompAero']    = 0
-            linDict['CompInflow']  = 0
+
+        if noAero:
+            if not viz: # viz require aerodyn..
+                linDict['CompAero']    = 0
+                linDict['CompInflow']  = 0
         # --- Linearization options
         linDict['Linearize']    = True
-        linDict['NLinTimes']    = len(LinTimes)
-        linDict['LinTimes']     = list(LinTimes)
-        linDict['OutFmt']       = '"ES20.12E2"'  # Important for decent resolution
-        linDict['LinInputs']    = LinInputs     # 0: none, 1: standard, 2: to get full linearizations
-        linDict['LinOutputs']   = LinOutputs    # 0: none, 1: based on outlist 
-        # --- New Linearization options
+        if trim:
+            linDict['CalcSteady'] = True
+            if fst['CompServo']==1:
+                if abs(OP['GeneratorTorque_[Nm]']-MaxTrq)/MaxTrq*100 < 5 and (not noAero):
+                    linDict['TrimCase'] = 3 # Adjust Pitch to get desired RPM
+                    linDict['TrimGain'] = trimGainPitch; 
+                    # TrimGain = .1 / (RotSpeed(iOP) * pi/30); %-> convert RotSpeed to rad/s
+                    # TrimGain = TrimGain*0.1
+                else:
+                    linDict['TrimCase'] = 2 # Adjust GenTorque to get desired RPM
+                    linDict['TrimGain'] = trimGainGenTorque; 
+                    # TrimGain = 3340 / (RotSpeed(iOP) * pi/30); %-> convert RotSpeed to rad/s
+            else:
+                # NOTE: in that case, trimming will just "wait", trim variable is not relevant
+                linDict['TrimCase'] = 3
+                linDict['TrimGain'] = 0.001
         # TrimCase - Controller parameter to be trimmed {1:yaw; 2:torque; 3:pitch} [used only when CalcSteady=True]
         # TrimTol - Tolerance for the rotational speed convergence [>eps] [used only when CalcSteady=True]
         # TrimGain - Proportional gain for the rotational speed error (rad/(rad/s) or Nm/(rad/s)) [>0] [used only when CalcSteady=True]
         # Twr_Kdmp - Damping factor for the tower (N/(m/s)) [>=0] [used only when CalcSteady=True]
         # Bld_Kdmp - Damping factor for the blade (N/(m/s)) [>=0] [used only when CalcSteady=True]
+        else:
+            linDict['CalcSteady'] = False
+        linDict['NLinTimes']    = len(LinTimes)
+        linDict['LinTimes']     = list(LinTimes)
+        linDict['OutFmt']       = '"ES20.11E3"'  # Important for decent resolution
+        linDict['LinInputs']    = LinInputs     # 0: none, 1: standard, 2: to get full linearizations
+        linDict['LinOutputs']   = LinOutputs    # 0: none, 1: based on outlist 
         # --- Mode shape vizualization options
-        if hasTrim:
+        if viz:
             linDict['WrVTK']        = 3
             linDict['VTK_type']     = 1
             linDict['VTK_fields']   = True
@@ -185,7 +276,7 @@ def writeFASTLinInputs(main_fst, workDir, operatingPointsFile,
         linDict['EDFile|BlPitch(2)'] = pitch
         linDict['EDFile|BlPitch(3)'] = pitch
         linDict['EDFile|RotSpeed']   = rpm
-        linDict['EDFile|TTDspFA']    = tt
+        #linDict['EDFile|TTDspFA']    = tt
         # --- Servo options
 
         # --- Merging linDict dictionary with user override inputs
@@ -199,7 +290,7 @@ def writeFASTLinInputs(main_fst, workDir, operatingPointsFile,
     # --- Generating all files in a workDir
     refDir   = os.path.dirname(main_fst)
     main_file = os.path.basename(main_fst)
-    fastfiles = fastlib.templateReplace(PARAMS,refDir,workDir=workDir,RemoveRefSubFiles=True,main_file=main_file)
+    fastfiles = templateReplace(PARAMS,refDir,outputDir=workDir,removeRefSubFiles=True,main_file=main_file)
 
     return fastfiles
 

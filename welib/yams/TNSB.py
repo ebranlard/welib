@@ -20,6 +20,7 @@ try:
 except:
     from yams import *
 
+from welib.yams.windturbine import rigidBlades
 
 class Structure():
     def __init__(self,main_axis='x',theta_tilt=0,theta_yaw=0,theta_cone=0,bTiltBeforeNac=False):
@@ -34,8 +35,57 @@ class Structure():
         s.M_RNA= s.M_rot + s.Sft.Mass + s.Nac.Mass;
         s.r_NGnac_inN = s.Nac.s_G_inB
         s.r_NGhub_inN = s.r_NS_inN + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.Sft.s_G_inB))
-        s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
-        s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.Mass*s.r_NGnac_inN + s.Sft.Mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
+
+        try:
+            # --------------------------------------------------------------------------------}
+            # --- New method, requires blade to have "toRigidBody"
+            # --------------------------------------------------------------------------------{
+            # --- Rigid Blades (with origin R, using N as "global" ref)
+            blds_rigid = rigidBlades(s.Blds, r_O = [0,0,0]) # TODO blade origins might be wrong in TNSB
+            blds_rigid.pos_global = s.r_NR_inN.ravel()
+            R_NS = R_y(s.theta_tilt)  # Rotation fromShaft to Nacelle
+            blds_rigid.R_b2g      = R_NS
+
+
+            # --- Creating "hub" with respect to point N (Sft is wrt S)
+            #M_hub  = ED['HubMass']
+            #JxxHub_atR = ED['HubIner']
+            #hub = RigidBody('Hub', M_hub, (JxxHub_atR,0,0), s_OG=r_SGhub_inS, R_b2g=R_NS, s_OP=r_SR_inS, r_O=r_NS_inN) 
+            r_NS_inN=s.Sft.r_O.ravel()-s.Nac.r_O.ravel()
+            r_SGhub_inS=s.Sft.masscenter # In body coordinates, S, titled
+            #hub = RigidBody('Hub', s.Sft.mass, J=s.Sft.masscenter_inertia, s_OG=r_SGhub_inS, R_b2g=R_NS, r_O=r_NS_inN) 
+
+            hub = RigidBody('Hub', s.Sft.mass, J_G=s.Sft.masscenter_inertia, rho_G=s.Sft.masscenter)
+            #hub.shiftOrigin(R_NS.T.dot(-r_NS_inN))
+            hub.R_b2g      = R_NS
+            hub.pos_global = r_NS_inN
+
+
+
+            # --- Rotor = Hub + Blades (with origin R, using N as global ref)
+            #rot = blds_rigid.combine(s.Sft, R_b2g=R_NS, r_O=blds_rigid.pos_global)
+            rot = blds_rigid.combine(hub, R_b2g=R_NS, r_O=blds_rigid.pos_global)
+            rot.name='rotor'
+            #rotgen = rot.combine(gen, R_b2g=R_NS, r_O=blades.pos_global)
+
+            #RNA = rot.combine(gen).combine(nac,r_O=[0,0,0])
+            RNA = rot.combine(s.Nac,r_O=[0,0,0]).combine(s.Yaw, r_O=[0,0,0])
+            s.RNA=RNA
+            s.r_NGrna_inN=RNA.masscenter # in N
+            s.r_NGrot_inN = rot.masscenter
+
+            # Temp storage
+            s.blds_rigid = blds_rigid
+            s.rot        = rot
+            s.hub        = hub
+
+
+        except:
+            print('[WARN] TNSB: Fail to compute RNA with new method, using legacy')
+            s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
+            s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.Mass*s.r_NGnac_inN + s.Sft.Mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
+
+
 
     def init_trigger(s):
         s.alpha = s.Twr.alpha_couplings
@@ -173,7 +223,8 @@ class Structure():
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model automatically 
 # --------------------------------------------------------------------------------{
-def auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_yaw=0,theta_cone_y=0,DEBUG=False,bTiltBeforeNac=False):
+def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_yaw=0,theta_cone_y=0,DEBUG=False,bTiltBeforeNac=False):
+    # TODO Gen
 
     if main_axis=='x':
         #R_NS     = np.dot(R_y(-tilt_up),R_z(q_psi + np.pi)) # << tilt 
@@ -201,6 +252,7 @@ def auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_ax
     # Connections between bodies
     Grd.connectTo(Twr, Point=r_ET_inE, Type='Rigid')
     Twr.connectTo(Nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
+    Twr.connectTo(Yaw, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
     Nac.connectTo (Sft   , Point=r_NS_inN, Type='SphericalJoint',JointRotations=[Shaft_axis],RelOrientation = R_cs0, OrientAfter=False)
     for i,B in enumerate(Blds):
         psi_B= -i*2*np.pi/nB # 0 -2pi/2 2pi/3  or 0 pi
@@ -219,6 +271,7 @@ def auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_ax
 
     Grd.updateChildrenKinematicsNonRecursive(q)
     Twr.updateChildrenKinematicsNonRecursive(q)
+    Yaw.updateChildrenKinematicsNonRecursive(q)
     Nac.updateChildrenKinematicsNonRecursive(q)
     Sft.updateChildrenKinematicsNonRecursive(q)
 
@@ -237,6 +290,7 @@ def auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_ax
     Struct      = Structure(main_axis=main_axis,theta_cone=theta_cone_y,theta_tilt=theta_tilt_y,bTiltBeforeNac=bTiltBeforeNac)
     Struct.Grd  = Grd
     Struct.Twr  = Twr
+    Struct.Yaw  = Yaw
     Struct.Nac  = Nac
     Struct.Sft  = Sft
     Struct.Blds = Blds
@@ -259,7 +313,7 @@ def auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_ax
 # --------------------------------------------------------------------------------}
 # --- Manual assembly of a TNSB model 
 # --------------------------------------------------------------------------------{
-def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_cone_y=0,DEBUG=False, bTiltBeforeNac=False):
+def manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_cone_y=0,DEBUG=False, bTiltBeforeNac=False):
 
     # Main Parameters
     nDOF = len(q)
@@ -268,20 +322,29 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
     CxT=  np.zeros(Twr.nf)
     CyT=  np.zeros(Twr.nf)
     CzT=  np.zeros(Twr.nf)
-    for j,v in enumerate(Twr.PhiV):
+    UxT=  np.zeros(Twr.nf)
+    UyT=  np.zeros(Twr.nf)
+    UzT=  np.zeros(Twr.nf)
+    for j,(u,v) in enumerate(zip(Twr.PhiU,Twr.PhiV)):
         if main_axis=='x':
             CyT[j]=-v[2,-1] # A deflection along z gives a negative angle around y
             CzT[j]= v[1,-1] # A deflection along y gives a positive angle around z # TODO TODO CHECK ME
+            UyT[j]= u[1,-1] 
+            UzT[j]= u[2,-1] 
             #print('Alpha y - mode {}:'.format(j+1),CyT[j])
         elif main_axis=='z':
             CxT[j]=-v[1,-1] # A deflection along y gives a negative angle around x # TODO TODO CHECK ME
             CyT[j]= v[0,-1] # A deflection along x gives a positive angle around y
+            UxT[j]= u[0,-1] 
+            UyT[j]= u[1,-1] 
     CyT=CyT[:Twr.nf]
-    #                     Bt_pc=zeros(3,p.nf);
-    #                     for j=1:p.nf
-    #                         Bx_pc(:,j)=p.PhiU{j}(:,iNode);
-    #                         Bt_pc(:,j)=[0; -p.PhiV{j}(3,iNode); p.PhiV{j}(2,iNode)];
-    #                     end
+    UxT=UxT[:Twr.nf]
+    # TODO:
+    #  Bt_pc=zeros(3,p.nf);
+    #  for j=1:p.nf
+    #      Bx_pc(:,j)=p.PhiU{j}(:,iNode);
+    #      Bt_pc(:,j)=[0; -p.PhiV{j}(3,iNode); p.PhiV{j}(2,iNode)];
+    #  end
 
     # --------------------------------------------------------------------------------}
     ## --- "Manual connection"
@@ -311,17 +374,17 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
         alpha_y=0
     elif Twr.nf == 1:
         if main_axis=='x':
-            Bx_TN = np.array([[0],[0],[1]])
+            Bx_TN = np.array([[0],[0],[UzT[0]]])
         elif main_axis=='z':
-            Bx_TN = np.array([[1],[0],[0]])
+            Bx_TN = np.array([[UxT[0]],[0],[0]])
         Bt_TN = np.array([[0],[CyT[0]],[0]])
         Twr.gzf = q[0,0]
         alpha_y = np.dot(CyT.ravel(), q[0,0].ravel())
     elif Twr.nf == 2:
         if main_axis=='x':
-            Bx_TN = np.array([[0,0],[0,0],[1,1]])
+            Bx_TN = np.array([[0,0],[0,0],[UzT[0],UzT[1]]])
         elif main_axis=='z':
-            Bx_TN = np.array([[1,1],[0,0],[0,0]])
+            Bx_TN = np.array([[UxT[0],UxT[1]],[0,0],[0,0]])
         Twr.gzf = q[0:2,0]
         Bt_TN = np.array([[0,0],[CyT[0],CyT[1]],[0,0]])
         alpha_y = np.dot(CyT.ravel() , q[:2,0].ravel())
@@ -344,6 +407,15 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
     Nac.B      = B_N    
     Nac.B_inB  = B_N_inN
     Nac.BB_inB = BB_N_inN
+    # TODO YAW
+    MM_Y       = fBMB(BB_N_inN,Yaw.MM)
+    Yaw.r_O    = Twr.r_O + np.dot(Twr.R_0b, r_TN_inT)
+    Yaw.R_0b   = R_EN
+    Yaw.B      = B_N    
+    Yaw.B_inB  = B_N_inN
+    Yaw.BB_inB = BB_N_inN
+    # TODO Gen
+
     # ---------------------------------------------
     # Link N-S
     q_psi = q[iPsi,0]
@@ -411,7 +483,7 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
     # --- Final assembly
     MM = MM_B.copy()
     MM[:iPsi+1,:iPsi+1] += MM_S
-    MM[:Twr.nf,:Twr.nf] += MM_T + MM_N
+    MM[:Twr.nf,:Twr.nf] += MM_T + MM_N + MM_Y
 
     KK = KK_B
     KK[:iPsi+1,:iPsi+1] += KK_S
@@ -471,6 +543,7 @@ def manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_
     Struct      = Structure(main_axis=main_axis,theta_cone=theta_cone_y,theta_tilt=theta_tilt_y,bTiltBeforeNac=bTiltBeforeNac)
     Struct.Grd = GroundBody()
     Struct.Twr  = Twr
+    Struct.Yaw  = Yaw
     Struct.Nac  = Nac
     Struct.Sft  = Sft
     Struct.Blds = Blds

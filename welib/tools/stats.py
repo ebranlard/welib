@@ -147,9 +147,16 @@ def pdf_sns(y,nBins=50):
 # --------------------------------------------------------------------------------}
 # --- Binning 
 # --------------------------------------------------------------------------------{
-def bin_DF(df, xbins, colBin ):
+def bin_DF(df, xbins, colBin):
     """ 
     Perform bin averaging of a dataframe
+    INPUTS:
+      - df   : pandas dataframe
+      - xBins: end points delimiting the bins, array of ascending x values)
+      - colBin: column name (string) of the dataframe, used for binning 
+    OUTPUTS:
+       binned dataframe, with additional columns 'Counts' for the number 
+
     """
     if colBin not in df.columns.values:
         raise Exception('The column `{}` does not appear to be in the dataframe'.format(colBin))

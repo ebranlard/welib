@@ -6,14 +6,17 @@ import os
 
 from welib.yams.yams import FASTBeamBody, RigidBody
 from welib.yams.utils import *
-from welib.yams.TNSB import *
+from welib.yams.TNSB import manual_assembly, auto_assembly
 
 import welib.weio as weio
 
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model
 # --------------------------------------------------------------------------------{
-def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False):
+def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+        spanFrom0=True, # TODO for legacy, we keep this for now..
+        bladeMassExpected=None
+        ):
     """ 
     Returns the following structure
       Twr :  BeamBody
@@ -22,6 +25,9 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
       Blds:  List of BeamBodies
 
       MM, KK, DD : mass, stiffness and damping matrix of full system
+
+
+      NOTE/TODO: compare this with "windturbine.py"
     """
     
     nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
@@ -84,6 +90,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
 
     M_hub   = ED['HubMass']*bHubMass
     M_nac   = ED['NacMass'] *bNacMass
+    M_yaw   = ED['YawBrMass']
     IR_hub = np.zeros((3,3))
     I0_nac=np.zeros((3,3)) 
 
@@ -97,7 +104,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     I0_nac = I0_nac * bNacMass
 
     # Inertias not at COG...
-    IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
+    IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG=r_RGhub_inS)
     IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, r_NGnac_inN)
 
     # --------------------------------------------------------------------------------}
@@ -105,21 +112,45 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --------------------------------------------------------------------------------{
     # Bld
     Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=True)) # NOTE: legacy spanfrom0
+    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected)) # NOTE: legacy spanfrom0
     Blds[0].MM *=bBldMass
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))
-    # ShaftHub Body 
-    Sft=RigidBody('ShaftHub',M_hub,IG_hub,r_SGhub_inS);
+    # IMPORTANT FOR RNA set R_b2g
+    for iB,B in enumerate(Blds):
+        B.name='bld'+str(iB+1)
+        psi_B= -iB*2*np.pi/len(Blds) 
+        if main_axis=='x':
+            R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
+        elif main_axis=='z':
+            R_SB = R_x(0*np.pi + psi_B) # TODO psi0
+        R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
+        B.R_b2g= R_SB
+
+    # ShaftHubGen Body  NOTE: generator!!!
+    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
+    # Gen only
+    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+
+    print('>>> IG_hub',IG_hub, r_SGhub_inS)
     # Nacelle Body
     Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
+    # Yaw Bearing # TODO TODO TODO
+    Yaw=RigidBody('YawBearing',M_yaw,(0,0,0),(0,0,0));
+    if M_yaw>0:
+        print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
+
     M_rot= sum([B.Mass for B in Blds])
-    M_RNA= M_rot + Sft.Mass + Nac.Mass;
+    M_RNA= M_rot + Sft.Mass + Nac.Mass + Yaw.Mass
     # Tower Body
     Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening)
     #print('Stiffnening', bStiffening)
     #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
     if DEBUG:
+        print('HubMass',Sft.Mass)
+        print('NacMass',Nac.Mass)
+        print('RotMass',M_rot)
+        print('RNAMass',M_RNA)
         print('IG_hub')
         print(IG_hub)
         print('IG_nac')
@@ -134,9 +165,9 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --- Assembly 
     # --------------------------------------------------------------------------------{
     if assembly=='manual':
-        Struct = manual_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
     else:
-        Struct = auto_assembly(Twr,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
 
     # --- Initial conditions
     omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s

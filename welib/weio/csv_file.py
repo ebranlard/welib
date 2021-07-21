@@ -78,7 +78,7 @@ class CSVFile(File):
             if self.sep==r'\s+':
                 return s.strip().split()
             else:
-                return s.strip().split(self.sep)
+                return [c.strip() for c in s.strip().split(self.sep)]
         def strIsFloat(s):
             try:
                 float(s)
@@ -90,6 +90,19 @@ class CSVFile(File):
             self.sep=r'\s+'
 
         iStartLine=0
+        
+        # --- Exclude some files from the CSV reader ---
+        line=readline(iStartLine)
+        words=line.split()
+        if len(words)>1:
+            try:
+                int(words[0])
+                word0int = True
+            except:
+                word0int = False
+            if word0int and words[1].isalpha():
+                raise WrongFormatError('Input File {}: '.format(self.filename) + 'is not likely a CSV file' )
+                
         # --- Headers (i.e. comments)
         # TODO: read few headers lines instead of multiple read below..
 
@@ -142,8 +155,10 @@ class CSVFile(File):
                     self.sep=','
                 elif head[1].find(';')>0:
                     self.sep=';'
+                elif head[1].find('\t')>0:
+                    self.sep='\t'
                 else:
-                    self.sep='\s+'
+                    self.sep=r'\s+'
             except:
                 # most likely an empty file
                 pass
@@ -211,7 +226,9 @@ class CSVFile(File):
         if (self.commentLines is not None) and len(self.commentLines)>0:
             skiprows = skiprows + self.commentLines
         skiprows =list(sorted(set(skiprows)))
-        #print(self)
+        if self.sep is not None:
+            if self.sep=='\t':
+                self.sep=r'\s+'
         #print(skiprows)
         try:
 #             self.data = pd.read_csv(self.filename,sep=self.sep,skiprows=skiprows,header=None,comment=self.commentChar,encoding=self.encoding)

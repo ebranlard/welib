@@ -3,7 +3,7 @@ from numpy.linalg import inv
 from scipy.integrate import  solve_ivp #odeint
 
 
-from .statespace import *
+from .statespace import vec_interp, B_interp, StateMatrix
 
 
 # --------------------------------------------------------------------------------}
@@ -89,6 +89,9 @@ class MechSystem():
         self.q0 = q0
 
     def setForceTimeSeries(self,vTime,vF):
+        """ 
+        
+        """
         vTime = np.asarray(vTime)
         vF    = np.asarray(vF)
         if vF.shape[0]!=self.nDOF:
@@ -100,13 +103,19 @@ class MechSystem():
         self._time_ts  = vTime
 
     def setForceFunction(self,fn):
+        """ 
+        
+        """
         self._force_fn = fn
 
-    def Force(self,t,x=None,xdot=None):
+    def Force(self,t,x=None,xdot=None,q=None, **kwargs):
         if hasattr(self,'_force_ts'):
             return vec_interp(t,self._time_ts,self._force_ts)
         elif hasattr(self,'_force_fn'):
-            return self._force_fn(t,x,xdot)
+            if q is not None:
+                x    = q[0:self.nDOF]
+                xdot = q[self.nDOF:]
+            return self._force_fn(t,x,xdot, **kwargs)
         else:
             raise NotImplementedError('Please specify a time series of force first')
 
@@ -114,13 +123,15 @@ class MechSystem():
         x  = q[0:self.nDOF]
         xd = q[self.nDOF:]
         if hasattr(self,'_force_ts'):
-            return  B_interp(t,self._fMinv(x),self._time_ts,self._force_ts)
+            return  B_interp(t,self._fMinv(x),self._time_ts,self._force_ts, flat=False)
 
         elif hasattr(self,'_force_fn'):
             F          = self._force_fn(t,x,xd).ravel()
             nDOF       = len(F)
-            B          = np.zeros((2*nDOF,1))
+            #B          = np.zeros(2*nDOF) # NOTE: flat from now on
+            B          = np.zeros((2*nDOF,1)) # NOTE: flat from now on
             B[nDOF:,0] = np.dot(self._fMinv(x),F)
+            #B[nDOF:] = np.dot(self._fMinv(x),F)
             return B
         else:
             raise NotImplementedError('Please specify a time series of force first')
@@ -147,15 +158,21 @@ class MechSystem():
         return res
 
     def dqdt(self, t, q):
-        dqdt = np.zeros(q.shape)
-        x  = q[0:self.nDOF]
-        xd = q[self.nDOF:]
+        if self.has_A:
+            q=q.reshape((-1,1))
+            A=self.A
+            dqdt= np.dot(A,q)+self.B(t,q)
+            return dqdt
+        else:
+            dqdt_ = np.zeros(q.shape)
+            x  = q[0:self.nDOF]
+            xd = q[self.nDOF:]
 
-        dqdt[0:self.nDOF]=  xd
-        Minv = self._fMinv(x)
-        F = self._force_fn(t,x,xd)
-        dqdt[self.nDOF:] =  Minv.dot(F)
-        return dqdt
+            dqdt_[0:self.nDOF]=  xd
+            Minv = self._fMinv(x)
+            F = self._force_fn(t,x,xd)
+            dqdt_[self.nDOF:] =  Minv.dot(F)
+            return dqdt_
 
 
 
@@ -180,28 +197,28 @@ class MechSystem():
 
     def __repr__(self):
         s='<MechSystem object>\n'
-        s+='Read-only attributes:\n'
-        s+=' - nDOF: {}, nState:{} \n'.format(self.nDOF,self.nStates)
+        s+='|Read-only attributes:\n'
+        s+='| - nDOF: {}, nState:{} \n'.format(self.nDOF,self.nStates)
         if hasattr(self,'_force_ts'):
             if len(self._time_ts)>1:
                 dt=self._time_ts[1]-self._time_ts[0]
             else:
                 dt=np.nan
-            s+='Force time series \n'
-            s+=' - Time: [{} ... {}],  dt: {}, n: {} \n'.format(self._time_ts[0],self._time_ts[-1],dt,len(self._time_ts))
-            s+=' - Force t0  : {} \n'.format(self._force_ts[:,0])
-            s+=' - Force tend: {} \n'.format(self._force_ts[:,-1])
-        s+='Attributes:\n'
-        s+=' - M: Mass Matrix  \n'
+            s+='|Force time series \n'
+            s+='| - Time: [{} ... {}],  dt: {}, n: {} \n'.format(self._time_ts[0],self._time_ts[-1],dt,len(self._time_ts))
+            s+='| - Force t0  : {} \n'.format(self._force_ts[:,0])
+            s+='| - Force tend: {} \n'.format(self._force_ts[:,-1])
+        s+='|Attributes:\n'
+        s+='| - M: Mass Matrix  \n'
         s+=str(self.M)+'\n'
-        s+=' - C: Damping Matrix  \n'
+        s+='| - C: Damping Matrix  \n'
         s+=str(self.C)+'\n'
-        s+=' - K: Stiffness Matrix  \n'
+        s+='| - K: Stiffness Matrix  \n'
         s+=str(self.K)+'\n'
-        s+=' - q0: Initial conditions (state) \n'
+        s+='| - q0: Initial conditions (state) \n'
         s+=str(self.q0)+'\n'
         if self.has_A:
-            s+=' - A:  \n'
+            s+='| - A:  \n'
             s+=str(self.A)+'\n'
 
         return s

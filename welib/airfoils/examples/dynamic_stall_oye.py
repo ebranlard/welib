@@ -65,12 +65,17 @@ def prescribed_oscillations():
         #ax.plot(valpha_t[ia,:], Cl[ia,:], 'k--'   , label=lbl)
     ax.set_xlabel('Alpha [deg]')
     ax.set_ylabel('Cl [-]')
-    plt.xlim(XLIM)
-    plt.ylim([0,2.2])
-    plt.legend()
+    ax.set_xlim(XLIM)
+    ax.set_ylim([0,2.2])
+    ax.set_title('Oye dynamic stall model')
 
 if __name__ == '__main__':
     prescribed_oscillations()
     plt.show()
 if __name__ == '__test__':
     prescribed_oscillations()
+if __name__=="__export__":
+    prescribed_oscillations()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
+

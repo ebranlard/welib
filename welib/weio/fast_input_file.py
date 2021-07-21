@@ -49,7 +49,7 @@ import numpy as np
 import re
 import pandas as pd
 
-__all__  = ['FASTInputFile','FASTInputDeck']
+__all__  = ['FASTInputFile']
 
 TABTYPE_NOT_A_TAB          = 0
 TABTYPE_NUM_WITH_HEADER    = 1
@@ -195,6 +195,13 @@ class FASTInputFile(File):
         NUMTAB_FROM_LAB_NHEADER  += [0                   , 2          , 2           , 2                , 2               ]
         NUMTAB_FROM_LAB_NOFFSET  += [1                   , 0          , 0           , 0                , 0               ]
         NUMTAB_FROM_LAB_TYPE     += ['num'               , 'num'      , 'num'       , 'num'            , 'num'           ]
+        # OLAF
+        NUMTAB_FROM_LAB_DETECT   += ['GridName'   ]
+        NUMTAB_FROM_LAB_DIM_VAR  += ['nGridOut'   ]
+        NUMTAB_FROM_LAB_VARNAME  += ['GridOutputs']
+        NUMTAB_FROM_LAB_NHEADER  += [0            ]
+        NUMTAB_FROM_LAB_NOFFSET  += [2            ]
+        NUMTAB_FROM_LAB_TYPE     += ['mix'        ]
 
         FILTAB_FROM_LAB_DETECT   = ['FoilNm' ,'AFNames']
         FILTAB_FROM_LAB_DIM_VAR  = ['NumFoil','NumAFfiles']
@@ -209,6 +216,7 @@ class FASTInputFile(File):
 
 
         self.data   = []
+        self.hasNodal=False
         self.module = None
         #with open(self.filename, 'r', errors="surrogateescape") as f:
         with open(self.filename, 'r', errors="surrogateescape") as f:
@@ -258,7 +266,7 @@ class FASTInputFile(File):
                 # --- Here we cheat and force an exit of the input file
                 # The reason for this is that some files have a lot of things after the END, which will result in the file being intepreted as a wrong format due to too many comments
                 if i+2<len(lines) and lines[i+2].lower().find('bldnd_bladesout')>0:
-                    print('>>>Bld Nodal outputs present')
+                    self.hasNodal=True
                 else:
                     self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
                     self.data.append(parseFASTInputLine('---------------------------------------------------------------------------------------',i+2))
@@ -469,7 +477,7 @@ class FASTInputFile(File):
 
         # --- PostReading checks
         labels = self.keys()
-        duplicates = set([x for x in labels if labels.count(x) > 1])
+        duplicates = set([x for x in labels if (labels.count(x) > 1) and x!='OutList' and x.strip()!='-'])
         if len(duplicates)>0:
             print('[WARN] Duplicate labels found in file: '+self.filename)
             print('       Duplicates: '+', '.join(duplicates))
@@ -773,28 +781,28 @@ class FASTInputFile(File):
                     if nDOF<-1 or nDOF!=nDOFCommon:
                         raise BrokenFormatError('ExtPtfm stiffness matrix nDOF issue. nDOF common: {}, nDOF provided: {}'.format(nDOFCommon,nDOF))
                     self.addKeyVal('MassMatrix',readmat(nDOF,nDOF,lines,i+2))
-                    i=i+2+nDOF
+                    i=i+1+nDOF
                 elif l.find('!stiffness')==0:
                     l=lines[i+1]
                     nDOF=int(l.split(':')[1])
                     if nDOF<-1 or nDOF!=nDOFCommon:
                         raise BrokenFormatError('ExtPtfm stiffness matrix nDOF issue nDOF common: {}, nDOF provided: {}'.format(nDOFCommon,nDOF))
                     self.addKeyVal('StiffnessMatrix',readmat(nDOF,nDOF,lines,i+2))
-                    i=i+2+nDOF
+                    i=i+1+nDOF
                 elif l.find('!damping')==0:
                     l=lines[i+1]
                     nDOF=int(l.split(':')[1])
                     if nDOF<-1 or nDOF!=nDOFCommon:
                         raise BrokenFormatError('ExtPtfm damping matrix nDOF issue nDOF common: {}, nDOF provided: {}'.format(nDOFCommon,nDOF))
                     self.addKeyVal('DampingMatrix',readmat(nDOF,nDOF,lines,i+2))
-                    i=i+2+nDOF
+                    i=i+1+nDOF
                 elif l.find('!loading')==0:
                     try: 
                         nt=int(self['T']/self['dt'])+1
                     except:
                         raise BrokenFormatError('Cannot read loading since time step and simulation time not properly set.')
                     self.addKeyVal('Loading',readmat(nt,nDOFCommon+1,lines,i+2))
-                    i=i+nt+2
+                    i=i+nt+1
                 elif len(l)>0:
                     if l[0]=='!':
                         if l.find('!dimension')==0:
@@ -804,6 +812,8 @@ class FASTInputFile(File):
                             self.addKeyVal('dt',np.float(l.split(':')[1]))
                         elif l.find('!total simulation time')==0:
                             self.addKeyVal('T',np.float(l.split(':')[1]))
+                    elif len(l.strip())==0:
+                        pass
                     else:
                         raise BrokenFormatError('Unexcepted content found on line {}'.format(i))
                 i+=1
@@ -901,164 +911,6 @@ class FASTInputFile(File):
         d['value']   = {'span':span, 'K':K, 'M':M}
         self.data.append(d)
 
-
-# --------------------------------------------------------------------------------}
-# --- Full FAST input deck
-# --------------------------------------------------------------------------------{
-class FASTInputDeck(object):
-    """Container for input files that make up a FAST input deck"""
-
-    def __init__(self,fstfile,readlist=['ED','AD'],silent=True):
-        """Read FAST master file and read inputs for FAST modules that
-        are used
-        """
-        # Backward compatibility:
-        readlist= [rd.replace('Aero', 'AD') for rd in readlist]
-
-
-        self.filename = fstfile
-        self.modeldir = os.path.split(fstfile)[0]
-        self.inputfiles = {}
-        # read master file
-        self.fst = FASTInputFile(fstfile)
-        print('Read',fstfile)
-        self.Attributes=['fst']
-
-        def sub_read(file_obj,store_obj,expected_keys,names):
-            """ read sub files from object """
-            for key,name in zip(expected_keys,names):
-                # NOTE: fast input files are relative to their module file
-                modeldir = os.path.split(file_obj.filename)[0]
-                try:
-                    keyval=file_obj[key]
-                except:
-                    print('Key not found',key)
-                    continue
-                if type(keyval) is list:
-                    setattr(store_obj, name, [])
-                    bFileList = True
-                else:
-                    bFileList = False
-                    keyval=[keyval]
-                for i,keyv in enumerate(keyval):
-                    fpath = os.path.join(modeldir, os.path.normpath(keyv.strip('"').replace('\\','/')))
-                    if os.path.isfile(fpath):
-                        self.inputfiles[name] = fpath
-                        modinput = FASTInputFile(fpath)
-                        try:
-                            modinput = FASTInputFile(fpath)
-                        except:
-                            print('Problem reading',fpath)
-                        else:
-                            if bFileList:
-                                getattr(store_obj,name).append(modinput)
-                                if not silent:
-                                    print('Read',fpath,'as{}[{}]'.format(name,i))
-                            else:
-                                setattr(store_obj, name, modinput)
-                                if not silent:
-                                    print('Read',fpath,'as',name)
-                                self.Attributes.append(name)
-                    else:
-                        if not silent:
-                            print('Not a file:',fpath)
-
-        FST_Keys= self.fst.keys()
-    
-        filekeys = [ key for key in FST_Keys if key.endswith('File') ]
-        names    = [key[:-4] for key in filekeys]
-        sub_read(self.fst,self,filekeys,names)
-        # BD
-        if 'BD' in readlist:
-            if self.fst['CompElast']==2:
-                filekeys = ['BDBldFile(1)']
-                names    = ['BD']
-                sub_read(self.fst,self,filekeys,names)
-
-
-
-        if 'InterpOrder' in FST_Keys:
-            self.version='OF2'
-            if self.fst['CompAero'] == 1:
-                self.ADversion='AD14'
-            elif self.fst['CompAero'] == 2:
-                self.ADversion='AD15'
-            else:
-                self.ADversion='Unknown'
-        elif 'TipRad' in FST_Keys:
-            self.version='F7'
-        else:
-            self.version='Unknown'
-
-        if hasattr(self,'Aero'):
-            self.AD=self.Aero
-            delattr(self,'Aero')
-            self.Attributes = [at.replace('Aero', 'AD') for at in self.Attributes]
-
-        if hasattr(self,'ED') and 'ED' in readlist:
-            filekeys = ['BldFile(1)' , 'BldFile(2)' , 'BldFile(3)' , 'TwrFile']
-            names    = ['Bld1'       , 'Bld2'       , 'Bld3'       , 'Twr']
-            sub_read(self.ED,self.ED,filekeys,names)
-
-        if hasattr(self,'AD') and 'AD' in readlist:
-            if 'WakeMod' in self.AD.keys():
-                self.ADversion='AD15'
-                # NOTE airfoils are not read
-                filekeys = ['ADBlFile(1)' , 'ADBlFile(2)' , 'ADBlFile(3)', 'AFNames']
-                names    = ['Bld1'     , 'Bld2'     , 'Bld3'    , 'AF']
-                sub_read(self.AD,self.AD,filekeys,names)
-            else:
-                self.ADversion='AD14'
-
-        if self.version=='F7':
-            filekeysAD14 = [ key for key in ['BldFile(1)','BldFile(2)','BldFile(3)'] if key in FST_Keys ]
-            names        = ['Bld1'     , 'Bld2'     , 'Bld3'   ]
-            sub_read(self.fst,self,filekeysAD14,names)
-
-
-    def __repr__(self):
-        s='<weio.FastInputDeck object>'+'\n'
-        s+='filename   : '+self.filename+'\n'
-        s+='version    : '+self.version+'\n'
-        s+='AD version : '+self.ADversion+'\n'
-        s+='available attributes: '+','.join(self.Attributes)
-        s+='\n'
-        return s
-
-
-#         EDFile      
-#         BDBldFile(1)
-#         BDBldFile(2)
-#         BDBldFile(3)
-#         InflowFile  
-#         AeroFile    
-#         ServoFile   
-#         HydroFile   
-#         SubFile     
-#         MooringFile 
-#         IceFile     
-
-        # read additional input files (note: this will _not_ recursively read
-        #   all input files)
-        #    fpath = os.path.join(self.modeldir, self.fst[key].strip('"'))
-        #filekeys = [ key for key in self.fst.keys() if key.endswith('File') ]
-        #for key in filekeys:
-        #    fpath = os.path.join(self.modeldir, self.fst[key].strip('"'))
-        #    if os.path.isfile(fpath):
-        #        name = key[:-4]
-        #        self.inputfiles[name] = fpath
-        #        try:
-        #            modinput = FASTInputFile(fpath)
-        #        except:
-        #            print('Problem reading',fpath)
-        #        else:
-        #            setattr(self, name, modinput)
-        #            print('Read',fpath,'as',name)
-        #            # Harcoding subfiles
-#                     if name=='ED':
-#                         self.ED['TwrFile']
-
-
 # --------------------------------------------------------------------------------}
 # --- Helper functions 
 # --------------------------------------------------------------------------------{
@@ -1094,7 +946,7 @@ def strIsFloat(s):
         return False
 
 def strIsBool(s):
-    return (s.lower() is 'true') or (s.lower() is 'false')
+    return (s.lower()=='true') or (s.lower()=='false')
 
 def strIsInt(s):
     s = str(s)
@@ -1137,6 +989,11 @@ def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
             d['isComment']=True
             d['value']=line_raw
             return d
+        if line.lower().startswith('end'):
+            sp =line.split()
+            if len(sp)>2 and sp[1]=='of':
+                d['isComment']=True
+                d['value']=line_raw
 
         # Detecting lists
         List=[];
@@ -1285,7 +1142,7 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
     try:
         if nHeaders==0:
             # Extract number of values from number of numerical values on first line
-            numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
+            numeric_const_pattern = r'[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
             rx = re.compile(numeric_const_pattern, re.VERBOSE)
             if tableType=='num':
                 dat= np.array(rx.findall(lines[nOffset])).astype(float)

@@ -17,13 +17,13 @@
 %% Init
 clear all; close all; clc;
 restoredefaultpath;
-% addpath('../BeamFEM/');
+addpath('../');
 
 %% Main Parameters
 nel      = 10;
 nModesCB = 6 ;
 BC       = 'clamped-free';  % Boundary condition: free-free or clamped-free
-BC       = 'free-free';  % Boundary condition: free-free or clamped-free
+% BC       = 'free-free';  % Boundary condition: free-free or clamped-free
 
 % --- Algo specific params
 ndof  = 6 ; % Degrees of Freedom per Node: 6 for 3D beams
@@ -85,57 +85,57 @@ end
 %     legend('Ux','Vx','Uy','Vy','Uz','Vz')
 %     title(sprintf('Full system mode %d', i))
 % end
-
-
-%% --- CB reduction
-Im = [-ndof+1:0]+size(MM,1);  % Selecting top node (last node) as master 
-xs = x_nobc(1:end-1);
-
-[fc,Mr,Kr,~,~,Psi_sq, ~, ~, Psi_sm] = fCraigBamptonReduce(Im,nModesCB,MM,KK);
-Psi_sm(abs(Psi_sm)<1e-8)=0;
-
-fprintf('fc=%8.3f  (first constrained frequency)\n',fc);
-% [fc,Mr,Kr] = fGuyanReduce(Im,MM,KK);
-fprintf('Number of DOF after reduction:  %d\n',size(Kr,1))
-
-% --- Guyan Modes
-for j = 1:3
-    U_Guy{j}=Psi_sm(  j:ndof:end,:);
-    V_Guy{j}=Psi_sm(3+j:ndof:end,:);
-end
-figure
-for i=1:length(Im)
-    subplot(1,length(Im),i); hold all; box on
-    for j = 1:3
-        plot(xs,U_Guy{j}(:,i),'-')
-        plot(xs,V_Guy{j}(:,i),'--')
-    end
-    legend('Ux','Vx','Uy','Vy','Uz','Vz')
-    title(sprintf('Guyan mode %d',i))
-end
-% --- CB modes
-for j = 1:3
-    U_CB{j}=Psi_sq(  j:ndof:end,:);
-    V_CB{j}=Psi_sq(3+j:ndof:end,:);
-end
-figure
-for i=1:floor(nModesCB/2)
-    subplot(1,floor(nModesCB/2),i); hold all; box on
-    for j = 1:3
-        plot(xs,U_CB{j}(:,i))
-        plot(xs,V_CB{j}(:,i))
-    end
-    legend('Ux','Vx','Uy','Vy','Uz','Vz')
-    title(sprintf('CB mode %d',i))
-end
-
-%% --- EVA of reduced system
-[Q,Lambda]=eig(Kr,Mr);
-Omega2=diag(Lambda);
-[Omega2,Isort]=sort(Omega2);
-Q=Q(:,Isort);
-f= sqrt(Omega2)/(2*pi);
-for i=1:min(size(Kr,1),8);
-    fprintf('                                             %.3f \n',f(i));
-end
-
+% 
+% 
+% %% --- CB reduction
+% Im = [-ndof+1:0]+size(MM,1);  % Selecting top node (last node) as master 
+% xs = x_nobc(1:end-1);
+% 
+% [fc,Mr,Kr,~,~,Psi_sq, ~, ~, Psi_sm] = fCraigBamptonReduce(Im,nModesCB,MM,KK);
+% Psi_sm(abs(Psi_sm)<1e-8)=0;
+% 
+% fprintf('fc=%8.3f  (first constrained frequency)\n',fc);
+% % [fc,Mr,Kr] = fGuyanReduce(Im,MM,KK);
+% fprintf('Number of DOF after reduction:  %d\n',size(Kr,1))
+% 
+% % --- Guyan Modes
+% for j = 1:3
+%     U_Guy{j}=Psi_sm(  j:ndof:end,:);
+%     V_Guy{j}=Psi_sm(3+j:ndof:end,:);
+% end
+% figure
+% for i=1:length(Im)
+%     subplot(1,length(Im),i); hold all; box on
+%     for j = 1:3
+%         plot(xs,U_Guy{j}(:,i),'-')
+%         plot(xs,V_Guy{j}(:,i),'--')
+%     end
+%     legend('Ux','Vx','Uy','Vy','Uz','Vz')
+%     title(sprintf('Guyan mode %d',i))
+% end
+% % --- CB modes
+% for j = 1:3
+%     U_CB{j}=Psi_sq(  j:ndof:end,:);
+%     V_CB{j}=Psi_sq(3+j:ndof:end,:);
+% end
+% figure
+% for i=1:floor(nModesCB/2)
+%     subplot(1,floor(nModesCB/2),i); hold all; box on
+%     for j = 1:3
+%         plot(xs,U_CB{j}(:,i))
+%         plot(xs,V_CB{j}(:,i))
+%     end
+%     legend('Ux','Vx','Uy','Vy','Uz','Vz')
+%     title(sprintf('CB mode %d',i))
+% end
+% 
+% %% --- EVA of reduced system
+% [Q,Lambda]=eig(Kr,Mr);
+% Omega2=diag(Lambda);
+% [Omega2,Isort]=sort(Omega2);
+% Q=Q(:,Isort);
+% f= sqrt(Omega2)/(2*pi);
+% for i=1:min(size(Kr,1),8);
+%     fprintf('                                             %.3f \n',f(i));
+% end
+% 

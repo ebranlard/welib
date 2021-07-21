@@ -75,12 +75,11 @@ TwrElev        TwrDiam        TwrCd
 ======  Outputs  ====================================================================================
 False          SumPrint            - Generate a summary file listing input options and interpolated properties to "<rootname>.AD.sum"?  (flag)
           0   NBlOuts             - Number of blade node outputs [0 - 9] (-)
-          1,          9,         19    BlOutNd             - Blade nodes whose values will be output  (-)
+          1,  BlOutNd             - Blade nodes whose values will be output  (-)
           0   NTwOuts             - Number of tower node outputs [0 - 9]  (-)
           1,   TwOutNd             - Tower nodes whose values will be output  (-)
                    OutList             - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
 RtSpeed
-RtTSR,
 RtTSR
 RtVAvgxh
 RtVAvgyh
@@ -98,4 +97,14 @@ RtAeroCp
 RtAeroCq
 RtAeroCt
 B1N3Clrnc, B2N3Clrnc, B3N3Clrnc
-END of - input file (the word "END" must appear in the first 3 columns of this last OutList line)
+END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
+====== Outputs for all blade stations (same ending as above for B1N1.... =========================== [optional section]
+   1              BldNd_BladesOut     - Number of blades to output all node information at.  Up to number of blades on turbine. (-)
+   "All"          BldNd_BlOutNd       - Future feature will allow selecting a portion of the nodes to output.  Not implemented yet. (-)
+                  OutListAD             - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
+"Fx"
+"Fy"
+"alpha"
+"Cl"
+END of  input file (the word "END" must appear in the first 3 columns of this last OutList line)
+---------------------------------------------------------------------------------------

@@ -94,13 +94,23 @@ def eig(K,M=None, freq_out=False, sort=True):
     return Q,Lambda
 
 
-def eigA(A, nq=None, nq1=None, full=False):
+def eigA(A, nq=None, nq1=None, fullEV=False):
     """
     Perform eigenvalue analysis on a "state" matrix A
-    where states are assumed to be orderd as {q, q_dot, q1}
+    where states are assumed to be ordered as {q, q_dot, q1}
+    This order is only relevant for returning the eigenvectors.
 
-    if full is True, the entire eigenvectors are returned, otherwise, 
-    only the part associated with q and q1 are returned
+    INPUTS:
+     - A : square state matrix
+     - nq: number of second order states, optional, relevant if fullEV is False
+     - nq1: number of first order states, optional, relevant if fullEV is False
+     - fullEV: if True, the entire eigenvectors are returned, otherwise, 
+                only the part associated with q and q1 are returned
+    OUPUTS:
+     - freq_d: damped frequencies [Hz]
+     - zeta  : damping ratios [-]
+     - Q     : column eigenvectors
+     - freq_0: natural frequencies [Hz]
     """
     n,m = A.shape
 
@@ -117,7 +127,7 @@ def eigA(A, nq=None, nq1=None, full=False):
     Q, Lambda = eig(A, sort=False)
     v = np.diag(Lambda)
 
-    if not full:
+    if not fullEV:
         Q=np.delete(Q, slice(nq,2*nq), axis=0)
 
     # Selecting eigenvalues with positive imaginary part (frequency)
@@ -132,7 +142,7 @@ def eigA(A, nq=None, nq1=None, full=False):
     freq_0  = omega_0/(2*np.pi)      # natural frequency [Hz]
 
     # Sorting
-    I = np.argsort(freq_d)
+    I = np.argsort(freq_0)
     freq_d = freq_d[I]
     freq_0 = freq_0[I]
     zeta   = zeta[I]

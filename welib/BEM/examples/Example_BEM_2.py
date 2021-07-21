@@ -4,6 +4,7 @@ Performs simple BEM simulations of the NREL 5MW turbine for a set of operating c
 # --- Common libraries 
 import sys
 import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -59,10 +60,28 @@ def main(test=False):
     if not test:
         dfOut.to_csv(filenameOut,sep='\t',index=False)
         print('>>>',filenameOut)
+        print(dfOut.keys())
+        # --- Plot
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(dfOut['WS_[m/s]'].values, dfOut['AeroPower_[kW]'].values, label='Power')
+        ax.set_xlabel('Wind speed [m/s]')
+        ax.set_ylabel('[-]')
+        ax.legend()
+        ax.set_title('BEM - Steady performance curve')
+        ax.tick_params(direction='in')
+
+
     return dfOut
 
 
 if __name__=="__main__":
     main()
+    plt.show()
 if __name__=="__test__":
     main(test=True)
+    [os.remove(f) for f in glob.glob(os.path.join(MyDir,'_*.csv'))]
+if __name__=="__export__":
+    main()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)

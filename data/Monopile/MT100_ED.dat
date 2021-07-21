@@ -44,7 +44,7 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   PtfmYaw     - Initial or fixed yaw rotational displacement of platform (degrees)
 ---------------------- TURBINE CONFIGURATION -----------------------------------
           3   NumBl       - Number of blades (-)
-        0.10   TipRad      - The distance from the rotor apex to the blade tip (meters)
+        0.1   TipRad      - The distance from the rotor apex to the blade tip (meters)
         0.0   HubRad      - The distance from the rotor apex to the blade root (meters)
         0.0   PreCone(1)  - Blade 1 cone angle (degrees)
         0.0   PreCone(2)  - Blade 2 cone angle (degrees)
@@ -63,12 +63,12 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   NcIMUyn     - Lateral  distance from the tower-top to the nacelle IMU (meters)
           0   NcIMUzn     - Vertical distance from the tower-top to the nacelle IMU (meters)
         0.0   Twr2Shft    - Vertical distance from the tower-top to the rotor shaft (meters)
-        1.0   TowerHt     - Height of tower above ground level [onshore] or MSL [offshore] (meters)
-          0   TowerBsHt   - Height of tower base above ground level [onshore] or MSL [offshore] (meters)
+        51.0   TowerHt     - Height of tower above ground level [onshore] or MSL [offshore] (meters)
+         50   TowerBsHt   - Height of tower base above ground level [onshore] or MSL [offshore] (meters)
           0   PtfmCMxt    - Downwind distance from the ground level [onshore] or MSL [offshore] to the platform CM (meters)
           0   PtfmCMyt    - Lateral distance from the ground level [onshore] or MSL [offshore] to the platform CM (meters)
           0   PtfmCMzt    - Vertical distance from the ground level [onshore] or MSL [offshore] to the platform CM (meters)
-          0   PtfmRefzt   - Vertical distance from the ground level [onshore] or MSL [offshore] to the platform reference point (meters)
+         50   PtfmRefzt   - Vertical distance from the ground level [onshore] or MSL [offshore] to the platform reference point (meters)
 ---------------------- MASS AND INERTIA ----------------------------------------
           0   TipMass(1)  - Tip-brake mass, blade 1 (kg)
           0   TipMass(2)  - Tip-brake mass, blade 2 (kg)
@@ -132,5 +132,55 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "PtfmRoll"                - Platform rotational roll, pitch and yaw displacements
 "PtfmPitch"               - Platform rotational roll, pitch and yaw displacements
 "PtfmYaw"                 - Platform rotational roll, pitch and yaw displacements
+"Q_B1E1"	Displacement of 1st edgewise bending-mode DOF of blade 1
+"Q_B2E1"	Displacement of 1st edgewise bending-mode DOF of blade 2
+"Q_B3E1"	Displacement of 1st edgewise bending-mode DOF of blade 3
+"Q_B1F1"	Displacement of 1st flapwise bending-mode DOF of blade 1
+"Q_B2F1"	Displacement of 1st flapwise bending-mode DOF of blade 2
+"Q_B3F1"	Displacement of 1st flapwise bending-mode DOF of blade 3
+"Q_B1F2"	Displacement of 2nd flapwise bending-mode DOF of blade 1
+"Q_B2F2"	Displacement of 2nd flapwise bending-mode DOF of blade 2
+"Q_B3F2"	Displacement of 2nd flapwise bending-mode DOF of blade 3
+"Q_Teet"	Displacement of hub teetering DOF
+"Q_DrTr"	Displacement of drivetrain rotational-flexibility DOF
+"Q_GeAz"	Displacement of variable speed generator DOF
+"Q_RFrl"	Displacement of rotor-furl DOF
+"Q_TFrl"	Displacement of tail-furl DOF
+"Q_Yaw" 	Displacement of nacelle yaw DOF
+"Q_TFA1"	Displacement of 1st tower fore-aft bending mode DOF
+"Q_TSS1"	Displacement of 1st tower side-to-side bending mode DOF
+"Q_TFA2"	Displacement of 2nd tower fore-aft bending mode DOF
+"Q_TSS2"	Displacement of 2nd tower side-to-side bending mode DOF
+"Q_Sg"		Displacement of platform horizontal surge translation DOF
+"Q_Sw"		Displacement of platform horizontal sway translation DOF
+"Q_Hv"		Displacement of platform vertical heave translation DOF
+"Q_R"		Displacement of platform roll tilt rotation DOF
+"Q_P"		Displacement of platform pitch tilt rotation DOF
+"Q_Y"		Displacement of platform yaw rotation DOF
+"QD_B1E1"		Velocity of 1st edgewise bending-mode DOF of blade 1
+"QD_B2E1"		Velocity of 1st edgewise bending-mode DOF of blade 2
+"QD_B3E1"		Velocity of 1st edgewise bending-mode DOF of blade 3
+"QD_B1F1"		Velocity of 1st flapwise bending-mode DOF of blade 1
+"QD_B2F1"		Velocity of 1st flapwise bending-mode DOF of blade 2
+"QD_B3F1"		Velocity of 1st flapwise bending-mode DOF of blade 3
+"QD_B1F2"		Velocity of 2nd flapwise bending-mode DOF of blade 1
+"QD_B2F2"		Velocity of 2nd flapwise bending-mode DOF of blade 2
+"QD_B3F2"		Velocity of 2nd flapwise bending-mode DOF of blade 3
+"QD_Teet"		Velocity of hub teetering DOF
+"QD_DrTr"		Velocity of drivetrain rotational-flexibility DOF
+"QD_GeAz"		Velocity of variable speed generator DOF
+"QD_RFrl"		Velocity of rotor-furl DOF
+"QD_TFrl"		Velocity of tail-furl DOF
+"QD_Yaw"		Velocity of nacelle yaw DOF
+"QD_TFA1"		Velocity of 1st tower fore-aft bending mode DOF
+"QD_TSS1"		Velocity of 1st tower side-to-side bending mode DOF
+"QD_TFA2"		Velocity of 2nd tower fore-aft bending mode DOF
+"QD_TSS2"		Velocity of 2nd tower side-to-side bending mode DOF
+"QD_Sg"		Velocity of platform horizontal surge translation DOF
+"QD_Sw"		Velocity of platform horizontal sway translation DOF
+"QD_Hv"		Velocity of platform vertical heave translation DOF
+"QD_R"		Velocity of platform roll tilt rotation DOF
+"QD_P"		Velocity of platform pitch tilt rotation DOF
+"QD_Y"		Velocity of platform yaw rotation DOF
 END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
 ---------------------------------------------------------------------------------------

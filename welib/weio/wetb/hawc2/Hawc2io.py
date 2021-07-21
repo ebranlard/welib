@@ -50,7 +50,7 @@ import os
 ################################################################################
 ################################################################################
 ################################################################################
-## Read HAWC2 class
+# Read HAWC2 class
 ################################################################################
 class ReadHawc2(object):
     """
@@ -169,7 +169,7 @@ class ReadHawc2(object):
         # read sensor file used if results are saved in FLEX format
         DirName = os.path.dirname(self.FileName)
         try:
-            fid = opent(DirName + "\sensor ", 'r')
+            fid = opent(DirName + r"\sensor ", 'r')
         except IOError:
             print ("can't finde sensor file for FLEX format")
             return
@@ -177,7 +177,9 @@ class ReadHawc2(object):
         fid.close()
         # reads channel info (name, unit and description)
         self.NrCh = 0
-        Name = []; Unit = []; Description = [];
+        Name = []
+        Unit = []
+        Description = []
         for i in range(2, len(Lines)):
             temp = Lines[i]
             if not temp.strip():
@@ -236,7 +238,8 @@ class ReadHawc2(object):
         if not ChVec:
             ChVec = range(0, self.NrCh)
         with open(self.FileName + '.dat', 'rb') as fid:
-            data = np.zeros((self.NrSc, len(ChVec))); j = 0
+            data = np.zeros((self.NrSc, len(ChVec)))
+            j = 0
             for i in ChVec:
                 fid.seek(i * self.NrSc * 2, 0)
                 data[:, j] = np.fromfile(fid, 'int16', self.NrSc) * self.ScaleFactor[i]
@@ -301,7 +304,7 @@ class ReadHawc2(object):
         if not ChVec:
             ChVec = range(0, self.NrCh)
         elif max(ChVec) >= self.NrCh:
-            print ("to high channel number")
+            print("to high channel number")
             return
         # if ReadOnly, read data but no storeing in memory
         if self.ReadOnly:
@@ -310,7 +313,8 @@ class ReadHawc2(object):
         # and return all requested channels
         else:
             # sort into known channels and channels to be read
-            I1 = [];I2 = []  # I1=Channel mapping, I2=Channels to be read
+            I1 = []
+            I2 = []  # I1=Channel mapping, I2=Channels to be read
             for i in ChVec:
                 try:
                     I1.append(self.Iknown.index(i))
@@ -333,7 +337,7 @@ class ReadHawc2(object):
 ################################################################################
 ################################################################################
 ################################################################################
-## write HAWC2 class, to be implemented
+# write HAWC2 class, to be implemented
 ################################################################################
 
 if __name__ == '__main__':

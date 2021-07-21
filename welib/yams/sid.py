@@ -141,16 +141,16 @@ class SID(object):
 # ---  Converters
 # --------------------------------------------------------------------------------{
 def Beam2SID(xNodes, Imodes, m, Iy, Iz, G=None, Kv=None, A=None, E=None, phi=None):
-    from welib.FEM.fem_beam import cbeam_frame3dlin
+    from welib.FEM.fem_beam import cbeam_assembly_frame3dlin
     from welib.FEM.fem_beam import applyBC
     from welib.FEM.fem_beam import orthogonalizeModePair, normalize_to_last
     from welib.system.eva import eig
 
     # --- Assembling FEM beam model with frame3dlin
-    MM, KK, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF = cbeam_frame3dlin(xNodes, m, Iy, Iz=Iz, A=A, Kv=Kv, E=E, G=G, phi=phi)
+    MM, KK, xNodes, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF = cbeam_assembly_frame3dlin(xNodes, m, Iy, Iz=Iz, A=A, Kv=Kv, E=E, G=G, phi=phi)
 
     # --- Constraints/ BC
-    MMr, KKr, Tr = applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC_root=[0,0,0,0,0,0], BC_tip=[1,1,1,1,1,1])
+    MMr, KKr, Tr,_,_ = applyBC(MM, KK, Elem2Nodes, Nodes2DOF, BC_root=[0,0,0,0,0,0], BC_tip=[1,1,1,1,1,1])
     iStart= 0; 
 
     # --- Selections, and orthogonlization of modes 

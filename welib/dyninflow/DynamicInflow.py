@@ -150,7 +150,7 @@ def example_astep_WS():
             ax.plot((vt-tstep)/scale,[a_qs(t) for t in vt],'k', label='Quasi-steady')
         ax.plot((vt-tstep)/scale,sol.y[0,:], label='tau1={:4.1f} - U_0={:2.0f}'.format(tau1,U0))
     ax.legend()
-    plt.title('DynInflow Influence of WindSpeed')
+    ax.set_title('DynInflow Influence of WindSpeed')
 
 
 
@@ -190,7 +190,7 @@ def example_astep_radius():
     ax.set_xlabel('t/tau1 [-]')
     ax.set_xlim([-1,4])
     ax.legend()
-    plt.title('DynInflow Influence of Radius')
+    ax.set_title('DynInflow Influence of Radius')
 
 def dyninflow_case(Case='Sine', T=5, U0=10, R=65,r_bar=0.5,a_mean=0.2,a_ampl=0.15,U0_ampl=3):
     # Inputs for dyna stall 
@@ -264,19 +264,21 @@ def example_algo_investigation(Case='Sine', T=5, U0=10, R=65,r_bar=0.5,a_mean=0.
     system = lambda t,x: dynflow_oye_dxdt(t,x, a_qs(t) , x[0], 0, dtau1_dt(t), fU0(t), r_bar*R, R)
     sol_implicit_no_deriv = solve_ivp(system , t_span=[0, max(vt)], y0=y0, t_eval=vt)
 
-    plt.figure()
-    plt.plot(vt,sol.y[0,:], label='a')
-    plt.plot(vt,sol_no_deriv.y[0,:], '-.',label='a (no deriv)')
-    plt.plot(vt,sol_implicit.y[0,:], '--',label='a (implicit)')
-    plt.plot(vt,sol_implicit_no_deriv.y[0,:], ':',label='a (implicit no deriv)')
-    plt.plot(vt,[a_qs(t) for t in vt], label='a_qs')
+
+
+    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+
+    ax.plot(vt,sol.y[0,:], label='a')
+    ax.plot(vt,sol_no_deriv.y[0,:], '-.',label='a (no deriv)')
+    ax.plot(vt,sol_implicit.y[0,:], '--',label='a (implicit)')
+    ax.plot(vt,sol_implicit_no_deriv.y[0,:], ':',label='a (implicit no deriv)')
+    ax.plot(vt,[a_qs(t) for t in vt], label='a_qs')
 #     plt.plot(vt,sol.y[1,:], label='da/dt')
 #     plt.plot(vt,da_qs_dt(vt), label='da_qs/dt')
-    plt.legend()
-    plt.title('DynInflow {} AlgoInvest'.format(Case))
-
-
-
+    ax.legend()
+    ax.set_title('DynInflow {} AlgoInvest'.format(Case))
+    return ax
 
 
 def example_tau1_abar():

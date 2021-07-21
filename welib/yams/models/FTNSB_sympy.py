@@ -79,7 +79,7 @@ def get_model(model_name, **opts):
             nDOF_bld = model_name.split('B')[1][0]
         else:
             nDOF_bld=0
-    print('fnd',','.join(['1' if b else '0' for b in bFndDOFs]), 'twr',nDOF_twr, 'nac',nDOF_nac, 'sft',nDOF_sft, 'bld',nDOF_bld) 
+    #print('fnd',','.join(['1' if b else '0' for b in bFndDOFs]), 'twr',nDOF_twr, 'nac',nDOF_nac, 'sft',nDOF_sft, 'bld',nDOF_bld) 
 
     # --------------------------------------------------------------------------------}
     # --- Isolated bodies 
@@ -206,22 +206,22 @@ def get_model(model_name, **opts):
         rots[1] = phi_y if bFndDOFs[4] else 0
         rots[2] = phi_z if bFndDOFs[5] else 0
         if nDOF_fnd==0:
-            print('Rigid connection ref twr', rel_pos)
+            #print('Rigid connection ref twr', rel_pos)
             ref.connectTo(twr, type='Rigid' , rel_pos=rel_pos)
         elif nDOF_fnd==1: 
-            print('Constraint connection ref twr')
+            #print('Constraint connection ref twr')
             ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(0    , x * symbols('nu'), 0   ), rot_order='XYZ')
         else:
-            print('Free connection ref twr', rel_pos, rots)
+            #print('Free connection ref twr', rel_pos, rots)
             ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
             #ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=(rots[2],rots[1],rots[0]), rot_order='ZYX')  #NOTE: rot order is not "optimal".. phi_x should be last
     else:
-        print('Rigid connection ref twr')
+        #print('Rigid connection ref twr')
         ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,0))
 
     # Rigid connection between twr and fnd if fnd exists
     if fnd is not None:
-        print('Rigid connection twr fnd')
+        #print('Rigid connection twr fnd')
         if nDOF_twr==0:
             twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
         else:
@@ -230,10 +230,10 @@ def get_model(model_name, **opts):
     if nDOF_twr==0:
         # Tower rigid -> Rigid connection to nacelle
         # TODO TODO L_T or twr.L
-        if nDOF_nac==0:
-            print('Rigid connection twr nac')
-        else:
-            print('Dynamic connection twr nac')
+        #if nDOF_nac==0:
+        #print('Rigid connection twr nac')
+        #else:
+        #print('Dynamic connection twr nac')
 
         if opts['tiltShaft']:
             # Shaft will be tilted, not nacelle
@@ -244,7 +244,7 @@ def get_model(model_name, **opts):
 
     else:
         # Flexible tower -> Flexible connection to nacelle
-        print('Flexible connection twr nac')
+        #print('Flexible connection twr nac')
         if opts['tiltShaft']:
             twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, 0      , 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
         else:
@@ -290,7 +290,7 @@ def get_model(model_name, **opts):
             K_Mx, K_My, K_Mz          = symbols('K_x_M, K_y_M, K_z_M') # Mooring restoring
             K_Mphix, K_Mphiy, K_Mphiz = symbols('K_phi_x_M, K_phi_y_M, K_phi_z_M') # Mooring restoring
             F_B = dynamicsymbols('F_B') # Buoyancy force
-            print('>>> Adding fnd loads. NOTE: reference might need to be adapted')
+            #print('>>> Adding fnd loads. NOTE: reference might need to be adapted')
             # Buoyancy
             body_loads  += [(fnd, (P_B, F_B * ref.frame.z))]
             ## Restoring mooring and torques
@@ -334,7 +334,7 @@ def get_model(model_name, **opts):
                     thrustR = (rot.origin, T_a *cos(tiltDOF) * nac.frame.x -T_a *sin(tiltDOF) * nac.frame.z)
                 if opts['aero_torques']:
                     M_a_R = (nac.frame, M_ax*nac.frame.x*0 )# TODO TODO
-                    print('>>> WARNING tilt shaft aero moments not implemented') # TODO
+                    #print('>>> WARNING tilt shaft aero moments not implemented') # TODO
                     body_loads+=[(nac, M_a_R)]
             else:
                 thrustR = (rot.origin, T_a * nac.frame.x )
@@ -360,7 +360,7 @@ def get_model(model_name, **opts):
             body_loads  += [(nac,thrustN)]
 
         if opts['aero_torques']:
-            print('>>> Adding aero torques')
+            #print('>>> Adding aero torques')
             if opts['tiltShaft']:
                 # NOTE: for a rigid RNA we keep only M_y and M_z, no shaft torque
                 x_tilted = cos(tiltDOF) * nac.frame.x - sin(tiltDOF) * nac.frame.z
@@ -384,7 +384,7 @@ def get_model(model_name, **opts):
         if opts['linRot']:
             fndVelAll += [diff(phi_x,time), diff(phi_y,time),  diff(phi_z,time)]  
         else:
-            print('>>>>>>>> TODO sort out which frame')
+            #print('>>>>>>>> TODO sort out which frame')
             #fndVelAll +=[ omega_TE.dot(ref.frame.x).simplify(), omega_TE.dot(ref.frame.y).simplify(), omega_TE.dot(ref.frame.z).simplify()]  
             fndVelAll +=[ omega_TE.dot(twr.frame.x).simplify(), omega_TE.dot(twr.frame.y).simplify(), omega_TE.dot(twr.frame.z).simplify()]  
         kdeqsSubs+=[ (fndSpeedsAll[i], fndVelAll[i]) for i,dof in enumerate(bFndDOFs) if dof] 
@@ -404,7 +404,7 @@ def get_model(model_name, **opts):
             raise NotImplementedError()
         else:
             if nDOF_sft==1:
-                print('>>>>>>>> TODO sort out which frame')
+                #print('>>>>>>>> TODO sort out which frame')
                 # I believe we should use omega_RE
                 kdeqsSubs+=[ (omega_x_R, omega_RN.dot(rot.frame.x).simplify()) ]  
 
@@ -417,7 +417,7 @@ def get_model(model_name, **opts):
     model.coordinates = coordinates
     model.speeds      = speeds
     model.kdeqsSubs   = kdeqsSubs
-    print(model)
+    #print(model)
 
     model.fnd=fnd
     model.twr=twr

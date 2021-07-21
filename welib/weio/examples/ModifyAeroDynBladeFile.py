@@ -1,6 +1,9 @@
 import weio
 import numpy as np
-Bld=weio.read('../../../data/NREL5MW/data/NREL5MW_AD15_blade.dat')
+import os
+MyDir=os.path.dirname(__file__)
+
+Bld=weio.read(os.path.join(MyDir,'../../../data/NREL5MW/data/NREL5MW_AD15_blade.dat'))
 nSpan = 10
 
 Spn   = np.linspace(0, 15, nSpan)       # BlSpn, radial stations [m]

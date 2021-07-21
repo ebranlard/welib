@@ -1,5 +1,6 @@
 from .kalman import *
 import numpy as np
+import pandas as pd
 
 class KalmanFilter(object):
     def __init__(self,sX0,sXa,sU,sY,sS=[]):
@@ -17,6 +18,15 @@ class KalmanFilter(object):
         self.iY={lab: i   for i,lab in enumerate(self.sY)}
         self.iU={lab: i   for i,lab in enumerate(self.sU)}
         self.iS={lab: i   for i,lab in enumerate(self.sS)}
+
+        # Standard deviations and covariance matrix
+        self.sigX_c = None
+        self.sigY_c = None
+        self.sigX   = None
+        self.sigY   = None
+        self.P = None
+        self.Q = None
+        self.R = None
 
     @property
     def nX(self):
@@ -71,6 +81,22 @@ class KalmanFilter(object):
             pass
         return s
 
+    @property
+    def A(self):
+        return pd.DataFrame(data = self.Xx, index=self.sX, columns=self.sX)
+
+    @property
+    def B(self):
+        return pd.DataFrame(data = self.Xu, index=self.sX, columns=self.sU)
+
+    @property
+    def C(self):
+        return pd.DataFrame(data = self.Yx, index=self.sY, columns=self.sX)
+
+    @property
+    def D(self):
+        return pd.DataFrame(data = self.Yu, index=self.sY, columns=self.sU)
+
 
     def setMat(self, Xx, Xu, Yx, Yu):
         # --- 
@@ -107,6 +133,17 @@ class KalmanFilter(object):
             raise Exception('Set `sigX` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
         if not hasattr(self,'sigY'):
             raise Exception('Set `sigY` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
+
+        for lab in self.sX:
+            if self.sigX[lab]==0:
+                print('[WARN] Sigma for x[{}] is zero, replaced by 1e-4'.format(lab))
+                self.sigX[lab]=1e-4
+        for lab in self.sY:
+            if self.sigY[lab]==0:
+                print('[WARN] Sigma for y[{}] is zero, replaced by 1e-4'.format(lab))
+                self.sigY[lab]=1e-4
+
+
         P = np.eye(self.nX)
         Q = np.diag([self.sigX[lab]**2 for lab in self.sX])
         R = np.diag([self.sigY[lab]**2 for lab in self.sY])
@@ -206,12 +243,14 @@ class KalmanFilter(object):
         return np.zeros(self.nX)
 
 
-    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]'):
+    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', dataDict=None):
         """" 
          - Open a simulation result file
          - Use dt to discretize the KF
          - Define clean values of measurements and states based on simulation
          - Define sigmas from the std of the clean signals
+
+         dataDict: additional data provided for ColMap
         
         """
         import welib.fast.fastlib as fastlib 
@@ -224,7 +263,7 @@ class KalmanFilter(object):
             df=df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
         time = df[timeCol].values
         dt   = (time[-1] - time[0])/(len(time)-1)
-        KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False)
+        KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False, dataDict=dataDict)
 
         # --- 
         KF.discretize(dt, method='exponential')
@@ -232,7 +271,7 @@ class KalmanFilter(object):
         KF.setCleanValues(KF.df)
 
         # --- Estimate sigmas from measurements
-        sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
+        KF.sigX_c,KF.sigY_c = KF.sigmasFromClean(factor=1)
 
     def prepareTimeStepping(KF):
         # --- Process and measurement covariances
@@ -278,11 +317,13 @@ class KalmanFilter(object):
             else:
                 res=10**(np.floor(np.log10(std))-1)
             sigY[lab]=np.floor(std/res)*res * factor
-        self.sigX=sigX
-        self.sigY=sigY
+        self.sigX=sigX.copy()
+        self.sigY=sigY.copy()
         return sigX,sigY
 
-    def print_sigmas(self,sigX_c=None,sigY_c=None):
+    def print_sigmas(self):
+        sigX_c=self.sigX_c
+        sigY_c=self.sigY_c
         if sigX_c is not None:
             print('Sigma X            to be used     from inputs')
             for k,v in self.sigX.items():
@@ -305,55 +346,76 @@ class KalmanFilter(object):
     # --------------------------------------------------------------------------------}
     # --- Plot functions 
     # --------------------------------------------------------------------------------{
-    def plot_Y(KF,fig=None):
-        import matplotlib
-        import matplotlib.pyplot as plt
-        # --- Compare measurements
-        cmap = matplotlib.cm.get_cmap('viridis')
-        COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
-        if fig is None:
-            fig=plt.figure()
-        for j,s in enumerate(KF.sY):
-            ax=fig.add_subplot(KF.nY,1,j+1)
-            ax.plot(KF.time,KF.Y_clean[j,:],''  ,  color=COLRS[0] ,label='Clean')
-            ax.plot(KF.time,KF.Y[j      ,:],'-.',  color=COLRS[2] ,label='Noisy')
-            ax.plot(KF.time,KF.Y_hat[j  ,:],'--' , color=COLRS[1],label='Estimate')
-            ax.set_ylabel(s)
-        ax.legend(fontsize=10)
-        ax.set_title('Measurements Y')
 
-    def plot_X(KF,fig=None):
-        import matplotlib
-        import matplotlib.pyplot as plt
-        # --- Compare States
-        cmap = matplotlib.cm.get_cmap('viridis')
-        COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
-        if fig is None:
-            fig=plt.figure()
-        for j,s in enumerate(KF.sX):
-            ax=fig.add_subplot(KF.nX,1,j+1)
-            ax.plot(KF.time,KF.X_clean[j,:],''  , color=COLRS[0],label='Clean')
-            ax.plot(KF.time,KF.X_hat  [j,:],'--', color=COLRS[1],label='Estimate')
-            ax.set_ylabel(s)
-        ax.set_title('States X')
+    def plot_X(KF, title='States X', **kwargs):
+        return _plot(KF.time, KF.X_clean, KF.X_hat, KF.sX, title=title, **kwargs)
 
+    def plot_Y(KF, title='Measurements Y', **kwargs):
+        return _plot(KF.time, KF.Y_clean, KF.Y_hat, KF.sY, title=title, X_noisy=KF.Y, **kwargs)
 
-    def plot_S(KF,fig=None):
+    def plot_S(KF, title='Stored Values S',**kwargs):
         if KF.nS==0:
             return
-        import matplotlib
-        import matplotlib.pyplot as plt
-        # --- Compare States
+        return _plot(KF.time, KF.S_clean, KF.S_hat, KF.sS, title=title, **kwargs)
+
+    def save(KF, filename, fmt='pickle'):
+        if fmt=='pickle':
+            import pickle
+            with open(filename,'wb') as f:
+                pickle.dump(self,f)
+        else:
+            raise NotImplementedError()
+
+    @staticmethod
+    def load(filename):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext=='.pkl':
+            import pickle
+            with open(filename,'rb') as f:
+                dat=pickle.load(f)
+        else:
+            raise NotImplementedError()
+        return dat
+
+
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None):
+    import matplotlib
+    import matplotlib.pyplot as plt
+    # --- Compare States
+    if COLRS is None:
         cmap = matplotlib.cm.get_cmap('viridis')
         COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
-        if fig is None:
-            fig=plt.figure()
-        for j,s in enumerate(KF.sS):
-            ax=fig.add_subplot(KF.nS,1,j+1)
-            ax.plot(KF.time,KF.S_clean[j,:],''  , color=COLRS[0],label='Clean')
-            ax.plot(KF.time,KF.S_hat  [j,:],'--', color=COLRS[1],label='Estimate')
-            ax.set_ylabel(s)
-        ax.set_title('Intermediate values S')
 
+    if channels is not None:
+        sX=list(sX)
+        I=[]
+        for s in channels:
+            try:
+               I.append(sX.index(s))
+            except:
+                print('[FAIL] Signal {} not found '.format(s))
+        if len(I)==0:
+            I=np.arange(len(sX))
+    else:
+        I=np.arange(len(sX))
+
+    if fig is None:
+        fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.16, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
+        if not hasattr(axes,'__len__'):
+            axes=[axes]
+    for j,i in enumerate(I):
+        s  = sX[i]
+        ax = axes[j]
+        ax.plot(time,X_clean[i,:],''  , color=COLRS[0],label='Reference')
+        if X_noisy is not None:
+            ax.plot(time,X_noisy[i,:],'-.',  color=COLRS[2] ,label='Noisy')
+        ax.plot(time,X_hat  [i,:],'--', color=COLRS[1],label='Estimate')
+        ax.set_ylabel(s)
+        ax.tick_params(direction='in')
+    axes[0].set_title(title)
+    axes[-1].set_xlabel('Time [s]')
+    axes[-1].legend()
+    return fig, axes
 
 
