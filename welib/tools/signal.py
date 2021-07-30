@@ -316,6 +316,43 @@ def correlated_signal(coeff, n=1000, seed=None):
     x-=np.mean(x)
     return x
 
+
+def find_time_offset(t, f, g, outputAll=False):
+    """ 
+    Find time offset between two signals (may be negative)
+
+    t_offset = find_time_offset(t, f, g)
+    f(t+t_offset) ~= g(t)
+
+    """
+    import scipy
+    from scipy.signal import correlate
+    # Remove mean and normalize by std
+    f  = f.copy()
+    g  = g.copy()
+    f -= f.mean() 
+    g -= g.mean()
+    f /= f.std()
+    g /= g.std()
+
+    # Find cross-correlation
+    xcorr = correlate(f, g)
+
+    # Lags
+    n   = len(f)
+    dt  = t[1]-t[0]
+    lag = np.arange(1-n, n)*dt
+
+    # Time offset is located at maximum correlation
+    t_offset = lag[xcorr.argmax()]
+
+    if outputAll:
+        return t_offset, lag, xcorr
+    else:
+        return t_offset
+
+
+
 # --------------------------------------------------------------------------------}
 # --- Convolution 
 # --------------------------------------------------------------------------------{
