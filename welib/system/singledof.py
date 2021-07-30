@@ -105,6 +105,59 @@ def forced_vibration(vt, k, m, F0, Omega, zeta, x0=0, xdot0=0):
     return x
 
 
+# --------------------------------------------------------------------------------}
+# --- Misc
+# --------------------------------------------------------------------------------{
+def impulse_response_function(time, m, c, k, outputDerivative=False):
+    """ 
+    Impulse response function, useful for Duhamel integral
+    
+    """
+    zeta   = c/(2*np.sqrt(k*m))
+    omega0 = np.sqrt(k/m)
+    omegad = omega0 * np.sqrt(1-zeta**2)
+    H = 1/(m*omegad) * np.sin(omegad * time) * np.exp(-zeta * omega0 * time)
+
+    if outputDerivative:
+        # Also compute derivative
+        Hp = -zeta * omega0 * H + 1/(m) * np.cos(omegad * time) * np.exp(-zeta * omega0 * time)
+        #Hp = 1/(m*omegad)*(-zeta * omega0 * np.sin(omegad * time) + omegad* np.cos(omegad * time)) * np.exp(-zeta * omega0 * time)
+        return H, Hp
+    else:
+        return H
+
+
+def duhamel(time, F, m, c, k):
+    """ 
+    Compute time response of a single DOF system using Duhamel's integral
+
+        x(t)    = \int_0^t F(t') H(t-t') dt' 
+        xdot(t) = \int_0^t F(t') H'(t-t') dt'
+    with
+     - F: force
+     - H: impulse response function
+     - H' derivative of impulse function
+
+    NOTE: assumes that initial conditions are (0,0)
+    If this is not the case, some transient responses need to be added.
+
+    INPUTS:
+      - time : 1d-array of time stamps
+      - F    : 1d-array of force at each time step
+      - m,c,k: scalar mass, damping, stiffness
+    OUTPUTS:
+      - x, xd: 1d-array, of position and speed
+
+    """
+    H, Hp = impulse_response_function(time, m, c , k, outputDerivative=True)
+    #dt = t_eval[1]-t_eval[0]
+    #x  = np.convolve(F.ravel(), H.ravel()  )[:len(t_eval)]*dt
+    #xd = np.convolve(F.ravel(), Hp.ravel() )[:len(t_eval)]*dt
+    from welib.tools.signal import convolution_integral
+    x  = convolution_integral(time, F.ravel(), H )
+    xd = convolution_integral(time, F.ravel(), Hp)
+    return x, xd
+
 
 if __name__=='__main__':
     pass

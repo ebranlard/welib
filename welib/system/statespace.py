@@ -12,7 +12,12 @@ def StateMatrix(Minv,C,K):
     return A
 
 def vec_interp(t,vTime,vF):
-    """ Interpolate vector known at discrete values (vTime, vF) to a given time `t` """
+    """ Interpolate vector known at discrete values (vTime, vF) to a given time `t` 
+    TODO use and interpolant if possible
+      t : scalar!
+      vTime : 1d-array of length nt 
+      vF : nDOF x nt array
+    """
     F    = np.zeros(vF.shape[0])
     for iDOF,F_DOF in enumerate(vF):
         F[iDOF] = np.interp(t,vTime,F_DOF)

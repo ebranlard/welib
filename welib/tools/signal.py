@@ -281,7 +281,7 @@ def zero_crossings(y,x=None,direction=None):
 
 
 # --------------------------------------------------------------------------------}
-# ---  
+# --- Correlation  
 # --------------------------------------------------------------------------------{
 def correlation(x, nMax=80, dt=1, method='manual'):
     """ 
@@ -298,13 +298,15 @@ def correlation(x, nMax=80, dt=1, method='manual'):
     return R, tau
 
 
-def correlated_signal(coeff, n=1000):
+def correlated_signal(coeff, n=1000, seed=None):
     """
     Create a correlated random signal of length `n` based on the correlation coefficient `coeff`
           value[t] = coeff * value[t-1]  + (1-coeff) * random
     """
     if coeff<0 or coeff>1: 
         raise Exception('Correlation coefficient should be between 0 and 1')
+    if seed is not None:
+        np.random.seed(seed)
 
     x    = np.zeros(n)
     rvec = rand(n)
@@ -313,6 +315,36 @@ def correlated_signal(coeff, n=1000):
         x[m] = coeff*x[m-1] + (1-coeff)*rvec[m] 
     x-=np.mean(x)
     return x
+
+# --------------------------------------------------------------------------------}
+# --- Convolution 
+# --------------------------------------------------------------------------------{
+def convolution_integral(time, f, g):
+    """
+    Compute convolution integral:
+       f * g = \int 0^t f(tau) g(t-tau) dtau  = g * f
+    For now, only works for uniform time vector, an exception is raised otherwise
+    """
+    dt = time[1]-time[0] 
+    if len(np.unique(np.around(np.diff(time)/dt,3)))>1:
+        raise Exception('Convolution integral implemented for uniform time vector')
+
+    return np.convolve(f.ravel(), g.ravel() )[:len(time)]*dt
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Simple signals 
+# --------------------------------------------------------------------------------{
+def step(time, tStep=0, valueAtStep=0, amplitude=1):
+    """ 
+    returns a step function:
+      0           if t<tStep
+      amplitude   if t>tStep
+      valueAtStep if t==tStep
+    """
+    return np.heaviside(time-tStep, valueAtStep)*amplitude
+
 
 
 if __name__=='__main__':
