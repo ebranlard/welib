@@ -21,13 +21,16 @@ __all__  = ['FASTInputDeck']
 class FASTInputDeck(dict):
     """Container for input files that make up a FAST input deck"""
 
-    def __init__(self, fullFstPath, readlist=['all'], verbose=False):
+    def __init__(self, fullFstPath='', readlist=['all'], verbose=False):
         """Read FAST master file and read inputs for FAST modules
 
         INPUTS:
           - fullFstPath: 
           - readlist: list of module files to be read, or ['all'], modules are identified as follows:
-                ['Fst','ED','AD','BD','BDbld','EDtwr','EDbld','ADbld','AF','IW','HD','SrvD','SD','MD']
+                ['Fst','ED','AD','BD','BDbld','EDtwr','EDbld','ADbld','AF','AC','IW','HD','SrvD','SD','MD']
+                where: 
+                 AF: airfoil polars
+                 AC: airfoil coordinates (if present)
 
         """
         self.filename = fullFstPath
@@ -36,7 +39,7 @@ class FASTInputDeck(dict):
         if not type(self.readlist) is list:
             self.readlist=[readlist]
         if 'all' in self.readlist:
-            self.readlist = ['Fst','ED','AD','BD','BDbld','EDtwr','EDbld','ADbld','AF','IW','HD','SrvD','SD','MD']
+            self.readlist = ['Fst','ED','AD','BD','BDbld','EDtwr','EDbld','ADbld','AF','AC','IW','HD','SrvD','SD','MD']
         else:
             self.readlist = ['Fst']+self.readlist
 
@@ -67,11 +70,66 @@ class FASTInputDeck(dict):
         self.fst_vt['BeamDyn']           = None
         self.fst_vt['BeamDynBlade']      = None # Small change of interface
         self.fst_vt['af_data']           = [] # Small change of interface
+        self.fst_vt['ac_data']           = [] # TODO, how is it stored in WEIS?
 
 
         # Read all inputs files
-        self.read()
+        if len(fullFstPath)>0:
+            self.read()
 
+
+    def readAD(self, filename=None, readlist=None, verbose=False, key='AeroDyn15'):
+        """ 
+        readlist: 'AD','AF','AC'
+        """
+        if readlist is not None:
+            readlist_bkp = self.readlist
+            self.readlist=readlist
+            if not type(self.readlist) is list:
+                self.readlist=[readlist]
+            if 'all' in self.readlist:
+                self.readlist = ['Fst','ED','AD','BD','BDbld','EDtwr','EDbld','ADbld','AF','AC','IW','HD','SrvD','SD','MD']
+
+        if filename is None:
+            filename = self.fst_vt['Fst']['AeroFile']
+            baseDir  = os.path.dirname(self.fst_vt['Fst']['AeroFile'])
+        else:
+            baseDir  = os.path.dirname(filename)
+
+        self.verbose  = verbose
+
+        self.fst_vt[key] = self._read(filename,'AD')
+
+        if self.fst_vt[key] is not None:
+            # Blades
+            bld_file = os.path.join(baseDir, self.fst_vt[key]['ADBlFile(1)'])
+            self.fst_vt['AeroDynBlade'] = self._read(bld_file,'ADbld')
+            #self.fst_vt['AeroDynBlade'] = []
+            #for i in range(3):
+            #    bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']), self.fst_vt[key]['ADBlFile({})'.format(i+1)])
+            #    self.fst_vt['AeroDynBlade'].append(self._read(bld_file,'ADbld'))
+            # Polars
+            self.fst_vt['af_data']=[] # TODO add to "AeroDyn"
+            for afi, af_filename in enumerate(self.fst_vt['AeroDyn15']['AFNames']):
+                af_filename = os.path.join(baseDir,af_filename).replace('"','')
+                polar = self._read(af_filename, 'AF')
+                self.fst_vt['af_data'].append(polar)
+                if polar is not None:
+                    coordFile = polar['NumCoords']
+                    if isinstance(coordFile,str):
+                        coordFile = coordFile.replace('"','')
+                        baseDirCoord=os.path.dirname(af_filename)
+                        if coordFile[0]=='@':
+                            ac_filename = os.path.join(baseDirCoord,coordFile[1:])
+                            coords = self._read(ac_filename, 'AC')
+                            self.fst_vt['ac_data'].append(coords)
+
+        # --- Backward compatibility
+        self.AD  = self.fst_vt[key]
+        self.ADversion='AD15' if key=='AeroDyn15' else 'AD14'
+
+        if readlist is not None:
+            self.readlist=readlist_bkp
 
     @property
     def FAST_InputFile(self):
@@ -104,25 +162,8 @@ class FASTInputDeck(dict):
             # InflowWind
             if self.fst_vt['Fst']['CompInflow']>0:
                 self.fst_vt['InflowWind'] = self._read(self.fst_vt['Fst']['InflowFile'],'IW')
-            self.fst_vt['AeroDyn15'] = self._read(self.fst_vt['Fst']['AeroFile'],'AD')
-            if self.fst_vt['AeroDyn15'] is not None:
-                # Blades
-                bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']), self.fst_vt['AeroDyn15']['ADBlFile(1)'])
-                self.fst_vt['AeroDynBlade'] = self._read(bld_file,'ADbld')
 
-                #self.fst_vt['AeroDynBlade'] = []
-                #for i in range(3):
-                #    bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']), self.fst_vt[key]['ADBlFile({})'.format(i+1)])
-                #    self.fst_vt['AeroDynBlade'].append(self._read(bld_file,'ADbld'))
-                # Polars
-                self.fst_vt['af_data']=[] # TODO add to "AeroDyn"
-                for afi, af_filename in enumerate(self.fst_vt['AeroDyn15']['AFNames']):
-                    af_filename = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']),af_filename)
-                    polar = self._read(af_filename, 'AF')
-                    self.fst_vt['af_data'].append(polar)
-            # --- Backward compatibility
-            self.AD  = self.fst_vt['AeroDyn15']
-            self.ADversion='AD15'
+            self.readAD(key='AeroDyn15')
 
         elif self.version=='OF2':
             # ---- Regular OpenFAST file
@@ -145,22 +186,7 @@ class FASTInputDeck(dict):
             # AeroDyn
             if self.fst_vt['Fst']['CompAero']>0:
                 key = 'AeroDyn14' if self.fst_vt['Fst']['CompAero']==1 else 'AeroDyn15'
-                self.fst_vt[key] = self._read(self.fst_vt['Fst']['AeroFile'],'AD')
-
-                if self.fst_vt[key] is not None:
-                    # Blades
-                    bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']), self.fst_vt[key]['ADBlFile(1)'])
-                    self.fst_vt['AeroDynBlade'] = self._read(bld_file,'ADbld')
-                    #self.fst_vt['AeroDynBlade'] = []
-                    #for i in range(3):
-                    #    bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']), self.fst_vt[key]['ADBlFile({})'.format(i+1)])
-                    #    self.fst_vt['AeroDynBlade'].append(self._read(bld_file,'ADbld'))
-                    # Polars
-                    self.fst_vt['af_data']=[] # TODO add to "AeroDyn"
-                    for afi, af_filename in enumerate(self.fst_vt['AeroDyn15']['AFNames']):
-                        af_filename = os.path.join(os.path.dirname(self.fst_vt['Fst']['AeroFile']),af_filename)
-                        polar = self._read(af_filename, 'AF')
-                        self.fst_vt['af_data'].append(polar)
+                self.readAD(key=key, readlist=self.readlist)
 
             # ServoDyn
             if self.fst_vt['Fst']['CompServo']>0:
@@ -188,16 +214,6 @@ class FASTInputDeck(dict):
                     # Blades
                     bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['BDBldFile(1)']), self.fst_vt['BeamDyn']['BldFile'])
                     self.fst_vt['BeamDynBlade']= self._read(bld_file,'BDbld')
-            # --- Backward compatibility
-            if self.fst_vt['Fst']['CompAero']==1:
-                self.AD  = self.fst_vt['AeroDyn14']
-                self.ADversion='AD14'
-            else:
-                self.AD  = self.fst_vt['AeroDyn15']
-                self.ADversion='AD15'
-
-        elif self.version=='F7':
-            raise NotImplementedError('')
 
         # --- Backward compatibility
         self.fst = self.fst_vt['Fst']

@@ -55,7 +55,7 @@ def prescribed_oscillations():
 
     fig=plt.figure()
     ax = fig.add_subplot(111)
-    ax.plot(P.alpha  , P.cl  , label='Cl static', LineWidth=2)
+    ax.plot(P.alpha  , P.cl  , label='Cl static', linewidth=2)
     for ia,alpham in enumerate(valpha_mean):
         if ia==0:
             lbl='Cl dynamic'

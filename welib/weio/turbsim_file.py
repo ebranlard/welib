@@ -155,9 +155,14 @@ class TurbSimFile(File):
             f.write(struct.pack('<6f', scl[0],off[0],scl[1],off[1],scl[2],off[2]))
             f.write(struct.pack('<l' , len(info)))
             f.write(info.encode())
-            for it in np.arange(nt):
-                f.write(out[:,it,:,:].tostring(order='F'))
-                f.write(outTwr[:,it,:].tostring(order='F'))
+            try:
+                for it in np.arange(nt):
+                    f.write(out[:,it,:,:].tobytes(order='F'))
+                    f.write(outTwr[:,it,:].tobytes(order='F'))
+            except:
+                for it in np.arange(nt):
+                    f.write(out[:,it,:,:].tostring(order='F'))
+                    f.write(outTwr[:,it,:].tostring(order='F'))
 
     def hubValues(self, zHub=None):
         if zHub is None:

@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
-import weio
-from vortilib.elements.VortexRing import rings_u
+from welib.vortilib.elements.VortexRing import rings_u
 
 
 
@@ -56,8 +55,8 @@ def axisym_predefined_distributions(r, z, params=None, distribution='singular_ri
     """ 
     Return vorticity field and optional velcoity field for some predefined distributions
     """
-    from vortilib.elements.VortexRing import rings_u, ring_u
-    from vortilib.elements.VortexCylinder import cylinder_tang_u, vc_tang_u
+    from welib.vortilib.elements.VortexRing import ring_u
+    from welib.vortilib.elements.VortexCylinder import cylinder_tang_u, vc_tang_u
 
     nz, nr = len(z), len(r)
     om     = np.zeros((nz,nr))
@@ -66,6 +65,7 @@ def axisym_predefined_distributions(r, z, params=None, distribution='singular_ri
 
     if distribution=='zero':
         # omega = zero
+        # uz = 1 
         if velocity:
             ur = np.zeros_like(om)
             uz = np.ones(om.shape)

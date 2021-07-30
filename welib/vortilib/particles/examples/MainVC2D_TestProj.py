@@ -1,14 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
-from vortilib.elements.InviscidVortexPatch import ivp_omega
-from vortilib.elements.VortexPoint import vps_u
-from vortilib.mesh import mesh
-from vortilib.particles import particles
-from vortilib.particles import initialization
-from vortilib.particles import projection
-
-from vortilib.maths.vectoranalysis import *
+from welib.vortilib.elements.InviscidVortexPatch import ivp_omega
+from welib.vortilib.elements.VortexPoint import vps_u
+from welib.mesh import mesh
+from welib.vortilib.particles import particles
+from welib.vortilib.particles import initialization
+from welib.vortilib.particles import projection
+from welib.mesh.vectoranalysis import *
 
 np.set_printoptions(linewidth=500)
 # Mesh Params

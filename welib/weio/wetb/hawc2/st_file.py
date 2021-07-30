@@ -94,7 +94,7 @@ class StFile(object):
                 set_lines = set_txt.split("\n")
                 set_nr, no_rows = map(int, set_lines[0].split()[:2])
                 assert set_nr not in set_data_dict
-                set_data_dict[set_nr] = np.array([set_lines[i].split() for i in range(1, no_rows + 1)], dtype=np.float)
+                set_data_dict[set_nr] = np.array([set_lines[i].split() for i in range(1, no_rows + 1)], dtype=float)
             self.main_data_sets[mset_nr] = set_data_dict
 
         for i, name in enumerate(self.cols):
