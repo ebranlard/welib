@@ -275,6 +275,16 @@ class AeroBEM:
         self.BladeEdge   = np.zeros((nt,nB))
         self.BladeFlap   = np.zeros((nt,nB))
 
+
+
+    def calcOutput(self):
+        R = np.sqrt(self.RtArea/pi)
+        q = 0.5*self.rho*self.RtArea*self.RtVAvg[:,0]**2
+        self.CT=self.Thrust/(q)
+        self.CQ=self.Torque/(q*R)
+        self.CP=self.Power /(q*self.RtVAvg[:,0])
+
+
     def toDataFrame(self):
         """ Export time series to a pandas dataframe
         Column names are set to match OpenFAST outputs
@@ -283,11 +293,19 @@ class AeroBEM:
         columns+=['Thrust_[N]']
         columns+=['Torque_[N/m]']
 
+        #if not hasattr(self,'CP'):
+        self.calcOutput()
+
         df = pd.DataFrame()
         df['Time_[s]']        = self.time
         df['Azimuth_[deg]']   = np.mod(self.psi,360)
         df['RtAeroFxh_[N]']   = self.Thrust
         df['RtAeroMxh_[N-m]'] = self.Torque
+        df['RtAeroPwr_[W]']   = self.Power
+        df['RtAeroCt_[-]']    = self.CT
+        df['RtAeroCq_[-]']    = self.CQ
+        df['RtAeroCp_[-]']    = self.CP
+
         df['RtVAvgxh_[m/s]']  = self.RtVAvg[:,0]
         df['RtVAvgyh_[m/s]']  = self.RtVAvg[:,1]
         df['RtVAvgzh_[m/s]']  = self.RtVAvg[:,2]
@@ -345,7 +363,7 @@ class AeroBEM:
                 df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cd_[-]'] = self.Cd[:,iB,ir]
         return df
 
-    def toDataFrameRadial(self, it):
+    def toDataFrameRadial(self, it=-1):
         df = pd.DataFrame()
         df['r/R_[-]']   = self.r/max(self.r)
         #df['r_[m]']     = self.r
@@ -393,6 +411,9 @@ class AeroBEM:
             for ie in np.arange(nr):
                 r[iB,ie] = (R_p2g.T).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
         R = np.max(Rs)
+        # --- Rotor speed for power
+        omega_r = R_r2g.T.dot(omega_gl) # rotational speed in rotor coordinate system
+        Omega = omega_r[0] # rotation speed of shaft (along x)
 
         if firstCallEquilibrium:
             nit=50
@@ -682,11 +703,13 @@ class AeroBEM:
                 self.F_s[it,iB,ie] = (R_s2g[iB,ie].T).dot(F_g)
 
 
-            # Blade integrated loads
-            self.BladeThrust[it] = np.trapz(self.Fn[it]  , r) # Normal to rotor plane
-            self.BladeTorque[it] = np.trapz(self.Ft[it]*r, r) # About shaft 
-            self.Thrust[it] = np.sum(self.BladeThrust[it])    # Normal to rotor plane
-            self.Torque[it] = np.sum(self.BladeTorque[it])
+        # Blade integrated loads
+        self.BladeThrust[it,:] = np.trapz(self.Fn[it,:]  , r) # Normal to rotor plane
+        self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r, r) # About shaft 
+        self.Thrust[it] = np.sum(self.BladeThrust[it,:])    # Normal to rotor plane
+        self.Torque[it] = np.sum(self.BladeTorque[it,:])
+        self.Power[it]  = Omega*self.Torque[it]
+            # TODO TODO
             #self.BladeEdge   = np.zeros((nt,nB))
             #self.BladeFlap   = np.zeros((nt,nB))
                 #         if (WT.Sources.Format=='wtperf'):
@@ -701,11 +724,8 @@ class AeroBEM:
                 # #RES.BladeFlap(idB)=trapz([Rotor.r;R],[Rotor.r.*(Pz*0+Pn);0]);
                 # #RES.BladeEdge(idB)=trapz([Rotor.r;R],[Rotor.r.*(Py*0+Pt);0]);
                 #  #### Returning Aerodynamic Forces
-                #  RES.Torque = sum(RES.BladeTorque)
-                #  RES.Thrust = sum(RES.BladeThrust)
                 #  RES.Flap = sum(RES.BladeFlap)
                 #  RES.Edge = sum(RES.BladeEdge)
-                #  RES.Power = omega * RES.Torque
         return xd1
 
     def simulationConstantRPM(self, time, RPM, windSpeed=None, windExponent=None, windRefH=None, windFunction=None, cone=0, tilt=0, hubHeight=None, firstCallEquilibrium=True):
