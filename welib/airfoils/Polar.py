@@ -1304,6 +1304,8 @@ def _zero_crossings(y,x=None,direction=None):
           indexes izc, such that the zero is between y[izc] (excluded) and y[izc+1] (included)
       if direction is not provided, also returns:
               sign, equal to 1 for up crossing
+
+    NOTE: keep in harmony with welib.tools.signals
     """
     y=np.asarray(y)
     if x is None:
