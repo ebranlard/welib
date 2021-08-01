@@ -32,6 +32,7 @@ def fileFormats():
     from .tecplot_file            import TecplotFile 
     from .vtk_file import VTKFile
     from .bladed_out_file         import BladedFile
+    from .parquet_file            import ParquetFile
     formats = []
     formats.append(FileFormat(CSVFile))
     formats.append(FileFormat(TecplotFile))
@@ -58,7 +59,8 @@ def fileFormats():
     formats.append(FileFormat(FLEXDocFile))
     formats.append(FileFormat(NetCDFFile))
     formats.append(FileFormat(VTKFile))
-    formats.append(FileFormat(TDMSFile)) 
+    formats.append(FileFormat(TDMSFile))
+    formats.append(FileFormat(ParquetFile))
     return formats
 
 

@@ -59,3 +59,9 @@ ax.legend()
 
 if __name__ == '__main__':
     plt.show()
+if __name__ == '__test__':
+    pass
+if __name__=="__export__":
+    pass
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)

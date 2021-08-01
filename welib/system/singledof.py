@@ -55,16 +55,13 @@ def _harmonic_vibration_raw(vt, c1, c2, omega0, zeta=0):
         # TODO
         x = [c1 + c2*vt]* np.exp(omega0*vt)
         xdot=0
-
-
     return x, xdot
 
 
 
 # --------------------------------------------------------------------------------}
-## --- Forced damped vibrations
+# --- Forced damped vibrations
 # --------------------------------------------------------------------------------{
-
 def forced_vibration_particular_cst(frat, F0_over_k, zeta):
     """ 
     Constants for the particular solution (H0 and Phi), x=H0 sin(Omega t - Phi)
@@ -128,7 +125,7 @@ def impulse_response_function(time, m, c, k, outputDerivative=False):
 
 
 def duhamel(time, F, m, c, k):
-    """ 
+    r""" 
     Compute time response of a single DOF system using Duhamel's integral
 
         x(t)    = \int_0^t F(t') H(t-t') dt' 
@@ -157,7 +154,6 @@ def duhamel(time, F, m, c, k):
     x  = convolution_integral(time, F.ravel(), H )
     xd = convolution_integral(time, F.ravel(), Hp)
     return x, xd
-
 
 if __name__=='__main__':
     pass

@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def delta(x, epsilon=None):
+    """ Dirac function"""
     if epsilon is not None and epsilon>=1e-5:
         rng=(-epsilon,epsilon)
         d = smooth_delta(x, e=1, rng=rng, method='gaussian')
@@ -23,6 +24,7 @@ def delta(x, epsilon=None):
         return d
 
 def Pi(x, epsilon=None):
+    """ Step function"""
     if epsilon is not None and epsilon>=1e-5:
         rng=(-epsilon,epsilon)
         p = smooth_heaviside(x, k=1, rng=rng, method='exp')
