@@ -138,6 +138,28 @@ class TestFitting(unittest.TestCase):
     # --------------------------------------------------------------------------------}
     # --- Testing of Predefined fitters 
     # --------------------------------------------------------------------------------{
+    def test_secondorder_impulse(self):
+        A, omega0, zeta, B, t0 = 2, 2, 0.01, 100, 10
+        x=np.linspace(0,50,1000)
+        y=secondorder_impulse(x,(A,omega0, zeta, B, t0)) #0* + np.random.normal(0, 0.1, len(x))
+        #y_fit, pfit, fitter = model_fit('predef: secondorder_impulse', x, y)
+        y_fit, pfit, fitter = model_fit('fitter: secondorder_impulse', x, y)
+        #fitter.plot(); import matplotlib.pyplot as plt; plt.show()
+        np.testing.assert_array_almost_equal(y,y_fit)
+        np.testing.assert_almost_equal(omega0   ,fitter.model['coeffs']['omega'])
+        np.testing.assert_almost_equal(zeta     ,fitter.model['coeffs']['zeta'])
+
+    def test_secondorder_step(self):
+        A, omega0, zeta, B, t0 = 2, 2, 0.8, 100, 10
+        x=np.linspace(0,50,1000)
+        y=secondorder_step(x,(A,omega0, zeta, B, t0)) #0* + np.random.normal(0, 0.1, len(x))
+        #y_fit, pfit, fitter = model_fit('predef: secondorder_step', x, y)
+        y_fit, pfit, fitter = model_fit('fitter: secondorder_step', x, y)
+        #fitter.plot(); import matplotlib.pyplot as plt; plt.show()
+        np.testing.assert_array_almost_equal(y,y_fit)
+        np.testing.assert_almost_equal(omega0   ,fitter.model['coeffs']['omega'])
+        np.testing.assert_almost_equal(zeta     ,fitter.model['coeffs']['zeta'])
+
     def test_polycont(self):
         k = 2.0
         x = np.linspace(0,1,10)
@@ -315,5 +337,33 @@ class TestFitting(unittest.TestCase):
 
 if __name__ == '__main__':
     #TestFitting().test_sinusoid()
+    #TestFitting().test_secondorder_step()
     unittest.main()
+
+
+
+
+    ## --- Generate file for testing
+    #import welib.system.firstorder as fo
+    #import welib.system.secondorder as so
+    #m      = 250.0              # system mass
+    #k      = 40.0               # spring constant
+    #omega0 = np.sqrt(k/m)
+    #T0     = 2*np.pi/omega0
+    #b      = 1/m                # NOTE: should be 1/m for a mechanical system
+
+    #time = np.linspace(0*T0,10*T0,10001) # time span # Convolution needs enough time steps
+    #t0  = 2*T0     # initial time where input starts (for simple inputs)
+    #A   = 3         # amplitude for all simple inputs
+    #T   = 2*T0   # for hat
+
+    #zeta   = 0.01
+    #x_d1 = so.impulse_response(time, omega0, zeta, b=b, t0=t0, A=A, both=True)
+    #x_s1 = so.step_response   (time, omega0, zeta, b=b, t0=t0, A=A, both=True)
+    #zeta   = 0.7
+    #x_d2 = so.impulse_response(time, omega0, zeta, b=b, t0=t0, A=A, both=True)
+    #x_s2 = so.step_response   (time, omega0, zeta, b=b, t0=t0, A=A, both=True)
+
+    #M=np.column_stack((time,x_d1[0]+100,-x_d1[1],x_d2[0]-1000,x_d2[1], x_s1[0]+100, -x_s1[1], x_s2[0]-20,x_s2[1]))
+    #np.savetxt('../TestFitSystem.csv',M,header='x,soi_z1,soi_z1_d,soi_z2,soi_z2_d,sos_z1,sos_z1_d,sos_z2,sos_z2_d',delimiter=',')
 

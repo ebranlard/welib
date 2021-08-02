@@ -245,7 +245,7 @@ class MechSystem():
             c = self.C.ravel()[0]
             k = self.K.ravel()[0]
             F = self.Forces(t_eval)
-            x, xd = duhamel(t_eval, F, m, c, k)
+            x, xd = duhamel(t_eval, F, m, c, k, both=True)
             res = OdeResultsClass(t=t_eval, y=np.vstack((x,xd))) # To mimic result class of solve_ivp
                 
         else:

@@ -1,7 +1,8 @@
 r"""
-Set of tools/functions for a first order system. 
+Set of tools/functions for a first order system expressed in scalar form. 
+For multiple dimensions, see statespace, linearstatespace
 
- - With constant coefficients, characteristic equation:
+ - With constant coefficients, the characteristic equation is:
      
        x_dot(t) + 1/tau x = f(t)                                                    (1)
 
@@ -20,9 +21,20 @@ Set of tools/functions for a first order system.
 """
 import numpy as np
 
+# --------------------------------------------------------------------------------}
+# --- Unforced response
+# --------------------------------------------------------------------------------{
+def zero_response(time, tau, x0=1, t0=0):
+    r"""
+    Response to zero input, simple decay,  f(t>=t0)=0 in eq.(1)
+    """
+    t = np.asarray(time)-t0
+    y = np.zeros(time.shape)+x0
+    y += np.exp(-(time-time[0])/tau)*x0  
+    return
 
 # --------------------------------------------------------------------------------}
-# --- Constant coefficients
+# --- Characteristics transient responses
 # --------------------------------------------------------------------------------{
 def impulse_response(time, tau, t0=0, A=1, x0=0):
     r"""
@@ -140,7 +152,7 @@ def duhamel(time, tau, u, x0=0):
       - tau  : time constant
       - u    : 1d-array of inputs at each time step
     OUTPUTS:
-      - x, xd: 1d-array, of position and speed
+      - x 1d-array, dof value 
 
     """
     H = impulse_response(time, tau, t0=time[0], A=1)
