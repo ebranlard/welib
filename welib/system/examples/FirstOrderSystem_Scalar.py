@@ -12,7 +12,7 @@ from welib.tools.tictoc import Timer
 
 # --- Script parameters
 simpleResponses = True
-randomSignal    = True
+randomSignal    = False
 tau = 0.1       # time constant of first order system
 time = np.linspace(-3*tau,10*tau,1001) # time span
 x0  = 0         # Initial condition, x[time[0]]
@@ -44,10 +44,11 @@ if simpleResponses:
     u_o = A*np.sin(omega*(time-t0)+phi); u_o[time<t0]=0
 
     # ----  if method in ['LSODA','RK45','RK23','DOP853','Radau','BDF']:
+    #x_D = integrate(time, tau, u_d, x0=x0, method='RK45') # NOTE sensitive
     x_D = integrate(time, tau, u_d, x0=x0, method='DOP853') # NOTE sensitive
     x_S = integrate(time, tau, u_s, x0=x0, method='LSODA')
     x_R = integrate(time, tau, u_r, x0=x0, method='LSODA')
-    # # x_H = integrate(time, tau, u_h, x0=x0, method='DOP853') # NOTE sensitive, Funny behavior for T=1
+    #x_H = integrate(time, tau, u_h, x0=x0, method='DOP853') # NOTE sensitive, Funny behavior for T=1
     x_H = integrate(time, tau, u_h, x0=x0, method='RK45') # NOTE sensitive, Funny behavior to T=2
     x_O = integrate(time, tau, u_o, x0=x0, method='LSODA')
 
