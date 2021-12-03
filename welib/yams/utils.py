@@ -91,7 +91,7 @@ def identifyRigidBodyMM(MM):
     xCM = 0.5*( MM[1,5]-MM[2,4])/mass
     zCM = 0.5*( MM[0,4]-MM[1,3])/mass
     yCM = 0.5*(-MM[0,5]+MM[2,3])/mass
-    # Destance from refopint to COG
+    # Distance from refopint to COG
     Ref2COG=np.array((xCM,yCM,zCM))
     # Inertia at ref oint
     J_P = MM[3:6,3:6].copy()
@@ -99,6 +99,22 @@ def identifyRigidBodyMM(MM):
     J_G = translateInertiaMatrixToCOG(J_P, mass, r_PG=Ref2COG ) 
     return mass, J_G, Ref2COG
 
+
+def translateRigidBodyMassMatrix(M, r_P1P2):
+    """ 
+    Translate a 6x6 rigid mass matrix from point 1 to point 2
+    r_P1P2: vector from point1 to point2 
+    """
+    # First identify main properties (mass, inertia, location of center of mass from previous ref point)
+    mass, J_G, Ref2COG = identifyRigidBodyMM(M)
+    # New COG location from new (x,y) ref point
+    print(Ref2COG)
+    print(r_P1P2)
+    Ref2COG -= np.asarray(r_P1P2)
+    print('>>>',Ref2COG)
+    # Compute mass matrix 
+    M_new =  rigidBodyMassMatrixAtP(mass, J_G, Ref2COG)
+    return M_new
 
 # --------------------------------------------------------------------------------}
 # --- Inertia functions 
@@ -128,14 +144,12 @@ def translateInertiaMatrix(I_A, Mass, r_BG, r_AG = np.array([0,0,0])):
     #I_B = translateInertiaMatrixFromCOG(I_G, Mass, -np.array(r_BG))
     return I_B
 
-
-
 def translateInertiaMatrixToCOG(I_P, Mass, r_PG): 
     """ Transform inertia matrix with respect to point P to the inertia matrix with respect to the COG
     NOTE: the vectors and the inertia matrix needs to be expressed in the same coordinate system.
     
     INPUTS:
-      I_G  : Inertia matrix 3x3 with respect to COG
+      I_P  : Inertia matrix 3x3 with respect to point P
       Mass : Mass of the body
       r_PG: vector from P to COG 
     """
