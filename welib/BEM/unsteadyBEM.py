@@ -406,7 +406,7 @@ class AeroBEM:
             R_p2g = R_ntr2g[iB]
             # radial position (in polar grid) of first and last node taken
             Rs[iB] = (R_p2g.T).dot(pos_gl[iB,-1,:]-origin_pos_gl)[2]
-            rhub = (R_p2g.T).dot(pos_gl[iB,0,:]-origin_pos_gl)[2]
+            rhub   = (R_p2g.T).dot(pos_gl[iB,0,:] -origin_pos_gl)[2]
             # loop on elements
             for ie in np.arange(nr):
                 r[iB,ie] = (R_p2g.T).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
@@ -487,6 +487,8 @@ class AeroBEM:
                     C_g        [iB,ie]=R_a2g[iB,ie].dot(np.array([C_xa       [iB,ie], C_ya       [iB,ie], 0]))
                     C_p        [iB,ie]=(R_p2g.T).dot(C_g[iB,ie])
                     C_p_noDrag [iB,ie]=(R_p2g.T).dot(R_a2g[iB,ie]).dot(np.array([C_xa_noDrag[iB,ie], C_ya_noDrag[iB,ie], 0]))
+            # Project elementary radial element ds vs dr
+            # 
             # Cn and Ct 
             if (p.bAIDrag):
                 cnForAI = C_p[:,:,0]
