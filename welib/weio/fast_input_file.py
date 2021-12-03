@@ -946,13 +946,16 @@ def strIsFloat(s):
         return False
 
 def strIsBool(s):
-    return (s.lower()=='true') or (s.lower()=='false')
+    return s.lower() in ['true','false','t','f']
 
 def strIsInt(s):
     s = str(s)
     if s[0] in ('-', '+'):
         return s[1:].isdigit()
     return s.isdigit()    
+
+def strToBool(s):
+    return s.lower() in ['true','t']
 
 def hasSpecialChars(s):
     # fast allows for parenthesis
@@ -1012,7 +1015,7 @@ def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
                 elif strIsFloat(s):
                     List.append(float(s))
                 elif strIsBool(s):
-                    List.append(bool(s))
+                    List.append(strToBool(s))
                 else:
                     raise WrongFormatError('Lists of strings not supported.')
                 ii =ii+1
@@ -1044,7 +1047,7 @@ def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
             elif strIsFloat(s):
                 d['value']=float(s)
             elif strIsBool(s):
-                d['value']=bool(s)
+                d['value']=strToBool(s)
             else:
                 d['value']=s
             iNext=1

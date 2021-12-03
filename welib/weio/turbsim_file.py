@@ -183,6 +183,13 @@ class TurbSimFile(File):
             uHub = np.mean(self['u'][0,:,iy,iz])
         return zHub, uHub, bHub
 
+    def midValues(self):
+        iy,iz = self._iMid()
+        zMid = self['z'][iz]
+        #yMid = self['y'][iy] # always 0
+        uMid = np.mean(self['u'][0,:,iy,iz])
+        return zMid, uMid
+
     def _iMid(self):
         iy = np.argmin(np.abs(self['y']-(self['y'][0]+self['y'][-1])/2))
         iz = np.argmin(np.abs(self['z']-(self['z'][0]+self['z'][-1])/2))
