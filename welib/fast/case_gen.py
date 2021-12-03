@@ -438,7 +438,9 @@ def paramsLinearTrim(p=dict()):
 # ---  
 # --------------------------------------------------------------------------------{
 def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tmax=999):
-    f = weio.FASTWndFile()
+    import welib.weio
+    import welib.weio.fast_wind_file
+    f = welib.weio.fast_wind_file.FASTWndFile()
     Steps= np.arange(WSmin,WSmax+WSstep,WSstep)
     print(Steps)
     nCol = len(f.colNames)

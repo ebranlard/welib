@@ -30,9 +30,9 @@ def OLAFParams(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPer
         dt_wanted    = np.around(deltaPsiDeg/(6*omega_rpm),5)
         nPerRot = int(2*np.pi /(deltaPsiDeg*np.pi/180))
 
-    nNWPanel     = nNWrot*nPerRot
-    nFWPanel     = nFWrot*nPerRot
-    nFWPanelFree = nFWrotFree*nPerRot
+    nNWPanel     = int(nNWrot*nPerRot)
+    nFWPanel     = int(nFWrot*nPerRot)
+    nFWPanelFree = int(nFWrotFree*nPerRot)
 
     if totalRot is None:
         totalRot = (nNWrot + nFWrot)*3 # going three-times through the entire wake

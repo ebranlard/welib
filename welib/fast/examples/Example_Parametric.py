@@ -55,6 +55,12 @@ def ParametricExample():
             p['EDFile|BldFile(1)|AdjBlMs'] =1.1
             p['EDFile|BldFile(2)|AdjBlMs'] =1.1
             p['EDFile|BldFile(3)|AdjBlMs'] =1.1
+#         # Changing BeamDyn properties
+#         BP_ref = fBD['BeamProperties']
+#         BP     = BP_ref.copy()
+#         BP['K']= BP['K']*i
+#         p['BDBldFile(1)|BldFile|BeamProperties'] =BP
+
 
         p['EDFile|RotSpeed']       = rpm
         p['InflowFile|HWindSpeed'] = wsp
