@@ -51,8 +51,10 @@ class Polar(object):
         """
         if isinstance(FileName_or_Re,str):
             alpha, cl, cd, cm, Re = loadPolarFile(FileName_or_Re, fformat='auto', to_radians=False)
+        else:
+            Re = FileName_or_Re
 
-        self.Re = FileName_or_Re
+        self.Re = Re
         self.alpha = np.array(alpha)
         self.cl = np.array(cl)
         self.cd = np.array(cd)
@@ -135,7 +137,10 @@ class Polar(object):
         return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
 
     def correction3D(self, r_over_R, chord_over_r, tsr, alpha_max_corr=30,
-                     alpha_linear_min=-5, alpha_linear_max=5):
+                     alpha_linear_min=-5, alpha_linear_max=5,
+                     max_cl_corr=0.25,
+                     blending='linear_25_45'
+                     ):
         """Applies 3-D corrections for rotating sections from the 2-D data.
 
         Parameters
@@ -152,6 +157,10 @@ class Polar(object):
             angle of attack where linear portion of lift curve slope begins
         alpha_linear_max : float, optional (deg)
             angle of attack where linear portion of lift curve slope ends
+        max_cl_corr: float, optional
+             maximum correction allowed, default is 0.25.
+        blending: string:
+             blending method used to blend from 3D to 2D polar. default 'linear_25_45'
 
         Returns
         -------
@@ -162,7 +171,6 @@ class Polar(object):
         -----
         The Du-Selig method :cite:`Du1998A-3-D-stall-del` is used to correct lift, and
         the Eggers method :cite:`Eggers-Jr2003An-assessment-o` is used to correct drag.
-
 
         """
 
@@ -188,16 +196,33 @@ class Polar(object):
         m = p[0]
         alpha0 = -p[1]/m
 
-        # correction factor
-        fcl = 1.0/m*(1.6*chord_over_r/0.1267*(a-chord_over_r**expon)/(b+chord_over_r**expon)-1)
+        cl_linear = m*(alpha-alpha0)
+
+        # --- correction factor
+        # Du Selig
+        #fcl = 1.0/m*(1.6*chord_over_r/0.1267*(a-chord_over_r**expon)/(b+chord_over_r**expon)-1)
+        # Snel
+        fcl = 3*(chord_over_r)**2
 
         # not sure where this adjustment comes from (besides AirfoilPrep spreadsheet of course)
-        adj = ((np.pi/2-alpha)/(np.pi/2-alpha_max_corr))**2
-        adj[alpha <= alpha_max_corr] = 1.0
+        #adj = ((np.pi/2-alpha)/(np.pi/2-alpha_max_corr))**2
+        #adj[alpha <= alpha_max_corr] = 1.0
 
-        # Du-Selig correction for lift
-        cl_linear = m*(alpha-alpha0)
-        cl_3d = cl_2d + fcl*(cl_linear-cl_2d)*adj
+        # 3D correction for lift
+        cl_corr = fcl*(cl_linear-cl_2d)
+        # Bound correction +/- max_cl_corr
+        cl_corr = np.clip(cl_corr, -max_cl_corr, max_cl_corr)
+        # Blending
+        if blending=='linear_25_45':
+            # We adjust fully between +/- 25 deg, linearly to 45
+            adj_alpha=np.radians([-180, -45, -25, 25, 45,180])
+            adj_value=np.array  ([0   ,   0,   1,  1,  0, 0 ])
+            adj = np.interp(alpha, adj_alpha, adj_value)
+        elif blending=='heaviside':
+            pass
+        else:
+            raise NotImplementedError('blending :',blending)
+        cl_3d = cl_2d + cl_corr*adj
 
         # Eggers 2003 correction for drag
         delta_cl = cl_3d-cl_2d
