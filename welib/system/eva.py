@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from scipy import linalg
 
-def polyeig(*A):
+def polyeig(*A, sort=False):
     """
     Solve the polynomial eigenvalue problem:
         (A0 + e A1 +...+  e**p Ap)x = 0
@@ -47,9 +47,10 @@ def polyeig(*A):
     X=X[:n,:]
 
     # Sort eigen values
-    #I = np.argsort(e)
-    #X = X[:,I]
-    #e = e[I]
+    if sort:
+        I = np.argsort(e)
+        X = X[:,I]
+        e = e[I]
 
     # Scaling each mode by max
     X /= np.tile(np.max(np.abs(X),axis=0), (n,1))
@@ -57,7 +58,7 @@ def polyeig(*A):
     return X, e
 
 
-def eig(K,M=None, freq_out=False, sort=True):
+def eig(K, M=None, freq_out=False, sort=True, normQ=None):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -91,10 +92,18 @@ def eig(K,M=None, freq_out=False, sort=True):
     else:
         Lambda = np.diag(D)
 
+    # --- Renormalize modes if users wants to
+    if normQ == 'byMax':
+        for j in range(Q.shape[1]):
+            q_j = Q[:,j]
+            iMax = np.argmax(np.abs(q_j))
+            scale = q_j[iMax] # not using abs to normalize to "1" and not "+/-1"
+            Q[:,j]= Q[:,j]/scale
+
     return Q,Lambda
 
 
-def eigA(A, nq=None, nq1=None, fullEV=False):
+def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None):
     """
     Perform eigenvalue analysis on a "state" matrix A
     where states are assumed to be ordered as {q, q_dot, q1}
@@ -106,6 +115,8 @@ def eigA(A, nq=None, nq1=None, fullEV=False):
      - nq1: number of first order states, optional, relevant if fullEV is False
      - fullEV: if True, the entire eigenvectors are returned, otherwise, 
                 only the part associated with q and q1 are returned
+     - normQ: 'byMax': normalize by maximum
+              None: do not normalize
     OUPUTS:
      - freq_d: damped frequencies [Hz]
      - zeta  : damping ratios [-]
@@ -147,52 +158,54 @@ def eigA(A, nq=None, nq1=None, fullEV=False):
     freq_0 = freq_0[I]
     zeta   = zeta[I]
     Q      = Q[:,I]
+
+    # Normalize Q
+    if normQ=='byMax':
+        for j in range(Q.shape[1]):
+            q_j = Q[:,j]
+            scale = np.max(np.abs(q_j))
+            Q[:,j]= Q[:,j]/scale
     return freq_d, zeta, Q, freq_0 
 
 
-def eigMCK(M, C, K, method='diag_beta'): 
-    """ """
+def eigMCK(M, C, K, method='full_matrix', sort=True): 
+    """
+    Eigenvalue analysis of a mechanical system
+    M, C, K: mass, damping, and stiffness matrices respectively
+    """
     if method.lower()=='diag_beta':
         ## using K, M and damping assuming diagonal beta matrix (Rayleigh Damping)
         Q, Lambda   = eig(K,M, sort=False) # provide scaled EV, important, no sorting here!
-        freq        = np.sqrt(np.diag(Lambda))/(2*np.pi)
+        freq_0      = np.sqrt(np.diag(Lambda))/(2*np.pi) # TODO TODO TODO verify this?
         betaMat     = np.dot(Q,C).dot(Q.T)
-        xi          = (np.diag(betaMat)*np.pi/(2*np.pi*freq))
+        xi          = (np.diag(betaMat)*np.pi/(2*np.pi*freq_0))
         xi[xi>2*np.pi] = np.NAN
         zeta        = xi/(2*np.pi)
-        freq_d      = freq*np.sqrt(1-zeta**2)
-        # Sorting here
-        I = np.argsort(freq_d)
-        freq   = freq[I]
-        freq_d = freq_d[I]
-        zeta   = zeta[I]
-        xi     = xi[I]
-        Q      = Q[:,I]
-
-    #    return Q, Lambda,freq, betaMat,xi,zeta
+        freq_d      = freq_0*np.sqrt(1-zeta**2)
     elif method.lower()=='full_matrix':
         ## Method 2 - Damping based on K, M and full D matrix
         Q,e = polyeig(K,C,M)
         #omega0 = np.abs(e)
         zeta = - np.real(e) / np.abs(e)
         freq_d = np.imag(e) / (2*np.pi)
-        # Sorting
-        I = np.argsort(freq_d)
-        freq_d = freq_d[I]
-        zeta   = zeta[I]
-        Q      = Q[:,I]
         # Keeping only positive frequencies
         bValid = freq_d > 1e-08
         freq_d = freq_d[bValid]
         zeta   = zeta[bValid]
         Q      = Q[:,bValid]
-        # Undamped frequency and pseudo log dec
-        freq = freq_d / np.sqrt(1 - zeta**2)
-        xi = 2 * np.pi * zeta
         # logdec2 = 2*pi*dampratio_sorted./sqrt(1-dampratio_sorted.^2);
     else:
         raise NotImplementedError()
-    return freq_d,zeta,Q,freq,xi
+    # Sorting
+    if sort:
+        I = np.argsort(freq_d)
+        freq_d = freq_d[I]
+        zeta   = zeta[I]
+        Q      = Q[:,I]
+    # Undamped frequency 
+    freq_0 = freq_d / np.sqrt(1 - zeta**2)
+    #xi = 2 * np.pi * zeta # pseudo log-dec
+    return freq_d, zeta, Q, freq_0
 
 
 if __name__=='__main__':
