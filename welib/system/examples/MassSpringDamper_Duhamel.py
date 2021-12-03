@@ -47,27 +47,28 @@ print(sysl)
 resln = sysl.integrate(time, method='LSODA')
 resld = sysl.integrate(time, method='impulse')
 
-# --- Plot
-fig, axes = sys.plot(res  = resn , label = 'MechSys Numerical int.')
-fig, axes = sys.plot(res  = resd , label = 'MechSys convolution (Duhamel)' ,  fig=fig, axes=axes, ls = '--')
-fig, axes = sysl.plot(res = resln, label = 'Lin sys Numerical int.'        ,  fig=fig, axes=axes, ls = ':')
-fig, axes = sysl.plot(res = resld, label = 'Lin sys convolution'           ,  fig=fig, axes=axes, ls = '-.', c = 'k')
 
-axes[0].legend()
-
-# sys.plot_forcing()
-sysl.plot_inputs()
 
 
 
 if __name__ == '__main__':
+    # --- Plot
+    fig, axes = sys.plot(res  = resn , label = 'MechSys Numerical int.')
+    fig, axes = sys.plot(res  = resd , label = 'MechSys convolution (Duhamel)' ,  fig=fig, axes=axes, ls = '--')
+    fig, axes = sysl.plot(res = resln, label = 'Lin sys Numerical int.'        ,  fig=fig, axes=axes, ls = ':')
+    fig, axes = sysl.plot(res = resld, label = 'Lin sys convolution'           ,  fig=fig, axes=axes, ls = '-.', c = 'k')
+
+    axes[0].legend()
+    # sys.plot_forcing()
+    sysl.plot_inputs()
     plt.show()
 if __name__ == '__test__':
-    try:
-        plt.close()
-    except:
-        pass
     pass
+    #try:
+    #    plt.close()
+    #except:
+    #    pass
+    #pass
 if __name__=="__export__":
     pass
     #from welib.tools.repo import export_figs_callback
