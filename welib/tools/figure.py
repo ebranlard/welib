@@ -121,15 +121,18 @@ def findtitle(fig):
     axTitle=None
     title=''
     # storing the title, figure name
-    title=fig._suptitle
-    if title is not None  and len(title.get_text())>0:
-        title=title.get_text()
-    else:
-        for ax in fig.get_axes():
-            title=ax.get_title()
-            if title is not None and len(title)>0:
-                axTitle=ax
-                break
+    try:
+        title=fig._title
+    except:
+        title=fig._suptitle
+        if title is not None  and len(title.get_text())>0:
+            title=title.get_text()
+        else:
+            for ax in fig.get_axes():
+                title=ax.get_title()
+                if title is not None and len(title)>0:
+                    axTitle=ax
+                    break
     return title,axTitle
 
 class FigureExporter:
