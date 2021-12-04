@@ -54,7 +54,7 @@ if 1 in IStudy:
 if 3 in IStudy:
     base='../../_data/NREL5MW'
     #Main='../../_data/NREL5MW_SimpleSimulations/TurbWindStep_AllDOF.fst'; 
-    Main='../../_data/NREL5MW/Main_Onshore_OF2.fst'; 
+    Main='../../_data/NREL5MW/Main_Onshore.fst'; 
     wse = TabulatedWSEstimator(fst_file=Main)
     wse.load_files(base=base,suffix='')
     print(wse)

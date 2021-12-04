@@ -13,7 +13,7 @@ def main():
     np.set_printoptions(linewidth=300, precision=2)
 
     # Read ED file
-    edFilename  = os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED.dat')
+    edFilename  = os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
     ed          = weio.FASTInputFile(edFilename)
     TowerHt     = ed['TowerHt']
     TowerBsHt   = ed['TowerBsHt']

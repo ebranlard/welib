@@ -883,7 +883,7 @@ class Polar(object):
         # Read a template file for AeroDyn polars
         if templateFile is None:
             MyDir=os.path.dirname(__file__)
-            templateFile = os.path.join(MyDir,'../../data/NREL5MW/data/Airfoils/Cylinder1.dat')
+            templateFile = os.path.join(MyDir,'../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
         ADpol = FASTInputFile(templateFile)
 
         # Compute unsteady parameters

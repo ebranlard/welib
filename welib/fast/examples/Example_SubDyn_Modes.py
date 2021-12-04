@@ -17,7 +17,7 @@ import os
 
 if __name__ == '__main__':
     MyDir=os.path.dirname(__file__)
-    filename=os.path.join(MyDir,'../../../data/NREL5MW/data/NRELOffshrBsline5MW_OC4Jacket_SubDyn.dat')
+    filename=os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_OC4Jacket_SubDyn.dat')
 
     # sd = weio.read(filename)
     # print(sd.keys())

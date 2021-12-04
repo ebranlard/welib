@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from welib.FEM.fem_beam import *
 import welib.weio as weio
+from welib.tools.clean_exceptions import *
 
 MyDir=os.path.dirname(__file__)
 
@@ -25,7 +26,7 @@ def ModeShapesElastoDynTower():
     if useFASTModel:
         # --- Option 1 obtain data from FAST model
         # fst file
-        fstFile=os.path.join(MyDir,'./../../../data/NREL5MW/Main_Onshore_OF2.fst')
+        fstFile=os.path.join(MyDir,'./../../../data/NREL5MW/Main_Onshore.fst')
         from welib.yams.windturbine import WindTurbineStructure
         WT = WindTurbineStructure().fromFAST(fstFile)
         print(WT.twr)
@@ -58,7 +59,7 @@ def ModeShapesElastoDynTower():
     M_tip= rigidBodyMassMatrixAtP(m=RNAMass, J_G=RNA_J_G*0, Ref2COG=RNA_G)
     print('M_Tip\n',np.around(M_tip,2))
 
-    TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
+    TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
     twr = weio.FASTInputFile(TwrFile).toDataFrame()
     x   = twr['HtFract_[-]']*(TowerLen)
     m   = twr['TMassDen_[kg/m]']

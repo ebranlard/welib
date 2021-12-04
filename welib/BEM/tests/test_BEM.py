@@ -16,7 +16,7 @@ class Test(unittest.TestCase):
 
         # Performs simple BEM simulations of the NREL 5MW turbine for one operating condition.
         # --- Read a FAST model to get the main parameters needed
-        nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+        nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
 
         # --- Run BEM on a set of operating points
         V0        = 5

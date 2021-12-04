@@ -28,7 +28,7 @@ def OpenFASTIsolatedTower():
     # --- Read data from NREL5MW tower
     TowerHt=87.6;
     TowerBs=0;
-    TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
+    TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
     twr = weio.FASTInputFile(TwrFile).toDataFrame()
     z = twr['HtFract_[-]']*(TowerHt-TowerBs)
     m = twr['TMassDen_[kg/m]']  # mu

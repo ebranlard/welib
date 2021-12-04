@@ -1033,8 +1033,8 @@ if __name__=="__main__":
 
     # --- Read a FAST model to get Aerodynamic parameters
     BEM = AeroBEM()
-    #BEM.init_from_FAST('../../data/NREL5MW/Main_Onshore_OF2.fst')
-    BEM.init_from_FAST('./Main_Onshore_OF2.fst')
+    #BEM.init_from_FAST('../../data/NREL5MW/Main_Onshore.fst')
+    BEM.init_from_FAST('./Main_Onshore.fst')
     BEM.CTcorrection='AeroDyn' # High Thrust correction
     BEM.swirlMethod ='AeroDyn' # type of swirl model
 #    BEM.swirlMethod ='HAWC2' # type of swirl model
@@ -1060,7 +1060,7 @@ if __name__=="__main__":
 
 #     # --- Read a FAST model to get structural parameters for blade motion
 #     motion = PrescribedRotorMotion()
-#     motion.init_from_FAST('./Main_Onshore_OF2.fst', tilt=0, cone=0)
+#     motion.init_from_FAST('./Main_Onshore.fst', tilt=0, cone=0)
 #     motion.setType('constantRPM', RPM=10.0)
 #     #motion.setType('constantRPM x-oscillation', RPM=12.1, frequency=1.1, amplitude=20)
 # 

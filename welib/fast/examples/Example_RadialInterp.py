@@ -23,7 +23,7 @@ def main():
 
     # --- Define output radial stations
     # Option 1 - Get all these locations automatically (recommended)
-    fstFile = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst') # must correspond to the one used to generate outputs
+    fstFile = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst') # must correspond to the one used to generate outputs
     r_AD, r_ED, r_BD, IR_AD, IR_ED, IR_BD, R, r_hub, fst = postpro.FASTRadialOutputs(fstFile, df.columns.values)
 
     # Option 2 - Get ouputs locations for each module

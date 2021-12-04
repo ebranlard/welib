@@ -15,7 +15,7 @@ def main(test=False):
 
     # --- Read a FAST model to get Aerodynamic parameters to initialze unstady BEM code
     BEM = AeroBEM()
-    BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
 
     # --- Setup a prescribed motion
     motion = PrescribedRotorMotion()

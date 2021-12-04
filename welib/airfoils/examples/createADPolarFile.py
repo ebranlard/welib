@@ -24,7 +24,7 @@ def main_wrap(test=False):
 def main(test=False):
 
     # --- Reading a existing AD file, just as a template, we'll replace things in it
-    templateADFile = os.path.join(MyDir,'../../../data/NREL5MW/data/Airfoils/Cylinder1.dat')
+    templateADFile = os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
     ADpol = weio.read(templateADFile)
 
     # --- Creating a Polar object from Cl-Cd data

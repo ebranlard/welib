@@ -18,7 +18,7 @@ class TestTNSB(unittest.TestCase):
         q[[2]]=0*np.pi/4.
 
         np.set_printoptions(linewidth=500)
-        EDFile = os.path.join(MyDir, '../../../data/NREL5MW/data/NREL5MW_ED.dat')
+        EDFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore.dat')
 
         # --- Auto assembly with z axis
         main_axis='z'
@@ -57,7 +57,7 @@ class TestTNSB(unittest.TestCase):
         np.testing.assert_almost_equal(StructA.Twr.r_O.ravel(), (0,0,10))
         np.testing.assert_almost_equal(StructA.Twr.MM[:6,:6]/1e5, Twr_MMref[:6,:6]/1e5, 5)
         np.testing.assert_almost_equal(StructA.Twr.MM[6:,:]/1e10, Twr_MMref[6:,:]/1e10, 5)
-        np.testing.assert_almost_equal(StructA.alpha.ravel(), (0,0.1194396,0))
+        np.testing.assert_almost_equal(StructA.alpha.ravel(), (0,0.1193935,0))
         # print('Twr: B_T:')
         # print(StructA.Twr.B_inB)
         # print(StructM.Twr.B_inB)
@@ -109,7 +109,7 @@ class TestTNSB(unittest.TestCase):
                             [     -0.    ,   -284984.498   ,       0.    ,         0.    ,         0.       ,1430365.6939118]])
     
         np.testing.assert_almost_equal(StructA.Sft.Mass,56780)
-        np.testing.assert_almost_equal(StructA.Sft.r_O.ravel(),(0.23385048,0,89.54857787))
+        np.testing.assert_almost_equal(StructA.Sft.r_O.ravel(),(0.2337605,0,89.5485887))
         np.testing.assert_almost_equal(StructA.Sft.MM,Sft_MMref)
         #print('Sft: R_S:')
         #print(StructA.Sft.R_0b)
@@ -139,11 +139,11 @@ class TestTNSB(unittest.TestCase):
                          [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
 
         np.testing.assert_almost_equal(StructA.Blds[0].Mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.Blds[0].r_O.ravel(),(-4.67840431,0,90.57868401))
+        np.testing.assert_almost_equal(StructA.Blds[0].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
         np.testing.assert_almost_equal(StructA.Blds[0].MM,Bld_MMref)
 
         np.testing.assert_almost_equal(StructA.Blds[2].Mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.Blds[2].r_O.ravel(),(-4.67840431,0,90.57868401))
+        np.testing.assert_almost_equal(StructA.Blds[2].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
         np.testing.assert_almost_equal(StructA.Blds[2].MM,Bld_MMref)
 
         #   print(StructA.Blds[0].Mass)
@@ -195,13 +195,13 @@ class TestTNSB(unittest.TestCase):
         #KKref = np.array([[2.68290366e+06, 3.90886251e+06, 0.00000000e+00],
         #                  [3.90886251e+06, 1.46504591e+10, 0.00000000e+00],
         #                  [0.00000000e+00, 0.00000000e+00, 0.00000000e+00]])
-        KKref = np.array([[2.68314382e+06, 3.91184920e+06, 0.00000000e+00],
-                          [3.91184920e+06, 1.46506882e+10, 0.00000000e+00],
-                          [0.00000000e+00, 0.00000000e+00, 0.00000000e+00]])
+        KKref =  np.array([[2.68314382e+06, 3.91083940e+06],
+                          [3.91083940e+06, 1.46363762e+10]])
+
 
 
         np.testing.assert_almost_equal(StructM.KK,StructA.KK)
-        np.testing.assert_almost_equal(StructM.KK[:2,:2]/1e6,KKref[:2,:2]/1e6, 4)
+        np.testing.assert_almost_equal(StructM.KK[:2,:2]/1e6,KKref[:2,:2]/1e6, 3)
         # print('Stiff matrix:')
         # print(StructA.KK)
         # print(StructM.KK-StructA.KK)
@@ -211,9 +211,13 @@ class TestTNSB(unittest.TestCase):
         #                [  744761.80802459, 48008244.21035789,        0.        ],
         #                [       0.        ,        0.        , 42635774.95525602]])
 
-        MMref=np.array([[ 4.36621608e+05,  7.46151067e+05,  0.00000000e+00],
-                        [ 7.46151067e+05,  4.83252038e+07, -1.16415322e-09],
-                        [ 0.00000000e+00,  0.00000000e+00,  4.33678529e+07]])
+        #MMref=np.array([[ 4.36621608e+05,  7.46151067e+05,  0.00000000e+00],
+        #                [ 7.46151067e+05,  4.83252038e+07, -1.16415322e-09],
+        #                [ 0.00000000e+00,  0.00000000e+00,  4.33678529e+07]])
+        MMref=np.array( [[  436621.49402492,   746008.31028306,        0.        ],
+                         [  746008.31028306, 48279102.40225491,        0.        ],
+                         [       0.        ,        0.        , 43367852.87936865]])
+
         np.testing.assert_almost_equal(StructA.MM/1e5,     MMref/1e5 , 5)
         np.testing.assert_almost_equal(StructM.MM/1e5,StructA.MM/1e5 , 5)
         # print('Mass matrix:')

@@ -25,7 +25,7 @@ class Test(unittest.TestCase):
         # --- Read data from NREL5MW tower
         TowerHt=87.6;
         TowerBs=0;
-        TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
+        TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
         twr = weio.FASTInputFile(TwrFile).toDataFrame()
         z = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m = twr['TMassDen_[kg/m]']  # mu
@@ -165,7 +165,7 @@ class Test(unittest.TestCase):
     #    from welib.yams.sid import FAST2SID
     #    np.set_printoptions(linewidth=300, precision=9)
     #    # --- Read data from NREL5MW tower
-    #    EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED.dat')
+    #    EDFile=os.path.join(MyDir,'')
     #    sid = FAST2SID(EDFile, Imodes_twr=[0,1])
 
 

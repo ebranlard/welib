@@ -11,7 +11,7 @@ MyDir=os.path.dirname(__file__)
 
 def main(test=False):
     # --- Read a FAST model to get the main parameters needed
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
 
     # --- Run BEM on a set of operating points
     if test:

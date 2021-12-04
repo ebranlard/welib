@@ -452,4 +452,4 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
 if __name__ == '__main__':
     np.set_printoptions(linewidth=300, precision=2)
-    FASTWindTurbine('../../data/NREL5MW/Main_Onshore_OF2.fst')
+    FASTWindTurbine('../../data/NREL5MW/Main_Onshore.fst')
