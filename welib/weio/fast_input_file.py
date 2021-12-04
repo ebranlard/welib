@@ -271,7 +271,7 @@ class FASTInputFile(File):
                     self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
                     self.data.append(parseFASTInputLine('---------------------------------------------------------------------------------------',i+2))
                     break
-            elif line.upper().find('SSOUTLIST'   )>0:
+            elif line.upper().find('SSOUTLIST'   )>0 or line.upper().find('SDOUTLIST'   )>0:
                 # SUBDYN Outlist doesn not follow regular format
                 self.data.append(parseFASTInputLine(line,i))
                 # OUTLIST Exception for BeamDyn
