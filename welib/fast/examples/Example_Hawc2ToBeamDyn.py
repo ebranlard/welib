@@ -42,6 +42,11 @@ if __name__=='__main__':
 
 if __name__=='__test__':
     main() 
+    try:
+        os.remove('_BD_Smooth.dat')
+        os.remove('_BD_Blade_Smooth.dat')
+    except:
+        pass
 
 if __name__=='__export__':
     pass

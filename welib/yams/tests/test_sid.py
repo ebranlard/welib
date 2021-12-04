@@ -64,6 +64,13 @@ class Test(unittest.TestCase):
         #print(sid)
         with open('_OUT_SID_TWR_PY.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
+        try:
+            os.remove('_OUT_SID_TWR_PY.txt')
+        except:
+            pass
+
+
+
 
     def test_fast2sid_bld(self):
         np.set_printoptions(linewidth=300, precision=9)
@@ -72,6 +79,10 @@ class Test(unittest.TestCase):
         _, sid = FAST2SID(EDFile, Imodes_bld=[0,1])
         with open('_OUT_SID_BLD_PY.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
+        try:
+            os.remove('_OUT_SID_BLD_PY.txt')
+        except:
+            pass
 
 if __name__=='__main__':
     np.seterr(all='raise')

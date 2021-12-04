@@ -156,6 +156,11 @@ class Test(unittest.TestCase):
         with open('_OUT_SID_PY.txt','w') as f:
             f.write(str(sid).replace('-0.000000',' 0.000000'))
 
+        try:
+            os.remove('_OUT_SID_PY.txt')
+        except:
+            pass
+
     #def test_fast2sid(self):
     #    from welib.yams.sid import FAST2SID
     #    np.set_printoptions(linewidth=300, precision=9)

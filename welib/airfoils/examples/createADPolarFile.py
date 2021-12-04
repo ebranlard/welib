@@ -75,3 +75,7 @@ if __name__ == '__main__':
 
 if __name__ == '__test__':
     main()
+    try:
+        os.remove('_Polar_out.dat.ignore')
+    except:
+        pass
