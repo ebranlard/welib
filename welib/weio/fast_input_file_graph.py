@@ -254,7 +254,7 @@ def subdynSumToGraph(data):
 
 
 if __name__ == '__main__':
-    import weio
+    import welib.weio as weio
 
     filename='../../_data/Monopile/MT100_SD.dat'
     # filename='../../_data/Monopile/TetraSpar_SubDyn_v3.dat'

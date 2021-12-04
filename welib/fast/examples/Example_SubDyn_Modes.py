@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 from welib.fast.subdyn import SubDyn
-import weio
+import welib.weio as weio
 import os
 
 

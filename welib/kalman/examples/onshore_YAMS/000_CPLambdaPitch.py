@@ -1,6 +1,6 @@
 import numpy as np
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 import wtDigiTwin.fast.fastlib as fastlib # latest fastlib is found at https://github.com/ebranlard/welib
 
 def CPLambda():

@@ -2,7 +2,7 @@
 import numpy as np
 import copy
 import os
-import weio
+import welib.weio as weio
 
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model

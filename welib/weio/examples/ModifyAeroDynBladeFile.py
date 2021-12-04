@@ -1,4 +1,4 @@
-import weio
+import welib.weio weio
 import numpy as np
 import os
 MyDir=os.path.dirname(__file__)

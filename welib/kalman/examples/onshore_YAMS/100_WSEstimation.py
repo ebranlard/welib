@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 
 # Local 
 from wtDigiTwin.ws_estimator.tabulated import TabulatedWSEstimator

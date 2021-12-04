@@ -3,7 +3,7 @@ Runs a set of OpenFAST linearizations for different operating points
 """
 import numpy as np
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 import welib.fast.fastlib as fastlib # latest fastlib is found in https://github.com/ebranlard/welib
 from   welib.tools.clean_exceptions import *
 # --- Parameters for this script

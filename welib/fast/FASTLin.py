@@ -2,7 +2,7 @@ import numpy as np
 import pickle
 import glob
 import os
-import weio # TODO use welib.weio
+import welib.weio as weio
 import pandas as pd
 
 

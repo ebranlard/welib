@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio # https://github.com/ebranlard/weio
 
 from wtDigiTwin.kalman.TN import KalmanFilterTN, KalmanFilterTNSim
 from wtDigiTwin.tools.colors import *
