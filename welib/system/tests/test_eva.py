@@ -35,14 +35,15 @@ class Test(unittest.TestCase):
         c = 2*M[0,0]*omega*zeta0
         C = np.array([[c]])
         #  Method 1
-        freq_d,zeta,Q,freq,xi = eigMCK(M, C, K, method='diag_beta')
+        freq_d,zeta,Q,freq = eigMCK(M, C, K, method='diag_beta')
+
 
         np.testing.assert_almost_equal(freq[0], omega/(2*np.pi), 4)
         np.testing.assert_almost_equal(zeta[0], zeta0, 4)
         np.testing.assert_almost_equal(freq_d[0], omega/(2*np.pi)*np.sqrt(1-zeta0**2), 2)
 
         #  Method 2
-        freq_d,zeta,Q,freq,xi = eigMCK(M, C, K, method='full_matrix')
+        freq_d,zeta,Q,freq = eigMCK(M, C, K, method='full_matrix')
 
         np.testing.assert_almost_equal(freq[0], omega/(2*np.pi), 4)
         np.testing.assert_almost_equal(zeta[0], zeta0, 4)
@@ -57,14 +58,14 @@ class Test(unittest.TestCase):
         #C = np.diag([0.1*c,0.2*c,0.5*c,1*c])
 
         # --- Method 1
-        freq_d,zeta,Q,freq,xi = eigMCK(M, C, K, method='diag_beta')
+        freq_d,zeta,Q,freq = eigMCK(M, C, K, method='diag_beta')
         np.testing.assert_almost_equal(freq[0], 0.2250, 4)
         np.testing.assert_almost_equal(freq[3], 0.2756, 4)
         np.testing.assert_almost_equal(freq_d[0], 0.21054, 4)
         np.testing.assert_almost_equal(zeta[0], 0.35355, 4)
 
         # --- Method 2
-        freq_d,zeta,Q,freq,xi = eigMCK(M, C, K, method='full_matrix')
+        freq_d,zeta,Q,freq = eigMCK(M, C, K, method='full_matrix')
         np.testing.assert_almost_equal(freq[0], 0.2250, 4)
         np.testing.assert_almost_equal(freq[3], 0.2756, 4)
         np.testing.assert_almost_equal(freq_d[0], 0.21054, 4)

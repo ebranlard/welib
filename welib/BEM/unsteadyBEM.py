@@ -285,9 +285,14 @@ class AeroBEM:
         self.CP=self.Power /(q*self.RtVAvg[:,0])
 
 
-    def toDataFrame(self):
+    def toDataFrame(self, BldNd_BladesOut=None, BldNd_BlOutNd=None, BldNd_OutList=None):
         """ Export time series to a pandas dataframe
         Column names are set to match OpenFAST outputs
+
+        BldNd_BladesOut: if None, all blades nodal output is output. Otherwise set it to an integer < self.nB
+        BldNd_BlOutNd:   if None, all radial position are output.    Otherwise set it to a list of radial indices [0,2,4, etc] 
+        BldNd_OutList:   if None, all possible channels are output.  Otherwise, set it to a list of channel names with units. 
+                         for instance:  ['Fx_[N/m]', 'Vx_[m/s]', 'AxInd_[-]', Phi_[deg]'] 
         """
         columns=['Time_[s]']
         columns+=['Thrust_[N]']
@@ -311,56 +316,96 @@ class AeroBEM:
         df['RtVAvgzh_[m/s]']  = self.RtVAvg[:,2]
         df['RtArea_[m^2]']    = self.RtArea
         df['RtSkew_[deg]']    = self.chi0
+
+
+
         for iB in np.arange(self.nB):
             df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.SkewAzimuth[:,iB],360)
 
         Vflw_s = self.Vwnd_s-self.Vstr_s
 
+
+        # --- Creating all the possible column names for all blades and radial position, matching OpenFAST convention
+        if BldNd_BladesOut is None: 
+            BldNd_BladesOut=np.arange(self.nB)
+        else:
+            BldNd_BladesOut=np.arange(min(BldNd_BladesOut, self.nB))
+        if BldNd_BlOutNd is None: 
+            BldNd_BlOutNd = np.arange(len(self.r))
+        if BldNd_OutList is None:
+            BldNd_OutList=['Fx_[N/m]','Fy_[N/m]','Vx_[m/s]','Vy_[m/s]','VDisx_[m/s]','VDisy_[m/s]','STVx_[m/s]','STVy_[m/s]','STVz_[m/s]','Vrel_[m/s]','TnInd_[-]','AxInd_[-]','Phi_[deg]','Vindx_[m/s]','Vindy_[m/s]','Alpha_[deg]','Fn_[N/m]','Ft_[N/m]','Cl_[-]','Cd_[-]']
+        # All columns
+        BldNd_columns = ['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+ c for iB in BldNd_BladesOut  for c in BldNd_OutList for ir in BldNd_BlOutNd]
+        # Dataframe
+        df_B_r = pd.DataFrame(np.zeros((len(self.time), len(BldNd_columns))), columns=BldNd_columns)
+
+        df= pd.concat((df,df_B_r),axis=1)
+
         # AeroDyn x-y is "section coord" s
         # AeroDyn n-t is "airfoil coord" a
         # AeroDyn doesn't have polar coord..
         for iB in np.arange(self.nB):
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.F_s[:,iB,ir,0]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] =-self.F_s[:,iB,ir,1] # NOTE: weird sign
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] =      Vflw_s[:,iB,ir,0]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =      Vflw_s[:,iB,ir,1]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] = self.Vwnd_s[:,iB,ir,0]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] = self.Vwnd_s[:,iB,ir,1]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_s[:,iB,ir,0]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = self.Vstr_s[:,iB,ir,1]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_s[:,iB,ir,2]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vrel_[m/s]'] = self.Vrel[:,iB,ir]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'TnInd_[-]'] = self.TnInd[:,iB,ir]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'AxInd_[-]'] = self.AxInd[:,iB,ir]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Phi_[deg]'] = self.phi[:,iB,ir]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindx_[m/s]'] = self.Vind_s[:,iB,ir,0]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindy_[m/s]'] = self.Vind_s[:,iB,ir,1]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Alpha_[deg]'] = self.alpha[:,iB,ir]
-        # AeroDyn "n-t", is almost like xa but y is switched
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.F_a[:,iB,ir,0]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Ft_[N/m]'] =-self.F_a[:,iB,ir,1]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cl_[-]'] = self.Cl[:,iB,ir]
-            for ir in np.arange(len(self.r)):
-                df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cd_[-]'] = self.Cd[:,iB,ir]
+            if 'Fx_[N/m]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.F_s[:,iB,ir,0]
+            if 'Fy_[N/m]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] =-self.F_s[:,iB,ir,1] # NOTE: weird sign
+            if 'Vx_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] =      Vflw_s[:,iB,ir,0]
+            if 'Vy_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =      Vflw_s[:,iB,ir,1]
+            if 'VDisx_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] = self.Vwnd_s[:,iB,ir,0]
+            if 'VDisy_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] = self.Vwnd_s[:,iB,ir,1]
+            if 'STVx_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_s[:,iB,ir,0]
+            if 'STVy_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = self.Vstr_s[:,iB,ir,1]
+            if 'STVz_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_s[:,iB,ir,2]
+            if 'Vrel_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vrel_[m/s]'] = self.Vrel[:,iB,ir]
+            if 'TnInd_[-]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'TnInd_[-]'] = self.TnInd[:,iB,ir]
+            if 'AxInd_[-]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'AxInd_[-]'] = self.AxInd[:,iB,ir]
+            if 'Phi_[deg]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Phi_[deg]'] = self.phi[:,iB,ir]
+            if 'Vindx_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindx_[m/s]'] = self.Vind_s[:,iB,ir,0]
+            if 'Vindy_[m/s]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindy_[m/s]'] = self.Vind_s[:,iB,ir,1]
+            if 'Alpha_[deg]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Alpha_[deg]'] = self.alpha[:,iB,ir]
+            #AeroDyn "n-t", is almost like xa but y is switched
+            if 'Fn_[N/m]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.F_a[:,iB,ir,0]
+            if 'Ft_[N/m]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Ft_[N/m]'] =-self.F_a[:,iB,ir,1]
+            if 'Cl_[-]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cl_[-]'] = self.Cl[:,iB,ir]
+            if 'Cd_[-]' in BldNd_OutList:
+                for ir in np.arange(len(self.r)):
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cd_[-]'] = self.Cd[:,iB,ir]
         return df
 
     def toDataFrameRadial(self, it=-1):

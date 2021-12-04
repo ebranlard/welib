@@ -949,22 +949,50 @@ def modeNorms(q, iDOFstart=0, nDOF=6):
 def normalize_to_last(Q, Imodes, iDOFStart=0, nDOF=6):
     for iimode, imode in enumerate(Imodes):
         mag = modeNorms(Q[:,imode], iDOFStart, nDOF)[:int(nDOF/2)]
+        if np.max(mag) ==0:
+            print('>>> mag', mag)
+            raise Exception('Problem in mode magnitude, all norms are 0.')
         iMax= np.argmax(mag);
         v_= Q[iDOFStart+iMax::nDOF, imode];
-        Q[:, imode]= Q[:, imode]/v_[-1]
+        if np.abs(v_[-1])>1e-9:
+            Q[:, imode]= Q[:, imode]/v_[-1]
+        else:
+            print('[WARN] fem_beam:normalize_to_last, mode {} has 0 amplitude at tip'.format(imode))
+            Q[:, imode]= Q[:, imode]/v_[-1]
     return Q
 
 def orthogonalizeModePair(Q1, Q2, iDOFStart=0, nDOF=6):
     # Find magnitudes to see in which direction the mode is the most
-    mag = modeNorms(Q1, iDOFStart, nDOF)[:int(nDOF/2)]
-    idx= np.argsort(mag)[-1::-1]
-    k11 = sum(Q1[iDOFStart+idx[0]-1::nDOF]);
-    k12 = sum(Q1[iDOFStart+idx[1]-1::nDOF]);
-    k21 = sum(Q2[iDOFStart+idx[0]-1::nDOF]);
-    k22 = sum(Q2[iDOFStart+idx[1]-1::nDOF]);
+    mag1 = modeNorms(Q1, iDOFStart, nDOF)[:int(nDOF/2)]
+    mag2 = modeNorms(Q2, iDOFStart, nDOF)[:int(nDOF/2)]
+    idx1= np.argsort(mag1)[-1::-1]
+    idx2= np.argsort(mag2)[-1::-1]
+    if (idx1[0]>idx2[0]):
+        idx=[idx2[0],idx1[0]]
+    else:
+        idx=[idx1[0],idx2[0]]
+    k11 = sum(Q1[iDOFStart+idx[0]::nDOF]);
+    k12 = sum(Q1[iDOFStart+idx[1]::nDOF]);
+    k21 = sum(Q2[iDOFStart+idx[0]::nDOF]);
+    k22 = sum(Q2[iDOFStart+idx[1]::nDOF]);
     Q1_ = k11*Q1 + k21*Q2
     Q2_ = k12*Q1 + k22*Q2
     return Q1_, Q2_
+
+# function V= orthogonalizeV(V, mode_pair, offsetX)
+# m1= xyzMagnitude(V(:, mode_pair(1)), offsetX);
+# [~, idx]= sort(m1, 'descend');
+# T(1, 1)= sum(V(offsetX+idx(1)-1:6:end, mode_pair(1)));
+# T(1, 2)= sum(V(offsetX+idx(2)-1:6:end, mode_pair(1)));
+# T(2, 1)= sum(V(offsetX+idx(1)-1:6:end, mode_pair(2)));
+# T(2, 2)= sum(V(offsetX+idx(2)-1:6:end, mode_pair(2)));
+# 
+# V1= T(1, 1)*V(:, mode_pair(1)) + T(2, 1)*V(:, mode_pair(2));
+# V2= T(1, 2)*V(:, mode_pair(1)) + T(2, 2)*V(:, mode_pair(2));
+# 
+# V(:, mode_pair(1))= V1;
+# V(:, mode_pair(2))= V2;
+
 
 def insertBCinModes(Qr, Tr):
     """
@@ -1029,12 +1057,6 @@ def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True)
         if normalize:
             Q[:,i]= Q[:,i]/fact
     return Q, modeNames
-
-
-
-
-
-
 
 
 # --------------------------------------------------------------------------------}

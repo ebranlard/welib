@@ -11,17 +11,15 @@ MyDir=os.path.dirname(__file__)
 # --------------------------------------------------------------------------------{
 class Test(unittest.TestCase):
     def test_GMGKBeam(self):
-        """ 
-        Given mass, stiffness distribution along the span of a beam and a set of shape functions
-        compute the Generalized mass and stiffness matrix for the flexible beam.
+        #  
+        #Given mass, stiffness distribution along the span of a beam and a set of shape functions
+        #compute the Generalized mass and stiffness matrix for the flexible beam.
 
-        In that test: 
-        - as shape functions the "theoretical" shape function for a clamped-free beam
-         (see welib.beams.theory)
-        - constant properties along the beam
-        - Beam along x axis
-
-        """
+        #In that test: 
+        #- as shape functions the "theoretical" shape function for a clamped-free beam
+        # (see welib.beams.theory)
+        #- constant properties along the beam
+        #- Beam along x axis
         try:
             import welib.beams.theory as bt
         except:
@@ -107,14 +105,12 @@ class Test(unittest.TestCase):
     # --- NREL5MW Tower 
     # --------------------------------------------------------------------------------{
     def test_TowerBeam_SID(self):
-        """ 
-        In this test we use:
-        - Beam properties from the Tower of the NREL5MW
-        - Shape functions determined using a FEM beam representation (see welib/FEM/tests/test_beam_linear_element.py)
-        - We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
-        - Beam along z axis
-        
-        """
+        # 
+        #In this test we use:
+        #- Beam properties from the Tower of the NREL5MW
+        #- Shape functions determined using a FEM beam representation (see welib/FEM/tests/test_beam_linear_element.py)
+        #- We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
+        #- Beam along z axis
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
         TowerHt=87.6;
@@ -180,14 +176,13 @@ class Test(unittest.TestCase):
     # --- NREL5MW Blade 
     # --------------------------------------------------------------------------------{
     def test_BladeBeam_SID(self):
-        """ 
-        In this test we use:
-        - Beam properties from the Blade of the NREL5MW
-        - Shape functions determined using a FEM beam representation (see welib/yams/tests/test_sid.py)
-        - We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
-        - Beam along z axis
-        
-        """
+        # 
+        #In this test we use:
+        #- Beam properties from the Blade of the NREL5MW
+        #- Shape functions determined using a FEM beam representation (see welib/yams/tests/test_sid.py)
+        #- We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
+        #- Beam along z axis
+        #
         np.set_printoptions(linewidth=300, precision=9)
 
         # --- Read data from NREL5MW Blade

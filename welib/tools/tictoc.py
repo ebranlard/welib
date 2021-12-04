@@ -45,9 +45,10 @@ class Timer(object):
             cmd1
             cmd2
     """
-    def __init__(self, name=None, writeBefore=False):
+    def __init__(self, name=None, writeBefore=False, silent=False):
         self.name        = name
         self.writeBefore = writeBefore
+        self.silent=silent
 
     def ref_str(self):
         s='[TIME] '
@@ -56,12 +57,16 @@ class Timer(object):
         return s
 
     def __enter__(self):
+        if self.silent:
+            return
         self.tstart = time.time()
         if self.writeBefore:
             s=self.ref_str()
             print(s,end='')
 
     def __exit__(self, type, value, traceback):
+        if self.silent:
+            return
         if self.writeBefore:
             print('Elapsed: {:6s}'.format(pretty_time(time.time() - self.tstart)))
         else:

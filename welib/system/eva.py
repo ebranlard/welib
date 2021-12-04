@@ -1,9 +1,23 @@
 """ 
-Eigenvalue analyses tools for mechnical system: 
-   mass matrix M, stiffness matrix K and possibly damping matrix C
+Eigenvalue analyses (EVA) tools for:
+    - arbitrary systems:  system matrix (A)
+    - and mechnical systems: mass (M), stiffness (K) and damping (C) matrices
+
+Some definitions:
+
+    - zeta: damping ratio 
+
+    - delta/log_dec: logarithmic decrement
+
+    - xi: approximation of logarithmic decrement: xi = 2 pi zeta
+
+    - omega0  : natural frequency
+
+    - omega_d : damped frequency  omega_d = omega_0 sqrt(1-zeta^2)
+
+
 """
 import pandas as pd    
-
 import numpy as np
 from scipy import linalg
 

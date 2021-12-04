@@ -86,11 +86,11 @@ class YAMSModel(object):
             if getattr(self,sa) is None:
                 raise Exception('Attribute {} needs to be set before calling `kane` method'.format(sa))
 
-        with Timer('Kane step1',True):
+        with Timer('Kane step1',True,silent=True):
             self.kane = YAMSKanesMethod(self.ref.frame, self.coordinates, self.speeds, self.kdeqs)
 
         # --- Expensive kane step
-        with Timer('Kane step 2',True):
+        with Timer('Kane step 2',True,silent=True):
             #(use  Mform ='symbolic' or 'TaylorExpanded'), Mform='symbolic'
             self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform, addGravity=addGravity, g_vect=self.g_vect)
         self.kane.fr     = self.fr
@@ -101,20 +101,20 @@ class YAMSModel(object):
         Apply small angle approximation to forcing and mass matrix
         """
         # Forcing
-        with Timer('Small angle approx. forcing',True):
+        with Timer('Small angle approx. forcing',True,silent=True):
             if self._sa_forcing is None:
                 self._sa_forcing=self.kane.forcing
             self._sa_forcing = self._sa_forcing.subs(self.kdeqsSubs).subs(extraSubs)
             self._sa_forcing = smallAngleApprox(self._sa_forcing, angle_list)
-        with Timer('Small angle approx. forcing simplify',True):
+        with Timer('Small angle approx. forcing simplify',True,silent=True):
             self._sa_forcing.simplify()
         # Mass matrix
-        with Timer('Small angle approx. mass matrix',True):
+        with Timer('Small angle approx. mass matrix',True,silent=True):
             if self._sa_mass_matrix is None:
                 self._sa_mass_matrix=self.kane.mass_matrix
             self._sa_mass_matrix = self._sa_mass_matrix.subs(self.kdeqsSubs).subs(extraSubs)
             self._sa_mass_matrix = smallAngleApprox(self._sa_mass_matrix, angle_list)
-        with Timer('Small angle approx. mass matrix simplify',True):
+        with Timer('Small angle approx. mass matrix simplify',True,silent=True):
             self._sa_mass_matrix.simplify()
 
         self.smallAngleUsed=angle_list
@@ -125,7 +125,7 @@ class YAMSModel(object):
         Apply small angle approximation to equation of motion H(x,xd,xdd,..)=0
         """
         EOM=self.EOM
-        with Timer('Small angle approx. EOM',True):
+        with Timer('Small angle approx. EOM',True,silent=True):
             EOM = EOM.subs(extraSubs)
             EOM = smallAngleApprox(EOM, angle_list).subs(extraSubs)
         #with Timer('Small angle approx. EOM simplify',True):
@@ -161,7 +161,7 @@ class YAMSModel(object):
         if EOM is None:
             EOM=self.EOM
 
-        with Timer('Linearization',True):
+        with Timer('Linearization',True,silent=True):
             # NOTE: order important
             op_point=[]
             if noAcc: 
@@ -210,7 +210,7 @@ class YAMSModel(object):
             name=name+'_'+suffix.strip('_')
 
         filename=os.path.join(folder,name+'.tex')
-        with Timer('Latex to {}'.format(filename),True):
+        with Timer('Latex to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 if header:
                     f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
@@ -294,7 +294,7 @@ class YAMSModel(object):
                 b.replaceDict(replaceDict)
         #print(replaceDict)
 
-        with Timer('Python to {}'.format(filename),True):
+        with Timer('Python to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 f.write('"""\n')
                 f.write('{}\n'.format(self.__repr__()))
@@ -490,7 +490,7 @@ class EquationsOfMotionQ(object):
 
     def simplify(self):
         """ Simplify equations of motion """
-        with Timer('Simplify',True):
+        with Timer('Simplify',True,silent=True):
             self.EOM.simplify()
 
     def trigsimp(self):
@@ -505,7 +505,7 @@ class EquationsOfMotionQ(object):
         """ 
         Apply small angle approximation to EOM
         """
-        with Timer('Small angle approx',True):
+        with Timer('Small angle approx',True,silent=True):
             self.EOM = smallAngleApprox(self.EOM, angle_list, order=order)
         self.smallAngleUsed+=angle_list
 
@@ -531,7 +531,7 @@ class EquationsOfMotionQ(object):
             name=name+'_'+suffix.strip('_')
 
         filename=os.path.join(folder,name+'.tex')
-        with Timer('Latex to {}'.format(filename),True):
+        with Timer('Latex to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 if header:
                     f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
@@ -571,7 +571,7 @@ class EquationsOfMotionQ(object):
         replaceDict.update(self.bodyReplaceDict)
         #print(replaceDict)
 
-        with Timer('Python to {}'.format(filename),True):
+        with Timer('Python to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 f.write('"""\n')
                 f.write('Equations of motion\n')
@@ -604,7 +604,7 @@ def linearizeQ(EOM, q, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
     qd  = [qi.diff(dynamicsymbols._t) for qi in q]
     qdd = [qdi.diff(dynamicsymbols._t) for qdi in qd]
 
-    with Timer('Linearization',True):
+    with Timer('Linearization',True,silent=True):
         # NOTE: order important
         op_point=[]
         if noAcc: 

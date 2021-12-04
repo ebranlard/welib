@@ -132,7 +132,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # Gen only
     Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
 
-    print('>>> IG_hub',IG_hub, r_SGhub_inS)
+    #print('>>> IG_hub',IG_hub, r_SGhub_inS)
     # Nacelle Body
     Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
     # Yaw Bearing # TODO TODO TODO

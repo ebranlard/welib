@@ -128,7 +128,7 @@ class TestFitting(unittest.TestCase):
 
     def test_weibull(self):
         A, k = 10, 2.3,
-        x=np.linspace(0,1,10)
+        x=np.linspace(0.01,1,10)
         y=weibull_pdf(x,(A,k))
         y_fit, pfit, fitter = model_fit('predef: weibull_pdf', x, y)
         np.testing.assert_array_almost_equal(y,y_fit)

@@ -25,6 +25,11 @@ class TestExamples(unittest.TestCase):
             if hasattr(self,'subTest'):
                 with self.subTest(filename=os.path.basename(f)):
                     execfile(f, {'__name__': '__test__', 'print': lambda *_:None})
+        try:
+            import matplotlib.pyplot as plt
+            plt.close('all')
+        except:
+            pass
 
 
 if __name__ == '__main__':

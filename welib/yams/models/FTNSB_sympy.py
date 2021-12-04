@@ -28,6 +28,7 @@ _defaultOpts={
     'aero_forces':True, # Add aerodynamic torques
     'orderMM':2, #< order of taylor expansion for Mass Matrix
     'orderH':2,  #< order of taylor expansion for H term
+    'verbose':False, 
 }
 
 
@@ -48,6 +49,7 @@ def get_model(model_name, **opts):
         if k not in _defaultOpts.keys():
             raise Exception('Key {} not supported for model options.'.format(k))
     #print(opts)
+    verbose=opts['verbose']
 
     # Extract info from model name
     sFnd= model_name.split('T')[0][1:]
@@ -210,7 +212,9 @@ def get_model(model_name, **opts):
             ref.connectTo(twr, type='Rigid' , rel_pos=rel_pos)
         elif nDOF_fnd==1: 
             #print('Constraint connection ref twr')
-            ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(0    , x * symbols('nu'), 0   ), rot_order='XYZ')
+            #ref.connectTo(twr, type='Free' , rel_pos=(x,0,z_OT), rot_amounts=(0    , x * symbols('nu'), 0   ), rot_order='XYZ')
+            print('>>>> TODO TODO TODO FTNSB_sympy, commented hacked case for nDOF_fnd==1')
+            ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
         else:
             #print('Free connection ref twr', rel_pos, rots)
             ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
@@ -331,17 +335,20 @@ def get_model(model_name, **opts):
             if opts['tiltShaft']:
                 # TODO actually tilt shaft, introduce non rotating shaft body
                 if opts['aero_forces']:
-                    thrustR = (rot.origin, T_a *cos(tiltDOF) * nac.frame.x -T_a *sin(tiltDOF) * nac.frame.z)
+                    #thrustR = (rot.origin, T_a *cos(tiltDOF) * nac.frame.x -T_a *sin(tiltDOF) * nac.frame.z)
+                    thrustR = (rot.origin, T_a * rot.frame.x)
                 if opts['aero_torques']:
-                    M_a_R = (nac.frame, M_ax*nac.frame.x*0 )# TODO TODO
-                    #print('>>> WARNING tilt shaft aero moments not implemented') # TODO
-                    body_loads+=[(nac, M_a_R)]
+                    print('>>> Adding aero torques 1')
+                    M_a_R = (rot.frame, M_ax*rot.frame.x )# TODO TODO
+                    body_loads+=[(rot, M_a_R)]
             else:
                 thrustR = (rot.origin, T_a * nac.frame.x )
                 #thrustR = (rot.origin, T_a * rot.frame.x )
                 #M_a_R = (rot.frame, M_ax*rot.frame.x +  M_ay*rot.frame.y  + M_az*rot.frame.z) # TODO TODO TODO introduce a non rotating shaft
                 if opts['aero_torques']:
-                    M_a_R = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z) 
+                    print('>>> Adding aero torques 2')
+                    #M_a_R = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z) 
+                    M_a_R = (rot.frame, M_ax*rot.frame.x +  M_ay*rot.frame.y  + M_az*rot.frame.z)
                     body_loads+=[(nac, M_a_R)]
             body_loads  += [(rot,thrustR)]
 
@@ -360,7 +367,7 @@ def get_model(model_name, **opts):
             body_loads  += [(nac,thrustN)]
 
         if opts['aero_torques']:
-            #print('>>> Adding aero torques')
+            print('>>> Adding aero torques 3')
             if opts['tiltShaft']:
                 # NOTE: for a rigid RNA we keep only M_y and M_z, no shaft torque
                 x_tilted = cos(tiltDOF) * nac.frame.x - sin(tiltDOF) * nac.frame.z
@@ -369,6 +376,13 @@ def get_model(model_name, **opts):
             else:
                 M_a_N = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z)
             body_loads  += [(nac, M_a_N)]  
+    if verbose:
+        print('Loads:')
+        for (b,l) in body_loads:
+            print(b.name, l)
+
+
+
 
     # --------------------------------------------------------------------------------}
     # --- Kinematic equations 
