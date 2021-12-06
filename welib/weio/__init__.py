@@ -33,6 +33,8 @@ def fileFormats():
     from .vtk_file import VTKFile
     from .bladed_out_file         import BladedFile
     from .parquet_file            import ParquetFile
+    from .cactus_file             import CactusFile
+    from .raawmat_file            import RAAWMatFile
     formats = []
     formats.append(FileFormat(CSVFile))
     formats.append(FileFormat(TecplotFile))
@@ -61,6 +63,8 @@ def fileFormats():
     formats.append(FileFormat(VTKFile))
     formats.append(FileFormat(TDMSFile))
     formats.append(FileFormat(ParquetFile))
+    formats.append(FileFormat(CactusFile))
+    formats.append(FileFormat(RAAWMatFile))
     return formats
 
 

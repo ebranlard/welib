@@ -112,7 +112,11 @@ class FASTInputDeck(dict):
             self.fst_vt['af_data']=[] # TODO add to "AeroDyn"
             for afi, af_filename in enumerate(self.fst_vt['AeroDyn15']['AFNames']):
                 af_filename = os.path.join(baseDir,af_filename).replace('"','')
-                polar = self._read(af_filename, 'AF')
+                try: 
+                    polar = self._read(af_filename, 'AF')
+                except:
+                    polar=None
+                    print('[FAIL] reading polar {}'.format(af_filename))
                 self.fst_vt['af_data'].append(polar)
                 if polar is not None:
                     coordFile = polar['NumCoords']
@@ -218,6 +222,8 @@ class FASTInputDeck(dict):
         # --- Backward compatibility
         self.fst = self.fst_vt['Fst']
         self.ED  = self.fst_vt['ElastoDyn']
+        if not hasattr(self,'AD'):
+            self.AD = None
         if self.AD is not None:
             self.AD.Bld1 = self.fst_vt['AeroDynBlade']
             self.AD.AF  = self.fst_vt['af_data']
