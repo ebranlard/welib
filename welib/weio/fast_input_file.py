@@ -15,35 +15,6 @@ except:
         pass
     class BrokenFormatError(Exception):
         pass
-    class File(dict):
-        def __init__(self,filename=None):
-            self._size=None
-            self._encoding=None
-            if filename:
-                self.filename = filename
-                self.read()
-            else:
-                self.filename = None
-        def read(self, filename=None):
-            if filename:
-                self.filename = filename
-            if self.filename:
-                if not os.path.isfile(self.filename):
-                    raise OSError(2,'File not found:',self.filename)
-                if os.stat(self.filename).st_size == 0:
-                    raise EmptyFileError('File is empty:',self.filename)
-                self._read()
-            else:  
-                raise Exception('No filename provided')
-        def write(self, filename=None):
-            if filename:
-                self.filename = filename
-            if self.filename:
-                self._write()
-            else:
-                raise Exception('No filename provided')
-        def toDataFrame(self):
-            return self._toDataFrame()
 import os
 import numpy as np
 import re
@@ -95,7 +66,13 @@ class FASTInputFile(File):
         return 'FAST input file'
 
     def __init__(self, filename=None, **kwargs):
-        super(FASTInputFile, self).__init__(filename=filename,**kwargs)
+        self._size=None
+        self._encoding=None
+        if filename:
+            self.filename = filename
+            self.read()
+        else:
+            self.filename = None
 
     def keys(self):
         self.labels = [ d['label'] for d in self.data if not d['isComment'] ]
@@ -162,6 +139,18 @@ class FASTInputFile(File):
         if descr is not None:
             d['descr']=descr
         self.data.append(d)
+
+    def read(self, filename=None):
+        if filename:
+            self.filename = filename
+        if self.filename:
+            if not os.path.isfile(self.filename):
+                raise OSError(2,'File not found:',self.filename)
+            if os.stat(self.filename).st_size == 0:
+                raise EmptyFileError('File is empty:',self.filename)
+            self._read()
+        else:  
+            raise Exception('No filename provided')
 
     def _read(self):
 
@@ -241,6 +230,8 @@ class FASTInputFile(File):
         allowSpaceSeparatedList=False
         while i<len(lines):
             line = lines[i]
+
+            # --- Read special sections
             # OUTLIST Exceptions
             if line.upper().find('ADDITIONAL OUTPUTS')>0 \
             or line.upper().find('MESH-BASED OUTPUTS')>0 \
@@ -286,7 +277,6 @@ class FASTInputFile(File):
                 self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
                 self.data.append(parseFASTInputLine('---------------------------------------------------------------------------------------',i+2))
                 break
-                
             elif line.upper().find('ADDITIONAL STIFFNESS')>0:
                 # TODO, lazy implementation so far, MAKE SUB FUNCTION
                 self.data.append(parseFASTInputLine(line,i))
@@ -385,7 +375,7 @@ class FASTInputFile(File):
                 else:
                     nTabLines = self[d['tabDimVar']]
                 #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
-                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders],nTabLines,i,nHeaders,tableType=tab_type)
+                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders], nTabLines, i, nHeaders, tableType=tab_type, varNumLines=d['tabDimVar'])
                 i += nTabLines+nHeaders-1
 
                 # --- Temporary hack for e.g. SubDyn, that has duplicate table, impossible to detect in the current way...
@@ -428,7 +418,7 @@ class FASTInputFile(File):
                 else:
                     nTabLines = self[d['tabDimVar']]
                 #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
-                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i,nHeaders,tableType=tab_type,nOffset=nOffset)
+                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
                 i += nTabLines+1-nOffset
 
                 # --- Temporary hack for e.g. SubDyn, that has duplicate table, impossible to detect in the current way...
@@ -596,6 +586,14 @@ class FASTInputFile(File):
             if i<len(self.data)-1:
                 s+='\n'
         return s
+
+    def write(self, filename=None):
+        if filename:
+            self.filename = filename
+        if self.filename:
+            self._write()
+        else:
+            raise Exception('No filename provided')
 
     def _write(self):
         with open(self.filename,'w') as f:
@@ -1130,7 +1128,7 @@ def detectUnits(s,nRef):
     return Units
 
 
-def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset=0):
+def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset=0, varNumLines=''):
     """ 
     First lines of data starts at: nHeaders+nOffset
     
@@ -1147,8 +1145,9 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             # Extract number of values from number of numerical values on first line
             numeric_const_pattern = r'[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
             rx = re.compile(numeric_const_pattern, re.VERBOSE)
+            header = cleanAfterChar(lines[nOffset], '!')
             if tableType=='num':
-                dat= np.array(rx.findall(lines[nOffset])).astype(float)
+                dat= np.array(rx.findall(header)).astype(float)
                 ColNames=['C{}'.format(j) for j in range(len(dat))]
             else:
                 raise NotImplementedError('Reading FAST tables with no headers for type different than num not implemented yet')
@@ -1158,6 +1157,8 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             i = 0
             sTmp = cleanLine(lines[i])
             sTmp = cleanAfterChar(sTmp,'[')
+            sTmp = cleanAfterChar(sTmp,'!')
+            sTmp = cleanAfterChar(sTmp,'#')
             if sTmp.startswith('!'):
                 sTmp=sTmp[1:].strip()
             ColNames=sTmp.split()
@@ -1165,6 +1166,8 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             # Extract units
             i = 1
             sTmp = cleanLine(lines[i])
+            sTmp = cleanAfterChar(sTmp,'!')
+            sTmp = cleanAfterChar(sTmp,'#')
             if sTmp.startswith('!'):
                 sTmp=sTmp[1:].strip()
 
@@ -1183,10 +1186,19 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
                 Tab = np.zeros((n, nCols))
             for i in range(nHeaders+nOffset,n+nHeaders+nOffset):
                 l = cleanAfterChar(lines[i].lower(),'!')
+                l = cleanAfterChar(l,'#')
                 v = l.split()
                 if len(v) != nCols:
-                    print('[WARN] {}: Line {}: number of data different from number of column names'.format(filename, iStart+i+1))
+                    # Discarding SubDyn special cases
+                    if ColNames[-1].lower() not in ['nodecnt']:
+                        print('[WARN] {}: Line {}: number of data different from number of column names. ColumnNames: {}'.format(filename, iStart+i+1, ColNames))
                 if i==nHeaders+nOffset:
+                    # Node Cnt
+                    if len(v) != nCols:
+                        if ColNames[-1].lower()== 'nodecnt':
+                            ColNames = ColNames+['Col']*(len(v)-nCols)
+                            Units    = Units+['Col']*(len(v)-nCols)
+
                     nCols=len(v)
                     Tab = np.zeros((n, nCols))
                 # Accounting for TRUE FALSE and converting to float
@@ -1202,9 +1214,15 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
                 Tab = np.zeros((n, nCols)).astype(object)
             for i in range(nHeaders+nOffset,n+nHeaders+nOffset):
                 l = lines[i]
+                l = cleanAfterChar(l,'!')
+                l = cleanAfterChar(l,'#')
                 v = l.split()
+                if l.startswith('---'):
+                    raise BrokenFormatError('Error reading line {} while reading table. Is the variable `{}` set correctly?'.format(iStart+i+1, varNumLines))
                 if len(v) != nCols:
-                    print('[WARN] {}: Line {}: Number of data is different than number of column names'.format(filename,iStart+1+i))
+                    # Discarding SubDyn special cases
+                    if ColNames[-1].lower() not in ['cosmid', 'ssifile']:
+                        print('[WARN] {}: Line {}: Number of data is different than number of column names. Column Names: {}'.format(filename,iStart+1+i, ColNames))
                 if i==nHeaders+nOffset:
                     if len(v)>nCols:
                         ColNames = ColNames+['Col']*(len(v)-nCols)

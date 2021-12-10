@@ -375,6 +375,7 @@ class GraphModel(object):
             values=[n[key] for n in self.Nodes]
         I= np.argsort(values)
         self.Nodes=[self.Nodes[i] for i in I]
+        return self
 
     def divideElements(self, nPerElement):
         """ divide all elements by nPerElement (add nodes and elements to graph) """ 
@@ -387,6 +388,7 @@ class GraphModel(object):
         for ie in np.arange(len(self.Elements)): # cannot enumerate since length increases
             elemID = self.Elements[ie].ID
             self.divideElement(elemID, nPerElement)
+        return self
                     
     # --------------------------------------------------------------------------------}
     # --- Dynamics

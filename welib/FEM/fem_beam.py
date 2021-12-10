@@ -1,6 +1,16 @@
 """ 
 Classes and tools to easily set up a FEM model made of beam elements
 
+- types of FEM models:
+
+    - "cbeam": a continuous beam made of different material (e.g. wind turbine blade or tower )
+
+- element: specify the element type to use along the beam: 
+       'timoshenko' : 6-DOF Timoshenko. See timoshenko.py
+       'frame3d'    : 6-DOF frame ("Euler-Bernoulli"). See frame3d.py
+       'frame3dlin' : 6-DOF linear frame (assumes linear variation of properties between nodes. See frame3dlin.py
+       'beam2d'     : 3-DOF 2D beam. See frame2d.py
+
 
 References:
 
@@ -14,7 +24,8 @@ References:
 import pandas as pd
 import numpy as np
 import scipy
-from welib.FEM.utils import skew 
+from welib.FEM.utils    import skew, elementDCMfromBeamNodes
+from welib.FEM.fem_core import insertFixedBCinModes
 from welib.system.eva import eig
 
 # --------------------------------------------------------------------------------}
@@ -93,7 +104,7 @@ def cbeam(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=None, E=N
     [Q, freq]= eig(KK, MM, freq_out=True)
 
     # --- Compute modes and frequencies
-    Q = insertBCinModes(Q, Tr)
+    Q = insertFixedBCinModes(Q, Tr)
     Q, modeNames = identifyAndNormalizeModes(Q, nModes=20)
 
     # --- Return a dictionary
@@ -120,7 +131,7 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
     IDOF_tip = FEM['Nodes2DOF'][FEM['Elem2Nodes'][-1,:][1],:] # NOTE: index in full system
     Ileader=FEM['IFull2BC'][IDOF_tip] # NOTE: index in system with BC
     # --- Craig-Bampton reduction
-    MMr, KKr, Phi_G, Phi_CB, f_G, f_CB = CraigBampton(MM, KK, Ileader, nModesCB=nCB, Ifollow=None, F=None, DD=None, fullModesOut=True)
+    MMr, KKr, Phi_G, Phi_CB, f_G, f_CB,_,_ = CraigBampton(MM, KK, Ileader, nModesCB=nCB, Ifollow=None, F=None, DD=None, fullModesOut=True)
 
     CB=dict()
     CB['MM']     = MMr
@@ -411,6 +422,13 @@ def cbeam_assembly(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=
 
     if element=='frame3d':
         return cbeam_assembly_frame3d(xNodes, E, G, m, EIx, EIy, EIz, Kt, EA, A, phi=None)
+
+    elif element=='frame3dlin':
+        print('>>> TODO, not tested')
+        E  = EA/A
+        Iy = EIy/E
+        Iz = EIz/E
+        return cbeam_assembly_frame3dlin(xNodes, m, Iy, Iz, A, Kt, E, G, phi=None)
     else:
         raise NotImplementedError()
 
@@ -483,6 +501,7 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
         Me = Le*me[i]
         # --- Element matrix
         Ke,Me,Kg = frame3d_KeMe(E[i],G[i],Kte[i],EAe[i],EIxe[i],EIye[i],EIze[i],Le,Ae[i],Me,T=0,R=None)
+        # TODO TODO TODO Rotation
         # --- Build global matrices
         MM = BuildGlobalMatrix(MM, Me, DOFindex)
         KK = BuildGlobalMatrix(KK, Ke, DOFindex)
@@ -885,50 +904,6 @@ def geometricalStiffening(xNodes, Kinv, Tr, Se, Nodes2DOF, Elem2Nodes, Elem2DOF,
     return GKg
 
 
-# TODO verify that these are DCM and not the transpose
-def elementDCMfromBeamNodes(xNodes, phi=None):
-    """ Generate element Direction cosine matricse (DCM) 
-    from a set of ordered node coordinates defining a beam mean line
-
-    INPUTS:
-        xNodes: 3 x nNodes
-        phi (optional): nNodes angles about mean line to rotate the section axes
-    OUTPUTS:
-        DCM:  3 x 3 x (nNodes-1)
-    """
-    def null(a, rtol=1e-5):
-        u, s, v = np.linalg.svd(a)
-        rank = (s > rtol*s[0]).sum()
-        return v[rank:].T.copy()
-
-    assert(xNodes.shape[0]==3)
-    nElem=xNodes.shape[1]-1
-    DCM = np.zeros((3,3,nElem))
-    for i in np.arange(nElem):
-        dx= (xNodes[:,i+1]-xNodes[:,i]).reshape(3,1)
-        le = np.linalg.norm(dx) # element length
-        e1 = dx/le # tangent vector
-        if i==0:
-            e1_last = e1
-            e2_last = null(e1.T)[:,0].reshape(3,1) # x,z-> y , y-> -x 
-        # normal vector
-        de1 = e1 - e1_last
-        if np.linalg.norm(de1)<1e-8:
-            e2 = e2_last
-        else:
-            e2 = de1/np.linalg.norm(de1)
-        # Rotation about e1
-        if phi is not None:
-            R  = np.cos(phi[i])*np.eye(3) + np.sin(phi[i])*skew(e1) + (1-np.cos(phi[i]))*e1.dot(e1.T);
-            e2 = R.dot(e2)
-        # Third vector
-        e3=np.cross(e1.ravel(),e2.ravel()).reshape(3,1)
-        DCM[:,:,i]= np.column_stack((e1,e2,e3)).T;
-        e1_last= e1
-        e2_last= e2
-    return DCM
-
-
 
 # --------------------------------------------------------------------------------}
 # --- Mode tools 
@@ -994,12 +969,6 @@ def orthogonalizeModePair(Q1, Q2, iDOFStart=0, nDOF=6):
 # V(:, mode_pair(2))= V2;
 
 
-def insertBCinModes(Qr, Tr):
-    """
-    Qr : (nr x nr) reduced modes
-    Tr : (n x nr) reduction matrix such that  Mr = Tr' MM Tr
-    """
-    return Tr.dot(Qr)
 
 def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True):
     """ 

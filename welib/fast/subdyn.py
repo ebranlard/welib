@@ -27,6 +27,8 @@ class SubDyn(object):
             self.File = sdData
 
         self.M_tip=None
+        # internal
+        self._graph=None
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
@@ -49,6 +51,34 @@ class SubDyn(object):
         else:
             M_tip=None
 
+    @property
+    def graph(self):
+        import copy
+        if self._graph is None:
+            with Timer('Setting up graph'):
+                print('>>> NDIV is ', self.File['NDiv'])
+                self._graph = self.File.toGraph().divideElements(self.File['NDiv'],
+                        excludeDataKey='Type', excludeDataList=['Cable','Rigid'], method='insert',
+                        keysNotToCopy=['IBC','RBC','addedMassMatrix'] # Very important
+                        )
+            # Satinization
+            #idBC_Fixed    =  0 # Fixed BC
+            #idBC_Internal = 10 # Free/Internal BC
+            #idBC_Leader   = 20 # Leader DOF
+            MapIBC={0:0, 1:20} # 1 in the input file is leader
+            MapRBC={0:10, 1:0} # 1 in the input file is fixed
+            for n in self._graph.Nodes:
+                if 'IBC' in n.data.keys():
+                    IBC = n.data['IBC']
+                    n.data['IBC'] = [MapIBC[i] for i in IBC[:6]]
+                if 'RBC' in n.data.keys():
+                    RBC = n.data['RBC']
+                    n.data['RBC'] = [MapRBC[i] for i in RBC[:6]]
+                    if any(RBC)==0:
+                        raise NotImplementedError('SSI')
+
+        return copy.deepcopy(self._graph)
+
     # --------------------------------------------------------------------------------}
     # --- Functions for beam-like structure (Spar, Monopile)
     # --------------------------------------------------------------------------------{
@@ -59,10 +89,7 @@ class SubDyn(object):
         TopMass = False
 
         # Convert to "welib.fem.Graph" class to easily handle the model (overkill for a monopile)
-        graph = self.File.toGraph()
-        graph.divideElements(self.File['NDiv'])
-        graph.sortNodesBy('z')
-        df = graph.nodalDataFrame()
+        df = self.graph.sortNodesBy('z').nodalDataFrame()
 
         if equispacing:
             from welib.tools.pandalib import pd_interp1
@@ -157,6 +184,70 @@ class SubDyn(object):
             axes[i].set_title(Modes[key]['label'])
             if i==0:
                 axes[i].legend()
+
+    # --------------------------------------------------------------------------------}
+    # --- Functions for general FEM model (jacket, flexible floaters)
+    # --------------------------------------------------------------------------------{
+    def FEM(self, TP=(0,0,0), gravity = 9.81):
+        """ return FEM model for beam-like structures, like Spar/Monopile
+
+        TP: position of transition point
+        """
+        import welib.FEM.fem_beam as femb
+        import welib.FEM.fem_model as femm
+        BC       = 'clamped-free' # TODO Boundary condition: free-free or clamped-free
+        element  = 'frame3d'      # Type of element used in FEM
+
+        FEMMod = self.File['FEMMod']
+        if FEMMod==1:
+            element='frame3d'
+        elif FEMMod==2:
+            element='frame3dlin'
+        elif FEMMod==3:
+            element='timoshenko'
+        else:
+            raise NotImplementedError()
+        print('>>> Main Element', FEMMod)
+        # Get graph
+        graph = self.graph
+        print('>>> graph\n',graph)
+        #graph.toJSON('_GRAPH.json')
+        # Convert to FEM model
+        with Timer('From graph'):
+            model = femm.FEMModel.from_graph(self.graph, mainElementType=element, TP=TP, gravity=gravity)
+        #model.toJSON('_MODEL.json')
+        with Timer('Assembly'):
+            model.assembly()
+        with Timer('Internal constraints'):
+            model.applyInternalConstraints()
+            model.partition()
+        with Timer('BC'):
+            model.applyFixedBC()
+        with Timer('EIG'):
+            model.eig(normQ='byMax')
+        with Timer('CB'):
+            model.CraigBampton(nModesCB = self.File['Nmodes'], zeta=self.File['JDampings']/100 )
+
+        model.rigidBodyEquivalent()
+
+        #print(model)
+        #print(model.DOF2Nodes)
+        #print(graph)
+#         n2e = graph.nodes2Elements
+#         conn = graph.connectivity
+#         print(n2e)
+#         print(conn)
+
+        ## --- Compute FEM model and mode shapes
+        #with Timer('Setting up FEM model'):
+        #    FEM=femb.cbeam(x,m=rho*A,EIx=E*Ip,EIy=E*I,EIz=E*I,EA=E*A,A=A,E=E,G=G,Kt=Kt,
+        #                element=element, BC=BC, M_tip=self.M_tip)
+
+
+        return model
+
+
+
 
     def toYAMSData(self, shapes=[0,4], main_axis='z'):
         """ 

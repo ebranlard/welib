@@ -44,7 +44,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     Kff= KK[np.ix_(Ifollow, Ifollow)]
     Mlf= MM[np.ix_(Ileader, Ifollow)]
     Klf= KK[np.ix_(Ileader, Ifollow)]
-    
+
     # --- Solve for Guyan modes
     Kff1Kfl = np.linalg.solve(Kff,(np.transpose(Klf))) # Kss1Ksm=Kss\(Kms');
     #Kff1Kfl = np.linalg.inv(Kff).dot(Klf.T)
@@ -96,7 +96,10 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     if F is not None:
         raise NotImplementedError('Not done')
 
-    return Mr, Kr, Phi_G, Phi_CB, f_G, f_CB
+    I_G  = list(np.arange(len(Ileader)))
+    I_CB = list(np.arange(len(Ifollow)) + len(I_G))
+
+    return Mr, Kr, Phi_G, Phi_CB, f_G, f_CB, I_G, I_CB
 
 
 def augmentModes(Ileader, Phi_G, Phi_CB, Ifollow=None):

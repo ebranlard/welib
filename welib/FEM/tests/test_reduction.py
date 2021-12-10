@@ -15,7 +15,7 @@ class Test(unittest.TestCase):
         Maff = L * 8828.201296825122
         KK = EI / (L ** 3) * np.array([[12,6 * L,- 12,6 * L],[6 * L,4 * L ** 2,- 6 * L,2 * L ** 2],[- 12,- 6 * L,12,- 6 * L],[6 * L,2 * L ** 2,- 6 * L,4 * L ** 2]])
         MM = Maff / 420 * np.array([[156,22 * L,54,- 13 * L],[22 * L,4 * L ** 2,13 * L,- 3 * L ** 2],[54,13 * L,156,- 22 * L],[- 13 * L,- 3 * L ** 2,- 22 * L,4 * L ** 2]])
-        Mr,Kr,Phi_G,Phi_CB,f_G,f_CB = CraigBampton(MM,KK,[2,3], nModesCB=2, fullModesOut=True)
+        Mr,Kr,Phi_G,Phi_CB,f_G,f_CB,_,_ = CraigBampton(MM,KK,[2,3], nModesCB=2, fullModesOut=True)
         #print(MM)
         #print(Mr)
         #print(Kr)
@@ -55,7 +55,7 @@ class Test(unittest.TestCase):
         KK = np.delete(KK, [0], axis=1) # removing columns
         KK = np.delete(KK, [0], axis=0) # removing Lines
 
-        Mr,Kr,Phi_G,Phi_CB,f_G,f_CB = CraigBampton(MM,KK,[1,2], nModesCB=1, fullModesOut=True)
+        Mr,Kr,Phi_G,Phi_CB,f_G,f_CB,_,_ = CraigBampton(MM,KK,[1,2], nModesCB=1, fullModesOut=True)
         np.testing.assert_almost_equal(f_G, [0, 5.304894],4)
         np.testing.assert_almost_equal(f_CB, [4.74484],5)
 

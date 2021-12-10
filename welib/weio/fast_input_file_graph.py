@@ -75,13 +75,37 @@ def subdynToGraph(sd):
     PropSets = ['Beam','Cable','Rigid']
     for ie,E in enumerate(Members):
         Type=1 if len(E)==5 else E[5]
-        #elem= Element(E[0], E[1:3], propset=PropSets[Type-1], propIDs=E[3:5], Type=PropSets[Type-1])
-        elem= Element(E[0], E[1:3], Type=PropSets[Type-1])
+        #elem= Element(E[0], E[1:3], propset=PropSets[Type-1], propIDs=E[3:5])
+        elem= Element(E[0], E[1:3], Type=PropSets[Type-1], propIDs=E[3:5], propset=PropSets[Type-1])
         elem.data['object']='cylinder'
         elem.data['color'] = type2Color[Type]
         Graph.addElement(elem)
         # Nodal prop data
-        Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
+        #Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
+
+    # --- Concentrated Masses (in global coordinates), node data
+    for iC, CM in enumerate(sd['ConcentratedMasses']):
+        #CMJointID, JMass, JMXX, JMYY, JMZZ, JMXY, JMXZ, JMYZ, MCGX, MCGY, MCGZ   
+        nodeID = CM[0]
+        n = Graph.getNode(nodeID)
+        M66 = np.zeros((6,6))
+        if len(CM)==11:
+            m = CM[1]
+            x, y ,z = (CM[8], CM[9], CM[10])
+            Jxx = CM[2]; Jyy = CM[3]; Jzz = CM[4]
+            Jxy = CM[5]; Jxz = CM[6]; Jyz = CM[7];
+        else:
+            raise NotImplementedError('TODO legacy')
+            m = CM[1]
+            Jxx = CM[2]; Jyy = CM[3]; Jzz = CM[4]
+            Jxy = 0; Jyz =0; Jzz = 0; x,y,z=0,0,0
+        M66[0, :] =[   m     ,   0     ,   0     ,   0                 ,  z*m                , -y*m                 ]
+        M66[1, :] =[   0     ,   m     ,   0     , -z*m                ,   0                 ,  x*m                 ]
+        M66[2, :] =[   0     ,   0     ,   m     ,  y*m                , -x*m                ,   0                  ]
+        M66[3, :] =[   0     , -z*m    ,  y*m    , Jxx + m*(y**2+z**2) , Jxy - m*x*y         , Jxz  - m*x*z         ]
+        M66[4, :] =[  z*m    ,   0     , -x*m    , Jxy - m*x*y         , Jyy + m*(x**2+z**2) , Jyz  - m*y*z         ]
+        M66[5, :] =[ -y*m    , x*m     ,   0     , Jxz - m*x*z         , Jyz - m*y*z         , Jzz  + m*(x**2+y**2) ]
+        n.setData({'addedMassMatrix':M66})
 
     # Nodal data
     for iN,N in enumerate(sd['InterfaceJoints']):

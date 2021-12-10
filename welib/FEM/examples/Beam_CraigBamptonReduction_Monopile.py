@@ -69,7 +69,7 @@ def CraigBamptonReduction(TopMass=False):
     print(Ileader)
     print(MM.shape)
 
-    MMr, KKr, Phi_G, Phi_CB, f_G, f_CB = CraigBampton(MM, KK, Ileader, nModesCB=4, Ifollow=None, F=None, DD=None)
+    MMr, KKr, Phi_G, Phi_CB, f_G, f_CB,_,_ = CraigBampton(MM, KK, Ileader, nModesCB=4, Ifollow=None, F=None, DD=None)
 
     # TODO TODO TODO
     x=FEM['xNodes'][0,1:-1] 
