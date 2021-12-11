@@ -229,10 +229,11 @@ def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DO
 
 
 # --- Populating SID
-def FEMBeam2SID(Mtt, J0, Mrt, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=dict()):
+def FEMBeam2SID(Mtt, J0, Mrt, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=None):
     from welib.yams.utils import skew 
     # TODO take MM, KK, Tr as inputs
     assert(xNodes.shape[0]==3)
+    GKg = dict() if GKg is None else GKg
     nqk      = 6               # Number of DOF per nodes
     nNodes   = xNodes.shape[1]
     nDOF_tot = nNodes*nqk      # Total number of DOF without constraint (BC)

@@ -11,6 +11,8 @@ Example:
     print(WT.nac)
     print(WT.twr)
     print(WT.RNA)
+
+
 """
 
 import os
@@ -30,6 +32,18 @@ class WindTurbineStructure():
         self.nac = None
         self.twr = None
         self.fnd = None
+        # Geometry
+        self.r_NS_inN = None
+        self.r_NR_inN = None
+        self.r_SR_inS = None
+
+        # Information relevant for simulation
+        self.DOF    ={'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None}
+
+        # Derived properties
+        #self.DOFname
+        #self.q0     
+        #self.qd0    
 
 
     def __repr__(B):
@@ -332,6 +346,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     bldFile = weio.read(bldfile)
     m    = bldFile['BldProp'][:,3]
     jxxG = m     # NOTE: unknown
+    print('>>> windturbine.py: TODO: using unknown jxxG')
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
     bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, nSpan=nSpanBld) 
@@ -452,4 +467,6 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
 if __name__ == '__main__':
     np.set_printoptions(linewidth=300, precision=2)
-    FASTWindTurbine('../../data/NREL5MW/Main_Onshore.fst')
+    WT = FASTWindTurbine('../../data/NREL5MW/Main_Onshore.fst')
+    print(WT)
+

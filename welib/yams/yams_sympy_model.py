@@ -40,6 +40,13 @@ class YAMSModel(object):
         self.var         = [] # Independent variables
         self.smallAngleUsed=None
 
+        self.M=None # Non-linear Mass matrix
+        self.F=None # Non-linear Forcing
+        self.M0=None # linear Mass matrix
+        self.K0=None # linear Stiffness matrix
+        self.C0=None # linear Damping matrix
+        self.B0=None # linear Forcing
+
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
         s+=' - coordinates:       {}\n'.format(self.coordinates)
@@ -96,10 +103,11 @@ class YAMSModel(object):
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
 
-    def smallAngleApprox(self, angle_list, extraSubs=[]):
+    def smallAngleApprox(self, angle_list, extraSubs=None):
         """ 
         Apply small angle approximation to forcing and mass matrix
         """
+        extraSubs = [] if extraSubs is None else extraSubs
         # Forcing
         with Timer('Small angle approx. forcing',True,silent=True):
             if self._sa_forcing is None:
@@ -120,10 +128,11 @@ class YAMSModel(object):
         self.smallAngleUsed=angle_list
         
 
-    def smallAngleApproxEOM(self, angle_list, extraSubs=[]):
+    def smallAngleApproxEOM(self, angle_list, extraSubs=None):
         """ 
         Apply small angle approximation to equation of motion H(x,xd,xdd,..)=0
         """
+        extraSubs = [] if extraSubs is None else extraSubs
         EOM=self.EOM
         with Timer('Small angle approx. EOM',True,silent=True):
             EOM = EOM.subs(extraSubs)
@@ -132,10 +141,12 @@ class YAMSModel(object):
         #    EOM.simplify()
         self._sa_EOM = EOM
        
-    def smallAngleLinearize(self, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
+    def smallAngleLinearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         """ 
         Linearize the equations with small angle approximations
         """
+        op_point  = [] if op_point is None else op_point
+        extraSubs = [] if extraSubs is None else extraSubs
         if self._sa_EOM is None:
             raise Exception('Run smallAngleApproxEOM first')
         M,C,K,B = self._linearize(op_point=op_point, EOM=self._sa_EOM, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
@@ -145,11 +156,13 @@ class YAMSModel(object):
         self._sa_K = K
         self._sa_B = B
 
-    def linearize(self, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
+    def linearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         """ 
         Linearize the "non" linear equations
         NOTE: EOM has kdeqsSubs in it
         """
+        op_point  = [] if op_point is None else op_point
+        extraSubs = [] if extraSubs is None else extraSubs
         M,C,K,B = self._linearize(op_point=op_point, EOM=self.EOM, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
 
         self.M0 = M
@@ -157,7 +170,9 @@ class YAMSModel(object):
         self.K0 = K
         self.B0 = B
 
-    def _linearize(self, op_point=[], EOM=None, noAcc=True, noVel=False, extraSubs=[]):
+    def _linearize(self, op_point=None, EOM=None, noAcc=True, noVel=False, extraSubs=None):
+        op_point  = [] if op_point is None else op_point
+        extraSubs = [] if extraSubs is None else extraSubs
         if EOM is None:
             EOM=self.EOM
 
@@ -201,10 +216,11 @@ class YAMSModel(object):
 
         return EquationsOfMotionQ(EOM, self.coordinates, self.name, replaceDict)
 
-    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=[], header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
+    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
         """ 
         Save forcing and mass matrix to latex file
         """
+        extraSubs = [] if extraSubs is None else extraSubs
         name=prefix+self.name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
@@ -275,10 +291,11 @@ class YAMSModel(object):
     # --------------------------------------------------------------------------------}
     # --- Export to Python script 
     # --------------------------------------------------------------------------------{
-    def savePython(self, prefix='', suffix='', folder='./', extraSubs=[], variables=['MM','FF','MMsa','FFsa','M','C','K','B','Msa','Csa','Ksa','Bsa'], replaceDict=None, doSimplify=False, velSubs=[(0,0)]):
+    def savePython(self, prefix='', suffix='', folder='./', extraSubs=None, variables=['MM','FF','MMsa','FFsa','M','C','K','B','Msa','Csa','Ksa','Bsa'], replaceDict=None, doSimplify=False, velSubs=[(0,0)]):
         """ 
         Save forcing, mass matrix and linear model to python package
         """
+        extraSubs = [] if extraSubs is None else extraSubs
         name=prefix+self.name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
@@ -311,13 +328,14 @@ class YAMSModel(object):
                     MM = self.kane.mass_matrix.subs(self.kdeqsSubs)
                     MMToPy(f, self.coordinates, MM, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'M' in variables:
-                    M0ToPy(f, self.coordinates, self.M, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    #M0ToPy(f, self.q, self.M0, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    M0ToPy(f, self.coordinates, self.M0, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'C' in variables:
-                    C0ToPy(f, self.coordinates, self.M, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    C0ToPy(f, self.coordinates, self.C0, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'K' in variables:
-                    K0ToPy(f, self.coordinates, self.M, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    K0ToPy(f, self.coordinates, self.K0, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'B' in variables:
-                    B0ToPy(f, self.coordinates, self.M, self.var, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    B0ToPy(f, self.coordinates, self.B0, self.var, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
 
                 if 'FFsa' in variables:
                     FF = subs_no_diff(self._sa_forcing,extraSubs)
@@ -509,8 +527,9 @@ class EquationsOfMotionQ(object):
             self.EOM = smallAngleApprox(self.EOM, angle_list, order=order)
         self.smallAngleUsed+=angle_list
 
-    def mass_forcing_form(self, extraSubs=[]):
+    def mass_forcing_form(self, extraSubs=None):
         """ Extract Mass Matrix and RHS from EOM """
+        extraSubs = [] if extraSubs is None else extraSubs
         qd  = [diff(c,dynamicsymbols._t) for c in self.q]
         qdd = [diff(diff(c,dynamicsymbols._t),dynamicsymbols._t) for c in self.q]
         self.M = - myjacobian(self.EOM, qdd)  # mass matrix is jacobian wrt qdd
@@ -518,14 +537,17 @@ class EquationsOfMotionQ(object):
         self.F = self.F.subs([(qddi,0) for qddi in qdd  ]) # safety
         self.F = self.F.expand()
 
-    def linearize(self, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
+    def linearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         """ """
+        op_point  = [] if op_point is None else op_point
+        extraSubs = [] if extraSubs is None else extraSubs
         self.M0,self.C0,self.K0,self.B0, self.input_vars = linearizeQ(self.EOM, self.q, op_point=op_point, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
 
-    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=[], header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)]):
+    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)]):
         """ 
         Save EOM to a latex file
         """
+        extraSubs = [] if extraSubs is None else extraSubs
         name=prefix+self.name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
@@ -558,9 +580,9 @@ class EquationsOfMotionQ(object):
                 if 'B0' in variables:
                     toTex(f, self.B0, label='Linearized forcing matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
     
-    def savePython(self, prefix='', suffix='', folder='./', extraSubs=[], replaceDict=None, doSimplify=False, velSubs=[(0,0)]):
+    def savePython(self, prefix='', suffix='', folder='./', extraSubs=None, replaceDict=None, doSimplify=False, velSubs=[(0,0)]):
         """ Export EOM to a python file (will be rewritten) """
-
+        extraSubs = [] if extraSubs is None else extraSubs
         name=prefix+self.name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
@@ -600,7 +622,9 @@ class EquationsOfMotionQ(object):
 # --------------------------------------------------------------------------------}
 # --- Main helper functions  
 # --------------------------------------------------------------------------------{
-def linearizeQ(EOM, q, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
+def linearizeQ(EOM, q, op_point=None, noAcc=True, noVel=False, extraSubs=None):
+    op_point  = [] if op_point is None else op_point
+    extraSubs = [] if extraSubs is None else extraSubs
     qd  = [qi.diff(dynamicsymbols._t) for qi in q]
     qdd = [qdi.diff(dynamicsymbols._t) for qdi in qd]
 
@@ -631,7 +655,8 @@ def linearizeQ(EOM, q, op_point=[], noAcc=True, noVel=False, extraSubs=[]):
     return M,C,K,B, inputs
 
 
-def forcingToPy(f, q, forcing, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def forcingToPy(f, q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     forcing = subs_no_diff(forcing, extraSubs)
     forcing = forcing.subs(velSubs)
     if doSimplify:
@@ -653,7 +678,8 @@ def forcingToPy(f, q, forcing, replaceDict=None, extraSubs=[], velSubs=[(0,0)], 
     f.write('    return FF\n\n')
 
 
-def MMToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def MMToPy(f, q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     MM = subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
     if doSimplify:
@@ -671,7 +697,8 @@ def MMToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify
     f.write('    return MM\n\n')
 
 
-def M0ToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def M0ToPy(f, q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
     if doSimplify:
@@ -687,7 +714,8 @@ def M0ToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify
     f.write(s)
     f.write('    return MM\n\n')
 
-def C0ToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def C0ToPy(f, q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
     if doSimplify:
@@ -707,7 +735,8 @@ def C0ToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify
     f.write(s)
     f.write('    return CC\n\n')
 
-def K0ToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def K0ToPy(f, q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
     if doSimplify:
@@ -727,7 +756,8 @@ def K0ToPy(f, q, MM, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify
     f.write(s)
     f.write('    return KK\n\n')
 
-def B0ToPy(f, q, MM, input_vars, replaceDict=None, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def B0ToPy(f, q, MM, input_vars, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
     if doSimplify:
@@ -757,7 +787,8 @@ def infoToPy(f, name, q, u):
     f.write('    return I\n\n')
 
 
-def toTex(f, FF, label='', fullPage=False, extraSubs=[], velSubs=[(0,0)], doSimplify=False):
+def toTex(f, FF, label='', fullPage=False, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+    extraSubs = [] if extraSubs is None else extraSubs
     if isinstance(FF,list):
         for i,ff in enumerate(FF):
             FF[i] = subs_no_diff(ff,extraSubs)
