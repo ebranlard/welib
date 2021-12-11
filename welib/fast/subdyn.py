@@ -1,3 +1,13 @@
+"""
+Tools for SubDyn
+
+- Setup a FEM model, compute Guyan and CB modes
+- Get a dataframe with properties
+- More todo
+
+"""
+
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,19 +16,16 @@ from welib.weio.fast_input_file import FASTInputFile
 from welib.tools.clean_exceptions import *
 from welib.tools.tictoc import Timer
 
+idGuyanDamp_None     = 0
+idGuyanDamp_Rayleigh = 1
+idGuyanDamp_66       = 2 
 
-class SubDyn(object):
-    """
-    Tools for SubDyn
-
-    - Setup a FEM model, compute Guyan and CB modes
-    - Get a dataframe with properties
-    - More todo
-
-    """
+class SubDyn:
 
     def __init__(self, sdFilename=None, sdData=None):
-        super(SubDyn, self).__init__()
+
+        self._graph=None
+        self.File=None
 
         # Read SubDyn file
         if sdFilename is not None:
@@ -27,8 +34,10 @@ class SubDyn(object):
             self.File = sdData
 
         self.M_tip=None
-        # internal
+
+        # Internal
         self._graph=None
+        self._FEM=None
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
@@ -39,6 +48,93 @@ class SubDyn(object):
         s+='|- beamDataFrame, beamFEM, beamModes\n'
         s+='|- toYAMS\n'
         return s
+
+    # --------------------------------------------------------------------------------}
+    # --- Functions for general FEM model (jacket, flexible floaters)
+    # --------------------------------------------------------------------------------{
+    def init(self, TP=(0,0,0), gravity = 9.81):
+        """
+        Initialize SubDyn FEM model 
+
+        TP: position of transition point
+        gravity: position of transition point
+        """
+        import welib.FEM.fem_beam as femb
+        import welib.FEM.fem_model as femm
+        BC       = 'clamped-free' # TODO Boundary condition: free-free or clamped-free
+        element  = 'frame3d'      # Type of element used in FEM
+
+        FEMMod = self.File['FEMMod']
+        if FEMMod==1:
+            mainElementType='frame3d'
+        elif FEMMod==2:
+            mainElementType='frame3dlin'
+        elif FEMMod==3:
+            mainElementType='timoshenko'
+        else:
+            raise NotImplementedError()
+        print('>>> Main Element', FEMMod)
+        # Get graph
+        graph = self.graph
+        #print('>>> graph\n',graph)
+        #graph.toJSON('_GRAPH.json')
+        # Convert to FEM model
+        with Timer('From graph'):
+            FEM = femm.FEMModel.from_graph(self.graph, mainElementType=mainElementType, refPoint=TP, gravity=gravity)
+        #model.toJSON('_MODEL.json')
+        with Timer('Assembly'):
+            FEM.assembly()
+        with Timer('Internal constraints'):
+            FEM.applyInternalConstraints()
+            FEM.partition()
+        with Timer('BC'):
+            FEM.applyFixedBC()
+        with Timer('EIG'):
+            FEM.eig(normQ='byMax')
+        with Timer('CB'):
+            FEM.CraigBampton(nModesCB = self.File['Nmodes'])
+
+        # --- SubDyn partition/notations
+        FEM.MBB = FEM.MM_CB[np.ix_(FEM.DOF_Leader_CB  , FEM.DOF_Leader_CB)]
+        FEM.KBB = FEM.KK_CB[np.ix_(FEM.DOF_Leader_CB  , FEM.DOF_Leader_CB)]
+        FEM.MBM = FEM.MM_CB[np.ix_(FEM.DOF_Leader_CB  , FEM.DOF_Follower_CB)]
+        FEM.KMM = FEM.KK_CB[np.ix_(FEM.DOF_Follower_CB, FEM.DOF_Follower_CB)]
+        zeta =self.File['JDampings']/100
+        if not hasattr(zeta,'__len__'):
+            print('nModesCB', FEM.nModesCB, self.File['Nmodes'], FEM.f_CB)
+            zeta = [zeta]*FEM.nModesCB
+            FEM.CMM = 2*np.array(zeta) * FEM.f_CB * 2 * np.pi
+
+        # --- Matrices wrt TP point
+        TI=FEM.T_refPoint
+        MBBt = TI.T.dot(FEM.MBB).dot(TI)
+        KBBt = TI.T.dot(FEM.KBB).dot(TI)
+        MBBt[np.abs(MBBt)<1e-4] =0
+        KBBt[np.abs(KBBt)<1e-4] =0
+        FEM.MBBt = MBBt
+        FEM.KBBt = KBBt
+
+        # --- Set Damping
+        dampMod = self.File['GuyanDampMod']  
+        alpha_Rayleigh, beta_Rayleigh = None, None
+        # 6x6 Guyan Damping matrix
+        CC_CB_G = None
+        if  dampMod == idGuyanDamp_None:
+            FEM.CBBt = np.zeros((6,6))
+        elif dampMod == idGuyanDamp_Rayleigh:
+            # Rayleigh Damping
+            alpha_Rayleigh, beta_Rayleigh = self.File['RayleighDamp']
+            FEM.CBBt = alpha_Rayleigh * FEM.MBBt + beta_Rayleigh * FEM.KBBt
+        elif dampMod == idGuyanDamp_66: 
+            FEM.CBBt = self.File['GuyanDampMap']
+        else:
+            raise Exception()
+
+        # --- Compute rigid body equivalent
+        FEM.rigidBodyEquivalent()
+        self._FEM = FEM
+
+        return FEM
 
 
     def setTopMass(self):
@@ -55,29 +151,37 @@ class SubDyn(object):
     def graph(self):
         import copy
         if self._graph is None:
-            with Timer('Setting up graph'):
-                print('>>> NDIV is ', self.File['NDiv'])
-                self._graph = self.File.toGraph().divideElements(self.File['NDiv'],
+            print('>>> Setting up graph')
+#             with Timer('Setting up graph'):
+            print('>>> NDIV is ', self.File['NDiv'])
+            self._graph = self.File.toGraph()
+            if self.File['NDiv']>1:
+                self._graph.divideElements(self.File['NDiv'],
                         excludeDataKey='Type', excludeDataList=['Cable','Rigid'], method='insert',
                         keysNotToCopy=['IBC','RBC','addedMassMatrix'] # Very important
                         )
-            # Satinization
+            # Sanitization
             #idBC_Fixed    =  0 # Fixed BC
             #idBC_Internal = 10 # Free/Internal BC
             #idBC_Leader   = 20 # Leader DOF
             MapIBC={0:0, 1:20} # 1 in the input file is leader
             MapRBC={0:10, 1:0} # 1 in the input file is fixed
             for n in self._graph.Nodes:
+                #print(n)
                 if 'IBC' in n.data.keys():
-                    IBC = n.data['IBC']
+                    IBC = n.data['IBC'].copy()
                     n.data['IBC'] = [MapIBC[i] for i in IBC[:6]]
                 if 'RBC' in n.data.keys():
-                    RBC = n.data['RBC']
+                    RBC = n.data['RBC'].copy()
                     n.data['RBC'] = [MapRBC[i] for i in RBC[:6]]
-                    if any(RBC)==0:
+                    if any(RBC[:6])==0:
+                        print('RBC        ',RBC)
+                        print('n.data[RBC]',n.data['RBC'] )
+                        print('n          ',n )
                         raise NotImplementedError('SSI')
 
-        return copy.deepcopy(self._graph)
+        #return copy.deepcopy(self._graph)
+        return self._graph
 
     # --------------------------------------------------------------------------------}
     # --- Functions for beam-like structure (Spar, Monopile)
@@ -185,68 +289,16 @@ class SubDyn(object):
             if i==0:
                 axes[i].legend()
 
+
+
+
     # --------------------------------------------------------------------------------}
-    # --- Functions for general FEM model (jacket, flexible floaters)
+    # --- IO/Converters
     # --------------------------------------------------------------------------------{
-    def FEM(self, TP=(0,0,0), gravity = 9.81):
-        """ return FEM model for beam-like structures, like Spar/Monopile
-
-        TP: position of transition point
-        """
-        import welib.FEM.fem_beam as femb
-        import welib.FEM.fem_model as femm
-        BC       = 'clamped-free' # TODO Boundary condition: free-free or clamped-free
-        element  = 'frame3d'      # Type of element used in FEM
-
-        FEMMod = self.File['FEMMod']
-        if FEMMod==1:
-            element='frame3d'
-        elif FEMMod==2:
-            element='frame3dlin'
-        elif FEMMod==3:
-            element='timoshenko'
-        else:
-            raise NotImplementedError()
-        print('>>> Main Element', FEMMod)
-        # Get graph
-        graph = self.graph
-        print('>>> graph\n',graph)
-        #graph.toJSON('_GRAPH.json')
-        # Convert to FEM model
-        with Timer('From graph'):
-            model = femm.FEMModel.from_graph(self.graph, mainElementType=element, TP=TP, gravity=gravity)
-        #model.toJSON('_MODEL.json')
-        with Timer('Assembly'):
-            model.assembly()
-        with Timer('Internal constraints'):
-            model.applyInternalConstraints()
-            model.partition()
-        with Timer('BC'):
-            model.applyFixedBC()
-        with Timer('EIG'):
-            model.eig(normQ='byMax')
-        with Timer('CB'):
-            model.CraigBampton(nModesCB = self.File['Nmodes'], zeta=self.File['JDampings']/100 )
-
-        model.rigidBodyEquivalent()
-
-        #print(model)
-        #print(model.DOF2Nodes)
-        #print(graph)
-#         n2e = graph.nodes2Elements
-#         conn = graph.connectivity
-#         print(n2e)
-#         print(conn)
-
-        ## --- Compute FEM model and mode shapes
-        #with Timer('Setting up FEM model'):
-        #    FEM=femb.cbeam(x,m=rho*A,EIx=E*Ip,EIy=E*I,EIz=E*I,EA=E*A,A=A,E=E,G=G,Kt=Kt,
-        #                element=element, BC=BC, M_tip=self.M_tip)
-
-
-        return model
-
-
+    def toYAML(self, filename):
+        if self._FEM is None:
+            raise Exception('Call `initFEM()` before calling `toYAML`')
+        subdyntoYAMLSum(self._FEM, filename, more = self.File['OutAll'])
 
 
     def toYAMSData(self, shapes=[0,4], main_axis='z'):
@@ -342,6 +394,340 @@ class SubDyn(object):
             DampMat=DampMat[np.ix_(shapes,shapes)]
 
         return p, damp_zeta, RayleighCoeff, DampMat
+
+
+# --------------------------------------------------------------------------------}
+# --- Export of summary file and Misc FEM variables used by SubDyn
+# --------------------------------------------------------------------------------{
+def yaml_array(var, M, Fmt='{:15.6e}', comment=''):
+    M = np.atleast_2d(M)
+    if len(comment)>0:
+        s='{}: # {} x {} {}\n'.format(var, M.shape[0], M.shape[1], comment)
+    else:
+        s='{}: # {} x {}\n'.format(var, M.shape[0], M.shape[1])
+
+    if M.shape[0]==1:
+        if M.shape[1]==0:
+            s+= '  - [ ]\n'
+        else:
+            for l in M:
+                s+= '  - [' + ','.join([Fmt.format(le) for le in l]) + ',]\n'
+    else:
+        for l in M:
+            s+= '  - [' + ','.join([Fmt.format(le) for le in l]) + ']\n'
+    s = s.replace('e+','E+').replace('e-','E-')
+    return s
+
+
+
+def subdynPartitionVars(model):
+    from welib.FEM.fem_elements import idDOF_Leader, idDOF_Fixed, idDOF_Internal
+    # --- Count nodes per types
+    nNodes    = len(model.Nodes)
+    nNodes_I  = len(model.interfaceNodes)
+    nNodes_C  = len(model.reactionNodes)
+    nNodes_L  = len(model.internalNodes)
+
+    # --- Partition Nodes:  Nodes_L = IAll - NodesR
+    Nodes_I = [n.ID for n in model.interfaceNodes]
+    Nodes_C = [n.ID for n in model.reactionNodes]
+    Nodes_R = Nodes_I + Nodes_C
+    Nodes_L = [n.ID for n in model.Nodes if n.ID not in Nodes_R]
+
+    # --- Count DOFs - NOTE: we count node by node
+    nDOF___  = sum([len(n.data['DOFs_c'])                                 for n in model.Nodes])
+    # Interface DOFs
+    nDOFI__  = sum([len(n.data['DOFs_c'])              for n in model.interfaceNodes])
+    nDOFI_B = sum([sum(np.array(n.data['IBC'])==idDOF_Leader)   for n in model.interfaceNodes])
+    nDOFI_F  = sum([sum(np.array(n.data['IBC'])==idDOF_Fixed )   for n in model.interfaceNodes])
+    if nDOFI__!=nDOFI_B+nDOFI_F: raise Exception('Wrong distribution of interface DOFs')
+    # DOFs of reaction nodes
+    nDOFC__ = sum([len(n.data['DOFs_c'])              for n in model.reactionNodes]) 
+    nDOFC_B = sum([sum(np.array(n.data['RBC'])==idDOF_Leader)   for n in model.reactionNodes])
+    nDOFC_F = sum([sum(np.array(n.data['RBC'])==idDOF_Fixed)    for n in model.reactionNodes])
+    nDOFC_L = sum([sum(np.array(n.data['RBC'])==idDOF_Internal) for n in model.reactionNodes])
+    if nDOFC__!=nDOFC_B+nDOFC_F+nDOFC_L: raise Exception('Wrong distribution of reaction DOFs')
+    # DOFs of reaction + interface nodes
+    nDOFR__ = nDOFI__ + nDOFC__ # Total number, used to be called "nDOFR"
+    # DOFs of internal nodes
+    nDOFL_L  = sum([len(n.data['DOFs_c']) for n in model.internalNodes])
+    if nDOFL_L!=nDOF___-nDOFR__: raise Exception('Wrong distribution of internal DOF')
+    # Total number of DOFs in each category:
+    nDOF__B = nDOFC_B + nDOFI_B
+    nDOF__F = nDOFC_F + nDOFI_F          
+    nDOF__L = nDOFC_L           + nDOFL_L 
+
+    # --- Distibutes the I, L, C nodal DOFs into  B, F, L sub-categories 
+    # NOTE: order is importatn for compatibility with SubDyn
+    IDI__ = []
+    IDI_B = []
+    IDI_F = []
+    for n in model.interfaceNodes:
+        IDI__ += n.data['DOFs_c'] # NOTE: respects order
+        IDI_B += [dof for i,dof in enumerate(n.data['DOFs_c']) if n.data['IBC'][i]==idDOF_Leader]
+        IDI_F += [dof for i,dof in enumerate(n.data['DOFs_c']) if n.data['IBC'][i]==idDOF_Fixed ]
+    IDI__ = IDI_B+IDI_F
+    IDC__ = []
+    IDC_B = []
+    IDC_L = []
+    IDC_F = []
+    for n in model.reactionNodes:
+        IDC__ += n.data['DOFs_c'] # NOTE: respects order
+        IDC_B += [dof for i,dof in enumerate(n.data['DOFs_c']) if n.data['RBC'][i]==idDOF_Leader  ]
+        IDC_L += [dof for i,dof in enumerate(n.data['DOFs_c']) if n.data['RBC'][i]==idDOF_Internal]
+        IDC_F += [dof for i,dof in enumerate(n.data['DOFs_c']) if n.data['RBC'][i]==idDOF_Fixed   ]
+    IDR__=IDC__+IDI__
+    IDL_L = []
+    for n in model.internalNodes:
+        IDL_L += n.data['DOFs_c']
+
+    # Storing variables similar to SubDyn
+    SD_Vars={}
+    SD_Vars['nDOF___']=nDOF___;
+    SD_Vars['nDOFI__']=nDOFI__; SD_Vars['nDOFI_B']=nDOFI_B; SD_Vars['nDOFI_F']=nDOFI_F;
+    SD_Vars['nDOFC__']=nDOFC__; SD_Vars['nDOFC_B']=nDOFC_B; SD_Vars['nDOFC_F']=nDOFC_F; SD_Vars['nDOFC_L']=nDOFC_L;
+    SD_Vars['nDOFR__']=nDOFR__; SD_Vars['nDOFL_L']=nDOFL_L;
+    SD_Vars['nDOF__B']=nDOF__B; SD_Vars['nDOF__F']=nDOF__F; SD_Vars['nDOF__L']=nDOF__L;
+    SD_Vars['IDC__']=IDC__;
+    SD_Vars['IDC_B']=IDC_B;
+    SD_Vars['IDC_F']=IDC_F;
+    SD_Vars['IDC_L']=IDC_L;
+    SD_Vars['IDI__']=IDI__;
+    SD_Vars['IDR__']=IDR__;
+    SD_Vars['IDI_B']=IDI_B;
+    SD_Vars['IDI_F']=IDI_F;
+    SD_Vars['IDL_L']=IDL_L;
+    SD_Vars['ID__B']=model.DOF_Leader
+    SD_Vars['ID__F']=model.DOF_Fixed
+    SD_Vars['ID__L']=model.DOF_Follower
+    return SD_Vars
+
+def subdyntoYAMLSum(model, filename, more=False):
+    """ 
+    Write a YAML summary file, similar to SubDyn
+    """
+    # --- Helper functions
+    def nodeID(nodeID):
+        if hasattr(nodeID,'__len__'):
+            return [model.Nodes.index(model.getNode(n))+1 for n in nodeID]
+        else:
+            return model.Nodes.index(model.getNode(nodeID))+1
+
+    def elemID(elemID):
+        #e=model.getElement(elemID)
+        for ie,e in enumerate(model.Elements):
+            if e.ID==elemID:
+                return ie+1
+    def elemType(elemType):
+        from welib.FEM.fem_elements import idMemberBeam, idMemberCable, idMemberRigid
+        return {'SubDynBeam3d':idMemberBeam, 'Beam':idMemberBeam, 'Frame3d':idMemberBeam,
+                'SubDynTimoshenko3d':idMemberBeam,
+                'SubDynCable3d':idMemberCable, 'Cable':idMemberCable,
+                'Rigid':idMemberRigid}[elemType]
+
+    def propID(propID, propset):
+        prop = model.NodePropertySets[propset]
+        for ip, p in enumerate(prop):
+            if p.ID == propID:
+                return ip+1
+
+    SD_Vars = subdynPartitionVars(model)
+
+    # --- Helper functions
+    with open(filename, 'w') as f:
+        s=''
+        s += '#____________________________________________________________________________________________________\n'
+        s += '# RIGID BODY EQUIVALENT DATA\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s0 = 'Mass: {:15.6e} # Total Mass\n'.format(model.M_O[0,0])
+        s += s0.replace('e+','E+').replace('e-','E-')
+        s0 = 'CM_point: [{:15.6e},{:15.6e},{:15.6e},] # Center of mass coordinates (Xcm,Ycm,Zcm)\n'.format(model.center_of_mass[0],model.center_of_mass[1],model.center_of_mass[2])
+        s += s0.replace('e+','E+').replace('e-','E-')
+        s0 = 'TP_point: [{:15.6e},{:15.6e},{:15.6e},] # Transition piece reference point\n'.format(model.refPoint[0],model.refPoint[1],model.refPoint[2])
+        s += s0.replace('e+','E+').replace('e-','E-')
+        s += yaml_array('MRB',  model.M_O,  comment = 'Rigid Body Equivalent Mass Matrix w.r.t. (0,0,0).')
+        s += yaml_array('M_P' , model.M_ref,comment = 'Rigid Body Equivalent Mass Matrix w.r.t. TP Ref point')
+        s += yaml_array('M_G' , model.M_G,  comment = 'Rigid Body Equivalent Mass Matrix w.r.t. CM (Xcm,Ycm,Zcm).')
+        s += '#____________________________________________________________________________________________________\n'
+        s += '# GUYAN MATRICES at the TP reference point\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += yaml_array('KBBt' , model.KBBt,  comment = '')
+        s += yaml_array('MBBt' , model.MBBt,  comment = '')
+        s += yaml_array('CBBt' , model.CBBt,  comment = '(user Guyan Damping + potential joint damping from CB-reduction)')
+        s += '#____________________________________________________________________________________________________\n'
+        s += '# SYSTEM FREQUENCIES\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += '#Eigenfrequencies [Hz] for full system, with reaction constraints (+ Soil K/M + SoilDyn K0) \n'
+        s += yaml_array('Full_frequencies', model.freq)
+        s += '#Frequencies of Guyan modes [Hz]\n'
+        s += yaml_array('GY_frequencies', model.f_G)
+        s += '#Frequencies of Craig-Bampton modes [Hz]\n'
+        s += yaml_array('CB_frequencies', model.f_CB)
+        s += '#____________________________________________________________________________________________________\n'
+        s += '# Internal FEM representation\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += 'nNodes_I: {:7d} # Number of Nodes: "interface" (I)\n'.format(len(model.interfaceNodes))
+        s += 'nNodes_C: {:7d} # Number of Nodes: "reactions" (C)\n'.format(len(model.reactionNodes))
+        s += 'nNodes_L: {:7d} # Number of Nodes: "internal"  (L)\n'.format(len(model.internalNodes))
+        s += 'nNodes  : {:7d} # Number of Nodes: total   (I+C+L)\n'.format(len(model.Nodes))
+        if more:
+            s += 'nDOFI__ :       6 # Number of DOFs: "interface"          (I__)\n'.format(len(SD_Vars['IDI__']))
+            s += 'nDOFI_B :       6 # Number of DOFs: "interface" retained (I_B)\n'.format(len(SD_Vars['IDI_B']))
+            s += 'nDOFI_F :       0 # Number of DOFs: "interface" fixed    (I_F)\n'.format(len(SD_Vars['IDI_F']))
+            s += 'nDOFC__ :       6 # Number of DOFs: "reactions"          (C__)\n'.format(len(SD_Vars['IDC__']))
+            s += 'nDOFC_B :       0 # Number of DOFs: "reactions" retained (C_B)\n'.format(len(SD_Vars['IDC_B']))
+            s += 'nDOFC_L :       0 # Number of DOFs: "reactions" internal (C_L)\n'.format(len(SD_Vars['IDC_L']))
+            s += 'nDOFC_F :       6 # Number of DOFs: "reactions" fixed    (C_F)\n'.format(len(SD_Vars['IDC_F']))
+            s += 'nDOFR__ :      12 # Number of DOFs: "intf+react"         (__R)\n'.format(len(SD_Vars['IDR__']))
+            s += 'nDOFL_L :      42 # Number of DOFs: "internal"  internal (L_L)\n'.format(len(SD_Vars['IDL_L']))
+        s += 'nDOF__B : {:7d} # Number of DOFs:             retained (__B)\n'.format(SD_Vars['nDOF__B'])
+        s += 'nDOF__L : {:7d} # Number of DOFs:             internal (__L)\n'.format(SD_Vars['nDOF__L'])
+        s += 'nDOF__F : {:7d} # Number of DOFs:             fixed    (__F)\n'.format(SD_Vars['nDOF__F'])
+        s += 'nDOF_red: {:7d} # Number of DOFs: total\n'                     .format(SD_Vars['nDOF___'])
+        s += yaml_array('Nodes_I', nodeID([n.ID for n in model.interfaceNodes]), Fmt='{:7d}', comment='"interface" nodes"');
+        s += yaml_array('Nodes_C', nodeID([n.ID for n in model.reactionNodes ]), Fmt='{:7d}', comment='"reaction" nodes"');
+        s += yaml_array('Nodes_L', nodeID([n.ID for n in model.internalNodes ]), Fmt='{:7d}', comment='"internal" nodes"');
+        if more:
+            s += yaml_array('DOF_I__', np.array(SD_Vars['IDI__'])+1,   Fmt='{:7d}', comment = '"interface"           DOFs"')
+            s += yaml_array('DOF_I_B', np.array(SD_Vars['IDI_B'])+1,   Fmt='{:7d}', comment = '"interface" retained  DOFs')
+            s += yaml_array('DOF_I_F', np.array(SD_Vars['IDI_F'])+1,   Fmt='{:7d}', comment = '"interface" fixed     DOFs')
+            s += yaml_array('DOF_C__', np.array(SD_Vars['IDC__'])+1,   Fmt='{:7d}', comment = '"reaction"            DOFs"')
+            s += yaml_array('DOF_C_B', np.array(SD_Vars['IDC_B'])+1,   Fmt='{:7d}', comment = '"reaction"  retained  DOFs')
+            s += yaml_array('DOF_C_L', np.array(SD_Vars['IDC_L'])+1,   Fmt='{:7d}', comment = '"reaction"  internal  DOFs')
+            s += yaml_array('DOF_C_F', np.array(SD_Vars['IDC_F'])+1,   Fmt='{:7d}', comment = '"reaction"  fixed     DOFs')
+            s += yaml_array('DOF_L_L', np.array(SD_Vars['IDL_L'])+1,   Fmt='{:7d}', comment = '"internal"  internal  DOFs')
+            s += yaml_array('DOF_R_' , np.array(SD_Vars['IDR__'])+1,   Fmt='{:7d}', comment = '"interface&reaction"  DOFs')
+        s += yaml_array('DOF___B', np.array(model.DOF_Leader  )+1, Fmt='{:7d}',  comment='all         retained  DOFs');
+        s += yaml_array('DOF___F', np.array(model.DOF_Fixed   )+1, Fmt='{:7d}',  comment='all         fixed     DOFs');
+        s += yaml_array('DOF___L', np.array(model.DOF_Follower)+1, Fmt='{:7d}',  comment='all         internal  DOFs');
+        s += '\n'
+        s += '#Index map from DOF to nodes\n'
+        s += '#     Node No.,  DOF/Node,   NodalDOF\n'
+        s += 'DOF2Nodes: # {} x 3 (nDOFRed x 3, for each constrained DOF, col1: node index, col2: number of DOF, col3: DOF starting from 1)\n'.format(model.nDOF)
+        DOF2Nodes = model.DOF2Nodes
+        for l in model.DOF2Nodes:
+            s +='  - [{:7d},{:7d},{:7d}] # {}\n'.format(l[1]+1, l[2], l[3], l[0]+1 )
+        s += '#     Node_[#]          X_[m]           Y_[m]           Z_[m]       JType_[-]       JDirX_[-]       JDirY_[-]       JDirZ_[-]  JStff_[Nm/rad]\n'
+        s += 'Nodes: # {} x 9\n'.format(len(model.Nodes))
+        for n in model.Nodes:
+            s += '  - [{:7d}.,{:15.3f},{:15.3f},{:15.3f},{:14d}.,   0.000000E+00,   0.000000E+00,   0.000000E+00,   0.000000E+00]\n'.format(nodeID(n.ID), n.x, n.y, n.z, int(n.data['Type']) )
+        s += '#    Elem_[#]    Node_1   Node_2   Prop_1   Prop_2     Type     Length_[m]      Area_[m^2]  Dens._[kg/m^3]        E_[N/m2]        G_[N/m2]       shear_[-]       Ixx_[m^4]       Iyy_[m^4]       Jzz_[m^4]          T0_[N]\n'
+        s += 'Elements: # {} x 16\n'.format(len(model.Elements))
+        for e in model.Elements:
+            I = e.inertias
+            s0='  - [{:7d}.,{:7d}.,{:7d}.,{:7d}.,{:7d}.,{:7d}.,{:15.3f},{:15.3f},{:15.3f},{:15.6e},{:15.6e},{:15.6e},{:15.6e},{:15.6e},{:15.6e},{:15.6e}]\n'.format(
+                elemID(e.ID), nodeID(e.nodeIDs[0]), nodeID(e.nodeIDs[1]), propID(e.propIDs[0], e.propset), propID(e.propIDs[1], e.propset), elemType(e.data['Type']), 
+                e.length, e.area, e.rho, e.E, e.G, e.kappa, I[0], I[1], I[2], e.T0)
+            s += s0.replace('e+','E+').replace('e-','E-')
+        s += '#____________________________________________________________________________________________________\n'
+        s += '#User inputs\n'
+        s += '\n'
+        s += '#Number of properties (NProps):{:6d}\n'.format(len(model.NodePropertySets['Beam']))
+        s += '#Prop No         YoungE         ShearG        MatDens          XsecD          XsecT\n'
+        for ip,p in enumerate(model.NodePropertySets['Beam']):
+            s0='#{:8d}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}\n'.format(p.ID, p['E'],p['G'],p['rho'],p['D'],p['t'])
+            s +=  s0.replace('e+','E+').replace('e-','E-')
+        s +='\n'
+        s += '#No. of Reaction DOFs:{:6d}\n'.format(len(SD_Vars['IDC__']) )
+        s += '#React. DOF_ID    BC\n'
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Fixed' ) for idof in SD_Vars['IDC_F']])
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Free'  ) for idof in SD_Vars['IDC_L']])
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Leader') for idof in SD_Vars['IDC_B']])
+        s += '\n\n'
+        s += '#No. of Interface DOFs:{:6d}\n'.format(len(SD_Vars['IDI__']))
+        s += '#Interf. DOF_ID    BC\n'
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Fixed' ) for idof in SD_Vars['IDI_F']])
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Leader') for idof in SD_Vars['IDI_B']])
+        s += '\n\n'
+        CM = []
+        from welib.yams.utils import identifyRigidBodyMM
+        for n in model.Nodes:
+            if 'addedMassMatrix' in n.data:
+                mass, J_G, ref2COG = identifyRigidBodyMM(n.data['addedMassMatrix'])
+                CM.append( (n.ID, mass, J_G, ref2COG) )
+        s += '#Number of concentrated masses (NCMass): {:7d}\n'.format(len(CM))
+        s += '#JointCMas           Mass            JXX            JYY            JZZ            JXY            JXZ            JYZ           MCGX           MCGY           MCGZ\n'
+        for cm in CM:
+            s0 = '# {:9.0f}.{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}\n'.format( nodeID(cm[0]),  cm[1], cm[2][0,0], cm[2][1,1], cm[2][2,2], cm[2][0,1], cm[2][0,2], cm[2][1,2],cm[3][0],cm[3][1],cm[3][2] )
+            s += s0.replace('e+','E+').replace('e-','E-')
+        s += '\n'
+        s += '#Number of members    18\n'
+        s += '#Number of nodes per member:     2\n'
+        s += '#Member I Joint1_ID Joint2_ID    Prop_I    Prop_J           Mass         Length     Node IDs...\n'
+        s += '#       77        61        60        11        11   1.045888E+04   2.700000E+00       19    18\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += '#Direction Cosine Matrices for all Members: GLOBAL-2-LOCAL. No. of 3x3 matrices=    18\n'
+        s += '#Member I        DC(1,1)        DC(1,2)        DC(1,3)        DC(2,1)        DC(2,2)        DC(2,3)        DC(3,1)        DC(3,2)        DC(3,3)\n'
+        s += '#       77  1.000E+00  0.000E+00  0.000E+00  0.000E+00 -1.000E+00  0.000E+00  0.000E+00  0.000E+00 -1.000E+00\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += '#FEM Eigenvectors ({} x {}) [m or rad], full system with reaction constraints (+ Soil K/M + SoilDyn K0)\n'.format(*model.Q.shape)
+        s += yaml_array('Full_Modes', model.Q)
+        s += '#____________________________________________________________________________________________________\n'
+        s += '#CB Matrices (PhiM,PhiR) (reaction constraints applied)\n'
+        s += yaml_array('PhiM', model.Phi_CB[:,:model.nModesCB] ,comment='(CB modes)')
+        s += yaml_array('PhiR', model.Phi_G,  comment='(Guyan modes)')
+        s += '\n'
+        if more:
+            s += '#____________________________________________________________________________________________________\n'
+            s += '# ADDITIONAL DEBUGGING INFORMATION\n'
+            s += '#____________________________________________________________________________________________________\n'
+            s +=  ''
+            e = model.Elements[0]
+            rho=e.rho
+            A = e.area
+            L = e.length
+            t= rho*A*L
+            s0 = '{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}\n'.format(model.gravity,e.area, e.length, e.inertias[0], e.inertias[1], e.inertias[2], e.kappa, e.E, e.G, e.rho, t)
+            s0 = s0.replace('e+','E+').replace('e-','E-')
+            s += s0
+            s += yaml_array('KeLocal' +str(), model.Elements[0].Ke(local=True))
+
+            for ie,e in enumerate(model.Elements):
+                s += yaml_array('DC' +str(ie+1), e.DCM.transpose())
+                s += yaml_array('Ke' +str(ie+1), e.Ke())
+                s += yaml_array('Me' +str(ie+1), e.Me())
+                s += yaml_array('FGe'+str(ie+1), e.Fe_g(model.gravity))
+                s += yaml_array('FCe'+str(ie+1), e.Fe_o())
+
+                s += yaml_array('KeLocal' +str(ie+1), e.Ke(local=True))
+                s += yaml_array('MeLocal' +str(ie+1), e.Me(local=True))
+                s += yaml_array('FGeLocal'+str(ie+1), e.Fe_g(model.gravity, local=True))
+                s += yaml_array('FCeLocal'+str(ie+1), e.Fe_o(local=True))
+
+            s += '#____________________________________________________________________________________________________\n'
+            e = model.Elements[0]
+            s += yaml_array('Ke', e.Ke(local=True), comment='First element stiffness matrix'); # TODO not in local
+            s += yaml_array('Me', e.Me(local=True), comment='First element mass matrix');
+            s += yaml_array('FGe', e.Fe_g(model.gravity,local=True), comment='First element gravity vector');
+            s += yaml_array('FCe', e.Fe_o(local=True), comment='First element cable pretension');
+            s += '#____________________________________________________________________________________________________\n'
+            s += '#FULL FEM K and M matrices. TOTAL FEM TDOFs:    {}\n'.format(model.MM.shape[0])
+            s += yaml_array('K', model.KK, comment='Stiffness matrix');
+            s += yaml_array('M', model.MM, comment='Mass matrix');
+            s += '#____________________________________________________________________________________________________\n'
+            s += '#Gravity and cable loads applied at each node of the system (before DOF elimination with T matrix)\n'
+            s += yaml_array('FG', model.FF_init, comment='');
+            print('>>> FG sum / gravity', np.sum(model.FF_init/model.gravity))
+            s += '#____________________________________________________________________________________________________\n'
+            s += '#Additional CB Matrices (MBB,MBM,KBB) (constraint applied)\n'
+            s += yaml_array('MBB'    , model.MBB, comment='');
+            s += yaml_array('MBM'    , model.MBM[:,:model.nModesCB], comment='');
+            s += yaml_array('CMMdiag', model.CMM, comment='(2 Zeta OmegaM)');
+            s += yaml_array('KBB'    , model.KBB, comment='');
+            s += yaml_array('KMM'    , np.diag(model.KMM), comment='(diagonal components, OmegaL^2)');
+            s += yaml_array('KMMdiag', np.diag(model.KMM)[:model.nModesCB], comment='(diagonal components, OmegaL^2)');
+            s += yaml_array('PhiL'   , model.Phi_CB, comment='');
+            s += 'PhiLOm2-1: # 18 x 18 \n'
+            s += 'KLL^-1: # 18 x 18 \n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += yaml_array('T_red', model.T_c, Fmt = '{:9.2e}', comment='(Constraint elimination matrix)');
+        s += 'AA: # 16 x 16 (State matrix dXdx)\n'
+        s += 'BB: # 16 x 48 (State matrix dXdu)\n'
+        s += 'CC: # 6 x 16 (State matrix dYdx)\n'
+        s += 'DD: # 6 x 48 (State matrix dYdu)\n'
+        s += '#____________________________________________________________________________________________________\n'
+        s += yaml_array('TI', model.T_refPoint,  Fmt = '{:9.2e}',comment='(TP refpoint Transformation Matrix TI)');
+        f.write(s);
 
 
 
