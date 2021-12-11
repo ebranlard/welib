@@ -10,16 +10,8 @@ import pandas as pd
 from welib.FEM.utils import DCM, rigidTransformationMatrix
 from welib.FEM.fem_elements import *   # Elements used
 from welib.FEM.fem_core import insertFixedBCinModes
-
-from welib.tools.clean_exceptions import *
-# from welib.FEM.graph import Node as GraphNode
-# from welib.FEM.graph import Element as GraphElement
-# from welib.FEM.graph import NodeProperty
-# from welib.FEM.graph import GraphModel
-from welib.weio.tools.graph import NodeProperty
-from welib.weio.tools.graph import GraphModel 
-
-
+from welib.FEM.graph import NodeProperty
+from welib.FEM.graph import GraphModel 
 
 # class MaterialProperty(NodeProperty):
 #     def __init__(self):
@@ -73,7 +65,7 @@ class FEMModel(GraphModel):
         #print(self)
         return self
 
-    def __init__(self, Elements=[], Nodes=[], NodePropertySets=dict(), ElemPropertySets=dict(), MiscPropertySets=dict(),
+    def __init__(self, Elements=None, Nodes=None, NodePropertySets=None, ElemPropertySets=None, MiscPropertySets=None,
             mainElementType='frame3d', gravity=9.81, main_axis='z', refPoint=None): # FEM specific
         """ 
 
@@ -446,9 +438,8 @@ class FEMModel(GraphModel):
         # Transformation matrix from leader DOFs to Origin
         TIR= rigidTransformationMatrix(self.DOF_Boundary, (0,0,0), self.DOF_c2Nodes, self.points)
         # Compute Rigid body mass matrix (without Soil, and using both Interface and Reactions nodes as leader DOF)
-        if self.nDOFR__!=self.nDOF__B:
-            print('>>> Need to do Guyan Rigid body Mass, TODO TODO TODO')
-            MBB = self.rigidBody()
+        if self.nDOFR__!=self.nDOF__B: # Most likely the case
+            MBB = self.rigidBody() 
         else:
             MBB = model.MM_CB[np.ix_(model.DOF_Leader_CB, model.DOF_Leader_CB)]
         M_O = TIR.T.dot(MBB).dot(TIR)

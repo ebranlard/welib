@@ -64,10 +64,11 @@ class FASTPeriodicOP(object):
 
 class FASTLin(object):
     """ Class for linearization data for different operating points (typically Campbell) """
-    def __init__(self, linfiles=[], folder='./', prefix='', nLin=None):
+    def __init__(self, linfiles=None, folder='./', prefix='', nLin=None):
         """ 
         Init with a list of linfiles, or a folder and prefix
         """
+        linfiles = [] if linfiles is None else linfiles
 
         if not isinstance(linfiles, list):
             linfiles=[linfiles]

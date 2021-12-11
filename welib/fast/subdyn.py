@@ -101,7 +101,6 @@ class SubDyn:
         FEM.KMM = FEM.KK_CB[np.ix_(FEM.DOF_Follower_CB, FEM.DOF_Follower_CB)]
         zeta =self.File['JDampings']/100
         if not hasattr(zeta,'__len__'):
-            print('nModesCB', FEM.nModesCB, self.File['Nmodes'], FEM.f_CB)
             zeta = [zeta]*FEM.nModesCB
             FEM.CMM = 2*np.array(zeta) * FEM.f_CB * 2 * np.pi
 
@@ -151,12 +150,8 @@ class SubDyn:
     def graph(self):
         import copy
         if self._graph is None:
-            print('>>> Setting up graph')
-#             with Timer('Setting up graph'):
             print('>>> NDIV is ', self.File['NDiv'])
-            self._graph = self.File.toGraph()
-            if self.File['NDiv']>1:
-                self._graph.divideElements(self.File['NDiv'],
+            self._graph = self.File.toGraph().divideElements(self.File['NDiv'],
                         excludeDataKey='Type', excludeDataList=['Cable','Rigid'], method='insert',
                         keysNotToCopy=['IBC','RBC','addedMassMatrix'] # Very important
                         )
@@ -180,8 +175,7 @@ class SubDyn:
                         print('n          ',n )
                         raise NotImplementedError('SSI')
 
-        #return copy.deepcopy(self._graph)
-        return self._graph
+        return copy.deepcopy(self._graph)
 
     # --------------------------------------------------------------------------------}
     # --- Functions for beam-like structure (Spar, Monopile)
@@ -707,7 +701,6 @@ def subdyntoYAMLSum(model, filename, more=False):
             s += '#____________________________________________________________________________________________________\n'
             s += '#Gravity and cable loads applied at each node of the system (before DOF elimination with T matrix)\n'
             s += yaml_array('FG', model.FF_init, comment='');
-            print('>>> FG sum / gravity', np.sum(model.FF_init/model.gravity))
             s += '#____________________________________________________________________________________________________\n'
             s += '#Additional CB Matrices (MBB,MBM,KBB) (constraint applied)\n'
             s += yaml_array('MBB'    , model.MBB, comment='');

@@ -18,10 +18,12 @@ def fail(s):
     return False
 
 
-def compare(o1,o2,Columns=[],tol=1e-8,n1='o1',n2='o2'):
+def compare(o1,o2,Columns=None,tol=1e-8,n1='o1',n2='o2'):
     """ 
     o1 and o2 are two python objects to be compared
     """
+    Columns = [] if Columns is None else Columns
+
     b=False
     if type(o1)!=type(o2):
         fail('{} {} Type mismatch, First is {}, second is {}'.format(n1,n2,type(o1),type(o2)));
@@ -73,7 +75,8 @@ def compare_ndarray(o1,o2,tol=1e-8,n1='o1',n2='o2'):
         else:
             b=ok(n1+'\t\t tol. matched ({:e} > {:e})'.format(tol,MaxRelErr))
 
-def compare_pandas_df(o1,o2,Columns=[],tol=1e-8,n1='o1',n2='o2'):
+def compare_pandas_df(o1,o2,Columns=None,tol=1e-8,n1='o1',n2='o2'):
+    Columns = [] if Columns is None else Columns
     b=False
     if not compare_len(o1,o2,n1,n2):
         return b
@@ -87,7 +90,8 @@ def compare_pandas_df(o1,o2,Columns=[],tol=1e-8,n1='o1',n2='o2'):
             v2=o2[col].values
             b=compare_ndarray(v1,v2,tol=tol,n1='{}[''{}'']'.format(n1,col),n2='{}[''[]'']'.format(n1,col))
 
-def compare_pandas_series(o1,o2,Columns=[],tol=1e-8,n1='o1',n2='o2'):
+def compare_pandas_series(o1,o2,Columns=None,tol=1e-8,n1='o1',n2='o2'):
+    Columns = [] if Columns is None else Columns
     b=False
     #b=compare_ndarray(o1.values,o2.values,tol=tol,n1='{}[{}]'.format(n1,col),n2='{}[[]]'.format(n1,col))
     return False

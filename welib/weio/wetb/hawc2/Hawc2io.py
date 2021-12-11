@@ -234,7 +234,8 @@ class ReadHawc2(object):
             raise Exception("unknown file: " + FileName)
 ################################################################################
 # Read results in binary format
-    def ReadBinary(self, ChVec=[]):
+    def ReadBinary(self, ChVec=None):
+        ChVec = [] if ChVec is None else ChVec
         if not ChVec:
             ChVec = range(0, self.NrCh)
         with open(self.FileName + '.dat', 'rb') as fid:
@@ -247,14 +248,16 @@ class ReadHawc2(object):
         return data
 ################################################################################
 # Read results in ASCII format
-    def ReadAscii(self, ChVec=[]):
+    def ReadAscii(self, ChVec=None):
+        ChVec = [] if ChVec is None else ChVec
         if not ChVec:
             ChVec = range(0, self.NrCh)
         temp = np.loadtxt(self.FileName + '.dat', usecols=ChVec)
         return temp.reshape((self.NrSc, len(ChVec)))
 ################################################################################
 # Read results in FLEX format
-    def ReadFLEX(self, ChVec=[]):
+    def ReadFLEX(self, ChVec=None):
+        ChVec = [] if ChVec is None else ChVec
         if not ChVec:
             ChVec = range(1, self.NrCh)
         fid = open(self.FileName, 'rb')
@@ -284,7 +287,8 @@ class ReadHawc2(object):
         #return data
 ################################################################################
 # One stop call for reading all data formats
-    def ReadAll(self, ChVec=[]):
+    def ReadAll(self, ChVec=None):
+        ChVec = [] if ChVec is None else ChVec
         if not ChVec and not self.FileFormat == 'GTSDF':
             ChVec = range(0, self.NrCh)
         if self.FileFormat == 'HAWC2_BINARY':
@@ -300,7 +304,8 @@ class ReadHawc2(object):
 
 ################################################################################
 # Main read data call, read, save and sort data
-    def __call__(self, ChVec=[]):
+    def __call__(self, ChVec=None):
+        ChVec = [] if ChVec is None else ChVec
         if not ChVec:
             ChVec = range(0, self.NrCh)
         elif max(ChVec) >= self.NrCh:

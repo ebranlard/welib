@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 
 class KalmanFilter(object):
-    def __init__(self,sX0,sXa,sU,sY,sS=[]):
+    def __init__(self,sX0,sXa,sU,sY,sS=None):
+        sS = [] if sS is None else sS
         self.sX0 = sX0
         self.sXa = sXa
         self.sU  = sU

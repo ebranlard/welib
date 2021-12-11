@@ -31,8 +31,8 @@ import numpy as np
 
 from welib.FEM.utils import DCM
 # TODO get rid of these:
-from welib.weio.tools.graph import Node as GraphNode
-from welib.weio.tools.graph import Element as GraphElement
+from welib.FEM.graph import Node as GraphNode
+from welib.FEM.graph import Element as GraphElement
 
 
 # Following the convention of SubDyn
@@ -53,9 +53,9 @@ idDOF_Leader   = 20 # Leader DOF
 # --- NODE: TODO use it. TODO convert to simple dict for ease of usage/portability 
 # --------------------------------------------------------------------------------{
 class FEMNode(GraphNode):
-    def __init__(self, ID, x, y, z=0, Type=idJointCantilever, DOFs=[], **kwargs):
+    def __init__(self, ID, x, y, z=0, Type=idJointCantilever, DOFs=None, **kwargs):
         kwargs['Type'] = Type
-        kwargs['DOFs'] = DOFs
+        kwargs['DOFs'] = [] if DOFs is None else DOFs
         super(FEMNode,self).__init__(ID, x, y, z, **kwargs)
 
     def __repr__(self):

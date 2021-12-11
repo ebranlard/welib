@@ -1,15 +1,39 @@
 """ 
 Basics Classes for a "geometrical" graph model: 
-  - nodes have a position x,y (,z) and some properties
-  - links connect nodes
+  - nodes have a position (x,y,z), and some data (taken from a list of properties)
+  - elements (links) connect nodes, they contain some data (taken from a list of properties)
+
+An ordering of Elements, Nodes, and Properties is present, but whenever possible,
+the "ID" is used to identify them, instead of their index.
+
+
+Nodes: 
+   Node.ID:    unique ID (int) of the node. IDs never change.
+   Node.x,y,z: coordinate of the nodes
+   Node.data : dictionary of data stored at the node
+
+Elements: 
+   Elem.ID:      unique ID (int) of the element. IDs never change.
+   Elem.nodeIDs: list of node IDs making up the element
+   Elem.nodes  : list of nodes making the element (by reference) # NOTE: this has cross reference!
+   Elem.nodeProps   : properties # Nodal properties. NOTE: cannot be transfered to node because of how SubDyn handles it..
+   Elem.data   : dictionary of data stored at the element
+   # Optional
+   Elem.propset: string referring to the property set in the dictionary of properties
+   Elem.propIDs: IDs used for the properties of this element at each node
+
+NodePropertySets: dictionary of NodeProperties
+   Node Property: 
+      NProp.ID:  unique ID of the node proprety
+      NProp.data: dictionary of data
+          
+
+ElemPropertySets: dictionary of ElemProperties
 
 """
 
 import numpy as np
 import pandas as pd
-
-
-print('WARNING, using graph from welib.FEM, right now weio has priority')
 
 
 # --------------------------------------------------------------------------------}
@@ -24,6 +48,7 @@ class Node(object):
         self.data  = kwargs
 
     def setData(self, data_dict):
+        """ set or add data"""
         for k,v in data_dict.items():
             #if k in self.data.keys():
             #    print('Warning overriding key {} for node {}'.format(k,self.ID))
@@ -42,31 +67,31 @@ class Property(dict):
         data is a dictionary
         """
         dict.__init__(self)
-        self['ID']= int(ID)
+        self.ID= int(ID)
         self.update(kwargs)
         if data is not None:
-            self.upadte(data)
+            self.update(data)
 
     @property
     def data(self):
-        return {k:v for k,v in self.items() if k is not 'ID'}
+        return {k:v for k,v in self.items() if k!='ID'}
 
     def __repr__(self):
-        s='<Prop{:4d}> {:}'.format(self['ID'], self.data)
+        s='<Prop{:4d}> {:}'.format(self.ID, self.data)
         return s
 
 class NodeProperty(Property):
     def __init__(self, ID, data=None, **kwargs):
         Property.__init__(self, ID, data, **kwargs)
     def __repr__(self):
-        s='<NPrp{:4d}> {:}'.format(self['ID'], self.data)
+        s='<NPrp{:4d}> {:}'.format(self.ID, self.data)
         return s
     
 class ElemProperty(Property):
     def __init__(self, ID, data=None, **kwargs):
         Property.__init__(self, ID, data, **kwargs)
     def __repr__(self):
-        s='<EPrp{:4d}> {:}'.format(self['ID'], self.data)
+        s='<EPrp{:4d}> {:}'.format(self.ID, self.data)
         return s
 
 
@@ -75,15 +100,26 @@ class ElemProperty(Property):
 # --------------------------------------------------------------------------------{
 class Element(dict):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
+        """ 
+
+        """
         self.ID      = int(ID)
         self.nodeIDs = nodeIDs
-        self.nodes   = nodes
         self.propset = propset
         self.propIDs = propIDs
-        self.prop    = properties # Nodal properties
         self.data    = kwargs     # Nodal data
+        self.nodes   = nodes      # Typically a trigger based on nodeIDs
+        self.nodeProps= properties # Typically a trigger based on propIDs. Otherwise list of dictionaries
         if (self.propIDs is not None) and (self.propset is None):
-            raise Exception('propset should be provided if propIDs are provided')
+            raise Exception('`propset` should be provided if `propIDs` are provided')
+        if (self.propIDs is not None) and (self.propset is not None) and properties is not None:
+            raise Exception('When providing `propset` & `propIDs`, properties should not be provided')
+        if nodes is not None:
+            if len(nodes)!=len(nodeIDs):
+                raise Exception('List of nodes has different length than list of nodeIDs')
+            for i, (ID,n) in enumerate(zip(nodeIDs,nodes)):
+                if n.ID!=ID:
+                    raise Exception('Node ID do not match {}/={} for node index {}'.format(n.ID,ID,i))
         
     @property
     def length(self):
@@ -93,6 +129,8 @@ class Element(dict):
 
     def __repr__(self):
         s='<Elem{:4d}> NodeIDs: {} {}'.format(self.ID, self.nodeIDs, self.data)
+        if self.propIDs is not None:
+            s+=' {'+'propIDs:{} propset:{}'.format(self.propIDs, self.propset)+'}'
         if self.nodes is not None:
             s+=' l={:.2f}'.format(self.length)
         return s
@@ -120,31 +158,34 @@ class Mode(dict):
 # --- Graph
 # --------------------------------------------------------------------------------{
 class GraphModel(object):
-    def __init__(self):
-        self.Elements    = []
-        self.Nodes       = []
-        self.NodePropertySets= dict()
-        self.ElemPropertySets= dict()
-        self.MiscPropertySets= dict()
+    def __init__(self, Elements=None, Nodes=None, NodePropertySets=None, ElemPropertySets=None, MiscPropertySets=None): # NOTE: do not initialize with [] or dict()!!!
+        self.Elements         = Elements if Elements is not None else []
+        self.Nodes            = Nodes    if Nodes    is not None else []
+        self.NodePropertySets = NodePropertySets if NodePropertySets is not None else dict()
+        self.ElemPropertySets = ElemPropertySets if ElemPropertySets is not None else dict()
+        self.MiscPropertySets = MiscPropertySets if MiscPropertySets is not None else dict()
         # Dynamics
         self.Modes   = []
         self.Motions = []
+        # Optimization variables
+        self._nodeIDs2Elements   = {} # dictionary with key NodeID and value list of ElementID
+        self._nodeIDs2Elements   = {} # dictionary with key NodeID and value list of elements
+        self._elementIDs2NodeIDs = {} # dictionary with key ElemID and value list of nodes IDs
+        self._connectivity =[]# 
 
     def addNode(self,node):
         self.Nodes.append(node)
 
     def addElement(self,elem):
-        if elem.nodes is None:
-            # Giving nodes to element if these were not provided
-            elem.nodes=[self.getNode(i) for i in elem.nodeIDs]
-#         if elem.prop is None:
-#             # Giving props to element if these were not provided
-#             if elem.propIDs is not None:
-#                 elem.prop=[self.getElemProperty(elem.propset, i) for i in elem.propIDs]
+        # Giving nodes to element if these were not provided
+        elem.nodes=[self.getNode(i) for i in elem.nodeIDs]
+        # Giving props to element if these were not provided
+        if elem.propIDs is not None:
+            elem.nodeProps=[self.getNodeProperty(elem.propset, i) for i in elem.propIDs]
         self.Elements.append(elem)
 
     # --- Getters
-    def getNode(self,nodeID):
+    def getNode(self, nodeID):
         for n in self.Nodes:
             if n.ID==nodeID:
                 return n
@@ -158,23 +199,65 @@ class GraphModel(object):
 
     def getNodeProperty(self, setname, propID):
         for p in self.NodePropertySets[setname]:
-            if p['ID']==propID:
+            if p.ID==propID:
                 return p
         raise KeyError('PropID {} not found for Node propset {}'.format(propID,setname))
 
     def getElementProperty(self, setname, propID):
         for p in self.ElemPropertySets[setname]:
-            if p['ID']==propID:
+            if p.ID==propID:
                 return p
         raise KeyError('PropID {} not found for Element propset {}'.format(propID,setname))
 
     def getMiscProperty(self, setname, propID):
         for p in self.MiscPropertySets[setname]:
-            if p['ID']==propID:
+            if p.ID==propID:
                 return p
         raise KeyError('PropID {} not found for Misc propset {}'.format(propID,setname))
 
-    # --- Properties
+    # ---
+    @property
+    def nodeIDs2ElementIDs(self):
+        """ Return list of elements IDs connected to each node"""
+        if len(self._nodeIDs2ElementIDs) == 0:
+            # Compute list of connected elements for each node
+            self._nodeIDs2ElementIDs=dict()
+            for i,n in enumerate(self.Nodes):
+                self._nodeIDs2ElementIDs[n.ID] = [e.ID for e in self.Elements if n.ID in e.nodeIDs]
+        return self._nodeIDs2ElementIDs
+
+    @property
+    def nodeIDs2Elements(self):
+        """ Return list of elements connected to each node"""
+        if len(self._nodeIDs2Elements) == 0:
+            # Compute list of connected elements for each node
+            self._nodeIDs2Elements
+            for i,n in enumerate(self.Nodes):
+                self._nodeIDs2Elements[n.ID] = [e for e in self.Elements if n.ID in e.nodeIDs]
+        return self._nodeIDs2Elements
+
+
+    @property
+    def elementIDs2NodeIDs(self):
+        """ returns """
+        if len(self._elementIDs2NodeIDs) ==0:
+            self._elementIDs2NodeIDs =dict()
+            for e in self.Elements:
+                self._elementIDs2NodeIDs[e.ID] = [n.ID for n in e.nodes] 
+        return self._elementIDs2NodeIDs
+
+
+    @property
+    def connectivity(self):
+        """ returns connectivity, assuming points are indexed starting at 0 
+        NOTE: this is basically element2Nodes but reindexed
+        """
+        if len(self._connectivity) ==0:
+            self._connectivity = [[self.Nodes.index(n)  for n in e.nodes] for e in self.Elements]
+        return self._connectivity
+
+
+    # --- Handling of (element/material) Properties
     def addElementPropertySet(self, setname):
         self.ElemPropertySets[setname]= []
 
@@ -276,17 +359,6 @@ class GraphModel(object):
             Points[i,:]=(n.x, n.y, n.z)
         return Points
 
-    @property
-    def connectivity(self):
-        """ returns connectivity, assuming points are indexed starting at 0 """
-        conn=[]
-        for ie, e in enumerate(self.Elements):
-            elemConn=[]
-            for n in e.nodes:
-                elemConn.append(self.Nodes.index(n))
-            conn.append(elemConn)
-        return conn
-
     def toLines(self, output='coord'):
         if output=='coord':
             lines = np.zeros((len(self.Elements), 2, 3)) # 
@@ -309,19 +381,35 @@ class GraphModel(object):
         return lines
 
     # --------------------------------------------------------------------------------}
-    # ---  
+    # --- Change of connectivity
     # --------------------------------------------------------------------------------{
-    def divideElement(self, elemID, nPerElement):
+    def connecticityHasChanged(self):
+        self._nodeIDs2ElementIDs = dict()
+        self._nodeIDs2Elements   = dict()
+        self._elementIDs2NodeIDs = dict()
+        self._connectivity=[]
+
+    def updateConnectivity(self):
+        for e in self.Elements:
+            e.nodes=[self.getNode(i) for i in e.nodeIDs]
+
+        for e in self.Elements:
+            e.nodeProps = [self.getNodeProperty(e.propset, ID) for ID in e.propIDs]
+
+        # Potentially call nodeIDs2ElementIDs etc
+
+
+    def _divideElement(self, elemID, nPerElement, maxElemId, keysNotToCopy=None):
         """ divide a given element by nPerElement (add nodes and elements to graph) """ 
         if len(self.Modes)>0:
             raise Exception('Cannot divide graph when mode data is present')
         if len(self.Motions)>0:
             raise Exception('Cannot divide graph when motion data is present')
-
+        keysNotToCopy = [] if keysNotToCopy is None else keysNotToCopy
 
         maxNodeId=np.max([n.ID for n in self.Nodes])
-        maxElemId=np.max([e.ID for e in self.Nodes])
         e = self.getElement(elemID)
+        newElems = []
         if len(e.nodes)==2:
             n1=e.nodes[0]
             n2=e.nodes[1]
@@ -331,14 +419,17 @@ class GraphModel(object):
                 #data_dict  = n1.data.copy()
                 data_dict  = dict()
                 fact       = float(iSub)/nPerElement
+                # Interpolating position
                 x          = n1.x*(1-fact)+n2.x*fact
                 y          = n1.y*(1-fact)+n2.y*fact
                 z          = n1.z*(1-fact)+n2.z*fact
+                # Interpolating data (only if floats)
                 for k,v in n1.data.items():
-                    try:
-                        data_dict[k] = n1.data[k]*(1-fact) + n2.data[k]*fact
-                    except:
-                        pass
+                    if k not in keysNotToCopy:
+                        try:
+                            data_dict[k] = n1.data[k]*(1-fact) + n2.data[k]*fact
+                        except:
+                            data_dict[k] = n1.data[k]
                 ni = Node(maxNodeId, x, y, z, **data_dict)
                 subNodes.append(ni)
                 self.addNode(ni)
@@ -348,13 +439,21 @@ class GraphModel(object):
             for i in range(1,nPerElement):
                 maxElemId+=1
                 elem_dict = e.data.copy()
-                elem= Element(maxElemId, [subNodes[i].ID, subNodes[i+1].ID], **elem_dict )
-                self.addElement(elem)
+                # Creating extra properties if necessary
+                if e.propIDs is not None:
+                    if all(e.propIDs==e.propIDs[0]):
+                        # No need to create a new property
+                        propIDs=e.propIDs
+                        propset=e.propset
+                    else:
+                        raise NotImplementedError('Division of element with different properties on both ends. TODO add new property.')
+                elem= Element(maxElemId, [subNodes[i].ID, subNodes[i+1].ID], propset=propset, propIDs=propIDs, **elem_dict )
+                newElems.append(elem)
+        return newElems
+
 
     def sortNodesBy(self,key):
-        """ 
-        z
-        """
+        """ Sort nodes, will affect the connectivity, but node IDs remain the same"""
 
         # TODO, that's quite doable
         if len(self.Modes)>0:
@@ -375,19 +474,63 @@ class GraphModel(object):
             values=[n[key] for n in self.Nodes]
         I= np.argsort(values)
         self.Nodes=[self.Nodes[i] for i in I]
+
+        # Trigger, remove precomputed values related to connectivity:
+        self.connecticityHasChanged()
+
         return self
 
-    def divideElements(self, nPerElement):
-        """ divide all elements by nPerElement (add nodes and elements to graph) """ 
+    def divideElements(self, nPerElement, excludeDataKey='', excludeDataList=None, method='append', keysNotToCopy=None):
+        """ divide all elements by nPerElement (add nodes and elements to graph)
+
+        - excludeDataKey: is provided, will exclude elements such that e.data[key] in `excludeDataList`
+
+        - method: append or insert
+
+        - keysNotToCopy: when duplicating node and element data, make sure not to duplicate data with these keys
+                         For instance if a node that has a boundary condition, it should not be passed to the 
+                         node that is created when dividing an element.
+
+        Example: 
+           to avoid dividing elements of `Type` 'Cable' or `Rigid`, call as follows:
+             self.divideElements(3, excludeDataKey='Type', excludeDataList=['Cable','Rigid'] )
+
+        """ 
+        keysNotToCopy   = [] if keysNotToCopy is None else keysNotToCopy
+        excludeDataList = [] if excludeDataList is None else excludeDataList
+
+
         maxNodeId=np.max([n.ID for n in self.Nodes])
-        maxElemId=np.max([e.ID for e in self.Nodes])
+        maxElemId=np.max([e.ID for e in self.Elements])
 
         if nPerElement<=0:
             raise Exception('nPerElement should be more than 0')
 
+        newElements=[]
         for ie in np.arange(len(self.Elements)): # cannot enumerate since length increases
             elemID = self.Elements[ie].ID
-            self.divideElement(elemID, nPerElement)
+            if method=='insert':
+                newElements+=[self.getElement(elemID)] # newElements contains
+            if (len(excludeDataKey)>0 and self.Elements[ie].data[excludeDataKey] not in excludeDataList) or len(excludeDataKey)==0:
+                elems = self._divideElement(elemID, nPerElement, maxElemId, keysNotToCopy)
+                maxElemId+=len(elems)
+                newElements+=elems
+            else:
+                print('Not dividing element with ID {}, based on key `{}` with value `{}`'.format(elemID, excludeDataKey,self.Elements[ie].data[excludeDataKey]))
+        # Adding elements at the end
+        if method=='append':
+            pass
+        elif method=='insert':
+            self.Elements=[] # We clear all elements
+        else:
+            raise NotImplementedError('Element Insertions')
+
+        for e in newElements:
+            self.addElement(e)
+
+        # Trigger, remove precomputed values related to connectivity:
+        self.connecticityHasChanged()
+
         return self
                     
     # --------------------------------------------------------------------------------}
@@ -443,7 +586,10 @@ class GraphModel(object):
         for iElem,elem in enumerate(self.Elements):
             Shape = elem.data['shape'] if 'shape' in elem.data.keys() else 'cylinder'
             Type  = elem.data['Type'] if 'Type' in elem.data.keys() else 1
-            Diam  = elem.data['D'] if 'D' in elem.data.keys() else 1
+            try:
+                Diam  = elem.D
+            except:
+                Diam  = elem.data['D'] if 'D' in elem.data.keys() else 1
             if Shape=='cylinder':
                 d['ElemProps'].append({'shape':'cylinder','type':Type, 'Diam':Diam})
             else:
@@ -463,6 +609,7 @@ class GraphModel(object):
             from io import open
             jsonFile=outfile
             with open(jsonFile, 'w', encoding='utf-8') as f:
+                #f.write(to_json(d))
                 try:
                     #f.write(unicode(json.dumps(d, ensure_ascii=False))) #, indent=2)
                     #f.write(json.dumps(d, ensure_ascii=False)) #, indent=2)
@@ -473,3 +620,57 @@ class GraphModel(object):
         return d
 
 # 
+
+
+
+INDENT = 3
+SPACE = " "
+NEWLINE = "\n"
+# Changed basestring to str, and dict uses items() instead of iteritems().
+
+def to_json(o, level=0):
+  ret = ""
+  if isinstance(o, dict):
+    if level==0:
+        ret += "{" + NEWLINE
+        comma = ""
+        for k, v in o.items():
+          ret += comma
+          comma = ",\n"
+          ret += SPACE * INDENT * (level + 1)
+          ret += '"' + str(k) + '":' + SPACE
+          ret += to_json(v, level + 1)
+        ret += NEWLINE + SPACE * INDENT * level + "}"
+    else:
+        ret += "{" 
+        comma = ""
+        for k, v in o.items():
+          ret += comma
+          comma = ",\n"
+          ret += SPACE
+          ret += '"' + str(k) + '":' + SPACE
+          ret += to_json(v, level + 1)
+        ret += "}"
+
+  elif isinstance(o, str):
+    ret += '"' + o + '"'
+  elif isinstance(o, list):
+    ret += "[" + ",".join([to_json(e, level + 1) for e in o]) + "]"
+  # Tuples are interpreted as lists
+  elif isinstance(o, tuple):
+    ret += "[" + ",".join(to_json(e, level + 1) for e in o) + "]"
+  elif isinstance(o, bool):
+    ret += "true" if o else "false"
+  elif isinstance(o, int):
+    ret += str(o)
+  elif isinstance(o, float):
+    ret += '%.7g' % o
+  elif isinstance(o, numpy.ndarray) and numpy.issubdtype(o.dtype, numpy.integer):
+    ret += "[" + ','.join(map(str, o.flatten().tolist())) + "]"
+  elif isinstance(o, numpy.ndarray) and numpy.issubdtype(o.dtype, numpy.inexact):
+    ret += "[" + ','.join(map(lambda x: '%.7g' % x, o.flatten().tolist())) + "]"
+  elif o is None:
+    ret += 'null'
+  else:
+    raise TypeError("Unknown type '%s' for json serialization" % str(type(o)))
+  return ret
