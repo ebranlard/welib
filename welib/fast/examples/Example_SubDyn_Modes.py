@@ -17,10 +17,10 @@ MyDir=os.path.dirname(__file__)
 if __name__ == '__main__':
     np.set_printoptions(precision=5, linewidth=400)
 
-    #filename=os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_OC4Jacket_SubDyn.dat')
-    #filename=os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_OC4Jacket_SubDyn.dat')
+    #filename=os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_OC4Jacket_SubDyn.dat'); TP=(0,0,20.15); gravity=9.81
     #filename=os.path.join(MyDir,'../../../data/SubDyn/Twr.dat'); TP=(0,0,102.7930); gravity=9.81;
-    #filename=os.path.join(MyDir,'../../../data/SubDyn/Jacket.dat'); TP=(0,0,22); gravity=9.81;
+#     filename=os.path.join(MyDir,'../../../data/SubDyn/Jacket.dat');    TP=(0,0,22); gravity=9.81;
+#     filename=os.path.join(MyDir,'../../../data/SubDyn/JacketTwr.dat'); TP=(0,0, 102.7930); gravity=9.81;
     #filename=os.path.join(MyDir,'../../../data/SubDyn/SD_Cable_5Joints.dat'); TP=(0,0,0); gravity=9.81;
     filename=os.path.join(MyDir,'../../../data/SubDyn/TwrSmall.dat'); TP=(0,0,100); gravity=9.81;
 
