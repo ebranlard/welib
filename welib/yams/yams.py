@@ -434,7 +434,7 @@ class UniformBeamBody(BeamBody):
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
-            spanFrom0=False, massExpected=None
+            spanFrom0=False, massExpected=None, gravity=None
             ):
         """ 
         """
@@ -449,7 +449,8 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
                 raise NotImplementedError('>> TODO')
         GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
                 spanFrom0=spanFrom0,
-                massExpected=massExpected
+                massExpected=massExpected,
+                gravity=gravity
                 )
         # We need to inherit from "YAMS" Beam not just generic Beam
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 

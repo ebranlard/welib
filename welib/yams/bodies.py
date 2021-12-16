@@ -485,6 +485,7 @@ class FASTBeamBody(BeamBody):
     def __init__(self, ED, inp, Mtop=0, shapes=None, main_axis='z', nSpan=None, bAxialCorr=False, bStiffening=True, jxxG=None, Omega=0,
             spanFrom0=False,
             massExpected=None,
+            gravity=None,
             algo=''):
         """ 
         INPUTS:
@@ -582,7 +583,10 @@ class FASTBeamBody(BeamBody):
             print(inp.keys())
             raise Exception('Body type not supported, key `BldProp`, `TowProp`, or `SttcSolve` not found in file')
 
-        gravity=ED['Gravity']
+        try:
+            gravity=ED['Gravity']
+        except:
+            print('[WARN] yams/bodies.py: gravity is no longer present in elastodyn file, provide it as input')
 
         if name in ['twr','bld']:
             m *= mass_fact

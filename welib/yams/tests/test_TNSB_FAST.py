@@ -18,18 +18,18 @@ class TestTNSB(unittest.TestCase):
         q[[2]]=0*np.pi/4.
 
         np.set_printoptions(linewidth=500)
-        EDFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore.dat')
+        EDFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore_Legacy.dat')
 
         # --- Auto assembly with z axis
         main_axis='z'
         assembly='auto'
 
-        StructA= FASTmodel2TNSB(EDFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+        StructA= FASTmodel2TNSB(EDFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065)
 
         # --- Manual assembly with x axis
         assembly='auto'
         main_axis='x'
-        StructM= FASTmodel2TNSB(EDFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+        StructM= FASTmodel2TNSB(EDFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065)
 
 
         # --------------------------------------------------------------------------------}

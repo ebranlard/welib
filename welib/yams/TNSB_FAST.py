@@ -15,7 +15,8 @@ import welib.weio as weio
 # --------------------------------------------------------------------------------{
 def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
         spanFrom0=True, # TODO for legacy, we keep this for now..
-        bladeMassExpected=None
+        bladeMassExpected=None,
+        gravity=None
         ):
     """ 
     Returns the following structure
@@ -40,6 +41,8 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
         FST=weio.read(ED_or_FST_file)
         rootdir = os.path.dirname(ED_or_FST_file)
         EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
+        if gravity is None:
+            gravity = FST['gravity']
     else:
         EDfile=ED_or_FST_file
 
@@ -112,7 +115,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --------------------------------------------------------------------------------{
     # Bld
     Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected)) # NOTE: legacy spanfrom0
+    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity)) # NOTE: legacy spanfrom0
     Blds[0].MM *=bBldMass
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))
@@ -143,7 +146,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     M_rot= sum([B.Mass for B in Blds])
     M_RNA= M_rot + Sft.Mass + Nac.Mass + Yaw.Mass
     # Tower Body
-    Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening)
+    Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity)
     #print('Stiffnening', bStiffening)
     #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
     if DEBUG:
