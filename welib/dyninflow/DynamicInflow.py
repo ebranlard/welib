@@ -2,12 +2,13 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 
-from pybra.figure import *
+# from pybra.figure import *
 
 
 
-def tau1_oye(a_bar, R_U0):
-    return  1.1/( 1-1.3*min(a_bar,0.5) ) * R_U0
+def tau1_oye(a_bar, R, U0):
+    """ """
+    return  1.1/( 1-1.3*min(a_bar,0.5) ) * R/U0
 
 def tau1_dbemt(a_bar, R, Un0_disk):
     # We need to extrapolate the radius and disk velocity to the i+1 timestep
@@ -22,7 +23,7 @@ def tau2_oye(r_bar, tau1):
 
 
 def dynflow_oye_dxdt(t, x, x_qs, a_bar, dx_qs_dt, dtau1_dt, U0, r, R , k=0.6):
-    tau1 = tau1_oye(a_bar, R/U0)
+    tau1 = tau1_oye(a_bar, R, U0)
     tau2 = tau2_oye(r/R,tau1)
 
     dtau2_dt = (0.39-0.26*(r/R)**2)* dtau1_dt
@@ -137,7 +138,7 @@ def example_astep_WS():
         y0=[a_mean,0] # a, adot
         #y0=[0,0] # a, adot
 
-        tau1 = tau1_oye(a_mean, R/U0)
+        tau1 = tau1_oye(a_mean, R, U0)
         tau2 = tau2_oye(r_bar,tau1)
         print('tau1',tau1, 'tau2',tau2,'R/U0',R/U0)
 
@@ -175,7 +176,7 @@ def example_astep_radius():
         y0=[a_mean,0] # a, adot
         #y0=[0,0] # a, adot
 
-        tau1 = tau1_oye(a_mean, R/U0)
+        tau1 = tau1_oye(a_mean, R, U0)
         tau2 = tau2_oye(r_bar,tau1)
         print('tau1',tau1, 'tau2',tau2,'R/U0',R/U0)
 
@@ -244,7 +245,7 @@ def example_algo_investigation(Case='Sine', T=5, U0=10, R=65,r_bar=0.5,a_mean=0.
 
     Case, a_qs, da_qs_dt, a_bar, dtau1_dt, fU0, dU0_dt, vt, y0 = dyninflow_case(Case, T, U0, R,r_bar,a_mean,a_ampl,U0_ampl)
 
-    tau1 = tau1_oye(a_mean,R/U0)
+    tau1 = tau1_oye(a_mean, R, U0)
     tau2 = tau2_oye(r_bar ,tau1)
     print('tau1',tau1, 'tau2',tau2)
 
@@ -284,7 +285,7 @@ def example_algo_investigation(Case='Sine', T=5, U0=10, R=65,r_bar=0.5,a_mean=0.
 def example_tau1_abar():
 
     va_bar = np.linspace(0,0.6,100)
-    tau1=[tau1_oye(a_bar,R_U0=1) for a_bar in va_bar]
+    tau1=[tau1_oye(a_bar, R=1, U0=1) for a_bar in va_bar]
 
     plt.figure()
     plt.plot(va_bar,tau1)
