@@ -72,7 +72,7 @@ def polyeig(*A, sort=False):
     return X, e
 
 
-def eig(K, M=None, freq_out=False, sort=True, normQ=None):
+def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=True):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -113,6 +113,19 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None):
             iMax = np.argmax(np.abs(q_j))
             scale = q_j[iMax] # not using abs to normalize to "1" and not "+/-1"
             Q[:,j]= Q[:,j]/scale
+
+    # --- Sanitization, ensure real values
+    if discardIm:
+        Q_im    = np.imag(Q)
+        Q       = np.real(Q)
+        imm     = np.mean(np.abs(Q_im),axis = 0)
+        bb = imm>0
+        if sum(bb)>0:
+            W=list(np.where(bb)[0])
+            print('[WARN] Found {:d} complex eigenvectors at positions {}/{}'.format(sum(bb),W,Q.shape[0]))
+        Lambda = np.real(Lambda)
+
+
 
     return Q,Lambda
 

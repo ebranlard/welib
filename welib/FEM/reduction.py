@@ -3,7 +3,7 @@ import numpy as np
 from welib.system.eva import eig
 
 
-def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, fullModesOut=False): 
+def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, fullModesOut=False, discardIm=True): 
     """
     Performs the CraigBampton (CB) reduction of a system given some input master dofs index
     and a number of modes. Reduced matrices, and Guyan and Craig-Bampton modes are returned.
@@ -17,6 +17,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
       nModesCB: number of CB modes to keep. Default: all
       Ifollow: indices of follower DOFs. Default: complementary set to Ileader
       fullModesOut: if true, the Guyan and CB modes
+      discardIm: if true, the imaginary part of the eigenvectors is discarded
         
     OUTPUTS
       fc: critical frequency
@@ -52,7 +53,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     Phi_G = - Kff1Kfl;
 
     # --- Solve EVP for constrained system
-    Phi_CB, Lambda_CB = eig(Kff,Mff)
+    Phi_CB, Lambda_CB = eig(Kff,Mff, discardIm=discardIm)
     Omega2 = np.diag(Lambda_CB).copy()
     Omega2[Omega2<0]=0.0
     f_CB  = np.sqrt(Omega2)/(2*np.pi)
@@ -77,7 +78,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     ZZ   = np.zeros((len(Ileader),nModesCB))
 
     # --- Guyan frequencies
-    Phi_G2, Lambda_G = eig(Kr11,Mr11)
+    Phi_G2, Lambda_G = eig(Kr11,Mr11, discardIm=discardIm)
     Omega2 = np.diag(Lambda_G).copy()
     Omega2[Omega2<0]=0.0
     f_G  = np.sqrt(Omega2)/(2*np.pi)

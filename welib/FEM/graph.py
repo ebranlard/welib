@@ -140,11 +140,13 @@ class Element(dict):
 # --- Mode 
 # --------------------------------------------------------------------------------{
 class Mode(dict):
-    def __init__(self, data, name, freq=1, **kwargs):
+    def __init__(self, data, name, freq=1, group='default', **kwargs):
+        """ """
         dict.__init__(self)
 
         self['name']=name
         self['freq']=freq
+        self['group']=group
         self['data']=data # displacements nNodes x 3 assuming a given sorting of nodes
 
     def __repr__(self):
@@ -153,6 +155,82 @@ class Mode(dict):
 
     def reSort(self,I):
         self['data']=self['data'][I,:]
+
+
+# --------------------------------------------------------------------------------}
+# --- Mode 
+# --------------------------------------------------------------------------------{
+class TimeSeries(dict):
+    def __init__(self, time, mat4=None, displ=None, rot=None, name=None, group='default', absolute=False, element=False):
+        """ 
+        - time: time vector, array of length nT
+
+        n: number of nodes or elements
+
+        - either: 
+            mat4:   nT x n x 4 x 4 - Matrix 4 with rotation and displacement
+          or:             
+            displ:  nT x n x 3    : displacement vectors for all time steps and node/elements
+            rot  :  nT x n x 3 x 3: orientation matrix for all time steps and node/elements
+
+        - absolute: if True `displ`, `rot` or `mat4` are absolute positions/rotations
+                    if False, they are relative displacements/rotations from reference.
+        - element: if True `displ`, `rot` or `mat4` are for elements 
+                   if False `displ`, `rot` or `mat4` are for nodes 
+        """
+        self['name']  = name
+        self['group'] = group
+        self['displ'] = displ
+        self['rot']   = rot
+        self['mat4']  = mat4
+        self['group'] = group
+        self['time']  = time
+        self['absolute']  = absolute
+        self['perElement']  = element
+
+    @property
+    def timeInfo(self):
+        """ return a dictionary with time info"""
+        from scipy.stats import mode
+
+        TI = dict()
+        nt = len(self['time'])
+        t_max = np.max(self['time'])
+        t_min = np.min(self['time'])
+        t_bar = (self['time']-t_min)/(t_max-t_min)
+        dt_bar = np.unique(np.around(np.diff(t_bar), int(np.log10(nt))+2))
+        if len(dt_bar)<=max(0.01*nt,1):
+            # we assume a constant time step is used
+            TI['tMin'] = self['time'][0]
+            TI['dt'  ] = mode(np.diff(self['time']))[0][0]
+            TI['nt'  ] = nt
+        else:
+            TI['time'] = list(self['time'])
+        print(TI)
+        return TI
+
+    def mat4(self, flat=True):
+        if self['mat4'] is None:
+            nt, nn, _ = np.shape(self['displ'])
+            mat4 = np.zeros((nt, nn, 4, 4))
+            mat4[:,:,3,3]   = 1
+            mat4[:,:,:3,:3] = self['rot']
+            mat4[:,:,3,:3]  = self['displ']
+            self['mat4'] = mat4
+
+        if flat==True:
+            nt, nn, _, _ = np.shape(self['mat4'])
+            mat4 = self['mat4'].reshape((nt,nn,16)).tolist()
+        else:
+            mat4 = self['mat4'].tolist()
+        return mat4
+
+
+
+
+
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Graph
@@ -166,7 +244,7 @@ class GraphModel(object):
         self.MiscPropertySets = MiscPropertySets if MiscPropertySets is not None else dict()
         # Dynamics
         self.Modes   = []
-        self.Motions = []
+        self.TimeSeries = []
         # Optimization variables
         self._nodeIDs2Elements   = {} # dictionary with key NodeID and value list of ElementID
         self._nodeIDs2Elements   = {} # dictionary with key NodeID and value list of elements
@@ -328,9 +406,9 @@ class GraphModel(object):
             s+='\n'.join(str(p) for p in v)
         s+='\n- Modes ({}):\n'.format(len(self.Modes))
         s+='\n'.join(str(m) for m in self.Modes)
-        s+='\n- Motions ({}):'.format(len(self.Motions))
-        for m in self.Motions:
-            s+='\n> {}\n'.format({k:v for k,v in m.items() if not isintance(v,np.ndarray)})
+        s+='\n- TimeSeries ({}):'.format(len(self.TimeSeries))
+        for m in self.TimeSeries:
+            s+='\n> {}\n'.format({k:v for k,v in m.items() if not isinstance(v,np.ndarray)})
         return s
 
     # --------------------------------------------------------------------------------}
@@ -403,7 +481,7 @@ class GraphModel(object):
         """ divide a given element by nPerElement (add nodes and elements to graph) """ 
         if len(self.Modes)>0:
             raise Exception('Cannot divide graph when mode data is present')
-        if len(self.Motions)>0:
+        if len(self.TimeSeries)>0:
             raise Exception('Cannot divide graph when motion data is present')
         keysNotToCopy = [] if keysNotToCopy is None else keysNotToCopy
 
@@ -458,8 +536,8 @@ class GraphModel(object):
         # TODO, that's quite doable
         if len(self.Modes)>0:
             raise Exception('Cannot sort nodes when mode data is present')
-        if len(self.Motions)>0:
-            raise Exception('Cannot sort nodes when motion data is present')
+        if len(self.TimeSeries)>0:
+            raise Exception('Cannot sort nodes when timeseries are present')
 
         nNodes = len(self.Nodes)
         if key=='x':
@@ -536,11 +614,19 @@ class GraphModel(object):
     # --------------------------------------------------------------------------------}
     # --- Dynamics
     # --------------------------------------------------------------------------------{
-    def addMode(self,displ,name=None,freq=1):
+    def addMode(self, displ, name=None, freq=1, group='default'):
+        """ See class `Mode` for description of inputs """
         if name is None:
             name='Mode '+str(len(self.Modes))
-        mode = Mode(data=displ, name=name, freq=freq)
+        mode = Mode(data=displ, name=name, freq=freq, group=group)
         self.Modes.append(mode)
+
+    def addTimeSeries(self, time, mat4=None, displ=None, rot=None, name=None, group='default'):
+        """ See class `TimeSeries` for description of inputs """
+        if name is None:
+            name='TS '+str(len(self.TS))
+        TS = TimeSeries(time, displ=displ, rot=rot, mat4=mat4, name=name, group=group)
+        self.TimeSeries.append(TS)
 
 
     # --------------------------------------------------------------------------------}
@@ -596,12 +682,26 @@ class GraphModel(object):
                 raise NotImplementedError()
 
 
-        d['Modes']=[
-                {
-                    'name': self.Modes[iMode]['name'],
-                    'omega':self.Modes[iMode]['freq']*2*np.pi, #in [rad/s]
-                    'Displ':self.Modes[iMode]['data'].tolist()
-                }  for iMode,mode in enumerate(self.Modes)]
+        allGroups= np.unique([m['group'] for m in self.Modes]) 
+        d['Modes']=dict()
+        for g in allGroups:
+            d['Modes'][g] = [{ 
+                'name': mode['name'],
+                'omega':mode['freq']*2*np.pi, #in [rad/s]
+                'Displ':mode['data'].tolist()
+                }  for iMode,mode in enumerate(self.Modes) if mode['group']==g]
+
+        allGroups= np.unique([ts['group'] for ts in self.TimeSeries]) 
+        d['TimeSeries']=dict()
+        for g in allGroups:
+            d['TimeSeries'][g] = [{ 
+                'name':       TS['name'],
+                'timeInfo':   TS.timeInfo,
+                'absolute':   TS['absolute'],
+                'perElement': TS['perElement'],
+                'mat4':     TS.mat4(flat=True),
+                }  for iTS,TS in enumerate(self.TimeSeries) if TS['group']==g]
+
         d['groundLevel']=np.min(Points[:,2]) # TODO
 
         if outfile is not None:

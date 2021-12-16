@@ -108,13 +108,22 @@ class FEMModel(GraphModel):
             self._nDOF = np.max(self.Nodes[-1].data['DOFs'])+1
         return self._nDOF
     @property
-    def nDOF_c(self):
-        self._nDOF_c = np.max(self.Nodes[-1].data['DOFs_c'])+1
-        return self._nDOF
+    def nDOFc(self):
+        return np.max(self.Nodes[-1].data['DOFs_c'])+1
 
 
     @property
     def DOF2Nodes(self):
+        """ 
+        Return mapping from DOF to nodes.
+        Using "DOF" for system *before* internal constraints have been eliminated
+
+        Return array nDOF x 4, with columns: 
+          0: DOF index (not ID),   (starts at 0)
+          1: Node index (not ID),  (starts at 0)
+          2: Number of DOF on node,
+          3: DOF number out of all the DOF on node (starts at 1)
+        """
         DOF2Nodes=np.zeros((self.nDOF,4),int)
         for iN,node in enumerate(self.Nodes):
             for iiDOF,iDOF in enumerate(node.data['DOFs']):
@@ -125,8 +134,18 @@ class FEMModel(GraphModel):
         return DOF2Nodes
 
     @property
-    def DOF_c2Nodes(self):
-        DOF2Nodes=np.zeros((self.nDOF_c,4),int)
+    def DOFc2Nodes(self):
+        """ 
+        Return mapping from DOF to nodes.
+        Using "DOF" for system where internal constraints have been eliminated
+
+        Return array nDOF x 4, with columns: 
+          0: DOF index (not ID),   (starts at 0)
+          1: Node index (not ID),  (starts at 0)
+          2: Number of DOF on node,
+          3: DOF number out of all the DOF on node (starts at 1)
+        """
+        DOF2Nodes=np.zeros((self.nDOFc,4),int)
         for iN,node in enumerate(self.Nodes):
             for iiDOF,iDOF in enumerate(node.data['DOFs_c']):
                 DOF2Nodes[iDOF,0] = iDOF
@@ -193,7 +212,7 @@ class FEMModel(GraphModel):
         Apply internal constraints such as rigid links and rotational joints
         using a direct elminination technique
 
-        - Tc: reduction matrix such that x_init= Tc.x
+        - Tc: reduction matrix such that x_init= Tc.x     dimension: n x n_c
               where x is the reduced vector of DOF and x_init is the intial vector (more DOF)
 
         """
@@ -231,7 +250,7 @@ class FEMModel(GraphModel):
 
     def partition(self):
         """
-        Partition DOFs into leader/follower and fixed, following the order convetion of SubDyn.
+        Partition DOFs into leader/follower and fixed, following the order convention of SubDyn.
         
         Intermediate variables:
             Partition DOFs and Nodes into sets: 
@@ -289,13 +308,13 @@ class FEMModel(GraphModel):
             IDL_L += n.data['DOFs_c']
 
         # --- Total indices per partition B, F, L
-        self.DOF_Leader     =         IDC_B + IDI_B  # boundary/retained/leader DOFs
-        self.DOF_Fixed      =         IDC_F + IDC_B  # Fixed DOFs
-        self.DOF_Follower   = IDL_L + IDC_L          # internal DOFs
-        self.DOF_Boundary   = IDR    # I+C Boundary nodes for rigid body equivalent
-        self.DOF_Internal   = IDL_L  # L   Internal nodes for rigid body equivalent
-        self.DOF_Interface  = IDI__  # I   Interface
-        ID_ALL = self.DOF_Leader + self.DOF_Fixed + self.DOF_Follower
+        self.DOFc_Leader     =         IDC_B + IDI_B  # boundary/retained/leader DOFs
+        self.DOFc_Fixed      =         IDC_F + IDC_B  # Fixed DOFs
+        self.DOFc_Follower   = IDL_L + IDC_L          # internal DOFs
+        self.DOFc_Boundary   = IDR    # I+C Boundary nodes for rigid body equivalent
+        self.DOFc_Internal   = IDL_L  # L   Internal nodes for rigid body equivalent
+        self.DOFc_Interface  = IDI__  # I   Interface
+        ID_ALL = self.DOFc_Leader + self.DOFc_Fixed + self.DOFc_Follower
         for i in np.arange(nDOF___):
             if i not in ID_ALL:
                 raise Exception('DOF {} not found in DOF list after partition'.format(i))
@@ -351,9 +370,9 @@ class FEMModel(GraphModel):
         self.KK_BC = Kr
         self.T_BC  = Tr
         #
-        self.DOF_Leader_r   = [IFull2BC[i] for i in self.DOF_Leader]
-        self.DOF_Follower_r = [IFull2BC[i] for i in self.DOF_Follower]
-        self.DOF_Fixed_r    = [IFull2BC[i] for i in self.DOF_Fixed]
+        self.DOFr_Leader   = [IFull2BC[i] for i in self.DOFc_Leader]
+        self.DOFr_Follower = [IFull2BC[i] for i in self.DOFc_Follower]
+        self.DOFr_Fixed    = [IFull2BC[i] for i in self.DOFc_Fixed]
 
         return Mr, Kr, Tr, IFull2BC, IBC2Full
 
@@ -364,10 +383,12 @@ class FEMModel(GraphModel):
         MM = self.MM_BC
 
         # --- Compute modes and frequencies
-        [Q, freq]= eig(KK, MM, freq_out=True, normQ=normQ)
+        [Q, freq]= eig(KK, MM, freq_out=True, normQ=normQ, discardIm=True)
 
+        Q   = insertFixedBCinModes(Q, self.T_BC)
         self.freq = freq
-        self.Q   = insertFixedBCinModes(Q, self.T_BC)
+        self.Q    = Q
+        return Q, freq
 
 
     # --------------------------------------------------------------------------------}
@@ -378,7 +399,7 @@ class FEMModel(GraphModel):
         """ Rigid body transformation matrix from interface DOFs to refpoint"""
         if self.refPoint is None: 
             raise Exception('Cannot compute T_refPoint, refPoint is None')
-        return rigidTransformationMatrix(self.DOF_Interface, self.refPoint, self.DOF_c2Nodes, self.points)
+        return rigidTransformationMatrix(self.DOFc_Interface, self.refPoint, self.DOFc2Nodes, self.points)
     # --------------------------------------------------------------------------------}
     # --- General FEM Utils
     # --------------------------------------------------------------------------------{
@@ -399,11 +420,11 @@ class FEMModel(GraphModel):
         from welib.FEM.reduction import CraigBampton
         if BC_before_CB:
             M, K = self.MM_BC, self.KK_BC
-            Ileader, Ifollow = self.DOF_Leader_r, self.DOF_Follower_r
+            Ileader, Ifollow = self.DOFr_Leader, self.DOFr_Follower
             if nModesCB is None:
                 nModesCB=M.shape[0] - len(Ileader)
             # NOTE: we return all CB modes at first
-            Mr, Kr, Phi_G, Phi_CB, f_G, f_CB, I1, I2 = CraigBampton(M, K, Ileader=Ileader, Ifollow=Ifollow, nModesCB=None)
+            Mr, Kr, Phi_G, Phi_CB, f_G, f_CB, I1, I2 = CraigBampton(M, K, Ileader=Ileader, Ifollow=Ifollow, nModesCB=None, discardIm=True)
             # Small cleanup
             Phi_G [np.abs(Phi_G )<1e-11] = 0
             Phi_CB[np.abs(Phi_CB)<1e-11] = 0
@@ -436,7 +457,7 @@ class FEMModel(GraphModel):
         # 
         from welib.yams.utils import identifyRigidBodyMM, rigidBodyMassMatrixAtP
         # Transformation matrix from leader DOFs to Origin
-        TIR= rigidTransformationMatrix(self.DOF_Boundary, (0,0,0), self.DOF_c2Nodes, self.points)
+        TIR= rigidTransformationMatrix(self.DOFc_Boundary, (0,0,0), self.DOFc2Nodes, self.points)
         # Compute Rigid body mass matrix (without Soil, and using both Interface and Reactions nodes as leader DOF)
         if self.nDOFR__!=self.nDOF__B: # Most likely the case
             MBB = self.rigidBody() 
@@ -465,8 +486,8 @@ class FEMModel(GraphModel):
         # --- Remove SSI from Mass and stiffness matrix (NOTE: use NodesDOFred, reduced matrix)
         #CALL InsertSoilMatrices(Init%M, Init%K, p%NodesDOFred, Init, p, ErrStat2, ErrMsg2, Substract=.True.);
         # --- Perform Guyan reduction to get MBB
-        Ileader = self.DOF_Boundary
-        Ifollow = self.DOF_Internal
+        Ileader = self.DOFc_Boundary
+        Ifollow = self.DOFc_Internal
         Mr, Kr, Phi_G, Phi_CB, f_G, f_CB, I1, I2 = CraigBampton(self.MM, self.KK, Ileader=Ileader, Ifollow=Ifollow, nModesCB=0)
         #! --- Insert SSI from Mass and stiffness matrix again
         #CALL InsertSoilMatrices(Init%M, Init%K, p%NodesDOFred, Init, p, ErrStat2, ErrMsg2, Substract=.False.); if(Failed()) return
@@ -476,6 +497,123 @@ class FEMModel(GraphModel):
     # --------------------------------------------------------------------------------}
     # --- IO 
     # --------------------------------------------------------------------------------{
+    def nodesDisp(self, UDOF_c, IDOF=None, scale=True, maxAmplitude=None, sortDim=None,):
+        """ 
+        Returns nNodes x 3 x nShapes array of nodal displacements 
+
+        INPUTS:
+          - UDOF: nDOF_c x nModes: array of DOF "displacements" for each mode
+                  in the system wher internal constraints have been eliminated
+          - IDOF: Optional array of subset/reordered DOF. 1:nDOF_c if not provided
+          - scale: if True, modes are shapes according based on `maxAmplitude`
+          - maxAmplitude: if provided, scale used for the mode scaling. If not provided,
+                     maxAmplitude is set to 10% of the maximum dimension of the structure
+          - sortDim: 0,1,2: sort by x,y,z
+        """
+        if IDOF is None:
+            IDOF = list(np.arange(self.nDOFc))
+        if maxAmplitude is None:
+            maxAmplitude = self.maxDimension * 0.1 # 10% of max dimension of the structure
+        if True:
+            DOF2Nodes = self.DOF2Nodes
+            UDOF      = self.T_c.dot(UDOF_c)
+        else:
+            DOF2Nodes = self.DOF
+            UDOF      = UDOF_c
+        # dimension: n x n_c
+        #self.extent
+        #self.points
+        # --- 
+        INodes = list(np.sort(np.unique(DOF2Nodes[IDOF,1]))) # Sort nodes
+        nShapes = UDOF.shape[1]
+        disp = np.empty((len(INodes),3,nShapes)); disp.fill(np.nan)
+        pos  = np.empty((len(INodes),3))         ; pos.fill(np.nan)
+
+        # --- METHOD 1 - Loop through DOFs KEEP ME
+        #for i,iDOF in enumerate(IDOF):
+        #    iNode       = DOF2Nodes[iDOF,1]
+        #    nDOFPerNode = DOF2Nodes[iDOF,2]
+        #    nodeDOF     = DOF2Nodes[iDOF,3]
+        #    iiNode      = INodes.index(iNode)
+        #    node = self.Nodes[iNode-1]
+        #    if nodeDOF<=3:
+        #        pos[iiNode, 0]= node.x
+        #        pos[iiNode, 1]= node.y
+        #        pos[iiNode, 2]= node.z
+        #        for iShape in np.arange(nShapes):
+        #            disp[iiNode, nodeDOF-1, iShape] = UDOF[i, iShape]
+        # --- METHOD 2 - Loop through DOFs
+        Ix=[]; Iy=[]; Iz=[]
+        for i,n in enumerate(self.Nodes):
+            Ix.append(n.data['DOFs_c'][0])
+            Iy.append(n.data['DOFs_c'][1])
+            Iz.append(n.data['DOFs_c'][2])
+        for iShape in np.arange(nShapes):
+            disp[:, 0, iShape] = UDOF[Ix, iShape]
+            disp[:, 1, iShape] = UDOF[Iy, iShape]
+            disp[:, 2, iShape] = UDOF[Iz, iShape]
+
+        # Scaling 
+        if scale:
+            for iShape in np.arange(nShapes):
+                maxDisp=np.nanmax(np.abs(disp[:, :, iShape]))
+                if maxDisp>1e-5:
+                    disp[:, :, iShape] *= maxAmplitude/maxDisp
+        # Sorting according to a dimension
+        if sortDim is not None: 
+            I=np.argsort(pos[:,sortDim])
+            INodes = np.array(INodes)[I]
+            disp   = disp[I,:,:]
+            pos    = pos[I,:]
+        return disp, pos, INodes
+
+
+    def getModes(self, scale=True, maxAmplitude=None, sortDim=None):
+        """ return Guyan and CB modes
+
+          - maxAmplitude: if provided, scale used for the mode scaling. If not provided,
+                     maxAmplitude is set to 10% of the maximum dimension of the structure
+          - sortDim: 0,1,2: sort by x,y,z
+
+        """
+        if maxAmplitude is None:
+            maxAmplitude = self.maxDimension * 0.1 # 10% of max dimension of the structure
+
+        # CB modes
+        PhiM     = self.Phi_CB
+        PhiM_aug = np.zeros((self.nDOFc, PhiM.shape[1]))
+        PhiM_aug[self.DOFc_Follower, : ] = PhiM
+        dispCB, posCB, INodesCB = self.nodesDisp(PhiM_aug, scale=scale, maxAmplitude=maxAmplitude, sortDim=sortDim)
+
+        # Guyan modes
+        PhiR     = self.Phi_G
+        PhiR_aug = np.zeros((self.nDOFc, PhiR.shape[1]))
+        for i in np.arange(len(self.DOFc_Leader)):
+            PhiR_aug[self.DOFc_Leader[i] , i] = 1
+        PhiR_aug[self.DOFc_Follower, : ] = PhiR
+        PhiR_Intf = PhiR_aug.dot(self.T_refPoint) # nDOF x 6 (since TI is nGY x 6)
+        dispGy, posGy, INodesGy = self.nodesDisp(PhiR_Intf, scale=scale, maxAmplitude=maxAmplitude, sortDim=sortDim)
+
+        return dispGy, posGy, INodesGy, dispCB, posCB, INodesCB
+
+
+    def setModes(self, nModesFEM=30, nModesCB=None):
+        if nModesCB is None:
+            nModesCB = len(self.f_CB)
+
+        # FEM Modes
+        dispFEM, posFEM, INodesFEM = self.nodesDisp(self.Q)
+        for iMode in range(min(dispFEM.shape[2], nModesFEM)):
+            self.addMode(displ=dispFEM[:,:,iMode], name='FEM{:d}'.format(iMode+1), freq=self.freq[iMode], group='FEM')
+
+        # GY CB Modes
+        dispGy, posGy, InodesGy, dispCB, posCB, InodesCB = self.getModes(sortDim=None) 
+        for iMode in range(dispGy.shape[2]):
+            self.addMode(displ=dispGy[:,:,iMode], name='GY{:d}'.format(iMode+1), freq=self.f_G[iMode], group='GY')
+
+        for iMode in range(min(len(self.f_CB), nModesCB)):
+            self.addMode(displ=dispCB[:,:,iMode], name='CB{:d}'.format(iMode+1), freq=self.f_CB[iMode], group='CB') 
+
 
 
 # --------------------------------------------------------------------------------}

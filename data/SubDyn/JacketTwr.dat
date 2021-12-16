@@ -88,7 +88,7 @@ JointID          JointXss               JointYss               JointZss     Join
   61	          0.00000                0.00000               102.7930        1         0.0        0.0       0.0       0.0     ! Tower top  
 ------------------- BASE REACTION JOINTS: 1/0 for Locked/Free DOF @ each Reaction Node ---------------------
              4   NReact      - Number of Joints with reaction forces; be sure to remove all rigid motion DOFs of the structure  (else det([K])=[0])
-RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss     SSIfile [Global Coordinate System]
+RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss     SSIfile  ! [Global Coordinate System]
   (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)      (string)
   35           1           1           1           1           1           1	"BIWF_Jacket_SD_SSI.dat"
   41           1           1           1           1           1           1	"BIWF_Jacket_SD_SSI.dat"

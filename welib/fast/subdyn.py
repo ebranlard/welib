@@ -90,9 +90,13 @@ class SubDyn:
         with Timer('BC'):
             FEM.applyFixedBC()
         with Timer('EIG'):
-            FEM.eig(normQ='byMax')
+            Q, freq = FEM.eig(normQ='byMax')
         with Timer('CB'):
             FEM.CraigBampton(nModesCB = self.File['Nmodes'])
+
+        with Timer('Modes'):
+            FEM.setModes(nModesFEM=30, nModesCB=self.File['Nmodes'])
+#             FEM.nodesDisp(Q)
 
         # --- SubDyn partition/notations
         FEM.MBB = FEM.MM_CB[np.ix_(FEM.DOF_Leader_CB  , FEM.DOF_Leader_CB)]
@@ -125,7 +129,7 @@ class SubDyn:
             alpha_Rayleigh, beta_Rayleigh = self.File['RayleighDamp']
             FEM.CBBt = alpha_Rayleigh * FEM.MBBt + beta_Rayleigh * FEM.KBBt
         elif dampMod == idGuyanDamp_66: 
-            FEM.CBBt = self.File['GuyanDampMap']
+            FEM.CBBt = self.File['GuyanDampMatrix']
         else:
             raise Exception()
 
@@ -491,9 +495,9 @@ def subdynPartitionVars(model):
     SD_Vars['IDI_B']=IDI_B;
     SD_Vars['IDI_F']=IDI_F;
     SD_Vars['IDL_L']=IDL_L;
-    SD_Vars['ID__B']=model.DOF_Leader
-    SD_Vars['ID__F']=model.DOF_Fixed
-    SD_Vars['ID__L']=model.DOF_Follower
+    SD_Vars['ID__B']=model.DOFc_Leader
+    SD_Vars['ID__F']=model.DOFc_Fixed
+    SD_Vars['ID__L']=model.DOFc_Follower
     return SD_Vars
 
 def subdyntoYAMLSum(model, filename, more=False):
@@ -514,7 +518,7 @@ def subdyntoYAMLSum(model, filename, more=False):
                 return ie+1
     def elemType(elemType):
         from welib.FEM.fem_elements import idMemberBeam, idMemberCable, idMemberRigid
-        return {'SubDynBeam3d':idMemberBeam, 'Beam':idMemberBeam, 'Frame3d':idMemberBeam,
+        return {'SubDynBeam3d':idMemberBeam, 'SubDynFrame3d':idMemberBeam, 'Beam':idMemberBeam, 'Frame3d':idMemberBeam,
                 'SubDynTimoshenko3d':idMemberBeam,
                 'SubDynCable3d':idMemberCable, 'Cable':idMemberCable,
                 'Rigid':idMemberRigid}[elemType]
@@ -565,15 +569,15 @@ def subdyntoYAMLSum(model, filename, more=False):
         s += 'nNodes_L: {:7d} # Number of Nodes: "internal"  (L)\n'.format(len(model.internalNodes))
         s += 'nNodes  : {:7d} # Number of Nodes: total   (I+C+L)\n'.format(len(model.Nodes))
         if more:
-            s += 'nDOFI__ :       6 # Number of DOFs: "interface"          (I__)\n'.format(len(SD_Vars['IDI__']))
-            s += 'nDOFI_B :       6 # Number of DOFs: "interface" retained (I_B)\n'.format(len(SD_Vars['IDI_B']))
-            s += 'nDOFI_F :       0 # Number of DOFs: "interface" fixed    (I_F)\n'.format(len(SD_Vars['IDI_F']))
-            s += 'nDOFC__ :       6 # Number of DOFs: "reactions"          (C__)\n'.format(len(SD_Vars['IDC__']))
-            s += 'nDOFC_B :       0 # Number of DOFs: "reactions" retained (C_B)\n'.format(len(SD_Vars['IDC_B']))
-            s += 'nDOFC_L :       0 # Number of DOFs: "reactions" internal (C_L)\n'.format(len(SD_Vars['IDC_L']))
-            s += 'nDOFC_F :       6 # Number of DOFs: "reactions" fixed    (C_F)\n'.format(len(SD_Vars['IDC_F']))
-            s += 'nDOFR__ :      12 # Number of DOFs: "intf+react"         (__R)\n'.format(len(SD_Vars['IDR__']))
-            s += 'nDOFL_L :      42 # Number of DOFs: "internal"  internal (L_L)\n'.format(len(SD_Vars['IDL_L']))
+            s += 'nDOFI__ : {:7d} # Number of DOFs: "interface"          (I__)\n'.format(len(SD_Vars['IDI__']))
+            s += 'nDOFI_B : {:7d} # Number of DOFs: "interface" retained (I_B)\n'.format(len(SD_Vars['IDI_B']))
+            s += 'nDOFI_F : {:7d} # Number of DOFs: "interface" fixed    (I_F)\n'.format(len(SD_Vars['IDI_F']))
+            s += 'nDOFC__ : {:7d} # Number of DOFs: "reactions"          (C__)\n'.format(len(SD_Vars['IDC__']))
+            s += 'nDOFC_B : {:7d} # Number of DOFs: "reactions" retained (C_B)\n'.format(len(SD_Vars['IDC_B']))
+            s += 'nDOFC_L : {:7d} # Number of DOFs: "reactions" internal (C_L)\n'.format(len(SD_Vars['IDC_L']))
+            s += 'nDOFC_F : {:7d} # Number of DOFs: "reactions" fixed    (C_F)\n'.format(len(SD_Vars['IDC_F']))
+            s += 'nDOFR__ : {:7d} # Number of DOFs: "intf+react"         (__R)\n'.format(len(SD_Vars['IDR__']))
+            s += 'nDOFL_L : {:7d} # Number of DOFs: "internal"  internal (L_L)\n'.format(len(SD_Vars['IDL_L']))
         s += 'nDOF__B : {:7d} # Number of DOFs:             retained (__B)\n'.format(SD_Vars['nDOF__B'])
         s += 'nDOF__L : {:7d} # Number of DOFs:             internal (__L)\n'.format(SD_Vars['nDOF__L'])
         s += 'nDOF__F : {:7d} # Number of DOFs:             fixed    (__F)\n'.format(SD_Vars['nDOF__F'])
@@ -591,15 +595,15 @@ def subdyntoYAMLSum(model, filename, more=False):
             s += yaml_array('DOF_C_F', np.array(SD_Vars['IDC_F'])+1,   Fmt='{:7d}', comment = '"reaction"  fixed     DOFs')
             s += yaml_array('DOF_L_L', np.array(SD_Vars['IDL_L'])+1,   Fmt='{:7d}', comment = '"internal"  internal  DOFs')
             s += yaml_array('DOF_R_' , np.array(SD_Vars['IDR__'])+1,   Fmt='{:7d}', comment = '"interface&reaction"  DOFs')
-        s += yaml_array('DOF___B', np.array(model.DOF_Leader  )+1, Fmt='{:7d}',  comment='all         retained  DOFs');
-        s += yaml_array('DOF___F', np.array(model.DOF_Fixed   )+1, Fmt='{:7d}',  comment='all         fixed     DOFs');
-        s += yaml_array('DOF___L', np.array(model.DOF_Follower)+1, Fmt='{:7d}',  comment='all         internal  DOFs');
+        s += yaml_array('DOF___B', np.array(model.DOFc_Leader  )+1, Fmt='{:7d}',  comment='all         retained  DOFs');
+        s += yaml_array('DOF___F', np.array(model.DOFc_Fixed   )+1, Fmt='{:7d}',  comment='all         fixed     DOFs');
+        s += yaml_array('DOF___L', np.array(model.DOFc_Follower)+1, Fmt='{:7d}',  comment='all         internal  DOFs');
         s += '\n'
         s += '#Index map from DOF to nodes\n'
         s += '#     Node No.,  DOF/Node,   NodalDOF\n'
         s += 'DOF2Nodes: # {} x 3 (nDOFRed x 3, for each constrained DOF, col1: node index, col2: number of DOF, col3: DOF starting from 1)\n'.format(model.nDOF)
-        DOF2Nodes = model.DOF2Nodes
-        for l in model.DOF2Nodes:
+        DOFc2Nodes = model.DOFc2Nodes
+        for l in DOFc2Nodes:
             s +='  - [{:7d},{:7d},{:7d}] # {}\n'.format(l[1]+1, l[2], l[3], l[0]+1 )
         s += '#     Node_[#]          X_[m]           Y_[m]           Z_[m]       JType_[-]       JDirX_[-]       JDirY_[-]       JDirZ_[-]  JStff_[Nm/rad]\n'
         s += 'Nodes: # {} x 9\n'.format(len(model.Nodes))
