@@ -232,10 +232,9 @@ class FASTInputFile(File):
             line = lines[i]
 
             # --- Read special sections
-            # OUTLIST Exceptions
             if line.upper().find('ADDITIONAL OUTPUTS')>0 \
             or line.upper().find('MESH-BASED OUTPUTS')>0 \
-            or line.upper().find('OUTPUT CHANNELS'   )>0:
+            or line.upper().find('OUTPUT CHANNELS'   )>0: # "OutList - The next line(s) contains a list of output parameters. See OutListParameters.xlsx for a listing of available output channels, (-)'"
                 # TODO, lazy implementation so far, MAKE SUB FUNCTION
                 parts = re.match(r'^\W*\w+', line)
                 if parts:
@@ -246,17 +245,19 @@ class FASTInputFile(File):
                 # Parsing outlist, and then we continue at a new "i" (to read END etc.)
                 OutList,i = parseFASTOutList(lines,i+1) 
                 d = getDict()
-                d['label']   = firstword
+                if self.hasNodal:
+                    d['label']   = firstword+'_Nodal'
+                else:
+                    d['label']   = firstword
                 d['descr']   = remainer
                 d['tabType'] = TABTYPE_FIL # TODO
                 d['value']   = ['']+OutList
                 self.data.append(d)
                 if i>=len(lines):
                     break
-
                 # --- Here we cheat and force an exit of the input file
                 # The reason for this is that some files have a lot of things after the END, which will result in the file being intepreted as a wrong format due to too many comments
-                if i+2<len(lines) and lines[i+2].lower().find('bldnd_bladesout')>0:
+                if i+2<len(lines) and (lines[i+2].lower().find('bldnd_bladesout')>0 or lines[i+2].lower().find('bldnd_bloutnd')>0):
                     self.hasNodal=True
                 else:
                     self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
@@ -717,7 +718,11 @@ class FASTInputFile(File):
                         pass
 
                 name=d['label']
-                dfs[name]=pd.DataFrame(data=Val,columns=Cols)
+
+                if name=='DampingCoeffs':
+                    pass
+                else:
+                    dfs[name]=pd.DataFrame(data=Val,columns=Cols)
             elif d['tabType'] in [TABTYPE_NUM_BEAMDYN]:
                 span = d['value']['span']
                 M    = d['value']['M']
@@ -1157,6 +1162,7 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             i = 0
             sTmp = cleanLine(lines[i])
             sTmp = cleanAfterChar(sTmp,'[')
+            sTmp = cleanAfterChar(sTmp,'(')
             sTmp = cleanAfterChar(sTmp,'!')
             sTmp = cleanAfterChar(sTmp,'#')
             if sTmp.startswith('!'):

@@ -178,7 +178,11 @@ def readSubDynSum(self):
 
 
     def subDynToJson(data, outfile=None):
-        """ Convert to a "JSON" format """
+        """ Convert to a "JSON" format
+
+        TODO: convert to graph and use graph.toJSON
+
+        """
 
         dispGy, posGy, _, dispCB, posCB, _ = data.getModes()
 

@@ -35,6 +35,14 @@ def handleRemoveReadonlyWin(func, path, exc_info):
         raise
 
 
+def forceCopyFile (sfile, dfile):
+    # ---- Handling error due to wrong mod
+    if os.path.isfile(dfile):
+        if not os.access(dfile, os.W_OK):
+            os.chmod(dfile, stat.S_IWUSR)
+    #print(sfile, ' > ', dfile)
+    shutil.copy2(sfile, dfile)
+
 def copyTree(src, dst):
     """ 
     Copy a directory to another one, overwritting files if necessary.
@@ -47,14 +55,6 @@ def copyTree(src, dst):
             srcFile = os.path.join(srcDir, item)
             dstFile = os.path.join(dstDir, item)
             forceCopyFile(srcFile, dstFile)
-
-    def forceCopyFile (sfile, dfile):
-        # ---- Handling error due to wrong mod
-        if os.path.isfile(dfile):
-            if not os.access(dfile, os.W_OK):
-                os.chmod(dfile, stat.S_IWUSR)
-        #print(sfile, ' > ', dfile)
-        shutil.copy2(sfile, dfile)
 
     def isAFlatDir(sDir):
         for item in os.listdir(sDir):

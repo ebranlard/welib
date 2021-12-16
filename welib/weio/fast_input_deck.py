@@ -229,6 +229,7 @@ class FASTInputDeck(dict):
             self.AD.AF  = self.fst_vt['af_data']
         self.IW  = self.fst_vt['InflowWind']
         self.BD  = self.fst_vt['BeamDyn']
+        self.BDbld  = self.fst_vt['BeamDynBlade']
 
     @ property
     def unusedNames(self):
