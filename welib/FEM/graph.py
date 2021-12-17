@@ -54,6 +54,10 @@ class Node(object):
             #    print('Warning overriding key {} for node {}'.format(k,self.ID))
             self.data[k]=v
 
+    @property
+    def point(self):
+        return np.array([self.x, self.y, self.z])
+
     def __repr__(self):
         s='<Node{:4d}> x:{:7.2f} y:{:7.2f} z:{:7.2f} {:}'.format(self.ID, self.x, self.y, self.z, self.data)
         return s
@@ -251,6 +255,7 @@ class GraphModel(object):
         self._elementIDs2NodeIDs = {} # dictionary with key ElemID and value list of nodes IDs
         self._connectivity =[]# 
 
+    # --- Main setters
     def addNode(self,node):
         self.Nodes.append(node)
 
@@ -293,7 +298,21 @@ class GraphModel(object):
                 return p
         raise KeyError('PropID {} not found for Misc propset {}'.format(propID,setname))
 
-    # ---
+    # --- Useful connectivity 
+    def node2Elements(self, node):
+        return [e for e in self.Elements if node.ID in e.nodeIDs]
+
+    def elements2nodes(self, elements):
+        """ Return unique list of nodes involved in a list of elements"""
+        nodeIDs=[]
+        for e in elements:
+            for nID in e.nodeIDs:
+                if nID not in nodeIDs:
+                    nodeIDs.append(nID)
+        nodes = [n for n in self.Nodes if n.ID in nodeIDs]
+        return nodes
+
+
     @property
     def nodeIDs2ElementIDs(self):
         """ Return list of elements IDs connected to each node"""
@@ -314,7 +333,6 @@ class GraphModel(object):
                 self._nodeIDs2Elements[n.ID] = [e for e in self.Elements if n.ID in e.nodeIDs]
         return self._nodeIDs2Elements
 
-
     @property
     def elementIDs2NodeIDs(self):
         """ returns """
@@ -323,7 +341,6 @@ class GraphModel(object):
             for e in self.Elements:
                 self._elementIDs2NodeIDs[e.ID] = [n.ID for n in e.nodes] 
         return self._elementIDs2NodeIDs
-
 
     @property
     def connectivity(self):
@@ -334,6 +351,9 @@ class GraphModel(object):
             self._connectivity = [[self.Nodes.index(n)  for n in e.nodes] for e in self.Elements]
         return self._connectivity
 
+    def areElementsConnected(self,e1,e2):
+        common = set(e1.nodeIDs).intersection(set(e2.nodeIDs))
+        return len(common)>0
 
     # --- Handling of (element/material) Properties
     def addElementPropertySet(self, setname):
@@ -671,7 +691,7 @@ class GraphModel(object):
         d['ElemProps']=list()
         for iElem,elem in enumerate(self.Elements):
             Shape = elem.data['shape'] if 'shape' in elem.data.keys() else 'cylinder'
-            Type  = elem.data['Type'] if 'Type' in elem.data.keys() else 1
+            Type  = elem.data['TypeID'] if 'TypeID' in elem.data.keys() else 1
             try:
                 Diam  = elem.D
             except:

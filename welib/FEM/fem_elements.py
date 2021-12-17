@@ -69,6 +69,7 @@ class FEMElement(GraphElement):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
         super(FEMElement, self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
         self.data['Type'] = 'Generic'
+        self.data['TypeID'] = None
 
     def Ke(self):
         raise NotImplementedError()
@@ -77,7 +78,7 @@ class FEMElement(GraphElement):
         raise NotImplementedError()
 
     def __repr__(self):
-        s='<FElem{:4d}> NodeIDs: {} {}'.format(self.ID, self.nodeIDs, self.data)
+        s='<FElem{:4d}> nodeIDs: {} {}'.format(self.ID, self.nodeIDs, self.data)
         if self.propIDs is not None:
             s+=' {'+'propIDs:{} propset:{}'.format(self.propIDs, self.propset)+'}'
         if self.nodes is not None:
@@ -91,9 +92,11 @@ class SubDynBeam3dElement(FEMElement):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
         super(SubDynBeam3dElement,self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
         self.data['Type'] = 'SubDynBeam3d'
+        self.data['TypeID'] = idMemberBeam
+        self.data['shape'] = 'cylinder'
 
     def __repr__(self):
-        s='<{:s}Elem{:4d}> NodeIDs: {} {}'.format(self.data['Type'],self.ID, self.nodeIDs, self.data)
+        s='<{:s}Elem{:4d}> nodeIDs: {} {}'.format(self.data['Type'], self.ID, self.nodeIDs, self.data)
         if self.propIDs is not None:
             s+=' {'+'propIDs:{} propset:{}'.format(self.propIDs, self.propset)+'}'
         if self.nodes is not None:
@@ -170,6 +173,8 @@ class SubDynFrame3dElement(SubDynBeam3dElement):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
         super(SubDynFrame3dElement,self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
         self.data['Type'] = 'SubDynFrame3d'
+        self.data['TypeID'] = idMemberBeam
+        self.data['shape'] = 'cylinder'
 
     @property
     def kappa(self): return 0  # shear coefficients are zero for Euler-Bernoulli
@@ -195,6 +200,8 @@ class SubDynTimoshenko3dElement(SubDynBeam3dElement):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
         super(SubDynTimoshenko3dElement,self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
         self.data['Type'] = 'SubDynTimoshenko3d'
+        self.data['TypeID'] = idMemberBeam
+        self.data['shape'] = 'cylinder'
 
     @property
     def kappa(self): 
@@ -231,16 +238,18 @@ class SubDynCable3dElement(SubDynBeam3dElement):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
         super(SubDynCable3dElement,self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
         self.data['Type'] = 'SubDynCable3d'
+        self.data['TypeID'] = idMemberCable
+        self.data['shape'] = 'cylinder'
 
     # For compatbility with other beam-like structures
     @property
     def area(self): return 1
     @property
-    def G(self): return -9.99e+36
+    def G(self): return -9.99e+36   # for yaml only
     @property
-    def inertias(self): return (-9.99e+36,-9.99e+36,-9.99e+36)
+    def inertias(self): return (-9.99e+36,-9.99e+36,-9.99e+36) # for yaml only
     @property
-    def kappa(self): return -9.99e+36
+    def kappa(self): return -9.99e+36# for yaml only
     @property
     def E(self): return self.EA/self.area
 
@@ -267,7 +276,6 @@ class SubDynCable3dElement(SubDynBeam3dElement):
 
     def Me(e, main_axis='z', local=False):
         from .cable import cable3d_Me
-        I = e.inertias
         R = None if local else e.DCM
         return cable3d_Me(e.L0, e.area, e.rho, R=R, main_axis=main_axis) # NOTE: we use L0 for the mass
 
@@ -276,3 +284,38 @@ class SubDynCable3dElement(SubDynBeam3dElement):
         R = None if local else e.DCM
         return cable3d_Fe_T0(e.T0, R=R, main_axis=main_axis)
 
+
+# --------------------------------------------------------------------------------}
+# --- Rigid
+# --------------------------------------------------------------------------------{
+class SubDynRigid3dElement(SubDynBeam3dElement):
+    def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
+        super(SubDynRigid3dElement,self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
+        self.data['Type'] = 'SubDynRigid3d'
+        self.data['TypeID'] = idMemberRigid
+        self.data['shape'] = 'cylinder'
+
+    @property 
+    def area(self): return 1  # arbitrary, but used for mass
+    @property 
+    def D(self): return min(np.sqrt(1/np.pi)*4, self.length*0.05)  # arbitrary, for plotting only
+    @property
+    def inertias(self): return (-9.99e+36,-9.99e+36,-9.99e+36) # for yaml only
+    @property
+    def E(self): return -9.99e+36   # for yaml only
+    @property
+    def G(self): return -9.99e+36   # for yaml only
+    @property
+    def kappa(self): return -9.99e+36   # for yaml only
+
+    def Ke(e, main_axis='z', local=False):
+      return np.zeros((12,12))
+
+
+    def Me(e, main_axis='z', local=False):
+        from .cable import cable3d_Me # NOTE: we use the same as cable
+        if e.rho==0:
+            return np.zeros((12,12))
+        else:
+            R = None if local else e.DCM
+            return cable3d_Me(e.length, e.area, e.rho, R=R, main_axis=main_axis)

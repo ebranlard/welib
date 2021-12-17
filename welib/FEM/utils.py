@@ -144,3 +144,16 @@ def rigidTransformationLine(dx,dy,dz,iLine):
     elif iLine ==5: Line = (0, 0, 0, 0 ,  1 ,  0 )
     elif iLine ==6: Line = (0, 0, 0, 0 ,  0 ,  1 )
     return Line
+
+def rigidTransformationTwoPoints(Pj, Pk):
+    """ Rigid transformation matrix between DOFs of node j and k where node j is the leader node. """
+    T_rigid = np.eye(6)
+    T_rigid[ 0, 4 ] =  (Pk[2] - Pj[2])
+    T_rigid[ 0, 5 ] = -(Pk[1] - Pj[1])
+    T_rigid[ 1, 3 ] = -(Pk[2] - Pj[2])
+    T_rigid[ 1, 5 ] =  (Pk[0] - Pj[0])
+    T_rigid[ 2, 3 ] =  (Pk[1] - Pj[1])
+    T_rigid[ 2, 4 ] = -(Pk[0] - Pj[0])
+    return T_rigid
+
+

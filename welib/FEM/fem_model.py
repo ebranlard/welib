@@ -48,6 +48,11 @@ class FEMModel(GraphModel):
                     g.Elements[i] = SubDynCable3dElement(e.ID, e.nodeIDs, None, e.propset, e.propIDs, None, **e.data)
                 else:
                     raise NotImplementedError()
+            elif e.data['Type']=='Rigid':
+                if mainElementType in ['frame3d', 'timoshenko']:
+                    g.Elements[i] = SubDynRigid3dElement(e.ID, e.nodeIDs, None, e.propset, e.propIDs, None, **e.data)
+                else:
+                    raise NotImplementedError()
             else:
                 raise NotImplementedError()
         #print('----------------------- GRAPH')
@@ -109,7 +114,10 @@ class FEMModel(GraphModel):
         return self._nDOF
     @property
     def nDOFc(self):
-        return np.max(self.Nodes[-1].data['DOFs_c'])+1
+        DOFs = []
+        for n in self.Nodes:
+            DOFs += n.data['DOFs_c']
+        return np.max(DOFs)+1
 
 
     @property
@@ -147,10 +155,15 @@ class FEMModel(GraphModel):
         """
         DOF2Nodes=np.zeros((self.nDOFc,4),int)
         for iN,node in enumerate(self.Nodes):
-            for iiDOF,iDOF in enumerate(node.data['DOFs_c']):
+            DOFs = node.data['DOFs_c']
+            #if len(DOFs)==0:
+            #    if 'ID_link' in node.data.keys():
+            #        print('>>>>>>  node' , node.ID, 'linked to', node.data['ID_link'] )
+            #        DOFs = self.getNode(node.data['ID_link']).data['DOFs_c']
+            for iiDOF,iDOF in enumerate(DOFs):
                 DOF2Nodes[iDOF,0] = iDOF
                 DOF2Nodes[iDOF,1] = iN
-                DOF2Nodes[iDOF,2] = len(node.data['DOFs_c'])
+                DOF2Nodes[iDOF,2] = len(DOFs)
                 DOF2Nodes[iDOF,3] = iiDOF+1
         return DOF2Nodes
 
@@ -217,22 +230,25 @@ class FEMModel(GraphModel):
 
         """
         rotJoints  = [n.ID for n in self.Nodes    if n.data['Type']!=idJointCantilever]
-        rigidLinks = [e.ID for e in self.Elements if e.data['Type']==idMemberRigid    ]
+        rigidLinks = [e.ID for e in self.Elements if e.data['TypeID']==idMemberRigid    ]
         if len(rotJoints)>0 or len(rigidLinks)>0:
             print('Number of Rotational joints:',len(rotJoints))
             print('Number of Rigid Links      :',len(rigidLinks))
             from .direct_elimination import nDOF_c, buildTMatrix, rigidLinkAssemblies
-            raise NotImplementedError('Direct elimination')
+            RA = rigidLinkAssemblies(self)
+            self.T_c = buildTMatrix(self, RA)
 
         else:
             self.T_c = np.eye(self.MM_init.shape[0])
             # Store new DOF indices
             for n in self.Nodes:
                 n.data['DOFs_c'] = list(n.data['DOFs'])
-            for e in self.Elements:
-                e.data['DOFs_c'] =[]
-                for n in e.nodes:
-                    e.data['DOFs_c'] +=n.data['DOFs_c']
+                
+        # Distribute Nodal DOFs to Element DOFs
+        for e in self.Elements:
+            e.data['DOFs_c'] =[]
+            for n in e.nodes:
+                e.data['DOFs_c'] +=n.data['DOFs_c']
 
         self.MM = (self.T_c.T).dot(self.MM_init).dot(self.T_c)
         self.KK = (self.T_c.T).dot(self.KK_init).dot(self.T_c)
@@ -345,7 +361,7 @@ class FEMModel(GraphModel):
             IFixed=[]
             for n in self.reactionNodes:
                 I = n.data['RBC'][:6]
-                IFixed += [n.data['DOFs'][ii] for ii,i in enumerate(I) if int(i)==idDOF_Fixed]
+                IFixed += [n.data['DOFs_c'][ii] for ii,i in enumerate(I) if int(i)==idDOF_Fixed]
 
         Tr = np.delete(Tr, IFixed, axis=1) # removing columns
 
@@ -511,14 +527,14 @@ class FEMModel(GraphModel):
           - sortDim: 0,1,2: sort by x,y,z
         """
         if IDOF is None:
-            IDOF = list(np.arange(self.nDOFc))
+            IDOF = list(np.arange(self.nDOF))
         if maxAmplitude is None:
             maxAmplitude = self.maxDimension * 0.1 # 10% of max dimension of the structure
         if True:
             DOF2Nodes = self.DOF2Nodes
             UDOF      = self.T_c.dot(UDOF_c)
         else:
-            DOF2Nodes = self.DOF
+            DOF2Nodes = self.DOF2Nodes
             UDOF      = UDOF_c
         # dimension: n x n_c
         #self.extent
@@ -545,9 +561,9 @@ class FEMModel(GraphModel):
         # --- METHOD 2 - Loop through DOFs
         Ix=[]; Iy=[]; Iz=[]
         for i,n in enumerate(self.Nodes):
-            Ix.append(n.data['DOFs_c'][0])
-            Iy.append(n.data['DOFs_c'][1])
-            Iz.append(n.data['DOFs_c'][2])
+            Ix.append(n.data['DOFs'][0])
+            Iy.append(n.data['DOFs'][1])
+            Iz.append(n.data['DOFs'][2])
         for iShape in np.arange(nShapes):
             disp[:, 0, iShape] = UDOF[Ix, iShape]
             disp[:, 1, iShape] = UDOF[Iy, iShape]

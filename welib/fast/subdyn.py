@@ -521,7 +521,8 @@ def subdyntoYAMLSum(model, filename, more=False):
         return {'SubDynBeam3d':idMemberBeam, 'SubDynFrame3d':idMemberBeam, 'Beam':idMemberBeam, 'Frame3d':idMemberBeam,
                 'SubDynTimoshenko3d':idMemberBeam,
                 'SubDynCable3d':idMemberCable, 'Cable':idMemberCable,
-                'Rigid':idMemberRigid}[elemType]
+                'Rigid':idMemberRigid,
+                'SubDynRigid3d':idMemberRigid}[elemType]
 
     def propID(propID, propset):
         prop = model.NodePropertySets[propset]
@@ -601,7 +602,7 @@ def subdyntoYAMLSum(model, filename, more=False):
         s += '\n'
         s += '#Index map from DOF to nodes\n'
         s += '#     Node No.,  DOF/Node,   NodalDOF\n'
-        s += 'DOF2Nodes: # {} x 3 (nDOFRed x 3, for each constrained DOF, col1: node index, col2: number of DOF, col3: DOF starting from 1)\n'.format(model.nDOF)
+        s += 'DOF2Nodes: # {} x 3 (nDOFRed x 3, for each constrained DOF, col1: node index, col2: number of DOF, col3: DOF starting from 1)\n'.format(model.nDOFc)
         DOFc2Nodes = model.DOFc2Nodes
         for l in DOFc2Nodes:
             s +='  - [{:7d},{:7d},{:7d}] # {}\n'.format(l[1]+1, l[2], l[3], l[0]+1 )
@@ -634,8 +635,8 @@ def subdyntoYAMLSum(model, filename, more=False):
         s += '\n\n'
         s += '#No. of Interface DOFs:{:6d}\n'.format(len(SD_Vars['IDI__']))
         s += '#Interf. DOF_ID    BC\n'
-        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Fixed' ) for idof in SD_Vars['IDI_F']])
-        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'     Leader') for idof in SD_Vars['IDI_B']])
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'    Fixed' ) for idof in SD_Vars['IDI_F']])
+        s += '\n'.join(['#{:10d}{:10s}'.format(idof+1,'    Leader') for idof in SD_Vars['IDI_B']])
         s += '\n\n'
         CM = []
         from welib.yams.utils import identifyRigidBodyMM
@@ -643,20 +644,20 @@ def subdyntoYAMLSum(model, filename, more=False):
             if 'addedMassMatrix' in n.data:
                 mass, J_G, ref2COG = identifyRigidBodyMM(n.data['addedMassMatrix'])
                 CM.append( (n.ID, mass, J_G, ref2COG) )
-        s += '#Number of concentrated masses (NCMass): {:7d}\n'.format(len(CM))
+        s += '#Number of concentrated masses (NCMass):{:6d}\n'.format(len(CM))
         s += '#JointCMas           Mass            JXX            JYY            JZZ            JXY            JXZ            JYZ           MCGX           MCGY           MCGZ\n'
         for cm in CM:
             s0 = '# {:9.0f}.{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}{:15.6e}\n'.format( nodeID(cm[0]),  cm[1], cm[2][0,0], cm[2][1,1], cm[2][2,2], cm[2][0,1], cm[2][0,2], cm[2][1,2],cm[3][0],cm[3][1],cm[3][2] )
             s += s0.replace('e+','E+').replace('e-','E-')
         s += '\n'
-        s += '#Number of members    18\n'
-        s += '#Number of nodes per member:     2\n'
-        s += '#Member I Joint1_ID Joint2_ID    Prop_I    Prop_J           Mass         Length     Node IDs...\n'
-        s += '#       77        61        60        11        11   1.045888E+04   2.700000E+00       19    18\n'
-        s += '#____________________________________________________________________________________________________\n'
-        s += '#Direction Cosine Matrices for all Members: GLOBAL-2-LOCAL. No. of 3x3 matrices=    18\n'
-        s += '#Member I        DC(1,1)        DC(1,2)        DC(1,3)        DC(2,1)        DC(2,2)        DC(2,3)        DC(3,1)        DC(3,2)        DC(3,3)\n'
-        s += '#       77  1.000E+00  0.000E+00  0.000E+00  0.000E+00 -1.000E+00  0.000E+00  0.000E+00  0.000E+00 -1.000E+00\n'
+        #s += '#Number of members    18\n'
+        #s += '#Number of nodes per member:     2\n'
+        #s += '#Member I Joint1_ID Joint2_ID    Prop_I    Prop_J           Mass         Length     Node IDs...\n'
+        #s += '#       77        61        60        11        11   1.045888E+04   2.700000E+00       19    18\n'
+        #s += '#____________________________________________________________________________________________________\n'
+        #s += '#Direction Cosine Matrices for all Members: GLOBAL-2-LOCAL. No. of 3x3 matrices=    18\n'
+        #s += '#Member I        DC(1,1)        DC(1,2)        DC(1,3)        DC(2,1)        DC(2,2)        DC(2,3)        DC(3,1)        DC(3,2)        DC(3,3)\n'
+        #s += '#       77  1.000E+00  0.000E+00  0.000E+00  0.000E+00 -1.000E+00  0.000E+00  0.000E+00  0.000E+00 -1.000E+00\n'
         s += '#____________________________________________________________________________________________________\n'
         s += '#FEM Eigenvectors ({} x {}) [m or rad], full system with reaction constraints (+ Soil K/M + SoilDyn K0)\n'.format(*model.Q.shape)
         s += yaml_array('Full_Modes', model.Q)
@@ -699,12 +700,12 @@ def subdyntoYAMLSum(model, filename, more=False):
             s += yaml_array('FGe', e.Fe_g(model.gravity,local=True), comment='First element gravity vector');
             s += yaml_array('FCe', e.Fe_o(local=True), comment='First element cable pretension');
             s += '#____________________________________________________________________________________________________\n'
-            s += '#FULL FEM K and M matrices. TOTAL FEM TDOFs:    {}\n'.format(model.MM.shape[0])
+            s += '#FULL FEM K and M matrices. TOTAL FEM TDOFs:    {}\n'.format(model.nDOF); # NOTE: wrong in SubDyn, should be nDOFc
             s += yaml_array('K', model.KK, comment='Stiffness matrix');
             s += yaml_array('M', model.MM, comment='Mass matrix');
             s += '#____________________________________________________________________________________________________\n'
             s += '#Gravity and cable loads applied at each node of the system (before DOF elimination with T matrix)\n'
-            s += yaml_array('FG', model.FF_init, comment='');
+            s += yaml_array('FG', model.FF_init, comment=' ');
             s += '#____________________________________________________________________________________________________\n'
             s += '#Additional CB Matrices (MBB,MBM,KBB) (constraint applied)\n'
             s += yaml_array('MBB'    , model.MBB, comment='');

@@ -15,6 +15,7 @@ except:
         pass
     class BrokenFormatError(Exception):
         pass
+    File = dict
 import os
 import numpy as np
 import re

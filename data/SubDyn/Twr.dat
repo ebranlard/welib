@@ -1,5 +1,5 @@
 ----------- SubDyn MultiMember Support Structure Input File ------------
-BIWF 'Jacket' SubStructure Input File. The grouted connection is simulated with an equivalent tubular beam of enhanced properties. RRD 10/15/2013
+Tower
 -------------------------- SIMULATION CONTROL ---------------------------------
 False            Echo        - Echo input data to "<rootname>.SD.ech" (flag)
 "DEFAULT"        SDdeltaT    - Local Integration Step. If "default", the glue-code integration step will be used.
@@ -25,30 +25,30 @@ True             CBMod       - [T/F] If True perform C-B reduction, else full FE
         19  NJoints     - Number of joints (-)
 JointID          JointXss               JointYss               JointZss     JointType JointDirX  JointDirY JointDirZ JointStiff 
   (-)               (m)                    (m)                    (m)         (-)        (-)        (-)       (-)     (Nm/rad) 
-  43	          0.00000                0.00000               23.20000        1         0.0        0.0       0.0       0.0     ! First tower node
-  44	          0.00000                0.00000               28.50000        1         0.0        0.0       0.0       0.0
-  45	          0.00000                0.00000               30.30000        1         0.0        0.0       0.0       0.0
-  46	          0.00000                0.00000               35.30000        1         0.0        0.0       0.0       0.0
-  47	          0.00000                0.00000               40.30000        1         0.0        0.0       0.0       0.0
-  48	          0.00000                0.00000               45.30000        1         0.0        0.0       0.0       0.0
-  49	          0.00000                0.00000               49.90000        1         0.0        0.0       0.0       0.0
-  50	          0.00000                0.00000               52.75000        1         0.0        0.0       0.0       0.0
-  51	          0.00000                0.00000               60.82000        1         0.0        0.0       0.0       0.0
-  52	          0.00000                0.00000               74.40000        1         0.0        0.0       0.0       0.0
-  53	          0.00000                0.00000               77.73000        1         0.0        0.0       0.0       0.0
-  54	          0.00000                0.00000               81.06000        1         0.0        0.0       0.0       0.0
-  55	          0.00000                0.00000               84.39000        1         0.0        0.0       0.0       0.0
-  56	          0.00000                0.00000               87.72000        1         0.0        0.0       0.0       0.0
-  57	          0.00000                0.00000               91.05000        1         0.0        0.0       0.0       0.0
-  58	          0.00000                0.00000               94.38000        1         0.0        0.0       0.0       0.0
-  59	          0.00000                0.00000               97.71000        1         0.0        0.0       0.0       0.0
-  60	          0.00000                0.00000               100.0930        1         0.0        0.0       0.0       0.0
-  61	          0.00000                0.00000               102.7930        1         0.0        0.0       0.0       0.0     ! Tower top  
+  43            0.00000                0.00000               23.20000        1         0.0        0.0       0.0       0.0     ! First tower node
+  44            0.00000                0.00000               28.50000        1         0.0        0.0       0.0       0.0
+  45            0.00000                0.00000               30.30000        1         0.0        0.0       0.0       0.0
+  46            0.00000                0.00000               35.30000        1         0.0        0.0       0.0       0.0
+  47            0.00000                0.00000               40.30000        1         0.0        0.0       0.0       0.0
+  48            0.00000                0.00000               45.30000        1         0.0        0.0       0.0       0.0
+  49            0.00000                0.00000               49.90000        1         0.0        0.0       0.0       0.0
+  50            0.00000                0.00000               52.75000        1         0.0        0.0       0.0       0.0
+  51            0.00000                0.00000               60.82000        1         0.0        0.0       0.0       0.0
+  52            0.00000                0.00000               74.40000        1         0.0        0.0       0.0       0.0
+  53            0.00000                0.00000               77.73000        1         0.0        0.0       0.0       0.0
+  54            0.00000                0.00000               81.06000        1         0.0        0.0       0.0       0.0
+  55            0.00000                0.00000               84.39000        1         0.0        0.0       0.0       0.0
+  56            0.00000                0.00000               87.72000        1         0.0        0.0       0.0       0.0
+  57            0.00000                0.00000               91.05000        1         0.0        0.0       0.0       0.0
+  58            0.00000                0.00000               94.38000        1         0.0        0.0       0.0       0.0
+  59            0.00000                0.00000               97.71000        1         0.0        0.0       0.0       0.0
+  60            0.00000                0.00000               100.0930        1         0.0        0.0       0.0       0.0
+  61            0.00000                0.00000               102.7930        1         0.0        0.0       0.0       0.0     ! Tower top  
 ------------------- BASE REACTION JOINTS: 1/0 for Locked/Free DOF @ each Reaction Node ---------------------
              1   NReact      - Number of Joints with reaction forces; be sure to remove all rigid motion DOFs of the structure  (else det([K])=[0])
 RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss     SSIfile [Global Coordinate System]
   (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)      (string)
-  43           1           1           1           1           1           1	""
+  43           1           1           1           1           1           1         ""
 ------- INTERFACE JOINTS: 1/0 for Locked (to the TP)/Free DOF @each Interface Joint (only Locked-to-TP implemented thus far (=rigid TP)) ---------
              1   NInterf     - Number of interface joints locked to the Transition Piece (TP):  be sure to remove all rigid motion dofs
 IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss     [Global Coordinate System]
@@ -105,7 +105,7 @@ PropSetID     YoungE          ShearG          MatDens          XsecD           X
   27        2.00000e+11     8.07690e+10       8000.00         5.98700        0.03600    ! tower
   28        2.00000e+11     8.07690e+10       8000.00         5.98700        0.03800    ! tower
   29        2.00000e+11     8.07690e+10       8000.00         5.98900        0.04200    ! tower
-  30        2.00000e+12     8.07690e+10          0.00         1.72720	     0.02540    ! "rigid dummy beam" 
+  30        2.00000e+12     8.07690e+10          0.00         1.72720        0.02540    ! "rigid dummy beam" 
 ------------------ MEMBER X-SECTION PROPERTY data 2/2 [isotropic material for now: use this table if any section other than circular, however provide COSM(i,j) below] ------------------------
              0   NXPropSets  - Number of structurally unique non-circular x-sections (if 0 the following table is ignored)
 PropSetID     YoungE          ShearG          MatDens          XsecA          XsecAsx       XsecAsy       XsecJxx       XsecJyy        XsecJ0
