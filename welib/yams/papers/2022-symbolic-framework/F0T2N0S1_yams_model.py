@@ -17,8 +17,7 @@ from sympy import trigsimp
 import matplotlib.pyplot as plt
 import importlib
 # yams
-from welib.yams.models.FTNSB_sympy import *
-from welib.yams.models.OneRigidBody_sympy import get_model_one_body
+from welib.yams.models.FTNSB_sympy import get_model
 from welib.yams.models.FTNSB_sympy_symbols import *
 
 def main(runSim=True, runFAST=False):

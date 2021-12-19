@@ -90,7 +90,7 @@ def main():
         replaceDict={}
         replaceDict['theta_tilt']=('tilt',None)
 
-        # --- Create model, solve equations and preform small angle approximation
+        # --- Create model, solve equations and perform small angle approximation
         if model_name[0]=='B':
             model = get_model_one_body(model_name, **opts)
         else:

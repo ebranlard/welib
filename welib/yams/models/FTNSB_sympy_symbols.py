@@ -41,6 +41,7 @@ omega_x_F, omega_y_F, omega_z_F = dynamicsymbols('omega_x_F, omega_y_F, omega_z_
 omega_x_T, omega_y_T, omega_z_T = dynamicsymbols('omega_x_T, omega_y_T, omega_z_T')
 omega_x_N, omega_y_N, omega_z_N = dynamicsymbols('omega_x_N, omega_y_N, omega_z_N')
 omega_x_R, omega_y_R, omega_z_R = dynamicsymbols('omega_x_R, omega_y_R, omega_z_R')
+
 # omega individual blades..
 
 # --- Inertias
@@ -49,6 +50,7 @@ Jxx_R, Jyy_R, Jzz_R, JO_R = symbols('Jxx_R, Jyy_R, Jzz_R, JO_R') # NOTE: JO     
 Jxx_T, Jyy_T, Jzz_T       = symbols('Jxx_T, Jyy_T, Jzz_T')
 Jxx_F, Jyy_F, Jzz_F       = symbols('Jxx_F, Jyy_F, Jzz_F')
 Jxx_N, Jyy_N, Jzz_N       = symbols('Jxx_N, Jyy_N, Jzz_N')
+Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')
 
 L_F, L_T, L_R, L_B = symbols('L_F, L_T, L_R, L_B') # length
 
@@ -58,6 +60,7 @@ z_TG     = symbols('z_TG')       # Position of Tower COG in T
 x_NG,z_NG = symbols('x_NG, z_NG') # Position of Nacelle COG in N
 x_RNAG,z_RNAG = symbols('x_RNAG, z_RNAG') # Position of Nacelle COG in N
 y_RNAG = symbols('y_RNAG') # Position of Nacelle COG in N
+x_BG, y_BG, z_BG = symbols('x_BG, y_BG, z_BG') # Position of Blade COG in Blade coordinate system
 
 
 # Points
