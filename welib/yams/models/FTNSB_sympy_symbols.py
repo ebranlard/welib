@@ -30,7 +30,7 @@ x, y, z             = dynamicsymbols('x, y, z')
 xd, yd, zd          = dynamicsymbols('xd, yd, zd') #dynamicsymbols('x, y, z',1)
   
 # Nacelle/shaft angles
-theta_yaw, theta_tilt      = symbols('theta_yaw, theta_tilt')  #NOTE: not dynamic, constant, use q_yaw instead!
+theta_yaw, theta_tilt, psi_0 = symbols('theta_yaw, theta_tilt, psi_0')  #NOTE: not dynamic, constant, use q_yaw instead!
 alpha_y, alpha_x           = dynamicsymbols('alpha_y, alpha_x')
 psi                        = dynamicsymbols('psi')
 q_yaw, q_tilt              = dynamicsymbols('q_yaw, q_tilt')

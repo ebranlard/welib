@@ -1,6 +1,6 @@
 import numpy as np
 from sympy import Matrix, symbols, simplify, Function, expand_trig, Symbol, diff
-from sympy import cos,sin, transpose
+from sympy import cos, sin, transpose, pi
 from sympy import latex, python
 from sympy.physics.mechanics import dynamicsymbols, ReferenceFrame, Point, inertia
 
@@ -17,6 +17,7 @@ _defaultOpts={
     'floating':True,
     'yaw'    : 'fixed',  # 'fixed', 'dynamic' or 'zero'
     'tilt'   : 'fixed',  # 'fixed', 'dynamic' or 'zero'
+    'azimuth_init': 'dynamic',# 'fixed', 'dynamic' or 'zero'
     'Mform'  : 'TaylorExpanded', # 'symbolic',or 'TaylorExpanded'
     'mergeFndTwr':True, # Use one body for FND and TWR
     'tiltShaft':False, # Tilt shaft or nacelle
@@ -90,7 +91,6 @@ def get_model(model_name, **opts):
     if not bRotorOnly:
         # "Foundation"/substructure
         sFnd= model_name.split('T')[0][1:] # TODO why not F????
-        print('>>> sFND',sFnd, len(sFnd))
         if len(sFnd)==1:
             bFndDOFs   = [False]*6
             nDOF_fnd = int(sFnd[0])
@@ -107,7 +107,6 @@ def get_model(model_name, **opts):
         # Tower
         nDOF_twr = int(model_name.split('T')[1][0])
 
-    print('>>>bFullRNA',bFullRNA, bRotorOnly)
     if bFullRNA:
         # Rotor nacelle assembly is made of several bodies and DOFs
         bNac = model_name.find('N')>0
@@ -151,17 +150,20 @@ def get_model(model_name, **opts):
     # --------------------------------------------------------------------------------}
     # --- Isolated bodies 
     # --------------------------------------------------------------------------------{
-    # Reference frame
+    # --- Reference frame
     ref = YAMSInertialBody('E') 
 
-    twr       = None
+    # --- Fnd Floater/Foundation/Substructure
+    fnd = None
     if not bRotorOnly:
         # Foundation, floater, always rigid for now
         if (not opts['floating']) or opts['mergeFndTwr']:
             fnd = None # the floater is merged with the twr, or we are not floating
         else:
             fnd = YAMSRigidBody('F', rho_G = [0,0,z_FG], J_diag=True) 
-        # Tower
+    # --- Tower
+    twr = None
+    if not bRotorOnly:
         if nDOF_twr==0:
             # Ridid tower
             twr = YAMSRigidBody('T', rho_G = [0,0,z_TG], J_diag=True) 
@@ -169,7 +171,7 @@ def get_model(model_name, **opts):
             # Flexible tower
             twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='twr-z')
 
-    # Nacelle rotor assembly
+    # --- Nacelle rotor assembly
     blds = []
     rot  = None
     nac  = None
@@ -183,6 +185,9 @@ def get_model(model_name, **opts):
 
         # Individual blades or rotor
         if bBld:
+            # Creating a fake "rotor body" with no inertia for convenience
+            rot = YAMSRigidBody('R', rho_G = [0,0,0], J_G=[0,0,0], mass=0)
+            #rot.inertia = (inertia(rot.frame, Jxx_R, JO_R, JO_R), rot.origin)  # defining inertia at orign
             if nDOF_bld==0:
                 print('>>> Rigid blades')
                 # NOTE: for now we assume the blades to be identical, hence the use of name_for_var
@@ -279,7 +284,6 @@ def get_model(model_name, **opts):
     bldDOFs=[] 
     bldSpeeds=[] 
     if bFullRNA:
-        # --- Twr
         bldDOFs   = []
         bldSpeeds = []
         if nDOF_bld>0: # flexible tower
@@ -291,8 +295,8 @@ def get_model(model_name, **opts):
     speeds      = fndSpeeds + twrSpeeds + nacSpeeds + sftSpeeds + bldSpeeds  # Order determine eq order
 
     if verbose:
-        print('Coordinates:',coordinates)
-        print('speeds     :',speeds)
+        print('>>> Coordinates:',coordinates)
+        print('    speeds     :',speeds)
 
 
 
@@ -322,44 +326,52 @@ def get_model(model_name, **opts):
             ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
             #ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=(rots[2],rots[1],rots[0]), rot_order='ZYX')  #NOTE: rot order is not "optimal".. phi_x should be last
     else:
-        #print('Rigid connection ref twr')
-        ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,0))
+        if not bRotorOnly:
+            #print('Rigid connection ref twr')
+            ref.connectTo(twr, type='Rigid' , rel_pos=(0,0,0))
 
-    # Rigid connection between twr and fnd if fnd exists
-    if fnd is not None:
-        #print('Rigid connection twr fnd')
+    if not bRotorOnly:
+        # Rigid connection between twr and fnd if fnd exists
+        if fnd is not None:
+            #print('Rigid connection twr fnd')
+            if nDOF_twr==0:
+                twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
+            else:
+                twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
+
         if nDOF_twr==0:
-            twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
+            # Tower rigid -> Rigid connection to nacelle
+            # TODO TODO L_T or twr.L
+            #if nDOF_nac==0:
+            #print('Rigid connection twr nac')
+            #else:
+            #print('Dynamic connection twr nac')
+
+            if opts['tiltShaft']:
+                # Shaft will be tilted, not nacelle
+                twr.connectTo(nac, type='Rigid', rel_pos=(0,0,L_T)  , rot_amounts=(yawDOF,0,0), rot_order='ZYX')
+            else:
+                # Nacelle is tilted
+                twr.connectTo(nac, type='Rigid', rel_pos=(0,0,L_T)  , rot_amounts=(yawDOF,tiltDOF,0), rot_order='ZYX')
+
         else:
-            twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
+            # Flexible tower -> Flexible connection to nacelle
+            #print('Flexible connection twr nac')
+            if opts['tiltShaft']:
+                twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, 0      , 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
+            else:
+                twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, tiltDOF, 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
 
-    if nDOF_twr==0:
-        # Tower rigid -> Rigid connection to nacelle
-        # TODO TODO L_T or twr.L
-        #if nDOF_nac==0:
-        #print('Rigid connection twr nac')
-        #else:
-        #print('Dynamic connection twr nac')
-
-        if opts['tiltShaft']:
-            # Shaft will be tilted, not nacelle
-            twr.connectTo(nac, type='Rigid', rel_pos=(0,0,L_T)  , rot_amounts=(yawDOF,0,0), rot_order='ZYX')
-        else:
-            # Nacelle is tilted
-            twr.connectTo(nac, type='Rigid', rel_pos=(0,0,L_T)  , rot_amounts=(yawDOF,tiltDOF,0), rot_order='ZYX')
-
+    # --- Ref to blades
+    if opts['azimuth_init']=='zero':
+        psi0 = 0
     else:
-        # Flexible tower -> Flexible connection to nacelle
-        #print('Flexible connection twr nac')
-        if opts['tiltShaft']:
-            twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, 0      , 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
-        else:
-            twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, tiltDOF, 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
-
-    if bFullRNA:
-        if bBld:
-            raise NotImplementedError()
-        else:
+        psi0 = psi_0
+    nB = opts['nB']
+    psi_b = [psi0+ib*2 * pi/nB for ib,_ in enumerate(blds)] # blade default azimuthal position
+    if not bRotorOnly:
+        # --- Nacelle to rotor/blades
+        if bFullRNA:
             if opts['tiltShaft']:
                 if nDOF_sft==0:
                     nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,tiltDOF,0), rot_order='ZYX')
@@ -370,22 +382,49 @@ def get_model(model_name, **opts):
                     nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,0      ,0), rot_order='ZYX')
                 else:
                     nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,0      ,psi), rot_order='ZYX')
+            if bBld:
+                print('>>> Rigid connection from rotating shaft to each blades')
+                for ib,bld in enumerate(blds): 
+                    rot.connectTo(bld, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,psi_b[ib]), rot_order='ZYX')
+    else:
 
+        # --- Rotor Only
+        print('>>> TODO TODO hub radius, and precone')
+        if nDOF_sft==0:
+            print('>>> Rigid connection from ref to each blades')
+            for ib,bld in enumerate(blds): 
+                ref.connectTo(bld, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,psi_b[ib]), rot_order='ZYX')
+        else:
+            for ib,bld in enumerate(blds): 
+                ref.connectTo(bld, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,psi+psi_b[ib]), rot_order='ZYX')
 
-    # --- Defining Body rotational velocities
-    omega_TE = twr.ang_vel_in(ref)        # Angular velocity of nacelle in inertial frame
-    omega_NT = nac.ang_vel_in(twr.frame)  # Angular velocity of nacelle in inertial frame
-    if rot is not None:
-        omega_RN = rot.ang_vel_in(nac.frame)  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
-
-    # --- Kinetics
-    body_loads       = []
+    # --------------------------------------------------------------------------------}
+    # --- bodies
+    # --------------------------------------------------------------------------------{
     bodies           = []
-    g                = symbols('g')
-    g_vect           = -g * ref.frame.z
-    # Foundation/floater loads
     if fnd is not None:
         bodies+= [fnd]
+    if twr is not None:
+        bodies      += [twr]
+    if nac is not None:
+        bodies      += [nac]
+    if rot is not None:
+        bodies      += [rot]
+    for ib,bld in enumerate(blds):
+        bodies      += [bld]
+    if verbose:
+        print('>>> Bodies:')
+        for b in bodies:
+            print('name',b.name)
+
+    # --------------------------------------------------------------------------------}
+    # --- Kinetics
+    # --------------------------------------------------------------------------------{
+    body_loads       = []
+    g                = symbols('g')
+    g_vect           = -g * ref.frame.z
+    # --- Foundation/floater loads
+    if fnd is not None:
         grav_F = (fnd.masscenter, -fnd.mass * g * ref.frame.z)
         # Point of application for Buoyancy and mooring
         P_B = twr.origin.locatenew('P_B', z_TB * fnd.frame.z) # <<<< Measured from T
@@ -411,26 +450,32 @@ def get_model(model_name, **opts):
             body_loads  += [(fnd, (fnd.frame, Mr))]
         body_loads  += [(fnd,grav_F)]
 
-    # Tower loads
-    grav_T       = (twr.masscenter, -twr.mass * g * ref.frame.z)
-    bodies      += [twr]
-    body_loads  += [(twr,grav_T)]  
+    # --- Tower loads
+    if twr is not None:
+        grav_T       = (twr.masscenter, -twr.mass * g * ref.frame.z)
+        body_loads  += [(twr,grav_T)]  
 
-    # Nacelle loads
-    grav_N = (nac.masscenter, -nac.mass * g * ref.frame.z)
-    bodies      += [nac]
-    body_loads  += [(nac,grav_N)]  
+    # --- Nacelle loads
+    if nac is not None:
+        grav_N = (nac.masscenter, -nac.mass * g * ref.frame.z)
+        body_loads  += [(nac,grav_N)]  
 
+
+    # --- Aero loads
     T_a              = dynamicsymbols('T_a') # NOTE NOTE
     #T_a              = Function('T_a')(dynamicsymbols._t, *coordinates, *speeds) # NOTE: to introduce it in the linearization, add coordinates
     M_ax, M_ay, M_az = dynamicsymbols('M_x_a, M_y_a, M_z_a') # Aero torques
     if bFullRNA:
         if bBld:
-            raise NotImplementedError()
+            # Gravity on blades
+            for ib,bld in enumerate(blds):
+                grav_B       = (bld.masscenter, -bld.mass * g * ref.frame.z)
+                body_loads  += [(bld,grav_B)]  
+
+            print('>>>> TODO aero/misc loads on blades')
         else:
             # Rotor loads
             grav_R = (rot.masscenter, -M_R * g * ref.frame.z)
-            bodies      += [rot]
             body_loads  += [(rot,grav_R)]  
 
             # NOTE: loads on rot, but expressed in N frame
@@ -479,7 +524,7 @@ def get_model(model_name, **opts):
                 M_a_N = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z)
             body_loads  += [(nac, M_a_N)]  
     if verbose:
-        print('Loads:')
+        print('>>> Loads:')
         for (b,l) in body_loads:
             print(b.name, l)
 
@@ -489,9 +534,21 @@ def get_model(model_name, **opts):
     # --------------------------------------------------------------------------------}
     # --- Kinematic equations 
     # --------------------------------------------------------------------------------{
+    # --- Defining Body rotational velocities
+    if not bRotorOnly:
+        omega_TE = twr.ang_vel_in(ref)        # Angular velocity of nacelle in inertial frame
+        omega_NT = nac.ang_vel_in(twr.frame)  # Angular velocity of nacelle in inertial frame
+        if rot is not None:
+            omega_RN = rot.ang_vel_in(nac.frame)  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
+    else:
+        # Rotor only
+        omega_RN = diff(psi, time) * ref.frame.x  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
+
+
     kdeqsSubs =[]
     # --- Fnd
     if not opts['floating']:
+        # fixed bottom
         pass
     else:
         # Kdeqs for fnd: 
@@ -506,9 +563,7 @@ def get_model(model_name, **opts):
         kdeqsSubs+=[ (fndSpeedsAll[i], fndVelAll[i]) for i,dof in enumerate(bFndDOFs) if dof] 
 
     # --- Twr
-    if nDOF_twr==0:
-        pass
-    else:
+    if nDOF_twr>0:
         kdeqsSubs +=[ (twr.qd[i], twr.qdot[i]) for i,_ in enumerate(twr.q)]; 
 
     # --- Nac
@@ -517,14 +572,30 @@ def get_model(model_name, **opts):
     # --- Shaft
     if bFullRNA:
         if bBld:
-            raise NotImplementedError()
+            if nDOF_sft==1:
+                #print('>>>>>>>> TODO sort out which frame')
+                # I believe we should use omega_RE
+                if rot is None:
+                    kdeqsSubs+=[ (omega_x_R,  omega_RN.dot(ref.frame.x).simplify()) ]  
+                else:
+                    kdeqsSubs+=[ (omega_x_R,  omega_RN.dot(rot.frame.x).simplify()) ]  
+            if nDOF_bld>0:
+                for bld in blds:
+                    kdeqsSubs +=[ (bld.qd[i], bld.qdot[i]) for i,_ in enumerate(bld.q)]; 
         else:
             if nDOF_sft==1:
                 #print('>>>>>>>> TODO sort out which frame')
                 # I believe we should use omega_RE
                 kdeqsSubs+=[ (omega_x_R, omega_RN.dot(rot.frame.x).simplify()) ]  
 
+    if verbose:
+        print('>>> kdeqsSubs:', kdeqsSubs)
+
+
+
+    # --------------------------------------------------------------------------------}
     # --- Create a YAMS wrapper model
+    # --------------------------------------------------------------------------------{
     model = YAMSModel(name=model_name)
     model.opts        = opts
     model.ref         = ref
@@ -540,7 +611,7 @@ def get_model(model_name, **opts):
     model.nac=nac
     model.rot=rot
     #model.sft=sft
-    #model.bld=bld
+    model.blds=blds
     model.g_vect=g_vect
 
     # Small angles

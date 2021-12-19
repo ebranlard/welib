@@ -67,7 +67,6 @@ class YAMSModel(object):
     def loads(self):
         return [f[1] for f in self.body_loads]
 
-    @property
     def EOM(self, Mform='symbolic'):
         if self.kane is None:
             self.kaneEquations(Mform=Mform)
@@ -207,14 +206,14 @@ class YAMSModel(object):
 
     def to_EOM(self):
         """ return a class to easily manipulate the equations of motion in place"""
-        EOM = self.EOM.subs(self.kdeqsSubs).doit()
+        EOM = self.EOM().subs(self.kdeqsSubs).doit()
 
-        replaceDict=OrderedDict()
+        bodyReplaceDict=OrderedDict()
         for b in self.bodies:
             if isinstance(b, YAMSFlexibleBody):
-                b.replaceDict(replaceDict)
+                b.replaceDict(bodyReplaceDict)
 
-        return EquationsOfMotionQ(EOM, self.coordinates, self.name, replaceDict)
+        return EquationsOfMotionQ(EOM, self.coordinates, self.name, bodyReplaceDict)
 
     def saveTex(self, prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
         """ 
@@ -502,6 +501,16 @@ class EquationsOfMotionQ(object):
         self.name=name
         self.bodyReplaceDict=bodyReplaceDict
 
+    def __repr__(self):
+        s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
+        s+=' - name:    {}\n'.format(self.name)
+        s+=' - q:       {}\n'.format(self.q)
+        s+=' - bodyReplaceDict: {}\n'.format(self.bodyReplaceDict)
+        s+=' - smallAngleUsed:  {}\n'.format(self.smallAngleUsed)
+        s+=' - smallAngleUsed   : {}\n'.format(self.smallAngleUsed)
+        return s
+
+
     def subs(self, subs_list):
         """ Apply substitutions to equations of motion """
         self.EOM = self.EOM.subs(subs_list)
@@ -542,6 +551,7 @@ class EquationsOfMotionQ(object):
         op_point  = [] if op_point is None else op_point
         extraSubs = [] if extraSubs is None else extraSubs
         self.M0,self.C0,self.K0,self.B0, self.input_vars = linearizeQ(self.EOM, self.q, op_point=op_point, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
+        return self.M0, self.C0, self.K0, self.B0
 
     def saveTex(self, prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)]):
         """ 
@@ -630,11 +640,14 @@ def linearizeQ(EOM, q, op_point=None, noAcc=True, noVel=False, extraSubs=None):
 
     with Timer('Linearization',True,silent=True):
         # NOTE: order important
-        op_point=[]
+        op_point0=[]
         if noAcc: 
-            op_point+=[(qddi,0) for qddi in qdd]
+            op_point0=[(qddi,0) for qddi in qdd]
         if noVel: 
-            op_point+=[(qdi,0) for qdi in qd]
+            op_point0=[(qdi,0) for qdi in qd]
+        op_point= op_point0+op_point # order might matter
+        print('>>> TODO sort op point so that diff wrt time are first, or do the trick with symbols')
+        # use if isinstance sympy.core.function.Derivative
     
         # --- Inputs are dynamic symbols that are not coordinates
         dyn_symbols = find_dynamicsymbols(EOM)
@@ -645,9 +658,17 @@ def linearizeQ(EOM, q, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         # KEEP ME Alternative
         #M, A, B = linearizer.linearize(op_point=op_point ) #o
 
+        #print('>>>> op_point',op_point)
+        #print('>>>> extraSubs',extraSubs)
         M =-EOM.jacobian(qdd).subs(extraSubs).subs(op_point)
         C =-EOM.jacobian(qd ).subs(extraSubs).subs(op_point)
         K =-EOM.jacobian(q  ).subs(extraSubs).subs(op_point)
+        #M =-EOM.jacobian(qdd).subs(extraSubs)
+        #C =-EOM.jacobian(qd ).subs(extraSubs)
+        #K =-EOM.jacobian(q  ).subs(extraSubs)
+        #M =subs_no_diff(M, op_point)
+        #C =subs_no_diff(C, op_point)
+        #K =subs_no_diff(K, op_point)
         if len(inputs)>0:
             B = EOM.jacobian(inputs).subs(extraSubs).subs(op_point)
         else:

@@ -259,6 +259,10 @@ class YAMSBody(object):
         except:
             posI = 'unknown'
         try:
+            posP=self.pos_parent
+        except:
+            posP = 'unknown'
+        try:
             omI=self.omega_inertial
         except:
             omI = 'unknown'
@@ -289,6 +293,7 @@ class YAMSBody(object):
             #OmSkew = (R.diff(t) *  R.transpose()).simplify()
             #omega_ident = OmSkew[2,1] * N.x + OmSkew[0,2]*N.y + OmSkew[1,0] * N.z
 
+        s+=' * pos_parent:     {} (origin wrt to parent)\n'.format(posP)
         s+=' * pos_global:     {} (origin)\n'.format(posI)
         s+=' * vel_inertial:   {} (origin)\n'.format(velI)
         s+=' * vel_parent:     {} (origin)\n'.format(velP)
@@ -307,8 +312,13 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------{
     @property
     def pos_global(self):
-        """ return velocity of origin in inertial frame """
+        """ return position of body origin in compared to inertial origin"""
         return self.origin.pos_from(self.inertial_origin)
+
+    @property
+    def pos_parent(self):
+        """ return position of body origin with respect to parent origin"""
+        return self.origin.pos_from(self.parent.origin)
 
     @property
     def vel_inertial(self):
@@ -409,7 +419,7 @@ class YAMSBody(object):
                 raise Exception('Parent body was not connected to an inertial frame. Bodies needs to be connected in order, starting from inertial frame.')
             else:
                 child.inertial_frame  = parent.inertial_frame # the same frame is used for all connected bodies
-                child.inertial_origin = parent.origin
+                child.inertial_origin = parent.inertial_origin
 
         if rel_pos is None or len(rel_pos)!=3:
             raise Exception('rel_pos needs to be an array of size 3')
@@ -964,6 +974,7 @@ class YAMSFlexibleBody(YAMSBody):
         s+=' - vcList:       {}\n'.format(self.vcList)
         s+=' - uc    :       {}\n'.format(self.uc)
         s+=' - alpha :       {}\n'.format(self.alpha)
+        s+=' - directions:   {}\n'.format(self.directions)
         return s
 
 
@@ -1110,6 +1121,11 @@ class YAMSFlexibleBody(YAMSBody):
                             self.M[j,i]=self.M[i,j]
             elif self.predefined_kind=='bld-z':
                 print('>>> yams_simpy, TODO simplifications of mass matrix for blade')
+                # symmetry inertial tensor
+                for i in np.arange(3,6):
+                    for j in np.arange(3,6):
+                        if i<j:
+                            self.M[j,i]=self.M[i,j]
 
             else:
                 raise NotImplementedError()

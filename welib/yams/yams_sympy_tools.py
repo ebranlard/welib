@@ -49,8 +49,11 @@ def subs_no_diff(expr, subslist):
 
     see also: sympy.physics.mechanics.functions.msubs
 
+    TODO extend to matrix
 
     """
+
+
     # Set mapping between time derivatives and dummy variables
     time=dynamicsymbols._t
     Dummys=symarray('DUM', len(subslist))
@@ -58,6 +61,7 @@ def subs_no_diff(expr, subslist):
     for i, (var,b) in enumerate(subslist):
         if len(var.atoms())!=1:
             print(var)
+            print(type(var))
             raise Exception('subs_no_diff only works for simple (atomic) substitution')
         if exprHasFunction(var):
             dvar = diff(var,time)
