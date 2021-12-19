@@ -38,7 +38,7 @@ class YAMSModel(object):
         self.opts        = None
         self.body_loads  = None
         self.var         = [] # Independent variables
-        self.smallAngleUsed=None
+        self.smallAnglesUsed=[]
 
         self.M=None # Non-linear Mass matrix
         self.F=None # Non-linear Forcing
@@ -53,7 +53,7 @@ class YAMSModel(object):
         s+=' - speeds:            {}\n'.format(self.speeds)
         s+=' - kdeqsSubs:         {}\n'.format(self.kdeqsSubs)
         s+=' - var:               {}\n'.format(self.var)
-        s+=' - smallAngleUsed   : {}\n'.format(self.smallAngleUsed)
+        s+=' - smallAnglesUsed  : {}\n'.format(self.smallAnglesUsed)
         s+=' - number of bodies : {}\n'.format(len(self.bodies))
         s+=' - opts             : {}\n'.format(self.opts)
         s+=' * loads            : {}\n'.format(self.loads)
@@ -102,9 +102,10 @@ class YAMSModel(object):
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
 
-    def smallAngleApprox(self, angle_list, extraSubs=None):
+    def smallAngleApprox(self, angle_list, extraSubs=None, order=1):
         """ 
         Apply small angle approximation to forcing and mass matrix
+        NOTE: can be called multiple times with different angle list (cumulative effect)
         """
         extraSubs = [] if extraSubs is None else extraSubs
         # Forcing
@@ -112,7 +113,7 @@ class YAMSModel(object):
             if self._sa_forcing is None:
                 self._sa_forcing=self.kane.forcing
             self._sa_forcing = self._sa_forcing.subs(self.kdeqsSubs).subs(extraSubs)
-            self._sa_forcing = smallAngleApprox(self._sa_forcing, angle_list)
+            self._sa_forcing = smallAngleApprox(self._sa_forcing, angle_list, order=order)
         with Timer('Small angle approx. forcing simplify',True,silent=True):
             self._sa_forcing.simplify()
         # Mass matrix
@@ -120,11 +121,11 @@ class YAMSModel(object):
             if self._sa_mass_matrix is None:
                 self._sa_mass_matrix=self.kane.mass_matrix
             self._sa_mass_matrix = self._sa_mass_matrix.subs(self.kdeqsSubs).subs(extraSubs)
-            self._sa_mass_matrix = smallAngleApprox(self._sa_mass_matrix, angle_list)
+            self._sa_mass_matrix = smallAngleApprox(self._sa_mass_matrix, angle_list, order=order)
         with Timer('Small angle approx. mass matrix simplify',True,silent=True):
             self._sa_mass_matrix.simplify()
 
-        self.smallAngleUsed=angle_list
+        self.smallAnglesUsed+=angle_list
         
 
     def smallAngleApproxEOM(self, angle_list, extraSubs=None):
@@ -132,7 +133,7 @@ class YAMSModel(object):
         Apply small angle approximation to equation of motion H(x,xd,xdd,..)=0
         """
         extraSubs = [] if extraSubs is None else extraSubs
-        EOM=self.EOM
+        EOM=self.EOM()
         with Timer('Small angle approx. EOM',True,silent=True):
             EOM = EOM.subs(extraSubs)
             EOM = smallAngleApprox(EOM, angle_list).subs(extraSubs)
@@ -162,7 +163,7 @@ class YAMSModel(object):
         """
         op_point  = [] if op_point is None else op_point
         extraSubs = [] if extraSubs is None else extraSubs
-        M,C,K,B = self._linearize(op_point=op_point, EOM=self.EOM, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
+        M,C,K,B = self._linearize(op_point=op_point, EOM=self.EOM(), noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
 
         self.M0 = M
         self.C0 = C
@@ -173,7 +174,7 @@ class YAMSModel(object):
         op_point  = [] if op_point is None else op_point
         extraSubs = [] if extraSubs is None else extraSubs
         if EOM is None:
-            EOM=self.EOM
+            EOM=self.EOM()
 
         with Timer('Linearization',True,silent=True):
             # NOTE: order important
@@ -231,7 +232,7 @@ class YAMSModel(object):
                     f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
                     f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.coordinates)))
                     try:
-                        f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAngleUsed)))
+                        f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAnglesUsed)))
                     except:
                         pass
                     f.write('Free vars:       ${}$\\\\ \n'.format(cleantex(self.var)))
@@ -496,7 +497,7 @@ class EquationsOfMotionQ(object):
         self.C0=None
         self.B0=None
         self.input_vars=None
-        self.smallAngleUsed=[]
+        self.smallAnglesUsed=[]
 
         self.name=name
         self.bodyReplaceDict=bodyReplaceDict
@@ -506,14 +507,16 @@ class EquationsOfMotionQ(object):
         s+=' - name:    {}\n'.format(self.name)
         s+=' - q:       {}\n'.format(self.q)
         s+=' - bodyReplaceDict: {}\n'.format(self.bodyReplaceDict)
-        s+=' - smallAngleUsed:  {}\n'.format(self.smallAngleUsed)
-        s+=' - smallAngleUsed   : {}\n'.format(self.smallAngleUsed)
+        s+=' - smallAnglesUsed: {}\n'.format(self.smallAnglesUsed)
         return s
 
 
-    def subs(self, subs_list):
+    def subs(self, subs_list, inPlace=True):
         """ Apply substitutions to equations of motion """
-        self.EOM = self.EOM.subs(subs_list)
+        if inPlace:
+            self.EOM = self.EOM.subs(subs_list)
+        else:
+            return self.EOM.subs(subs_list)
 
     def simplify(self):
         """ Simplify equations of motion """
@@ -528,13 +531,18 @@ class EquationsOfMotionQ(object):
         """ Trigonometric simplifications of  equations of motion """
         self.EOM = self.EOM.expand()
 
-    def smallAngleApprox(self, angle_list, order=1):
+    def smallAngleApprox(self, angle_list, order=1, inPlace=True):
         """ 
-        Apply small angle approximation to EOM
+        Apply small angle approximation to EOM 
+
+        NOTE: inPlace!
         """
         with Timer('Small angle approx',True,silent=True):
-            self.EOM = smallAngleApprox(self.EOM, angle_list, order=order)
-        self.smallAngleUsed+=angle_list
+            if inPlace:
+                self.EOM = smallAngleApprox(self.EOM, angle_list, order=order)
+                self.smallAnglesUsed+=angle_list
+            else:
+                return smallAngleApprox(self.EOM, angle_list, order=order)
 
     def mass_forcing_form(self, extraSubs=None):
         """ Extract Mass Matrix and RHS from EOM """
@@ -569,7 +577,7 @@ class EquationsOfMotionQ(object):
                     f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
                     f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.q)))
                     try:
-                        f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAngleUsed)))
+                        f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAnglesUsed)))
                     except:
                         pass
                     f.write('Free vars:       ${}$\\\\ \n'.format(cleantex(self.input_vars)))

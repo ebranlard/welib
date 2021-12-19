@@ -371,7 +371,7 @@ class YAMSBody(object):
     @property
     def R_b2g(self):
         """ Transformation matrix from body to global """
-        return self.inertial_frame.dcm(self.frame)  # from body to global
+        return Matrix(self.inertial_frame.dcm(self.frame)) # from body to global
 
     @property
     def R_g2b(self):
