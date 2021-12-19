@@ -210,7 +210,6 @@ class TimeSeries(dict):
             TI['nt'  ] = nt
         else:
             TI['time'] = list(self['time'])
-        print(TI)
         return TI
 
     def mat4(self, flat=True):

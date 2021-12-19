@@ -1,3 +1,9 @@
+""" 
+TODO
+
+NOTE: a SubDyn wrapper with a higher level interface should be available in the future in welib/fast/examples
+"""
+
 import unittest
 import os
 import scipy

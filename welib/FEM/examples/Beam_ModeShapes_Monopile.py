@@ -6,6 +6,8 @@ NOTE: all of this can be done in few lines using the class: welib.fast.subdyn.Su
 
 NOTE: Script might be unfinished
 
+NOTE: a SubDyn wrapper with a higher level interface should be available in the future in welib/fast/examples
+
 """
 import unittest
 import os

@@ -4,6 +4,8 @@ of a uniform cantilevered beam with and without top mass.
 
 
 NOTE: Script might be unfinished
+
+NOTE: an ElastoDyn wrapper should be added in the future in welib/fast/examples
 """
 import unittest
 import os
