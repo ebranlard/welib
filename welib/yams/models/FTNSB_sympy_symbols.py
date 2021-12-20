@@ -32,9 +32,14 @@ xd, yd, zd          = dynamicsymbols('xd, yd, zd') #dynamicsymbols('x, y, z',1)
 # Nacelle/shaft angles
 theta_yaw, theta_tilt, psi_0 = symbols('theta_yaw, theta_tilt, psi_0')  #NOTE: not dynamic, constant, use q_yaw instead!
 alpha_y, alpha_x           = dynamicsymbols('alpha_y, alpha_x')
-psi                        = dynamicsymbols('psi')
+q_psi                      = dynamicsymbols('psi')
 q_yaw, q_tilt              = dynamicsymbols('q_yaw, q_tilt')
 qd_yaw, qd_tilt            = dynamicsymbols('qd_yaw, qd_tilt')
+
+# Blades
+theta_cone, theta_pitch   = symbols('theta_c, theta_p') # NOTE: not dynamic, constant use q_pitch instead
+q_pitch                   = dynamicsymbols('q_p')
+qd_pitch                  = dynamicsymbols('qd_p')
 
 # Angular velocities of bodies
 omega_x_F, omega_y_F, omega_z_F = dynamicsymbols('omega_x_F, omega_y_F, omega_z_F')
@@ -64,10 +69,14 @@ x_BG, y_BG, z_BG = symbols('x_BG, y_BG, z_BG') # Position of Blade COG in Blade 
 
 
 # Points
-x_NR, z_NR = symbols('x_NR, z_NR') # 
+x_NR, z_NR = symbols('x_NR, z_NR') # From Nacelle origin to rotor center 
 z_TM, z_TB = symbols('z_TM, z_TB') # Position of mooring line attachment point and Buoyancy center in F, measured from point T
+#x_RB, z_RB = symbols('x_RB, z_RB') # From rotor center to blade root
+r_hub = symbols('r_h') # From rotor center to blade root
 
 
+# --- Loads
+gravity = symbols('g')
 
 
 # Subs2D = [(phi_x,0),(phi_z,0),(y,0),(z,0),(theta_yaw,0),(theta_tilt,0),

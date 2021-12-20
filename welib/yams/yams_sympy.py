@@ -141,6 +141,7 @@ class Taylor(object):
             
         self.varname=varname
         self.bodyname=bodyname
+        self.nq=nq
             
         self.M0=Matrix(np.zeros((nr,nc)).astype(int))
         for i in np.arange(nr):
@@ -154,7 +155,11 @@ class Taylor(object):
                 for i in np.arange(nr):
                     for j in np.arange(nc):
                         self.M1[k][i,j] = symbols('{}^1_{}_{}_{}{}'.format(varname,k+1,bodyname,rname[i],cname[j])) 
-    def eval(self, q):
+    def eval(self, q=None, order=None):
+        """ evaluate the taylor series """
+        if q is None:
+            q=[symbols('q_{}'.format(j+1)) for j in np.arange(self.nq)]
+
         M = self.M0
         if hasattr(self,'M1'): 
             nq = len(self.M1)
@@ -163,6 +168,15 @@ class Taylor(object):
             for k in np.arange(nq):
                 M +=self.M1[k]*q[k]
         return M
+
+    def get(self, dof=0, order=0):
+        """ return a given order """
+        if order ==0:
+            return self.M0
+        elif order ==1:
+            return self.M1[dof]
+        else:
+            raise NotImplementedError()
     
     def setOrder(self,order):
         if order==1:
@@ -444,10 +458,12 @@ class YAMSBody(object):
             for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
                 if d is not None:
                     pos += d * e
-                    if exprHasFunction(d) and not dynamicAllowed:
+                    d_ = diff(d,t)
+                    #if exprHasFunction(d) and not dynamicAllowed:
+                    if d_!=0 and not dynamicAllowed:
                         raise Exception('Position variable cannot be a dynamic variable for a rigid connection: variable {}'.format(d))
                     if dynamicAllowed:
-                        vel += diff(d,t) * e
+                        vel += d_ * e
         elif type=='Joint':
             # Defining relative position and velocity of child wrt parent
             for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
@@ -1016,8 +1032,8 @@ class YAMSFlexibleBody(YAMSBody):
 
         self.ucList =uList # "PhiU" values at connection point for each mode
         self.vcList =vList # "PhiV" valaes at connection point for each mode
-        
-    def bodyMassMatrix(self, q=None, form='TaylorExpanded'):
+
+    def bodyMassMatrix(self, q=None, form='TaylorExpanded', order=None, dof=None):
         """ Body mass matrix in body coordinates M'(q)
         form is ['symbolic' , 'TaylorExpanded']
         """
@@ -1032,7 +1048,28 @@ class YAMSFlexibleBody(YAMSBody):
         self.M[0,0] = self.mass
         self.M[1,1] = self.mass
         self.M[2,2] = self.mass
-        if form=='symbolic':
+
+        if order is not None and dof is not None:
+            """ Return the term of the mass matrix at a given order.
+            For order 1, terms are different for each dof"""
+            self.M[0,0] = 0
+            self.M[1,1] = 0
+            self.M[2,2] = 0
+            # Mrx, Mxr
+            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            # Mrr
+            self.M[3:6,3:6] = self.J.get(dof,order)
+            # Mgx, Mxg
+            self.M[6:6+nq,0:3] = self.Ct.get(dof,order)
+            self.M[0:3,6:6+nq] = self.M[6:6+nq,0:3].transpose()
+            # Mrg
+            self.M[6:6+nq,3:6] = self.Cr.get(dof,order)
+            self.M[3:6,6:6+nq] = self.M[6:6+nq,3:6].transpose()
+            # Mgg
+            self.M[6:6+nq,6:6+nq] = self.Me.get(dof,order)
+
+        elif form=='symbolic':
             # Mxr, Mxg
             for i in np.arange(0,3):
                 for j in np.arange(3,6+nq):
@@ -1060,6 +1097,7 @@ class YAMSFlexibleBody(YAMSBody):
             pass
 
         elif form=='TaylorExpanded':
+            # We evaluate
             # Mrx, Mxr
             self.M[0:3,3:6] = skew(self.mdCM.eval(q)) # NOTE: sign convention is opposite wallrapp, change convention
             self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
@@ -1072,8 +1110,8 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[6:6+nq,3:6] = self.Cr.eval(q)
             self.M[3:6,6:6+nq] = self.M[6:6+nq,3:6].transpose()
             # Mgg
-            Mgg = self.Me.eval(q)
-            self.M[6:6+nq,6:6+nq] = Mgg
+            self.M[6:6+nq,6:6+nq] = self.Me.eval(q)
+
         else:
             raise Exception('Unknown mass matrix form option `{}`'.format(form))
 
@@ -1322,6 +1360,7 @@ class YAMSFlexibleBody(YAMSBody):
         else:
             rd.update(rd)
 
+        # --- Mass matrix
         MM = self.bodyMassMatrix(q = [0]*len(self.q), form = form)
 
         rd[repr(MM[0,0])] = ('MM_{}'.format(self.name_for_var), [0,0])
@@ -1333,6 +1372,17 @@ class YAMSFlexibleBody(YAMSBody):
                 if len(s)>1:
                     if s[0]!='-':
                         rd[s] = ('MM_{}'.format(self.name_for_var), [i,j])
+        if form=='TaylorExpanded':
+            if hasattr(self.Me, 'M1'):
+                # We retrieve first order terms
+                for iq in np.arange(len(self.q)):
+                    MM1 =  self.bodyMassMatrix(dof=iq, order=1)
+                    for i in np.arange(0,MM1.shape[0]):
+                        for j in np.arange(3,MM1.shape[0]):
+                            s=repr(MM1[i,j])
+                            if len(s)>1:
+                                if s[0]!='-':
+                                    rd[s] = ('MM1_{}'.format(self.name_for_var), [iq,i,j])
 
         for iq in np.arange(len(self.Gr)):
             for i in np.arange(self.Gr[iq].M0.shape[0]):

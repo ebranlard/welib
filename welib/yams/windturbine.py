@@ -114,12 +114,15 @@ class WindTurbineStructure():
         WT=self;
         # --- Dict needed by structural script 
         p = dict()
+        try:
+            p['g']        = WT.FST['Gravity'] # NEW
+        except:
+            p['g']        = WT.ED['Gravity']
         p['z_FG']     = WT.fnd.masscenter[2]
         p['M_F']      = WT.fnd.mass
         p['J_xx_F']   = WT.fnd.masscenter_inertia[0,0]
         p['J_yy_F']   = WT.fnd.masscenter_inertia[1,1]
         p['J_zz_F']   = WT.fnd.masscenter_inertia[2,2]
-        p['g']        = WT.ED['Gravity']
         p['tilt']     =-WT.ED['ShftTilt']*np.pi/180 # in rad
         p['x_NR']     = WT.r_NR_inN[0]                    # x-coord from N to R in nac-coord
         p['z_NR']     = WT.r_NR_inN[2]                    # z-coord from N to R in nac-coord
@@ -167,10 +170,70 @@ class WindTurbineStructure():
         p['J_zz_B']   = WT.WT_rigid.masscenter_inertia[2,2]
         p['J_zx_B']   = WT.WT_rigid.masscenter_inertia[0,2]
 
+        # Blades
+        p['r_h']      = WT.ED['HubRad']
+        p['theta_c']  = WT.ED['PreCone(1)']
+        p['theta_p']  = WT.ED['BlPitch(1)']
+        p['psi_0']    = WT.ED['Azimuth']
+        p['z_BG']     = WT.bld[0].masscenter[2]
+        p['J_xx_B']   = WT.bld[0].masscenter_inertia[0,0]
+        p['J_yy_B']   = WT.bld[0].masscenter_inertia[1,1]
+        p['J_zz_B']   = WT.bld[0].masscenter_inertia[2,2]
+        p['Oe_B']     = WT.bld[0].Oe6
+        p['Gr_B']     = WT.bld[0].Gr
+        p['Ge_B']     = WT.bld[0].Ge
+        p['MM_B']     = WT.bld[0].MM
+        p['DD_B']     = WT.bld[0].DD
+        p['KK_B']     = WT.bld[0].KK
+        p['MM1_B']    = np.array(WT.bld[0].MM1)
+
+        # Flap 1
+#         p['MM_B'][6,6] =  9.249926E+02
+#         p['KK_B'][6,6] =  1.669818E+04
+#         p['DD_B'][6,6] =  3.752971E+01
+
+        # Flap 2
+#         p['MM_B'][6,6] =  5.614598E+02 
+#         p['KK_B'][6,6] =  8.495747E+04
+#         p['DD_B'][6,6] =  6.595256E+01
+        # Edge 1
+        p['MM_B'][6,6] =  1.430779E+03
+        p['KK_B'][6,6] =  6.682207E+04
+        p['DD_B'][6,6] =  9.337225E+01
+
+
+# Blade generalized mass matrix, Blade 1:
+#   9.249926E+02  0.000000E+00  0.000000E+00
+#   0.000000E+00  5.614598E+02  0.000000E+00
+#   0.000000E+00  0.000000E+00  1.430779E+03
+# Blade generalized stiffness matrix, Blade 1:
+#   1.669818E+04 -1.453662E+03  0.000000E+00
+#  -1.453662E+03  8.495747E+04  0.000000E+00
+#   0.000000E+00  0.000000E+00  6.682207E+04
+# Blade generalized damping matrix, Blade 1:
+#   3.752971E+01 -1.128479E+00  0.000000E+00
+#  -3.267153E+00  6.595256E+01  0.000000E+00
+#   0.000000E+00  0.000000E+00  9.337225E+01
+
+
+# Blade generalized mass matrix, Blade 1:
+#   9.249926E+02  0.000000E+00  0.000000E+00
+#   0.000000E+00  5.614598E+02  0.000000E+00
+#   0.000000E+00  0.000000E+00  1.430779E+03
+# Blade generalized stiffness matrix, Blade 1:
+#   1.669818E+04 -1.453662E+03  0.000000E+00
+#  -1.453662E+03  8.495747E+04  0.000000E+00
+#   0.000000E+00  0.000000E+00  6.682207E+04
+# Blade generalized damping matrix, Blade 1:
+#   3.752971E+01 -1.128479E+00  0.000000E+00
+#  -3.267153E+00  6.595256E+01  0.000000E+00
+
+#   0.000000E+00  0.000000E+00  9.337225E+01
+
         # Mooring restoring
         p['z_TM']      = 0
         p['K_x_M']     = 0
-        p['K_y_M']     = 0
+        
         p['K_z_M']     = 0
         p['K_phi_x_M'] = 0
         p['K_phi_y_M'] = 0
@@ -426,8 +489,12 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     DOFs+=[{'name':'\\nu'     ,'active':ED['DrTrDOF'] , 'q0': 0  , 'qd0':0 , 'q_channel':'Q_DrTr_[rad]', 'qd_channel':'QD_DrTr_[rad/s]'}]
 
-    DOFs+=[{'name':'q_Fl1'  , 'active':ED['FlapDOF1'] , 'q0': ED['OOPDefl']  , 'qd0':0 , 'q_channel':'Q_B1F1_[m]', 'qd_channel':'QD_B1F1_[m/s]'}]
-    DOFs+=[{'name':'q_Ed1'  , 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl']   , 'qd0':0 , 'q_channel':'Q_B1E1_[m]', 'qd_channel':'QD_B1E1_[m/s]'}]
+    # 
+    for ib in np.arange(ED['NumBl']):
+        B=str(ib+1)
+        DOFs+=[{'name':'q_B{}Fl1'.format(B), 'active':ED['FlapDOF1'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F1_[m]'.format(B), 'qd_channel':'QD_B{}F1_[m/s]'.format(B)}]
+        DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['FlapDOF2'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F2_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B)}]
+        DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl'] , 'qd0':0, 'q_channel':'Q_B{}E1_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B)}]
 
 # ---------------------- DEGREES OF FREEDOM --------------------------------------
 # False          FlapDOF1    - First flapwise blade mode DOF (flag)
@@ -461,6 +528,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     WT.r_NR_inN = r_NR_inN
     WT.r_SR_inS = r_SR_inS
     WT.ED=ED
+    WT.FST=FST
 
     return WT
 

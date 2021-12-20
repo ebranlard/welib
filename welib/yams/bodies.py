@@ -300,7 +300,8 @@ class BeamBody(FlexibleBody):
                 print('>>>BeamBody: Scaling mass distribution with factor {:.4f} in order to get a desired mass of {}'.format(factor,massExpected))
                 self.m /= factor
 
-        self.computeMassMatrix()
+        self.computeMassMatrixTaylor()
+        self.computeMassMatrix(s_G = self.s_G0, inPlace=True)
         self.computeStiffnessMatrix()
         self.computeDampingMatrix(damp_zeta)
 
@@ -423,11 +424,68 @@ class BeamBody(FlexibleBody):
         s_PG = -np.asarray(s_OP)+ self._s_OG
         return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
-    def computeMassMatrix(B):
-        B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = GMBeam(B.s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
-        if len(np.isnan(B.MM))>0:
+
+
+    def updateFlexibleKinematics(B, qe, qep):
+        """ see yams.py updateKinematics"""
+        # Deflections shape
+        B.U  = np.zeros((3,B.nSpan));
+        B.V  = np.zeros((3,B.nSpan));
+        B.K  = np.zeros((3,B.nSpan));
+        B.UP = np.zeros((3,B.nSpan));
+        for j in range(B.nf):
+            B.UP[0:3,:] +=  qep[j] * B.PhiU[j][0:3,:]
+            B.U [0:3,:] +=  qe[j]  * B.PhiU[j][0:3,:]
+            B.V [0:3,:] +=  qe[j]  * B.PhiV[j][0:3,:]
+            B.K [0:3,:] +=  qe[j]  * B.PhiK[j][0:3,:]
+        #B.V_tot=B.V+B.V0;
+        #B.K_tot=B.K+B.K0;
+        # Position of mean line
+        #B.s_P=B.s_P0+B.U;
+        # Position of COG TODO see yams.py for a better treatment
+        B.s_G = B.s_G0 + B.U;
+
+    def computeMassMatrixTaylor(B):
+        """ Compute Taylor expansion of the mass matrix """
+        s_G_bkp = B.s_G
+
+        delta = 0.1
+        qep   = np.zeros(B.nf)
+        B.MM1 =[]
+        B.Gr1 =[]
+        B.Ge1 =[]
+        B.Oe1 =[]
+        B.Oe61=[]
+        for j in np.arange(B.nf):
+            # Positive perturbation
+            qe  = np.zeros(B.nf); qe[j]=+delta; B.updateFlexibleKinematics(qe,qep)
+            MMp, Grp, Gep, Oep, Oe6p = B.computeMassMatrix(s_G=B.s_G, inPlace=False)
+            # Negative perturbation
+            qe  = np.zeros(B.nf); qe[j]=-delta; B.updateFlexibleKinematics(qe,qep)
+            MMm, Grm, Gem, Oem, Oe6m = B.computeMassMatrix(s_G=B.s_G, inPlace=False)
+            # Derivative
+            MM, Gr, Ge, Oe, Oe6 = (MMp-MMm)/(2*delta), (Grp-Grm)/(2*delta), (Gep-Gem)/(2*delta), (Oep-Oem)/(2*delta), (Oe6p-Oe6m)/(2*delta)
+            # Store in object
+            B.MM1.append(MM)
+            B.Gr1.append(Gr)
+            B.Ge1.append(Ge)
+            B.Oe1.append(Oe)
+            B.Oe61.append(Oe6)
+        # Revert back 
+        B.s_G = s_G_bkp
+
+
+    def computeMassMatrix(B, s_G = None, inPlace=True):
+        if s_G is None:
+            s_G = B.s_G
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
+        if len(np.isnan(MM))>0:
             #print('>>> WARNING, some mass matrix values are nan, replacing with 0')
-            B.MM[np.isnan(B.MM)]=0
+            MM[np.isnan(MM)]=0
+        if inPlace:
+            B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = MM, Gr, Ge, Oe, Oe6
+        return MM, Gr, Ge, Oe, Oe6
+
 
     @property
     def length(B):

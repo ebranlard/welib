@@ -13,11 +13,17 @@ from welib.tools.tictoc import Timer
 
 
 _defaultOpts={
-    'nB':3 , # Number of blades
     'floating':True,
     'yaw'    : 'fixed',  # 'fixed', 'dynamic' or 'zero'
     'tilt'   : 'fixed',  # 'fixed', 'dynamic' or 'zero'
-    'azimuth_init': 'dynamic',# 'fixed', 'dynamic' or 'zero'
+    # Blades Options
+    'nB':3                , # Number of blades
+    'azimuth_init': 'fixed',# 'fixed', or 'zero'
+    'pitch'  : 'fixed',# '','fixed', 'dynamic', 'or 'zero'
+    'cone'   : 'fixed',# '','fixed', or 'zero'
+    'coneAtRotorCenter': False,  # Ture in OpenFAST, coning starts at the rotor center, not at the blade root
+    'r_hub': 'fixed',  # 'fixed' or 'zero', hub radius depend on coneAtRotorCenter
+    #
     'Mform'  : 'TaylorExpanded', # 'symbolic',or 'TaylorExpanded'
     'mergeFndTwr':True, # Use one body for FND and TWR
     'tiltShaft':False, # Tilt shaft or nacelle
@@ -273,7 +279,7 @@ def get_model(model_name, **opts):
     sftSpeeds=[]
     if bFullRNA:
         if nDOF_sft==1:
-            sftDOFs   = [psi]
+            sftDOFs   = [q_psi]
             sftSpeeds = [omega_x_R]
         elif nDOF_sft==0:
             pass
@@ -290,6 +296,12 @@ def get_model(model_name, **opts):
             for ib, bld in enumerate(blds): 
                 bldDOFs   += bld.q
                 bldSpeeds += bld.qd
+
+
+    pitchDOF  = {'zero':0, 'fixed':theta_pitch,  'dynamic':q_pitch }[opts['pitch']]
+    coneDOF   = {'zero':0, 'fixed':theta_cone}[opts['cone']]
+    psi0      = {'zero':0, 'fixed':psi_0}[opts['azimuth_init']]
+    rh        = {'zero':0, 'fixed':r_hub}[opts['r_hub']]
 
     coordinates = fndDOFs   + twrDOFs   + nacDOFs   + sftDOFs   + bldDOFs 
     speeds      = fndSpeeds + twrSpeeds + nacSpeeds + sftSpeeds + bldSpeeds  # Order determine eq order
@@ -363,10 +375,14 @@ def get_model(model_name, **opts):
                 twr.connectToTip(nac, type='Joint', rel_pos=(0,0,twr.L)  , rot_amounts=(yawDOF, tiltDOF, 0), rot_order='ZYX', rot_type_elastic=opts['rot_elastic_type'], doSubs=opts['rot_elastic_subs'])
 
     # --- Ref to blades
-    if opts['azimuth_init']=='zero':
-        psi0 = 0
+    if opts['coneAtRotorCenter']:
+        # Like in OpenFAST we cone at the rotor center
+        x_RB = rh * sin(coneDOF) # NOTE: cone <0 for wind turbines, so x_RB<0 (downstream)
+        z_RB = rh * cos(coneDOF)
     else:
-        psi0 = psi_0
+        x_RB = 0
+        z_RB = rh
+
     nB = opts['nB']
     psi_b = [psi0+ib*2 * pi/nB for ib,_ in enumerate(blds)] # blade default azimuthal position
     if not bRotorOnly:
@@ -376,27 +392,28 @@ def get_model(model_name, **opts):
                 if nDOF_sft==0:
                     nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,tiltDOF,0), rot_order='ZYX')
                 else:
-                    nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,tiltDOF,psi), rot_order='ZYX')
+                    nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,tiltDOF,q_psi), rot_order='ZYX')
             else:
                 if nDOF_sft==0:
                     nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,0      ,0), rot_order='ZYX')
                 else:
-                    nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,0      ,psi), rot_order='ZYX')
+                    nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,0      ,q_psi), rot_order='ZYX')
             if bBld:
                 print('>>> Rigid connection from rotating shaft to each blades')
                 for ib,bld in enumerate(blds): 
-                    rot.connectTo(bld, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,psi_b[ib]), rot_order='ZYX')
+                    rot.connectTo(bld, type='Rigid', rel_pos=(x_RB,-z_RB*sin(psi_b[ib]), z_RB*cos(psi_b[ib])), rot_amounts=(psi_b[ib], coneDOF, pitchDOF), rot_order='XYZ')
     else:
 
         # --- Rotor Only
-        print('>>> TODO TODO hub radius, and precone')
         if nDOF_sft==0:
-            print('>>> Rigid connection from ref to each blades')
-            for ib,bld in enumerate(blds): 
-                ref.connectTo(bld, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,psi_b[ib]), rot_order='ZYX')
+            ref.connectTo(rot, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,0), rot_order='ZYX')
         else:
-            for ib,bld in enumerate(blds): 
-                ref.connectTo(bld, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,psi+psi_b[ib]), rot_order='ZYX')
+            ref.connectTo(rot, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,q_psi), rot_order='ZYX')
+
+        print('>>> TODO TODO hub radius, and precone')
+        for ib,bld in enumerate(blds): 
+            print('x_RB', x_RB, 'z_RB',z_RB, psi_b[ib])
+            rot.connectTo(bld, type='Rigid', rel_pos=(x_RB, -z_RB*sin(psi_b[ib]), z_RB*cos(psi_b[ib])), rot_amounts=(psi_b[ib], coneDOF, pitchDOF), rot_order='XYZ')
 
     # --------------------------------------------------------------------------------}
     # --- bodies
@@ -421,11 +438,10 @@ def get_model(model_name, **opts):
     # --- Kinetics
     # --------------------------------------------------------------------------------{
     body_loads       = []
-    g                = symbols('g')
-    g_vect           = -g * ref.frame.z
+    g_vect           = -gravity * ref.frame.z
     # --- Foundation/floater loads
     if fnd is not None:
-        grav_F = (fnd.masscenter, -fnd.mass * g * ref.frame.z)
+        grav_F = (fnd.masscenter, -fnd.mass * gravity * ref.frame.z)
         # Point of application for Buoyancy and mooring
         P_B = twr.origin.locatenew('P_B', z_TB * fnd.frame.z) # <<<< Measured from T
         P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # <<<< Measured from T
@@ -452,12 +468,12 @@ def get_model(model_name, **opts):
 
     # --- Tower loads
     if twr is not None:
-        grav_T       = (twr.masscenter, -twr.mass * g * ref.frame.z)
+        grav_T       = (twr.masscenter, -twr.mass * gravity * ref.frame.z)
         body_loads  += [(twr,grav_T)]  
 
     # --- Nacelle loads
     if nac is not None:
-        grav_N = (nac.masscenter, -nac.mass * g * ref.frame.z)
+        grav_N = (nac.masscenter, -nac.mass * gravity * ref.frame.z)
         body_loads  += [(nac,grav_N)]  
 
 
@@ -469,13 +485,13 @@ def get_model(model_name, **opts):
         if bBld:
             # Gravity on blades
             for ib,bld in enumerate(blds):
-                grav_B       = (bld.masscenter, -bld.mass * g * ref.frame.z)
+                grav_B       = (bld.masscenter, -bld.mass * gravity * ref.frame.z)
                 body_loads  += [(bld,grav_B)]  
 
             print('>>>> TODO aero/misc loads on blades')
         else:
             # Rotor loads
-            grav_R = (rot.masscenter, -M_R * g * ref.frame.z)
+            grav_R = (rot.masscenter, -M_R * gravity * ref.frame.z)
             body_loads  += [(rot,grav_R)]  
 
             # NOTE: loads on rot, but expressed in N frame
@@ -528,9 +544,6 @@ def get_model(model_name, **opts):
         for (b,l) in body_loads:
             print(b.name, l)
 
-
-
-
     # --------------------------------------------------------------------------------}
     # --- Kinematic equations 
     # --------------------------------------------------------------------------------{
@@ -542,7 +555,7 @@ def get_model(model_name, **opts):
             omega_RN = rot.ang_vel_in(nac.frame)  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
     else:
         # Rotor only
-        omega_RN = diff(psi, time) * ref.frame.x  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
+        omega_RN = diff(q_psi, time) * ref.frame.x  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
 
 
     kdeqsSubs =[]

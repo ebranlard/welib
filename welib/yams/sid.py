@@ -141,6 +141,7 @@ class SID(object):
 # ---  Converters
 # --------------------------------------------------------------------------------{
 def Beam2SID(xNodes, Imodes, m, Iy, Iz, G=None, Kv=None, A=None, E=None, phi=None):
+    """ High level interface, converts a beam to SID"""
     from welib.FEM.fem_beam import cbeam_assembly_frame3dlin
     from welib.FEM.fem_beam import applyBC
     from welib.FEM.fem_beam import orthogonalizeModePair, normalize_to_last
@@ -191,6 +192,7 @@ def Beam2SID(xNodes, Imodes, m, Iy, Iz, G=None, Kv=None, A=None, E=None, phi=Non
 
 
 def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DOF, Elem2DOF):
+    """ Mid level interface - Convert FEM data to sid"""
     from welib.FEM.fem_beam import generalizedMassMatrix, shapeIntegrals
     from welib.FEM.fem_beam import geometricalStiffening
     from numpy.linalg import inv
@@ -230,6 +232,7 @@ def FEM2SID(xNodes, A, E, m, MM, KK, MMr, KKr, Tr, Se, DCM, Elem2Nodes, Nodes2DO
 
 # --- Populating SID
 def FEMBeam2SID(Mtt, J0, Mrt, Mgt, Mgr, Mgg, KK, xNodes, DCM, Se, Kr, Kom0, Kom, C4=None, GKg=None):
+    """ Low level interface, computes SID from a set of intermediate FEM variables"""
     from welib.yams.utils import skew 
     # TODO take MM, KK, Tr as inputs
     assert(xNodes.shape[0]==3)

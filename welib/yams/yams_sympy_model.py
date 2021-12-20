@@ -317,7 +317,7 @@ class YAMSModel(object):
                 f.write('{}\n'.format(self.__repr__()))
                 f.write('"""\n')
                 f.write('import numpy as np\n')
-                f.write('from numpy import cos, sin\n')
+                f.write('from numpy import cos, sin, pi, sqrt\n')
 
                 infoToPy(f, self.name, self.coordinates, self.var)
 
@@ -618,7 +618,7 @@ class EquationsOfMotionQ(object):
                 f.write('model name: {}\n'.format(self.name))
                 f.write('"""\n')
                 f.write('import numpy as np\n')
-                f.write('from numpy import cos, sin\n')
+                f.write('from numpy import cos, sin, pi, sqrt\n')
 
                 infoToPy(f, self.name, self.q, self.input_vars)
 
