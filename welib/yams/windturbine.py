@@ -377,6 +377,10 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     # TODO SubDyn, MoorDyn, BeamDyn 
+    try:
+        gravity = FST['gravity']
+    except:
+        gravity = ED['gravity']
 
     r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
     r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
@@ -412,7 +416,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     print('>>> windturbine.py: TODO: using unknown jxxG')
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
-    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, nSpan=nSpanBld) 
+    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, nSpan=nSpanBld, gravity=gravity) 
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
         bld[iB+1].R_b2g
@@ -458,7 +462,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     # --- Twr
     twrFile = weio.read(twrfile)
-    twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=algo) # TODO options
+    twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=algo, gravity=gravity) # TODO options
     twr_rigid  = twr.toRigidBody()
     twr_rigid.pos_global = r_ET_inE
 
