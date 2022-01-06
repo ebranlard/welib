@@ -30,7 +30,6 @@ omega_x, omega_y, omega_z = dynamicsymbols('omega_x, omega_y, omega_z')
 M_B                       = symbols('M_B')                              # Masses: Foundation/Tower/Nacelle/Rotor
 Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')              # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
 x_BG, y_BG, z_BG          = symbols('x_BG, y_BG, z_BG')                # Position of Foundation COG in F, measured from point T
-x_NR, z_NR                = symbols('x_NR, z_NR')                       # 
 
 J_O, J_zz        = symbols('J_O, J_zz')    # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
 

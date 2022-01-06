@@ -33,10 +33,11 @@ ax.set_ylabel(r'Spectral density [m^2 s]')
 ax.set_title('Hydro - Jonswap spectrum')
 ax.tick_params(direction='in')
 
+
 if __name__=="__main__":
     plt.show()
 if __name__=="__test__":
-    pass
+    np.testing.assert_almost_equal(S[iMax], 113.8770176)
 if __name__=="__export__":
     from welib.tools.repo import export_figs_callback
     export_figs_callback(__file__)

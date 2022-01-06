@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 from welib.system.mech_system import MechSystem
+from welib.system.eva import eig, eigA
 import welib.weio as weio
 from welib.yams.windturbine import FASTWindTurbine
 
@@ -117,17 +118,18 @@ def main():
         sys=MechSystem(M, D, K, F=(time,F), x0=q0     , xdot0=qd0 )
     print(sys)
 
-    res=sys.integrate(time, method='LSODA') # **options):
-    # res=sys.integrate(time, method='RK45') # **options):
+    #res=sys.integrate(time, method='LSODA') # **options):
+    res=sys.integrate(time, method='RK45') # **options):
 
     # sys.plot()
 
     # --- Plot states
     fig,axes = plt.subplots( sys.nStates,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    axes[0].plot(sys.res.t, np.mod(sys.res.y[0,:],2*np.pi))
-    axes[0].plot(sys.res.t, q_r)
+    axes[0].plot(sys.res.t, np.mod(sys.res.y[0,:],2*np.pi), label='Python')
+    axes[0].plot(sys.res.t, q_r, label='OpenFAST')
     axes[0].set_ylabel(r'$\theta_r$ [rad]')
+    axes[0].legend()
 
     if model==1:
         axes[1].plot(sys.res.t, sys.res.y[1,:])
@@ -167,6 +169,20 @@ def main():
         axes[3].plot(sys.res.t, GenSpeed)
 
     axes[-1].set_xlabel('Time [s]')
+
+
+
+    # --- Frequencies
+    Q,Lambda = eig(K, M)# , freq_out=False, sort=True, normQ=None, discardIm=False):
+    freq_02 = np.sqrt(np.diag(Lambda))/(2*np.pi) # frequencies [Hz]
+    freq_d, zeta, Q, freq_0 = eigA(sys.A) #, nq=None, nq1=None, fullEV=False, normQ=None)
+    print('EVA  (zeta)    :',zeta   )
+    print('f_EVA          :',freq_d , '(damped)' )
+    print('f_EVA          :',freq_02, '(natural)' )
+    print('f_EVA          :',freq_0 , '(natural)' )
+    print('f_free-free    :',np.sqrt(K_DT/Jr_LSS + K_DT/Jg_LSS)/(2*np.pi))
+    print('f_fixed-free   :',np.sqrt(K_DT/(Jr_LSS))/(2*np.pi))
+
 
 
 if __name__=="__main__":
