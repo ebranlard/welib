@@ -267,8 +267,14 @@ def FASTFile2SteadyBEM(FASTFileName):
     from welib.weio.fast_input_deck import FASTInputDeck
     F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
 
-    rho     = F.AD['AirDens']
-    KinVisc = F.AD['KinVisc']
+    try:
+        rho     = float(F.fst['AirDens'])  # New OF > 3.0
+    except:
+        rho     = float(F.AD['AirDens'])   # Old OF <=3.0
+    try:
+        KinVisc = float(F.fst['KinVisc'])  # New OF > 3.0
+    except:
+        KinVisc = float(F.AD['KinVisc'])   # Old OF <= 3.0
 
     nB   =  F.ED['NumBl']
     cone = -F.ED['PreCone(1)']

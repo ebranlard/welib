@@ -22,7 +22,7 @@ False         Echo         - Echo input data to <RootName>.ech (flag)
 True          GenTiStr     - Method to start the generator {T: timed using TimGenOn, F: generator speed using SpdGenOn} (flag)
 True          GenTiStp     - Method to stop the generator {T: timed using TimGenOf, F: when generator power = 0} (flag)
        10.0   SpdGenOn     - Generator speed to turn on the generator for a startup (HSS speed) (rpm) [used only when GenTiStr=False]
-         5   TimGenOn     - Time to turn on the generator for a startup (s) [used only when GenTiStr=True]
+         0   TimGenOn     - Time to turn on the generator for a startup (s) [used only when GenTiStr=True]
      9999.9   TimGenOf     - Time to turn off the generator (s) [used only when GenTiStp=True]
 ---------------------- SIMPLE VARIABLE-SPEED TORQUE CONTROL --------------------
      1162.0   VS_RtGnSp    - Rated generator speed for simple variable-speed generator control (HSS side) (rpm) [used only when VSContrl=1]

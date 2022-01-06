@@ -410,7 +410,6 @@ def _move_fig(fig, w, h, x, y):
     if isinstance(fig,int) : fig = plt.figure(fig)
     manager = fig.canvas.manager
     backend = mpl.get_backend()
-    print(backend)
     if backend == 'TkAgg':
         s='{:d}x{:d}+{:d}+{:d}'.format(int(w),int(h),int(x),int(y))
         manager.window.wm_geometry("+%d+%d" % (x, y))

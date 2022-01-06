@@ -179,8 +179,17 @@ class AeroBEM:
         F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
 
         # Environment
-        self.rho     = F.AD['AirDens']
-        self.kinVisc = F.AD['KinVisc']
+        try:
+            self.rho     = float(F.fst['AirDens'])  # New OF > 3.0
+        except:
+            self.rho     = float(F.AD['AirDens'])   # Old OF <=3.0
+        try:
+            self.kinVisc = float(F.fst['KinVisc'])  # New OF > 3.0
+        except:
+            self.kinVisc = float(F.AD['KinVisc'])   # Old OF <= 3.0
+        print(self.rho)
+        print(self.kinVisc)
+
 
         # Aerodynamics
         self.nB    = F.ED['NumBl']

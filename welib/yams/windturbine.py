@@ -380,7 +380,10 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     try:
         gravity = FST['gravity']
     except:
-        gravity = ED['gravity']
+        try:
+            gravity = ED['gravity']
+        except:
+            raise Exception('Variable gravity not found in FST file or ED file.')
 
     r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
     r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
