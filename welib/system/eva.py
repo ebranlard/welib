@@ -72,7 +72,7 @@ def polyeig(*A, sort=False):
     return X, e
 
 
-def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=True):
+def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -203,7 +203,7 @@ def eigMCK(M, C, K, method='full_matrix', sort=True):
     if method.lower()=='diag_beta':
         ## using K, M and damping assuming diagonal beta matrix (Rayleigh Damping)
         Q, Lambda   = eig(K,M, sort=False) # provide scaled EV, important, no sorting here!
-        freq_0      = np.sqrt(np.diag(Lambda))/(2*np.pi) # TODO TODO TODO verify this?
+        freq_0      = np.sqrt(np.diag(Lambda))/(2*np.pi)
         betaMat     = np.dot(Q,C).dot(Q.T)
         xi          = (np.diag(betaMat)*np.pi/(2*np.pi*freq_0))
         xi[xi>2*np.pi] = np.NAN

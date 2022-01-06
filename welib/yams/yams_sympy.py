@@ -794,10 +794,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         #inertia: dyadic : (inertia(frame, *list), point)
         if J_at_Origin:
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.origin)
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NOTE: inertia at origin')
         else:
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
             
