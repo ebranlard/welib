@@ -29,29 +29,11 @@ def main(runSim=True, runFAST=False):
                       orderH=1,
                       twrDOFDir=['x','y','x','y'], # Order in which the flexible DOF of the tower are set
                      )
-    # --- Compute Kane's equations of motion
-    model.kaneEquations(Mform='TaylorExpanded')
-    EOM = model.to_EOM()
-
-    # --- Additional substitution 
     extraSubs=model.shapeNormSubs # shape functions normalized to unity
-    EOM.subs(extraSubs)
-
-    #  --- Small angle approximations
-    EOM.smallAngleApprox(model.twr.vcList, order = 2)
-    EOM.smallAngleApprox([theta_tilt, phi_y], order = 1)
-    EOM.simplify()
-
-    # --- Separate EOM into mass matrix and forcing
-    EOM.mass_forcing_form() # EOM.M and EOM.F
-
-    # --- Linearize equation of motions 
-    EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
-
-    # --- Export equations
+    smallAngles  = [(model.twr.vcList, 2)]
+    smallAngles += [([theta_tilt, phi_y]    , 1)]
     replaceDict={'theta_tilt':('tilt',None)}
-    EOM.savePython(folder='./', prefix='_', replaceDict=replaceDict)
-    EOM.saveTex   (folder='./', prefix='_', variables=['M','F','M0','K0','C0','B0'])
+    model.exportPackage(path='_F2T1RNA', extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex='_F2T1RNA')
 
     # --- Run non linear and linear simulation using a FAST model as input
     if runSim:

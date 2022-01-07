@@ -110,7 +110,12 @@ class WindTurbineStructure():
         chan+= [dof['qd_channel'] if dof['qd_channel'] is not None else 'd'+dof['name'] for dof in self.DOF if dof['active']]
         return chan
 
-    def yams_parameters(self):
+    def yams_parameters(self, flavor='allbodies'):
+        """ 
+        Export parameters needed by yams based on WT bodies
+        INPUTS:
+        - flavor: ['rigidbody', 'allbodies']
+        """
         WT=self;
         # --- Dict needed by structural script 
         p = dict()
@@ -118,88 +123,97 @@ class WindTurbineStructure():
             p['g']        = WT.FST['Gravity'] # NEW
         except:
             p['g']        = WT.ED['Gravity']
-        p['z_FG']     = WT.fnd.masscenter[2]
-        p['M_F']      = WT.fnd.mass
-        p['J_xx_F']   = WT.fnd.masscenter_inertia[0,0]
-        p['J_yy_F']   = WT.fnd.masscenter_inertia[1,1]
-        p['J_zz_F']   = WT.fnd.masscenter_inertia[2,2]
-        p['tilt']     =-WT.ED['ShftTilt']*np.pi/180 # in rad
-        p['x_NR']     = WT.r_NR_inN[0]                    # x-coord from N to R in nac-coord
-        p['z_NR']     = WT.r_NR_inN[2]                    # z-coord from N to R in nac-coord
-        p['x_RNAG']   = WT.RNA.masscenter[0]            # x-coord from N to RNA_G in nac-coord
-        p['z_RNAG']   = WT.RNA.masscenter[2]            # z-coord from N to RNA_G in nac-coord
-        p['M_RNA']    = WT.RNA.mass                   # Total mass of RNA
-        p['J_xx_RNA'] = WT.RNA.masscenter_inertia[0,0]           # Inertia of RNA at RNA_G in nac-coord
-        p['J_yy_RNA'] = WT.RNA.masscenter_inertia[1,1]           # Inertia of RNA at RNA_G in nac-coord
-        p['J_zz_RNA'] = WT.RNA.masscenter_inertia[2,2]           # Inertia of RNA at RNA_G in nac-coord
-        p['J_zx_RNA'] = WT.RNA.masscenter_inertia[0,2]           # Inertia of RNA at RNA_G in nac-coord
-        p['L_T']      = WT.twr.length
-        p['z_OT']     = WT.twr.pos_global[2]         # distance from "Origin" (MSL) to tower base
-        p['M_T']      = WT.twr.MM[0,0]
-        p['z_TG']     = WT.twr.masscenter[2]
-        p['J_xx_T']   = WT.twr.masscenter_inertia[0,0]
-        p['J_yy_T']   = WT.twr.masscenter_inertia[1,1]
-        p['J_zz_T']   = WT.twr.masscenter_inertia[2,2]
-        p['Oe_T']     = WT.twr.Oe6
-        p['Gr_T']     = WT.twr.Gr
-        p['Ge_T']     = WT.twr.Ge
-        p['MM_T']     = WT.twr.MM
-        p['v_yT1c']   = WT.twr.Bhat_t_bc[1,0]  # Mode 1  3 x nShapes
-        p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
-        p['DD_T']     = WT.twr.DD
-        p['KK_T']     = WT.twr.KK
-        # Rotor (blades + hub)
-        p['Jxx_R']    = WT.rotgen.masscenter_inertia[0,0]
-        p['JO_R']     = WT.rotgen.masscenter_inertia[1,1]
-        p['M_R']      = WT.rot.mass
-        # Nacelle 
-        p['J_xx_N']   = WT.nac.masscenter_inertia[0,0]
-        p['J_yy_N']   = WT.nac.masscenter_inertia[1,1]
-        p['J_zz_N']   = WT.nac.masscenter_inertia[2,2]
-        p['J_zx_N']   = WT.nac.masscenter_inertia[0,2]   
-        p['M_N']      = WT.nac.mass
-        p['x_NG']     = WT.nac.masscenter[0]            # x-coord from N to nac G in nac-coord
-        p['z_NG']     = WT.nac.masscenter[2]            # z-coord from N to nac G in nac-coord
-        # One body for all turbine
-        p['M_B']      = WT.WT_rigid.mass
-        p['x_BG']     = WT.WT_rigid.masscenter[0]
-        p['y_BG']     = WT.WT_rigid.masscenter[1]
-        p['z_BG']     = WT.WT_rigid.masscenter[2]
-        p['J_xx_B']   = WT.WT_rigid.masscenter_inertia[0,0]
-        p['J_yy_B']   = WT.WT_rigid.masscenter_inertia[1,1]
-        p['J_zz_B']   = WT.WT_rigid.masscenter_inertia[2,2]
-        p['J_zx_B']   = WT.WT_rigid.masscenter_inertia[0,2]
 
-        # Blades
-        p['r_h']      = WT.ED['HubRad']
-        p['theta_c']  = WT.ED['PreCone(1)']
-        p['theta_p']  = WT.ED['BlPitch(1)']
-        p['psi_0']    = WT.ED['Azimuth']
-        p['z_BG']     = WT.bld[0].masscenter[2]
-        p['J_xx_B']   = WT.bld[0].masscenter_inertia[0,0]
-        p['J_yy_B']   = WT.bld[0].masscenter_inertia[1,1]
-        p['J_zz_B']   = WT.bld[0].masscenter_inertia[2,2]
-        p['Oe_B']     = WT.bld[0].Oe6
-        p['Gr_B']     = WT.bld[0].Gr
-        p['Ge_B']     = WT.bld[0].Ge
-        p['MM_B']     = WT.bld[0].MM
-        p['DD_B']     = WT.bld[0].DD
-        p['KK_B']     = WT.bld[0].KK
-        p['MM1_B']    = np.array(WT.bld[0].MM1)
+        if flavor=='onebody':
+            # One body for all turbine
+            p['M_B']      = WT.WT_rigid.mass
+            p['x_BG']     = WT.WT_rigid.masscenter[0]
+            p['y_BG']     = WT.WT_rigid.masscenter[1]
+            p['z_BG']     = WT.WT_rigid.masscenter[2]
+            p['z_B0']     = - WT.WT_rigid.pos_global[2] # From refHeight to (0,0,0)
+            p['J_xx_B']   = WT.WT_rigid.masscenter_inertia[0,0]
+            p['J_yy_B']   = WT.WT_rigid.masscenter_inertia[1,1]
+            p['J_zz_B']   = WT.WT_rigid.masscenter_inertia[2,2]
+            p['J_zx_B']   = WT.WT_rigid.masscenter_inertia[0,2]
+            p['J_xx_BO']  = WT.WT_rigid.inertia[0,0]
+            p['J_yy_BO']  = WT.WT_rigid.inertia[1,1]
+            p['J_zz_BO']  = WT.WT_rigid.inertia[2,2]
+            p['J_zx_BO']  = WT.WT_rigid.inertia[0,2]
 
-        # Flap 1
-#         p['MM_B'][6,6] =  9.249926E+02
-#         p['KK_B'][6,6] =  1.669818E+04
-#         p['DD_B'][6,6] =  3.752971E+01
+        if flavor in ['allbodies']:
+            p['z_FG']     = WT.fnd.masscenter[2]
+            p['M_F']      = WT.fnd.mass
+            p['J_xx_F']   = WT.fnd.masscenter_inertia[0,0]
+            p['J_yy_F']   = WT.fnd.masscenter_inertia[1,1]
+            p['J_zz_F']   = WT.fnd.masscenter_inertia[2,2]
+            p['tilt']     =-WT.ED['ShftTilt']*np.pi/180 # in rad
+            p['x_NR']     = WT.r_NR_inN[0]                    # x-coord from N to R in nac-coord
+            p['z_NR']     = WT.r_NR_inN[2]                    # z-coord from N to R in nac-coord
+            p['x_RNAG']   = WT.RNA.masscenter[0]            # x-coord from N to RNA_G in nac-coord
+            p['z_RNAG']   = WT.RNA.masscenter[2]            # z-coord from N to RNA_G in nac-coord
+            p['M_RNA']    = WT.RNA.mass                   # Total mass of RNA
+            p['J_xx_RNA'] = WT.RNA.masscenter_inertia[0,0]           # Inertia of RNA at RNA_G in nac-coord
+            p['J_yy_RNA'] = WT.RNA.masscenter_inertia[1,1]           # Inertia of RNA at RNA_G in nac-coord
+            p['J_zz_RNA'] = WT.RNA.masscenter_inertia[2,2]           # Inertia of RNA at RNA_G in nac-coord
+            p['J_zx_RNA'] = WT.RNA.masscenter_inertia[0,2]           # Inertia of RNA at RNA_G in nac-coord
+            p['L_T']      = WT.twr.length
+            p['z_OT']     = WT.twr.pos_global[2]         # distance from "Origin" (MSL) to tower base
+            p['M_T']      = WT.twr.MM[0,0]
+            p['z_TG']     = WT.twr.masscenter[2]
+            p['J_xx_T']   = WT.twr.masscenter_inertia[0,0]
+            p['J_yy_T']   = WT.twr.masscenter_inertia[1,1]
+            p['J_zz_T']   = WT.twr.masscenter_inertia[2,2]
+            p['Oe_T']     = WT.twr.Oe6
+            p['Gr_T']     = WT.twr.Gr
+            p['Ge_T']     = WT.twr.Ge
+            p['MM_T']     = WT.twr.MM
+            p['v_yT1c']   = WT.twr.Bhat_t_bc[1,0]  # Mode 1  3 x nShapes
+            p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
+            p['DD_T']     = WT.twr.DD
+            p['KK_T']     = WT.twr.KK
+            # Rotor (blades + hub)
+            p['Jxx_R']    = WT.rotgen.masscenter_inertia[0,0]
+            p['JO_R']     = WT.rotgen.masscenter_inertia[1,1]
+            p['M_R']      = WT.rot.mass
+            # Nacelle 
+            p['J_xx_N']   = WT.nac.masscenter_inertia[0,0]
+            p['J_yy_N']   = WT.nac.masscenter_inertia[1,1]
+            p['J_zz_N']   = WT.nac.masscenter_inertia[2,2]
+            p['J_zx_N']   = WT.nac.masscenter_inertia[0,2]   
+            p['M_N']      = WT.nac.mass
+            p['x_NG']     = WT.nac.masscenter[0]            # x-coord from N to nac G in nac-coord
+            p['z_NG']     = WT.nac.masscenter[2]            # z-coord from N to nac G in nac-coord
 
-        # Flap 2
-#         p['MM_B'][6,6] =  5.614598E+02 
-#         p['KK_B'][6,6] =  8.495747E+04
-#         p['DD_B'][6,6] =  6.595256E+01
-        # Edge 1
-        p['MM_B'][6,6] =  1.430779E+03
-        p['KK_B'][6,6] =  6.682207E+04
-        p['DD_B'][6,6] =  9.337225E+01
+            # Blades
+            p['r_h']      = WT.ED['HubRad']
+            p['theta_c']  = WT.ED['PreCone(1)']
+            p['theta_p']  = WT.ED['BlPitch(1)']
+            p['psi_0']    = WT.ED['Azimuth']
+            p['z_BG']     = WT.bld[0].masscenter[2]
+            p['J_xx_B']   = WT.bld[0].masscenter_inertia[0,0]
+            p['J_yy_B']   = WT.bld[0].masscenter_inertia[1,1]
+            p['J_zz_B']   = WT.bld[0].masscenter_inertia[2,2]
+            p['Oe_B']     = WT.bld[0].Oe6
+            p['Gr_B']     = WT.bld[0].Gr
+            p['Ge_B']     = WT.bld[0].Ge
+            p['MM_B']     = WT.bld[0].MM
+            p['DD_B']     = WT.bld[0].DD
+            p['KK_B']     = WT.bld[0].KK
+            p['MM1_B']    = np.array(WT.bld[0].MM1)
+
+            # Flap 1
+    #         p['MM_B'][6,6] =  9.249926E+02
+    #         p['KK_B'][6,6] =  1.669818E+04
+    #         p['DD_B'][6,6] =  3.752971E+01
+
+            # Flap 2
+    #         p['MM_B'][6,6] =  5.614598E+02 
+    #         p['KK_B'][6,6] =  8.495747E+04
+    #         p['DD_B'][6,6] =  6.595256E+01
+            # Edge 1
+            p['MM_B'][6,6] =  1.430779E+03
+            p['KK_B'][6,6] =  6.682207E+04
+            p['DD_B'][6,6] =  9.337225E+01
 
 
 # Blade generalized mass matrix, Blade 1:
@@ -231,19 +245,25 @@ class WindTurbineStructure():
 #   0.000000E+00  0.000000E+00  9.337225E+01
 
         # Mooring restoring
-        p['z_TM']      = 0
-        p['K_x_M']     = 0
-        
-        p['K_z_M']     = 0
-        p['K_phi_x_M'] = 0
-        p['K_phi_y_M'] = 0
-        p['K_phi_z_M'] = 0
+        if flavor in ['allbodies']:
+            p['z_TM']      = 0
+            p['K_x_M']     = 0
+            
+            p['K_z_M']     = 0
+            p['K_phi_x_M'] = 0
+            p['K_phi_y_M'] = 0
+            p['K_phi_z_M'] = 0
+
         # Buoyancy
-        p['z_TB']      = 0
+        if flavor=='onebody':
+            print('>>> TODO Buoyancy point')
+            p['z_BB']      = 0
+        else:
+            p['z_TB']      = 0
         return p
 
-    def simulate_py(self, model, p, time=None, refOut=None):
-        """ Perform non-linear simulation based on a model (python package) generated by yams_sympy """
+    def simulate_py(self, model, p, time=None, refOut=None, u=None):
+        """ Perform non-linear simulation based on a `model` (python package) generated by yams_sympy """
         from welib.system.mech_system import MechSystem
 
         # --- Reference simulation
@@ -269,10 +289,15 @@ class WindTurbineStructure():
 
 
         # --- Non linear
-        u=dict()
+        if u is None:
+            u=dict()
         for key in info['su']:
-            # TODO get it from ref simulation
-            u[key]= lambda t: 0
+            if key in u.keys():
+                print('[INFO] windturbine.py  u[{}] set by user'.format(key))
+            else:
+                # TODO get it from ref simulation
+                print('[WARN] windturbine.py: u[{}] set to 0'.format(key))
+                u[key]= lambda t,q=None,qd=None: 0
         t=0
         MM      = model.mass_matrix(q0,p)
         forcing = model.forcing(t,q0,qd0,p,u)

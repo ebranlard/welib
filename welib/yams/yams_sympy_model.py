@@ -142,7 +142,7 @@ class YAMSModel(object):
         self.smallAnglesUsed+=angle_list
         
 
-    def smallAngleApproxEOM(self, angle_list, extraSubs=None):
+    def smallAngleApproxEOM(self, angle_list, extraSubs=None, order=1):
         """ 
         Apply small angle approximation to equation of motion H(x,xd,xdd,..)=0
         """
@@ -150,7 +150,7 @@ class YAMSModel(object):
         EOM=self.EOM()
         with Timer('Small angle approx. EOM',True,silent=True):
             EOM = EOM.subs(extraSubs)
-            EOM = smallAngleApprox(EOM, angle_list).subs(extraSubs)
+            EOM = smallAngleApprox(EOM, angle_list, order=order).subs(extraSubs)
         #with Timer('Small angle approx. EOM simplify',True):
         #    EOM.simplify()
         self._sa_EOM = EOM
@@ -219,9 +219,11 @@ class YAMSModel(object):
 
         return M,C,K,B
 
-    def to_EOM(self):
+    def to_EOM(self, extraSubs=None):
         """ return a class to easily manipulate the equations of motion in place"""
         EOM = self.EOM().subs(self.kdeqsSubs).doit()
+        if extraSubs is not None:
+            EOM = EOM.subs(extraSubs)
 
         bodyReplaceDict=OrderedDict()
         for b in self.bodies:
@@ -230,12 +232,68 @@ class YAMSModel(object):
 
         return EquationsOfMotionQ(EOM, self.coordinates, self.name, bodyReplaceDict)
 
-    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
+    def exportPackage(self, path='', extraSubs=None, smallAngles=None, linearize=True, replaceDict=None, pathtex=None):
+        """ 
+        Export to a python package
+        - replaceDict: replace dictionary for python export
+        - path: path to package. If none is provided, export to model.name
+        - smallAngle: list of tuples, each item being a tuble with a list of angles, and order of lin:
+                [ ([angle1, angle2], 1) ,  ([vc], 2) ]
+        """
+        # --- Compute Kane's equations of motion
+        if self.kane is None:
+            self.kaneEquations(Mform='TaylorExpanded')
+
+        # --- Use EOM
+        EOM = self.to_EOM(extraSubs=extraSubs)
+
+        #  --- Small angle approximations
+        if smallAngles is not None:
+            for sa_list_order in smallAngles:
+                sa_list = sa_list_order[0]
+                order   = sa_list_order[1]
+                EOM.smallAngleApprox(sa_list, order=order)
+            EOM.simplify()
+
+        # --- Separate EOM into mass matrix and forcing
+        EOM.mass_forcing_form() # EOM.M and EOM.F
+
+        # --- Linearize equation of motions 
+        if linearize:
+            EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
+
+        # --- Export path
+        if len(path)>0:
+            folder = os.path.dirname(path)
+            name= os.path.basename(path)
+            try:
+                os.makedirs(folder)
+            except:
+                pass
+        else:
+            folder = './'
+            name   = self.name
+
+        # --- Export equations
+        EOM.savePython(name=name, folder=folder, replaceDict=replaceDict)
+        if pathtex is not None:
+            folder = os.path.dirname(pathtex)
+            name= os.path.basename(pathtex)
+            try:
+                os.makedirs(folder)
+            except:
+                pass
+            EOM.saveTex(name=name, folder=folder, variables=['M','F','M0','K0','C0','B0'])
+
+
+    def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
         """ 
         Save forcing and mass matrix to latex file
         """
         extraSubs = [] if extraSubs is None else extraSubs
-        name=prefix+self.name
+        if len(name)==0:
+            name=self.name
+        name=prefix
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
 
@@ -343,120 +401,27 @@ class YAMSModel(object):
             s+=B0ToPy(self.coordinates, self.B0, self.var, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
 
         if 'FFsa' in variables and self._sa_forcing is not None:
-            FF = subs_no_diff(self._sa_forcing,extraSubs)
-            FF = FF.subs(velSubs)
-            if doSimplify:
-                FF=FF.simplify()
-            s0, params, inputs, sdofs  = cleanPy(FF, varname='FF', dofs = self.coordinates, indent=4, replDict=replaceDict)
-            s +='def forcing_sa(t,q=None,qd=None,p=None,u=None,z=None):\n'
-            s +='    """ Non linear forcing with small angle approximation\n'
-            s +='    q:  degrees of freedom, array-like: {}\n'.format(sdofs)
-            s +='    qd: dof velocities, array-like\n'
-            s +='    p:  parameters, dictionary with keys: {}\n'.format(params)
-            s +='    u:  inputs, dictionary with keys: {}\n'.format(inputs)
-            s +='           where each values is a function of time\n'
-            s +='    """\n'
-            s +='    if z is not None:\n'
-            s +='        q  = z[0:int(len(z)/2)] \n'
-            s +='        qd = z[int(len(z)/2): ] \n'
-            s +=s0
-            s +='    return FF\n\n'
-
+            forcing = self._sa_forcing
+            s+=forcingToPy(self.coordinates, forcing, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify, fname='forcing_sa',extraComment='with small angle approximation')
         if 'MMsa' in variables and self._sa_mass_matrix is not None:
-            MM=subs_no_diff(self._sa_mass_matrix,extraSubs)
-            MM = MM.subs(velSubs)
-            if doSimplify:
-                MM.simplify()
-            s0, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict)
-            s += 'def mass_matrix_sa(q=None,p=None,z=None):\n'
-            s += '    """ Non linear mass matrix with small angle approximation\n'
-            s += '     q:  degrees of freedom, array-like: {}\n'.format(sdofs)
-            s += '     p:  parameters, dictionary with keys: {}\n'.format(params)
-            s += '    """\n'
-            s += '    if z is not None:\n'
-            s += '        q  = z[0:int(len(z)/2)] \n'
-            s += s0
-            s += '    return MM\n\n'
-
+            MM = self._sa_mass_matrix
+            s+=MMToPy(self.coordinates, MM, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify, fname='mass_matrix_sa', extraComment='with small angle approximation')
         if 'Msa' in variables and self._sa_M is not None:
-            MM=subs_no_diff(self._sa_M,extraSubs)
-            MM = MM.subs(velSubs)
-            if doSimplify:
-                MM.simplify()
-            s0, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
-            s += 'def M_lin_sa(q=None,p=None,z=None):\n'
-            s += '    """ Linear mass matrix with small angle approximation\n'
-            s += '    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs)
-            s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
-            s += '    """\n'
-            s += '    if z is not None:\n'
-            s += '        q  = z[0:int(len(z)/2)] \n'
-            s += s0
-            s += '    return MM\n\n'
-
-        if 'Csa' in variables and self._sa_C is not None:
-            MM=subs_no_diff(self._sa_C,extraSubs)
-            MM = MM.subs(velSubs)
-            if doSimplify:
-                MM.simplify()
-            s0, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
-            s += 'def C_lin_sa(q=None,qd=None,p=None,u=None,z=None):\n'
-            s += '    """ Linear damping matrix with small angle approximation\n'
-            s += '    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs)
-            s += '    qd: dof velocities at operating point, array-like\n'
-            s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
-            s += '    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs)
-            s += '           where each values is a constant!\n'
-            s += '    """\n'
-            s += '    if z is not None:\n'
-            s += '        q  = z[0:int(len(z)/2)] \n'
-            s += '        qd = z[int(len(z)/2): ] \n'
-            s += s0
-            s += '    return CC\n\n'
-
+            s+=M0ToPy(self.coordinates, self._sa_M, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify, fname='M_lin_sa', extraComment='with small angle approximation')
+        if 'Csa' in variables and self._sa_K is not None:
+            s+=C0ToPy(self.coordinates, self._sa_C, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify, fname='C_lin_sa', extraComment='with small angle approximation')
         if 'Ksa' in variables and self._sa_K is not None:
-            MM=subs_no_diff(self._sa_K,extraSubs)
-            MM = MM.subs(velSubs)
-            if doSimplify:
-                MM.simplify()
-            s0, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
-            s += 'def K_lin_sa(q=None,qd=None,p=None,u=None,z=None):\n'
-            s += '    """ Linear stiffness matrix with small angle approximation\n'
-            s += '    q:  degrees of freedom, array-like: {}\n'.format(sdofs)
-            s += '    qd: dof velocities, array-like\n'
-            s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
-            s += '    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs)
-            s += '           where each values is a constant!\n'
-            s += '    """\n'
-            s += '    if z is not None:\n'
-            s += '        q  = z[0:int(len(z)/2)] \n'
-            s += '        qd = z[int(len(z)/2): ] \n'
-            s += s0
-            s += '    return KK\n\n'
-
+            s+=K0ToPy(self.coordinates, self._sa_K, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify, fname='K_lin_sa', extraComment='with small angle approximation')
         if 'Bsa' in variables and self._sa_B is not None:
-            MM=subs_no_diff(self._sa_B,extraSubs)
-            MM = MM.subs(velSubs)
-            if doSimplify:
-                MM.simplify()
-            s0, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = self.coordinates, indent=4, replDict=replaceDict, noTimeDep=True)
-            s += 'def B_lin_sa(q=None,qd=None,p=None,u=None):\n'
-            s += '    """ Linear mass matrix with small angle approximation\n'
-            s += '    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs)
-            s += '    qd: dof velocities at operating point, array-like\n'
-            s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
-            s += '    u:  inputs at operating point, dictionary with keys: {}\n'.format(inputs)
-            s += '           where each values is a constant!\n'
-            s += '    The columns of B correspond to:   {}\\\\ \n'.format(self.var)
-            s += '    """\n'
-            s += s0
-            s += '    return BB\n\n'
+            s+=B0ToPy(self.coordinates, self._sa_B, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify, fname='B_lin_sa', extraComment='with small angle approximation')
         return s
 
         #print(replaceDict)
-    def savePython(self, prefix='', suffix='', folder='./', **kwargs):
+    def savePython(self, name='', prefix='', suffix='', folder='./', **kwargs):
         """ see toPython for arguments"""
-        name=prefix+self.name
+        if len(name)==0:
+            name=self.name
+        name=prefix+name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
         filename=os.path.join(folder,name+'.py')
@@ -519,10 +484,16 @@ class EquationsOfMotionQ(object):
         self.name=name
         self.bodyReplaceDict=bodyReplaceDict
 
+        self.input_vars=findInputs(EOM, q)     
+        #self.mass_forcing_form(self, extraSubs=None) # M and F
+        #self.linearize(self, op_point, noAcc, noVel=False, extraSubs=None): # M0,K0,B0
+ 
+
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
         s+=' - name:    {}\n'.format(self.name)
         s+=' - q:       {}\n'.format(self.q)
+        s+=' - input_vars: {}\n'.format(self.input_vars)
         s+=' - bodyReplaceDict: {}\n'.format(self.bodyReplaceDict)
         s+=' - smallAnglesUsed: {}\n'.format(self.smallAnglesUsed)
         s+='attributes: EOM\n'.format(self.smallAnglesUsed)
@@ -582,12 +553,14 @@ class EquationsOfMotionQ(object):
         self.M0,self.C0,self.K0,self.B0, self.input_vars = linearizeQ(self.EOM, self.q, op_point=op_point, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
         return self.M0, self.C0, self.K0, self.B0
 
-    def saveTex(self, prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)]):
+    def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)]):
         """ 
         Save EOM to a latex file
         """
         extraSubs = [] if extraSubs is None else extraSubs
-        name=prefix+self.name
+        if len(name)==0:
+            name=self.name
+        name=prefix+name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
 
@@ -648,9 +621,11 @@ class EquationsOfMotionQ(object):
             s+=B0ToPy(self.q, self.B0, self.input_vars, replaceDict=replaceDict, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
         return s
     
-    def savePython(self, prefix='', suffix='', folder='./', **kwargs):
-        """ see toPython for extra arguments"""
-        name=prefix+self.name
+    def savePython(self, name='', prefix='', suffix='', folder='./', **kwargs):
+        """ Write EOM to python. See toPython for extra arguments"""
+        if len(name)==0:
+            name=self.name
+        name=prefix+name
         if len(suffix)>0:
             name=name+'_'+suffix.strip('_')
         filename=os.path.join(folder,name+'.py')
@@ -662,7 +637,21 @@ class EquationsOfMotionQ(object):
 # --------------------------------------------------------------------------------}
 # --- Main helper functions  
 # --------------------------------------------------------------------------------{
-def linearizeQ(EOM, q, op_point=None, noAcc=True, noVel=False, extraSubs=None):
+def findInputs(EOM, q):
+    """ Find variables within the EOM that are not """
+    qd  = [qi.diff(dynamicsymbols._t) for qi in q]
+    qdd = [qdi.diff(dynamicsymbols._t) for qdi in qd]
+    dyn_symbols = find_dynamicsymbols(EOM)
+    all_q       = q + qd + qdd
+    inputs      = [s for s in dyn_symbols if s not in all_q]
+    II = np.argsort([str(v) for v in inputs]) # sorting for consistency
+    inputs = list(np.array(inputs)[II])
+    return inputs
+
+def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs=None):
+    """ Linearize the equations of motions using state "q" and derivatives
+    The alternative is to use the kinematic equations using linearizer.linearize.
+    """
     op_point  = [] if op_point is None else op_point
     extraSubs = [] if extraSubs is None else extraSubs
     qd  = [qi.diff(dynamicsymbols._t) for qi in q]
@@ -680,11 +669,8 @@ def linearizeQ(EOM, q, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         # use if isinstance sympy.core.function.Derivative
     
         # --- Inputs are dynamic symbols that are not coordinates
-        dyn_symbols = find_dynamicsymbols(EOM)
-        all_q       = q + qd + qdd
-        inputs      = [s for s in dyn_symbols if s not in all_q]
-        II = np.argsort([str(v) for v in inputs]) # sorting for consistency
-        inputs = list(np.array(inputs)[II])
+        if u is None:
+            u = findInputs(EOM, q)
         # KEEP ME Alternative
         #M, A, B = linearizer.linearize(op_point=op_point ) #o
 
@@ -699,14 +685,14 @@ def linearizeQ(EOM, q, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         #M =subs_no_diff(M, op_point)
         #C =subs_no_diff(C, op_point)
         #K =subs_no_diff(K, op_point)
-        if len(inputs)>0:
-            B = EOM.jacobian(inputs).subs(extraSubs).subs(op_point)
+        if len(u)>0:
+            B = EOM.jacobian(u).subs(extraSubs).subs(op_point)
         else:
             B=Matrix([])
-    return M,C,K,B, inputs
+    return M,C,K,B,u
 
 
-def forcingToPy(q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+def forcingToPy(q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='forcing', extraComment=''):
     extraSubs = [] if extraSubs is None else extraSubs
     forcing = subs_no_diff(forcing, extraSubs)
     forcing = forcing.subs(velSubs)
@@ -715,8 +701,8 @@ def forcingToPy(q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], d
 
     s=''
     s0, params, inputs, sdofs  = cleanPy(forcing, varname='FF', dofs = q, indent=4, replDict=replaceDict)
-    s += 'def forcing(t,q=None,qd=None,p=None,u=None,z=None):\n'
-    s += '    """ Non linear mass forcing \n'
+    s += 'def {}(t,q=None,qd=None,p=None,u=None,z=None):\n'.format(fname)
+    s += '    """ Non linear mass forcing{} \n'.format(extraComment)
     s += '    q:  degrees of freedom, array-like: {}\n'.format(sdofs)
     s += '    qd: dof velocities, array-like\n'
     s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
@@ -731,7 +717,7 @@ def forcingToPy(q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], d
     return s
 
 
-def MMToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+def MMToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='mass_matrix', extraComment=''):
     extraSubs = [] if extraSubs is None else extraSubs
     MM = subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
@@ -740,8 +726,8 @@ def MMToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
         #MM.simplify()
     s=''
     s0, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = q, indent=4, replDict=replaceDict)
-    s += 'def mass_matrix(q=None,p=None,z=None):\n'
-    s += '    """ Non linear mass matrix \n'
+    s += 'def {}(q=None,p=None,z=None):\n'.format(fname)
+    s += '    """ Non linear mass matrix {}\n'.format(extraComment)
     s += '     q:  degrees of freedom, array-like: {}\n'.format(sdofs)
     s += '     p:  parameters, dictionary with keys: {}\n'.format(params)
     s += '    """\n'
@@ -752,7 +738,7 @@ def MMToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
     return s
 
 
-def M0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+def M0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='M_lin', extraComment=''):
     extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
@@ -760,8 +746,8 @@ def M0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
         MM.simplify()
     s=''
     s0, params, inputs, sdofs  = cleanPy(MM, varname='MM', dofs = q, indent=4, replDict=replaceDict, noTimeDep=True)
-    s+='def M_lin(q=None,p=None,z=None):\n'
-    s+='    """ Linear mass matrix \n'
+    s+='def {}(q=None,p=None,z=None):\n'.format(fname)
+    s+='    """ Linear mass matrix {}\n'.format(extraComment)
     s+='    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs)
     s+='    p:  parameters, dictionary with keys: {}\n'.format(params)
     s+='    """\n'
@@ -771,7 +757,7 @@ def M0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
     s+='    return MM\n\n'
     return s
 
-def C0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+def C0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='C_lin', extraComment=''):
     extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
@@ -779,8 +765,8 @@ def C0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
         MM.simplify()
     s=''
     s0, params, inputs, sdofs  = cleanPy(MM, varname='CC', dofs = q, indent=4, replDict=replaceDict, noTimeDep=True)
-    s += 'def C_lin(q=None,qd=None,p=None,u=None,z=None):\n'
-    s += '    """ Linear damping matrix \n'
+    s += 'def {}(q=None,qd=None,p=None,u=None,z=None):\n'.format(fname)
+    s += '    """ Linear damping matrix {}\n'.format(extraComment)
     s += '    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs)
     s += '    qd: dof velocities at operating point, array-like\n'
     s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
@@ -794,7 +780,7 @@ def C0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
     s += '    return CC\n\n'
     return s
 
-def K0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+def K0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='K_lin', extraComment=''):
     extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
@@ -802,8 +788,8 @@ def K0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
         MM.simplify()
     s=''
     s0, params, inputs, sdofs  = cleanPy(MM, varname='KK', dofs = q, indent=4, replDict=replaceDict, noTimeDep=True)
-    s +='def K_lin(q=None,qd=None,p=None,u=None,z=None):\n'
-    s +='    """ Linear stiffness matrix \n'
+    s +='def {}(q=None,qd=None,p=None,u=None,z=None):\n'.format(fname)
+    s +='    """ Linear stiffness matrix {}\n'.format(extraComment)
     s +='    q:  degrees of freedom, array-like: {}\n'.format(sdofs)
     s +='    qd: dof velocities, array-like\n'
     s +='    p:  parameters, dictionary with keys: {}\n'.format(params)
@@ -817,7 +803,8 @@ def K0ToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
     s +='    return KK\n\n'
     return s
 
-def B0ToPy(q, MM, input_vars, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False):
+
+def B0ToPy(q, MM, input_vars, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='B_lin', extraComment=''):
     extraSubs = [] if extraSubs is None else extraSubs
     MM=subs_no_diff(MM,extraSubs)
     MM = MM.subs(velSubs)
@@ -825,8 +812,8 @@ def B0ToPy(q, MM, input_vars, replaceDict=None, extraSubs=None, velSubs=[(0,0)],
         MM.simplify()
     s=''
     s0, params, inputs, sdofs  = cleanPy(MM, varname='BB', dofs = q, indent=4, replDict=replaceDict, noTimeDep=True)
-    s += 'def B_lin(q=None,qd=None,p=None,u=None):\n'
-    s += '    """ Linear mass matrix \n'
+    s += 'def {}(q=None,qd=None,p=None,u=None):\n'.format(fname)
+    s += '    """ Linear mass matrix {}\n'.format(extraComment)
     s += '    q:  degrees of freedom at operating point, array-like: {}\n'.format(sdofs)
     s += '    qd: dof velocities at operating point, array-like\n'
     s += '    p:  parameters, dictionary with keys: {}\n'.format(params)

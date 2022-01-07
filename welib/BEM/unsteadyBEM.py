@@ -187,8 +187,6 @@ class AeroBEM:
             self.kinVisc = float(F.fst['KinVisc'])  # New OF > 3.0
         except:
             self.kinVisc = float(F.AD['KinVisc'])   # Old OF <= 3.0
-        print(self.rho)
-        print(self.kinVisc)
 
 
         # Aerodynamics

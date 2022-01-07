@@ -20,38 +20,23 @@ import importlib
 from welib.yams.models.FTNSB_sympy import get_model
 from welib.yams.models.FTNSB_sympy_symbols import *
 
-def main(runSim=True, runFAST=False):
+def main(runSim=True, runFAST=False, create=True):
 
-    model = get_model('F0T2N0S1', mergeFndTwr=True, linRot=False,
-                      yaw='zero', tilt='fixed',tiltShaft=True,
-                      rot_elastic_type='SmallRot', #rot_elastic_type='Body', 'Body' or 'SmallRot'
-                      orderMM=1,
-                      orderH=1,
-                      twrDOFDir=['x','y','x','y'], # Order in which the flexible DOF of the tower are set
-                     )
-    # --- Compute Kane's equations of motion
-    model.kaneEquations(Mform='TaylorExpanded')
-    EOM = model.to_EOM()
+    if create:
+        model = get_model('F0T2N0S1', mergeFndTwr=True, linRot=False,
+                          yaw='zero', tilt='fixed',tiltShaft=True,
+                          rot_elastic_type='SmallRot', #rot_elastic_type='Body', 'Body' or 'SmallRot'
+                          orderMM=1,
+                          orderH=1,
+                          twrDOFDir=['x','y','x','y'], # Order in which the flexible DOF of the tower are set
+                         )
+        extraSubs=model.shapeNormSubs # shape functions normalized to unity
+        smallAngles  = [(model.twr.vcList, 2)]
+        smallAngles += [([theta_tilt]    , 1)]
+        replaceDict={'theta_tilt':('tilt',None)}
+        model.exportPackage(path='_F0T2N0S1', extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex='_F0T2N0S1')
 
-    # --- Additional substitution 
-    extraSubs=model.shapeNormSubs # shape functions normalized to unity
-    EOM.subs(extraSubs)
 
-    #  --- Small angle approximations
-    EOM.smallAngleApprox(model.twr.vcList, order = 2)
-    EOM.smallAngleApprox([theta_tilt]    , order = 1)
-    EOM.simplify()
-
-    # --- Separate EOM into mass matrix and forcing
-    EOM.mass_forcing_form() # EOM.M and EOM.F
-
-    # --- Linearize equation of motions 
-    EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
-
-    # --- Export equations
-    replaceDict={'theta_tilt':('tilt',None)}
-    EOM.savePython(folder='./', prefix='_', replaceDict=replaceDict)
-    EOM.saveTex   (folder='./', prefix='_', variables=['M','F','M0','K0','C0','B0'])
 
     # --- Run non linear and linear simulation using a FAST model as input
     if runSim:
@@ -99,7 +84,7 @@ def main(runSim=True, runFAST=False):
     return dfNL, dfLI, dfFS
 
 if __name__=="__main__":
-    dfNL, dfLI, dfFS = main(runSim=True)
+    dfNL, dfLI, dfFS = main(runSim=True, create=True)
     plt.show()
 
 if __name__=="__test__":

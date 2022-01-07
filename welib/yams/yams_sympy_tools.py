@@ -3,12 +3,14 @@ Tools for yams_sympy
 """
 
 import numpy as np
+import sympy
 from sympy import latex, python, symarray, diff
 from sympy import Symbol, Matrix, collect
 from sympy import Function, DeferredVector
 import sympy.physics.mechanics as me
 from sympy.physics.vector import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
+from sympy import sin, cos, exp, sqrt
 
 def frame_viz(Origin, frame, l=1, r=0.08):
     """ """
@@ -388,12 +390,19 @@ def insertQQd(expr, dofs):
         return me.msubs(expr, subs)
 
 
-def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=False):
+def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=False, method='subs'):
     """ 
     Clean a python sympy expression and perform replacements:
       - DOFs       -> q[i]
       - Velocities -> qd[i]
       - Constants ->  p['name']
+      - Inputs    ->  u['name']
+    INPUTS:
+       - replDict: a dictionary of replacements, where the key define the expression to be replaced.
+                the value is either a replacement string, or a tuple (for matrices), for instance::
+                     replDict['M_B'] = 'Mass'
+                     replDict['M_T'] = ('MM_T', [0,0])
+                      
     """
     # list of parameters inputs and dofs
     parameters = []
@@ -411,61 +420,145 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=Fal
         IDOF = np.argsort([len(s) for s in sdofs])[-1::-1]
         dofs=np.array(dofs)[IDOF]
 
+
+    d_dofs     = [d.diff(dynamicsymbols._t) for d in dofs]
+    dd_dofs    = [d.diff(dynamicsymbols._t,2)   for d in dofs]
+    all_dofs   = list(dofs) + list(d_dofs) + list(dd_dofs)
+    all_dofs_s = [repr(s) for s in all_dofs] 
+
+
+
     def cleanPyAtom(atom, dofs=None):
-        symbols     = atom.free_symbols
+        symbols     = list(atom.free_symbols)
         try:
             symbols.remove(Symbol('t'))
         except:
             pass
+        symbols_s   = [repr(s) for s in symbols]
         dyn_symbols = find_dynamicsymbols(atom)
-        #print('>>> symbols', symbols)
-        #print('>>> Dynsymbols', dyn_symbols)
-        s=repr(atom).replace(' ','')
-
-        # Replace
-        if replDict is not None:
-            for k,v in replDict.items():
-                if len(v)==2:
-                    if s.find(k)>=0:
-                        if v[1] is not None:
-                            s=s.replace(k, 'p[\'{}\'][{}]'.format(v[0],','.join([str(ii) for ii in v[1]]) ) )
-                            parameters.append(v[0])
-                        else:
-                            s=s.replace(k, 'p[\'{}\']'.format(v[0]))
-                            parameters.append(v[0])
-                else:
-                    if s.find(k)>=0:
-                        s=s.replace(k,v)
-
-        if dofs is not None:
-            # time derivatives first!!! important
-            for idof,dof in zip(IDOF,dofs):
-                sdof=repr(dof)
-                #s=s.replace('Derivative({}(t),t)'.format(sdof),'qd[{}]'.format(idof))
-                s=s.replace('Derivative({},t)'.format(sdof),'qd[{}]'.format(idof))
-            # then Dof
-            for idof,dof in zip(IDOF,dofs):
-                sdof=repr(dof)
-                s=s.replace(sdof+'(t)','q[{}]'.format(idof))
-                s=s.replace(sdof,'q[{}]'.format(idof))
-        for symb in symbols:
-            ssymb=repr(symb)
-            if not any([p.find(ssymb)>0 for p in parameters]):
-                if s.find(ssymb)>=0:
-                    s=s.replace(ssymb,'p[\'{}\']'.format(ssymb))
-                    parameters.append(ssymb)
-            else:
-                parametersProblem.append(ssymb)
-
-        for symb in dyn_symbols:
-            ssymb=repr(symb).replace(' ','')
-            if ssymb not in sdofsDeriv and ssymb not in sdofs:
-                ssymb=ssymb.replace('(t)','')
-                if noTimeDep:
-                    s=s.replace(ssymb+'(t)','u[\'{}\']'.format(ssymb)) # When linearizing, the "u" is a u0
-                else:
-                    s=s.replace(ssymb,'u[\'{}\']'.format(ssymb))
+        dyn_symbols_u  = [symb for symb in dyn_symbols if repr(symb) not in all_dofs_s]
+        functions   = list(atom.atoms(Function))
+        functions   = [f for f in functions if f.args != (dynamicsymbols._t,) ] # remove functions of time only ("dyn_symbols")
+        functions   = [f for f in functions if f.func not in [sin, cos, exp, sqrt] ] # remove usual math functions
+        functions_symb = [f.func for f in functions]
+        functions_args = [f.args for f in functions]
+        #print('>>> symbols       ', symbols)
+        #print('>>> dyn_symbols   ', dyn_symbols)
+        #print('>>> dyn_symbols_u ', dyn_symbols_u)
+        #print('>>> functions     ', functions)
+        #print('>>> functions_symb', functions_symb)
+        #print('>>> functions_args', functions_args)
+        if method=='subs':
+            # States: accelerations, derivatives, position
+            for idof, dof, ddof, dddof in zip(IDOF, dofs, d_dofs, dd_dofs):
+                sdof=repr(dof).replace('(t)','')
+                atom = atom.subs([(dddof, 'qqdd__'+ str(idof) + '___')])
+                atom = atom.subs([(ddof , 'qqd__' + str(idof) + '___')])
+                atom = atom.subs([(dof  , 'qq__'  + str(idof) + '___')])
+            # Functions (like inputs but have specific arguments)
+            for symb, args in zip(functions_symb, functions_args):
+                ssymb=repr(symb)
+                atom = atom.subs([(symb  , 'uu__' + ssymb + '___')])
                 inputs.append(ssymb)
+            # Inputs
+            for symb in dyn_symbols_u:
+                ssymb=repr(symb).replace('(t)','')
+                atom = atom.subs([(symb  , 'uu__' + ssymb + '__u')])
+                inputs.append(ssymb)
+
+            if replDict is not None:
+                for k,v in replDict.items():
+                    if k in symbols_s:
+                        i = symbols_s.index(k)
+                        if len(v)==2:
+                            symbols.pop(i)
+                            symbols_s.pop(i)
+                        else:
+                            print('yams: cleanPy, TODO replace dict: {} {}'.format(k,v) )
+                            import pdb; pdb.set_trace()
+            # Parameters
+            for symb in symbols:
+                ssymb=repr(symb)
+                atom = atom.subs([(symb  , 'pp__' + ssymb + '__p')])
+                parameters.append(ssymb)
+
+            s= repr(atom).replace(' ','')
+            s = s.replace('qqdd__','qdd[')
+            s = s.replace('qqd__' ,'qd[')
+            s = s.replace('qq__'  ,'q[')
+            s = s.replace('uu__'  ,'u[\'')
+            s = s.replace('pp__'  ,'p[\'')
+            s = s.replace('___', ']')
+            s = s.replace('__p', '\']')
+            if noTimeDep:
+                s = s.replace('__u', '\']')
+            else:
+                s = s.replace('__u', '\'](t,q,qd)')
+
+            # User overrides
+            if replDict is not None:
+                for k,v in replDict.items():
+                    if len(v)==2:
+                        if s.find(k)>=0:
+                            if v[1] is not None:
+                                s=s.replace(k, 'p[\'{}\'][{}]'.format(v[0],','.join([str(ii) for ii in v[1]]) ) )
+                                parameters.append(v[0])
+                            else:
+                                s=s.replace(k, 'p[\'{}\']'.format(v[0]))
+                                parameters.append(v[0])
+                    else:
+                        if s.find(k)>=0:
+                            s=s.replace(k,v)
+
+
+        elif method=='string':
+            s=repr(atom).replace(' ','')
+            # Replace parameters provide in replDict, as priority
+            if replDict is not None:
+                for k,v in replDict.items():
+                    if len(v)==2:
+                        if s.find(k)>=0:
+                            if v[1] is not None:
+                                s=s.replace(k, 'p[\'{}\'][{}]'.format(v[0],','.join([str(ii) for ii in v[1]]) ) )
+                                parameters.append(v[0])
+                            else:
+                                s=s.replace(k, 'p[\'{}\']'.format(v[0]))
+                                parameters.append(v[0])
+                    else:
+                        if s.find(k)>=0:
+                            s=s.replace(k,v)
+
+            if dofs is not None:
+                # time derivatives first!!! important
+                for idof,dof in zip(IDOF,dofs):
+                    sdof=repr(dof)
+                    #s=s.replace('Derivative({}(t),t)'.format(sdof),'qd[{}]'.format(idof))
+                    s=s.replace('Derivative({},t)'.format(sdof),'qd[{}]'.format(idof))
+                # then Dof
+                for idof,dof in zip(IDOF,dofs):
+                    sdof=repr(dof)
+                    s=s.replace(sdof+'(t)','q[{}]'.format(idof))
+                    s=s.replace(sdof,'q[{}]'.format(idof))
+            for symb in symbols:
+                ssymb=repr(symb)
+                if not any([p.find(ssymb)>0 for p in parameters]):
+                    if s.find(ssymb)>=0:
+                        s=s.replace(ssymb,'p[\'{}\']'.format(ssymb))
+                        parameters.append(ssymb)
+                else:
+                    parametersProblem.append(ssymb)
+
+            for symb in dyn_symbols:
+                ssymb=repr(symb).replace(' ','')
+                if ssymb not in sdofsDeriv and ssymb not in sdofs:
+                    ssymb=ssymb.replace('(t)','')
+                    if noTimeDep:
+                        s=s.replace(ssymb+'(t)','u[\'{}\']'.format(ssymb)) # When linearizing, the "u" is a u0
+                    else:
+                        s=s.replace(ssymb,'u[\'{}\']'.format(ssymb))
+                    inputs.append(ssymb)
+        else:
+            raise NotImplementedError()
         return s
 
 
@@ -490,6 +583,9 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=Fal
     # removing duplicates
     parameters = list(set(parameters))
     inputs     = list(set(inputs))
+    #print('parameters',parameters)
+    #print('inputs    ',inputs)
+    #print('sdofs     ',sdofs)
     parameters.sort()
     inputs.sort()
     parametersProblem = list(set(parametersProblem))
