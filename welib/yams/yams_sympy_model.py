@@ -23,15 +23,32 @@ class YAMSModel(object):
       - TODO: generate python code
     
     """
-    def __init__(self, name=''):
+    def __init__(self, name='', ref=None, bodies=None, coordinates=None, speeds=None, kdeqsSubs=None,
+            body_loads=None, g_vect=None, opts=None):
+        """ 
+        INPUTS:
+         - ref: reference frame body, YAMSInertialBody
+         - bodies: list of YAMSFlexibleBody or YAMSRigidBody
+         - coordinates: list of degrees of freedom
+         - speeds: list of speeds
+         - kdeqsSubs: relationships between speeds and coordinates derivatives
+         - body_loads: list of loads. A load is a tuple:
+                                (body, (point, force) )   or (body, (frame, moment))
+         - g_vect: gravity vector g_vect  = -gravity * ref.frame.z
+
+
+        """
         self.name        = name
-        self.ref         = None
-        self.coordinates = None
-        self.speeds      = None
-        self.kdeqsSubs   = None
-        self.bodies      = None
+        self.ref         = ref
+        self.coordinates = coordinates
+        self.speeds      = speeds
+        self.kdeqsSubs   = kdeqsSubs
+        self.bodies      = bodies
+        self.body_loads  = body_loads
+        self.g_vect      = g_vect
+        self.opts        = opts
+        # Generated / Internal data
         self.kane        = None
-        self.g_vect      = None
         self._sa_forcing     = None
         self._sa_mass_matrix = None
         self._sa_M           = None
@@ -39,8 +56,6 @@ class YAMSModel(object):
         self._sa_K           = None
         self._sa_B           = None
         self._sa_EOM         = None
-        self.opts        = None
-        self.body_loads  = None
         self.var         = [] # Independent variables
         self.smallAnglesUsed=[]
 
