@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.optimize as sciopt
 
-def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip_norm',nModes=4):
+def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip',nModes=4):
     """
     returns Mode shapes and frequencies for a uniform beam in bending
 
@@ -76,9 +76,18 @@ def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip_norm'
     ModesV = ModesV/L
     ModesK = ModesK/L**2
     ## Normalization of modes
-    if norm=='tip_norm':
+    if norm=='tip':
         for i in np.arange(nModes):
-            fact = 1 / ModesU[i,-1]
+            tipVal = ModesU[i,-1]
+            fact = 1 / tipVal
+            ModesU[i,:] = ModesU[i,:] * fact
+            ModesV[i,:] = ModesV[i,:] * fact
+            ModesK[i,:] = ModesK[i,:] * fact
+    elif norm=='max':
+        for i in np.arange(nModes):
+            maxVal = np.max(np.abs(ModesU[i,:]))
+            iMaxVal = np.argmax(np.abs(ModesU[i,:]))
+            fact = 1 / ModesU[i, iMaxVal]
             ModesU[i,:] = ModesU[i,:] * fact
             ModesV[i,:] = ModesV[i,:] * fact
             ModesK[i,:] = ModesK[i,:] * fact

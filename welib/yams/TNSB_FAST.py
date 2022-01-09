@@ -143,15 +143,15 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     if M_yaw>0:
         print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
 
-    M_rot= sum([B.Mass for B in Blds])
-    M_RNA= M_rot + Sft.Mass + Nac.Mass + Yaw.Mass
+    M_rot= sum([B.mass for B in Blds])
+    M_RNA= M_rot + Sft.mass + Nac.mass + Yaw.mass
     # Tower Body
     Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity)
     #print('Stiffnening', bStiffening)
     #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
     if DEBUG:
-        print('HubMass',Sft.Mass)
-        print('NacMass',Nac.Mass)
+        print('HubMass',Sft.mass)
+        print('NacMass',Nac.mass)
         print('RotMass',M_rot)
         print('RNAMass',M_RNA)
         print('IG_hub')

@@ -195,11 +195,28 @@ def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None):
     return freq_d, zeta, Q, freq_0 
 
 
+
+def eigMK(M, K, sort=True, normQ=None, discardIm=False):
+    """ 
+    Eigenvalue analysis of a mechanical system
+    M, K: mass, and stiffness matrices respectively
+    """
+    Q, freq_0 = eig(K, M, freq_out=True, sort=sort, normQ=normQ, discardIm=discardIm)
+    return Q, freq_0
+
 def eigMCK(M, C, K, method='full_matrix', sort=True): 
     """
     Eigenvalue analysis of a mechanical system
     M, C, K: mass, damping, and stiffness matrices respectively
     """
+    if np.linalg.norm(C)<1e-14:
+        # No damping
+        Q, freq_0 =  eigMK(M, K, sort=sort)
+        freq_d = freq_0
+        zeta   = freq_0*0
+        return freq_d, zeta, Q, freq_0
+
+
     if method.lower()=='diag_beta':
         ## using K, M and damping assuming diagonal beta matrix (Rayleigh Damping)
         Q, Lambda   = eig(K,M, sort=False) # provide scaled EV, important, no sorting here!

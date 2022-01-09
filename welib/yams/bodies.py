@@ -37,7 +37,7 @@ class Body(object):
         self.MM  = None # To be defined by children
 
     def __repr__(self):
-        s='<Generic {} object>:\n'.format(type(self).__name__)
+        s='<Generic Body object>:\n'
         return s
 
     @property
@@ -80,8 +80,9 @@ class Body(object):
 # --- Ground Body 
 # --------------------------------------------------------------------------------{
 class InertialBody(Body):
-    def __init__(self):
-        Body.__init__(self, name='Grd')
+    def __init__(self, name='Grd'):
+        Body.__init__(self, name=name)
+
 
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
@@ -190,7 +191,7 @@ class RigidBody(Body):
         return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
-        s='<{} {} object>:\n'.format(type(self).__name__, self.name)
+        s='<RigidBody object>:\n'.format(self.name)
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
@@ -522,7 +523,7 @@ class BeamBody(FlexibleBody):
         return Bhat_t_bc
 
     def __repr__(self):
-        s='<{} {} object>:\n'.format(type(self).__name__, self.name)
+        s='<BeamBody {} object>:\n'.format(self.name)
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))

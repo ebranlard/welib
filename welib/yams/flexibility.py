@@ -88,6 +88,8 @@ def GKBeamStiffnening(s_span, dU, gravity, m, Mtop, Omega=0, bSelfWeight=True, b
     OUTPUTS:
      - KKg: Geometrical stiffeness matrix. 
     """
+    if gravity is None and (bMtop or bSelfWeight):
+        raise Exception('`gravity` is none, but Mtop or SelfWeight is true. Please provide `gravity`')
     nSpan = len(s_span)
     nf    = len(dU)
     KKg = np.zeros((6+nf,6+nf))

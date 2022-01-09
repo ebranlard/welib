@@ -126,8 +126,8 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # Tower Body
     # TODO
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
-    Mtop=sum([B.Mass for B in Blds]) + Sft.Mass + Nac.Mass;
-    Twr=UniformBeamBody('Tower', nShapes_twr, nSpan_twr, L_twr, EI_twr , m_twr, Mtop=Mtop, bAxialCorr=False, bStiffening=False, main_axis=main_axis)
+    Mtop=sum([B.mass for B in Blds]) + Sft.mass + Nac.mass;
+    Twr=UniformBeamBody('Tower', nShapes_twr, nSpan_twr, L_twr, EI_twr , m_twr, Mtop=Mtop, bAxialCorr=False, bStiffening=False, main_axis=main_axis, gravity=0)
     #  Temporary
     x_0=np.array([[0],[0],[0]])
     R_0b=np.eye(3)
