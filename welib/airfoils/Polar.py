@@ -31,6 +31,7 @@ class Polar(object):
         - cl_max            : cl_max
         - cl_linear_slope   : linear slope and the linear region
         - cl_fully_separated: fully separated cl
+        - toAeroDyn: write AeroDyn file 
     """
 
     def __init__(self, FileName_or_Re, alpha=None, cl=None, cd=None, cm=None, compute_params=False, radians=None):
@@ -1165,6 +1166,174 @@ def _find_max_points(alpha, coeff, alpha0, method='inflections'):
         raise NotImplementedError()
     return (a_MaxUpp,c_MaxUpp,a_MaxLow,c_MaxLow)
 
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Low-level functions 
+# --------------------------------------------------------------------------------{
+def fn_fullsep(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl):
+    """ Function that is zero when f=0 from the Kirchhoff theory """
+    cl_linear = cl_lin(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl)
+    return cl_linear - 0.25* dclda*(alpha-alpha0)
+
+def cl_lin(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl):
+    """ Linear Cl """
+    if alpha > alpha_sl_neg and alpha < alpha_sl_pos :
+        cl = dclda*(alpha-alpha0)
+    else:
+        cl=np.interp(alpha, valpha, vCl)
+    return cl
+
+def cl_fullsep(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl, alpha_fs_l, alpha_fs_u):
+    """ fully separated lift coefficient"""
+    cl_linear = cl_lin(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl)
+    if alpha > alpha_sl_neg and alpha < alpha_sl_pos :
+        cl = cl_linear*0.5
+    else:
+        fp = f_point(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl, alpha_fs_l, alpha_fs_u)
+        cl=(cl_linear- dclda*(alpha-alpha0)*fp)/(1-fp)
+    return cl
+
+def f_point(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl, alpha_fs_l, alpha_fs_u):
+    """ sepration funciton """
+    if dclda==0:
+        return 0
+    if alpha < alpha_fs_l or alpha > alpha_fs_u:
+        return 0
+    else:
+        cl_linear = cl_lin(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl)
+        xx=cl_linear/(dclda*(alpha-alpha0) + np.sign(cl_linear)*1e-15)
+        return (2*np.sqrt(xx)-1)**2
+
+
+def polar_params(alpha, cl, cd, cm):
+    """
+    - alpha in radians
+    """
+    #  Treat zero-lift sections separately
+    zero_offset=1e-15
+    x1 = -7*np.pi/180
+    x2 = 7*np.pi/180
+    y1 = np.interp(x1, alpha, cl)
+    y2 = np.interp(x2, alpha, cl)
+
+    if (y1<zero_offset)and(y2<zero_offset):
+       alpha0        = 0.
+       Cd0          = np.interp(alpha0, alpha, cd)
+       Cm0          = np.interp(alpha0, alpha, cm)
+       dclda        = 0.
+       alpha_fs_u   = pi
+       alpha_fs_l   = -pi
+       alpha_sl_neg = 0.
+       alpha_sl_pos = 0.
+    else:
+        alpha0 = _find_alpha0(alpha, cl, [np.radians(-5), np.radians(20)])
+
+        # Find positive angle of attack stall limit alpha_sl_pos
+        alpha_sl_pos=20.*np.pi/180
+        move_up=True
+        maxclp=0.
+        nobs=50
+        while move_up :
+            dalpha=(alpha_sl_pos-alpha0)/nobs
+            y2=np.interp(alpha_sl_pos, alpha, cl)
+            dclda=y2/(alpha_sl_pos-alpha0)
+            if  dclda>maxclp:
+                alpha_maxclp=alpha_sl_pos
+                maxclp=dclda
+            relerr=0.
+            for k in np.arange(nobs):
+                x1 = alpha0+(k+1)*dalpha
+                y1 = np.interp(x1, alpha, cl)
+                y2 = dclda*(x1-alpha0)
+                relerr=relerr+(y1-y2)/y2
+            relerr=relerr/nobs
+            move_up= relerr>1e-2
+            if move_up:
+                alpha_sl_pos=alpha_sl_pos-dalpha
+        alpha_sl_pos=max(alpha_maxclp, alpha_sl_pos)
+
+        # Find negative angle of attack stall limit alpha_sl_neg
+        alpha_sl_neg=-20*np.pi/180
+        move_down=True
+        maxclp=0.
+        while move_down:
+            dalpha=(alpha0-alpha_sl_neg)/nobs
+            y1=np.interp(alpha_sl_neg, alpha, cl)
+            dclda=y1/(alpha_sl_neg-alpha0)
+            if  dclda>maxclp:
+                alpha_maxclp=alpha_sl_neg
+                maxclp=dclda
+            relerr=0.
+            for k in np.arange(nobs):
+                x1=alpha_sl_neg+(k+1)*dalpha
+                y1 = np.interp(x1, alpha, cl)
+                y2=dclda*(x1-alpha0)
+                relerr=relerr+(y1-y2)/y2
+            relerr=relerr/nobs
+            move_down=relerr>1e-2
+            if move_down:
+                alpha_sl_neg=alpha_sl_neg+dalpha
+        alpha_sl_neg=min(alpha_maxclp, alpha_sl_neg)
+
+        # Compute the final alpha and dclda (linear lift coefficient slope) values
+        y1=np.interp(alpha_sl_neg, alpha, cl)
+        y2=np.interp(alpha_sl_pos, alpha, cl)
+        alpha0=(y1*alpha_sl_pos-y2*alpha_sl_neg)/(y1-y2)
+        dclda =(y1-y2)/(alpha_sl_neg-alpha_sl_pos)
+
+        # Find Cd0 and Cm0
+        Cd0          = np.interp(alpha0, alpha, cd)
+        Cm0          = np.interp(alpha0, alpha, cm)
+        # Find upper surface fully stalled angle of attack alpha_fs_u (Upper limit of the Kirchhoff flat plate solution)
+        y1=-1.
+        y2=-1.
+        delta = np.pi/180
+        x2=alpha_sl_pos + delta
+        while  y1*y2>0. and x2+delta<np.pi:
+            x1=x2
+            x2=x1+np.pi/180
+            y1=fn_fullsep(x1, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl)
+            y2=fn_fullsep(x2, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl)
+        if y1*y2<0:
+            alpha_fs_u=(0.-y2)/(y1-y2)*x1+(0.-y1)/(y2-y1)*x2
+        else:
+            alpha_fs_u=np.pi
+        # Find lower surface fully stalled angle of attack alpha_fs_l (lower limit of the Kirchhoff flat plate solution)
+        y1=-1.
+        y2=-1.
+        x2=alpha_sl_neg-delta
+        while y1*y2>0. and x2-delta>-np.pi:
+            x1=x2
+            x2=x1-delta
+            y1=fn_fullsep(x1, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl)
+            y2=fn_fullsep(x2, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl)
+        if y1*y2<0:
+            alpha_fs_l=(0.-y2)/(y1-y2)*x1+(0.-y1)/(y2-y1)*x2
+        else:
+            alpha_fs_l=-np.pi
+
+        # --- Compute values at all angle of attack
+        Cl_fully_sep = np.zeros(alpha.shape)
+        f_st         = np.zeros(alpha.shape)
+        Cl_linear    = np.zeros(alpha.shape)
+        for i,al in enumerate(alpha):
+            Cl_fully_sep[i] = cl_fullsep(al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl, alpha_fs_l, alpha_fs_u)
+            f_st        [i] = f_point   (al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl, alpha_fs_l, alpha_fs_u)
+            Cl_linear   [i] = cl_lin    (al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl)
+
+    p=dict()
+    p['alpha0'] = alpha0
+    p['Cd0'] = Cd0
+    p['Cm0'] = Cm0
+    p['dclda'] = dclda
+    p['alpha_fs_l'] = alpha_fs_l
+    p['alpha_fs_u'] = alpha_fs_u
+    p['alpha_sl_neg'] = alpha_sl_neg
+    p['alpha_sl_pos'] = alpha_sl_pos
+
+    return p, Cl_linear, Cl_fully_sep, f_st
 
 
 # --------------------------------------------------------------------------------}

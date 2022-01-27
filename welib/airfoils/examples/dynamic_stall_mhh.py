@@ -60,12 +60,12 @@ def prescribed_oscillations():
         u_oye['alpha']    = lambda t: np.interp(t, vt, valpha_t[ia,:])
 
         # MHH Parameters and Inputs
-        p = dynstall_mhh_param_from_polar(P, chord, tau_chord=chord/U0, FAST=True)
+        p = dynstall_mhh_param_from_polar(P, chord, constants='OpenFAST')
         u=dict()
         u['U']         = lambda t: U0
         u['U_dot']     = lambda t: 0
         u['alpha']     = lambda t: np.interp(t, vt, valpha_t[ia,:])
-        u['alpha_dot'] = lambda t: np.interp(t, vt, valpha_dot_t)
+        u['omega'] = lambda t: np.interp(t, vt, valpha_dot_t)
         u['alpha_34']  = lambda t: np.interp(t, vt, valpha_t[ia,:]) # using alpha
 
 
