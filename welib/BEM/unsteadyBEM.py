@@ -603,7 +603,6 @@ class AeroBEM:
             a_avg = min([np.mean(a),0.5])
             V_avg = max([np.mean(V0),0.001])
             tau1 = 1.1 / (1 - 1.3 *a_avg)*R/V_avg
-            tau1=4
             tau2 = (0.39 - 0.26 * (r/R)**2) * tau1
             tau2 = np.tile(tau2[:,:,None],3)
             # Oye's dynamic inflow model, discrete time integration

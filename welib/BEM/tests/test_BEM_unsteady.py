@@ -108,7 +108,7 @@ class Test(unittest.TestCase):
 
         # --- Simulation 4 Dynamic Wake
         dt   = 0.5
-        tmax = 40
+        tmax = 65
         BEM.bDynaWake = True # dynamic inflow model
         time=np.arange(0,tmax,dt)
         BEM.simulationConstantRPM(time, RPM, windSpeed=10, tilt=0, cone=0, firstCallEquilibrium=False)
@@ -116,6 +116,21 @@ class Test(unittest.TestCase):
         aprime4= BEM.TnInd.copy()
 
         # --- Tests
+        #print(a4.shape)
+        #print(a.shape)
+        #import matplotlib.pyplot as plt
+        #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        #ir = 3 ; iB=0;
+        ##ax.plot(a4[:,iB,ir]    , label='a4')
+        ##ax.plot(a[:,iB ,ir]    , label='a')
+        #ax.plot(a4[-1,iB,:]    , label='a4')
+        #ax.plot(a[-1, iB,:]    , label='a')
+        #ax.set_xlabel('')
+        #ax.set_ylabel('')
+        #ax.legend()
+        #plt.show()
+        # NOTE: a4[-1] is last time step, it has shape 3x19 for each blade and radial stations
         np.testing.assert_almost_equal(a2[-1], a[-1], 5)
         np.testing.assert_almost_equal(aprime2[-1], aprime[-1], 5)
         np.testing.assert_almost_equal(a3[-1], a[-1], 4)
