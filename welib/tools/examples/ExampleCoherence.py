@@ -11,12 +11,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.signal as sig
 # Local 
-import welib.weio as weio
+# import welib.weio as weio
+import weio
 from welib.tools.spectral import fft_wrap
 from welib.tools.colors import *
 
-def turbBoxCoherence(btsFile):
+def turbBoxCoherence(btsFile, btsFile2=None):
     ts = weio.read(btsFile)
+    if btsFile2 is not None:
+        ts2 = weio.read(btsFile2)
     print(ts)
 
     iy0,iz0 = ts._iMid()
@@ -36,60 +39,42 @@ def turbBoxCoherence(btsFile):
     v= v-np.mean(v)
     w= w-np.mean(w)
 
-    # TODO put this as functions in TurbSimFile
+    # --- Cross correlation 
+    y, rho_uu_y, rho_vv_y, rho_ww_y = ts.crosscorr_y(iy0, iz0)
+    z, rho_uu_z, rho_vv_z, rho_ww_z = ts.crosscorr_z(iz0, iz0)
+    if ts2 is not None:
+        _, rho_uu_y2, rho_vv_y2, rho_ww_y2 = ts2.crosscorr_y(iy0, iz0)
+        _, rho_uu_z2, rho_vv_z2, rho_ww_z2 = ts2.crosscorr_z(iz0, iz0)
 
-    # --- Cross correlation along y, mid box
-    rho_uu_y=np.zeros(len(y))
-    rho_vv_y=np.zeros(len(y))
-    rho_ww_y=np.zeros(len(y))
-    for iy,_ in enumerate(y):
-        ud = ts['u'][0,:,iy,iz0]
-        vd = ts['u'][1,:,iy,iz0]
-        wd = ts['u'][2,:,iy,iz0]
-        ud-=np.mean(ud)
-        vd-=np.mean(vd)
-        wd-=np.mean(wd)
-        rho_uu_y[iy] = np.mean(u*ud)/(np.std(u)*np.std(ud))
-        rho_vv_y[iy] = np.mean(v*vd)/(np.std(v)*np.std(vd))
-        rho_ww_y[iy] = np.mean(w*wd)/(np.std(w)*np.std(wd))
-
-    # --- Cross correlation along z, mid box
-    rho_uu_z = np.zeros(len(z))
-    rho_vv_z = np.zeros(len(z))
-    rho_ww_z = np.zeros(len(z))
-    for iz,_ in enumerate(z):
-        ud = ts['u'][0,:,iy0,iz]
-        vd = ts['u'][1,:,iy0,iz]
-        wd = ts['u'][2,:,iy0,iz]
-        ud-=np.mean(ud)
-        vd-=np.mean(vd)
-        wd-=np.mean(wd)
-        rho_uu_z[iz] = np.mean(u*ud)/(np.std(u)*np.std(ud))
-        rho_vv_z[iz] = np.mean(v*vd)/(np.std(v)*np.std(vd))
-        rho_ww_z[iz] = np.mean(w*wd)/(np.std(w)*np.std(wd))
 
     # --- Plot cross-correlation
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    ax.plot(y , rho_uu_y   , label=r'$\rho_{uu}$')
-    ax.plot(y , rho_vv_y   , label=r'$\rho_{vv}$')
-    ax.plot(y , rho_ww_y   , label=r'$\rho_{ww}$')
+    ax.plot(y , rho_uu_y   , label=r'$\rho_{uu}$', c=python_colors(0))
+    ax.plot(y , rho_vv_y   , label=r'$\rho_{vv}$', c=python_colors(1))
+    ax.plot(y , rho_ww_y   , label=r'$\rho_{ww}$', c=python_colors(2))
+    if ts2 is not None:
+        ax.plot(y , rho_uu_y2, '.'    , label=r'$\rho_{uu}$', c=python_colors(0))
+        ax.plot(y , rho_vv_y2, '--'   , label=r'$\rho_{vv}$', c=python_colors(1))
+        ax.plot(y , rho_ww_y2, '--'   , label=r'$\rho_{ww}$', c=python_colors(2))
     ax.set_xlabel('y')
     ax.set_ylabel('')
     ax.legend()
 
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    ax.plot(z , rho_uu_z   , label=r'$\rho_{uu}$')
-    ax.plot(z , rho_vv_z   , label=r'$\rho_{vv}$')
-    ax.plot(z , rho_ww_z   , label=r'$\rho_{ww}$')
+    ax.plot(z , rho_uu_z   , label=r'$\rho_{uu}$', c=python_colors(0))
+    ax.plot(z , rho_vv_z   , label=r'$\rho_{vv}$', c=python_colors(1))
+    ax.plot(z , rho_ww_z   , label=r'$\rho_{ww}$', c=python_colors(2))
+    if ts2 is not None:
+        ax.plot(z , rho_uu_z2, '.'    , label=r'$\rho_{uu}$', c=python_colors(0))
+        ax.plot(z , rho_vv_z2, '--'   , label=r'$\rho_{vv}$', c=python_colors(1))
+        ax.plot(z , rho_ww_z2, '--'   , label=r'$\rho_{ww}$', c=python_colors(2))
     ax.set_xlabel('z')
     ax.set_ylabel('')
     ax.legend()
     # 
-    fc, chi_uu = sig.csd(u, u, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
-    fc, chi_vv = sig.csd(v, v, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
-    fc, chi_ww = sig.csd(w, w, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+    fc, chi_uu, chi_vv, chi_ww = ts.csd_longi()
 
     # kc=2*np.pi*fc/U0
     # chi_uu= 2*np.pi/U0*chi_uu
@@ -169,8 +154,9 @@ def turbBoxCoherence(btsFile):
 
 
 if __name__ == '__main__':
-    # btsFile = 'C:/Work/IEA29/DanAero/Phase_IV.3.2_Wakes/Inflow/B1_5.bts'
-    btsFile = './wind_ws07.bts'
-    turbBoxCoherence(btsFile)
+    btsFile1= 'C:/Work/IEA29/DanAero/Phase_IV.3.2_Wakes/Inflow/A1.bts'
+    btsFile2= 'C:/Work/IEA29/DanAero/Phase_IV.3.2_Wakes/Inflow/A1_3dCoh.bts'
+#     btsFile = './wind_ws07.bts'
+    turbBoxCoherence(btsFile1, btsFile2)
     plt.show()
     pass
