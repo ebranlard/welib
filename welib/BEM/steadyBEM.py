@@ -266,6 +266,10 @@ def SteadyBEM(Omega,pitch,V0,xdot,u_turb,
 def FASTFile2SteadyBEM(FASTFileName):
     from welib.weio.fast_input_deck import FASTInputDeck
     F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
+    if F.AD is None:
+        raise Exception('Cannot open AD file referenced in:'.format(FASTFileName))
+    if F.ED is None:
+        raise Exception('Cannot open ED file referenced in:'.format(FASTFileName))
 
     try:
         rho     = float(F.fst['AirDens'])  # New OF > 3.0

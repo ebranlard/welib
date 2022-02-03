@@ -144,7 +144,7 @@ def run_fast(input_file, fastExe=None, wait=True, showOutputs=False, showCommand
     return run_cmd(input_file, fastExe, wait=wait, showOutputs=showOutputs, showCommand=showCommand)
 
 
-def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1):
+def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False):
     """ Write batch file, everything is written relative to the batch file"""
     if fastExe is None:
         fastExe=FAST_EXE
@@ -159,6 +159,9 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1):
                 ff_rel = os.path.relpath(ff_abs, batchdir)
                 l = fastExe_rel + ' '+ ff_rel
                 f.write("%s\n" % l)
+            if pause:
+                f.write("pause\n") # windows only..
+
     if nBatches==1:
         writeb(batchfile, fastfiles)
     else:

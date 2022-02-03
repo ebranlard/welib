@@ -1101,6 +1101,13 @@ def _extractSpanTSReg_Legacy(ts, col_pattern, colname, IR=None):
     if len(cols) ==0:
         return (None,None)
 
+    # Sorting by ID
+    cols = np.asarray(cols)
+    Idx  = np.array([int(s) for s in sIdx])
+    Isort = np.argsort(Idx)
+    Idx  = Idx[Isort]
+    cols = cols[Isort]
+
     nrMax =  np.max(Idx)
     Values = np.zeros((nrMax,1))
     Values[:] = np.nan

@@ -33,6 +33,30 @@ def dynflow_oye_dxdt(t, x, x_qs, a_bar, dx_qs_dt, dtau1_dt, U0, r, R , k=0.6):
 
     return [x_dot, x_ddot]
 
+
+
+def dyninflow_oye_discr(dt, xd_old, u, a_bar, U0, r, R, k=0.6, tau1=None, tau2=None):
+    """
+    xd0: old discrete states
+    u: 
+    """
+    tau1 = tau1_oye(a_bar, R, U0)
+    tau2 = tau2_oye(r/R,tau1)
+    # Oye's dynamic inflow model, discrete time integration
+    Vdyn_old = xd_old[0]
+    Vint_old = xd_old[1]
+    Vqs__old = xd_old[3]
+    Vqs__new = u[0]
+    H        = Vqs__new + k * tau1 * (Vqs__new - Vqs__old) /dt
+    Vint_new = H + (Vint_old - H) * exp(-dt/tau1) # intermediate velocity
+    Vdyn_new = Vint_new + (Vdyn_old - Vint_new) * exp(-dt/tau2)
+    # 
+    xd_new[0] = Vdyn_new
+    xd_new[1] = Vint_new
+    xd_new[2] = Vqs__new
+
+
+
 # class DBEMT():
 #     class Dummy():
 #         pass
@@ -250,19 +274,19 @@ def example_algo_investigation(Case='Sine', T=5, U0=10, R=65,r_bar=0.5,a_mean=0.
     print('tau1',tau1, 'tau2',tau2)
 
     # regular system
-    system = lambda t,x: dynflow_oye_dxdt(t,x, a_qs(t) , a_bar(t), da_qs_dt(t), dtau1_dt(t), fU0(t), r_bar*R, R)
+    system = lambda t,x: dynflow_oye_dxdt(t, x, a_qs(t) , a_bar(t), da_qs_dt(t), dtau1_dt(t), fU0(t), r_bar*R, R)
     sol = solve_ivp(system , t_span=[0, max(vt)], y0=y0, t_eval=vt)
 
     # No derivative
-    system = lambda t,x: dynflow_oye_dxdt(t,x, a_qs(t) , a_bar(t), 0, dtau1_dt(t), fU0(t), r_bar*R, R)
+    system = lambda t,x: dynflow_oye_dxdt(t, x, a_qs(t) , a_bar(t), 0          , dtau1_dt(t), fU0(t), r_bar*R, R)
     sol_no_deriv = solve_ivp(system , t_span=[0, max(vt)], y0=y0, t_eval=vt)
 
     # Implicit a_bar
-    system = lambda t,x: dynflow_oye_dxdt(t,x, a_qs(t) , x[0], da_qs_dt(t), dtau1_dt(t), fU0(t), r_bar*R, R)
+    system = lambda t,x: dynflow_oye_dxdt(t, x, a_qs(t) , x[0]    , da_qs_dt(t), dtau1_dt(t), fU0(t), r_bar*R, R)
     sol_implicit = solve_ivp(system , t_span=[0, max(vt)], y0=y0, t_eval=vt)
 
     # Implicit a_bar
-    system = lambda t,x: dynflow_oye_dxdt(t,x, a_qs(t) , x[0], 0, dtau1_dt(t), fU0(t), r_bar*R, R)
+    system = lambda t,x: dynflow_oye_dxdt(t, x, a_qs(t) , x[0]    ,     0      , dtau1_dt(t), fU0(t), r_bar*R, R)
     sol_implicit_no_deriv = solve_ivp(system , t_span=[0, max(vt)], y0=y0, t_eval=vt)
 
 
@@ -318,7 +342,7 @@ if __name__=='__main__':
     example_algo_investigation(Case='Sine',T=5)
     example_algo_investigation(Case='WindSine',T=5)
 
-    export2png()
+#     export2png()
 
 
 
