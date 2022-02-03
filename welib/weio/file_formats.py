@@ -12,5 +12,5 @@ class FileFormat():
             self.isValid     = fileclass.isRightFormat
 
     def __repr__(self):
-        return 'Format: {} ({})'.format(self.name,self.extensions[0])
+        return 'FileFormat object: {} ({})'.format(self.name,self.extensions[0])
 

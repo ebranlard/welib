@@ -112,11 +112,11 @@ class File(dict):
         raise NotImplementedError("Method must be implemented in the subclass")
 
     @classmethod
-    def isRightFormat(cls,filename):
+    def isRightFormat(cls, filename, **kwargs):
         """ Tries to open a file, return true and the file if it succeeds """
         #raise NotImplementedError("Method must be implemented in the subclass")
         try:
-            F=cls(filename=filename)
+            F=cls(filename=filename, **kwargs)
             return True,F
         except MemoryError:
             raise

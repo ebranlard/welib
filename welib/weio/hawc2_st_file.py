@@ -1,7 +1,7 @@
 """ 
 Wrapper around wetb to read/write hawc2 st files.
 """
-from .file import File
+from .file import File, WrongFormatError
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,7 @@ class HAWC2StFile(File):
 
     @staticmethod
     def defaultExtensions():
-        return ['.st']
+        return ['.st','.dat']
 
     @staticmethod
     def formatName():
@@ -25,6 +25,19 @@ class HAWC2StFile(File):
             self.read(filename, **kwargs)
 
     def _read(self):
+        # --- Sanity check read first few lines, check if some start with # and $
+        nLinesMax=12
+        hasPound=False
+        hasDollar=False
+        with open(self.filename,'r') as fid:
+            for i, line in enumerate(fid):
+                hasPound  = hasPound or  line.startswith('#') 
+                hasDollar = hasDollar or line.startswith('$')
+                if i==nLinesMax:
+                    break
+        if (not hasPound) or (not hasDollar):
+            raise WrongFormatError('The first line of the file dont have `#` or `$`, likely not a st file.')
+        #  --- Actual reading
         self.data = StFile(self.filename)
 
     def _write(self):

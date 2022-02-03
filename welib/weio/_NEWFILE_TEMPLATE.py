@@ -90,6 +90,7 @@ class XXXFile(File):
         # --- Example (returning one DataFrame):
         #  return pd.DataFrame(data=np.zeros((10,2)),columns=['Col1','Col2'])
         # --- Example (returning dict of DataFrames):
+        #dfs={}
         #cols=['Alpha_[deg]','Cl_[-]','Cd_[-]','Cm_[-]']
         #dfs['Polar1'] = pd.DataFrame(data=..., columns=cols)
         #dfs['Polar1'] = pd.DataFrame(data=..., columns=cols)

@@ -12,7 +12,7 @@ standard_library.install_aliases()
 
 from itertools import takewhile
 
-from .file import File, WrongFormatError, BrokenReaderError
+from .file import File, WrongFormatError, BrokenReaderError, EmptyFileError
 from .csv_file import CSVFile
 import numpy as np
 import pandas as pd
@@ -82,6 +82,8 @@ class FASTOutputFile(File):
             raise BrokenReaderError('FAST Out File {}: Memory error encountered\n{}'.format(self.filename,e))
         except Exception as e:    
             raise WrongFormatError('FAST Out File {}: {}'.format(self.filename,e.args))
+        if self.data.shape[0]==0:
+            raise EmptyFileError('This FAST output file contains no data: {}'.format(self.filename))
 
         if self.info['attribute_units'] is not None:
             self.info['attribute_units'] = [re.sub(r'[()\[\]]','',u) for u in self.info['attribute_units']]

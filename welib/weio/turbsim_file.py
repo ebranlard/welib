@@ -200,6 +200,166 @@ class TurbSimFile(File):
         iz = np.argmin(np.abs(self['z']-z))
         return iy,iz
 
+    def _longiline(ts, iy0=None, iz0=None, mean=True):
+        """ return velocity components on a longitudinal line
+        If no index is provided, computed at mid box 
+        """
+        if iy0 is None:
+            iy0,iz0 = ts._iMid()
+        u = ts['u'][0,:,iy0,iz0]
+        v = ts['u'][1,:,iy0,iz0]
+        w = ts['u'][2,:,iy0,iz0]
+        if not mean:
+            u -= np.mean(u)
+            v -= np.mean(v)
+            w -= np.mean(w)
+        return u, v, w
+
+    def _latline(ts, ix0=None, iz0=None, mean=True):
+        """ return velocity components on a lateral line
+        If no index is provided, computed at mid box 
+        """
+        if ix0 is None:
+            iy0,iz0 = ts._iMid()
+            ix0=int(len(ts['t'])/2)
+        u = ts['u'][0,ix0,:,iz0]
+        v = ts['u'][1,ix0,:,iz0]
+        w = ts['u'][2,ix0,:,iz0]
+        if not mean:
+            u -= np.mean(u)
+            v -= np.mean(v)
+            w -= np.mean(w)
+        return u, v, w
+
+    def _vertline(ts, ix0=None, iy0=None, mean=True):
+        """ return velocity components on a vertical line
+        If no index is provided, computed at mid box 
+        """
+        if ix0 is None:
+            iy0,iz0 = ts._iMid()
+            ix0=int(len(ts['t'])/2)
+        u = ts['u'][0,ix0,iy0,:]
+        v = ts['u'][1,ix0,iy0,:]
+        w = ts['u'][2,ix0,iy0,:]
+        if not mean:
+            u -= np.mean(u)
+            v -= np.mean(v)
+            w -= np.mean(w)
+        return u, v, w
+
+
+    def crosscorr_y(ts, iy0=None, iz0=None):
+        """ Cross correlation along y
+        If no index is provided, computed at mid box 
+        """
+        y = ts['y']
+        if iy0 is None:
+            iy0,iz0 = ts._iMid()
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+        rho_uu_y=np.zeros(len(y))
+        rho_vv_y=np.zeros(len(y))
+        rho_ww_y=np.zeros(len(y))
+        for iy,_ in enumerate(y):
+            ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, mean=False)
+            rho_uu_y[iy] = np.mean(u*ud)/(np.std(u)*np.std(ud))
+            rho_vv_y[iy] = np.mean(v*vd)/(np.std(v)*np.std(vd))
+            rho_ww_y[iy] = np.mean(w*wd)/(np.std(w)*np.std(wd))
+        return y, rho_uu_y, rho_vv_y, rho_ww_y
+
+    def crosscorr_z(ts, iy0=None, iz0=None):
+        """ 
+        Cross correlation along z, mid box
+        If no index is provided, computed at mid box 
+        """
+        z = ts['z']
+        if iy0 is None:
+            iy0,iz0 = ts._iMid()
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+        rho_uu_z = np.zeros(len(z))
+        rho_vv_z = np.zeros(len(z))
+        rho_ww_z = np.zeros(len(z))
+        for iz,_ in enumerate(z):
+            ud, vd, wd = ts._longiline(iy0=iy0, iz0=iz, mean=False)
+            rho_uu_z[iz] = np.mean(u*ud)/(np.std(u)*np.std(ud))
+            rho_vv_z[iz] = np.mean(v*vd)/(np.std(v)*np.std(vd))
+            rho_ww_z[iz] = np.mean(w*wd)/(np.std(w)*np.std(wd))
+        return z, rho_uu_z, rho_vv_z, rho_ww_z
+
+
+    def csd_longi(ts, iy0=None, iz0=None):
+        """ Compute cross spectral density
+        If no index is provided, computed at mid box 
+        """
+        import scipy.signal as sig
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+        t       = ts['t']
+        dt      = t[1]-t[0]
+        fs      = 1/dt
+        fc, chi_uu = sig.csd(u, u, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        fc, chi_vv = sig.csd(v, v, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        fc, chi_ww = sig.csd(w, w, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        return fc, chi_uu, chi_vv, chi_ww
+
+    def csd_lat(ts, ix0=None, iz0=None):
+        """ Compute lateral cross spectral density
+        If no index is provided, computed at mid box 
+        """
+        import scipy.signal as sig
+        u, v, w = ts._latline(ix0=ix0, iz0=iz0, mean=False)
+        t       = ts['t']
+        dt      = t[1]-t[0]
+        fs      = 1/dt
+        fc, chi_uu = sig.csd(u, u, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        fc, chi_vv = sig.csd(v, v, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        fc, chi_ww = sig.csd(w, w, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        return fc, chi_uu, chi_vv, chi_ww
+
+    def csd_vert(ts, ix0=None, iy0=None):
+        """ Compute vertical cross spectral density
+        If no index is provided, computed at mid box 
+        """
+        import scipy.signal as sig
+        t       = ts['t']
+        dt      = t[1]-t[0]
+        fs      = 1/dt
+        u, v, w = ts._vertline(ix0=ix0, iy0=iy0, mean=False)
+        u= u-np.mean(u)
+        v= v-np.mean(v)
+        w= w-np.mean(w)
+        fc, chi_uu = sig.csd(u, u, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        fc, chi_vv = sig.csd(v, v, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        fc, chi_ww = sig.csd(w, w, fs=fs, scaling='density') #nperseg=4096, noverlap=2048, detrend='constant')
+        return fc, chi_uu, chi_vv, chi_ww
+
+
+    def coherence_longi(ts, iy0=None, iz0=None):
+        """ Coherence on a longitudinal line for different delta y and delta z
+        compared to a given point with index iy0,iz0
+        """
+        import scipy.signal as sig
+        if iy0 is None:
+            iy0,iz0 = ts._iMid()
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+        y = ts['y']
+        z = ts['z']
+        diy=1
+        dy=y[iy]-y[iy0]
+        # TODO
+        iy = iy0+diy
+        ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, mean=False)
+        fc, coh_uu_y1 = sig.coherence(u,ud, fs=fs)
+        _ , coh_vv_y1 = sig.coherence(v,vd, fs=fs)
+        _ , coh_ww_y1 = sig.coherence(w,wd, fs=fs)
+
+        iy = iy+diy
+        ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, mean=False)
+        _ , coh_uu_y2 = sig.coherence(u,ud, fs=fs)
+        _ , coh_vv_y2 = sig.coherence(v,vd, fs=fs)
+        _ , coh_ww_y2 = sig.coherence(w,wd, fs=fs)
+
+
+
+
     def makePeriodic(self):
         """ Make the box periodic by mirroring it """
         nDim, nt0, ny, nz = self['u'].shape
@@ -284,15 +444,46 @@ class TurbSimFile(File):
         m = np.mean(self['u'][:,:,iy,:], axis=1)
         s = np.std( self['u'][:,:,iy,:], axis=1)
         ti = s/m*100
-        Cols=['z_[m]','u_[m/s]','v_[m/s]','w_[m/s]','sigma_u_[m/s]','sigma_v_[m/s]','sigma_w_[m/s]','TI_[%]']
+        cols=['z_[m]','u_[m/s]','v_[m/s]','w_[m/s]','sigma_u_[m/s]','sigma_v_[m/s]','sigma_w_[m/s]','TI_[%]']
         data = np.column_stack((self['z'],m[0,:],m[1,:],m[2,:],s[0,:],s[1,:],s[2,:],ti[0,:]))
-        dfs['VertProfile'] = pd.DataFrame(data = data ,columns = Cols)
+        dfs['VertProfile'] = pd.DataFrame(data = data ,columns = cols)
 
         # Mid time series
         u = self['u'][:,:,iy,iz]
-        Cols=['t_[s]','u_[m/s]','v_[m/s]','w_[m/s]']
+        cols=['t_[s]','u_[m/s]','v_[m/s]','w_[m/s]']
         data = np.column_stack((self['t'],u[0,:],u[1,:],u[2,:]))
-        dfs['MidLine'] = pd.DataFrame(data = data ,columns = Cols)
+        dfs['MidLine'] = pd.DataFrame(data = data ,columns = cols)
+
+        # Mid crosscorr y
+        y, rho_uu_y, rho_vv_y, rho_ww_y = self.crosscorr_y()
+        cols = ['y_[m]', 'rho_uu_[-]','rho_vv_[-]','rho_ww_[-]']
+        data = np.column_stack((y, rho_uu_y, rho_vv_y, rho_ww_y))
+        dfs['Mid_xcorr_y'] = pd.DataFrame(data = data ,columns = cols)
+
+        # Mid crosscorr z
+        z, rho_uu_z, rho_vv_z, rho_ww_z = self.crosscorr_z()
+        cols = ['z_[m]', 'rho_uu_[-]','rho_vv_[-]','rho_ww_[-]']
+        data = np.column_stack((z, rho_uu_z, rho_vv_z, rho_ww_z))
+        dfs['Mid_xcorr_z'] = pd.DataFrame(data = data ,columns = cols)
+
+        # Mid csd
+        fc, chi_uu, chi_vv, chi_ww = self.csd_longi()
+        cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+        data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+        dfs['Mid_csd_longi'] = pd.DataFrame(data = data ,columns = cols)
+
+        # Mid csd
+        fc, chi_uu, chi_vv, chi_ww = self.csd_lat()
+        cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+        data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+        dfs['Mid_csd_lat'] = pd.DataFrame(data = data ,columns = cols)
+
+        # Mid csd
+        fc, chi_uu, chi_vv, chi_ww = self.csd_vert()
+        cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+        data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+        dfs['Mid_csd_vert'] = pd.DataFrame(data = data ,columns = cols)
+
 
         # Hub time series
         #try:
