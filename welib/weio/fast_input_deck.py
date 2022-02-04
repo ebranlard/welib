@@ -33,6 +33,10 @@ class FASTInputDeck(dict):
                  AC: airfoil coordinates (if present)
 
         """
+        # Sanity
+        if type(verbose) is not bool: 
+            raise Exception('`verbose` arguments needs to be a boolean')
+
         self.filename = fullFstPath
         self.verbose  = verbose
         self.readlist = readlist

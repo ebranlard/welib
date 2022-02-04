@@ -91,15 +91,18 @@ class FASTOutputFile(File):
 
     def _write(self): 
         if self['binary']:
-            # TODO
-            raise NotImplementedError()
-
-        # ascii output
-        with open(self.filename,'w') as f:
-            f.write('\t'.join(['{:>10s}'.format(c)         for c in self.info['attribute_names']])+'\n')
-            f.write('\t'.join(['{:>10s}'.format('('+u+')') for u in self.info['attribute_units']])+'\n')
-            # TODO better..
-            f.write('\n'.join(['\t'.join(['{:10.4f}'.format(y[0])]+['{:10.3e}'.format(x) for x in y[1:]]) for y in self.data]))
+            channels = self.data
+            chanNames = self.info['attribute_names']
+            chanUnits = self.info['attribute_units']
+            descStr   = self.info['description']
+            writeBinary(self.filename, channels, chanNames, chanUnits, fileID=2, descStr=descStr)
+        else:
+            # ascii output
+            with open(self.filename,'w') as f:
+                f.write('\t'.join(['{:>10s}'.format(c)         for c in self.info['attribute_names']])+'\n')
+                f.write('\t'.join(['{:>10s}'.format('('+u+')') for u in self.info['attribute_units']])+'\n')
+                # TODO better..
+                f.write('\n'.join(['\t'.join(['{:10.4f}'.format(y[0])]+['{:10.3e}'.format(x) for x in y[1:]]) for y in self.data]))
 
     def _toDataFrame(self):
         if self.info['attribute_units'] is not None:
@@ -333,10 +336,108 @@ def load_binary_output(filename, use_buffer=True):
 
     info = {'name': os.path.splitext(os.path.basename(filename))[0],
             'description': DescStr,
+            'fileID': FileID,
             'attribute_names': ChanName,
             'attribute_units': ChanUnit}
     return data, info
 
+def writeBinary(fileName, channels, chanNames, chanUnits, fileID=2, descStr=''):
+    """
+    Write an OpenFAST binary file.
+
+    Based on contributions from
+        Hugo Castro, David Schlipf, Hochschule Flensburg
+    
+    Input:
+     FileName      - string: contains file name to open
+     Channels      - 2-D array: dimension 1 is time, dimension 2 is channel 
+     ChanName      - cell array containing names of output channels
+     ChanUnit      - cell array containing unit names of output channels, preferably surrounded by parenthesis
+     FileID        - constant that determines if the time is stored in the
+                     output, indicating possible non-constant time step
+     DescStr       - String describing the file
+    """
+    # Data sanitization
+    chanNames = list(chanNames)
+    channels  = np.asarray(channels)
+    if chanUnits[0][0]!='(':
+        chanUnits = ['('+u+')' for u in chanUnits] # units surrounded by parenthesis to match OpenFAST convention
+
+    nT, nChannelsWithTime = np.shape(channels)
+    nChannels             = nChannelsWithTime - 1
+
+    # For FileID =2,  time needs to be present and at the first column
+    try:
+        iTime = chanNames.index('Time')
+    except ValueError:
+        raise Exception('`Time` needs to be present in channel names' )
+    if iTime!=0:
+        raise Exception('`Time` needs to be the first column of `chanName`' )
+
+    time = channels[:,iTime]
+    timeStart = time[0]
+    timeIncr  = time[1]-time[0]
+    dataWithoutTime = channels[:,1:]
+        
+    # Compute data range, scaling and offsets to convert to int16
+    #   To use the int16 range to its fullest, the max float is matched to 2^15-1 and the
+    #   the min float is matched to -2^15. Thus, we have the to equations we need
+    #   to solve to get scaling and offset, see line 120 of ReadFASTbinary:
+    #   Int16Max = FloatMax * Scaling + Offset 
+    #   Int16Min = FloatMin * Scaling + Offset
+    int16Max   = np.single( 32767.0)         # Largest integer represented in 2 bytes,  2**15 - 1
+    int16Min   = np.single(-32768.0)         # Smallest integer represented in 2 bytes -2**15
+    int16Rng   = np.single(int16Max - int16Min)  # Max Range of 2 byte integer
+    mins   = np.min(dataWithoutTime, axis=0)
+    ranges = np.single(np.max(dataWithoutTime, axis=0) - mins)
+    ranges[ranges==0]=1  # range set to 1 for constant channel. In OpenFAST: /sqrt(epsilon(1.0_SiKi))
+    ColScl  = np.single(int16Rng/ranges)
+    ColOff  = np.single(int16Min - np.single(mins)*ColScl)
+    
+    #Just available for fileID 
+    if fileID != 2:
+        print("current version just works with FileID = 2")
+
+    else:
+        with open(fileName,'wb') as fid:
+            # Notes on struct:
+            # @ is used for packing in native byte order
+            #  B - unsigned integer 8 bits
+            #  h - integer 16 bits
+            #  i - integer 32 bits
+            #  f - float 32 bits
+            #  d - float 64 bits
+
+            # Write header informations
+            fid.write(struct.pack('@h',fileID))
+            fid.write(struct.pack('@i',nChannels))
+            fid.write(struct.pack('@i',nT))
+            fid.write(struct.pack('@d',timeStart))
+            fid.write(struct.pack('@d',timeIncr))
+            fid.write(struct.pack('@{}f'.format(nChannels), *ColScl))
+            fid.write(struct.pack('@{}f'.format(nChannels), *ColOff))
+            descStrASCII = [ord(char) for char in descStr]
+            fid.write(struct.pack('@i',len(descStrASCII)))
+            fid.write(struct.pack('@{}B'.format(len((descStrASCII))), *descStrASCII))
+
+            # Write channel names
+            for chan in chanNames:
+                ordchan = [ord(char) for char in chan]+ [32]*(10-len(chan))
+                fid.write(struct.pack('@10B', *ordchan))
+
+            # Write channel units
+            for unit in chanUnits:
+                ordunit = [ord(char) for char in unit]+ [32]*(10-len(unit))
+                fid.write(struct.pack('@10B', *ordunit))
+
+            # Pack data
+            packedData=np.zeros((nT, nChannels), dtype=np.int16)
+            for iChan in range(nChannels):
+                packedData[:,iChan] = np.clip( ColScl[iChan]*dataWithoutTime[:,iChan]+ColOff[iChan], int16Min, int16Max)
+
+            # Write data
+            fid.write(struct.pack('@{}h'.format(packedData.size), *packedData.flatten()))
+            fid.close()
 
 
 if __name__ == "__main__":

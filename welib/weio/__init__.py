@@ -12,6 +12,7 @@ def fileFormats():
     from .fast_wind_file          import FASTWndFile
     from .fast_linearization_file import FASTLinearizationFile
     from .fast_summary_file       import FASTSummaryFile
+    from .bmodes_out_file         import BModesOutFile
     from .hawc2_pc_file           import HAWC2PCFile
     from .hawc2_ae_file           import HAWC2AEFile
     from .hawc2_dat_file          import HAWC2DatFile
@@ -19,6 +20,7 @@ def fileFormats():
     from .hawc2_st_file           import HAWC2StFile
     from .hawcstab2_pwr_file      import HAWCStab2PwrFile
     from .hawcstab2_ind_file      import HAWCStab2IndFile
+    from .hawcstab2_cmb_file      import HAWCStab2CmbFile
     from .flex_blade_file         import FLEXBladeFile
     from .flex_profile_file       import FLEXProfileFile
     from .flex_out_file           import FLEXOutFile
@@ -35,6 +37,7 @@ def fileFormats():
     from .parquet_file            import ParquetFile
     from .cactus_file             import CactusFile
     from .raawmat_file            import RAAWMatFile
+    from .rosco_performance_file  import ROSCOPerformanceFile
     formats = []
     formats.append(FileFormat(CSVFile))
     formats.append(FileFormat(TecplotFile))
@@ -45,6 +48,7 @@ def fileFormats():
     formats.append(FileFormat(FASTWndFile))
     formats.append(FileFormat(FASTLinearizationFile))
     formats.append(FileFormat(FASTSummaryFile))
+    formats.append(FileFormat(BModesOutFile))
     formats.append(FileFormat(TurbSimTSFile))
     formats.append(FileFormat(TurbSimFile))
     formats.append(FileFormat(HAWC2DatFile))
@@ -54,6 +58,7 @@ def fileFormats():
     formats.append(FileFormat(HAWC2AEFile))
     formats.append(FileFormat(HAWCStab2PwrFile))
     formats.append(FileFormat(HAWCStab2IndFile))
+    formats.append(FileFormat(HAWCStab2CmbFile))
     formats.append(FileFormat(FLEXBladeFile))
     formats.append(FileFormat(FLEXProfileFile))
     formats.append(FileFormat(FLEXOutFile))
@@ -65,10 +70,11 @@ def fileFormats():
     formats.append(FileFormat(ParquetFile))
     formats.append(FileFormat(CactusFile))
     formats.append(FileFormat(RAAWMatFile))
+    formats.append(FileFormat(ROSCOPerformanceFile))
     return formats
 
 
-def detectFormat(filename):
+def detectFormat(filename, **kwargs):
     """ Detect the file formats by looping through the known list. 
         The method may simply try to open the file, if that's the case
         the read file is returned. """
@@ -91,7 +97,7 @@ def detectFormat(filename):
             else:
                 extMatch = False
         if extMatch: # we have a match on the extension
-            valid, F = myformat.isValid(filename)
+            valid, F = myformat.isValid(filename, **kwargs)
             if valid:
                 #print('File detected as :',myformat)
                 detected=True
@@ -102,11 +108,11 @@ def detectFormat(filename):
     if not detected:
         raise FormatNotDetectedError('The file format could not be detected for the file: '+filename)
 
-def read(filename,fileformat=None):
+def read(filename,fileformat=None, **kwargs):
     F = None
     # Detecting format if necessary
     if fileformat is None:
-        fileformat,F = detectFormat(filename)
+        fileformat,F = detectFormat(filename, **kwargs)
     # Reading the file with the appropriate class if necessary
     if not isinstance(F,fileformat.constructor):
         F=fileformat.constructor(filename=filename)

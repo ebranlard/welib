@@ -182,7 +182,9 @@ class FASTLinearizationFile(File):
             s = s.replace('IfW ','');
             s = s.replace('Extended input: ','')
             s = s.replace('1st tower ','qt1');
-            s = s.replace('First time derivative of '     ,'d_');
+            if s.find('First time derivative of ')>=0:
+                s = s.replace('First time derivative of '     ,'');
+                s = 'd_'+s.strip()
             s = s.replace('Variable speed generator DOF ','psi_rot'); # NOTE: internally in FAST this is the azimuth of the rotor
             s = s.replace('fore-aft bending mode DOF '    ,'FA'     );
             s = s.replace('side-to-side bending mode DOF','SS'     );

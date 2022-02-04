@@ -22,7 +22,7 @@ def main():
     ref_dir        = os.path.join(MyDir, '../../../data/NREL5MW/')  # Folder where the fast input files are located (will be copied)
     FAST_EXE       = os.path.join(MyDir, '../../../data/openfast.exe') # Location of a FAST exe (and dll)
     main_file      = 'Main_Onshore.fst'          # Main file in ref_dir, used as a template
-    work_dir       = '_NREL5MW_ParametricExcel/'     # Output folder (will be created)
+    work_dir       = os.path.join(MyDir, '_NREL5MW_ParametricExcel/')     # Output folder (will be created)
     parametricFile = 'ParametricExcel.xlsx'          # Excel file containing set of parameters
 
     # --- Reading Excel file, converting it to a list of dictionaries, and generate input files
