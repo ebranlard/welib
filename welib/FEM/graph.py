@@ -34,6 +34,7 @@ ElemPropertySets: dictionary of ElemProperties
 
 import numpy as np
 import pandas as pd
+print('Using Graph from FEM')
 
 
 # --------------------------------------------------------------------------------}
@@ -130,6 +131,14 @@ class Element(dict):
         n1=self.nodes[0]
         n2=self.nodes[1]
         return np.sqrt((n1.x-n2.x)**2+(n1.y-n2.y)**2+(n1.z-n2.z)**2)
+
+    def swapNodes(self):
+        self.nodeIDs   = self.nodeIDs[-1::-1]
+        self.nodes     = self.nodes  [-1::-1]
+        if self.propIDs is not None:
+            self.propIDs   = self.propIDs[-1::-1]
+        if self.nodePropes is not None:
+            self.nodeProps = self.nodeProps[-1::-1]
 
     def __repr__(self):
         s='<Elem{:4d}> NodeIDs: {} {}'.format(self.ID, self.nodeIDs, self.data)
@@ -491,8 +500,8 @@ class GraphModel(object):
             e.nodes=[self.getNode(i) for i in e.nodeIDs]
 
         for e in self.Elements:
-            e.nodeProps = [self.getNodeProperty(e.propset, ID) for ID in e.propIDs]
-
+            if e.propIDs is not None:
+                e.nodeProps = [self.getNodeProperty(e.propset, ID) for ID in e.propIDs]
         # Potentially call nodeIDs2ElementIDs etc
 
 
@@ -536,6 +545,8 @@ class GraphModel(object):
             for i in range(1,nPerElement):
                 maxElemId+=1
                 elem_dict = e.data.copy()
+                propset = None
+                propIDs = None
                 # Creating extra properties if necessary
                 if e.propIDs is not None:
                     if all(e.propIDs==e.propIDs[0]):
