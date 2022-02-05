@@ -16,7 +16,7 @@ Elements:
    Elem.ID:      unique ID (int) of the element. IDs never change.
    Elem.nodeIDs: list of node IDs making up the element
    Elem.nodes  : list of nodes making the element (by reference) # NOTE: this has cross reference!
-   Elem.nodeProps   : properties # Nodal properties. NOTE: cannot be transfered to node because of how SubDyn handles it..
+   Elem.nodeProps   : properties # Nodal properties. NOTE: cannot be transfered to node if two members are connected to same nodes but with different nodal property (e.g. SubDyn/HydroDyn Diameter)
    Elem.data   : dictionary of data stored at the element
    # Optional
    Elem.propset: string referring to the property set in the dictionary of properties
@@ -110,7 +110,7 @@ class Element(dict):
         """
         self.ID      = int(ID)
         self.nodeIDs = nodeIDs
-        self.propset = propset
+        self.propset = propset  # String representing the key in the graph.NodePropertySets dict
         self.propIDs = propIDs
         self.data    = kwargs     # Nodal data
         self.nodes   = nodes      # Typically a trigger based on nodeIDs
@@ -504,6 +504,18 @@ class GraphModel(object):
                 e.nodeProps = [self.getNodeProperty(e.propset, ID) for ID in e.propIDs]
         # Potentially call nodeIDs2ElementIDs etc
 
+    def reindexNodes(self, offset=0):
+        """ Change node IDs so that the increase linearly"""
+        for i,n in enumerate(self.Nodes):
+            n.ID = i+offset
+        self.nodeIDsHaveChanged() #$ trigger for element.nodeIDs
+
+    def nodeIDsHaveChanged(self):
+        """ 
+        If User changes node.ID for the nodes, change the elements to reflect that
+        """
+        for e in self.Elements:
+            e.nodeIDs=[n.ID for n in e.nodes]
 
     def _divideElement(self, elemID, nPerElement, maxElemId, keysNotToCopy=None):
         """ divide a given element by nPerElement (add nodes and elements to graph) """ 

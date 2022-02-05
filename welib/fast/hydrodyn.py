@@ -59,7 +59,6 @@ class HydroDyn:
 
         graph = self.graph
 
-
         # --- Morison
         # NOTE: graph will be copied
         # Division occurs in constructor
@@ -171,35 +170,37 @@ class HydroDyn:
 
 
 if __name__ == '__main__':
-    filename='../../data/Monopile/MT100_HD.dat'
-    filename='../../data/Monopile/TetraSpar_HydroDyn_v2.dat'
-    #filename='../../data/SparNoRNA/SparNoRNA_HD_RefH.dat'
-    #sumfile ='../../data/SparNoRNA/Main.HD_python.sum'
-    filename='_SparNoRNA_HD_RefH.dat'
-    sumfile ='_Main.HD_python.sum'
-#     filename='_HD.dat'
-#     sumfile ='_MainT.HD_python.sum'
+    import sys
+    if len(sys.argv)>=1:
+        filename=sys.argv[1]
+    else:
+        #filename='../../data/SparNoRNA/SparNoRNA_HD_RefH.dat'
+        filename='_SparNoRNA_HD_RefH.dat'
+        filename='_HD_T.dat'
+        filename='_HD_T2.dat'
+    import welib
 
+#     hd = welib.weio.FASTInputFile(filename)
+# #     hd.write('Out.dat')
+#     graph = hd.toGraph()
+#     print(graph)
 
-#     hd = weio.FASTInputFile(filename)
-#     hd.write('Out.dat')
-#     Graph = hd.toGraph()
     hd = HydroDyn(filename)
     hd.init()
 #     hd.MorisonPositions
-    hd.writeSummary(sumfile)
+    hd.writeSummary(filename.replace('.dat','.HD_python.sum'))
 #     print(hd.graph)
 
 
-#     Graph.divideElements(3)
-#     print(Graph)
+#     graph.divideElements(3)
+#     print(graph)
 #     import numpy as np
 #     import matplotlib.pyplot as plt
 #     from matplotlib import collections  as mc
 #     from mpl_toolkits.mplot3d import Axes3D
 #     fig = plt.figure()
 #     ax = fig.add_subplot(1,2,1,projection='3d')
-#     lines=Graph.toLines(output='coord')
+#     lines=graph.toLines(output='coord')
 #     for l in lines:
 #     #     ax.add_line(l)
 #         ax.plot(l[:,0],l[:,1],l[:,2])

@@ -142,11 +142,13 @@ def hydrodynToGraph(hd):
 
     # --- Properties
     if 'SectionProp' in hd.keys():
+        # NOTE: setting it as element property since two memebrs may connect on the same node with different diameters/thicknesses
         Graph.addNodePropertySet('Section')
         for ip,P in enumerate(hd['SectionProp']):
             # PropSetID    PropD         PropThck
             prop= NodeProperty(ID=P[0], D=P[1], t=P[2])
             Graph.addNodeProperty('Section',prop)
+
     # --- Hydro Coefs - will be stored in AxCoefs, SimpleCoefs, DepthCoefs, MemberCoefs
     if 'AxCoefs' in hd.keys():
         Graph.addNodePropertySet('AxCoefs')
@@ -170,22 +172,23 @@ def hydrodynToGraph(hd):
             # Dpth      DpthCd   DpthCdMG   DpthCa   DpthCaMG       DpthCp   DpthCpMG   DpthAxCd   DpthAxCdMG   DpthAxCa   DpthAxCaMG   DpthAxCp   DpthAxCpMG
             prop= Property(ID=ip+1, Dpth=P[0], Cd=P[1], CdMG=P[2], Ca=P[3], CaMG=P[4], Cp=P[5], CpMG=P[6], AxCd=P[7], AxCdMG=P[8], AxCa=P[9], AxCaMG=P[10], AxCp=P[11], AxCpMG=P[12])
             Graph.addMiscProperty('DepthCoefs',prop)
+
     if 'MemberProp' in hd.keys():
         # Member-based hydro coefficinet
-        Graph.addElementPropertySet('MemberCoefs')
+        Graph.addMiscPropertySet('MemberCoefs')
         for ip,P in enumerate(hd['MemberProp']):
             # MemberID    MemberCd1     MemberCd2    MemberCdMG1   MemberCdMG2    MemberCa1     MemberCa2    MemberCaMG1   MemberCaMG2    MemberCp1     MemberCp2    MemberCpMG1   MemberCpMG2   MemberAxCd1   MemberAxCd2  MemberAxCdMG1 MemberAxCdMG2  MemberAxCa1   MemberAxCa2  MemberAxCaMG1 MemberAxCaMG2  MemberAxCp1  MemberAxCp2   MemberAxCpMG1   MemberAxCpMG2
             prop = Property(ID=ip+1, MemberID=P[0], Cd1=P[1], Cd2=P[2], CdMG1=P[3], CdMG2=P[4], Ca1=P[5], Ca2=P[6], CaMG1=P[7], CaMG2=P[8], Cp1=P[9], Cp2=P[10], CpMG1=P[11], CpMG2=P[12], AxCd1=P[14], AxCd2=P[15], axCdMG1=P[16], axCdMG2=P[17], AxCa1=P[18], AxCa2=P[19], AxCaMG1=P[20], AxCaMG2=P[21], AxCp1=P[22], AxCp2=P[23])
-            Graph.addElementProperty('MemberCoefs',prop)
+            Graph.addMiscProperty('MemberCoefs',prop)
     # ---
     if 'FillGroups' in hd.keys():
         # Filled members
-        Graph.addElementPropertySet('FillGroups')
+        Graph.addMiscPropertySet('FillGroups')
         for ip,P in enumerate(hd['FillGroups']):
             #                       FillNumM FillMList             FillFSLoc     FillDens
             raise NotImplementedError('hydroDynToGraph, Fill List might not be properly set, verify below')
-            prop = Property(ID=ip+1, FillNumM=P[0], FillMList=P[1],  FillFSLoc=P[2], FillDens=P[3])
-            Graph.addElementProperty('FillGroups',prop)
+            prop = MiscProperty(ID=ip+1, FillNumM=P[0], FillMList=P[1],  FillFSLoc=P[2], FillDens=P[3])
+            Graph.addMiscProperty('FillGroups',prop)
 
     if 'MGProp' in hd.keys():
         # Marine Growth
@@ -194,7 +197,7 @@ def hydrodynToGraph(hd):
             # MGDpth     MGThck       MGDens
             # (m)        (m)         (kg/m^3)
             prop = Property(ID=ip+1, MGDpth=P[0], MGThck=P[1],  MGDens=P[2])
-            Graph.addElementProperty('FillGroups',prop)
+            Graph.addMiscProperty('FillGroups',prop)
 
     # --- Nodes
     Nodes     = hd['Joints']
@@ -211,12 +214,12 @@ def hydrodynToGraph(hd):
         EE   = E[:5].astype(int)
         Type = int(E[6]) # MCoefMod
         Pot  = E[7].lower()[0]=='t'
-        elem= Element(ID=EE[0], nodeIDs=EE[1:3], CoefMod=PropSets[Type-1], DivSize=int(E[5]), Pot=Pot)
+        elem= Element(ID=EE[0], nodeIDs=EE[1:3], propIDs=EE[3:5], propset='Section', CoefMod=PropSets[Type-1], DivSize=int(E[5]), Pot=Pot)
         elem.data['object']='cylinder'
         elem.data['color'] = type2Color(Pot)
         Graph.addElement(elem)
-        # Nodal prop data
-        Graph.setElementNodalProp(elem, propset='Section', propIDs=EE[3:5])
+        # Nodal prop data NOTE: can't do that anymore for memebrs with different diameters at the same node
+        #Graph.setElementNodalProp(elem, propset='Section', propIDs=EE[3:5])
         if Type==1:
             # Simple
             Graph.setElementNodalProp(elem, propset='SimpleCoefs', propIDs=[1,1])

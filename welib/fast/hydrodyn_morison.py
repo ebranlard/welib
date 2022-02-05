@@ -23,7 +23,11 @@ class Morison:
         self.p['WtrDpth'] = WtrDpth
         self.p['MSL2SWL'] = MSL2SWL
 
-        # ---
+
+        # --- Important init 
+        # Reindex Nodes from 1-N to match what HydroDyn use
+        self.graph.reindexNodes(offset=0)
+        # Create "Simulation Nodes"
         self._divisionDone=False
         self.NodesBeforeSwap = self.generateSimulationNodes()
 
@@ -208,8 +212,10 @@ class Morison:
         if not self._divisionDone:
             graph = self.graph
             # NOTE: we change the reference for the z-coordinates to SWL for all nodes
+            nodeCount=0
             for n in graph.Nodes:
                 n.z -= self.p['MSL2SWL']
+                nodeCount+=1
             for e in graph.Elements:
                 if e.data['Pot'] is False:
                     numDiv = np.ceil(e.length/e.data['DivSize']).astype(int)
@@ -219,9 +225,14 @@ class Morison:
                     MorisonData['refLength'] = e.length
                     n1, n2 = e.nodes
                     SubNodesPositions = np.zeros((numDiv-1,3))
+                    MorisonData['nodeIDs']     = np.zeros(numDiv+1).astype(int)
+                    MorisonData['nodeIDs'][0]  = e.nodeIDs[0]
+                    MorisonData['nodeIDs'][-1] = e.nodeIDs[1]
                     for j in range(numDiv-1):
                         s = (j+1)/numDiv
                         SubNodesPositions[j,:] = n1.point * (1-s) + n2.point * s
+                        nodeCount+=1
+                        MorisonData['nodeIDs'][j+1] = nodeCount
                     MorisonData['SubNodesPositions'] = SubNodesPositions
                     e.MorisonData=MorisonData
         self._divisionDone=True
@@ -255,9 +266,9 @@ class Morison:
 
             if doSwap:
                 print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
-                print('TODO TODO TODO SWAPPING IS INCOMPLETE/BUGGY')
                 m.swapNodes()
                 m.MorisonData['SubNodesPositions'] =  m.MorisonData['SubNodesPositions'][-1::-1,:]
+                m.MorisonData['nodeIDs']           =  m.MorisonData['nodeIDs'][-1::-1]
             m.flipped=doSwap
         # Update connectivity
         graph.updateConnectivity()
@@ -284,8 +295,10 @@ class Morison:
 #                call SetNodeMG( InitInp%NMGDepths, InitInp%MGDepths, InitInp%Nodes(member%NodeIndx(i)), InitInp%MSL2SWL, member%tMG(i), member%MGDensity(i) )
             member['MGdensity']=np.zeros(N) # TODO
             member['tMG'] = np.zeros(N+1)   # TODO
-            t             = np.linspace(m.nodes[0].data['t']  , m.nodes[1].data['t']  , N+1)
-            member['R']   = np.linspace(m.nodes[0].data['D']/2, m.nodes[1].data['D']/2, N+1)
+            prop1 = m.nodeProps[0]  # NOTE: t&D are not stored in nodes since they are member dependent
+            prop2 = m.nodeProps[1] 
+            t             = np.linspace(prop1.data['t']  , prop2.data['t']  , N+1)
+            member['R']   = np.linspace(prop1.data['D']/2, prop2.data['D']/2, N+1)
             member['RMG'] = member['R']+member['tMG']
             member['Rin'] = member['R']-t
 
@@ -401,8 +414,8 @@ class Morison:
             else:
                 member['i_floor'] = -1 # lower end is at or above the seabed
             # calculate element-level values
-            member['dRdl_mg'] = np.diff(member['RMG'][1:])/dl
-            member['dRdl_in'] = np.diff(member['Rin'][1:])/dl
+            member['dRdl_mg'] = np.diff(member['RMG'])/dl
+            member['dRdl_in'] = np.diff(member['Rin'])/dl
 
             def GetAlpha(R1,R2):
                 # calculates relative center of volume location for a (tapered) cylindrical element
@@ -559,6 +572,857 @@ class Morison:
                     # 
                 else: # unflooded element
                     member['floodstatus'][i] = 0
+
+    def calcoutput(self):
+        pass
+# SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, errMsg )   
+# !..................................................................................................................................
+#    
+#    REAL(DbKi),                        INTENT(IN   )  :: Time        !< Current simulation time in seconds
+#    TYPE(Morison_InputType),           INTENT(IN   )  :: u           !< Inputs at Time
+#    TYPE(Morison_ParameterType),       INTENT(IN   )  :: p           !< Parameters
+#    TYPE(Morison_ContinuousStateType), INTENT(IN   )  :: x           !< Continuous states at Time
+#    TYPE(Morison_DiscreteStateType),   INTENT(IN   )  :: xd          !< Discrete states at Time
+#    TYPE(Morison_ConstraintStateType), INTENT(IN   )  :: z           !< Constraint states at Time
+#    TYPE(Morison_OtherStateType),      INTENT(IN   )  :: OtherState  !< Other states at Time
+#    TYPE(Morison_OutputType),          INTENT(INOUT)  :: y           !< Outputs computed at Time (Input only so that mesh con-
+#                                                                      !!   nectivity information does not have to be recalculated)
+#    TYPE(Morison_MiscVarType),         INTENT(INOUT)  :: m           !< Misc/optimization variables            
+#    INTEGER(IntKi),                    INTENT(  OUT)  :: errStat     !< Error status of the operation
+#    CHARACTER(*),                      INTENT(  OUT)  :: errMsg      !< Error message if errStat /= ErrID_None
+# 
+#       ! Local variables
+#                   
+#    INTEGER(IntKi)                                    :: errStat2    ! Error status of the operation (occurs after initial error)
+#    CHARACTER(errMsgLen)                              :: errMsg2     ! Error message if errStat2 /= ErrID_None
+#       
+#    REAL(ReKi)                                        :: F_DP(6), kvec(3), v(3),  vf(3), vrel(3), vmag
+#    INTEGER                                           :: I, J, K, nodeIndx, IntWrapIndx
+#    REAL(ReKi)                                        :: AllOuts(MaxMrsnOutputs)
+#    REAL(ReKi)                                        :: qdotdot(6) ,qdotdot2(3)     ! The structural acceleration of a mesh node
+#    !REAL(ReKi)                                        :: accel_fluid(6) ! Acceleration of fluid at the mesh node
+#    REAL(ReKi)                                        :: dragFactor     ! The lumped drag factor
+#    REAL(ReKi)                                        :: AnProd         ! Dot product of the directional area of the joint
+#    REAL(ReKi)                                        :: C(3,3)
+#    REAL(ReKi)                                        :: sgn
+#    REAL(ReKi)                                        :: D_AM_M(6,6)
+#    REAL(ReKi)                                        :: nodeInWater
+#    REAL(ReKi)                                        :: D_dragConst     ! The distributed drag factor
+#    REAL(ReKi)                                        :: InterpolationSlope 
+# 
+# 
+#       
+#    TYPE(Morison_MemberType) :: mem     ! the current member
+#    INTEGER                  :: N       ! Number of elements within a given member
+#    REAL(ReKi)               :: dl      ! Element length within a given member, m
+#    REAL(ReKi)               :: vec(3)  ! Vector pointing from a member's 1st node to its last node
+#    REAL(ReKi)               :: phi, phi1, phi2     ! member tilt angle
+#    REAL(ReKi)               :: beta    ! member tilt heading
+#    real(ReKi)               :: vecLen  ! distance between member end nodes (joints) [this should never be zero but we test for it just in case]
+#    REAL(ReKi)               :: cosPhi, cosPhi1, cosPhi2
+#    REAL(ReKi)               :: sinPhi, sinPhi1, sinPhi2
+#    REAL(ReKi)               :: tanPhi
+#    REAL(ReKi)               :: sinBeta, sinBeta1, sinBeta2
+#    REAL(ReKi)               :: cosBeta, cosBeta1, cosBeta2
+#    real(ReKi)               :: CMatrix(3,3), CTrans(3,3) ! Direction cosine matrix for element, and its transpose
+#    REAL(ReKi)               :: z1
+#    REAL(ReKi)               :: z2
+#    REAL(ReKi)               :: r1
+#    REAL(ReKi)               :: r2
+#    real(ReKi)               :: p1(3), p2(3)
+#    REAL(ReKi)               :: dRdl_mg     ! shorthand for taper including marine growth of element i
+#    REAL(ReKi)               :: Rmid  
+#    REAL(ReKi)               :: RmidMG
+#    REAL(ReKi)               :: Rmidin
+#    REAL(ReKi)               :: Lmid  
+#    real(ReKi)               :: g     ! gravity constant
+#    REAL(ReKi)               :: h0    ! distances along cylinder centerline from point 1 to the waterplane
+#    real(ReKi)               :: k_hat(3), k_hat1(3), k_hat2(3) ! Elemental unit vector pointing from 1st node to 2nd node of the element
+#    REAL(ReKi)               :: rh    ! radius of cylinder at point where its centerline crosses the waterplane
+#    REAL(ReKi)               :: l1    ! distance from cone end to bottom node
+#    REAL(ReKi)               :: Vs    ! segment submerged volume
+#    REAL(ReKi)               :: a0    ! waterplane ellipse shape
+#    REAL(ReKi)               :: b0    
+#    REAL(ReKi)               :: cr    ! centroid of segment submerged volume relative to its lower node
+#    REAL(ReKi)               :: cl 
+#    REAL(ReKi)               :: cx 
+#    REAL(ReKi)               :: cz 
+#    REAL(ReKi)               :: pwr   ! exponent for buoyancy node distribution smoothing
+#    REAL(ReKi)               :: alpha ! final load distribution factor for element
+#    REAL(ReKi)               :: Fb    !buoyant force
+#    REAL(ReKi)               :: Fr    !radial component of buoyant force
+#    REAL(ReKi)               :: Fl    !axial component of buoyant force
+#    REAL(ReKi)               :: Moment     !moment induced about the center of the cylinder's bottom face
+#    REAL(ReKi)               :: BuoyF(3) ! buoyancy force vector aligned with an element
+#    REAL(ReKi)               :: BuoyM(3) ! buoyancy moment vector aligned with an element
+#    integer(IntKi)           :: im    ! counter   
+#    real(ReKi)               :: a_s1(3)       
+#    real(ReKi)               :: alpha_s1(3)
+#    real(ReKi)               :: omega_s1(3)
+#    real(ReKi)               :: a_s2(3)       
+#    real(ReKi)               :: alpha_s2(3)
+#    real(ReKi)               :: omega_s2(3)
+#    real(ReKi)               :: pos1(3), pos2(3)   
+#    real(ReKi)               :: Imat(3,3)
+#    real(ReKi)               :: iArm(3), iTerm(3), Ioffset, h_c, dRdl_p, dRdl_pp, f_hydro(3), Am(3,3), lstar, deltal
+#    real(ReKi)               :: C_1, C_2, a0b0, z1d, z2d, h
+#    real(ReKi)               :: F_WMG(6), F_IMG(6), F_If(6), F_A(6), F_I(6), F_D(6), F_B1(6), F_B2(6)
+# 
+#       ! Initialize errStat
+#          
+#    errStat = ErrID_None         
+#    errMsg  = ""               
+#    Imat    = 0.0_ReKi   
+#    g       = p%Gravity
+#    
+#    InterpolationSlope = GetInterpolationSlope(Time, p, m, IntWrapIndx)
+# 
+#    !===============================================================================================
+#    ! Calculate the fluid kinematics at all mesh nodes and store for use in the equations below
+#    
+#    do j = 1, p%NNodes
+#       m%nodeInWater(j) = REAL( p%nodeInWater(IntWrapIndx,j), ReKi )
+#       
+#          ! Determine the dynamic pressure at the node
+#       m%FDynP(j) = InterpolateWithSlope(InterpolationSlope, m%LastIndWave, p%WaveDynP(:,j))
+#       do i=1,3
+#             ! Determine the fluid acceleration and velocity and relative structural velocity at the node
+#          m%FA(i,j) = InterpolateWithSlope(InterpolationSlope, m%LastIndWave, p%WaveAcc(:,j,i)) 
+#                
+#          m%FV(i,j) = InterpolateWithSlope(InterpolationSlope, m%LastIndWave, p%WaveVel(:,j,i)) 
+#          m%vrel(i,j) = m%FV(i,j) - u%Mesh%TranslationVel(i,j)
+#       end do
+#    end do
+#    
+#    ! ==============================================================================================
+#    ! Calculate instantaneous loads on each member except for the hydrodynamic loads on member ends.
+#    ! This covers aspects of the load calculations previously in CreateDistributedMesh.  
+# 
+#    ! Zero out previous time-steps loads (these are loads which are computed at the member-level and summed onto a node, 
+#    !    so they need to be zeroed out before the summations happen)
+#    !m%F_WMG   = 0.0_ReKi
+#    !m%F_IMG   = 0.0_ReKi
+#    m%F_BF_End= 0.0_ReKi
+#    !m%F_If    = 0.0_ReKi
+#    !m%F_D     = 0.0_ReKi
+#    !m%F_A     = 0.0_ReKi
+#    !m%F_I     = 0.0_ReKi
+#    !m%F_B     = 0.0_ReKi
+#    !m%F_BF    = 0.0_ReKi
+#    m%F_B_End = 0.0_ReKi
+#    y%Mesh%Force  = 0.0_ReKi
+#    y%Mesh%Moment = 0.0_ReKi
+#    
+#    ! Loop through each member
+#    DO im = 1, p%NMembers    
+#       N   = p%Members(im)%NElements      
+#       mem = p%Members(im)   !@mhall: does this have much overhead?
+# 
+#       !zero member loads
+#       m%memberLoads(im)%F_B = 0.0_ReKi
+#       m%memberLoads(im)%F_BF = 0.0_ReKi
+#       m%memberLoads(im)%F_D = 0.0_ReKi
+#       m%memberLoads(im)%F_A = 0.0_ReKi
+#       m%memberLoads(im)%F_I = 0.0_ReKi
+#       m%memberLoads(im)%F_WMG = 0.0_ReKi
+#       m%memberLoads(im)%F_IMG = 0.0_ReKi
+#       m%memberLoads(im)%F_If = 0.0_ReKi
+# 
+#       DO i =1,N    ! loop through member elements
+# 
+#             ! calculate isntantaneous incline angle and heading, and related trig values
+#          ! the first and last NodeIndx values point to the corresponding Joint nodes idices which are at the start of the Mesh
+# 
+#          pos1    = u%Mesh%TranslationDisp(:, mem%NodeIndx(i))   + u%Mesh%Position(:, mem%NodeIndx(i)) 
+#          pos1(3) = pos1(3) - p%MSL2SWL
+#          pos2    = u%Mesh%TranslationDisp(:, mem%NodeIndx(i+1)) + u%Mesh%Position(:, mem%NodeIndx(i+1)) 
+#          pos2(3) = pos2(3) - p%MSL2SWL
+# 
+#          call GetOrientationAngles( pos1, pos2, phi, sinPhi, cosPhi, tanPhi, sinBeta, cosBeta, k_hat, errStat2, errMsg2 )
+#          call Morison_DirCosMtrx( pos1, pos2, CMatrix )
+#          CTrans  = transpose(CMatrix)
+#          ! save some commonly used variables   
+#          dl      = mem%dl
+#          z1      = pos1(3)   ! get node z locations from input mesh
+#          z2      = pos2(3)
+#          r1      = mem%RMG(i  )                         ! outer radius element nodes including marine growth
+#          r2      = mem%RMG(i+1)
+#          dRdl_mg = mem%dRdl_mg(i)                                    ! Taper of element including marine growth
+#          a_s1    = u%Mesh%TranslationAcc(:, mem%NodeIndx(i  ))
+#          alpha_s1= u%Mesh%RotationAcc   (:, mem%NodeIndx(i  ))
+#          omega_s1= u%Mesh%RotationVel   (:, mem%NodeIndx(i  ))
+#          a_s2    = u%Mesh%TranslationAcc(:, mem%NodeIndx(i+1))
+#          alpha_s2= u%Mesh%RotationAcc   (:, mem%NodeIndx(i+1))
+#          omega_s2= u%Mesh%RotationVel   (:, mem%NodeIndx(i+1))
+#         
+#          if ( .not. mem%PropPot )  then ! Member is NOT modeled with Potential Flow Theory
+#          
+#             ! should i_floor theshold be applied to below calculations to avoid wasting time on computing zero-valued things? <<<<<
+#             ! should lumped half-element coefficients get combined at initialization? <<<
+#               
+#             ! ------------------ marine growth: Sides: Section 4.1.2 --------------------  
+#             F_WMG = 0.0_ReKi
+# 
+#             ! lower node
+#             !m%F_WMG(3, mem%NodeIndx(i  )) = m%F_WMG(3, mem%NodeIndx(i  )) - mem%m_mg_l(i)*g ! weight force  : Note: this is a constant
+#             !m%F_WMG(4, mem%NodeIndx(i  )) = m%F_WMG(4, mem%NodeIndx(i  )) - mem%m_mg_l(i)*g * mem%h_cmg_l(i)* sinPhi * sinBeta! weight force
+#             !m%F_WMG(5, mem%NodeIndx(i  )) = m%F_WMG(5, mem%NodeIndx(i  )) + mem%m_mg_l(i)*g * mem%h_cmg_l(i)* sinPhi * cosBeta! weight force
+#             
+#             F_WMG(3) = - mem%m_mg_l(i)*g ! weight force  : Note: this is a constant
+#             F_WMG(4) = - mem%m_mg_l(i)*g * mem%h_cmg_l(i)* sinPhi * sinBeta! weight force
+#             F_WMG(5) =   mem%m_mg_l(i)*g * mem%h_cmg_l(i)* sinPhi * cosBeta! weight force
+#             m%memberLoads(im)%F_WMG(:,i) = m%memberLoads(im)%F_WMG(:,i) + F_WMG
+#             y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + F_WMG(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + F_WMG(4:6)
+#             
+#             ! upper node
+#             !m%F_WMG(3, mem%NodeIndx(i+1)) = m%F_WMG(3, mem%NodeIndx(i+1)) - mem%m_mg_u(i)*g ! weight force  : Note: this is a constant 
+#             !m%F_WMG(4, mem%NodeIndx(i+1)) = m%F_WMG(4, mem%NodeIndx(i+1)) - mem%m_mg_u(i)*g * mem%h_cmg_u(i)* sinPhi * sinBeta! weight force
+#             !m%F_WMG(5, mem%NodeIndx(i+1)) = m%F_WMG(5, mem%NodeIndx(i+1)) + mem%m_mg_u(i)*g * mem%h_cmg_u(i)* sinPhi * cosBeta! weight force
+#             F_WMG(3) = - mem%m_mg_u(i)*g ! weight force  : Note: this is a constant 
+#             F_WMG(4) = - mem%m_mg_u(i)*g * mem%h_cmg_u(i)* sinPhi * sinBeta! weight force
+#             F_WMG(5) =   mem%m_mg_u(i)*g * mem%h_cmg_u(i)* sinPhi * cosBeta! weight force
+#             m%memberLoads(im)%F_WMG(:,i+1) = m%memberLoads(im)%F_WMG(:,i+1) + F_WMG  
+#             y%Mesh%Force (:,mem%NodeIndx(i+1)) = y%Mesh%Force (:,mem%NodeIndx(i+1)) + F_WMG(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i+1)) = y%Mesh%Moment(:,mem%NodeIndx(i+1)) + F_WMG(4:6)
+#             
+#             ! lower node
+#             Ioffset   = mem%h_cmg_l(i)*mem%h_cmg_l(i)*mem%m_mg_l(i)
+#             Imat(1,1) = mem%I_rmg_l(i) - Ioffset
+#             Imat(2,2) = mem%I_rmg_l(i) - Ioffset
+#             Imat(3,3) = mem%I_lmg_l(i) - Ioffset
+#             Imat      =  matmul(matmul(CMatrix, Imat), CTrans)
+#             iArm = mem%h_cmg_l(i) * k_hat
+#             iTerm     = ( -a_s1 - cross_product(omega_s1, cross_product(omega_s1,iArm )) - cross_product(alpha_s1,iArm) ) * mem%m_mg_l(i)
+#             !m%F_IMG(1:3, mem%NodeIndx(i  )) = m%F_IMG(1:3, mem%NodeIndx(i  )) + iTerm
+#             !m%F_IMG(4:6, mem%NodeIndx(i  )) = m%F_IMG(4:6, mem%NodeIndx(i  )) &
+#             !                                  - cross_product(a_s1 * mem%m_mg_l(i), mem%h_cmg_l(i) * k_hat) &
+#             !                                  + matmul(Imat, alpha_s1)  &
+#             !                                  - cross_product(omega_s1,matmul(Imat,omega_s1))
+#             F_IMG(1:3) = iTerm
+#             F_IMG(4:6) = - cross_product(a_s1 * mem%m_mg_l(i), mem%h_cmg_l(i) * k_hat) + matmul(Imat, alpha_s1)  &
+#                          - cross_product(omega_s1,matmul(Imat,omega_s1))
+#             m%memberLoads(im)%F_IMG(:,i) = m%memberLoads(im)%F_IMG(:,i) + F_IMG
+#             y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + F_IMG(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + F_IMG(4:6)
+#             
+#             ! upper node
+#             Ioffset   = mem%h_cmg_u(i)*mem%h_cmg_u(i)*mem%m_mg_u(i)
+#             Imat(1,1) = mem%I_rmg_u(i) - Ioffset
+#             Imat(2,2) = mem%I_rmg_u(i) - Ioffset
+#             Imat(3,3) = mem%I_lmg_u(i) - Ioffset
+#             Imat      =  matmul(matmul(CMatrix, Imat), CTrans)
+#             iArm = mem%h_cmg_u(i) * k_hat
+#             iTerm     = ( -a_s2 - cross_product(omega_s2, cross_product(omega_s2,iArm )) - cross_product(alpha_s2,iArm) ) * mem%m_mg_u(i)
+#             !m%F_IMG(1:3, mem%NodeIndx(i+1)) = m%F_IMG(1:3, mem%NodeIndx(i+1)) + iTerm
+#             !m%F_IMG(4:6, mem%NodeIndx(i+1)) = m%F_IMG(4:6, mem%NodeIndx(i+1)) &
+#             !                                  - cross_product(a_s2 * mem%m_mg_u(i), mem%h_cmg_u(i) * k_hat) &
+#             !                                  + matmul(Imat, alpha_s2) &
+#             !                                  - cross_product(omega_s2,matmul(Imat,omega_s2))
+#             F_IMG(1:3) = iTerm
+#             F_IMG(4:6) = - cross_product(a_s2 * mem%m_mg_u(i), mem%h_cmg_u(i) * k_hat) + matmul(Imat, alpha_s2) &
+#                          - cross_product(omega_s2,matmul(Imat,omega_s2))
+#             m%memberLoads(im)%F_IMG(:,i+1) = m%memberLoads(im)%F_IMG(:,i+1) + F_IMG
+#             y%Mesh%Force (:,mem%NodeIndx(i+1)) = y%Mesh%Force (:,mem%NodeIndx(i+1)) + F_IMG(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i+1)) = y%Mesh%Moment(:,mem%NodeIndx(i+1)) + F_IMG(4:6)
+# 
+#             ! ------------------- buoyancy loads: sides: Sections 3.1 and 3.2 ------------------------
+# 
+# !TODO: What about elements which are buried in the seabed?  This doesn't seem to be tested for
+#             if (z1 < 0) then   ! if segment is at least partially submerged ...
+#               
+#               
+#                if (z1*z2 <= 0) then ! special calculation if the slice is partially submerged
+#                   
+#                   ! Check that this is not the 1st element of the member
+#                   if ( i == 1 ) then
+#                      call SeterrStat(ErrID_Fatal, 'The lowest element of a Morison member has become partially submerged!  This is not allowed.  Please review your model and create a discretization such that even with displacements, the lowest element of a member does not become partially submerged.', errStat, errMsg, 'Morison_CalcOutput' )                  
+#                      return
+#                   end if
+#                   
+#                   h0 = -z1/cosPhi             ! distances along element centerline from point 1 to the waterplane
+#               
+#               
+#                   if (abs(dRdl_mg) < 0.0001) then      ! untapered cylinder case
+# 
+#                      Vs =    Pi*r1*r1*h0   ! volume of total submerged portion
+#                      if ( EqualRealNos(Vs, 0.0_ReKi) ) then
+#                         cx = 0.0_ReKi  ! Avoid singularity, but continue to provide the correct solution
+#                      else
+#                         cr = 0.25*r1*r1*tanPhi/h0
+#                         cl = 0.5*h0 + 0.125*r1*r1*tanPhi*tanPhi/h0
+#                         cx = cr*cosPhi + cl*sinPhi
+#                      end if
+#                     
+#                      !alpha0 = 0.5*h0/dl            ! force distribution between end nodes
+#                  
+#                   else       ! inclined tapered cylinder case (note I've renamed r0 to rh here!!)
+#                      !===================
+#                      !Per plan equations
+#                      ! NOTE:  Variable changes of Plan     vs       Code
+#                      !---------------------------------------------------
+#                      !                             V                 Vs
+#                      !                             a_h               a0
+#                      !                             b_h               b0
+#                      !                             x_c               cx
+#                      !                             h                 h0
+#                      !                             r1                r_MG,i
+#                      !                             r_c               cr
+#                      !                             h_c               cl
+#                      ! NOTE: a0 and b0 always appear as a0b0, never separately.
+#                      rh   = r1 + h0*dRdl_mg    ! radius of element at point where its centerline crosses the waterplane
+#                      C_1  = 1.0_ReKi - dRdl_mg**2 * tanPhi**2
+#                      ! waterplane ellipse shape
+#                      b0   = rh/sqrt(C_1)
+#                      a0   = rh/((C_1)*cosPhi)             ! simplified from what's in ConicalCalcs.ipynb
+#                      a0b0 = a0*b0
+#                      C_2  = a0b0*rh*cosPhi - r1**3
+#                      cl   = -(-0.75*a0b0*rh**2*cosPhi + 0.75*r1**4*C_1 + r1*C_1*C_2) / (dRdl_mg*C_1*C_2)
+#                      cr   = (0.75*a0b0*dRdl_mg*rh**2*sinPhi)/(C_1*C_2)
+#                      cx   = cr*cosPhi + cl*sinPhi 
+#                      Vs   = pi*(a0b0*rh*cosPhi - r1**3)/(3.0*dRdl_mg)       
+#                   
+#                      ! End per plan equations
+#                      !===================
+#                   
+#                      !rh = r1 + h0*dRdl_mg    ! radius of element at point where its centerline crosses the waterplane
+#                      !l1 = r1/dRdl_mg  ! distance from cone end to bottom node
+#                      !              
+#                      !! waterplane ellipse shape
+#                      !b0 = rh/sqrt(1 - dRdl_mg**2 * tanPhi**2)
+#                      !a0 = rh/((1 - dRdl_mg**2*tanPhi**2)*cosPhi)             ! simplified from what's in ConicalCalcs.ipynb
+#                      !
+#                      !! segment submerged volume
+#                      !!Vs = pi*(a0*b0*rh*cosPhi - l1**3*dRdl_mg**3)/(3*dRdl_mg) !Original code
+#                      !Vs = pi*(a0*b0*rh*cosPhi - r1**3)/(3*dRdl_mg)        !Plan doc
+#                      !
+#                      !! centroid of segment submerged volume (relative to bottom node)
+#                      !cx = -0.25*(3*a0*b0*rh*rh*(dRdl_mg**2 + 1)*cosPhi + 3.0*l1**4*dRdl_mg**4*(dRdl_mg**2*tanPhi**2 - 1) + 4*l1*dRdl_mg*(dRdl_mg**2*tanPhi**2 - 1)*(a0*b0*rh*cosPhi - 1.0*l1**3*dRdl_mg**3))*sin(phi)/(dRdl_mg*(dRdl_mg**2*tanPhi**2 - 1)*(a0*b0*rh*cosPhi - l1**3*dRdl_mg**3))
+#                               
+#                      !alpha0 = (r1*r1 + 2*r1*r2 + 3*r2**2)/4/(r1*r1 + r1*r2 + r2**2)  ! this can be precomputed
+#               
+#                   end if
+# 
+#                   pwr = 3
+#                   alpha    = (1.0-mem%alpha(i))*z1**pwr/(-mem%alpha(i)*z2**pwr + (1.0-mem%alpha(i))*z1**pwr)
+# 
+#                   Fb  = Vs*p%WtrDens*g       !buoyant force
+#                   Fr  = -Fb*sinPhi     !radial component of buoyant force
+#                   Fl  = Fb*cosPhi      !axial component of buoyant force
+#                   Moment = -Fb*cx      !This was matt's code        !moment induced about the center of the cylinder's bottom face
+# 
+#                   ! calculate (imaginary) bottom plate forces/moment to subtract from displacement-based values
+#                   Fl  = Fl  + p%WtrDens*g*z1* Pi *r1*r1        
+#                   Moment  = Moment  + p%WtrDens*g* sinPhi * Pi/4.0*r1**4       
+# 
+# 
+#                   ! reduce taper-based moment to remove (not double count) radial force distribution to each node 
+#                   Moment  = Moment + Fr*(1.0_ReKi-alpha)*dl
+#                   !call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha, m%F_B(:, mem%NodeIndx(i)), m%F_B(:, mem%NodeIndx(i-1)))
+#                   call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha, F_B1, F_B2)
+#                   m%memberLoads(im)%F_B(:, i) = m%memberLoads(im)%F_B(:, i) + F_B1      ! alpha
+#                   m%memberLoads(im)%F_B(:, i-1) = m%memberLoads(im)%F_B(:, i-1) + F_B2  ! 1-alpha
+#                   y%Mesh%Force (:,mem%NodeIndx(i  )) = y%Mesh%Force (:,mem%NodeIndx(i  )) + F_B1(1:3)
+#                   y%Mesh%Moment(:,mem%NodeIndx(i  )) = y%Mesh%Moment(:,mem%NodeIndx(i  )) + F_B1(4:6)
+#                   y%Mesh%Force (:,mem%NodeIndx(i-1)) = y%Mesh%Force (:,mem%NodeIndx(i-1)) + F_B2(1:3)
+#                   y%Mesh%Moment(:,mem%NodeIndx(i-1)) = y%Mesh%Moment(:,mem%NodeIndx(i-1)) + F_B2(4:6)
+#                else ! normal, fully submerged case
+#               
+#                   Fl = -2.0*Pi*dRdl_mg*p%WtrDens*g*dl*( z1*r1 + 0.5*(z1*dRdl_mg + r1*cosPhi)*dl + 1.0/3.0*(dRdl_mg*cosPhi*dl*dl) )   ! from CylinderCalculationsR1.ipynb
+#               
+#                   Fr = -Pi*p%WtrDens*g*dl*(r1*r1 + dRdl_mg*r1*dl + (dRdl_mg**2*dl**2)/3.0)*sinPhi                          ! from CylinderCalculationsR1.ipynb
+#                   Moment = -Pi*dl*g*p%WtrDens*(3.0*dl**3*dRdl_mg**4 + 3.0*dl**3*dRdl_mg**2 + 12.0*dl**2*dRdl_mg**3*r1 + 8.0*dl**2*dRdl_mg*r1 + 18.0*dl*dRdl_mg**2*r1*r1 + 6.0*dl*r1*r1 + 12.0*dRdl_mg*r1**3)*sinPhi/12.0   ! latest from CylinderCalculationsR1.ipynb
+# 
+#                   ! precomputed as mem%alpha(i) ... alpha0 = (r1*r1 + 2*r1*r2 + 3*r2**2)/4/(r1*r1 + r1*r2 + r2**2)
+#       !TODO: Review the below alpha eqn, GJH           
+#                   z1d = -min(0.0_ReKi,z1)
+#                   z2d = -min(0.0_ReKi,z2)
+#                    
+#                   pwr = 3
+#                   alpha = mem%alpha(i)*z2d**pwr/(mem%alpha(i)*z2d**pwr+(1-mem%alpha(i))*z1d**pwr)
+#                              
+#               
+#                   ! reduce moment to remove (not double count) radial force distribution to each node
+#                   Moment = Moment - Fr*alpha*dl
+#                   ! TODO: Should the order be, i, i+1 GJH
+#                   !call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha, m%F_B(:, mem%NodeIndx(i+1)), m%F_B(:, mem%NodeIndx(i)))
+#                   call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha, F_B1, F_B2)
+#                   m%memberLoads(im)%F_B(:,i+1) = m%memberLoads(im)%F_B(:,i+1) + F_B1  ! alpha
+#                   m%memberLoads(im)%F_B(:, i)  = m%memberLoads(im)%F_B(:, i)  + F_B2  ! 1-alpha
+#                   y%Mesh%Force (:,mem%NodeIndx(i  )) = y%Mesh%Force (:,mem%NodeIndx(i  )) + F_B2(1:3)
+#                   y%Mesh%Moment(:,mem%NodeIndx(i  )) = y%Mesh%Moment(:,mem%NodeIndx(i  )) + F_B2(4:6)
+#                   y%Mesh%Force (:,mem%NodeIndx(i+1)) = y%Mesh%Force (:,mem%NodeIndx(i+1)) + F_B1(1:3)
+#                   y%Mesh%Moment(:,mem%NodeIndx(i+1)) = y%Mesh%Moment(:,mem%NodeIndx(i+1)) + F_B1(4:6)
+#                end if  ! submergence cases
+#              
+#             end if ! element at least partially submerged
+#          
+#          end if ! NOT Modeled with Potential flow theory
+#       
+#          ! ------------------ flooded ballast inertia: sides: Section 6.1.1 : Always compute regardless of PropPot setting ---------------------
+# 
+#          ! lower node
+#          Ioffset   = mem%h_cfb_l(i)*mem%h_cfb_l(i)*mem%m_fb_l(i)
+#          Imat(1,1) = mem%I_rfb_l(i) - Ioffset
+#          Imat(2,2) = mem%I_rfb_l(i) - Ioffset
+#          Imat(3,3) = mem%I_lfb_l(i) - Ioffset
+#          iArm = mem%h_cfb_l(i) * k_hat
+#          iTerm     = ( -a_s1  - cross_product(omega_s1, cross_product(omega_s1,iArm ))  -  cross_product(alpha_s1,iArm) ) * mem%m_fb_l(i)
+#          !m%F_If(1:3, mem%NodeIndx(i  )) = m%F_If(1:3, mem%NodeIndx(i  )) + iTerm
+#          !m%F_If(4:6, mem%NodeIndx(i  )) = m%F_If(4:6, mem%NodeIndx(i  )) &
+#          !                                 - cross_product(a_s1 * mem%m_fb_l(i), mem%h_cfb_l(i) * k_hat) &
+#          !                                 + matmul(Imat, alpha_s1) &
+#          !                                 - cross_product(omega_s1,matmul(Imat,omega_s1)) 
+#          F_If(1:3) =  iTerm
+#          F_If(4:6) =  - cross_product(a_s1 * mem%m_fb_l(i), mem%h_cfb_l(i) * k_hat) + matmul(Imat, alpha_s1) &
+#                       - cross_product(omega_s1,matmul(Imat,omega_s1)) 
+#          m%memberLoads(im)%F_If(:,i) = m%memberLoads(im)%F_If(:,i) + F_If
+#          y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + F_If(1:3)
+#          y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + F_If(4:6)
+#          
+#         ! upper node
+#          Ioffset   = mem%h_cfb_u(i)*mem%h_cfb_u(i)*mem%m_fb_u(i)
+#          Imat(1,1) = mem%I_rfb_u(i) - Ioffset
+#          Imat(2,2) = mem%I_rfb_u(i) - Ioffset
+#          Imat(3,3) = mem%I_lfb_u(i) - Ioffset
+#          iArm = mem%h_cfb_u(i) * k_hat
+#          iTerm     = ( -a_s2  - cross_product(omega_s2, cross_product(omega_s2,iArm ))  -  cross_product(alpha_s2,iArm) ) * mem%m_fb_u(i)
+#          !m%F_If(1:3, mem%NodeIndx(i+1)) = m%F_If(1:3, mem%NodeIndx(i+1)) + iTerm
+#          !m%F_If(4:6, mem%NodeIndx(i+1)) = m%F_If(4:6, mem%NodeIndx(i+1)) &
+#          !                                 - cross_product(a_s2 * mem%m_fb_u(i), mem%h_cfb_u(i) * k_hat) &
+#          !                                 + matmul(Imat, alpha_s2) &
+#          !                                 - cross_product(omega_s2,matmul(Imat,omega_s2)) 
+#          F_If(1:3) = iTerm
+#          F_If(4:6) = - cross_product(a_s2 * mem%m_fb_u(i), mem%h_cfb_u(i) * k_hat) + matmul(Imat, alpha_s2) &
+#                      - cross_product(omega_s2,matmul(Imat,omega_s2)) 
+#          m%memberLoads(im)%F_If(:,i+1) = m%memberLoads(im)%F_If(:,i+1) + F_If
+#          y%Mesh%Force (:,mem%NodeIndx(i+1)) = y%Mesh%Force (:,mem%NodeIndx(i+1)) + F_If(1:3)
+#          y%Mesh%Moment(:,mem%NodeIndx(i+1)) = y%Mesh%Moment(:,mem%NodeIndx(i+1)) + F_If(4:6)  
+#          
+#          ! ------------------ flooded ballast weight : sides : Section 5.1.2 & 5.2.2  : Always compute regardless of PropPot setting ---------------------
+#          
+#          ! NOTE: For memfloodstatus and floodstatus: 0 = fully buried or not ballasted, 1 = fully flooded, 2 = partially flooded
+#          
+#          ! fully filled elements
+#          if (mem%floodstatus(i) == 1) then
+#             
+#             ! Compute lstar
+#             if ( mem%memfloodstatus == 2) then  
+#                ! partially flooded MEMBER
+#                lstar = dl*(i-1) - mem%l_fill
+#             elseif (cosPhi >= 0.0 ) then
+#                lstar = dl*(i-N-1) 
+#             else
+#                lstar = dl*(i-1)
+#             end if
+#             Fl =TwoPi * mem%dRdl_in(i) * mem%FillDens * p%gravity * dl *( -( mem%Rin(i) + 0.5* mem%dRdl_in(i)*dl )*mem%z_overfill +  &
+#                         ( lstar*mem%Rin(i) + 0.5*(lstar*mem%dRdl_in(i) + mem%Rin(i) )*dl + mem%dRdl_in(i)*dl**2/3.0 )*cosphi )
+# 
+#             ! forces and moment in tilted coordinates about node i
+#             !Fl = mem%Cfl_fb(i)*cosPhi     
+#             Fr = mem%Cfr_fb(i)*sinPhi     
+#             Moment  = mem%CM0_fb(i)*sinPhi - Fr*mem%alpha_fb_star(i)*dl
+#            
+#             ! calculate full vector and distribute to nodes
+#             !call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, (1-mem%alpha_fb_star(i)), m%F_BF(:, mem%NodeIndx(i)), m%F_BF(:, mem%NodeIndx(i+1)))
+#             call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, (1-mem%alpha_fb_star(i)), F_B1, F_B2)
+#             m%memberLoads(im)%F_BF(:, i)   = m%memberLoads(im)%F_BF(:, i) + F_B2  ! 1-alpha
+#             m%memberLoads(im)%F_BF(:, i+1) = m%memberLoads(im)%F_BF(:, i+1) + F_B1 ! alpha
+#             y%Mesh%Force (:,mem%NodeIndx(i  )) = y%Mesh%Force (:,mem%NodeIndx(i  )) + F_B2(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i  )) = y%Mesh%Moment(:,mem%NodeIndx(i  )) + F_B2(4:6)
+#             y%Mesh%Force (:,mem%NodeIndx(i+1)) = y%Mesh%Force (:,mem%NodeIndx(i+1)) + F_B1(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i+1)) = y%Mesh%Moment(:,mem%NodeIndx(i+1)) + F_B1(4:6)
+#            
+#          ! partially filled element
+#          else if (mem%floodstatus(i) == 2) then
+#            
+#             ! forces and moment in tilted coordinates about node i
+#             Fl = mem%Cfl_fb(i)*cosPhi     
+#             Fr = mem%Cfr_fb(i)*sinPhi     
+#             Moment  = mem%CM0_fb(i)*sinPhi + Fr*(1 - mem%alpha_fb_star(i))*dl
+#         
+#             ! calculate full vector and distribute to nodes
+#             !call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, mem%alpha_fb_star(i), m%F_BF(:, mem%NodeIndx(i)), m%F_BF(:, mem%NodeIndx(i-1)))
+#             call DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, mem%alpha_fb_star(i), F_B1, F_B2)
+#             m%memberLoads(im)%F_BF(:, i) = m%memberLoads(im)%F_BF(:, i) + F_B1     ! alpha
+#             m%memberLoads(im)%F_BF(:, i-1) = m%memberLoads(im)%F_BF(:, i-1) + F_B2 ! 1- alpha
+#             y%Mesh%Force (:,mem%NodeIndx(i  )) = y%Mesh%Force (:,mem%NodeIndx(i  )) + F_B1(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i  )) = y%Mesh%Moment(:,mem%NodeIndx(i  )) + F_B1(4:6)
+#             y%Mesh%Force (:,mem%NodeIndx(i-1)) = y%Mesh%Force (:,mem%NodeIndx(i-1)) + F_B2(1:3)
+#             y%Mesh%Moment(:,mem%NodeIndx(i-1)) = y%Mesh%Moment(:,mem%NodeIndx(i-1)) + F_B2(4:6)    
+#         
+#          ! no load for unflooded element or element fully below seabed
+#         
+#          end if
+#         
+#            
+#          
+#    
+#       END DO ! i =1,N    ! loop through member elements       
+# 
+#        
+#       ! External Hydrodynamic Side Loads
+#          ! NOTE: All geometry-related calculations are based on the undisplaced configuration of the structure
+#       
+#       DO i =1,N+1    ! loop through member nodes
+#          ! We need to subtract the MSL2SWL offset to place this in the SWL reference system
+#          z1 = u%Mesh%Position(3, mem%NodeIndx(i)) - p%MSL2SWL
+#          if ( i > mem%i_floor .and. z1 <= 0.0 ) then  ! node is above (or at? TODO: check) seabed and below or at free-surface)
+#             ! TODO: Note that for computational efficiency, we could precompute h_c and deltal for each element when we are NOT using wave stretching
+#             ! We would still need to test at time marching for nodes just below the free surface because that uses the current locations not the reference locations
+#             ! see table in Section 7.1.1
+#             if ( i == 1 ) then
+#                deltal = mem%dl/2.0_ReKi
+#                h_c    = mem%dl/4.0_ReKi
+#             elseif (i == N+1) then
+#                deltal =  mem%dl/2.0_ReKi
+#                h_c    = -mem%dl/4.0_ReKi
+#             elseif ( mem%i_floor == i+1 ) then ! This node is the upper node of an element which crosses the seabed
+#                deltal = mem%dl/2.0_ReKi - mem%h_floor  ! TODO: h_floor is negative valued, should we be subrtracting it from dl/2? GJH
+#                h_c    = 0.5_ReKi*(mem%dl/2.0_ReKi + mem%h_floor)
+#             else
+#                ! We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+#                pos1 =   u%Mesh%Position(:, mem%NodeIndx(i))
+#                pos1(3) = pos1(3) - p%MSL2SWL
+#                pos2 =   u%Mesh%Position(:, mem%NodeIndx(i+1))
+#                pos2(3) = pos2(3) - p%MSL2SWL
+#                if (pos1(3) <= 0.0 .and. 0.0 < pos2(3) ) then ! This node is just below the free surface !TODO: Needs to be augmented for wave stretching
+#                   ! We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+#                   !TODO: Fix this one
+#                   pos1 =  u%Mesh%Position(:, mem%NodeIndx(i)) ! use reference position for following equation
+#                   pos1(3) = pos1(3) - p%MSL2SWL
+#                   h = (  pos1(3) ) / mem%cosPhi_ref !TODO: Needs to be augmented for wave stretching
+#                   deltal = mem%dl/2.0 + h
+#                   h_c    = 0.5*(h-mem%dl/2.0)
+#                else
+#                   ! This node is a fully submerged interior node
+#                   deltal = mem%dl
+#                   h_c    = 0.0_ReKi
+#                end if
+#             
+#             end if
+# 
+#             if (i == 1) then
+#                dRdl_p  = abs(mem%dRdl_mg(i))
+#                dRdl_pp = mem%dRdl_mg(i)   
+#             elseif ( i > 1 .and. i < (N+1)) then
+#                dRdl_p  = 0.5*( abs(mem%dRdl_mg(i-1)) + abs(mem%dRdl_mg(i)) )
+#                dRdl_pp = 0.5*( mem%dRdl_mg(i-1) + mem%dRdl_mg(i) )
+#             else 
+#                dRdl_p  = abs(mem%dRdl_mg(N))
+#                dRdl_pp = mem%dRdl_mg(N)
+#             end if
+#          
+#             ! ------------------- hydrodynamic drag loads: sides: Section 7.1.2 ------------------------ 
+#             vec = matmul( mem%Ak,m%vrel(:,mem%NodeIndx(i)) )
+#             f_hydro = mem%Cd(i)*p%WtrDens*mem%RMG(i)*TwoNorm(vec)*vec  +  &
+#                       0.5*mem%AxCd(i)*p%WtrDens*pi*mem%RMG(i)*dRdl_p * matmul( dot_product( mem%k, m%vrel(:,mem%NodeIndx(i)) )*mem%kkt, m%vrel(:,mem%NodeIndx(i)) )
+# !            call LumpDistrHydroLoads( f_hydro, mem%k, deltal, h_c, m%F_D(:, mem%NodeIndx(i)) )
+#             call LumpDistrHydroLoads( f_hydro, mem%k, deltal, h_c, m%memberLoads(im)%F_D(:, i) )
+#             y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + m%memberLoads(im)%F_D(1:3, i)
+#             y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + m%memberLoads(im)%F_D(4:6, i)
+#             
+#             if ( .not. mem%PropPot ) then
+#                ! ------------------- hydrodynamic added mass loads: sides: Section 7.1.3 ------------------------
+#                Am = mem%Ca(i)*p%WtrDens*pi*mem%RMG(i)*mem%RMG(i)*mem%Ak + 2.0*mem%AxCa(i)*p%WtrDens*pi*mem%RMG(i)*mem%RMG(i)*dRdl_p*mem%kkt
+#                f_hydro = -matmul( Am, u%Mesh%TranslationAcc(:,mem%NodeIndx(i)) )
+#                !call LumpDistrHydroLoads( f_hydro, mem%k, deltal, h_c, m%F_A(:, mem%NodeIndx(i)) )
+#                call LumpDistrHydroLoads( f_hydro, mem%k, deltal, h_c, m%memberLoads(im)%F_A(:, i) )
+#                y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + m%memberLoads(im)%F_A(1:3, i)
+#                y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + m%memberLoads(im)%F_A(4:6, i)
+#          
+#                ! ------------------- hydrodynamic inertia loads: sides: Section 7.1.4 ------------------------
+#                f_hydro=(mem%Ca(i)+mem%Cp(i))*p%WtrDens*pi*mem%RMG(i)*mem%RMG(i)       * matmul( mem%Ak,  m%FA(:,mem%NodeIndx(i)) ) + &
+#                             2.0*mem%AxCa(i)*p%WtrDens*pi*mem%RMG(i)*mem%RMG(i)*dRdl_p * matmul( mem%kkt, m%FA(:,mem%NodeIndx(i)) ) + &
+#                             2.0*m%FDynP(mem%NodeIndx(i))*mem%AxCp(i)*pi*mem%RMG(i)*dRdl_pp*mem%k 
+#                !call LumpDistrHydroLoads( f_hydro, mem%k, deltal, h_c, m%F_I(:, mem%NodeIndx(i)) )
+#                call LumpDistrHydroLoads( f_hydro, mem%k, deltal, h_c, m%memberLoads(im)%F_I(:, i) )
+#                y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + m%memberLoads(im)%F_I(1:3, i)
+#                y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + m%memberLoads(im)%F_I(4:6, i)
+#             end if
+#          end if ! ( i > mem%i_floor .and. Zi <= 0.0 )
+#          
+#       END DO ! i =1,N+1    ! loop through member nodes       
+#       
+#       
+#       ! Any end plate loads that are modeled on a per-member basis
+#       
+#       ! reassign convenience variables to correspond to member ends
+#       ! We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+#       pos1    = u%Mesh%TranslationDisp(:, mem%NodeIndx(1)) + u%Mesh%Position(:, mem%NodeIndx(1)) 
+#       pos1(3) = pos1(3) - p%MSL2SWL
+#       pos2    = u%Mesh%TranslationDisp(:, mem%NodeIndx(2)) + u%Mesh%Position(:, mem%NodeIndx(2)) 
+#       pos2(3) = pos2(3) - p%MSL2SWL
+#       z1 = pos1(3)
+#       
+#       call GetOrientationAngles( pos1, pos2, phi1, sinPhi1, cosPhi1, tanPhi, sinBeta1, cosBeta1, k_hat1, errStat2, errMsg2 )
+#       if ( N == 1 ) then       ! Only one element in member
+#          sinPhi2 = sinPhi1
+#          cosPhi2 = cosPhi1
+#          sinBeta2  = sinBeta1
+#          cosBeta2  = cosBeta1
+#       else
+#          !  We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+#          pos1    = u%Mesh%TranslationDisp(:, mem%NodeIndx(N))   + u%Mesh%Position(:, mem%NodeIndx(N))
+#          pos1(3) = pos1(3) - p%MSL2SWL
+#          pos2    = u%Mesh%TranslationDisp(:, mem%NodeIndx(N+1)) + u%Mesh%Position(:, mem%NodeIndx(N+1))
+#          pos2(3) = pos2(3) - p%MSL2SWL
+#          call GetOrientationAngles( pos1, pos2, phi2, sinPhi2, cosPhi2, tanPhi, sinBeta2, cosBeta2, k_hat2, errStat2, errMsg2 )
+#       end if
+#       ! We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+#       pos2    = u%Mesh%TranslationDisp(:, mem%NodeIndx(N+1)) + u%Mesh%Position(:, mem%NodeIndx(N+1))
+#       pos2(3) = pos2(3) - p%MSL2SWL
+#       z2 = pos2(3)
+#       
+#       ! Check the member does not exhibit any of the following conditions
+#       if (.not. mem%PropPot) then 
+#          if ( abs(z2) < abs(mem%Rmg(N+1)*sinPhi2) ) then
+#             call SetErrStat(ErrID_Fatal, 'The upper end-plate of a member must not cross the water plane.  This is not true for Member ID '//trim(num2lstr(mem%MemberID)), errStat, errMsg, 'Morison_CalcOutput' )   
+#          end if
+#          if ( abs(z1) < abs(mem%Rmg(1)*sinPhi1) ) then
+#             call SetErrStat(ErrID_Fatal, 'The lower end-plate of a member must not cross the water plane.  This is not true for Member ID '//trim(num2lstr(mem%MemberID)), errStat, errMsg, 'Morison_CalcOutput' )   
+#          end if
+#       end if
+# 
+# ! TODO: Do the equations below still work if z1 > z2 ?
+#  !TODO, should not have to test seabed crossing in time-marching loop
+# 
+#       
+#       if ( mem%i_floor == 0 ) then   ! both ends are above seabed
+#          !--- Water ballast buoyancy ---
+#          ! if member is fully flooded
+#          if (mem%memfloodstatus == 1) then
+#          !if (mem%z_overfill >= 0) then 
+#             Fl      = -mem%FillDens * g * pi *mem%Rin(  1)**2* (mem%z_overfill + max(z2-z1, 0.0_ReKi))
+#             Moment  =  mem%FillDens * g * pi *0.25*mem%Rin(  1)**4*sinPhi
+#             call AddEndLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1, m%F_BF_End(:, mem%NodeIndx(1)))
+#             
+#             Fl      =   mem%FillDens * g * pi *mem%Rin(N+1)**2* (mem%z_overfill + max(z1-z2, 0.0_ReKi))
+#             Moment  =  -mem%FillDens * g * pi *0.25*mem%Rin(N+1)**4*sinPhi            
+#             call AddEndLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2, m%F_BF_End(:, mem%NodeIndx(N+1)))
+#             
+#          ! if member is partially flooded
+#          else if (mem%l_fill > 0) then 
+#             Fl      = -mem%FillDens * g * pi *mem%Rin(1)**2*mem%l_fill*cosPhi
+#             Moment  =  mem%FillDens * g * pi *0.25*mem%Rin(1)**4*sinPhi
+#             call AddEndLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1, m%F_BF_End(:, mem%NodeIndx(1)))
+#          else
+#             ! no load if member is not flooded at all
+#          end if
+#          
+#       elseif ( mem%i_floor < mem%NElements+1 ) then ! upper node is still above the seabed, but lower node is below seabed
+#          !if (mem%z_overfill >= 0) then 
+#          if (mem%memfloodstatus == 1) then
+#             Fl      =   mem%FillDens * g * pi *mem%Rin(N+1)**2* (mem%z_overfill + max(z1-z2, 0.0_ReKi))
+#             Moment  =  -mem%FillDens * g * pi *0.25*mem%Rin(N+1)**4*sinPhi            
+#             call AddEndLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2, m%F_BF_End(:, mem%NodeIndx(N+1)))
+#          end if
+#          
+#       else    
+#          ! no loads because both end nodes are below seabed
+#       end if
+# 
+#       ! --- no inertia loads from water ballast modeled on ends
+# 
+#       ! --- external buoyancy loads: ends ---
+# 
+#       if ( .not. mem%PropPot ) then
+#          ! We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+#          pos1    = u%Mesh%TranslationDisp(:, mem%NodeIndx(1))   + u%Mesh%Position(:, mem%NodeIndx(1))
+#          pos1(3) = pos1(3) - p%MSL2SWL
+#          pos2    = u%Mesh%TranslationDisp(:, mem%NodeIndx(N+1)) + u%Mesh%Position(:, mem%NodeIndx(N+1))
+#          pos2(3) = pos2(3) - p%MSL2SWL
+#          z1 = pos1(3)
+#          z2 = pos2(3)
+#          if (mem%i_floor == 0) then  ! both ends above or at seabed
+#             if (z2<= 0.0_ReKi) then
+#                ! Compute loads on both ends
+#                Fl      = -p%WtrDens * g * pi *mem%RMG(1)**2*z1
+#                Moment  = -p%WtrDens * g * pi *0.25*mem%RMG(1)**4*sinPhi
+#                call AddEndLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1, m%F_B_End(:, mem%NodeIndx(1))) 
+#                Fl      = p%WtrDens * g * pi *mem%RMG(N+1)**2*z2
+#                Moment  = p%WtrDens * g * pi *0.25*mem%RMG(N+1)**4*sinPhi
+#                call AddEndLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2, m%F_B_End(:, mem%NodeIndx(N+1)))
+#             elseif ( z1< 0.0_ReKi ) then
+#                ! Compute loads only on lower end
+#                Fl      = -p%WtrDens * g * pi *mem%RMG(1)**2*z1
+#                Moment  = -p%WtrDens * g * pi *0.25*mem%RMG(1)**4*sinPhi
+#                call AddEndLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1, m%F_B_End(:, mem%NodeIndx(1)))
+#             else
+#                ! Entire member is above the still water line
+#             end if
+# 
+#     !     elseif ( (mem%i_floor < mem%NElements) .and. (z2<= 0.0_ReKi) ) then ! The member crosses the seabed line so only the upper end could have bouyancy effects, if at or below free surface
+#          elseif ( (mem%doEndBuoyancy) .and. (z2<= 0.0_ReKi) ) then ! The member crosses the seabed line so only the upper end could have bouyancy effects, if at or below free surface
+#             ! Only compute the buoyancy contribution from the upper end
+#             Fl      = p%WtrDens * g * pi *mem%RMG(N+1)**2*z2
+#             Moment  = p%WtrDens * g * pi *0.25*mem%RMG(N+1)**4*sinPhi
+#             call AddEndLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2, m%F_B_End(:, mem%NodeIndx(N+1)))
+#          else
+#             ! entire member is buried below the seabed         
+#          end if
+#          
+#       end if   ! PropPot
+#       
+#    end do ! im - looping through members
+#       
+#    !do j = 1, p%NNodes    
+#    !   ! Sum side load components onto output mesh
+#    !   DO i=1,6
+#    !      IF (i < 4 ) THEN 
+#    !         y%Mesh%Force(I,J)    =  m%F_D(I,J) + m%F_A(I,J) + m%F_I(I,J) + m%F_B(I,J) + m%F_BF(I,J) + m%F_If(i,j) + m%F_WMG(i,j) + m%F_IMG(i,j)
+#    !      ELSE 
+#    !         y%Mesh%Moment(I-3,J) =  m%F_D(I,J) + m%F_A(I,J) + m%F_I(I,J) + m%F_B(I,J) + m%F_BF(I,J) + m%F_If(i,j) + m%F_WMG(i,j) + m%F_IMG(i,j)   
+#    !      END IF
+#    !   END DO  ! 
+#    !end do
+#  
+# 
+#    ! --- Hydrodynamic drag loads: joints
+#       
+#       ! NOTE:  All wave kinematics have already been zeroed out above the SWL or instantaneous wave height (for WaveStMod > 0), so loads derived from the kinematics will be correct
+#       !        without the use of a nodeInWater value, but other loads need to be multiplied by nodeInWater to zero them out above the SWL or instantaneous wave height.
+#       
+#       DO J = 1, p%NJoints
+#          
+#             ! Obtain the node index because WaveVel, WaveAcc, and WaveDynP are defined in the node indexing scheme, not the markers
+# 
+#          
+#             ! Compute the dot product of the relative velocity vector with the directional Area of the Joint
+#          vmag =  m%nodeInWater(j) * ( m%vrel(1,j)*p%An_End(1,J) + m%vrel(2,j)*p%An_End(2,J) + m%vrel(3,j)*p%An_End(3,J) )
+#          
+#   !NOTE: The PropPot values are only for members, and when the p%AM_End, p%DP_Const_End, p%Mass_MG_End, and p%I_MG_End are computed at init,
+#   !      contributions to these values are added only if the member connecting to the joint is NOT modeled with potential flow theory
+#   !      However, the p%An_End term used data from ALL members attached to a node, regardless of the PropPot setting.
+#          
+#             ! Lumped added mass loads
+#          qdotdot                 = reshape((/u%Mesh%TranslationAcc(:,J),u%Mesh%RotationAcc(:,J)/),(/6/)) 
+#          m%F_A_End(:,J)          = m%nodeInWater(j) * matmul( p%AM_End(:,:,J) , ( - qdotdot(1:3)) )
+#          
+#          ! TODO: The original code did not multiply by nodeInWater, but should we? GJH
+#          m%F_I_End(:,J) =   (p%DP_Const_End(:,j) * m%FDynP(j) + matmul(p%AM_End(:,:,j),m%FA(:,j)))
+#          
+#          ! Marine growth inertia: ends: Section 4.2.2  
+#          m%F_IMG_End(1:3,j) = -m%nodeInWater(j) * p%Mass_MG_End(j)*qdotdot(1:3)
+#          m%F_IMG_End(4:6,j) = -m%nodeInWater(j) * (matmul(p%I_MG_End(:,:,j),qdotdot(4:6)) - cross_product(u%Mesh%RotationVel(:,J),matmul(p%I_MG_End(:,:,j),u%Mesh%RotationVel(:,J))))
+#          
+#          DO I=1,6
+#                         
+#             ! We are now combining the dynamic pressure term into the inertia term
+#             
+#             
+#             IF (I < 4 ) THEN
+#               
+#               
+#                m%F_D_End(i,j) =  p%An_End(i,j)*p%DragConst_End(j)*abs(vmag)*vmag  ! Note: vmag is zero if node is not in the water
+#                y%Mesh%Force(i,j)    = y%Mesh%Force(i,j)    + m%F_D_End(i,j) + m%F_I_End(i,j) + p%F_WMG_End(i,j) + m%F_B_End(i,j) + m%F_BF_End(i,j) + m%F_A_End(i,j) + m%F_IMG_End(i,j)
+#             ELSE
+#                y%Mesh%Moment(i-3,j) = y%Mesh%Moment(i-3,j) + m%F_B_End(i,j) + m%F_BF_End(i,j)  + m%F_IMG_End(i,j)
+#             END IF
+#          END DO      ! I=1,6
+#       ENDDO          ! J = 1, p%NJoints
+#      
+#          ! OutSwtch determines whether or not to actually output results via the WriteOutput array
+#          ! 1 = Morison will generate an output file of its own.  2 = the caller will handle the outputs, but
+#          ! Morison needs to provide them.  3 = Both 1 and 2, 0 = No one needs the Morison outputs provided
+#          ! via the WriteOutput array.
+#          
+#       IF ( p%OutSwtch > 0 ) THEN
+#      
+#             ! Map calculated results into the AllOuts Array
+#          CALL MrsnOut_MapOutputs(Time, y, p, u, m, AllOuts, errStat, errMsg)
+#                
+#       
+#             ! Put the output data in the WriteOutput array
+#    
+#          DO I = 1,p%NumOuts
+# 
+#             y%WriteOutput(I) = p%OutParam(I)%SignM * AllOuts( p%OutParam(I)%Indx )
+#       
+#          END DO
+#          
+#          
+#             ! Generate output into the output file
+#             
+#          IF ( p%OutSwtch == 1 .OR. p%OutSwtch == 3 ) THEN
+#             CALL MrsnOut_WriteOutputs( p%UnOutFile, Time, y, p, errStat, errMsg )         
+#          END IF
+#       END IF
+#       
+#    
+# END SUBROUTINE Morison_CalcOutput
+
+# subroutine LumpDistrHydroLoads( f_hydro, k_hat, dl, h_c, lumpedLoad )
+#    real(ReKi), intent(in   ) :: f_hydro(3)
+#    real(ReKi), intent(in   ) :: k_hat(3)
+#    real(ReKi), intent(in   ) :: dl
+#    real(ReKi), intent(in   ) :: h_c
+#    real(ReKi), intent(inout) :: lumpedLoad(6)
+#    !lumpedLoad(1:3) = lumpedLoad(1:3) + f_hydro*dl
+#    !lumpedLoad(4:6) = lumpedLoad(4:6) + cross_product(k_hat*h_c, f_hydro)*dl
+#    lumpedLoad(1:3) = f_hydro*dl
+#    lumpedLoad(4:6) = cross_product(k_hat*h_c, f_hydro)*dl
+# end subroutine LumpDistrHydroLoads
+# 
+# ! Takes loads on node i in element tilted frame and converts to 6DOF loads at node i and adjacent node
+# SUBROUTINE DistributeElementLoads(Fl, Fr, M, sinPhi, cosPhi, SinBeta, cosBeta, alpha, F1, F2)
+#    
+#    REAL(ReKi),                     INTENT    ( IN    )  :: Fl        ! (N)   axial load about node i
+#    REAL(ReKi),                     INTENT    ( IN    )  :: Fr        ! (N)   radial load about node i in direction of tilt
+#    REAL(ReKi),                     INTENT    ( IN    )  :: M         ! (N-m) radial moment about node i, positive in direction of tilt angle
+#    REAL(ReKi),                     INTENT    ( IN    )  :: sinPhi    ! trig functions of  tilt angle 
+#    REAL(ReKi),                     INTENT    ( IN    )  :: cosPhi   
+#    REAL(ReKi),                     INTENT    ( IN    )  :: sinBeta   ! trig functions of heading of tilt
+#    REAL(ReKi),                     INTENT    ( IN    )  :: cosBeta  
+#    REAL(ReKi),                     INTENT    ( IN    )  :: alpha     ! fraction of load staying with node i (1-alpha goes to other node)  
+#    
+#    REAL(ReKi),                     INTENT    ( OUT   )  :: F1(6)   ! (N, Nm) force/moment vector for node i
+#    REAL(ReKi),                     INTENT    ( OUT   )  :: F2(6)   ! (N, Nm) force/moment vector for the other node (whether i+1, or i-1)
+#          
+# 
+#    !F1(1) = F1(1) +  cosBeta*(Fl*sinPhi + Fr*cosPhi)*alpha
+#    !F1(2) = F1(2) -  sinBeta*(Fl*sinPhi + Fr*cosPhi)*alpha
+#    !F1(3) = F1(3) +          (Fl*cosPhi - Fr*sinPhi)*alpha
+#    !F1(4) = F1(4) +  sinBeta * M                    *alpha
+#    !F1(5) = F1(5) +  cosBeta * M                    *alpha
+#    !!F1(6) = F1(6) + 0.0
+#    !   
+#    !F2(1) = F2(1) +  cosBeta*(Fl*sinPhi + Fr*cosPhi)*(1-alpha)
+#    !F2(2) = F2(2) -  sinBeta*(Fl*sinPhi + Fr*cosPhi)*(1-alpha)
+#    !F2(3) = F2(3) +          (Fl*cosPhi - Fr*sinPhi)*(1-alpha)
+#    !F2(4) = F2(4) +  sinBeta * M                    *(1-alpha)
+#    !F2(5) = F2(5) +  cosBeta * M                    *(1-alpha)
+#    !!F2(6) = F2(6) + 0.0
+#    
+#    F1(1) =  cosBeta*(Fl*sinPhi + Fr*cosPhi)*alpha
+#    F1(2) =  sinBeta*(Fl*sinPhi + Fr*cosPhi)*alpha
+#    F1(3) =         (Fl*cosPhi - Fr*sinPhi)*alpha
+#    F1(4) =  -sinBeta * M                    *alpha
+#    F1(5) =  cosBeta * M                    *alpha
+#    F1(6) =  0.0
+#       
+#    F2(1) =  cosBeta*(Fl*sinPhi + Fr*cosPhi)*(1-alpha)
+#    F2(2) =  sinBeta*(Fl*sinPhi + Fr*cosPhi)*(1-alpha)
+#    F2(3) =          (Fl*cosPhi - Fr*sinPhi)*(1-alpha)
+#    F2(4) =  -sinBeta * M                    *(1-alpha)
+#    F2(5) =  cosBeta * M                    *(1-alpha)
+#    F2(6) = 0.0
+#    
+#    !F1(1) =  cosBeta*(-Fl*sinPhi + Fr*cosPhi)*alpha
+#    !F1(2) =  sinBeta*(-Fl*sinPhi + Fr*cosPhi)*alpha
+#    !F1(3) =         (Fl*cosPhi + Fr*sinPhi)*alpha
+#    !F1(4) =  -sinBeta * M                    *alpha
+#    !F1(5) =  cosBeta * M                    *alpha
+#    !F1(6) =  0.0
+#    !   
+#    !F2(1) =  cosBeta*(-Fl*sinPhi + Fr*cosPhi)*(1-alpha)
+#    !F2(2) =  sinBeta*(-Fl*sinPhi + Fr*cosPhi)*(1-alpha)
+#    !F2(3) =          (Fl*cosPhi + Fr*sinPhi)*(1-alpha)
+#    !F2(4) =  -sinBeta * M                    *(1-alpha)
+#    !F2(5) =  cosBeta * M                    *(1-alpha)
+#    !F2(6) = 0.0
+# 
+# END SUBROUTINE DistributeElementLoads
 
     # --------------------------------------------------------------------------------}
     # --- IO/Converters
@@ -727,6 +1591,7 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
                 ii = m['NElements']-i
             else:
                 ii=i
+#             ii=i
             pos = m['SubNodesPositions'][ii-1, :]
             pos[2] += MSL2SWL
             s0= ' {:5d}  {:10d}  {:10.4f}  {:10.4f}  {:10.4f}  {:10.3e}  {:10.3e}  {:10.3e}  {:10.3e}'.format(c,e.ID, pos[0], pos[1], pos[2], m['R'][ii], m['R'][ii]-m['Rin'][ii], m['tMG'][ii], m['MGdensity'][ii])
@@ -763,9 +1628,14 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
             filledFlag = False
             mass_fill  = 0.0
         spropot='T' if e.data['Pot'] else 'F'
-        sfill  ='T' if filledFlag      else 'F'
+        sfill  ='T' if filledFlag    else 'F'
+        #print('----------------------------------------------------------------')
+        #print('>>> Member ',i+1)
+        #print('IDs',m['nodeIDs'])
+        #print('RMG',m['RMG'])
+        #print('Rin',m['Rin'])
 
-        s0=  ' {:8d}  {:6d}  {:6d}  '.format(e.ID, e.nodeIDs[0], e.nodeIDs[1])
+        s0=  ' {:8d}  {:6d}  {:6d}  '.format(e.ID, e.nodeIDs[0]+1, e.nodeIDs[1]+1)
         s0+= '{:12.5e}  {:12d} '.format(m['refLength'], m['NElements'])
         s0+= ' {:12.5e}  {:12.5e}  {:12.5e}  {:12.5e}  {:12.5e}  {:12.5e}'.format(memberVol, MGvolume, m['RMG'][0], m['RMG'][0]-m['Rin'][0], m['RMG'][-1], m['RMG'][-1]-m['Rin'][-1]) 
         s0+= '             {:s}             {:s}'.format(spropot, sfill)
@@ -803,12 +1673,15 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
 
 
 if __name__ == '__main__':
-    filename='../../data/Monopile/MT100_HD.dat'
-    filename='../../data/Monopile/TetraSpar_HydroDyn_v2.dat'
-    #filename='../../data/SparNoRNA/SparNoRNA_HD_RefH.dat'
-    #sumfile ='../../data/SparNoRNA/Main.HD_python.sum'
-    filename='_SparNoRNA_HD_RefH.dat'
-    sumfile ='_Main.HD_python.sum'
+    import sys
+    if len(sys.argv)>=1:
+        import pdb; pdb.set_trace()
+    else:
+        filename='../../data/Monopile/MT100_HD.dat'
+        filename='../../data/Monopile/TetraSpar_HydroDyn_v2.dat'
+        #filename='../../data/SparNoRNA/SparNoRNA_HD_RefH.dat'
+        #sumfile ='../../data/SparNoRNA/Main.HD_python.sum'
+        filename='_SparNoRNA_HD_RefH.dat'
 
 
 #     hd = weio.FASTInputFile(filename)
