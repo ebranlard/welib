@@ -6,6 +6,8 @@ from welib.tools.signal import find_time_offset
 from welib.tools.signal import intervals 
 from welib.tools.signal import peaks 
 from welib.tools.signal import sine_approx
+from welib.tools.signal import multiInterp
+from welib.tools.signal import interpArray
 from welib.tools.clean_exceptions import *
 
 # --------------------------------------------------------------------------------}
@@ -213,8 +215,41 @@ class TestSignal(unittest.TestCase):
             plt.show()
 
 
+    def test_interp(self, plot=False):
+        x = np.linspace(0,1,10)
+        y1= x**2
+        y2= x**3
+        Y = np.stack((y1,y2))
 
- 
+        # --- Check that we retrieve proper value on nodes
+        x_new = x
+        Y_new = multiInterp(x_new, x, Y)
+        np.testing.assert_almost_equal(Y_new, Y)
+
+        # using interpArray
+        Y_new2 = np.zeros(Y_new.shape)
+        for i,x0 in enumerate(x_new):
+            Y_new2[:,i] = interpArray(x0, x, Y)
+        np.testing.assert_almost_equal(Y_new2, Y)
+
+        # --- Check that we retrieve proper value on misc nodes
+        x_new  = np.linspace(-0.8,1.5,20)
+        Y_new  = multiInterp(x_new, x, Y)
+        y1_new = np.interp(x_new, x, Y[0,:])
+        y2_new = np.interp(x_new, x, Y[1,:])
+        Y_ref  = np.stack((y1_new, y2_new))
+        np.testing.assert_almost_equal(Y_new, Y_ref)
+
+        # using interpArray
+        Y_new2 = np.zeros(Y_new.shape)
+        for i,x0 in enumerate(x_new):
+            Y_new2[:,i] = interpArray(x0, x, Y)
+        np.testing.assert_almost_equal(Y_new2, Y_ref)
+
+
+
+
 if __name__ == '__main__':
     #TestSignal().test_sine_approx()
+    #TestSignal().test_interp()
     unittest.main()
