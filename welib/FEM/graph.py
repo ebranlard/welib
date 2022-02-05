@@ -137,7 +137,7 @@ class Element(dict):
         self.nodes     = self.nodes  [-1::-1]
         if self.propIDs is not None:
             self.propIDs   = self.propIDs[-1::-1]
-        if self.nodePropes is not None:
+        if self.nodeProps is not None:
             self.nodeProps = self.nodeProps[-1::-1]
 
     def __repr__(self):
