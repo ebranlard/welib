@@ -247,7 +247,7 @@ class YAMSModel(object):
 
         return EquationsOfMotionQ(EOM, self.coordinates, self.name, bodyReplaceDict)
 
-    def exportPackage(self, path='', extraSubs=None, smallAngles=None, linearize=True, replaceDict=None, pathtex=None):
+    def exportPackage(self, path='', extraSubs=None, smallAngles=None, linearize=True, replaceDict=None, pathtex=None, fullPage=True):
         """ 
         Export to a python package
         - replaceDict: replace dictionary for python export
@@ -298,10 +298,10 @@ class YAMSModel(object):
                 os.makedirs(folder)
             except:
                 pass
-            EOM.saveTex(name=name, folder=folder, variables=['M','F','M0','K0','C0','B0'])
+            EOM.saveTex(name=name, folder=folder, variables=['M','F','M0','K0','C0','B0'], fullPage=fullPage)
 
 
-    def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)]):
+    def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)], fullPage=True):
         """ 
         Save forcing and mass matrix to latex file
         """
@@ -327,29 +327,29 @@ class YAMSModel(object):
                     f.write('\\clearpage\n{}\\\\\n'.format(extraHeader))
                 if 'F' in variables:
                     FF = self.kane.forcing.subs(self.kdeqsSubs)
-                    toTex(f, FF, label='Forcing', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, FF, label='Forcing', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'M' in variables:
                     MM = self.kane.mass_matrix.subs(self.kdeqsSubs) # NOTE this is wrong
-                    toTex(f, MM, label='Mass matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, MM, label='Mass matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'M0' in variables:
-                    toTex(f, self.M0, label='Linearized mass matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.M0, label='Linearized mass matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'C0' in variables:
-                    toTex(f, self.C0, label='Linearized damping matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.C0, label='Linearized damping matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'K0' in variables:
-                    toTex(f, self.K0, label='Linearized stiffness matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.K0, label='Linearized stiffness matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'B0' in variables:
-                    toTex(f, self.B0, label='Linearized forcing matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.B0, label='Linearized forcing matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'FFsa' in variables:
                     FF=subs_no_diff(self._sa_forcing,extraSubs)
-                    toTex(f, FF, label='Forcing small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, FF, label='Forcing small angle', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'MMsa' in variables:
-                    toTex(f, self._sa_mass_matrix, label='Mass matrix small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self._sa_mass_matrix, label='Mass matrix small angle', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'Msa' in variables:
-                    toTex(f, self._sa_M, label='Linearized mass matrix small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self._sa_M, label='Linearized mass matrix small angle', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'Csa' in variables:
-                    toTex(f, self._sa_C, label='Linearized damping matrix small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self._sa_C, label='Linearized damping matrix small angle', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'Ksa' in variables:
-                    toTex(f, self._sa_K, label='Linearized stiffness matrix small angle', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self._sa_K, label='Linearized stiffness matrix small angle', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'body_details' in variables:
                     for b in self.bodies:
                         print('b.name',b.name)
@@ -568,7 +568,7 @@ class EquationsOfMotionQ(object):
         self.M0,self.C0,self.K0,self.B0, self.input_vars = linearizeQ(self.EOM, self.q, op_point=op_point, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
         return self.M0, self.C0, self.K0, self.B0
 
-    def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)]):
+    def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)], fullPage=True):
         """ 
         Save EOM to a latex file
         """
@@ -595,17 +595,17 @@ class EquationsOfMotionQ(object):
                     f.write('\\clearpage\n{}\\\\\n'.format(extraHeader))
 
                 if 'F' in variables:
-                    toTex(f, self.F, label='Forcing', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.F, label='Forcing', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'M' in variables:
-                    toTex(f, self.M, label='Mass matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.M, label='Mass matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'M0' in variables:
-                    toTex(f, self.M0, label='Linearized mass matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.M0, label='Linearized mass matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'C0' in variables:
-                    toTex(f, self.C0, label='Linearized damping matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.C0, label='Linearized damping matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'K0' in variables:
-                    toTex(f, self.K0, label='Linearized stiffness matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.K0, label='Linearized stiffness matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
                 if 'B0' in variables:
-                    toTex(f, self.B0, label='Linearized forcing matrix', fullPage=True, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
+                    toTex(f, self.B0, label='Linearized forcing matrix', fullPage=fullPage, extraSubs=extraSubs, velSubs=velSubs, doSimplify=doSimplify)
 
 
     def toPython(self, extraSubs=None, replaceDict=None, doSimplify=False, velSubs=[(0,0)]):

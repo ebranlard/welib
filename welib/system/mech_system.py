@@ -387,7 +387,7 @@ class MechSystem():
 
         return fig, axes
 
-    def plot_forcing(self,axes=None, label=None, res=None, **kwargs):
+    def plot_forcing(self, fig=None, axes=None, label=None, res=None, includeCK=False, plotCK0=False, **kwargs):
         """ 
         Simple plot of forcing
           - if `res` is provided, use time and states from res
@@ -414,6 +414,26 @@ class MechSystem():
                 F = np.zeros((self.nDOF,len(time)))
                 for it, t in enumerate(time):
                     F[:,it] = self.Forces(t, q=res.y[:,it])
+        if includeCK:
+            nDOF = self.nDOF
+            FK = np.zeros((self.nDOF,len(time)))
+            FC = np.zeros((self.nDOF,len(time)))
+            if self.K is not None:
+                for it, t in enumerate(time):
+                    q  = res.y[:,it]
+                    x  = q[0:nDOF]
+                    xd = q[nDOF:]
+                    FK[:,it] = -self.K.dot(x)
+            if self.C is not None:
+                for it, t in enumerate(time):
+                    q  = res.y[:,it]
+                    x  = q[0:nDOF]
+                    xd = q[nDOF:]
+                    FC[:,it] = -self.C.dot(x)
+            F0=F.copy()
+            F=F0+FK+FC
+
+
         # Plot
         if axes is None:
             import matplotlib.pyplot as plt
@@ -423,6 +443,10 @@ class MechSystem():
         for i,ax in enumerate(axes):
             lbl=r'$f_{}$'.format(i+1)
             ax.plot(time, F[i,:], label=label, **kwargs)
+            if plotCK0:
+                ax.plot(time, F0[i,:], ':' , label='(F0)', **kwargs)
+                ax.plot(time, FC[i,:], '-' , label='(FC)', **kwargs)
+                ax.plot(time, FK[i,:], '--', label='(FK)', **kwargs)
             ax.set_ylabel(lbl)
             ax.tick_params(direction='in')
         axes[-1].set_xlabel('Time [s]')
@@ -437,10 +461,11 @@ class MechSystem():
         df = self.toDataFrame(DOFs=DOFs, Factors=Factors)
         df.to_csv(filename, sep=',', index=False)
 
-    def toDataFrame(self, DOFs=None, Factors=None):
+    def toDataFrame(self, DOFs=None, Factors=None, q0=None):
         """ Return time integration results as a dataframe
         DOFs:    array of string for DOFs names   (2xnDOF)
         Factors: array of floats to scale the DOFs (2xnDOF)
+        q0:  array of floats to add to the DOF (1xnD)F)
         """
         import pandas as pd
         if self.res is None:
@@ -458,6 +483,13 @@ class MechSystem():
         if Factors is not None:
             for i, f in enumerate(Factors):
                 M[:,i+1] *= f
+        # Offset
+        if q0 is not None:
+            for i, x0 in enumerate(q0):
+                if Factors is not None:
+                    M[:,i+1] += x0*Factors[i]
+                else:
+                    M[:,i+1] += x0
 
         for i,d in enumerate(DOFs):
             if DOFs[i].find('[deg]')>1: 
