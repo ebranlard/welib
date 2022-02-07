@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 # Local 
 from welib.tools.clean_exceptions import *
 from welib.weio import FASTInputFile
+
+# Submodules
 from welib.fast.hydrodyn_morison import Morison
+from welib.fast.hydrodyn_waves import Waves
 
 
 class HydroDyn:
@@ -36,7 +39,7 @@ class HydroDyn:
     # --------------------------------------------------------------------------------}
     # --- Functions for general FEM model (jacket, flexible floaters)
     # --------------------------------------------------------------------------------{
-    def init(self, gravity = 9.81, WtrDens='1025', WtrDpth=0, MSL2SWL=0):
+    def init(self, Gravity = 9.81, WtrDens='1025', WtrDpth=0, MSL2SWL=0):
         """
         Initialize HydroDyn model 
 
@@ -54,8 +57,15 @@ class HydroDyn:
         except:
             if MSL2SWL is None:
                 raise Exception('Provide MSL2SWL if default in file')
+        try:
+            WtrDens=float(f['WtrDens']) # If default
+        except:
+            if WtrDens is None:
+                raise Exception('Provide WtrDens if default in file')
 
         self.p['WtrDpth'] = WtrDpth + MSL2SWL
+        self.p['WtrDens'] = WtrDens 
+        self.p['Gravity'] = Gravity
 
         graph = self.graph
 
@@ -71,22 +81,22 @@ class HydroDyn:
         Current_NodesZ      = Nodes[:,2]
 
         # --- Waves Inits
-        self.p['NStepWave'] = np.ceil(f['WaveTMax']/f['WaveDT'] ).astype(int)
+        self.Waves = Waves(File=self.File, WtrDpth=self.p['WtrDpth'], MSL2SWL=MSL2SWL)
+        self.Waves.init(Gravity=self.p['Gravity'])
 
         # --- WvStretch_Init in HydroDyn.f90
-        nodeInWater = np.zeros( (self.p['NStepWave'], len(Waves_WaveKin_Nodes)    ))
-        WaveDynP    = np.zeros( (self.p['NStepWave'], len(Waves_WaveKin_Nodes)    ))
-        WaveVel     = np.zeros( (self.p['NStepWave'], len(Waves_WaveKin_Nodes), 3 ))
-        WaveAcc     = np.zeros( (self.p['NStepWave'], len(Waves_WaveKin_Nodes), 3 ))
-        NStepWave = self.p['NStepWave']
-        WtrDpth = self.p['WtrDpth']
+        NStepWave   = self.Waves.p['NStepWave']
+        nodeInWater = np.zeros( (NStepWave, len(Waves_WaveKin_Nodes)    ))
+        WaveDynP    = np.zeros( (NStepWave, len(Waves_WaveKin_Nodes)    ))
+        WaveVel     = np.zeros( (NStepWave, len(Waves_WaveKin_Nodes), 3 ))
+        WaveAcc     = np.zeros( (NStepWave, len(Waves_WaveKin_Nodes), 3 ))
+        WtrDpth   = self.p['WtrDpth']
         if f['WaveStMod']==0:
             for j, p in enumerate(Waves_WaveKin_Nodes):
                 if p[2] < -WtrDpth or p[2] >0:
                     pass # all is zero
                 else:
                     nodeInWater[:,j] = 1 # for all time steps
-
         else:
             raise NotImplementedError()
         #             CASE ( 1 )                 ! Vertical stretching.
@@ -129,14 +139,21 @@ class HydroDyn:
         #                      WaveAcc    (I,J,:)  = WaveAcc0   (I,J,:) + WaveKinzi(J)*WavePAcc0   (I,J,:)
         #                   END IF
         #                   ! Otherwise, do nothing because the kinematics have already be set correctly via the various Waves modules
-        #                END IF
         #    ! Set the ending timestep to the same as the first timestep
         WaveDynP[NStepWave-1,:  ]  = WaveDynP [0,:  ]
         WaveVel [NStepWave-1,:,:]  = WaveVel  [0,:,:]
         WaveAcc [NStepWave-1,:,:]  = WaveAcc  [0,:,:]
 
         # --- Morison Init
-        initData={'nodeInWater':nodeInWater}
+        initData = {}
+        initData['nodeInWater'] = nodeInWater
+        initData['WaveVel']     = WaveVel
+        initData['WaveAcc']     = WaveAcc
+        initData['WaveDynP']    = WaveDynP
+        initData['WaveTime']    = self.Waves.p['WaveTime']
+        initData['Gravity']     = self.p['Gravity']
+        initData['WtrDens']     = self.p['WtrDens']
+        print('WaveTime',self.Waves.p['WaveTime'])
         self.morison.init(initData)
    
     @property
@@ -180,13 +197,23 @@ if __name__ == '__main__':
         filename='_HD_T2.dat'
     import welib
 
+
+    import  welib.weio
+
+    driverfilename=filename.replace('.dat','.dvr')
+    dvr=welib.weio.FASTInputFile(driverfilename)
+    Gravity = dvr['Gravity']
+    WtrDens = dvr['WtrDens']
+    WtrDpth = dvr['WtrDpth']
+
+
 #     hd = welib.weio.FASTInputFile(filename)
 # #     hd.write('Out.dat')
 #     graph = hd.toGraph()
 #     print(graph)
 
     hd = HydroDyn(filename)
-    hd.init()
+    hd.init(Gravity=Gravity, WtrDens=WtrDens, WtrDpth=WtrDpth)
 #     hd.MorisonPositions
     hd.writeSummary(filename.replace('.dat','.HD_python.sum'))
 #     print(hd.graph)

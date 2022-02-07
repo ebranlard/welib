@@ -279,3 +279,37 @@ def BodyZYX_toEuler(phi_x, phi_y, phi_z):
     Convert to Bryant angles to Euler parameters
     """
     return EulerP_fromA(BodyXYZ_A(phi_x, phi_y, phi_z))
+
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Rodriguez (OpenFAST functions)
+# --------------------------------------------------------------------------------{
+def Rodriguez_A(a):
+    """
+    ! calculates rotation matrix R to rotate unit vertical vector to direction of input vector `a`
+    a(3): input vector
+    R(3,3): rotation matrix from Rodrigues's rotation formula
+    """
+    factor = a.dot(a)
+    if factor==0:
+        return np.eye(3) # Return the identity if the vector is zero
+    if a[0]==0 and a[1]==0:   # return identity if vertical
+        R = np.eye(3)
+        if a[2] < 0:
+            R = -R
+    else:  
+        R = np.zeros((3,3))
+        vec = a/np.sqrt(factor) # normalize a
+        vec[2] += 1
+        factor = 2.0/(vec.dot(vec))
+        R[0,0] = factor*vec[0]*vec[0] - 1
+        R[0,1] = factor*vec[0]*vec[1]
+        R[0,2] = factor*vec[0]*vec[2]
+        R[1,0] = factor*vec[1]*vec[0]
+        R[1,1] = factor*vec[1]*vec[1] - 1
+        R[1,2] = factor*vec[1]*vec[2]
+        R[2,0] = factor*vec[2]*vec[0]
+        R[2,1] = factor*vec[2]*vec[1]
+        R[2,2] = factor*vec[2]*vec[2] - 1
