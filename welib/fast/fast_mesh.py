@@ -15,4 +15,20 @@ class PointMesh:
         self.RotationAcc = np.zeros((3, nPoints))
         self.Force  = np.zeros((3, nPoints))
         self.Moment = np.zeros((3, nPoints))
+        self.nNodes = nPoints
+
+    def mapLoadsToPoint(self,P):
+        P = np.asarray(P)
+        F = np.zeros(3)
+        M = np.zeros(3)
+        for j in range(self.nNodes):
+            F0 = self.Force[:,j]
+            M0 = self.Moment[:,j]
+            P0 = self.Position[:,j] + self.TranslationDisp[:,j]
+            r = P0-P
+            dM = np.cross(r, F0)
+            F+=F0
+            M+=M0 + dM
+            #M+=M0 
+        return F, M
 

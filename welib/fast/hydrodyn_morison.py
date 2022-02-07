@@ -112,12 +112,11 @@ class Morison:
             MGdens    = 0.0
             tMG       = -999.0
             An_drag   = 0.0
-            print('--------------------------- JOINT',i+1)
+            #print('--------------------------- JOINT',i+1)
             if n.point[2] >= -p['WtrDpth']:
                 # loop through each member attached to the joint, getting the radius of its appropriate end
 
                 elem = graph.node2Elements(n)
-                print('Connections',[e.ID for e in elem])
                 # --- Loop on elements connected to joint
                 for e in elem:
                     member = e.MorisonData
@@ -125,7 +124,7 @@ class Morison:
                         MemberEndIndx = member['NElements']
                     else:
                         MemberEndIndx = 0
-                    print('Member',e.ID, 'Indx',MemberEndIndx+1)
+                    #print('Member',e.ID, 'Indx',MemberEndIndx+1)
                     # Compute the signed area*outward facing normal of this member
                     sgn = 1.0
                     if MemberEndIndx == 0:
@@ -135,11 +134,8 @@ class Morison:
                     # Account for reordering of what the original node for the end was -- This affects the sign of the An term which can pose a problem for members crossing the waterline
                     if e.flipped:
                         sgn = -1.0 * sgn
-                        print('>>>> TODO TODO FLIPPING',sgn)
                     # Compute the signed quantities for this member end (for drag regardless of PropPot value), and add them to the joint values
                     An_drag = An_drag + sgn* member['k']*np.pi*(member['RMG'][MemberEndIndx])**2     # area-weighted normal vector
-                    print('An_Drag  ', An_drag)
-                    print('An_Drag_0', sgn* member['k']*np.pi*(member['RMG'][MemberEndIndx])**2  )
                     # For the following quantities, the attached member cannot be modeled using WAMIT if we're to count it
                     if not e.data['Pot']:
                         # Compute the signed quantities for this member end, and add them to the joint values
@@ -150,14 +146,9 @@ class Morison:
                             # All member nodes at this joint will have the same MG thickness and density, so only do this once
                             tMG =    member['tMG'][MemberEndIndx      ]
                             MGdens = member['MGdensity'][MemberEndIndx]
-                        print('An    ',An)
-                        print('Vn    ',Vn)
-                        print('I_n   ',I_n)
                 p['An_End'][:,i] = An_drag 
                 Amag_drag =  An_drag.dot(An_drag)
                 Amag      =  An.dot(An)
-                print('Amag_d', Amag_drag)
-                print('Amag ', Amag)
                 if Amag_drag == 0:
                     p['DragConst_End'][i] =  0
                 else:
@@ -186,15 +177,22 @@ class Morison:
                 Irl_mat[1,1] = Ir_MG_end
                 Irl_mat[2,2] = Il_MG_end
                 #p['I_MG_End'][:,:,i] = MatMul( MatMul(R_I, Irl_mat), Transpose(R_I) ) # final moment of inertia matrix for node
-                print('AM_end       ',p['AM_End']      [0,:,i])
-                print('AM_end       ',p['AM_End']      [1,:,i])
-                print('AM_end       ',p['AM_End']      [2,:,i])
-                print('DP_Const_End ',p['DP_Const_End'][:,i])
-                print('MassMGEnd    ',p['Mass_MG_End'] [i])
-                print('F_WMG_End    ',p['F_WMG_End']   [:,i])
-                print('I_MG_End     ',p['I_MG_End']    [0,:,i])
-                print('I_MG_End     ',p['I_MG_End']    [1,:,i])
-                print('I_MG_End     ',p['I_MG_End']    [2,:,i])
+                #print('An    ',An)
+                #print('Vn    ',Vn)
+                #print('I_n   ',I_n)
+                #print('An_Drag  ', An_drag)
+                #print('An_Drag_0', sgn* member['k']*np.pi*(member['RMG'][MemberEndIndx])**2  )
+                #print('Amag_d', Amag_drag)
+                #print('Amag ', Amag)
+                #print('AM_end       ',p['AM_End']      [0,:,i])
+                #print('AM_end       ',p['AM_End']      [1,:,i])
+                #print('AM_end       ',p['AM_End']      [2,:,i])
+                #print('DP_Const_End ',p['DP_Const_End'][:,i])
+                #print('MassMGEnd    ',p['Mass_MG_End'] [i])
+                #print('F_WMG_End    ',p['F_WMG_End']   [:,i])
+                #print('I_MG_End     ',p['I_MG_End']    [0,:,i])
+                #print('I_MG_End     ',p['I_MG_End']    [1,:,i])
+                #print('I_MG_End     ',p['I_MG_End']    [2,:,i])
             # ----END IF  # InitInp%InpJoints(i)%Position(3) >= -p%WtrDpth
         # ----END Loop on Joints to compute End Parameters
 
@@ -211,10 +209,14 @@ class Morison:
         # Then we can use the computed load components in the Summary File
         # NOTE: Morison module has no states, otherwise we could not do this.
         self.calcOutput(t=0, u=u, y=y)
+
         #       ! Write Summary information now that everything has been initialized. 
         #    CALL WriteSummaryFile( InitInp%UnSum, InitInp%Gravity, InitInp%MSL2SWL, InitInp%WtrDpth, InitInp%NJoints, InitInp%NNodes, InitInp%Nodes, p%NMembers, p%Members, &
         #                           p%NumOuts, p%OutParam, p%NMOutputs, p%MOutLst,  p%NJOutputs, p%JOutLst, u%Mesh, y%Mesh, &
         #                           p, m, errStat, errMsg )
+        # For convenience
+        self._y = y
+        self._u = u
 
     # --------------------------------------------------------------------------------}
     # ---  
@@ -422,7 +424,7 @@ class Morison:
             #                end do
         else:
             member['i_floor'] = -1 # lower end is at or above the seabed
-        print('Member',Za, member['doEndBuoyancy'], member['i_floor'])
+        #print('Member',Za, member['doEndBuoyancy'], member['i_floor'])
         # calculate element-level values
         member['dRdl_mg'] = np.diff(member['RMG'])/dl
         member['dRdl_in'] = np.diff(member['Rin'])/dl
@@ -592,7 +594,7 @@ class Morison:
                 doSwap=True # Z1>Z2
 
             if doSwap:
-                print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
+                #print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
                 m.swapNodes()
                 m.MorisonData['SubNodesPositions'] =  m.MorisonData['SubNodesPositions'][-1::-1,:]
                 m.MorisonData['nodeIDs']           =  m.MorisonData['nodeIDs'][-1::-1]
@@ -613,17 +615,35 @@ class Morison:
 
 
         """
+
+
         graph = self.graph
         p = self.p
         m = self.m
         umesh = u['Mesh']
         ymesh = y['Mesh']
         g = p['Gravity']
+
+        bVerbose = False
+        bMG      = True
+        bBuoy    = True
+        bBallast = True
+        bHydro   = True
+        bEnd     = True
+
+        def myprint(*args, **kwargs):
+            if bVerbose:
+                print(*args, **kwargs)
+            else:
+                pass
+
+
+
         #===============================================================================================
         # Calculate the fluid kinematics at all mesh nodes and store for use in the equations below
         #    InterpolationSlope = GetInterpolationSlope(Time, p, m, IntWrapIndx)
         iTime = 0 # TODO TODO
-        print('---------------------------FLUID KINEMATICS')
+        myprint('---------------------------FLUID KINEMATICS')
         for j, pos in enumerate(self.NodesBeforeSwap):    
             m['nodeInWater'][j] = p['nodeInWater'][iTime,j]
             m['FDynP'][j]       = p['WaveDynP'   ][iTime,j]   # TODO InterpolateWithSlope(InterpolationSlope, m%LastIndWave, p%WaveDynP(:,j))
@@ -634,11 +654,11 @@ class Morison:
             m['FV'][1,j]        = p['WaveVel'    ][iTime,j,1] 
             m['FV'][2,j]        = p['WaveVel'    ][iTime,j,2] 
             m['vrel'][:,j]      = m['FV'][:,j] - umesh.TranslationVel[:,j]
-            m['vrel'][0,j]      = 1.5
-            m['vrel'][2,j]      = 0.5
-            m['FA'][0,j]       = 0.5
-            m['FA'][2,j]       = 0.1
-            print('Node',j, m['nodeInWater'][j], m['FDynP'][j], m['FV'][:,j])
+            #m['vrel'][0,j]      = 1.5
+            #m['vrel'][2,j]      = 0.5
+            #m['FA'][0,j]       = 0.5
+            #m['FA'][2,j]       = 0.1
+            #print('Node',j, m['nodeInWater'][j], m['FDynP'][j], m['FV'][:,j])
         # ==============================================================================================
         # Calculate instantaneous loads on each member except for the hydrodynamic loads on member ends.
         # This covers aspects of the load calculations previously in CreateDistributedMesh.  
@@ -652,7 +672,7 @@ class Morison:
         ymesh.Moment *= 0
 
         for im, e in enumerate(graph.Elements):
-            print('---------------------------MEMBER LOADS ',im+1)
+            myprint('---------------------------MEMBER LOADS ',im+1)
             mem      = e.MorisonData
             N        = mem['NElements']
             memLoads = mem['Loads']
@@ -663,7 +683,7 @@ class Morison:
             # --- Internal Hydrodynamic loads
             # Loop through member elements
             for i in range(N):
-                print('---------------------------ELEMENT LOADS ',im+1, i+1)
+                myprint('---------------------------ELEMENT LOADS ',im+1, i+1)
                 #print('idx',np.array(idx)+1)
                 # calculate instantaneous incline angle and heading, and related trig values
                 pos1    = umesh.TranslationDisp[:, idx[i]] + umesh.Position[:, idx[i]]
@@ -692,439 +712,456 @@ class Morison:
                 a_s2    = umesh.TranslationAcc[:, idx[i+1]]
                 alpha_s2= umesh.RotationAcc   [:, idx[i+1]]
                 omega_s2= umesh.RotationVel   [:, idx[i+1]]
-                if not e.data['Pot']: # Member is NOT modeled with Potential Flow Theory
-                    # should i_floor theshold be applied to below calculations to avoid wasting time on computing zero-valued things? <<<<<
-                    # should lumped half-element coefficients get combined at initialization? <<<
-                    # --------------------------------------------------------------------------------}
-                    # --- Marine growth 
-                    # --------------------------------------------------------------------------------{
-                    # Sides: Section 4.1.2
-                    F_WMG = np.zeros(6)
-                    # lower node
-                    F_WMG[2] = - mem['m_mg_l'][i]*g # weight force  : Note: this is a constant
-                    F_WMG[3] = - mem['m_mg_l'][i]*g * mem['h_cmg_l'][i]* sinPhi * sinBeta# weight force
-                    F_WMG[4] =   mem['m_mg_l'][i]*g * mem['h_cmg_l'][i]* sinPhi * cosBeta# weight force
-                    memLoads['F_WMG'][:,i] += F_WMG
-                    ymesh.Force [:,idx[i]] += F_WMG[:3]
-                    ymesh.Moment[:,idx[i]] += F_WMG[3:]
-                    # upper node
-                    F_WMG[2] = - mem['m_mg_u'][i]*g # weight force  : Note: this is a constant 
-                    F_WMG[3] = - mem['m_mg_u'][i]*g * mem['h_cmg_u'][i]* sinPhi * sinBeta# weight force
-                    F_WMG[4] =   mem['m_mg_u'][i]*g * mem['h_cmg_u'][i]* sinPhi * cosBeta# weight force
-                    memLoads['F_WMG'][:,i+1] += F_WMG  
-                    ymesh.Force [:,idx[i+1]] += F_WMG[:3]
-                    ymesh.Moment[:,idx[i+1]] += F_WMG[3:]
-                    F_IMG = np.zeros(6)
-                    Imat  = np.zeros((3,3))
-                    # lower node 
-                    Ioffset   = mem['h_cmg_l'][i]*mem['h_cmg_l'][i]*mem['m_mg_l'][i]
-                    Imat[0,0] = mem['I_rmg_l'][i] - Ioffset
-                    Imat[1,1] = mem['I_rmg_l'][i] - Ioffset
-                    Imat[2,2] = mem['I_lmg_l'][i] - Ioffset
-                    Imat      =  CMatrix.dot(Imat).dot(CTrans)
-                    iArm = mem['h_cmg_l'][i] * k_hat
-                    iTerm     = ( -a_s1 - np.cross(omega_s1, np.cross(omega_s1,iArm )) - np.cross(alpha_s1,iArm) ) * mem['m_mg_l'][i]
-                    F_IMG[:3] = iTerm
-                    F_IMG[3:] = - np.cross(a_s1 * mem['m_mg_l'][i], mem['h_cmg_l'][i] * k_hat) + Imat.dot(alpha_s1)  - np.cross(omega_s1,Imat.dot(omega_s1))
-                    memLoads['F_IMG'][:,i] +=F_IMG
-                    ymesh.Force [:,idx[i]] +=F_IMG[:3]
-                    ymesh.Moment[:,idx[i]] +=F_IMG[3:]
-                    # upper node
-                    Ioffset   = mem['h_cmg_u'][i]*mem['h_cmg_u'][i]*mem['m_mg_u'][i]
-                    Imat[0,0] = mem['I_rmg_u'][i] - Ioffset
-                    Imat[1,1] = mem['I_rmg_u'][i] - Ioffset
-                    Imat[2,2] = mem['I_lmg_u'][i] - Ioffset
-                    Imat      = CMatrix.dot(Imat).dot(CTrans)
-                    iArm = mem['h_cmg_u'][i] * k_hat
-                    iTerm     = ( -a_s2 - np.cross(omega_s2, np.cross(omega_s2,iArm )) - np.cross(alpha_s2,iArm) ) * mem['m_mg_u'][i]
-                    F_IMG[:3] = iTerm
-                    F_IMG[3:] = - np.cross(a_s2 * mem['m_mg_u'][i], mem['h_cmg_u'][i] * k_hat) + Imat.dot(alpha_s2) - np.cross(omega_s2,Imat.dot(omega_s2))
-                    memLoads['F_IMG'][:,i+1] += F_IMG
-                    ymesh.Force [:,idx[i+1]] += F_IMG[:3]
-                    ymesh.Moment[:,idx[i+1]] += F_IMG[3:]
+                if bMG:
+                    if not e.data['Pot']: # Member is NOT modeled with Potential Flow Theory
+                        # should i_floor theshold be applied to below calculations to avoid wasting time on computing zero-valued things? <<<<<
+                        # should lumped half-element coefficients get combined at initialization? <<<
+                        # --------------------------------------------------------------------------------}
+                        # --- Marine growth 
+                        # --------------------------------------------------------------------------------{
+                        # Sides: Section 4.1.2
+                        F_WMG = np.zeros(6)
+                        # lower node
+                        F_WMG[2] = - mem['m_mg_l'][i]*g # weight force  : Note: this is a constant
+                        F_WMG[3] = - mem['m_mg_l'][i]*g * mem['h_cmg_l'][i]* sinPhi * sinBeta# weight force
+                        F_WMG[4] =   mem['m_mg_l'][i]*g * mem['h_cmg_l'][i]* sinPhi * cosBeta# weight force
+                        memLoads['F_WMG'][:,i] += F_WMG
+                        ymesh.Force [:,idx[i]] += F_WMG[:3]
+                        ymesh.Moment[:,idx[i]] += F_WMG[3:]
+                        # upper node
+                        F_WMG[2] = - mem['m_mg_u'][i]*g # weight force  : Note: this is a constant 
+                        F_WMG[3] = - mem['m_mg_u'][i]*g * mem['h_cmg_u'][i]* sinPhi * sinBeta# weight force
+                        F_WMG[4] =   mem['m_mg_u'][i]*g * mem['h_cmg_u'][i]* sinPhi * cosBeta# weight force
+                        memLoads['F_WMG'][:,i+1] += F_WMG  
+                        ymesh.Force [:,idx[i+1]] += F_WMG[:3]
+                        ymesh.Moment[:,idx[i+1]] += F_WMG[3:]
+                        F_IMG = np.zeros(6)
+                        Imat  = np.zeros((3,3))
+                        # lower node 
+                        Ioffset   = mem['h_cmg_l'][i]*mem['h_cmg_l'][i]*mem['m_mg_l'][i]
+                        Imat[0,0] = mem['I_rmg_l'][i] - Ioffset
+                        Imat[1,1] = mem['I_rmg_l'][i] - Ioffset
+                        Imat[2,2] = mem['I_lmg_l'][i] - Ioffset
+                        Imat      =  CMatrix.dot(Imat).dot(CTrans)
+                        iArm = mem['h_cmg_l'][i] * k_hat
+                        iTerm     = ( -a_s1 - np.cross(omega_s1, np.cross(omega_s1,iArm )) - np.cross(alpha_s1,iArm) ) * mem['m_mg_l'][i]
+                        F_IMG[:3] = iTerm
+                        F_IMG[3:] = - np.cross(a_s1 * mem['m_mg_l'][i], mem['h_cmg_l'][i] * k_hat) + Imat.dot(alpha_s1)  - np.cross(omega_s1,Imat.dot(omega_s1))
+                        memLoads['F_IMG'][:,i] +=F_IMG
+                        ymesh.Force [:,idx[i]] +=F_IMG[:3]
+                        ymesh.Moment[:,idx[i]] +=F_IMG[3:]
+                        # upper node
+                        Ioffset   = mem['h_cmg_u'][i]*mem['h_cmg_u'][i]*mem['m_mg_u'][i]
+                        Imat[0,0] = mem['I_rmg_u'][i] - Ioffset
+                        Imat[1,1] = mem['I_rmg_u'][i] - Ioffset
+                        Imat[2,2] = mem['I_lmg_u'][i] - Ioffset
+                        Imat      = CMatrix.dot(Imat).dot(CTrans)
+                        iArm = mem['h_cmg_u'][i] * k_hat
+                        iTerm     = ( -a_s2 - np.cross(omega_s2, np.cross(omega_s2,iArm )) - np.cross(alpha_s2,iArm) ) * mem['m_mg_u'][i]
+                        F_IMG[:3] = iTerm
+                        F_IMG[3:] = - np.cross(a_s2 * mem['m_mg_u'][i], mem['h_cmg_u'][i] * k_hat) + Imat.dot(alpha_s2) - np.cross(omega_s2,Imat.dot(omega_s2))
+                        memLoads['F_IMG'][:,i+1] += F_IMG
+                        ymesh.Force [:,idx[i+1]] += F_IMG[:3]
+                        ymesh.Moment[:,idx[i+1]] += F_IMG[3:]
         
-                    # --------------------------------------------------------------------------------}
-                    # ---Buoyancy loads
-                    # --------------------------------------------------------------------------------{
-                    # sides: Sections 3.1 and 3.2 ------------------------
-                    if z1 < 0:  # if segment is at least partially submerged ...
-                        if z1*z2 <= 0: # special calculation if the slice is partially submerged
-                            # Check that this is not the 1st element of the member
-                            if i==0:
-                                raise Exception('The lowest element of a Morison member has become partially submerged!  This is not allowed.  Please review your model and create a discretization such that even with displacements, the lowest element of a member does not become partially submerged.')
-                            h0 = -z1/cosPhi             # distances along element centerline from point 1 to the waterplane
-                            if abs(dRdl_mg)< 0.0001:      # untapered cylinder case
-                                Vs =    np.pi*r1*r1*h0   # volume of total submerged portion
-                                if Vs ==0:
-                                    cx = 0.0  # Avoid singularity, but continue to provide the correct solution
-                                else:
-                                    cr = 0.25*r1*r1*tanPhi/h0
-                                    cl = 0.5*h0 + 0.125*r1*r1*tanPhi*tanPhi/h0
-                                    cx = cr*cosPhi + cl*sinPhi
-                            else: # inclined tapered cylinder case (note I've renamed r0 to rh here##)
-                                #===================
-                                #Per plan equations
-                                # NOTE:  Variable changes of Plan     vs       Code
-                                #---------------------------------------------------
-                                #                             V                 Vs
-                                #                             a_h               a0
-                                #                             b_h               b0
-                                #                             x_c               cx
-                                #                             h                 h0
-                                #                             r1                r_MG,i
-                                #                             r_c               cr
-                                #                             h_c               cl
-                                # NOTE: a0 and b0 always appear as a0b0, never separately.
-                                rh   = r1 + h0*dRdl_mg    # radius of element at point where its centerline crosses the waterplane
-                                C_1  = 1.0 - dRdl_mg**2 * tanPhi**2
-                                # waterplane ellipse shape
-                                b0   = rh/np.sqrt(C_1)
-                                a0   = rh/((C_1)*cosPhi)             # simplified from what's in ConicalCalcs.ipynb
-                                a0b0 = a0*b0
-                                C_2  = a0b0*rh*cosPhi - r1**3
-                                cl   = -(-0.75*a0b0*rh**2*cosPhi + 0.75*r1**4*C_1 + r1*C_1*C_2) / (dRdl_mg*C_1*C_2)
-                                cr   = (0.75*a0b0*dRdl_mg*rh**2*sinPhi)/(C_1*C_2)
-                                cx   = cr*cosPhi + cl*sinPhi 
-                                Vs   = np.pi*(a0b0*rh*cosPhi - r1**3)/(3.0*dRdl_mg)       
-                                # End per plan equations
-                                #===================
-                            pwr = 3
-                            alpha    = (1.0-mem['alpha'][i])*z1**pwr/(-mem['alpha'][i]*z2**pwr + (1.0-mem['alpha'][i])*z1**pwr)
-                            Fb  = Vs*p['WtrDens']*g       #buoyant force
-                            Fr  = -Fb*sinPhi     #radial component of buoyant force
-                            Fl  = Fb*cosPhi      #axial component of buoyant force
-                            Moment = -Fb*cx      #This was matt's code        #moment induced about the center of the cylinder's bottom face
-                            # calculate (imaginary) bottom plate forces/moment to subtract from displacement-based values
-                            Fl  = Fl  + p['WtrDens']*g*z1* np.pi *r1*r1        
-                            Moment  = Moment  + p['WtrDens']*g* sinPhi * np.pi/4.0*r1**4       
-                            # reduce taper-based moment to remove (not double count) radial force distribution to each node 
-                            Moment  = Moment + Fr*(1.0-alpha)*dl
-                            F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha)
-                            memLoads['F_B'][:, i]   += F_B1  # alpha
-                            memLoads['F_B'][:, i-1] += F_B2  # 1-alpha
-                            ymesh.Force [:,idx[i  ]] += F_B1[:3]
-                            ymesh.Moment[:,idx[i  ]] += F_B1[3:]
-                            ymesh.Force [:,idx[i-1]] += F_B2[:3]
-                            ymesh.Moment[:,idx[i-1]] += F_B2[3:]
-                        else: # normal, fully submerged case
-                            Fl = -2.0*np.pi*dRdl_mg*p['WtrDens']*g*dl*( z1*r1 + 0.5*(z1*dRdl_mg + r1*cosPhi)*dl + 1.0/3.0*(dRdl_mg*cosPhi*dl*dl) )   # from CylinderCalculationsR1.ipynb
-                            Fr = -np.pi*p['WtrDens']*g*dl*(r1*r1 + dRdl_mg*r1*dl + (dRdl_mg**2*dl**2)/3.0)*sinPhi                          # from CylinderCalculationsR1.ipynb
-                            Moment = -np.pi*dl*g*p['WtrDens']*(3.0*dl**3*dRdl_mg**4 + 3.0*dl**3*dRdl_mg**2 + 12.0*dl**2*dRdl_mg**3*r1 + 8.0*dl**2*dRdl_mg*r1 + 18.0*dl*dRdl_mg**2*r1*r1 + 6.0*dl*r1*r1 + 12.0*dRdl_mg*r1**3)*sinPhi/12.0   # latest from CylinderCalculationsR1.ipynb
-         
-                            # precomputed as mem['alpha[i] ... alpha0 = (r1*r1 + 2*r1*r2 + 3*r2**2)/4/(r1*r1 + r1*r2 + r2**2)
-                            z1d = -min(0.0,z1)
-                            z2d = -min(0.0,z2)
-                            pwr = 3
-                            alpha = mem['alpha'][i]*z2d**pwr/(mem['alpha'][i]*z2d**pwr+(1-mem['alpha'][i])*z1d**pwr)
-                            # reduce moment to remove (not double count) radial force distribution to each node
-                            Moment = Moment - Fr*alpha*dl
-                            F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha)
-                            #print('F_B1',F_B1)
-                            #print('F_B2',F_B2)
-                            memLoads['F_B'][:,i+1] += F_B1  # alpha
-                            memLoads['F_B'][:, i]  += F_B2  # 1-alpha
-                            ymesh.Force [:,idx[i  ]] = F_B2[:3]
-                            ymesh.Moment[:,idx[i  ]] = F_B2[3:]
-                            ymesh.Force [:,idx[i+1]] = F_B1[:3]
-                            ymesh.Moment[:,idx[i+1]] = F_B1[3:]
-                # --- End If not potential element
+                if bBuoy:
+                    if not e.data['Pot']: # Member is NOT modeled with Potential Flow Theory
+                        # --------------------------------------------------------------------------------}
+                        # ---Buoyancy loads
+                        # --------------------------------------------------------------------------------{
+                        # sides: Sections 3.1 and 3.2 ------------------------
+                        if z1 < 0:  # if segment is at least partially submerged ...
+                            if z1*z2 <= 0: # special calculation if the slice is partially submerged
+                                # Check that this is not the 1st element of the member
+                                if i==0:
+                                    raise Exception('The lowest element of a Morison member has become partially submerged!  This is not allowed.  Please review your model and create a discretization such that even with displacements, the lowest element of a member does not become partially submerged.')
+                                h0 = -z1/cosPhi             # distances along element centerline from point 1 to the waterplane
+                                if abs(dRdl_mg)< 0.0001:      # untapered cylinder case
+                                    Vs =    np.pi*r1*r1*h0   # volume of total submerged portion
+                                    if Vs ==0:
+                                        cx = 0.0  # Avoid singularity, but continue to provide the correct solution
+                                    else:
+                                        cr = 0.25*r1*r1*tanPhi/h0
+                                        cl = 0.5*h0 + 0.125*r1*r1*tanPhi*tanPhi/h0
+                                        cx = cr*cosPhi + cl*sinPhi
+                                else: # inclined tapered cylinder case (note I've renamed r0 to rh here##)
+                                    #===================
+                                    #Per plan equations
+                                    # NOTE:  Variable changes of Plan     vs       Code
+                                    #---------------------------------------------------
+                                    #                             V                 Vs
+                                    #                             a_h               a0
+                                    #                             b_h               b0
+                                    #                             x_c               cx
+                                    #                             h                 h0
+                                    #                             r1                r_MG,i
+                                    #                             r_c               cr
+                                    #                             h_c               cl
+                                    # NOTE: a0 and b0 always appear as a0b0, never separately.
+                                    rh   = r1 + h0*dRdl_mg    # radius of element at point where its centerline crosses the waterplane
+                                    C_1  = 1.0 - dRdl_mg**2 * tanPhi**2
+                                    # waterplane ellipse shape
+                                    b0   = rh/np.sqrt(C_1)
+                                    a0   = rh/((C_1)*cosPhi)             # simplified from what's in ConicalCalcs.ipynb
+                                    a0b0 = a0*b0
+                                    C_2  = a0b0*rh*cosPhi - r1**3
+                                    cl   = -(-0.75*a0b0*rh**2*cosPhi + 0.75*r1**4*C_1 + r1*C_1*C_2) / (dRdl_mg*C_1*C_2)
+                                    cr   = (0.75*a0b0*dRdl_mg*rh**2*sinPhi)/(C_1*C_2)
+                                    cx   = cr*cosPhi + cl*sinPhi 
+                                    Vs   = np.pi*(a0b0*rh*cosPhi - r1**3)/(3.0*dRdl_mg)       
+                                    # End per plan equations
+                                    #===================
+                                pwr = 3
+                                alpha    = (1.0-mem['alpha'][i])*z1**pwr/(-mem['alpha'][i]*z2**pwr + (1.0-mem['alpha'][i])*z1**pwr)
+                                Fb  = Vs*p['WtrDens']*g       #buoyant force
+                                Fr  = -Fb*sinPhi     #radial component of buoyant force
+                                Fl  = Fb*cosPhi      #axial component of buoyant force
+                                Moment = -Fb*cx      #This was matt's code        #moment induced about the center of the cylinder's bottom face
+                                # calculate (imaginary) bottom plate forces/moment to subtract from displacement-based values
+                                Fl  = Fl  + p['WtrDens']*g*z1* np.pi *r1*r1        
+                                Moment  = Moment  + p['WtrDens']*g* sinPhi * np.pi/4.0*r1**4       
+                                # reduce taper-based moment to remove (not double count) radial force distribution to each node 
+                                Moment  = Moment + Fr*(1.0-alpha)*dl
+                                F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha)
+                                #print('Case 1')
+                                #print('>>> FB_1',F_B1[:3])
+                                #print('>>> FB_2',F_B2[:3])
+                                memLoads['F_B'][:, i]   += F_B1  # alpha
+                                memLoads['F_B'][:, i-1] += F_B2  # 1-alpha
+                                ymesh.Force [:,idx[i  ]] += F_B1[:3]
+                                ymesh.Moment[:,idx[i  ]] += F_B1[3:]
+                                ymesh.Force [:,idx[i-1]] += F_B2[:3]
+                                ymesh.Moment[:,idx[i-1]] += F_B2[3:]
+                            else: # normal, fully submerged case
+                                Fl = -2.0*np.pi*dRdl_mg*p['WtrDens']*g*dl*( z1*r1 + 0.5*(z1*dRdl_mg + r1*cosPhi)*dl + 1.0/3.0*(dRdl_mg*cosPhi*dl*dl) )   # from CylinderCalculationsR1.ipynb
+                                Fr = -np.pi*p['WtrDens']*g*dl*(r1*r1 + dRdl_mg*r1*dl + (dRdl_mg**2*dl**2)/3.0)*sinPhi                          # from CylinderCalculationsR1.ipynb
+                                Moment = -np.pi*dl*g*p['WtrDens']*(3.0*dl**3*dRdl_mg**4 + 3.0*dl**3*dRdl_mg**2 + 12.0*dl**2*dRdl_mg**3*r1 + 8.0*dl**2*dRdl_mg*r1 + 18.0*dl*dRdl_mg**2*r1*r1 + 6.0*dl*r1*r1 + 12.0*dRdl_mg*r1**3)*sinPhi/12.0   # latest from CylinderCalculationsR1.ipynb
+             
+                                # precomputed as mem['alpha[i] ... alpha0 = (r1*r1 + 2*r1*r2 + 3*r2**2)/4/(r1*r1 + r1*r2 + r2**2)
+                                z1d = -min(0.0,z1)
+                                z2d = -min(0.0,z2)
+                                pwr = 3
+                                alpha = mem['alpha'][i]*z2d**pwr/(mem['alpha'][i]*z2d**pwr+(1-mem['alpha'][i])*z1d**pwr)
+                                # reduce moment to remove (not double count) radial force distribution to each node
+                                Moment = Moment - Fr*alpha*dl
+                                F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha)
+                                #print('Case 2')
+                                #print('>>> FB_1',F_B1[:3])
+                                #print('>>> FB_2',F_B2[:3])
+                                memLoads['F_B'][:,i+1] += F_B1  # alpha
+                                memLoads['F_B'][:, i]  += F_B2  # 1-alpha
+                                ymesh.Force [:,idx[i  ]] += F_B2[:3]
+                                ymesh.Moment[:,idx[i  ]] += F_B2[3:]
+                                ymesh.Force [:,idx[i+1]] += F_B1[:3]
+                                ymesh.Moment[:,idx[i+1]] += F_B1[3:]
+                    # --- End If not potential element
                 # --------------------------------------------------------------------------------}
                 # --- Flooded ballast (for Pot or not Pot)
                 # --------------------------------------------------------------------------------{
-                # --- Inertia Section 6.1.1 
-                Imat = np.zeros((3,3))
-                F_If = np.zeros(6)
-                # lower node
-                Ioffset   = mem['h_cfb_l'][i]*mem['h_cfb_l'][i]*mem['m_fb_l'][i]
-                Imat[0,0] = mem['I_rfb_l'][i] - Ioffset
-                Imat[1,1] = mem['I_rfb_l'][i] - Ioffset
-                Imat[2,2] = mem['I_lfb_l'][i] - Ioffset
-                iArm = mem['h_cfb_l'][i] * k_hat
-                iTerm     = ( -a_s1  - np.cross(omega_s1, np.cross(omega_s1,iArm ))  -  np.cross(alpha_s1,iArm) ) * mem['m_fb_l'][i]
-                F_If[:3] =  iTerm
-                F_If[3:] =  - np.cross(a_s1 * mem['m_fb_l'][i], mem['h_cfb_l'][i] * k_hat) + Imat.dot(alpha_s1) - np.cross(omega_s1,Imat.dot(omega_s1)) 
-                memLoads['F_If'][:,i] += F_If
-                ymesh.Force [:,idx[i]] += F_If[:3]
-                ymesh.Moment[:,idx[i]] += F_If[3:6]
-                # upper node
-                Ioffset   = mem['h_cfb_u'][i]*mem['h_cfb_u'][i]*mem['m_fb_u'][i]
-                Imat[0,0] = mem['I_rfb_u'][i] - Ioffset
-                Imat[1,1] = mem['I_rfb_u'][i] - Ioffset
-                Imat[2,2] = mem['I_lfb_u'][i] - Ioffset
-                iArm = mem['h_cfb_u'][i] * k_hat
-                iTerm     = ( -a_s2  - np.cross(omega_s2, np.cross(omega_s2,iArm ))  -  np.cross(alpha_s2,iArm) ) * mem['m_fb_u'][i]
-                F_If[:3] = iTerm
-                F_If[3:] = - np.cross(a_s2 * mem['m_fb_u'][i], mem['h_cfb_u'][i] * k_hat) + Imat.dot(alpha_s2) - np.cross(omega_s2,Imat.dot(omega_s2))
-                memLoads['F_If'][:,i+1]  += F_If
-                ymesh.Force [:,idx[i+1]] += F_If[:3]
-                ymesh.Moment[:,idx[i+1]] += F_If[3:]  
+                if bBallast:
+                    # --- Inertia Section 6.1.1 
+                    Imat = np.zeros((3,3))
+                    F_If = np.zeros(6)
+                    # lower node
+                    Ioffset   = mem['h_cfb_l'][i]*mem['h_cfb_l'][i]*mem['m_fb_l'][i]
+                    Imat[0,0] = mem['I_rfb_l'][i] - Ioffset
+                    Imat[1,1] = mem['I_rfb_l'][i] - Ioffset
+                    Imat[2,2] = mem['I_lfb_l'][i] - Ioffset
+                    iArm = mem['h_cfb_l'][i] * k_hat
+                    iTerm     = ( -a_s1  - np.cross(omega_s1, np.cross(omega_s1,iArm ))  -  np.cross(alpha_s1,iArm) ) * mem['m_fb_l'][i]
+                    F_If[:3] =  iTerm
+                    F_If[3:] =  - np.cross(a_s1 * mem['m_fb_l'][i], mem['h_cfb_l'][i] * k_hat) + Imat.dot(alpha_s1) - np.cross(omega_s1,Imat.dot(omega_s1)) 
+                    memLoads['F_If'][:,i] += F_If
+                    ymesh.Force [:,idx[i]] += F_If[:3]
+                    ymesh.Moment[:,idx[i]] += F_If[3:6]
+                    # upper node
+                    Ioffset   = mem['h_cfb_u'][i]*mem['h_cfb_u'][i]*mem['m_fb_u'][i]
+                    Imat[0,0] = mem['I_rfb_u'][i] - Ioffset
+                    Imat[1,1] = mem['I_rfb_u'][i] - Ioffset
+                    Imat[2,2] = mem['I_lfb_u'][i] - Ioffset
+                    iArm = mem['h_cfb_u'][i] * k_hat
+                    iTerm     = ( -a_s2  - np.cross(omega_s2, np.cross(omega_s2,iArm ))  -  np.cross(alpha_s2,iArm) ) * mem['m_fb_u'][i]
+                    F_If[:3] = iTerm
+                    F_If[3:] = - np.cross(a_s2 * mem['m_fb_u'][i], mem['h_cfb_u'][i] * k_hat) + Imat.dot(alpha_s2) - np.cross(omega_s2,Imat.dot(omega_s2))
+                    memLoads['F_If'][:,i+1]  += F_If
+                    ymesh.Force [:,idx[i+1]] += F_If[:3]
+                    ymesh.Moment[:,idx[i+1]] += F_If[3:]  
 
-                # -- flooded ballast weight : sides : Section 5.1.2 & 5.2.2  : Always compute regardless of PropPot setting
-                # NOTE: For memfloodstatus and floodstatus: 0 = fully buried or not ballasted, 1 = fully flooded, 2 = partially flooded
-                # fully filled elements
-                if mem['floodstatus'][i]==1:
-                    # Compute lstar
-                    if mem['memfloodstatus'] == 2:
-                        # partially flooded MEMBER
-                        lstar = dl*(i-1) - mem['l_fill']
-                    elif (cosPhi >= 0.0 ):
-                        lstar = dl*(i-N-1) 
+                    # -- flooded ballast weight : sides : Section 5.1.2 & 5.2.2  : Always compute regardless of PropPot setting
+                    # NOTE: For memfloodstatus and floodstatus: 0 = fully buried or not ballasted, 1 = fully flooded, 2 = partially flooded
+                    # fully filled elements
+                    if mem['floodstatus'][i]==1:
+                        # Compute lstar
+                        if mem['memfloodstatus'] == 2:
+                            # partially flooded MEMBER
+                            lstar = dl*(i-1) - mem['l_fill']
+                        elif (cosPhi >= 0.0 ):
+                            lstar = dl*(i-N-1) 
+                        else:
+                            lstar = dl*(i-1)
+                        Fl =2*np.pi * mem['dRdl_in'][i] * mem['FillDens'] * p['gravity'] * dl *( -( mem['Rin'][i] + 0.5* mem['dRdl_in'][i]*dl )*mem['z_overfill'] + ( lstar*mem['Rin'][i] + 0.5*(lstar*mem['dRdl_in'][i] + mem['Rin'][i] )*dl + mem['dRdl_in'][i]*dl**2/3.0 )*cosphi )
+                        # forces and moment in tilted coordinates about node i
+                        Fr = mem['Cfr_fb'][i]*sinPhi     
+                        Moment  = mem['CM0_fb'][i]*sinPhi - Fr*mem['alpha_fb_star'][i]*dl
+                        # calculate full vector and distribute to nodes
+                        F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, (1-mem['alpha_fb_star'][i]))
+                        memLoads['F_BF'][:, i]   += F_B2 # 1-alpha
+                        memLoads['F_BF'][:, i+1] += F_B1 # alpha
+                        ymesh.Force [:,idx[i  ]] += F_B2[:3]
+                        ymesh.Moment[:,idx[i  ]] += F_B2[3:]
+                        ymesh.Force [:,idx[i+1]] += F_B1[:3]
+                        ymesh.Moment[:,idx[i+1]] += F_B1[3:]
+                    elif mem['floodstatus'][i] == 2:
+                        # partially filled element
+                        # forces and moment in tilted coordinates about node i
+                        Fl     = mem['Cfl_fb'][i]*cosPhi
+                        Fr     = mem['Cfr_fb'][i]*sinPhi
+                        Moment = mem['CM0_fb'][i]*sinPhi + Fr*(1 - mem['alpha_fb_star'][i])*dl
+                        # calculate full vector and distribute to nodes
+                        F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, mem['alpha_fb_star'][i])
+                        memLoads['F_BF'][:, i]   += F_B1 # alpha
+                        memLoads['F_BF'][:, i-1] += F_B2 # 1- alpha
+                        ymesh.Force [:,idx[i  ]] += F_B1[:3]
+                        ymesh.Moment[:,idx[i  ]] += F_B1[3:]
+                        ymesh.Force [:,idx[i-1]] += F_B2[:3]
+                        ymesh.Moment[:,idx[i-1]] += F_B2[3:]    
                     else:
-                        lstar = dl*(i-1)
-                    Fl =2*np.pi * mem['dRdl_in'][i] * mem['FillDens'] * p['gravity'] * dl *( -( mem['Rin'][i] + 0.5* mem['dRdl_in'][i]*dl )*mem['z_overfill'] + ( lstar*mem['Rin'][i] + 0.5*(lstar*mem['dRdl_in'][i] + mem['Rin'][i] )*dl + mem['dRdl_in'][i]*dl**2/3.0 )*cosphi )
-                    # forces and moment in tilted coordinates about node i
-                    Fr = mem['Cfr_fb'][i]*sinPhi     
-                    Moment  = mem['CM0_fb'][i]*sinPhi - Fr*mem['alpha_fb_star'][i]*dl
-                    # calculate full vector and distribute to nodes
-                    F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, (1-mem['alpha_fb_star'][i]))
-                    memLoads['F_BF'][:, i]   += F_B2 # 1-alpha
-                    memLoads['F_BF'][:, i+1] += F_B1 # alpha
-                    ymesh.Force [:,idx[i  ]] += F_B2[:3]
-                    ymesh.Moment[:,idx[i  ]] += F_B2[3:]
-                    ymesh.Force [:,idx[i+1]] += F_B1[:3]
-                    ymesh.Moment[:,idx[i+1]] += F_B1[3:]
-                elif mem['floodstatus'][i] == 2:
-                    # partially filled element
-                    # forces and moment in tilted coordinates about node i
-                    Fl     = mem['Cfl_fb'][i]*cosPhi
-                    Fr     = mem['Cfr_fb'][i]*sinPhi
-                    Moment = mem['CM0_fb'][i]*sinPhi + Fr*(1 - mem['alpha_fb_star'][i])*dl
-                    # calculate full vector and distribute to nodes
-                    F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, mem['alpha_fb_star'][i])
-                    memLoads['F_BF'][:, i]   += F_B1 # alpha
-                    memLoads['F_BF'][:, i-1] += F_B2 # 1- alpha
-                    ymesh.Force [:,idx[i  ]] += F_B1[:3]
-                    ymesh.Moment[:,idx[i  ]] += F_B1[3:]
-                    ymesh.Force [:,idx[i-1]] += F_B2[:3]
-                    ymesh.Moment[:,idx[i-1]] += F_B2[3:]    
-                else:
-                    pass
+                        pass
                     # no load for unflooded element or element fully below seabed
             # --- End loop on Member Elements i=1,N
-            # External Hydrodynamic Side Loads
+
+            # --------------------------------------------------------------------------------}
+            # --- Hydrodynamic loads on sides 
+            # --------------------------------------------------------------------------------{
             # NOTE: All geometry-related calculations are based on the undisplaced configuration of the structure
-            for i in range(N+1): # Loop through member nodes
-                print('---------------------------NODAL LOADS ',im+1, i+1)
-                # We need to subtract the MSL2SWL offset to place this in the SWL reference system
-                z1 = umesh.Position[2, idx[i]] - p['MSL2SWL']
-                if i > mem['i_floor'] and z1 <= 0.0:  # node is above (or at? TODO: check) seabed and below or at free-surface)
-                    # TODO: Note that for computational efficiency, we could precompute h_c and deltal for each element when we are NOT using wave stretching
-                    # We would still need to test at time marching for nodes just below the free surface because that uses the current locations not the reference locations
-                    # see table in Section 7.1.1
-                    if i == 0:
-                        deltal = mem['dl']/2.0
-                        h_c    = mem['dl']/4.0
-                    elif (i == N):
-                        deltal =  mem['dl']/2.0
-                        h_c    = -mem['dl']/4.0
-                    elif mem['i_floor'] == i+1 : # This node is the upper node of an element which crosses the seabed
-                        deltal = mem['dl']/2.0 - mem['h_floor']  # TODO: h_floor is negative valued, should we be subrtracting it from dl/2? GJH
-                        h_c    = 0.5*(mem['dl']/2.0 + mem['h_floor'])
-                    else:
-                        # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
-                        pos1    = umesh.Position[:, idx[i]]
-                        pos1[2] = pos1[2] - p['MSL2SWL']
-                        pos2    = umesh.Position[:, idx[i+1]]
-                        pos2[2] = pos2[2] - p['MSL2SWL']
-                        if pos1[2] <= 0.0 and 0.0 < pos2[2]: # This node is just below the free surface #TODO: Needs to be augmented for wave stretching
-                            # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
-                            #TODO: Fix this one
-                            pos1    = umesh.Position[:, idx[i]] # use reference position for following equation
-                            pos1[2] = pos1[2] - p['MSL2SWL']
-                            h       = ( pos1[2] ) / mem['cosPhi_ref'] #TODO: Needs to be augmented for wave stretching
-                            deltal  = mem['dl']/2.0 + h
-                            h_c     = 0.5*(h-mem['dl']/2.0)
+            if bHydro:
+                for i in range(N+1): # Loop through member nodes
+                    myprint('---------------------------NODAL LOADS ',im+1, i+1)
+                    # We need to subtract the MSL2SWL offset to place this in the SWL reference system
+                    z1 = umesh.Position[2, idx[i]] - p['MSL2SWL']
+                    if i > mem['i_floor'] and z1 <= 0.0:  # node is above (or at? TODO: check) seabed and below or at free-surface)
+                        # TODO: Note that for computational efficiency, we could precompute h_c and deltal for each element when we are NOT using wave stretching
+                        # We would still need to test at time marching for nodes just below the free surface because that uses the current locations not the reference locations
+                        # see table in Section 7.1.1
+                        if i == 0:
+                            deltal = mem['dl']/2.0
+                            h_c    = mem['dl']/4.0
+                        elif (i == N):
+                            deltal =  mem['dl']/2.0
+                            h_c    = -mem['dl']/4.0
+                        elif mem['i_floor'] == i+1 : # This node is the upper node of an element which crosses the seabed
+                            deltal = mem['dl']/2.0 - mem['h_floor']  # TODO: h_floor is negative valued, should we be subrtracting it from dl/2? GJH
+                            h_c    = 0.5*(mem['dl']/2.0 + mem['h_floor'])
                         else:
-                            # This node is a fully submerged interior node
-                            deltal = mem['dl']
-                            h_c    = 0.0
-                    if i == 0:
-                        dRdl_p  = abs(mem['dRdl_mg'][i])
-                        dRdl_pp = mem['dRdl_mg'][i]   
-                    elif i > 0 and i<N:
-                        dRdl_p  = 0.5*( abs(mem['dRdl_mg'][i-1]) + abs(mem['dRdl_mg'][i]) )
-                        dRdl_pp = 0.5*( mem['dRdl_mg'][i-1] + mem['dRdl_mg'][i] )
-                    else:
-                        dRdl_p  = abs(mem['dRdl_mg'][-1])
-                        dRdl_pp = mem['dRdl_mg'][-1]
-                    # ------------------- hydrodynamic drag loads: sides: Section 7.1.2 ------------------------ 
-                    vec = mem['Ak'].dot(m['vrel'][:,idx[i]] )
-                    dotp = mem['k'].dot( m['vrel'][:,idx[i]].flatten())
-                    KV   = dotp*mem['kkt'] # 3x3 matrix
-                    vec2 = KV .dot( m['vrel'][:,idx[i]])
-                    f_hydro = mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]* np.linalg.norm(vec)*vec  + 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p * vec2
-                    print('f_hydro_d',f_hydro)
-                    #print('t1 ', mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]* np.linalg.norm(vec)*vec )
-                    #print('t10', mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]                   )
-                    #print('t12', np.linalg.norm(vec)*vec )
-                    #print('t2 ', 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p * vec2)
-                    #print('t20', 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p)
-                    #print('t21', vec2)
-                    memLoads['F_D'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
-                    ymesh.Force [:,idx[i]] += memLoads['F_D'][:3, i]
-                    ymesh.Moment[:,idx[i]] += memLoads['F_D'][3:, i]
-                    if not e.data['Pot']:
-                        # ------------------- hydrodynamic added mass loads: sides: Section 7.1.3 ------------------------
-                        Am = mem['Ca'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*mem['Ak'] + 2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p*mem['kkt']
-                        f_hydro = - Am.dot( umesh.TranslationAcc[:,idx[i]] )
-                        print('f_hydro_am',f_hydro)
-                        memLoads['F_A'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
-                        ymesh.Force [:,idx[i]] += memLoads['F_A'][:3, i]
-                        ymesh.Moment[:,idx[i]] += memLoads['F_A'][3:, i]
-                        # ------------------- hydrodynamic inertia loads: sides: Section 7.1.4 ------------------------
-                        t1 = (mem['Ca'][i]+mem['Cp'][i])*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*          mem['Ak'] .dot( m['FA'][:,idx[i]] )
-                        t2 =          2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p *  mem['kkt'].dot( m['FA'][:,idx[i]] )
-                        t3 =          2.0*m['FDynP'][idx[i]]*mem['AxCp'][i]*np.pi*mem['RMG'][i]*dRdl_pp*mem['k'] 
-                        f_hydro = t1 + t2 +t3
-                        print('f_hydro_i',f_hydro)
-                        memLoads['F_I'][:, i] = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c)
-                        ymesh.Force [:,idx[i]] += memLoads['F_I'][:3, i]
-                        ymesh.Moment[:,idx[i]] += memLoads['F_I'][3:, i]
-            # --- End loop through nodes
+                            # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+                            pos1    = umesh.Position[:, idx[i]]
+                            pos1[2] = pos1[2] - p['MSL2SWL']
+                            pos2    = umesh.Position[:, idx[i+1]]
+                            pos2[2] = pos2[2] - p['MSL2SWL']
+                            if pos1[2] <= 0.0 and 0.0 < pos2[2]: # This node is just below the free surface #TODO: Needs to be augmented for wave stretching
+                                # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+                                #TODO: Fix this one
+                                pos1    = umesh.Position[:, idx[i]] # use reference position for following equation
+                                pos1[2] = pos1[2] - p['MSL2SWL']
+                                h       = ( pos1[2] ) / mem['cosPhi_ref'] #TODO: Needs to be augmented for wave stretching
+                                deltal  = mem['dl']/2.0 + h
+                                h_c     = 0.5*(h-mem['dl']/2.0)
+                            else:
+                                # This node is a fully submerged interior node
+                                deltal = mem['dl']
+                                h_c    = 0.0
+                        if i == 0:
+                            dRdl_p  = abs(mem['dRdl_mg'][i])
+                            dRdl_pp = mem['dRdl_mg'][i]   
+                        elif i > 0 and i<N:
+                            dRdl_p  = 0.5*( abs(mem['dRdl_mg'][i-1]) + abs(mem['dRdl_mg'][i]) )
+                            dRdl_pp = 0.5*( mem['dRdl_mg'][i-1] + mem['dRdl_mg'][i] )
+                        else:
+                            dRdl_p  = abs(mem['dRdl_mg'][-1])
+                            dRdl_pp = mem['dRdl_mg'][-1]
+                        # ------------------- hydrodynamic drag loads: sides: Section 7.1.2 ------------------------ 
+                        vec = mem['Ak'].dot(m['vrel'][:,idx[i]] )
+                        dotp = mem['k'].dot( m['vrel'][:,idx[i]].flatten())
+                        KV   = dotp*mem['kkt'] # 3x3 matrix
+                        vec2 = KV .dot( m['vrel'][:,idx[i]])
+                        f_hydro = mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]* np.linalg.norm(vec)*vec  + 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p * vec2
+                        myprint('f_hydro_d',f_hydro)
+                        #print('t1 ', mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]* np.linalg.norm(vec)*vec )
+                        #print('t10', mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]                   )
+                        #print('t12', np.linalg.norm(vec)*vec )
+                        #print('t2 ', 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p * vec2)
+                        #print('t20', 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p)
+                        #print('t21', vec2)
+                        memLoads['F_D'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
+                        ymesh.Force [:,idx[i]] += memLoads['F_D'][:3, i]
+                        ymesh.Moment[:,idx[i]] += memLoads['F_D'][3:, i]
+                        if not e.data['Pot']:
+                            # ------------------- hydrodynamic added mass loads: sides: Section 7.1.3 ------------------------
+                            Am = mem['Ca'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*mem['Ak'] + 2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p*mem['kkt']
+                            f_hydro = - Am.dot( umesh.TranslationAcc[:,idx[i]] )
+                            myprint('f_hydro_am',f_hydro)
+                            memLoads['F_A'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
+                            ymesh.Force [:,idx[i]] += memLoads['F_A'][:3, i]
+                            ymesh.Moment[:,idx[i]] += memLoads['F_A'][3:, i]
+                            # ------------------- hydrodynamic inertia loads: sides: Section 7.1.4 ------------------------
+                            t1 = (mem['Ca'][i]+mem['Cp'][i])*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*          mem['Ak'] .dot( m['FA'][:,idx[i]] )
+                            t2 =          2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p *  mem['kkt'].dot( m['FA'][:,idx[i]] )
+                            t3 =          2.0*m['FDynP'][idx[i]]*mem['AxCp'][i]*np.pi*mem['RMG'][i]*dRdl_pp*mem['k'] 
+                            f_hydro = t1 + t2 +t3
+                            myprint('f_hydro_i',f_hydro)
+                            memLoads['F_I'][:, i] = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c)
+                            ymesh.Force [:,idx[i]] += memLoads['F_I'][:3, i]
+                            ymesh.Moment[:,idx[i]] += memLoads['F_I'][3:, i]
+                # --- End loop through nodes
 
             # --------------------------------------------------------------------------------}
             # --- End plate loads, per member
             # --------------------------------------------------------------------------------{
-            # Any end plate loads that are modeled on a per-member basis
-            # reassign convenience variables to correspond to member ends
-            # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
-            pos1    = umesh.TranslationDisp[:, idx[0]] + umesh.Position[:, idx[0]] 
-            pos2    = umesh.TranslationDisp[:, idx[1]] + umesh.Position[:, idx[1]] 
-            pos1[2] -= p['MSL2SWL']
-            pos2[2] -= p['MSL2SWL']
-            z1 = pos1[2]
-            phi1, sinPhi1, cosPhi1, tanPhi, sinBeta1, cosBeta1, k_hat1 = getOrientationAngles(pos1, pos2)
-            if N == 1:       # Only one element in member
-                sinPhi2  = sinPhi1
-                cosPhi2  = cosPhi1
-                sinBeta2 = sinBeta1
-                cosBeta2 = cosBeta1
-            else:
-                pos1    = umesh.TranslationDisp[:, idx[-2]] + umesh.Position[:, idx[-2]]
-                pos2    = umesh.TranslationDisp[:, idx[-1]] + umesh.Position[:, idx[-1]]
-                pos1[2] -= p['MSL2SWL']
-                pos2[2] -= p['MSL2SWL']
-                phi2, sinPhi2, cosPhi2, tanPhi, sinBeta2, cosBeta2, k_hat2 = getOrientationAngles(pos1, pos2)
-            pos2    = umesh.TranslationDisp[:, idx[-1]] + umesh.Position[:, idx[-1]]
-            pos2[2] -= p['MSL2SWL']
-            z2 = pos2[2]
-            # Check the member does not exhibit any of the following conditions
-            if not e.data['Pot']:
-                if abs(z2) < abs(mem['RMG'][-1]*sinPhi2):
-                    raise Exception('The upper end-plate of a member must not cross the water plane.  This is not true for Member ID ',e)
-                if abs(z1) < abs(mem['RMG'][0]*sinPhi1):
-                   raise Exception('The lower end-plate of a member must not cross the water plane.  This is not true for Member ID ',e)
-            # TODO: Do the equations below still work if z1 > z2 ?
-            #TODO, should not have to test seabed crossing in time-marching loop
-            if mem['i_floor'] == -1:   # both ends are above seabed
-               #--- Water ballast buoyancy ---
-               # if member is fully flooded
-               if mem['memfloodstatus'] == 1:
-                   Fl      = -mem['FillDens'] * g * np.pi *     mem['Rin'][  0]**2* (mem['z_overfill'] + max(z2-z1, 0.0))
-                   Moment  =  mem['FillDens'] * g * np.pi *0.25*mem['Rin'][  0]**4*sinPhi
-                   m['F_BF_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1)
-                   Fl      =   mem['FillDens'] * g * np.pi *     mem['Rin'][-1]**2* (mem['z_overfill'] + max(z1-z2, 0.0))
-                   Moment  =  -mem['FillDens'] * g * np.pi *0.25*mem['Rin'][-1]**4*sinPhi            
-                   m['F_BF_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
-               elif mem['l_fill'] > 0:  # if member is partially flooded
-                   Fl      = -mem['FillDens'] * g * np.pi      *mem['Rin'][0]**2*mem['l_fill']*cosPhi
-                   Moment  =  mem['FillDens'] * g * np.pi *0.25*mem['Rin'][0]**4*sinPhi
-                   m['F_BF_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1)
-               else:
-                   pass # no load if member is not flooded at all
-            elif  mem['i_floor'] < mem['NElements']:  # upper node is still above the seabed, but lower node is below seabed
-                if (mem['memfloodstatus'] == 1):
-                    Fl      =   mem['FillDens'] * g * np.pi *     mem['Rin'][-1]**2* (mem['z_overfill'] + max(z1-z2, 0.0))
-                    Moment  =  -mem['FillDens'] * g * np.pi *0.25*mem['Rin'][-1]**4*sinPhi            
-                    m['F_BF_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
-            else :
-                pass  # no loads because both end nodes are below seabed
-            # --- no inertia loads from water ballast modeled on ends
-            # --- external buoyancy loads: ends ---
-            if not e.data['Pot']:
-                pos1    = umesh.TranslationDisp[:, idx[0 ]] + umesh.Position[:, idx[0 ]]
-                pos2    = umesh.TranslationDisp[:, idx[-1]] + umesh.Position[:, idx[-1]]
+            if bEnd:
+                # Any end plate loads that are modeled on a per-member basis
+                # reassign convenience variables to correspond to member ends
+                # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+                pos1    = umesh.TranslationDisp[:, idx[0]] + umesh.Position[:, idx[0]] 
+                pos2    = umesh.TranslationDisp[:, idx[1]] + umesh.Position[:, idx[1]] 
                 pos1[2] -= p['MSL2SWL']
                 pos2[2] -= p['MSL2SWL']
                 z1 = pos1[2]
+                phi1, sinPhi1, cosPhi1, tanPhi, sinBeta1, cosBeta1, k_hat1 = getOrientationAngles(pos1, pos2)
+                if N == 1:       # Only one element in member
+                    sinPhi2  = sinPhi1
+                    cosPhi2  = cosPhi1
+                    sinBeta2 = sinBeta1
+                    cosBeta2 = cosBeta1
+                else:
+                    pos1    = umesh.TranslationDisp[:, idx[-2]] + umesh.Position[:, idx[-2]]
+                    pos2    = umesh.TranslationDisp[:, idx[-1]] + umesh.Position[:, idx[-1]]
+                    pos1[2] -= p['MSL2SWL']
+                    pos2[2] -= p['MSL2SWL']
+                    phi2, sinPhi2, cosPhi2, tanPhi, sinBeta2, cosBeta2, k_hat2 = getOrientationAngles(pos1, pos2)
+                pos2    = umesh.TranslationDisp[:, idx[-1]] + umesh.Position[:, idx[-1]]
+                pos2[2] -= p['MSL2SWL']
                 z2 = pos2[2]
-                if mem['i_floor'] == -1:  # both ends above or at seabed
-                    if z2<= 0.0:
-                        # Compute loads on both ends
-                        Fl      = -p['WtrDens'] * g * np.pi *     mem['RMG'][0]**2*z1
-                        Moment  = -p['WtrDens'] * g * np.pi *0.25*mem['RMG'][0]**4*sinPhi
-                        m['F_B_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1) 
+                # Check the member does not exhibit any of the following conditions
+                if not e.data['Pot']:
+                    if abs(z2) < abs(mem['RMG'][-1]*sinPhi2):
+                        raise Exception('The upper end-plate of a member must not cross the water plane.  This is not true for Member ID ',e)
+                    if abs(z1) < abs(mem['RMG'][0]*sinPhi1):
+                       raise Exception('The lower end-plate of a member must not cross the water plane.  This is not true for Member ID ',e)
+                # TODO: Do the equations below still work if z1 > z2 ?
+                #TODO, should not have to test seabed crossing in time-marching loop
+                if mem['i_floor'] == -1:   # both ends are above seabed
+                   #--- Water ballast buoyancy ---
+                   # if member is fully flooded
+                   if mem['memfloodstatus'] == 1:
+                       Fl      = -mem['FillDens'] * g * np.pi *     mem['Rin'][  0]**2* (mem['z_overfill'] + max(z2-z1, 0.0))
+                       Moment  =  mem['FillDens'] * g * np.pi *0.25*mem['Rin'][  0]**4*sinPhi
+                       m['F_BF_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1)
+                       Fl      =   mem['FillDens'] * g * np.pi *     mem['Rin'][-1]**2* (mem['z_overfill'] + max(z1-z2, 0.0))
+                       Moment  =  -mem['FillDens'] * g * np.pi *0.25*mem['Rin'][-1]**4*sinPhi            
+                       m['F_BF_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
+                   elif mem['l_fill'] > 0:  # if member is partially flooded
+                       Fl      = -mem['FillDens'] * g * np.pi      *mem['Rin'][0]**2*mem['l_fill']*cosPhi
+                       Moment  =  mem['FillDens'] * g * np.pi *0.25*mem['Rin'][0]**4*sinPhi
+                       m['F_BF_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1)
+                   else:
+                       pass # no load if member is not flooded at all
+                elif  mem['i_floor'] < mem['NElements']:  # upper node is still above the seabed, but lower node is below seabed
+                    if (mem['memfloodstatus'] == 1):
+                        Fl      =   mem['FillDens'] * g * np.pi *     mem['Rin'][-1]**2* (mem['z_overfill'] + max(z1-z2, 0.0))
+                        Moment  =  -mem['FillDens'] * g * np.pi *0.25*mem['Rin'][-1]**4*sinPhi            
+                        m['F_BF_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
+                else :
+                    pass  # no loads because both end nodes are below seabed
+                # --- no inertia loads from water ballast modeled on ends
+                # --- external buoyancy loads: ends ---
+                if not e.data['Pot']:
+                    pos1    = umesh.TranslationDisp[:, idx[0 ]] + umesh.Position[:, idx[0 ]]
+                    pos2    = umesh.TranslationDisp[:, idx[-1]] + umesh.Position[:, idx[-1]]
+                    pos1[2] -= p['MSL2SWL']
+                    pos2[2] -= p['MSL2SWL']
+                    z1 = pos1[2]
+                    z2 = pos2[2]
+                    if mem['i_floor'] == -1:  # both ends above or at seabed
+                        if z2<= 0.0:
+                            # Compute loads on both ends
+                            Fl      = -p['WtrDens'] * g * np.pi *     mem['RMG'][0]**2*z1
+                            Moment  = -p['WtrDens'] * g * np.pi *0.25*mem['RMG'][0]**4*sinPhi
+                            m['F_B_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1) 
+                            Fl      = p['WtrDens'] * g * np.pi *     mem['RMG'][-1]**2*z2
+                            Moment  = p['WtrDens'] * g * np.pi *0.25*mem['RMG'][-1]**4*sinPhi
+                            m['F_B_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
+                        elif z1< 0.0:
+                            # Compute loads only on lower end
+                            Fl      = -p['WtrDens'] * g * np.pi *     mem['RMG'][0]**2*z1
+                            Moment  = -p['WtrDens'] * g * np.pi *0.25*mem['RMG'][0]**4*sinPhi
+                            m['F_B_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1)
+                        else:
+                            pass # Entire member is above the still water line
+                    elif mem['doEndBuoyancy'] and z2<= 0.0: # The member crosses the seabed line so only the upper end could have bouyancy effects, if at or below free surface
+                        # Only compute the buoyancy contribution from the upper end
                         Fl      = p['WtrDens'] * g * np.pi *     mem['RMG'][-1]**2*z2
                         Moment  = p['WtrDens'] * g * np.pi *0.25*mem['RMG'][-1]**4*sinPhi
                         m['F_B_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
-                    elif z1< 0.0:
-                        # Compute loads only on lower end
-                        Fl      = -p['WtrDens'] * g * np.pi *     mem['RMG'][0]**2*z1
-                        Moment  = -p['WtrDens'] * g * np.pi *0.25*mem['RMG'][0]**4*sinPhi
-                        m['F_B_End'][:, idx[0]] += endLoad(Fl, Moment, sinPhi1, cosPhi1, sinBeta1, cosBeta1)
                     else:
-                        pass # Entire member is above the still water line
-                elif mem['doEndBuoyancy'] and z2<= 0.0: # The member crosses the seabed line so only the upper end could have bouyancy effects, if at or below free surface
-                    # Only compute the buoyancy contribution from the upper end
-                    Fl      = p['WtrDens'] * g * np.pi *     mem['RMG'][-1]**2*z2
-                    Moment  = p['WtrDens'] * g * np.pi *0.25*mem['RMG'][-1]**4*sinPhi
-                    m['F_B_End'][:, idx[-1]] += endLoad(Fl, Moment, sinPhi2, cosPhi2, sinBeta2, cosBeta2)
-                else:
-                    print('>>> Skipping')
-                    pass # entire member is buried below the seabed         
-            # end if  PropPot
-        # --- end do loop through members
+                        print('>>> Skipping')
+                        pass # entire member is buried below the seabed         
+                # end if  PropPot
+            # --- end do loop through members
 
-        # --- Hydrodynamic drag loads: joints
-        # NOTE:  All wave kinematics have already been zeroed out above the SWL or instantaneous wave height (for WaveStMod > 0), so loads derived from the kinematics will be correct
-        #        without the use of a nodeInWater value, but other loads need to be multiplied by nodeInWater to zero them out above the SWL or instantaneous wave height.
-        NJoints = len(graph.Nodes)
-        for j in range(NJoints):
-            # Obtain the node index because WaveVel, WaveAcc, and WaveDynP are defined in the node indexing scheme, not the markers
-            # Compute the dot product of the relative velocity vector with the directional Area of the Joint
-            vmag =  m['nodeInWater'][j] * ( m['vrel'][0,j]*p['An_End'][0,j] + m['vrel'][1,j]*p['An_End'][1,j] + m['vrel'][2,j]*p['An_End'][2,j] )
-            #NOTE: The PropPot values are only for members, and when the p['AM_End, p['DP_Const_End, p['Mass_MG_End, and p['I_MG_End are computed at init,
-            #      contributions to these values are added only if the member connecting to the joint is NOT modeled with potential flow theory
-            #      However, the p['An_End term used data from ALL members attached to a node, regardless of the PropPot setting.
-            # Lumped added mass loads
-            qdotdot_t = umesh.TranslationAcc[:,j]
-            qdotdot_r = umesh.RotationAcc   [:,j]
-            m['F_A_End'][:,j] = m['nodeInWater'][j] * p['AM_End'][:,:,j].dot(- qdotdot_t) 
-            m['F_I_End'][:,j] = p['DP_Const_End'][:,j] * m['FDynP'][j] + p['AM_End'][:,:,j].dot(m['FA'][:,j])
-            # Marine growth inertia: ends: Section 4.2.2  
-            m['F_IMG_End'][:3,j] = -m['nodeInWater'][j] * p['Mass_MG_End'][j]*qdotdot_t
-            m['F_IMG_End'][3:,j] = -m['nodeInWater'][j] * ( p['I_MG_End'][:,:,j].dot(qdotdot_r) - np.cross(umesh.RotationVel[:,j], p['I_MG_End'][:,:,j].dot(umesh.RotationVel[:,j]) ))
+        if bEnd:
+            # --- Hydrodynamic drag loads: joints
+            # NOTE:  All wave kinematics have already been zeroed out above the SWL or instantaneous wave height (for WaveStMod > 0), so loads derived from the kinematics will be correct
+            #        without the use of a nodeInWater value, but other loads need to be multiplied by nodeInWater to zero them out above the SWL or instantaneous wave height.
+            NJoints = len(graph.Nodes)
+            for j in range(NJoints):
+                # Obtain the node index because WaveVel, WaveAcc, and WaveDynP are defined in the node indexing scheme, not the markers
+                # Compute the dot product of the relative velocity vector with the directional Area of the Joint
+                vmag =  m['nodeInWater'][j] * ( m['vrel'][0,j]*p['An_End'][0,j] + m['vrel'][1,j]*p['An_End'][1,j] + m['vrel'][2,j]*p['An_End'][2,j] )
+                #NOTE: The PropPot values are only for members, and when the p['AM_End, p['DP_Const_End, p['Mass_MG_End, and p['I_MG_End are computed at init,
+                #      contributions to these values are added only if the member connecting to the joint is NOT modeled with potential flow theory
+                #      However, the p['An_End term used data from ALL members attached to a node, regardless of the PropPot setting.
+                # Lumped added mass loads
+                qdotdot_t = umesh.TranslationAcc[:,j]
+                qdotdot_r = umesh.RotationAcc   [:,j]
+                m['F_A_End'][:,j] = m['nodeInWater'][j] * p['AM_End'][:,:,j].dot(- qdotdot_t) 
+                m['F_I_End'][:,j] = p['DP_Const_End'][:,j] * m['FDynP'][j] + p['AM_End'][:,:,j].dot(m['FA'][:,j])
+                # Marine growth inertia: ends: Section 4.2.2  
+                m['F_IMG_End'][:3,j] = -m['nodeInWater'][j] * p['Mass_MG_End'][j]*qdotdot_t
+                m['F_IMG_End'][3:,j] = -m['nodeInWater'][j] * ( p['I_MG_End'][:,:,j].dot(qdotdot_r) - np.cross(umesh.RotationVel[:,j], p['I_MG_End'][:,:,j].dot(umesh.RotationVel[:,j]) ))
 
-            F_end = np.zeros(6)
-            for i in range(6):
-                # We are now combining the dynamic pressure term into the inertia term
-                if i < 3:
-                    m['F_D_End'][i,j] =  p['An_End'][i,j]*p['DragConst_End'][j]*abs(vmag)*vmag  # Note: vmag is zero if node is not in the water
-                    F_end[i] = m['F_D_End'][i,j] + m['F_I_End'][i,j] + p['F_WMG_End'][i,j] + m['F_B_End'][i,j] + m['F_BF_End'][i,j] + m['F_A_End'][i,j] + m['F_IMG_End'][i,j]
-                else:
-                    F_end[i] = m['F_B_End'][i,j] + m['F_BF_End'][i,j]  + m['F_IMG_End'][i,j]
-            ymesh.Force [:,j] += F_end[:3]
-            ymesh.Moment[:,j] += F_end[3:]
-            #if j==3:
-            print('---------------------------JOINTS LOADS ',j+1)
-            #    print('vmag',vmag)
-            #    print('An_End',p['An_End'][:,j])
-            #    print('DragConst', p['DragConst_End'][j])
-            #    print('F_D_End'  ,m['F_D_End']  [:,j])
-            #    print('F_I_End'  ,m['F_I_End']  [:,j])
-            #    print('F_WMG_End',p['F_WMG_End'][:,j])
-            #    print('F_B_End'  ,m['F_B_End']  [:,j])
-            #    print('F_BF_End' ,m['F_BF_End'] [:,j])
-            #    print('F_A_End'  ,m['F_A_End']  [:,j])
-            #    print('F_IMG_End',m['F_IMG_End'][:,j])
+                F_end = np.zeros(6)
+                for i in range(6):
+                    # We are now combining the dynamic pressure term into the inertia term
+                    if i < 3:
+                        m['F_D_End'][i,j] =  p['An_End'][i,j]*p['DragConst_End'][j]*abs(vmag)*vmag  # Note: vmag is zero if node is not in the water
+                        F_end[i] = m['F_D_End'][i,j] + m['F_I_End'][i,j] + p['F_WMG_End'][i,j] + m['F_B_End'][i,j] + m['F_BF_End'][i,j] + m['F_A_End'][i,j] + m['F_IMG_End'][i,j]
+                    else:
+                        F_end[i] = m['F_B_End'][i,j] + m['F_BF_End'][i,j]  + m['F_IMG_End'][i,j]
+                ymesh.Force [:,j] += F_end[:3]
+                ymesh.Moment[:,j] += F_end[3:]
+                #if j==3:
+                myprint('---------------------------JOINTS LOADS ',j+1)
+                #    print('vmag',vmag)
+                #    print('An_End',p['An_End'][:,j])
+                #    print('DragConst', p['DragConst_End'][j])
+                #    print('F_D_End'  ,m['F_D_End']  [:,j])
+                #    print('F_I_End'  ,m['F_I_End']  [:,j])
+                #    print('F_WMG_End',p['F_WMG_End'][:,j])
+                #    print('F_B_End'  ,m['F_B_End']  [:,j])
+                #    print('F_BF_End' ,m['F_BF_End'] [:,j])
+                #    print('F_A_End'  ,m['F_A_End']  [:,j])
+                #    print('F_IMG_End',m['F_IMG_End'][:,j])
 
-            if (sum(abs(F_end))>1e-6):
-                print('F_end',F_end[:3])
-                print('M_end',F_end[3:])
-        print('-------------------------YMESH')
-        for j in range(len(self.NodesBeforeSwap)):
-            print('F {:5d} {:16.3f} {:16.3f} {:16.3f}'.format(j+1,*ymesh.Force [:,j]))
-#             print('M {:5d} {:16.3f} {:16.3f} {:16.3f}'.format(j+1,*ymesh.Moment [:,j]))
+                if (bVerbose and sum(abs(F_end))>1e-6):
+                    print('F_end',F_end[:3])
+                    print('M_end',F_end[3:])
+        if bVerbose:
+            print('-------------------------YMESH FORCE')
+            for j in range(len(self.NodesBeforeSwap)):
+                print('F {:5d} {:16.3f} {:16.3f} {:16.3f}'.format(j+1,*ymesh.Force [:,j]))
+            print('-------------------------YMESH MOMENT')
+            for j in range(len(self.NodesBeforeSwap)):
+                print('M {:5d} {:16.3f} {:16.3f} {:16.3f}'.format(j+1,*ymesh.Moment [:,j]))
         # --- Write Outputs TODO
 #          # OutSwtch determines whether or not to actually output results via the WriteOutput array
 #          # 1 = Morison will generate an output file of its own.  2 = the caller will handle the outputs, but
@@ -1201,9 +1238,10 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
     totalFillVol  = 0.0
     totalMGMass   = 0.0
     COB           = 0.0
-    F_B           = 0.0
-    F_BF          = 0.0
-    F_WMG         = 0.0
+    NNodes = len(mor.NodesBeforeSwap)
+    F_B           = np.zeros((6,NNodes))
+    F_BF          = np.zeros((6,NNodes))
+    F_WMG         = np.zeros((6,NNodes))
     for e in graph.Elements:
          m = e.MorisonData
          n1 = e.nodes[0]
@@ -1214,14 +1252,13 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
          totalFillVol  += m['Vballast']
          totalMGMass += np.sum(m['m_mg_l'])
          totalMGMass += np.sum(m['m_mg_u'])
-     # TODO TODO
-#          do i = 1, mem%NElements+1 
-#             F_B  (:,mem%NodeIndx(i)) = F_B  (:,mem%NodeIndx(i)) + m%memberLoads(j)%F_B  (:,i) # TODO memberLoads
-#             F_BF (:,mem%NodeIndx(i)) = F_BF (:,mem%NodeIndx(i)) + m%memberLoads(j)%F_BF (:,i)
-#             F_WMG(:,mem%NodeIndx(i)) = F_WMG(:,mem%NodeIndx(i)) + m%memberLoads(j)%F_WMG(:,i)
-      
-
-
+         # TODO TODO
+         idx      = m['nodeIDs']
+         memLoads = m['Loads']
+         for i in range(m['NElements']+1):
+            F_B  [:,idx[i]] += memLoads['F_B']  [:,i]
+            F_BF [:,idx[i]] += memLoads['F_BF'] [:,i]
+            F_WMG[:,idx[i]] += memLoads['F_WMG'][:,i]
 
     # --- Helper functions
     s=''
@@ -1235,52 +1272,49 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
     s+='                      Ballasted volume is computed from all members which are marked as filled in the HydroDyn input file, regardless of PropPot flag\n'
     s+='\n'
     s+='\n'
-#          ! Attach the external distributed buoyancy loads to the distributed mesh so they can be transferred to the WRP
-#          ! Because of wave stretching and user-supplied waves, we may have loads above the still water line (SWL) which will be used
-#          ! in the hydrodynamics for conditions where the wave height is > SWL.  So we now need to check that the vertical position
-#          ! is <= SWL for this summary file calculation.
-#       DO J = 1, yMesh%Nnodes
-#          if ( yMesh%Position(3,J) <= MSL2SWL ) then  ! need to check relative to MSL2SWL offset because the Mesh Positons are relative to MSL
-#             if (J <= numJoints) then
-#                ptLoad = F_B(:,J) + m%F_B_end(:,J)
-#             else
-#                ptLoad = F_B(:,J)
-#             end if
-#             yMesh%Force(:,J)   = ptLoad(1:3)
-#             yMesh%Moment(:,J)  = ptLoad(4:6)
-#          else
-#             yMesh%Force(:,J)   = 0.0
-#             yMesh%Moment(:,J)  = 0.0
-#          end if              ! <= still water line check
-#       END DO ! DO J
-#          ! Transfer the loads from the distributed mesh to the (0,0,0) point mesh
-#       CALL MeshMapCreate           ( yMesh, WRP_Mesh, M_P_2_P, errStat, errMsg                )
-#         !CALL CheckError( errStat, 'Message from MeshMapCreate HD_M_L_2_ED_P: '//NewLine//errMsg )
-#       CALL Transfer_Point_to_Point( yMesh, WRP_Mesh, M_P_2_P, errStat, errMsg, uMesh, WRP_Mesh_position )
-#       ExtBuoyancy(1:3) = WRP_Mesh%Force (:,1)
-#       ExtBuoyancy(4:6) = WRP_Mesh%Moment(:,1)
-#          ! Now compute internal Buoyancy
-#       DO J = 1, yMesh%Nnodes
-#          if (J <= numJoints) then
-#             ptLoad = F_BF(:,J) + m%F_BF_end(:,J)
-#          else
-#             ptLoad = F_BF(:,J)
-#          end if
-#          yMesh%Force(:,J)   = ptLoad(1:3)
-#          yMesh%Moment(:,J)  = ptLoad(4:6)
-#       END DO ! DO J
-#       IntBuoyancy = 0.0
-#       CALL Transfer_Point_to_Point( yMesh, WRP_Mesh, M_P_2_P, errStat, errMsg, uMesh, WRP_Mesh_position )
-#       IntBuoyancy(1:3) = WRP_Mesh%Force(:,1)
-#       IntBuoyancy(4:6) = WRP_Mesh%Moment(:,1)
+
+    # Attach the external distributed buoyancy loads to the distributed mesh so they can be transferred to the WRP
+    # Because of wave stretching and user-supplied waves, we may have loads above the still water line (SWL) which will be used
+    # in the hydrodynamics for conditions where the wave height is > SWL.  So we now need to check that the vertical position
+    # is <= SWL for this summary file calculation.
+    ymesh = copy.deepcopy(mor._y['Mesh'])
+    numJoints = len(mor.graph.Nodes)
+    m=mor.m
+    ptLoad = np.zeros(6)
+    for j in range(ymesh.nNodes):
+        if (ymesh.Position[2,j] <= MSL2SWL): # need to check relative to MSL2SWL offset because the Mesh Positons are relative to MSL
+            if j < numJoints:
+                ptLoad = F_B[:,j] + m['F_B_End'][:,j]
+            else:
+                ptLoad = F_B[:,j]
+            ymesh.Force [:,j]  = ptLoad[:3]
+            ymesh.Moment[:,j]  = ptLoad[3:]
+        else:
+            ymesh.Force [:,j]  = 0
+            ymesh.Moment[:,j]  = 0
+    ExtBuoyancy = np.zeros(6)
+    ExtBuoyancy[:3], ExtBuoyancy[3:] = ymesh.mapLoadsToPoint((0,0,0))
+
+    for j in range(ymesh.nNodes):
+        if j < numJoints:
+            ptLoad = F_BF[:,j] + m['F_BF_End'][:,j]
+        else:
+            ptLoad = F_BF[:,j]
+        ymesh.Force [:,j]  = ptLoad[:3]
+        ymesh.Moment[:,j]  = ptLoad[3:]
+    IntBuoyancy = np.zeros(6)
+    IntBuoyancy[:3], IntBuoyancy[3:] = ymesh.mapLoadsToPoint((0,0,0))
+    TotBuoyancy = ExtBuoyancy + IntBuoyancy
+    print('ExtBuoyancy',np.around(ExtBuoyancy,4))
+
     s+='\n'
     s+='Total Buoyancy loads summed about ( 0.0, 0.0, 0.0 )\n'
     s+='---------------------------------------------------\n'
     s+='                                BuoyFxi               BuoyFyi               BuoyFzi               BuoyMxi               BuoyMyi               BuoyMzi \n'
     s+='                                  (N)                   (N)                   (N)                  (N-m)                 (N-m)                 (N-m)  \n'
-    s+=' External:        {:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}\n'.format(0,0,0,0,0,0).replace('e+','E+').replace('e-','E-')
-    s+=' Internal:        {:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}\n'.format(0,0,0,0,0,0).replace('e+','E+').replace('e-','E-')
-    s+=' Total   :        {:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}\n'.format(0,0,0,0,0,0).replace('e+','E+').replace('e-','E-')
+    s+=' External:        {:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}\n'.format(*ExtBuoyancy).replace('e+','E+').replace('e-','E-')
+    s+=' Internal:        {:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}\n'.format(*IntBuoyancy).replace('e+','E+').replace('e-','E-')
+    s+=' Total   :        {:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}{:22.6e}\n'.format(*TotBuoyancy).replace('e+','E+').replace('e-','E-')
     s+='              NOTE: External buoyancy is based on members not modelled with WAMIT\n'
     s+='                      Internal buoyancy is computed from all members which are marked as filled in the HydroDyn input file, regardless of PropPot flag\n'
     s+='                    Total buoyancy does not include WAMIT-modelled buoyancy contribution\n'
