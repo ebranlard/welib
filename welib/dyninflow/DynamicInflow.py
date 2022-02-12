@@ -1,10 +1,13 @@
+"""
+References:
+   [1] Branlard 2017 Wind Turbine Aerodynamics and Vorticity-based method Chap10, p198
+   [2] Branlard et al. 2022: Dynamic inflow and unsteady aerodynamics models for modal and stability analyses in OpenFAST
+
+"""
 import numpy as np
+import pandas as pd
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
-
-# from pybra.figure import *
-
-
 
 def tau1_oye(a_bar, R, U0):
     """ """
@@ -21,40 +24,149 @@ def tau1_dbemt(a_bar, R, Un0_disk):
 def tau2_oye(r_bar, tau1):
     return (0.39-0.26*r_bar**2)*tau1
 
-
-def dynflow_oye_dxdt(t, x, x_qs, a_bar, dx_qs_dt, dtau1_dt, U0, r, R , k=0.6):
-    tau1 = tau1_oye(a_bar, R, U0)
-    tau2 = tau2_oye(r/R,tau1)
-
-    dtau2_dt = (0.39-0.26*(r/R)**2)* dtau1_dt
-
-    x_dot  = x[1]
-    x_ddot = 1/(tau1*tau2)*(-x[0] - (tau1 + tau2 + tau1*dtau2_dt) * x[1] +  x_qs) + k/tau2* dx_qs_dt
-
-    return [x_dot, x_ddot]
-
-
-
-def dyninflow_oye_discr(dt, xd_old, u, a_bar, U0, r, R, k=0.6, tau1=None, tau2=None):
+def dynflow_oye_dxdt(t, x, u, tau1, tau2, k=0.6):
+    """ 
+    Continuous version of Oye's dynamic inflow model. Two states:
+        x[0]: Vred:      Vint = Vred + k*Vqs
+        x[1]: Vdyn
+    See Reference [2]
     """
-    xd0: old discrete states
+    x_qs     = u['Vqs'](t)
+    xred = x[0]
+    xdyn = x[1]
+    xred_dot =               - 1/tau1*xred + (1-k)/tau1*x_qs
+    xdyn_dot  = -1/tau2*xdyn + 1/tau2*xred +     k/tau2*x_qs
+    return [xred_dot, xdyn_dot]
+
+def dynflow_oye_steady(t, u, p):
+    Vqs  = u['Vqs'](t)
+    x    = np.zeros(2)
+    x[0] = Vqs * (1-p['k'])   # Vred   # Vint=Vred + kVqs
+    x[1] = Vqs                # Vdyn
+    return x
+
+def dyninflow_oye_update_discr(t, dt, xd_old, u, tau1, tau2, k=0.6):
+    """
+    Discrete formualtion of Oye's dynamics inflow model
+    See Reference [1]
+
+    xd_old: old discrete states
+         0: dynamic value
+         1: intermediate value
+         2: quasi steady value
     u: 
+         0: new quasi steady value
     """
-    tau1 = tau1_oye(a_bar, R, U0)
-    tau2 = tau2_oye(r/R,tau1)
     # Oye's dynamic inflow model, discrete time integration
     Vdyn_old = xd_old[0]
     Vint_old = xd_old[1]
-    Vqs__old = xd_old[3]
-    Vqs__new = u[0]
+    Vqs__old = xd_old[2]
+    Vqs__new = u['Vqs'](t)
     H        = Vqs__new + k * tau1 * (Vqs__new - Vqs__old) /dt
-    Vint_new = H + (Vint_old - H) * exp(-dt/tau1) # intermediate velocity
-    Vdyn_new = Vint_new + (Vdyn_old - Vint_new) * exp(-dt/tau2)
+    Vint_new = H + (Vint_old - H) * np.exp(-dt/tau1) # intermediate velocity
+    Vdyn_new = Vint_new + (Vdyn_old - Vint_new) * np.exp(-dt/tau2)
     # 
+    # 
+    xd_new = np.zeros(3)
     xd_new[0] = Vdyn_new
     xd_new[1] = Vint_new
     xd_new[2] = Vqs__new
+    return xd_new
 
+def dyninflow_oye_discr_steady(t,u):
+    """ Return steady state values for Oye's discrete dynamic flow model """
+    Vqs = u['Vqs'](t)
+    xd = np.zeros(3)
+    xd[0] = Vqs
+    xd[1] = Vqs
+    xd[2] = Vqs
+    return xd
+
+
+def dyninflow_oye_sim(time, u, p, x0=None, prefix='', method='discrete'):
+    """ Perform simulation using Oye dynamic inflow model
+
+    INPUTS:
+     - time: time vector
+     - u: dictionary of input functions of time
+         keys 'Vqs' :quasi steady value
+     - p: dictionary of parameters
+     - x0: initial conditions for the model. 
+           If None, the steady steady values are used
+     - method: 'continuous' or 'discrete' to chose a formulation
+     - prefix: prefix used for channel names of the dataframe. Use 'AB1N001' to match OpenFAST.
+    OUTPUTS:
+     - df: dataframe with outputs similar to UA module of OpenFAST
+    """
+
+    # --- Parameters. For now use constant taus
+    tau1 = p['tau1']
+    tau2 = p['tau2']
+    k    = p['k']
+
+    # --- Prepare outputs
+    df=pd.DataFrame()
+    df['Time_[s]'] = time
+
+    if method=='discrete':
+        # --- Initial conditions for states
+        if x0 is None:
+            x0 = dyninflow_oye_discr_steady(0,u)
+        # --- Time Integration of states
+        y  = np.zeros((3,len(time)))
+        xd = x0
+        y[:,0] = xd
+        for it,t in enumerate(time[1:]):
+            dt = t - time[it] # Note: time[it] is in fact t-dt
+            xd = dyninflow_oye_update_discr(t, dt, xd, u, tau1=tau1, tau2=tau2, k=k)
+            y[:,it+1] = xd
+        # --- Calc output
+        df[prefix + 'Vdyn_[m/s]'] = y[0,:]
+        df[prefix + 'Vint_[m/s]'] = y[1,:]
+        df[prefix + 'Vqs_[m/s]']  = y[2,:]
+    elif method=='continuous':
+        # --- Initial conditions for states
+        if x0 is None:
+            x0 = dynflow_oye_steady(0, u, p)
+        # --- Time integration of states
+        system = lambda t,x: dynflow_oye_dxdt(t, x, u, tau1=tau1, tau2=tau2, k=k)
+        sol = solve_ivp(system , t_span=[0, max(time)], y0=x0, t_eval=time, method='LSODA')
+        y=sol.y
+        # --- Calc output
+        df[prefix + 'Vred_[m/s]']   = y[0,:]
+        df[prefix + 'Vdyn_[m/s]'] = y[1,:]
+        df[prefix + 'Vqs_[m/s]']  = [u['Vqs'](t) for t in time]
+        df[prefix + 'Vint_[m/s]'] = df[prefix + 'Vred_[m/s]'] + k*df[prefix + 'Vqs_[m/s]']
+    elif method=='continuous_v2':
+        # --- Initial conditions for states
+        if x0 is None:
+            x0 = dynflow_oye_v2_steady(0, u)
+        # --- Time integration of states
+        system = lambda t,x: dynflow_oye_v2_dxdt(t, x, u, tau1=tau1, tau2=tau2, k=k)
+        sol = solve_ivp(system , t_span=[0, max(time)], y0=x0, t_eval=time)
+        y=sol.y
+        # --- Calc output
+        df[prefix + 'Vdyn_[m/s]']     = y[0,:]
+        df[prefix + 'dVdyn/dt_[m/s]'] = y[1,:]
+        df[prefix + 'Vqs_[m/s]']  = [u['Vqs'](t) for t in time]
+        df[prefix + 'dVqs_dt_[m/s]']  = [u['dVqs_dt'](t) for t in time]
+    elif method=='continuous_v4':
+        # --- Initial conditions for states
+        if x0 is None:
+            x0 = dynflow_oye_v4_steady(0, u, p)
+        # --- Time integration of states
+        system = lambda t,x: dynflow_oye_v4_dxdt(t, x, u, tau1=tau1, tau2=tau2, k=k)
+        sol = solve_ivp(system , t_span=[0, max(time)], y0=x0, t_eval=time, method='LSODA')
+        y=sol.y
+        # --- Calc output
+        df[prefix + 'Vdyn_[m/s]'] = y[0,:]
+        df[prefix + 'Vint_[m/s]'] = y[1,:]
+        df[prefix + 'Vqs_[m/s]']  = [u['Vqs'](t) for t in time]
+    else:
+        raise NotImplementedError(method)
+
+
+    return df
 
 
 # class DBEMT():
@@ -76,8 +188,6 @@ def dyninflow_oye_discr(dt, xd_old, u, a_bar, U0, r, R, k=0.6, tau1=None, tau2=N
 #             self.p.spanRatio=r/R
 #             if tau1_const is None:
 #                 raise Exception('Please provide tau1_cst when `mode` is constant')
-# 
-#         # Initialize the continuous states
 #         self.x.vind   = np.zeros((2,p.numNodes, p.numBlades))# This is the axial and tangential induced velocity at node i on blade j
 #         self.x.vind_1 = np.zeros((2,p.numNodes, p.numBlades))# This is the axial and tangential induced velocity at node i on blade j
 #         self.o.areStatesInitialized = False
@@ -86,8 +196,6 @@ def dyninflow_oye_discr(dt, xd_old, u, a_bar, U0, r, R, k=0.6, tau1=None, tau2=N
 # 
 # 
 #     def UpdateStates(self,u1,u2):
-#         #Loose coupling routine for solving for constraint states, integrating continuous states, and updating discrete and other states.
-#         #Continuous, constraint, discrete, and other states are updated for t + Interval
 #         if self.mode=='tauConst':
 #              self.o.tau1 = self.p.tau1_const
 #         else:
@@ -128,6 +236,59 @@ def dyninflow_oye_discr(dt, xd_old, u, a_bar, U0, r, R, k=0.6, tau1=None, tau2=N
 # 
 
 
+def run_astep(a1, a2, r_bar, tau1=None, dt=0.1, tstep=10, tmax=100, U0=10, R=50, k=0.6):
+    """
+    Run step of axial induction, assuming "U0" constant, and tau1 and tau2 constant
+    """
+    from welib.tools.colors import fColrs
+    p=dict()
+    if tau1 is None:
+        tau1 = tau1_oye(a1, R, U0)
+    p['tau1'] = tau1
+    p['tau2'] = tau2 = tau2_oye(r_bar,tau1)
+    p['k']    = k
+
+    time = np.arange(0,tmax+dt/2, dt)
+    # Inputs for dyna stall 
+    u=dict()
+    #u['Vqs']     = lambda t: a1*U0 if t<tstep else a2*U0
+    u['Vqs']     = lambda t: a1 if t<tstep else a2
+    u['dVqs_dt'] = lambda t: 0
+
+
+    df_d = dyninflow_oye_sim(time, u, p, x0=None, prefix='', method='discrete')
+    df_c = dyninflow_oye_sim(time, u, p, x0=None, prefix='', method='continuous')
+    p['k']=0.9
+    df_c9= dyninflow_oye_sim(time, u, p, x0=None, prefix='', method='continuous')
+    p['k']=0.1
+    df_c1= dyninflow_oye_sim(time, u, p, x0=None, prefix='', method='continuous')
+
+    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#     ax.plot(df_d['Time_[s]'], df_d['Vdyn_[m/s]'], '-' , label='dynamic discrete')
+#     ax.plot(df_d['Time_[s]'], df_d['Vint_[m/s]'], '-' , label='intermediate discrete')
+    ax.plot(df_c ['Time_[s]'], df_c ['Vdyn_[m/s]'], '-' , c=fColrs(1), label='dynamic continuous')
+    ax.plot(df_c1['Time_[s]'], df_c1['Vdyn_[m/s]'], '-' , c=fColrs(2), label='dynamic continuous 1')
+    ax.plot(df_c9['Time_[s]'], df_c9['Vdyn_[m/s]'], '-' , c=fColrs(3), label='dynamic continuous 9')
+
+    ax.plot(df_c ['Time_[s]'], df_c ['Vint_[m/s]'], ':' , c=fColrs(1), label='intermediate continuous')
+    ax.plot(df_c1['Time_[s]'], df_c1['Vint_[m/s]'], ':' , c=fColrs(2), label='intermediate continuous 1')
+    ax.plot(df_c9['Time_[s]'], df_c9['Vint_[m/s]'], ':' , c=fColrs(3), label='intermediate continuous 9')
+
+    ax.plot(df_c ['Time_[s]'], df_c ['Vred_[m/s]'],   '--', c=fColrs(1), label='reduced continuous')
+    ax.plot(df_c1['Time_[s]'], df_c1['Vred_[m/s]'],   '--', c=fColrs(2), label='reduced continuous 1 ')
+    ax.plot(df_c9['Time_[s]'], df_c9['Vred_[m/s]'],   '--', c=fColrs(3), label='reduced continuous 9')
+
+    ax.plot(df_d['Time_[s]'], df_d['Vqs_[m/s]'] , 'k-', label='quasi-steady')
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.legend()
+    ax.legend()
+    ax.set_title('DynInflow step')
+    plt.show()
+
+#         ax.plot((vt-tstep)/scale,[a_qs(t) for t in vt],'k', label='Quasi-steady')
+#         ax.plot((vt-tstep)/scale,sol.y[0,:], label='tau1={:4.1f} - U_0={:2.0f}'.format(tau1,U0))
 
 
 
@@ -307,7 +468,6 @@ def example_algo_investigation(Case='Sine', T=5, U0=10, R=65,r_bar=0.5,a_mean=0.
 
 
 def example_tau1_abar():
-
     va_bar = np.linspace(0,0.6,100)
     tau1=[tau1_oye(a_bar, R=1, U0=1) for a_bar in va_bar]
 
@@ -316,7 +476,6 @@ def example_tau1_abar():
     plt.xlabel('a_bar [-]')
     plt.ylabel('tau1 /(R/U0) [-]')
     plt.title('DynInflow Tau1 vs a_bar')
-
 
 def example_tau2_radius():
 
@@ -331,16 +490,18 @@ def example_tau2_radius():
 
 
 if __name__=='__main__':
+    from welib.tools.clean_exceptions import *
+    run_astep(a1=0.4, a2=0.5, r_bar=1, tau1=None, dt=0.1, tstep=10, tmax=100, U0=10, R=50, k=0.6)
 
     example_astep_WS()
-    example_astep_radius()
-    example_tau2_radius()
-    example_tau1_abar()
-    example_algo_investigation(Case='StepUp'  )
-    example_algo_investigation(Case='StepDown')
-    example_algo_investigation(Case='Sine',T=20)
-    example_algo_investigation(Case='Sine',T=5)
-    example_algo_investigation(Case='WindSine',T=5)
+#     example_astep_radius()
+#     example_tau2_radius()
+#     example_tau1_abar()
+#     example_algo_investigation(Case='StepUp'  )
+#     example_algo_investigation(Case='StepDown')
+#     example_algo_investigation(Case='Sine',T=20)
+#     example_algo_investigation(Case='Sine',T=5)
+#     example_algo_investigation(Case='WindSine',T=5)
 
 #     export2png()
 
