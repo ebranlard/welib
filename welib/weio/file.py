@@ -19,8 +19,6 @@ except NameError: # Python2
 
 class File(dict):
     def __init__(self,filename=None,**kwargs):
-        self._size=None
-        self._encoding=None
         if filename:
             self.read(filename, **kwargs)
         else:
@@ -54,25 +52,24 @@ class File(dict):
     # --------------------------------------------------------------------------------
     @property
     def size(self):
-        if self._size is None:
-            self._size = os.path.getsize(self.filename)
-        return self._size
+        return os.path.getsize(self.filename)
 
     @property
     def encoding(self):	
         import codecs
         import chardet 
         """  Detects encoding"""
-        if self._encoding is None:
+        try:
             byts = min(32, self.size)
-            with open(self.filename, 'rb') as f:
-                raw = f.read(byts)
-            if raw.startswith(codecs.BOM_UTF8):
-                self._encoding = 'utf-8-sig'
-            else:
-                result = chardet.detect(raw)
-                self._encoding = result['encoding']
-        return self._encoding
+        except TypeError:
+            return None
+        with open(self.filename, 'rb') as f:
+            raw = f.read(byts)
+        if raw.startswith(codecs.BOM_UTF8):
+            return 'utf-8-sig'
+        else:
+            result = chardet.detect(raw)
+            return result['encoding']
 
 
     # --------------------------------------------------------------------------------}
