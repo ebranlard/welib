@@ -43,7 +43,7 @@ class CSVFile(File):
         self.commentLines = commentLines
         self.colNamesLine = colNamesLine
         self.detectColumnNames = detectColumnNames
-        self.data=[]
+        self.data=None
         if header is None:
             self.header=[]
         else:
@@ -253,6 +253,8 @@ class CSVFile(File):
         #pdb.set_trace()
 
     def _write(self):
+        if self.data is None:
+            raise Exception('Set the attribute `data` to a dataframe before exporting')
         # --- Safety
         if self.sep==r'\s+' or self.sep=='':
             self.sep='\t'
@@ -283,7 +285,7 @@ class CSVFile(File):
         s += '\n'
         if len(self.header)>0:
             s += 'header:\n'+ '\n'.join(self.header)+'\n'
-        if len(self.data)>0:
+        if self.data is not None:
             s += 'size: {}x{}'.format(len(self.data),len(self.data.columns))
         return s
 
