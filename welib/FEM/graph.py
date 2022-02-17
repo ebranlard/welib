@@ -867,7 +867,7 @@ class GraphModel(object):
         """ See class `Mode` for description of inputs """
         if name is None:
             name='Mode '+str(len(self.Modes))
-        mode = Mode(data=displ, name=name, freq=freq, group=group)
+        mode = Mode(displ=displ, name=name, freq=freq, group=group)
         self.Modes.append(mode)
 
     def addTimeSeries(self, time, mat4=None, displ=None, rot=None, name=None, group='default'):
@@ -912,12 +912,11 @@ class GraphModel(object):
 
 
     def toJSON(self,outfile=None):
-        # TODO use json3d
+        # TODO use json3d/ Assembly Of Objects
         d=dict();
         Points=self.points
         d['Connectivity'] = self.connectivity
         d['Nodes']        = Points.tolist()
-        raise Exception()
         
         d['ElemProps']=list()
         for iElem,elem in enumerate(self.Elements):
@@ -939,7 +938,7 @@ class GraphModel(object):
             d['Modes'][g] = [{ 
                 'name': mode['name'],
                 'omega':mode['freq']*2*np.pi, #in [rad/s]
-                'Displ':mode['data'].tolist()
+                'Displ':mode['displ'].tolist()
                 }  for iMode,mode in enumerate(self.Modes) if mode['group']==g]
 
         allGroups= np.unique([ts['group'] for ts in self.TimeSeries]) 
