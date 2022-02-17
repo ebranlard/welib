@@ -34,6 +34,7 @@ ElemPropertySets: dictionary of ElemProperties
 
 import numpy as np
 import pandas as pd
+import itertools
 print('Using Graph from FEM')
 
 
@@ -153,25 +154,24 @@ class Element(dict):
 # --- Mode 
 # --------------------------------------------------------------------------------{
 class Mode(dict):
-    def __init__(self, data, name, freq=1, group='default', **kwargs):
+    def __init__(self, displ, name, freq=1, group='default', **kwargs):
         """ """
         dict.__init__(self)
-
-        self['name']=name
-        self['freq']=freq
-        self['group']=group
-        self['data']=data # displacements nNodes x 3 assuming a given sorting of nodes
+        self['name']  = name
+        self['freq']  = freq
+        self['group'] = group
+        self['displ']  = displ  # displacements nNodes x 3 assuming a given sorting of nodes
 
     def __repr__(self):
         s='<Mode> name:{:4s} freq:{:} '.format(self['name'], self['freq'])
         return s
 
     def reSort(self,I):
-        self['data']=self['data'][I,:]
+        self['displ']=self['displ'][I,:]
 
 
 # --------------------------------------------------------------------------------}
-# --- Mode 
+# --- Time Series
 # --------------------------------------------------------------------------------{
 class TimeSeries(dict):
     def __init__(self, time, mat4=None, displ=None, rot=None, name=None, group='default', absolute=False, element=False):
@@ -237,11 +237,218 @@ class TimeSeries(dict):
             mat4 = self['mat4'].tolist()
         return mat4
 
+def displ2mat4(displ, flat=True):
+    """ 
+    displ: displacement field (nt x nn x 3)
+    mat4: mat 4 transformation (nt x nn x 4 x 4) or (nt x nn x 16)
+    """
+    nt, nn, _ = np.shape(displ)
+    mat4 = np.zeros((nt, nn, 4, 4))
+    mat4[:,:,3,3]   = 1
+    mat4[:,:,:3,:3] = np.eye(3)
+    mat4[:,:,3,:3]  = displ
+    if flat==True:
+        mat4 = mat4.reshape((nt,nn,16))
+    return mat4
+
+
+# --------------------------------------------------------------------------------}
+# --- Dummy functions to help debugging  
+# --------------------------------------------------------------------------------{
+def dummyNodesConn(nNodes, name=''):
+    if name=='random':
+        Nodes = np.random.randint(100, size=(nNodes,3))
+    else:
+        raise NotImplementedError()
+    Conn = np.zeros((nNodes-1, 2))
+    for iN in np.arange(nNodes-1):
+        Conn[iN] = [iN, iN+1]
+    return Nodes, Conn
 
 
 
+def dummyModeDisplacements(Nodes, name='', Ampl=1):
+    """ Return dummy displacement field, useful for debugging """
+    nN    = len(Nodes)
+    displ = np.zeros((nN,3))
+    if name=='x-rigid-translation':
+        displ[:, 0] = Ampl
+    elif name=='y-rigid-translation':
+        displ[:, 1] = Ampl
+    elif name=='z-rigid-translation':
+        displ[:, 2] = Ampl
+    elif name=='x-rigid-rotation':
+        N0=Nodes[0,:]
+        for iN in np.arange(nN):
+            DP = Nodes[iN,:] - N0
+            displ[iN, : ] = 0
+            displ[iN, 1 ] = DP[1]*np.cos(Ampl*np.pi/180) - DP[2]*np.sin(Ampl*np.pi/180) - DP[1]
+            displ[iN, 2 ] = DP[1]*np.sin(Ampl*np.pi/180) + DP[2]*np.cos(Ampl*np.pi/180) - DP[2]
+    else:
+        raise NotImplementedError()
+
+    return displ
+
+def dummyTimeSeriesDisplacements(time, Nodes, name='', Ampl=1):
+    t0    = time[0]
+    T     = time[-1]-t0
+    f     = 1/T
+    om    = 2*np.pi*f
+    nt    = len(time)
+    nN    = len(Nodes)
+    displ = np.zeros((nt,nN,3))
+    rot   = np.zeros((nt,nN,3,3))
+
+    if name[0]=='x':
+        iComp=0
+    elif name[0]=='y':
+        iComp=1
+    elif name[2]=='z':
+        iComp=2
+    # NOTE: for now rotations are not used
+    for it, t in enumerate(time):
+        for iN in np.arange(nN):
+            rot[it, iN, :,: ] =np.eye(3) 
+    if name.find('static')>=0:
+        pass
+    elif name.find('lin')>0:
+        for it, t in enumerate(time):
+            displ[it, :, iComp] = Ampl*(t-t0)
+    elif name.find('sin')>0:
+        for it, t in enumerate(time):
+            displ[it, :, iComp] = Ampl*np.sin(om*(t-t0))
+    elif name.find('x-rot')>=0:
+        N0=Nodes[0,:]
+        for iN in np.arange(nN):
+            DP = Nodes[iN,:] - N0
+            displ[:, iN, : ] = 0
+            displ[:, iN, 1 ] = DP[1]*np.cos(om*(time-t0)) - DP[2]*np.sin(om*(time-t0))  - DP[1]
+            displ[:, iN, 2 ] = DP[1]*np.sin(om*(time-t0)) + DP[2]*np.cos(om*(time-t0))  - DP[2]
+    else:
+        raise NotImplementedError('name: ', name)
+    return displ
 
 
+# --------------------------------------------------------------------------------}
+# --- Connected Object 
+# --------------------------------------------------------------------------------{
+class ConnectedObject():
+    """ 
+    Object:
+    - Nodes
+    - Connectivity
+    - ElemProp
+    - TimeSeries
+    - Modes
+    """
+    def __init__(self, name='defaultObject', Nodes=None, Connectivity=None, ElemProps=None):
+        self.name=name
+        self.setNodes(Nodes)
+        self.setConnectivity(Connectivity)
+        self.setElemProps(ElemProps)
+        self.Modes        = dict()
+        self.TimeSeries   = dict()
+
+    @property
+    def nNodes(self): 
+        try:
+            return len(self.Nodes)
+        except:
+            return 0
+
+    @property
+    def nElem(self): 
+        try:
+            return len(self.Connectivity)
+        except:
+            return 0
+
+    @property
+    def nModes(self): 
+        return len(self.Modes)
+
+    @property
+    def nTS(self): 
+        return len(self.TimeSeries)
+
+    def setNodes(self, nodes):
+        if nodes is None:
+            self.Nodes=None
+            return
+        # --- Sanity checks
+        nodes = np.asarray(nodes)
+        assert(nodes.shape[1] == 3)
+        # Add
+        self.Nodes = nodes
+
+    def setConnectivity(self, connectivity):
+        """
+        List of list, may not all be of the same size
+        [[self.Nodes.index(n)  for n in e.nodes] for e in self.Elements]
+        """
+        if connectivity is None:
+            self.Connectivity=None
+            return
+        # --- Sanity
+        allcon = list(itertools.chain.from_iterable(connectivity))
+        if self.Nodes is None:
+            raise Exception('Set Nodes before setting connectivity for object {}'.format(self.name))
+        # Min index
+        iMin = np.min(allcon)
+        if iMin!=0:
+            raise Exception('Connectivity table for object `{}` needs to have 0 as a minimum  node index'.format(self.name))
+        # Max number of nodes
+        iMax = np.max(allcon)
+        nNodes = self.nNodes
+        if iMax!=nNodes-1:
+            raise Exception('Connectivity table for objet `{}` needs to have {} as a maximum, corresponding to the maximum number of nodes'.format(self.name, nNodes-1))
+        # Check that all nodes indices are present
+        IC = np.unique(allcon)
+        IA = np.arange(0,nNodes)
+        ID = np.setdiff1d(IA,IC)
+        if len(ID)>0:
+            raise Exception('Connectivity table for object `{}` is missing the following indices : {}.'.format(self.name, ID))
+        # --- Add
+        self.Connectivity = connectivity.tolist()
+
+    def setElemProps(self, props):
+        """ 
+        props: 
+              list of dictionary, for each element
+            OR
+              dictionary to be applied for all elements
+        """
+        if props is None:
+            self.ElemProps=None
+            return
+        # --- Sanity
+        if self.Connectivity is None:
+            raise Exception('Set Connectivity before setting ElemProps for object {}'.format(self.name))
+        if type(props) is dict:
+            props=[props]*self.nElem # We repeat the property
+        else:
+            if len(props) != self.nElem:
+                raise Exception('Cannot add ElemProp for object `{}`, its size ({}) does not match connectivity table size.'.format(objname, len(props), self.nElem))
+        # Add
+        self.ElemProps = props
+
+    def addMode(self, displ, name, freq=1, group='default', **kwargs):
+        self.Modes[name] = Mode(displ, name, freq, group=group, **kwargs) 
+
+    def addTimeSeries(self, time, mat4=None, displ=None, rot=None, name=None, group='default'):
+        """ add Tiem Series to a connected Object
+        See class `TimeSeries` for description of inputs """
+        if name is None:
+            name='TS '+str(len(self.TS))
+        TS = TimeSeries(time, displ=displ, rot=rot, mat4=mat4, name=name, group=group)
+        self.TimeSeries[name]=TS
+
+    def __repr__(self):
+        s=''
+        s='<{} {}> with attributes:\n'.format(type(self).__name__, self.name)
+        s+='- Nodes, Connectivity, ElemProps, Modes, TimeSeries\n'.format(self.nNodes, self.nElem)
+        s+='*nNodes:{} *nElem:{} *nModes:{} *nTS:{}\n'.format(self.nNodes, self.nElem, self.nModes, self.nTS)
+        return s
 
 
 # --------------------------------------------------------------------------------}
@@ -705,10 +912,12 @@ class GraphModel(object):
 
 
     def toJSON(self,outfile=None):
+        # TODO use json3d
         d=dict();
         Points=self.points
         d['Connectivity'] = self.connectivity
         d['Nodes']        = Points.tolist()
+        raise Exception()
         
         d['ElemProps']=list()
         for iElem,elem in enumerate(self.Elements):

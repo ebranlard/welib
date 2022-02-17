@@ -4,12 +4,14 @@ Examples to plot 3D blade based on AeroDyn inputs
 NOTE: might be unfinished
 """
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 
 from welib.plot.surface3d import *
 from welib.tools.clean_exceptions import *
-from weio.fast_input_deck  import FASTInputDeck
+from welib.weio.fast_input_deck  import FASTInputDeck
 
+MyDir=os.path.dirname(__file__)
 thetaMax=2*np.pi
 nTheta=14
 
@@ -23,7 +25,7 @@ R2=0
 # --- Reading AeroDyn file, and extract relevent geometrical info
 # NOTE: using FASTInputDeck which attempts to have the same interface as WEIS
 # ADFile='../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_AeroDyn.dat'
-ADFile='../../../data/NREL5MW/data/NREL5MW_AD15.05.dat'
+ADFile=os.path.join(MyDir, '../../../data/NREL5MW/onshore/NREL5MW_AD.dat')
 #from welib.weio.fast_input_deck  import FASTInputDeck
 
 fst = FASTInputDeck()
@@ -65,4 +67,14 @@ for i in np.arange(len(r)-1):
 # ax.set_xlim3d(-1, 1)
 # ax.set_ylim3d(-1, 1)
 # ax.set_zlim3d(-1, 1)
-plt.show()
+# ax.set_aspect('auto')
+axisEqual3D(ax)
+
+if __name__=="__main__":
+    plt.show()
+if __name__=="__test__":
+    pass
+if __name__=="__export__":
+    pass
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)
