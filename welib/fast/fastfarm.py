@@ -4,9 +4,14 @@ import numpy as np
 import pandas as pd
 try:
     import welib.weio as weio
+    from welib.weio.fast_input_file import FASTInputFile
+    from welib.weio.fast_output_file import FASTOutputFile
+    from welib.weio.turbsim_file import TurbSimFile
 except:
     try:
-        import weio as weio
+	    from weio.fast_input_file import FASTInputFile
+	    from weio.fast_output_file import FASTOutputFile
+	    from weio.turbsim_file import TurbSimFile
     except:
         raise Exception('Python package `weio` not found, please install it from https://github.com/ebranlard/weio ')
 
@@ -52,13 +57,13 @@ def writeFSTandDLL(FstT1Name, nWT):
     FstT1Full = os.path.abspath(FstT1Name).replace('\\','/')
     FstDir  = os.path.dirname(FstT1Full)
 
-    fst=weio.read(FstT1Name)
+    fst=FASTInputFile(FstT1Name)
     SrvT1Name    = fst['ServoFile'].strip('"')
     SrvT1Full    = os.path.join(FstDir, SrvT1Name).replace('\\','/')
     SrvDir       = os.path.dirname(SrvT1Full)
     SrvT1RelFst  = os.path.relpath(SrvT1Full,FstDir)
     if os.path.exists(SrvT1Full):
-        srv=weio.read(SrvT1Full)
+        srv=FASTInputFile(SrvT1Full)
         DLLT1Name = srv['DLL_FileName'].strip('"')
         DLLT1Full = os.path.join(SrvDir, DLLT1Name)
         if os.path.exists(DLLT1Full):
@@ -142,12 +147,12 @@ def rectangularLayoutSubDomains(D,Lx,Ly):
 
     return XWT, YWT, ZWT
 
-def fastFarmTurbSimExtent(TurbSimFile, HubHeight, D, xWT, yWT, Cmeander=1.9, Chord_max=3, extent_X=1.2, extent_Y=1.2):
+def fastFarmTurbSimExtent(TurbSimFilename, HubHeight, D, xWT, yWT, Cmeander=1.9, Chord_max=3, extent_X=1.2, extent_Y=1.2):
     """ 
     Determines "Ambient Wind" box parametesr for FastFarm, based on a TurbSimFile ('bts')
     """
     # --- TurbSim data
-    ts      = weio.read(TurbSimFile)
+    ts      = TurbSimFile(TurbSimFilename)
     #iy,iz   = ts.closestPoint(y=0,z=HubHeight)
     #iy,iz   = ts.closestPoint(y=0,z=HubHeight)
     zMid, uMid =  ts.midValues()
@@ -255,7 +260,7 @@ def writeFastFarm(outputFile, templateFile, xWT, yWT, zWT, FFTS=None, OutListT1=
     FFTS: FastFarm TurbSim parameters as returned by fastFarmTurbSimExtent
     """
     # --- Read template fast farm file
-    fst=weio.FASTInputFile(templateFile)
+    fst=FASTInputFile(templateFile)
     # --- Replace box extent values
     if FFTS is not None:
         fst['Mod_AmbWind'] = 2
@@ -295,7 +300,7 @@ def writeFastFarm(outputFile, templateFile, xWT, yWT, zWT, FFTS=None, OutListT1=
 
 def setFastFarmOutputs(fastFarmFile, OutListT1):
     """ Duplicate the output list, by replacing "T1" with T1->Tn """
-    fst = weio.read(fastFarmFile)
+    fst = FASTInputFile(fastFarmFile)
     nWTOut = min(fst['NumTurbines'],9) # Limited to 9 turbines
     OutList=['']
     for s in OutListT1:
@@ -311,7 +316,7 @@ def setFastFarmOutputs(fastFarmFile, OutListT1):
 def plotFastFarmSetup(fastFarmFile):
     """ """
     import matplotlib.pyplot as plt
-    fst=weio.FASTInputFile(fastFarmFile)
+    fst=FASTInputFile(fastFarmFile)
 
     fig = plt.figure(figsize=(13.5,10))
     ax  = fig.add_subplot(111,aspect="equal")
@@ -435,7 +440,7 @@ def spanwisePostProFF(fastfarm_input,avgMethod='constantwindow',avgParam=30,D=1,
     """
     # --- Opening ouputfile
     if df is None:
-        df=weio.read(fastfarm_out).toDataFrame()
+        df=FASTOutputFile(fastfarm_out).toDataFrame()
 
     # --- Opening input file and extracting inportant variables
     if fastfarm_input is None:
@@ -450,7 +455,7 @@ def spanwisePostProFF(fastfarm_input,avgMethod='constantwindow',avgParam=30,D=1,
         vD=None
         D=0
     else:
-        main=weio.FASTInputFile(fastfarm_input)
+        main=FASTInputFile(fastfarm_input)
         iOut    = main['OutRadii']
         dr      = main['dr']              # Radial increment of radial finite-difference grid (m)
         OutDist = main['OutDist']         # List of downstream distances for wake output for an individual rotor
