@@ -59,12 +59,13 @@ def dynstall_mhh_sim(time, u, p, x0=None, prefix='', method='continuous'):
         sol = solve_ivp(lambda t,x: dynstall_mhh_dxdt(t,x,u,p), t_span=[time[0],time[-1]], y0=x0, t_eval=time)
         y = sol.y
     elif method=='discrete':
-        y  = np.zeros((7,len(time)))
-        xd = np.zeros(7)
+        y  = np.zeros((8,len(time)))
+        xd = np.zeros(8)
         xd[:4] = x0
         xd[4]  = u['alpha_34'](time[0])
         xd[5]  = 0    # Cl_p
         xd[6]  = 1.0  # fp
+        xd[7]  = u['U'](time[0])  # U
         y[:,0] = xd
         for it,t in enumerate(time[1:]):
             dt = t - time[it] # Note: time[it] is in fact t-dt
@@ -164,6 +165,8 @@ def dynstall_mhh_param_from_polar(P, chord, Tf0=6.0, Tp0=1.5, A1=A1_Jones, A2=A2
     p['b2']  = b2
     p['alpha0_in_x1x2']  = True
     p['U_in_x1x2']       = False
+    p['scale_x1_x2']     = False
+    p['old_ClCd_dyn']    = True
     return p
 
 def dynstall_mhh_dxdt(t,x,u,p):
@@ -200,6 +203,9 @@ def dynstall_mhh_dxdt(t,x,u,p):
         alphaE  = alpha_34*(1-A1-A2)+ x1 + x2  # Eq. 12
     else:
         alphaE  = (alpha_34-alpha0)*(1-A1-A2)+ x1 + x2  + alpha0  # Eq. 12
+
+#     alphaE = u['alphaE'](t) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< HACK HACK TODO TODO TODO TODO TODO
+
     Clp     = Cla * (alphaE-alpha0) + np.pi * Tu * omega      # Eq. 13
     alphaF  = x3/Cla+alpha0                                   # p. 13
     fs_aF   = F_st(alphaF)                                    # p. 13
@@ -232,6 +238,7 @@ def dynstall_mhh_update_discr(t, dt, xd_old, u, p):
     alpha_34_old = xd_old[4] # 
     Cl_p_old     = xd_old[5] # 
     fs_aF_old    = xd_old[6] # 
+    U_old        = xd_old[7] # 
     xd = xd_old.copy()
     # Inputs
     U         = u['U'](t)
@@ -269,16 +276,34 @@ def dynstall_mhh_update_discr(t, dt, xd_old, u, p):
     exp_val2=np.exp( np.clip(-dt/T2, np.log(eps), 0 ))
     exp_val3=np.exp( np.clip(-dt/Tp, np.log(eps), 0 ))
     exp_val4=np.exp( np.clip(-dt/Tf, np.log(eps), 0 ))
-    xd[0] = x1_old*exp_val1 + 0.5*(alphaQS_old+alphaQS) * A1*(1-exp_val1)
-    xd[1] = x2_old*exp_val2 + 0.5*(alphaQS_old+alphaQS) * A2*(1-exp_val2)
+    if ['scale_x1_x2']:
+        xd[0] = x1_old*exp_val1 + (alpha_34*U-alpha_34_old*U_old) * A1/b1*Tu/dt*(1-exp_val1) * x4_old
+        xd[1] = x2_old*exp_val2 + (alpha_34*U-alpha_34_old*U_old) * A2/b2*Tu/dt*(1-exp_val2) * x4_old
+        # x1_ = x1_old*exp      + (alpha*U   -alpha_old*U_old  )   *A1/b1*Tu/dt*(1-exp)*x4
 
+    else:
+        if p['U_in_x1x2']:
+            xd[0] = x1_old*exp_val1 + 0.5*(alphaQS_old+alphaQS) * A1*U*(1-exp_val1)
+            xd[1] = x2_old*exp_val2 + 0.5*(alphaQS_old+alphaQS) * A2*U*(1-exp_val2)
+        else:
+            xd[0] = x1_old*exp_val1 + 0.5*(alphaQS_old+alphaQS) * A1*(1-exp_val1)
+            xd[1] = x2_old*exp_val2 + 0.5*(alphaQS_old+alphaQS) * A2*(1-exp_val2)
     # Effective angle of attack
-    alphaE = alphaQS*(1-A1-A2) + (xd[0]+xd[1])  
+    if ['scale_x1_x2']:
+        alphaE = alpha_34 - (xd[0]+xd[1])/U
+    else:
+        if p['U_in_x1x2']:
+            alphaE = alphaQS*(1-A1-A2) + (xd[0]+xd[1])/U
+        else:
+            alphaE = alphaQS*(1-A1-A2) + (xd[0]+xd[1])  
     if p['alpha0_in_x1x2']:
         pass
     else:
         alphaE  += alpha0
         alphaQS += alpha0
+
+#     alphaE = u['alphaE'](t) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< HACK HACK TODO TODO TODO TODO TODO
+
     Cl_p   = Cla*(alphaE-alpha0)+np.pi*Tu*omega
     xd[2]  = x3_old*exp_val3 + 0.5*(Cl_p_old+Cl_p)*(1-exp_val3)
     alphaF = xd[2]/Cla + alpha0
@@ -288,6 +313,7 @@ def dynstall_mhh_update_discr(t, dt, xd_old, u, p):
     xd[4] = alpha_34
     xd[5] = Cl_p
     xd[6] = fs_aF
+    xd[7] = U
     return xd
 
 def dynstall_mhh_steady(t,u,p):
@@ -356,10 +382,22 @@ def dynstall_mhh_outputs(t,x,u,p,more=False):
     Tu = max(c/(2*U), 1e-4)                                     # Eq. 23
 
     # Variables derived from states
-    if p['alpha0_in_x1x2']:
-        alphaE = alpha_34*(1-A1-A2)+ x1 + x2                  # Eq. 12
+    if p['scale_x1_x2']:
+        alphaE = alpha_34 - (x[0]+x[1])/U
     else:
-        alphaE = (alpha_34-alpha0)*(1-A1-A2) + x1 + x2 + alpha0# Eq. 12
+        if p['alpha0_in_x1x2']:
+            if p['U_in_x1x2']:
+                alphaE = alpha_34*(1-A1-A2)+ (x1 + x2)/U                  # Eq. 12
+            else:
+                alphaE = alpha_34*(1-A1-A2)+ (x1 + x2)                  # Eq. 12
+        else:
+            if p['U_in_x1x2']:
+                alphaE = (alpha_34-alpha0)*(1-A1-A2) + (x1 + x2)/U + alpha0# Eq. 12
+            else:
+                alphaE = (alpha_34-alpha0)*(1-A1-A2) + x1 + x2 + alpha0# Eq. 12
+
+#     alphaE = u['alphaE'](t) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< HACK HACK TODO TODO TODO TODO TODO
+
     fs_aE    = F_st(alphaE)
     Cl_sep_e = Cl_fs(alphaE)
     Cd_e     = Cd(alphaE)
@@ -372,9 +410,26 @@ def dynstall_mhh_outputs(t,x,u,p,more=False):
     #DeltaCmfpp = (fa_st(x4) - fa_st(fs_aE))
     DeltaCmfpp = 0 # <<<<<<<<<TODO
     Cl_att_e = max(min(Cla * (alphaE-alpha0),5), -5) # Clip between -5 and 5
-    # Outputs
-    Cl_dyn =  Cl_att_e*x4 + Cl_sep_e*(1-x4) + np.pi*Tu*omega      # <<< ADDED ALPHA0?
-    Cd_dyn =  Cd_e + (alpha_34-alphaE)*Cl_dyn + (Cd_e-Cd(alpha0))*DeltaCdfpp # <<< TODO alpha_34 or alpha_ac
+    if p['old_ClCd_dyn']:
+        #Cd_ind  = (alpha_34-alphaE)*Cl_dyn  # <<< TODO alpha_34 or alpha_ac
+        #Cd_tors =  0                        # Old
+        # Outputs
+        Cl_dyn =  Cl_att_e*x4 + Cl_sep_e*(1-x4) + np.pi*Tu*omega      # <<< ADDED ALPHA0?
+        Cd_dyn =  Cd_e + (alpha_34-alphaE)*Cl_dyn + (Cd_e-Cd(alpha0))*DeltaCdfpp # <<< TODO alpha_34 or alpha_ac
+    else:
+        # Cl components
+        Cl_circ = Cl_att_e*x4 + Cl_sep_e*(1-x4)
+        Cl_tors = np.pi*Tu*omega
+        Cl_acc  = 0 # -np.pi * Tu * yddot/U  # <<< TODO TODO for VAWT
+        # Cd components
+        #Cd_ind  = (alpha_34-alphaE)*Cl_dyn  # <<< TODO alpha_34 or alpha_ac
+        #Cd_tors =  0                        # Old
+        Cd_ind  = (alpha_34-alphaE)*Cl_circ  # New Riso-E-0171
+        Cd_tors =  Cl_circ * Tu * omega      # New Riso-E-0171
+        Cd_sep  = (Cd_e-Cd(alpha0))*DeltaCdfpp # <<< TODO alpha_34 or alpha_ac
+        # Outputs
+        Cl_dyn =  Cl_circ +  Cl_tors + Cl_acc
+        Cd_dyn =  Cd_e + Cd_ind + Cd_sep + Cd_tors 
     #Cd_dyn =  Cd(alphaE) + (alpha-alphaE)*Cl(alphaE)
     #Cd_dyn =  Cd(alphaE) + Tu*omega
     Cm_dyn =  Cm_e + Cl_dyn*DeltaCmfpp - np.pi/2*Tu*omega    
