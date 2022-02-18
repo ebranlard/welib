@@ -164,6 +164,95 @@ class HydroDyn:
         return copy.deepcopy(self._graph)
 
 
+
+
+    def elementDivisions(self, e):
+        n1, n2 = e.nodes
+#         if e.data['Pot'] is False:
+#             numDiv = np.ceil(e.length/e.data['DivSize']).astype(int)
+#             dl = e.length/numDiv
+#             SubNodesPositions = np.zeros((numDiv-1,3))
+#             for j in range(numDiv-1):
+#                 s = (j+1)/numDiv
+#                 SubNodesPositions[j,:] = n1.point * (1-s) + n2.point * s
+#                 nodeCount+=1
+#             Positions = np.vstack( (n1.point, SubNodesPositions, n2.point ) )
+# 
+#             N=numDiv
+#         else:
+#             Positions=np.vstack((n1.point, n2.point))
+#             dl=e.length
+#             N=1
+#         member['MGdensity']=np.zeros(N+1) # TODO
+#         member['tMG'] = np.zeros(N+1)   # TODO
+#         prop1 = e.nodeProps[0]  # NOTE: t&D are not stored in nodes since they are member dependent
+#         prop2 = e.nodeProps[1] 
+#         t             = np.linspace(prop1.data['t']  , prop2.data['t']  , N+1)
+#         member['R']   = np.linspace(prop1.data['D']/2, prop2.data['D']/2, N+1)
+#         member['RMG'] = member['R']+member['tMG']
+#         member['Rin'] = member['R']-t
+
+
+    def memberVolumeSubmerged(self, e, useDiv=False):
+        from welib.hydro.tools import tapered_cylinder_geom
+        prop1 = e.nodeProps[0]  # NOTE: t&D are not stored in nodes since they are member dependent
+        prop2 = e.nodeProps[1] 
+        Za = e.nodes[0].point[2]
+        Zb = e.nodes[1].point[2]
+        if Za>=0 and Zb>=0:
+            return 0   # Fully above water
+        elif Za<0 and Zb<0: # Fully submerged 
+            return self.memberVolumeStructure(e, useDiv=useDiv)
+        elif Za < -self.p['WtrDpth'] or Zb < -self.p['WtrDpth']:
+            raise NotImplementedError()
+        # Partially submerged, interpolated to "0"
+        if not useDiv:
+            Z0  = np.array([Za, Zb])
+            tMG0= np.array([0,0]) # TODO
+            R0  = np.array([prop1.data['D']/2, prop2.data['D']/2])
+            # Stopping at 0
+            Z   = np.array([np.min(Z0), 0])
+            tMG = np.interp(Z , Z0, tMG0)
+            R   = np.interp(Z , Z0, R0)
+            RMG = R + tMG
+            l=e.length * np.abs(Z[1]-Z[0])/ np.abs(Z0[1]-Z0[0])
+            # get V and CV for marine growth displacement
+            Vouter, cVouter = tapered_cylinder_geom(RMG[0], RMG[1], l)
+        else:
+            raise NotImplementedError()
+        return Vouter
+
+    def memberVolumeStructure(self, e, useDiv=False):
+        from welib.hydro.tools import tapered_cylinder_geom
+        prop1 = e.nodeProps[0]  # NOTE: t&D are not stored in nodes since they are member dependent
+        prop2 = e.nodeProps[1] 
+        Za = e.nodes[0].point[2]
+        Zb = e.nodes[1].point[2]
+        if Za < -self.p['WtrDpth'] or Zb < -self.p['WtrDpth']:
+            raise NotImplementedError()
+        if not useDiv:
+            tMG = np.array([0,0]) # TODO
+            R   = np.array([prop1.data['D']/2, prop2.data['D']/2])
+            RMG = R + tMG
+            # get V and CV for marine growth displacement
+            Vouter, cVouter = tapered_cylinder_geom(RMG[0], RMG[1], e.length)
+        else:
+            raise NotImplementedError()
+        return Vouter
+
+
+
+    def VolumeStructure(self, method='NoDiv'):
+        if method=='Morison':
+            return self.morison.VolumeStructure
+        return np.sum([self.memberVolumeStructure(e, useDiv=method=='Div') for e in self.graph.Elements])
+
+    def VolumeSubmerged(self, method='NoDiv'):
+        if method=='Morison':
+            return self.morison.VolumeSubmerged
+        return np.sum([self.memberVolumeSubmerged(e, useDiv=method=='Div') for e in self.graph.Elements])
+
+
     # --------------------------------------------------------------------------------}
     # --- IO/Converters
     # --------------------------------------------------------------------------------{
@@ -218,6 +307,24 @@ if __name__ == '__main__':
     hd.writeSummary(filename.replace('.dat','.HD_python.sum'))
 #     print(hd.graph)
 
+    EM = hd.morison.graph.Elements[13]
+    E  = hd.graph.Elements[13]
+    EM = hd.morison.graph.Elements[0]
+    E  = hd.graph.Elements[0]
+    print(E)
+    print(EM)
+    print(EM.MorisonData.keys())
+    print()
+    print(EM.MorisonData['R'])
+    print(EM.MorisonData['Vouter']    , hd.memberVolumeStructure(E, useDiv=False))
+    print(EM.MorisonData['Vsubmerged'], hd.memberVolumeSubmerged(E, useDiv=False))
+
+    for e,em in zip(hd.graph.Elements, hd.morison.graph.Elements):
+        if abs(em.MorisonData['Vouter']-hd.memberVolumeStructure(e))>1e-8:
+           print('ID',e.ID,'V',em.MorisonData['Vouter'], hd.memberVolumeStructure(e)  )
+    for e,em in zip(hd.graph.Elements, hd.morison.graph.Elements):
+        if abs(em.MorisonData['Vsubmerged']-hd.memberVolumeSubmerged(e) )>1e-8:
+            print('ID',e.ID,'V',em.MorisonData['Vsubmerged'], hd.memberVolumeSubmerged(e),   )
 
 #     graph.divideElements(3)
 #     print(graph)

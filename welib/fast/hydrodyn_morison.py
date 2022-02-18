@@ -594,7 +594,7 @@ class Morison:
                 doSwap=True # Z1>Z2
 
             if doSwap:
-                #print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
+                print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
                 m.swapNodes()
                 m.MorisonData['SubNodesPositions'] =  m.MorisonData['SubNodesPositions'][-1::-1,:]
                 m.MorisonData['nodeIDs']           =  m.MorisonData['nodeIDs'][-1::-1]
@@ -1181,6 +1181,23 @@ class Morison:
 #       END IF
 
 
+    # --------------------------------------------------------------------------------}
+    # --- Useful properties
+    # --------------------------------------------------------------------------------{
+    @property
+    def VolumeStructure(self): return np.sum([e.MorisonData['Vinner'] for e in self.graph.Elements])
+
+    @property
+    def VolumeSubmerged(self): return np.sum([e.MorisonData['Vsubmerged'] for e in self.graph.Elements])
+
+    @property
+    def VolumeMG(self): return np.sum([e.MorisonData['Vouter']-e.MorisonData['Vinner'] for e in self.graph.Elements])
+
+    @property
+    def VolumeBallast(self): return np.sum([e.MorisonData['Vballast'] for e in self.graph.Elements])
+
+    @property
+    def MassMG(self): return np.sum([np.sum(e.MorisonData['m_mg_l'])+np.sum(e.MorisonData['m_mg_l']) for e in self.graph.Elements])
 
     # --------------------------------------------------------------------------------}
     # --- IO/Converters
@@ -1244,8 +1261,6 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
     F_WMG         = np.zeros((6,NNodes))
     for e in graph.Elements:
          m = e.MorisonData
-         n1 = e.nodes[0]
-         n2 = e.nodes[-1]
          totalVol      += m['Vouter']
          totalMGVol    += m['Vouter'] - m['Vinner']
          totalDisplVol += m['Vsubmerged']

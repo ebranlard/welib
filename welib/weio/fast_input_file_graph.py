@@ -214,7 +214,7 @@ def hydrodynToGraph(hd):
         EE   = E[:5].astype(int)
         Type = int(E[6]) # MCoefMod
         Pot  = E[7].lower()[0]=='t'
-        elem= Element(ID=EE[0], nodeIDs=EE[1:3], propIDs=EE[3:5], propset='Section', CoefMod=PropSets[Type-1], DivSize=int(E[5]), Pot=Pot)
+        elem= Element(ID=EE[0], nodeIDs=EE[1:3], propIDs=EE[3:5], propset='Section', CoefMod=PropSets[Type-1], DivSize=float(E[5]), Pot=Pot)
         elem.data['object']='cylinder'
         elem.data['color'] = type2Color(Pot)
         Graph.addElement(elem)
