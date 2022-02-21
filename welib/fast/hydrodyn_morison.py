@@ -92,7 +92,7 @@ class Morison:
    
         # ---- Input Mesth
         u = dict()
-        u['Mesh']= PointMesh(NNodes)
+        u['Mesh']= PointMesh(NNodes, RefPoint=np.array([0,0,0])) # TODO TODO RefPoint will be used for rigid body rotations, might need TPRef here
         for i,pos in enumerate(self.NodesBeforeSwap):
             # Here positions are relative to MSL not SWL
             pos[2] = pos[2] + self.p['MSL2SWL']
@@ -217,6 +217,7 @@ class Morison:
         # For convenience
         self._y = y
         self._u = u
+        return u, y
 
     # --------------------------------------------------------------------------------}
     # ---  
@@ -638,11 +639,18 @@ class Morison:
                 pass
 
 
+        myprint()
+        if bVerbose:
+            print('---------------------------------------------------------------------------')
+            print('--------------------------- CALCOUTPUT {:10.4f}'.format(t))
+            print('---------------------------------------------------------------------------')
+            umesh.printDebug()
+
 
         #===============================================================================================
         # Calculate the fluid kinematics at all mesh nodes and store for use in the equations below
         #    InterpolationSlope = GetInterpolationSlope(Time, p, m, IntWrapIndx)
-        iTime = 0 # TODO TODO
+        iTime = 0 # TODO TODO interpolate wave kinematics at time
         myprint('---------------------------FLUID KINEMATICS')
         for j, pos in enumerate(self.NodesBeforeSwap):    
             m['nodeInWater'][j] = p['nodeInWater'][iTime,j]
@@ -670,6 +678,8 @@ class Morison:
         m['F_B_End']  *= 0
         ymesh.Force  *= 0
         ymesh.Moment *= 0
+        # Very important transfer disp/rot
+        umesh.transferMotion2IdenticalMesh(ymesh)
 
         for im, e in enumerate(graph.Elements):
             myprint('---------------------------MEMBER LOADS ',im+1)
@@ -985,7 +995,7 @@ class Morison:
                         KV   = dotp*mem['kkt'] # 3x3 matrix
                         vec2 = KV .dot( m['vrel'][:,idx[i]])
                         f_hydro = mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]* np.linalg.norm(vec)*vec  + 0.5*mem['AxCd'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*dRdl_p * vec2
-                        myprint('f_hydro_d',f_hydro)
+                        myprint('f_hydro_d {:16.4f}{:16.4f}{:16.4f}'.format(*f_hydro))
                         #print('t1 ', mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]* np.linalg.norm(vec)*vec )
                         #print('t10', mem['Cd'][i]*p['WtrDens']*mem['RMG'][i]                   )
                         #print('t12', np.linalg.norm(vec)*vec )
@@ -999,7 +1009,7 @@ class Morison:
                             # ------------------- hydrodynamic added mass loads: sides: Section 7.1.3 ------------------------
                             Am = mem['Ca'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*mem['Ak'] + 2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p*mem['kkt']
                             f_hydro = - Am.dot( umesh.TranslationAcc[:,idx[i]] )
-                            myprint('f_hydro_am',f_hydro)
+                            myprint('f_hydro_a {:16.4f}{:16.4f}{:16.4f}'.format(*f_hydro))
                             memLoads['F_A'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
                             ymesh.Force [:,idx[i]] += memLoads['F_A'][:3, i]
                             ymesh.Moment[:,idx[i]] += memLoads['F_A'][3:, i]
@@ -1008,7 +1018,7 @@ class Morison:
                             t2 =          2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p *  mem['kkt'].dot( m['FA'][:,idx[i]] )
                             t3 =          2.0*m['FDynP'][idx[i]]*mem['AxCp'][i]*np.pi*mem['RMG'][i]*dRdl_pp*mem['k'] 
                             f_hydro = t1 + t2 +t3
-                            myprint('f_hydro_i',f_hydro)
+                            myprint('f_hydro_i {:16.4f}{:16.4f}{:16.4f}'.format(*f_hydro))
                             memLoads['F_I'][:, i] = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c)
                             ymesh.Force [:,idx[i]] += memLoads['F_I'][:3, i]
                             ymesh.Moment[:,idx[i]] += memLoads['F_I'][3:, i]
@@ -1153,13 +1163,17 @@ class Morison:
                 #    print('F_IMG_End',m['F_IMG_End'][:,j])
 
                 if (bVerbose and sum(abs(F_end))>1e-6):
-                    print('F_end',F_end[:3])
-                    print('M_end',F_end[3:])
+                    print('F_end {:16.4f}{:16.4f}{:16.4f}'.format(*F_end[:3]))
+                    print('M_end {:16.4f}{:16.4f}{:16.4f}'.format(*F_end[3:]))
         if bVerbose:
-            print('-------------------------YMESH FORCE')
+#             print('SUPER HACK')
+#             ymesh.Force *=0
+#             ymesh.Moment *=0
+#             ymesh.Force[2,0]=1
+            print('---------------------------YMESH FORCE')
             for j in range(len(self.NodesBeforeSwap)):
                 print('F {:5d} {:16.3f} {:16.3f} {:16.3f}'.format(j+1,*ymesh.Force [:,j]))
-            print('-------------------------YMESH MOMENT')
+            print('---------------------------YMESH MOMENT')
             for j in range(len(self.NodesBeforeSwap)):
                 print('M {:5d} {:16.3f} {:16.3f} {:16.3f}'.format(j+1,*ymesh.Moment [:,j]))
         # --- Write Outputs TODO
@@ -1179,6 +1193,7 @@ class Morison:
 #             CALL MrsnOut_WriteOutputs( p['UnOutFile, Time, y, p, errStat, errMsg )         
 #          END IF
 #       END IF
+        return y
 
 
     # --------------------------------------------------------------------------------}
@@ -1245,7 +1260,7 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
     Write a summary file, similar to HydroDyn
     """
     graph  = mor.graph
-    MSL2SWL = mor.File['MSL2SWL']
+    MSL2SWL = mor.p['MSL2SWL']
 
     ExtBuoyancy   = 0.0
     totalFillMass = 0.0

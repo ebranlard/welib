@@ -45,6 +45,10 @@ class HydroDyn:
 
         gravity: position of transition point
         """
+        u=dict() # guess
+        y=dict() # guess
+
+
         f = self.File
         # Handle "default" value in input file
         try:
@@ -154,7 +158,20 @@ class HydroDyn:
         initData['Gravity']     = self.p['Gravity']
         initData['WtrDens']     = self.p['WtrDens']
         print('WaveTime',self.Waves.p['WaveTime'])
-        self.morison.init(initData)
+        uMor, yMor = self.morison.init(initData)
+        u['Morison'] = uMor
+        y['Morison'] = yMor
+        return u, y
+
+    
+    def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None):
+        yMor = self.morison.calcOutput(t, x=x, xd=xd, xo=xo, u=u['Morison'], y=y['Morison'])
+        y['Morison'] = yMor
+
+        return y
+
+
+
    
     @property
     def graph(self):
@@ -191,6 +208,81 @@ class HydroDyn:
 #         member['R']   = np.linspace(prop1.data['D']/2, prop2.data['D']/2, N+1)
 #         member['RMG'] = member['R']+member['tMG']
 #         member['Rin'] = member['R']-t
+
+
+    def memberBuoyancyForce(self, e) :
+        if e.data['Pot']:
+            return None
+        # Member is NOT modeled with Potential Flow Theory
+        # --------------------------------------------------------------------------------}
+        # ---Buoyancy loads
+        # --------------------------------------------------------------------------------{
+        # sides: Sections 3.1 and 3.2 ------------------------
+        if z1 < 0:  # if segment is at least partially submerged ...
+            if z1*z2 <= 0: # special calculation if the slice is partially submerged
+                # Check that this is not the 1st element of the member
+                if i==0:
+                    raise Exception('The lowest element of a Morison member has become partially submerged!  This is not allowed.  Please review your model and create a discretization such that even with displacements, the lowest element of a member does not become partially submerged.')
+                h0 = -z1/cosPhi             # distances along element centerline from point 1 to the waterplane
+                if abs(dRdl_mg)< 0.0001:      # untapered cylinder case
+                    Vs =    np.pi*r1*r1*h0   # volume of total submerged portion
+                    if Vs ==0:
+                        cx = 0.0  # Avoid singularity, but continue to provide the correct solution
+                    else:
+                        cr = 0.25*r1*r1*tanPhi/h0
+                        cl = 0.5*h0 + 0.125*r1*r1*tanPhi*tanPhi/h0
+                        cx = cr*cosPhi + cl*sinPhi
+                else: # inclined tapered cylinder case (note I've renamed r0 to rh here##)
+                    # NOTE: a0 and b0 always appear as a0b0, never separately.
+                    rh   = r1 + h0*dRdl_mg    # radius of element at point where its centerline crosses the waterplane
+                    C_1  = 1.0 - dRdl_mg**2 * tanPhi**2
+                    # waterplane ellipse shape
+                    b0   = rh/np.sqrt(C_1)
+                    a0   = rh/((C_1)*cosPhi)             # simplified from what's in ConicalCalcs.ipynb
+                    a0b0 = a0*b0
+                    C_2  = a0b0*rh*cosPhi - r1**3
+                    cl   = -(-0.75*a0b0*rh**2*cosPhi + 0.75*r1**4*C_1 + r1*C_1*C_2) / (dRdl_mg*C_1*C_2)
+                    cr   = (0.75*a0b0*dRdl_mg*rh**2*sinPhi)/(C_1*C_2)
+                    cx   = cr*cosPhi + cl*sinPhi 
+                    Vs   = np.pi*(a0b0*rh*cosPhi - r1**3)/(3.0*dRdl_mg)       
+                    # End per plan equations
+                    #===================
+                pwr = 3
+                alpha    = (1.0-mem['alpha'][i])*z1**pwr/(-mem['alpha'][i]*z2**pwr + (1.0-mem['alpha'][i])*z1**pwr)
+                Fb  = Vs*p['WtrDens']*g       #buoyant force
+                Fr  = -Fb*sinPhi     #radial component of buoyant force
+                Fl  = Fb*cosPhi      #axial component of buoyant force
+                Moment = -Fb*cx      #This was matt's code        #moment induced about the center of the cylinder's bottom face
+                # calculate (imaginary) bottom plate forces/moment to subtract from displacement-based values
+                Fl  = Fl  + p['WtrDens']*g*z1* np.pi *r1*r1        
+                Moment  = Moment  + p['WtrDens']*g* sinPhi * np.pi/4.0*r1**4       
+                # reduce taper-based moment to remove (not double count) radial force distribution to each node 
+                Moment  = Moment + Fr*(1.0-alpha)*dl
+                F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha)
+                #print('Case 1')
+                #print('>>> FB_1',F_B1[:3])
+                #print('>>> FB_2',F_B2[:3])
+                memLoads['F_B'][:, i]   += F_B1  # alpha
+                memLoads['F_B'][:, i-1] += F_B2  # 1-alpha
+            else: # normal, fully submerged case
+                Fl = -2.0*np.pi*dRdl_mg*p['WtrDens']*g*dl*( z1*r1 + 0.5*(z1*dRdl_mg + r1*cosPhi)*dl + 1.0/3.0*(dRdl_mg*cosPhi*dl*dl) )   # from CylinderCalculationsR1.ipynb
+                Fr = -np.pi*p['WtrDens']*g*dl*(r1*r1 + dRdl_mg*r1*dl + (dRdl_mg**2*dl**2)/3.0)*sinPhi                          # from CylinderCalculationsR1.ipynb
+                Moment = -np.pi*dl*g*p['WtrDens']*(3.0*dl**3*dRdl_mg**4 + 3.0*dl**3*dRdl_mg**2 + 12.0*dl**2*dRdl_mg**3*r1 + 8.0*dl**2*dRdl_mg*r1 + 18.0*dl*dRdl_mg**2*r1*r1 + 6.0*dl*r1*r1 + 12.0*dRdl_mg*r1**3)*sinPhi/12.0   # latest from CylinderCalculationsR1.ipynb
+
+                # precomputed as mem['alpha[i] ... alpha0 = (r1*r1 + 2*r1*r2 + 3*r2**2)/4/(r1*r1 + r1*r2 + r2**2)
+                z1d = -min(0.0,z1)
+                z2d = -min(0.0,z2)
+                pwr = 3
+                alpha = mem['alpha'][i]*z2d**pwr/(mem['alpha'][i]*z2d**pwr+(1-mem['alpha'][i])*z1d**pwr)
+                # reduce moment to remove (not double count) radial force distribution to each node
+                Moment = Moment - Fr*alpha*dl
+                F_B1, F_B2 = DistributeElementLoads(Fl, Fr, Moment, sinPhi, cosPhi, sinBeta, cosBeta, alpha)
+                #print('Case 2')
+                #print('>>> FB_1',F_B1[:3])
+                #print('>>> FB_2',F_B2[:3])
+                memLoads['F_B'][:,i+1] += F_B1  # alpha
+                memLoads['F_B'][:, i]  += F_B2  # 1-alpha
+
 
 
     def memberVolumeSubmerged(self, e, useDiv=False):
