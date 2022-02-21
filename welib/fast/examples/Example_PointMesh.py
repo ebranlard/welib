@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from welib.fast.fast_mesh import *
 
 pm = PointMesh(2)
-pm.Position[:,0] = (0,0,0)
-pm.Position[:,1] = (0,0,-10)
+pm.Position[0,:] = (0,0,0)
+pm.Position[1,:] = (0,0,-10)
 
 pm.Connectivity=np.array([[0,1]])
 
