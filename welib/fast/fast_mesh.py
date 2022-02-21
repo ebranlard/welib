@@ -27,7 +27,7 @@ class PointMesh:
     def nNodes(self): 
         return self.Position.shape[1]
 
-    def rigidBodyMotion(self, u, u_dot=(0,0,0), u_ddot=(0,0,0), theta=(0,0,0), omega=(0,0,0), omega_dot=(0,0,0), R_b2g=None):
+    def rigidBodyMotion(self, u=(0,0,0), u_dot=(0,0,0), u_ddot=(0,0,0), theta=(0,0,0), omega=(0,0,0), omega_dot=(0,0,0), R_b2g=None, q=None, qd=None, qdd=None):
         """
         Apply a rigid body motion to the mesh:
         u         : translation     of reference point
@@ -38,18 +38,30 @@ class PointMesh:
         omega_dot : rotational acc of body
         """
         from welib.yams.rotations import BodyXYZ_A, SmallRot_DCM
+        # --- Default arguments
         if self.RefPoint is None:
             self.RefPoint = self.Position[:,0]
+
+        if q is not None:
+            u         = np.array([q[0], q[1], q[2]])
+            u_dot     = np.array([q[0], q[1], q[2]])
+            u_ddot    = np.array([q[0], q[1], q[2]])
+            theta     = np.array([q[3], q[4], q[5]])
+            omega     = np.array([q[3], q[4], q[5]]) # NOTE, small angle approx here
+            omega_dot = np.array([q[3], q[4], q[5]]) # NOTE, small angle approx here
+
+
         if R_b2g is None:
-            # 
 #             R_b2g = BodyXYZ_A(theta[0], theta[1], theta[2])# matrix body 2 global, order XYZ
             R_b2g = SmallRot_DCM(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
+        # --- Sanitation    
         u         = np.asarray(u)
         u_dot     = np.asarray(u_dot)
         u_ddot    = np.asarray(u_ddot)
         theta     = np.asarray(theta)
         omega     = np.asarray(omega)
         omega_dot = np.asarray(omega_dot)
+        # --- Motion
 
         for j in range(self.nNodes):
             r_AB0 = self.Position[:,j] - self.RefPoint
