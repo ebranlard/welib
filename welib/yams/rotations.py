@@ -313,3 +313,80 @@ def Rodriguez_A(a):
         R[2,0] = factor*vec[2]*vec[0]
         R[2,1] = factor*vec[2]*vec[1]
         R[2,2] = factor*vec[2]*vec[2] - 1
+
+
+# --------------------------------------------------------------------------------}
+# --- Small Rotations/ OpenFAST like 
+# --------------------------------------------------------------------------------{
+def SmallRot_DCM(theta1, theta2, theta3):
+    r"""
+    !>  This routine computes the 3x3 transformation matrix, \f$TransMat\f$,
+    !!   to a coordinate system \f$x\f$ (with orthogonal axes \f$x_1, x_2, x_3\f$)
+    !!   resulting from three rotations (\f$\theta_1\f$, \f$\theta_2\f$, \f$\theta_3\f$) about the
+    !!   orthogonal axes (\f$X_1, X_2, X_3\f$) of coordinate system \f$X\f$.  All angles
+    !!   are assummed to be small, as such, the order of rotations does
+    !!   not matter and Euler angles do not need to be used.  This routine
+    !!   is used to compute the transformation matrix (\f$TransMat\f$) between
+    !!   undeflected (\f$X\f$) and deflected (\f$x\f$) coordinate systems.  In matrix
+    !!   form:
+    !! \f{equation}{   
+    !!   \left\{ \begin{matrix} x_1 \\ x_2 \\ x_3 \end{matrix} \right\} =
+    !!   \left[ TransMat(\theta_1, \theta_2, \theta_3) \right]
+    !!   \left\{ \begin{matrix} X_1 \\ X_2 \\ X_3 \end{matrix} \right\}   
+    !! \f}
+    !!
+    !! The transformation matrix, \f$TransMat\f$, is the closest orthonormal
+    !!   matrix to the nonorthonormal, but skew-symmetric, Bernoulli-Euler
+    !!   matrix:
+    !! \f{equation}{   A =
+    !!   \begin{bmatrix}    1      &  \theta_3 & -\theta_2 \\
+    !!                   -\theta_3 &  1        &  \theta_1 \\
+    !!                    \theta_2 & -\theta_1 &  1 \end{bmatrix}   
+    !! \f}
+    !!   In the Frobenius Norm sense, the closest orthornormal matrix is:
+    !!      \f$TransMat = U V^T\f$,
+    !!   where the columns of \f$U\f$ contain the eigenvectors of\f$ AA^T\f$ and the
+    !!   columns of \f$V\f$ contain the eigenvectors of \f$A^TA\f$ (note that \f$^T\f$ = transpose).
+    !!   This result comes directly from the Singular Value Decomposition
+    !!   (SVD) of \f$A = USV^T\f$ where \f$S\f$ is a diagonal matrix containing the
+    !!   singular values of \f$A\f$, which are sqrt( eigenvalues of \f$AA^T\f$ ) =
+    !!   sqrt( eigenvalues of \f$A^TA\f$ ).
+
+    INPUTS:
+      - Theta1        : \f$\theta_1\f$: the small rotation about \f$X_1\f$, (rad).
+      - Theta2        : \f$\theta_2\f$: the small rotation about \f$X_2\f$, (rad).
+      - Theta3        : \f$\theta_3\f$: the small rotation about \f$X_3\f$, (rad).
+    OUTPUTS:
+      - TransMat (3,3): The resulting transformation matrix from \f$X\f$ to \f$x\f$, (-).
+    """
+    LrgAngle  = 0.4 # Threshold for when a small angle becomes large (about 23deg).  This comes from: COS(SmllAngle) ~ 1/SQRT( 1 + SmllAngle^2 ) and SIN(SmllAngle) ~ SmllAngle/SQRT( 1 + SmllAngle^2 ) results in ~5% error when SmllAngle = 0.4rad.
+    if (abs(theta1) > LrgAngle ) or ( abs(theta2) > LrgAngle ) or ( abs(theta3) > LrgAngle ):
+        raise Exception('Small angle assumption violated in SUBROUTINE SmllRotTrans() due to a large rotation')
+    # Compute some intermediate results:
+    theta11      = theta1*theta1
+    theta22      = theta2*theta2
+    theta33      = theta3*theta3
+    SqrdSum      = theta11 + theta22 + theta33
+    SQRT1SqrdSum = np.sqrt( 1. + SqrdSum )
+    ComDenom     = SqrdSum*SQRT1SqrdSum
+    theta12S     = theta1*theta2*(SQRT1SqrdSum - 1.)
+    theta13S     = theta1*theta3*(SQRT1SqrdSum - 1.)
+    theta23S     = theta2*theta3*(SQRT1SqrdSum - 1.)
+    #Define the transformation matrix:
+    TransMat=np.zeros((3,3))
+    if ( ComDenom == 0.0 ):
+        TransMat[0,:] = ( 1., 0., 0.)
+        TransMat[1,:] = ( 0., 1., 0.)
+        TransMat[2,:] = ( 0., 0., 1.)
+    else:
+        TransMat[0,0] = ( theta11*SQRT1SqrdSum + theta22              + theta33              )/ComDenom
+        TransMat[1,1] = ( theta11              + theta22*SQRT1SqrdSum + theta33              )/ComDenom
+        TransMat[2,2] = ( theta11              + theta22              + theta33*SQRT1SqrdSum )/ComDenom
+        TransMat[0,1] = (  theta3*SqrdSum + theta12S )/ComDenom
+        TransMat[1,0] = ( -theta3*SqrdSum + theta12S )/ComDenom
+        TransMat[0,2] = ( -theta2*SqrdSum + theta13S )/ComDenom
+        TransMat[2,0] = (  theta2*SqrdSum + theta13S )/ComDenom
+        TransMat[1,2] = (  theta1*SqrdSum + theta23S )/ComDenom
+        TransMat[2,1] = ( -theta1*SqrdSum + theta23S )/ComDenom
+    return TransMat
+
