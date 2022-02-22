@@ -70,33 +70,16 @@ class PointMesh:
         self.Orientation [:,:,:]  = R_b2g.T
         self.RotationVel [:,:]    = omega
         self.RotationAcc [:,:]    = omega_dot
-#         r_AB0  = (self.Position[:,:].T - self.RefPoint).T
-#         r_AB   = R_b2g.dot(r_AB0)
-#         om_x_r = (np.cross(omega, r_AB.T)).T
-#         self.TranslationDisp[:,:] = (u + (r_AB - r_AB0).T).T
-#         self.TranslationVel [:,:] = (u_dot  + om_x_r.T).T
-#         self.TranslationAcc [:,:] = (u_ddot + np.cross(omega_dot, r_AB.T) + np.cross(omega, om_x_r.T)).T
-#         for j in range(self.nNodes):
-#             self.Orientation [:,:,j]  = R_b2g.T
-#             self.RotationVel [:,j]    = omega
-#             self.RotationAcc [:,j]    = omega_dot
 
-    def mapLoadsToPoint(self,P, R=None):
+    def mapLoadsToPoint(self, P):
         """ Map Force and Moment fields to a given point"""
         P = np.asarray(P)
         F = np.zeros(3)
         M = np.zeros(3)
-        if R is None:
-            R=np.eye(3)
-        for j in range(self.nNodes):
-            F0 = self.Force[j,:]
-            M0 = self.Moment[j,:]
-            P0 = self.Position[j,:] + self.TranslationDisp[j,:]
-            r = P0-P
-            dM = np.cross(r, F0)
-            F+=F0
-            Mloc = R.dot(M0+dM)
-            M+=R.dot(M0 + dM)
+        r_PP0 = self.Position[:,:] + self.TranslationDisp[:,:] - P
+        dM = np.cross(r_PP0, self.Force[:,:])
+        F = np.sum(self.Force[:,:], axis=0) 
+        M = np.sum(self.Moment+dM , axis=0) 
         return F, M
 
     def transferMotion2IdenticalMesh(self, target):
