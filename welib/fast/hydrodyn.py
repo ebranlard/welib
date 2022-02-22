@@ -157,7 +157,7 @@ class HydroDyn:
         initData['WaveTime']    = self.Waves.p['WaveTime']
         initData['Gravity']     = self.p['Gravity']
         initData['WtrDens']     = self.p['WtrDens']
-        print('WaveTime',self.Waves.p['WaveTime'])
+        #print('WaveTime',self.Waves.p['WaveTime'])
         uMor, yMor = self.morison.init(initData)
         u['Morison'] = uMor
         y['Morison'] = yMor

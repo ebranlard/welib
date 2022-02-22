@@ -72,19 +72,19 @@ FALSE            WvSumQTF       - Full summation-frequency  2nd-order wave kinem
              0   
              0   
              0   
-             0             0             0             0             0             0   AddCLin  - Additional linear stiffness (N/m, N/rad, N-m/m, N-m/rad)
+             0             0             0             0             0             0             AddCLin  - Additional linear stiffness (N/m, N/rad, N-m/m, N-m/rad)                     [If NBodyMod=1, one size 6*NBody x 6*NBody matrix; if NBodyMod>1, NBody size 6 x 6 matrices]
              0             0             0             0             0             0
              0             0             0             0             0             0
              0             0             0             0             0             0
              0             0             0             0             0             0
-             0             0             0             0             0      98340000
-        100000             0             0             0             0             0   AddBLin  - Additional linear damping(N/(m/s), N/(rad/s), N-m/(m/s), N-m/(rad/s))
-             0        100000             0             0             0             0
-             0             0        130000             0             0             0
              0             0             0             0             0             0
+             0             0             0             0             0             0             AddBLin  - Additional linear damping(N/(m/s), N/(rad/s), N-m/(m/s), N-m/(rad/s))        [If NBodyMod=1, one size 6*NBody x 6*NBody matrix; if NBodyMod>1, NBody size 6 x 6 matrices]
              0             0             0             0             0             0
-             0             0             0             0             0      13000000
-             0             0             0             0             0             0   AddBQuad - Additional quadratic drag(N/(m/s)^2, N/(rad/s)^2, N-m(m/s)^2, N-m/(rad/s)^2)
+             0             0             0             0             0             0             
+             0             0             0             0             0             0             
+             0             0             0             0             0             0             
+             0             0             0             0             0             0             
+             0             0             0             0             0             0             AddBQuad - Additional quadratic drag(N/(m/s)^2, N/(rad/s)^2, N-m(m/s)^2, N-m/(rad/s)^2) [If NBodyMod=1, one size 6*NBody x 6*NBody matrix; if NBodyMod>1, NBody size 6 x 6 matrices]
              0             0             0             0             0             0
              0             0             0             0             0             0
              0             0             0             0             0             0
@@ -144,7 +144,7 @@ MemberID   NOutLoc    NodeLocs [NOutLoc < 10; node locations are normalized dist
              0   NJOutputs      - Number of joint outputs [Must be < 10]
    0           JOutLst        - List of JointIDs which are to be output (-)[unused if NJOutputs=0]
 ---------------------- OUTPUT --------------------------------------------------
-False             HDSum          - Output a summary file [flag]
+True              HDSum          - Output a summary file [flag]
 False            OutAll         - Output all user-specified member and joint loads (only at each member end, not interior locations) [flag]
              2   OutSwtch       - Output requested channels to: [1=Hydrodyn.out, 2=GlueCode.out, 3=both files]
 "ES11.4e2"       OutFmt         - Output format for numerical results (quoted string) [not checked for validity!]
@@ -157,4 +157,22 @@ False            OutAll         - Output all user-specified member and joint loa
 "HydroMxi"                - Buoyancy force [N] in the vertical direction (Z).
 "HydroMyi"                - Buoyancy force [N] in the vertical direction (Z).
 "HydroMzi"                - Buoyancy force [N] in the vertical direction (Z).
+"PRPSurge"
+"PRPSway"
+"PRPHeave"
+"PRPRoll"
+"PRPPitch"
+"PRPYaw"
+"PRPTVxi"
+"PRPTVyi"
+"PRPTVzi"
+"PRPRVxi"
+"PRPRVyi"
+"PRPRVzi"
+"PRPTAxi"
+"PRPTAyi"
+"PRPTAzi"
+"PRPRAxi"
+"PRPRAyi"
+"PRPRAzi"
 END of output channels and end of file. (the word "END" must appear in the first 3 columns of this line)

@@ -4,10 +4,8 @@ NREL 5.0 MW Baseline Wind Turbine for Use in Offshore Analysis. Properties from 
 False         Echo        - Echo input data to "<RootName>.ech" (flag)
           3   Method      - Integration method: {1: RK4, 2: AB4, or 3: ABM4} (-)
 "default"     DT          - Integration time step (s)
----------------------- ENVIRONMENTAL CONDITION ---------------------------------
-    9.80665   Gravity     - Gravitational acceleration (m/s^2)
 ---------------------- DEGREES OF FREEDOM --------------------------------------
-True          FlapDOF1    - First flapwise blade mode DOF (flag)
+False          FlapDOF1    - First flapwise blade mode DOF (flag)
 False          FlapDOF2    - Second flapwise blade mode DOF (flag)
 False          EdgeDOF     - First edgewise blade mode DOF (flag)
 False         TeetDOF     - Rotor-teeter DOF (flag) [unused for 3 blades]
@@ -18,12 +16,12 @@ False          TwFADOF1    - First fore-aft tower bending-mode DOF (flag)
 False          TwFADOF2    - Second fore-aft tower bending-mode DOF (flag)
 False          TwSSDOF1    - First side-to-side tower bending-mode DOF (flag)
 False          TwSSDOF2    - Second side-to-side tower bending-mode DOF (flag)
-True          PtfmSgDOF   - Platform horizontal surge translation DOF (flag)
-True          PtfmSwDOF   - Platform horizontal sway translation DOF (flag)
-True          PtfmHvDOF   - Platform vertical heave translation DOF (flag)
-True          PtfmRDOF    - Platform roll tilt rotation DOF (flag)
-True          PtfmPDOF    - Platform pitch tilt rotation DOF (flag)
-True          PtfmYDOF    - Platform yaw rotation DOF (flag)
+True           PtfmSgDOF   - Platform horizontal surge translation DOF (flag)
+False          PtfmSwDOF   - Platform horizontal sway translation DOF (flag)
+True           PtfmHvDOF   - Platform vertical heave translation DOF (flag)
+False          PtfmRDOF    - Platform roll tilt rotation DOF (flag)
+True           PtfmPDOF    - Platform pitch tilt rotation DOF (flag)
+False          PtfmYDOF    - Platform yaw rotation DOF (flag)
 ---------------------- INITIAL CONDITIONS --------------------------------------
           0   OoPDefl     - Initial out-of-plane blade-tip displacement (meters)
           0   IPDefl      - Initial in-plane blade-tip deflection (meters)
@@ -121,27 +119,12 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
           9   BldGagNd    - List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
               OutList     - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
 "BldPitch1"               - Pitch angles for blades 1, 2, and 3
-"BldPitch2"               - Pitch angles for blades 1, 2, and 3
-"BldPitch3"               - Pitch angles for blades 1, 2, and 3
 "Azimuth"                 - Blade 1 azimuth angle
 "RotSpeed"                - Low-speed shaft and high-speed shaft speeds
-"GenSpeed"                - Low-speed shaft and high-speed shaft speeds
 "NacYaw"                  - Nacelle yaw angle and nacelle yaw error estimate
 "OoPDefl1"                - Blade 1 out-of-plane and in-plane deflections and tip twist
 "IPDefl1"                 - Blade 1 out-of-plane and in-plane deflections and tip twist
 "TwstDefl1"               - Blade 1 out-of-plane and in-plane deflections and tip twist
-"OoPDefl2"                - Blade 2 out-of-plane and in-plane deflections and tip twist
-"IPDefl2"                 - Blade 2 out-of-plane and in-plane deflections and tip twist
-"TwstDefl2"               - Blade 2 out-of-plane and in-plane deflections and tip twist
-"OoPDefl3"                - Blade 3 out-of-plane and in-plane deflections and tip twist
-"IPDefl3"                 - Blade 3 out-of-plane and in-plane deflections and tip twist
-"TwstDefl3"               - Blade 3 out-of-plane and in-plane deflections and tip twist
-"TwrClrnc1"               - Tip-to-tower clearance estimate for blades 1, 2, and 3
-"TwrClrnc2"               - Tip-to-tower clearance estimate for blades 1, 2, and 3
-"TwrClrnc3"               - Tip-to-tower clearance estimate for blades 1, 2, and 3
-"NcIMUTAxs"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
-"NcIMUTAys"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
-"NcIMUTAzs"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
 "TTDspFA"                 - Tower fore-aft and side-to-side displacements and top twist
 "TTDspSS"                 - Tower fore-aft and side-to-side displacements and top twist
 "TTDspTwst"               - Tower fore-aft and side-to-side displacements and top twist
@@ -151,42 +134,14 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "PtfmRoll"                - Platform rotational roll, pitch and yaw displacements
 "PtfmPitch"               - Platform rotational roll, pitch and yaw displacements
 "PtfmYaw"                 - Platform rotational roll, pitch and yaw displacements
-"PtfmTAxt"                - Platform translation accelerations (absolute) in the tower-base coordinate system
-"PtfmTAyt"                - Platform translation accelerations (absolute) in the tower-base coordinate system
-"PtfmTAzt"                - Platform translation accelerations (absolute) in the tower-base coordinate system
 "RootFxc1"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 1
 "RootFyc1"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 1
 "RootFzc1"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 1
 "RootMxc1"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 1
 "RootMyc1"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 1
 "RootMzc1"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 1
-"RootFxc2"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 2
-"RootFyc2"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 2
-"RootFzc2"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 2
-"RootMxc2"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 2
-"RootMyc2"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 2
-"RootMzc2"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 2
-"RootFxc3"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 3
-"RootFyc3"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 3
-"RootFzc3"                - Out-of-plane shear, in-plane shear, and axial forces at the root of blade 3
-"RootMxc3"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 3
-"RootMyc3"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 3
-"RootMzc3"                - In-plane bending, out-of-plane bending, and pitching moments at the root of blade 3
-"Spn1MLxb1"               - Blade 1 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLyb1"               - Blade 1 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLzb1"               - Blade 1 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLxb2"               - Blade 2 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLyb2"               - Blade 2 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLzb2"               - Blade 2 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLxb3"               - Blade 3 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLyb3"               - Blade 3 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
-"Spn1MLzb3"               - Blade 3 local edgewise bending, flapwise bending, and pitching moments at span station 1 (approx. 50% span)
 "RotThrust"               - Rotor thrust and low-speed shaft 0- and 90-rotating shear forces at the main bearing
-"LSSGagFya"               - Rotor thrust and low-speed shaft 0- and 90-rotating shear forces at the main bearing
-"LSSGagFza"               - Rotor thrust and low-speed shaft 0- and 90-rotating shear forces at the main bearing
 "RotTorq"                 - Rotor torque and low-speed shaft 0- and 90-rotating bending moments at the main bearing
-"LSSGagMya"               - Rotor torque and low-speed shaft 0- and 90-rotating bending moments at the main bearing
-"LSSGagMza"               - Rotor torque and low-speed shaft 0- and 90-rotating bending moments at the main bearing
 "YawBrFxp"                - Fore-aft shear, side-to-side shear, and vertical forces at the top of the tower (not rotating with nacelle yaw)
 "YawBrFyp"                - Fore-aft shear, side-to-side shear, and vertical forces at the top of the tower (not rotating with nacelle yaw)
 "YawBrFzp"                - Fore-aft shear, side-to-side shear, and vertical forces at the top of the tower (not rotating with nacelle yaw)
@@ -199,8 +154,8 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "TwrBsMxt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
 "TwrBsMyt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
 "TwrBsMzt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
-"TwHt1MLxt"               - Local side-to-side bending, fore-aft bending, and yaw moments at tower gage 1 (approx. 50% elevation)
-"TwHt1MLyt"               - Local side-to-side bending, fore-aft bending, and yaw moments at tower gage 1 (approx. 50% elevation)
-"TwHt1MLzt"               - Local side-to-side bending, fore-aft bending, and yaw moments at tower gage 1 (approx. 50% elevation)
+"QD_Sg"
+"QD_Hv"
+"QD_P"
 END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
 ---------------------------------------------------------------------------------------

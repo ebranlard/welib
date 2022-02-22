@@ -1356,7 +1356,7 @@ def morisonToSum(mor, filename=None, fid=None, more=False):
     IntBuoyancy = np.zeros(6)
     IntBuoyancy[:3], IntBuoyancy[3:] = ymesh.mapLoadsToPoint((0,0,0))
     TotBuoyancy = ExtBuoyancy + IntBuoyancy
-    print('ExtBuoyancy',np.around(ExtBuoyancy,4))
+    #print('ExtBuoyancy',np.around(ExtBuoyancy,4))
 
     s+='\n'
     s+='Total Buoyancy loads summed about ( 0.0, 0.0, 0.0 )\n'
