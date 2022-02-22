@@ -27,19 +27,17 @@ MyDir=os.path.dirname(__file__)
 
 def hydroSim(fstFilename, plot=True, json=True, tMax=None):
     """ 
-    fstFilename: FAST or HydroDyn driver input file
+    Compute hydrodynamics loads on a structure under rigid body motion based on an OpenFAST simulation
+    fstFilename: OpenFAST or HydroDyn driver input file
     tMax: maximum time in time vector (to reduce the simulation length)
     """
     # --- Find out file and hydrodyn filenames from FST file
     fst = FASTInputFile(fstFilename)
     if 'HydroFile' in fst.keys():
-        hdDriver = False
         hdFilename = os.path.join(os.path.dirname(fstFilename), fst['HydroFile'].replace('"','') )
         outFilenames = [fstFilename.replace('.fst',ext) for ext in ['.outb','.out'] if os.path.exists(fstFilename.replace('.fst',ext))]
-        print([fstFilename.replace('.fst',ext) for ext in ['.outb','.out']])
         outFilename = outFilenames[0]
     else:
-        hdDriver=True
         hdFilename = os.path.join(os.path.dirname(fstFilename), fst['HDInputFile'].replace('"','') )
         outFilename = fstFilename.replace('.dvr','.HD.out')
     base = os.path.basename(os.path.dirname(fstFilename)) + '_'+os.path.splitext(os.path.basename(fstFilename))[0]
@@ -48,30 +46,28 @@ def hydroSim(fstFilename, plot=True, json=True, tMax=None):
     dfOF = weio.read(outFilename).toDataFrame()
     if tMax is not None:
         dfOF=dfOF[dfOF['Time_[s]']<=tMax]
-        
 
     # --- Initialize a python HydroDyn instance
     hd = HydroDyn(hdFilename)
     u, y = hd.init(Gravity = fst['Gravity'], WtrDens=fst['WtrDens'], WtrDpth=fst['WtrDpth'])
     hd.writeSummary(hdFilename.replace('.dat','.HD_python.sum'))
+    umesh = u['Morison']['Mesh']
+    ymesh = y['Morison']['Mesh']
     #print(hd.p)
 
     # --- Relevant columns from OpenFAST outputs
     time  = dfOF['Time_[s]'].values
-    #if hdDriver:
-    qCol = ['PRPSurge_[m]', 'PRPSway_[m]', 'PRPHeave_[m]', 'PRPRoll_[rad]', 'PRPPitch_[rad]', 'PRPYaw_[rad]']
-    qdCol= ['PRPTVxi_[m/s]', 'PRPTVyi_[m/s]', 'PRPTVzi_[m/s]', 'PRPRVxi_[rad/s]', 'PRPRVyi_[rad/s]', 'PRPRVzi_[rad/s]']
-    qddCol=[ 'PRPTAxi_[m/s^2]', 'PRPTAyi_[m/s^2]', 'PRPTAzi_[m/s^2]', 'PRPRAxi_[rad/s^2]', 'PRPRAyi_[rad/s^2]', 'PRPRAzi_[rad/s^2]']
-    #else:
-    #    qCol  = ['Q_Sg_[m]'  , 'Q_Sw_[m]', 'Q_Hv_[m]', 'Q_R_[rad]', 'Q_P_[rad]', 'Q_Y_[rad]']
-    #    qdCol = ['QD_Sg_[m/s]', 'QD_Sw_[m/s]', 'QD_Hv_[m/s]', 'QD_R_[rad/s]', 'QD_P_[rad/s]', 'QD_Y_[rad/s]']
-    #    qddCol = None
-
+    if 'PRPSurge_[m]' in dfOF.columns:
+        qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]']
+        qdCol  = ['PRPTVxi_[m/s]'   ,'PRPTVyi_[m/s]'  ,'PRPTVzi_[m/s]'  ,'PRPRVxi_[rad/s]'  ,'PRPRVyi_[rad/s]'  ,'PRPRVzi_[rad/s]']
+        qddCol = [ 'PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
+    else:
+        raise NotImplementedError()
+        qCol  = ['Q_Sg_[m]'   ,'Q_Sw_[m]'   ,'Q_Hv_[m]'   ,'Q_R_[rad]'   ,'Q_P_[rad]'   ,'Q_Y_[rad]']
+        qdCol = ['QD_Sg_[m/s]','QD_Sw_[m/s]','QD_Hv_[m/s]','QD_R_[rad/s]','QD_P_[rad/s]','QD_Y_[rad/s]']
+        qddCol = None
 
     # --- Prepare time stepping
-    umesh = u['Morison']['Mesh']
-    ymesh = y['Morison']['Mesh']
-
     fh = np.zeros((len(time), 6))
     msy = MeshStorage(ymesh, time) # Store mesh at each time step
 
@@ -96,54 +92,33 @@ def hydroSim(fstFilename, plot=True, json=True, tMax=None):
             y=hd.calcOutput(t, u=u, y=y)
             # Store mesh
             msy.store(ymesh, it)
-            # Compute integral loads at the reference point (translated but not rotated)
-            Fh, Mh = ymesh.mapLoadsToPoint((q[0],q[1],q[2]))
-            fh[it, :3] = Fh
-            fh[it, 3:] = Mh
+            # Compute integral loads (force&moment) at the reference point (translated but not rotated)
+            fh[it, :3], fh[it, 3:] = ymesh.mapLoadsToPoint((q[0],q[1],q[2]))
             print('f_Hydro {:16.3f}{:16.3f}{:16.3f}{:16.3f}{:16.3f}{:16.3f}'.format(*fh[it,:]))
 
-    # Creating a dataframe for convenience
-    cols = ['Time_[s]','HydroFxi_[N]','HydroFyi_[N]','HydroFzi_[N]','HydroMxi_[N-m]','HydroMyi_[N-m]','HydroMzi_[N-m]']
-    dfPH = pd.DataFrame(data=np.column_stack((time,fh)), columns=cols)
+    # --- Creating a dataframe for convenience
+    lCols = ['HydroFxi_[N]','HydroFyi_[N]','HydroFzi_[N]','HydroMxi_[N-m]','HydroMyi_[N-m]','HydroMzi_[N-m]']
+    dfPH = pd.DataFrame(data=np.column_stack((time,fh)), columns=['Time_[s]']+lCols)
 
     # --- Plot
     if plot:
         fig,axes = plt.subplots(6, 2, sharey=False, figsize=(12.8,8.5)) # (6.4,4.8)
         fig.subplots_adjust(left=0.11, right=0.95, top=0.95, bottom=0.07, hspace=0.40, wspace=0.22)
-
+        # DOF
         for iCol, col in enumerate(qCol):
             axes[iCol,0].plot(time, dfOF[col].values  , '-', label='OpenFAST')
             axes[iCol,0].set_ylabel(col.replace('_',' '))
-
-        axes[0,1].plot(time, dfPH['HydroFxi_[N]'].values  , label='Python non-linear')
-        axes[1,1].plot(time, dfPH['HydroFyi_[N]'].values  , label='Python non-linear')
-        axes[2,1].plot(time, dfPH['HydroFzi_[N]'].values  , label='Python non-linear')
-        axes[3,1].plot(time, dfPH['HydroMxi_[N-m]'].values, label='Python non-linear')
-        axes[4,1].plot(time, dfPH['HydroMyi_[N-m]'].values, label='Python non-linear')
-        axes[5,1].plot(time, dfPH['HydroMzi_[N-m]'].values, label='Python non-linear')
-
-        axes[0,1].plot(time, dfOF['HydroFxi_[N]'].values  , 'k:', label='OpenFAST')
-        axes[1,1].plot(time, dfOF['HydroFyi_[N]'].values  , 'k:', label='OpenFAST')
-        axes[2,1].plot(time, dfOF['HydroFzi_[N]'].values  , 'k:', label='OpenFAST')
-        axes[3,1].plot(time, dfOF['HydroMxi_[N-m]'].values, 'k:', label='OpenFAST')
-        axes[4,1].plot(time, dfOF['HydroMyi_[N-m]'].values, 'k:', label='OpenFAST')
-        axes[5,1].plot(time, dfOF['HydroMzi_[N-m]'].values, 'k:', label='OpenFAST')
-
-
-        axes[0,1].set_ylabel('Fxi [N]')
-        axes[1,1].set_ylabel('Fyi [N]')
-        axes[2,1].set_ylabel('Fzi [N]')
-        axes[3,1].set_ylabel('Mxi')
-        axes[4,1].set_ylabel('Myi')
-        axes[5,1].set_ylabel('Mzi')
+        # Forces
+        for iCol, col in enumerate(lCols):
+            axes[iCol,1].plot(time, dfPH[col].values  , label='Python non-linear')
+            axes[iCol,1].plot(time, dfOF[col].values  , 'k:', label='OpenFAST')
+            axes[iCol,1].set_ylabel(col.replace('_',' '))
         axes[0,1].legend()
         axes[5,0].set_xlabel('Time [s]')
         axes[5,1].set_xlabel('Time [s]')
 
     if json:
         msy.toJSON3D(ymesh, '_'+base+'_MeshMotion.json')
-
-
 
     return dfPH, dfOF
 
