@@ -389,6 +389,7 @@ class ConnectedObject():
         if connectivity is None:
             self.Connectivity=None
             return
+        connectivity=np.asarray(connectivity)
         # --- Sanity
         allcon = list(itertools.chain.from_iterable(connectivity))
         if self.Nodes is None:

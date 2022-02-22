@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 class PointMesh:
-    def __init__(self, nPoints, name='mesh', RefPoint=None):
+    def __init__(self, nPoints, name='mesh', RefPoint=None, Connectivity=None):
         # NOTE: for now, using Fortran convention for memory order
         self.Position        = np.zeros((nPoints, 3))
         self.TranslationDisp = np.zeros((nPoints, 3))
@@ -15,9 +15,9 @@ class PointMesh:
         self.RotationAcc     = np.zeros((nPoints, 3))
         self.Force           = np.zeros((nPoints, 3))
         self.Moment          = np.zeros((nPoints, 3))
-        self.Connectivity=None
-        self.RefPoint = RefPoint
-        self.name = name
+        self.Connectivity = Connectivity
+        self.RefPoint     = RefPoint
+        self.name         = name
 
         self.RefOrientation[:,:,:] = np.eye(3)
         self.Orientation   [:,:,:] = np.eye(3)

@@ -89,10 +89,30 @@ class Morison:
         self.p['Gravity']       = initData['Gravity']
         self.p['WtrDens']       = initData['WtrDens']
 
+        # --- Connectivity
+        Connectivity=[]
+        for e in graph.Elements:
+            n1 = e.nodes[0]
+            n2 = e.nodes[1]
+            i1 = graph.Nodes.index(n1)
+            i2 = graph.Nodes.index(n2)
+            mem      = e.MorisonData
+            idx      = mem['nodeIDs']
+            if len(idx)>2:
+                for ii, _ in enumerate(idx[:-1]):
+                    i1=idx[ii]
+                    i2=idx[ii+1]
+                    Connectivity.append([i1,i2])
+            else:
+                Connectivity.append([i1,i2])
+
+
+
+
    
-        # ---- Input Mesth
+        # ---- Input Mesh
         u = dict()
-        u['Mesh']= PointMesh(NNodes, RefPoint=np.array([0,0,0])) # TODO TODO RefPoint will be used for rigid body rotations, might need TPRef here
+        u['Mesh']= PointMesh(NNodes, RefPoint=np.array([0,0,0]), Connectivity=Connectivity) # TODO TODO RefPoint will be used for rigid body rotations, might need TPRef here
         for i,pos in enumerate(self.NodesBeforeSwap):
             # Here positions are relative to MSL not SWL
             pos[2] = pos[2] + self.p['MSL2SWL']
