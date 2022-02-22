@@ -596,6 +596,8 @@ class YAMSKanesMethod(object):
         # Check for any derivatives of variables in r that are also found in r.
         for i in r:
             if diff(i, dynamicsymbols._t) in r:
+                print('i',i)
+                print('r',r)
                 raise ValueError('Cannot have derivatives of specified \
                                  quantities when linearizing forcing terms.')
         return Linearizer(f_0, f_1, f_2, f_3, f_4, f_c, f_v, f_a, q, u, q_i,
