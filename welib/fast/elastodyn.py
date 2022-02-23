@@ -34,24 +34,21 @@ def DTfreq(InFile):
 def SHP(Fract, FlexL, ModShpAry, Deriv):
     """ SHP calculates the Derive-derivative of the shape function ModShpAry at Fract.
     #  NOTE: This function only works for Deriv = 0, 1, or 2. """
-    if ( Deriv < 0 or Deriv > 2 ):
-        raise Exception('Function SHP input Deriv={} is invalid. Deriv must be 0, 1, or 2.'.format(Deriv))
-    elif ( Fract < 0.0 or Fract > 1.0 ):
-        raise Exception('Function SHP input Fract={} does not meet the condition 0<=Fract<=1.'.format(Fract))
-
     Swtch        = np.zeros((3, 1)); # Initialize Swtch(:) to 0
     Swtch[Deriv] = 1;
     shp          = 0.0;
-
-    for i in np.arange(len(ModShpAry)):
-        I = i + 1
-        J = I + 1;
-        CoefTmp = Swtch[0] + Swtch[1]*J + Swtch[2]*I*J;
-
-        if ( (J == 2) and (Deriv == 2) ):
-            shp =       ModShpAry[i]*CoefTmp                         /( FlexL**Deriv );
-        else:
-            shp = shp + ModShpAry[i]*CoefTmp*( Fract**( J - Deriv ) )/( FlexL**Deriv );
+    if Deriv==0:
+        for i in np.arange(len(ModShpAry)):
+            shp = shp + ModShpAry[i]*( Fract**(i+2) )
+    else:
+        for i in np.arange(len(ModShpAry)):
+            I = i + 1
+            J = I + 1;
+            CoefTmp = Swtch[0] + Swtch[1]*J + Swtch[2]*I*J;
+            if ( (J == 2) and (Deriv == 2) ):
+                shp =       ModShpAry[i]*CoefTmp                         /( FlexL**Deriv );
+            else:
+                shp = shp + ModShpAry[i]*CoefTmp*( Fract**( J - Deriv ) )/( FlexL**Deriv );
     return shp
 
 
@@ -82,12 +79,14 @@ def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
     return p, pbld
 
 
-def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
+def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
     """
     Compute blade parameters in a way similar to OpenFAST
     See Routine Coeff from ElastoDyn.f90
     RotSpeed: used for rotational stiffening. Use 1 for unit contribution (proportioanl to omega**2) [rad/s]
     """
+    from welib.yams.flexibility import polyshape
+    from welib.yams.flexibility import GMBeam, GKBeam
     # --- Read inputs
     ED      = FASTInputFile(EDfilename)
     EDbld   = os.path.join(os.path.dirname(EDfilename), ED['BldFile({})'.format(ibld)].replace('"',''))
@@ -111,15 +110,16 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     # --- Interpolate the blade properties to this discretization:
     p['RNodesNorm'] = p['RNodes']/p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
     p['s_span'] = np.concatenate(([0], p['RNodesNorm'], [1]))*p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
+    p['s_span_norm'] = p['s_span']/p['BldFlexL']
     p['BlFract']= bldProp['BlFract_[-]'].values
     StrcTwst    = bldProp['StrcTwst_[deg]'].values
     p['ThetaS']  = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['StrcTwst_[deg]']) 
     p['MassB']   = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
     p['StiffBF'] = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
     p['StiffBE'] = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
-    p['m_full']    = np.interp(p['s_span'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
-    p['EI_F_full'] = np.interp(p['s_span'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
-    p['EI_E_full'] = np.interp(p['s_span'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
+    p['m_full']    = np.interp(p['s_span_norm'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
+    p['EI_F_full'] = np.interp(p['s_span_norm'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
+    p['EI_E_full'] = np.interp(p['s_span_norm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
     p['ThetaS']  = np.concatenate( ([StrcTwst[0]], p['ThetaS'] , [StrcTwst[-1]]) )
     # Set the blade damping and stiffness tuner
     p['BldFDamp'] = [bld['BldFlDmp(1)'], bld['BldFlDmp(2)'] ]
@@ -140,90 +140,71 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     p['BldMass']   = p['TipMass']                            
     p['FirstMom']  = p['TipMass']*p['BldFlexL']             
     p['SecondMom'] = p['TipMass']*p['BldFlexL']*p['BldFlexL']
-    p['BElmntMass'] = np.zeros(n) # Mass of blade element FMomAbvNd J
+    p['BElmntMass'] = p['MassB']*p['DRNodes'] # Mass of blade element
+    p['BldMass']   = sum(p['BElmntMass'])
+    p['FirstMom']  = sum(p['BElmntMass']*p['RNodes'])    # wrt blade root    
+    p['SecondMom'] = sum(p['BElmntMass']*p['RNodes']**2) # wrt blade root
     p['FMomAbvNd']  = np.zeros(n)
+    # Integrate to find FMomAbvNd:
     for J in  np.arange(ED['BldNodes']-1,-1,-1): # Loop through the blade nodes / elements in reverse
-        # Calculate the mass of the current element
-        p['BElmntMass'][J] = p['MassB'][J]*p['DRNodes'][J] # Mass of blade elementp['FMomAbvNd J
-        # Integrate to find some blade properties which will be output in .fsm
-        p['BldMass']   += p['BElmntMass'][J];
-        p['FirstMom']  += p['BElmntMass'][J]*p['RNodes'][J];
-        p['SecondMom'] += p['BElmntMass'][J]*p['RNodes'][J]*p['RNodes'][J];
-        # Integrate to find FMomAbvNd:
         p['FMomAbvNd'][J] = (0.5*p['BElmntMass'][J] )*(ED['HubRad'] + p['RNodes'][J] + 0.5*p['DRNodes'][J])
         if J == n-1: # Outermost blade element
-           # Add the TipMass() effects:
-           p['FMomAbvNd'][J] += p['TipMass'] * ED['TipRad'];
+           p['FMomAbvNd'][J] += p['TipMass'] * ED['TipRad']; # TipMass effects:
         else:  
            # Add to p['FMomAbvNd(K,J) the effects from the (not yet used) portion of element J+1
            p['FMomAbvNd'][J] += p['FMomAbvNd'][J+1] + (0.5*p['BElmntMass'][J+1])*( ED['HubRad'] + p['RNodes'][J+1] - 0.5*p['DRNodes'][J+1] );
     if not BD4Blades:
         # Calculate BldCG() using FirstMom() and BldMass(); and calculate RotMass and RotIner:
         p['BldCG']= p['FirstMom']/p['BldMass'];
-
-    p['MBF']       = np.zeros((2, 2))                 ;
-    p['MBE']       = np.zeros((1, 1))                 ;
-    p['KBFCent']   = np.zeros((2, 2))                 ;
-    p['KBECent']   = np.zeros((1, 1))                ;
-    p['KBF']       = np.zeros((2, 2))                ;
-    p['KBE']       = np.zeros((1, 1))                ;
-    p['TwistedSF'] = np.zeros((2, 3, ED['BldNodes']+2, 3)); # x/y, BF1/BF2/BE, node, deriv
-    p['AxRedBld']  = np.zeros((3, 3, ED['BldNodes']+2)); #
-    p['ShapeF1']   = np.zeros(n);
-    p['ShapeF2']   = np.zeros(n);
-    p['ShapeE1']   = np.zeros(n);
-    p['dShapeF1']   = np.zeros(n);
-    p['dShapeF2']   = np.zeros(n);
-    p['dShapeE1']   = np.zeros(n);
-    p['ddShapeF1']   = np.zeros(n);
-    p['ddShapeF2']   = np.zeros(n);
-    p['ddShapeE1']   = np.zeros(n);
+    p['MBF']       = np.zeros((2, 2))
+    p['MBE']       = np.zeros((1, 1))
+    p['KBFCent']   = np.zeros((2, 2))
+    p['KBECent']   = np.zeros((1, 1))
+    p['KBF']       = np.zeros((2, 2))
+    p['KBE']       = np.zeros((1, 1))
     # Initialize the generalized blade masses using tip mass effects:
     p['MBF'][0,0] = p['TipMass'];
     p['MBF'][1,1] = p['TipMass'];
     p['MBE'][0,0] = p['TipMass'];
+
+    # Shape functions and derivatives at all nodes and tip&root (2 additional points)
+    exp = np.arange(2,7)
+    p['ShapeF1_full'], p['dShapeF1_full'],p['ddShapeF1_full'] = polyshape(p['s_span'], coeff=p['BldFl1Sh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
+    p['ShapeF2_full'], p['dShapeF2_full'],p['ddShapeF2_full'] = polyshape(p['s_span'], coeff=p['BldFl2Sh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
+    p['ShapeE1_full'], p['dShapeE1_full'],p['ddShapeE1_full'] = polyshape(p['s_span'], coeff=p['BldEdgSh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
+
+    # Integrate to find the generalized mass of the blade (including tip mass effects).
+    #   Ignore the cross-correlation terms of MBF (i.e. MBF(i,j) where i ~= j) since these terms will never be used.
+    p['MBF'][0,0] = sum(p['BElmntMass']*p['ShapeF1_full'][1:-1]**2)
+    p['MBF'][1,1] = sum(p['BElmntMass']*p['ShapeF2_full'][1:-1]**2)
+    p['MBE'][0,0] = sum(p['BElmntMass']*p['ShapeE1_full'][1:-1]**2)
+
+    ElmntStff      = p['StiffBF']*p['DRNodes']  # Flapwise stiffness of blade element J
+    p['KBF'][0,0] = sum(ElmntStff*p['ddShapeF1_full'][1:-1]*p['ddShapeF1_full'][1:-1])
+    p['KBF'][0,1] = sum(ElmntStff*p['ddShapeF1_full'][1:-1]*p['ddShapeF2_full'][1:-1])
+    p['KBF'][1,0] = sum(ElmntStff*p['ddShapeF2_full'][1:-1]*p['ddShapeF1_full'][1:-1])
+    p['KBF'][1,1] = sum(ElmntStff*p['ddShapeF2_full'][1:-1]*p['ddShapeF2_full'][1:-1])
+    ElmntStff     = p['StiffBE']*p['DRNodes'] # Edgewise stiffness of blade element J
+    p['KBE'][0,0] = sum(ElmntStff*p['ddShapeE1_full'][1:-1]*p['ddShapeE1_full'][1:-1])
+
+    # Integrate to find the centrifugal-term of the generalized flapwise and edgewise
+    #   stiffness of the blades.  Ignore the cross-correlation terms of KBFCent (i.e.
+    #   KBFCent(i,j) where i ~= j) since these terms will never be used.
+    ElmntStff      = p['FMomAbvNd']*p['DRNodes']*RotSpeed**2 # Centrifugal stiffness of blade element J
+    p['KBFCent'][0,0] = sum(ElmntStff*p['dShapeF1_full'][1:-1]**2)
+    p['KBFCent'][1,1] = sum(ElmntStff*p['dShapeF2_full'][1:-1]**2)
+    p['KBECent'][0,0] = sum(ElmntStff*p['dShapeE1_full'][1:-1]**2)
+
+    # Calculate the 2nd derivatives of the twisted shape functions (include root and tip):
+    p['TwistedSF'] = np.zeros((2, 3, ED['BldNodes']+2, 3)); # x/y, BF1/BF2/BE, node, deriv
+    p['TwistedSF'][0,0,:,2] =  p['ddShapeF1_full'][:]*p['CThetaS'][:] # 2nd deriv. of Phi1(J) for blade K
+    p['TwistedSF'][1,0,:,2] = -p['ddShapeF1_full'][:]*p['SThetaS'][:] # 2nd deriv. of Psi1(J) for blade K
+    p['TwistedSF'][0,1,:,2] =  p['ddShapeF2_full'][:]*p['CThetaS'][:] # 2nd deriv. of Phi2(J) for blade K
+    p['TwistedSF'][1,1,:,2] = -p['ddShapeF2_full'][:]*p['SThetaS'][:] # 2nd deriv. of Psi2(J) for blade K
+    p['TwistedSF'][0,2,:,2] =  p['ddShapeE1_full'][:]*p['SThetaS'][:] # 2nd deriv. of Phi3(J) for blade K
+    p['TwistedSF'][1,2,:,2] =  p['ddShapeE1_full'][:]*p['CThetaS'][:] # 2nd deriv. of Psi3(J) for blade K
+    # Integrate to find the 1st derivatives of the twisted shape functions:
     for J  in np.arange(n):    # Loop through the blade nodes / elements
-        # Integrate to find the generalized mass of the blade (including tip mass effects).
-        #   Ignore the cross-correlation terms of MBF (i.e. MBF(i,j) where i ~= j) since
-        #   these terms will never be used.
-        p['ShapeF1'][J] = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl1Sh'], 0);
-        p['ShapeF2'][J] = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl2Sh'], 0);
-        p['ShapeE1'][J] = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldEdgSh'], 0);
-        p['MBF'][0,0]  += p['BElmntMass'][J]*p['ShapeF1'][J]*p['ShapeF1'][J];
-        p['MBF'][1,1]  += p['BElmntMass'][J]*p['ShapeF2'][J]*p['ShapeF2'][J];
-        p['MBE'][0,0]  += p['BElmntMass'][J]*p['ShapeE1'][J]*p['ShapeE1'][J];
-        # Integrate to find the generalized stiffness of the blade (not including centrifugal effects).
-        ElmntStff      = p['StiffBF'][J]*p['DRNodes'][J]  # Flapwise stiffness of blade element J
-        p['ddShapeF1'][J] = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl1Sh'], 2);
-        p['ddShapeF2'][J] = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl2Sh'], 2);
-        p['KBF'][0,0] += ElmntStff*p['ddShapeF1'][J]*p['ddShapeF1'][J]
-        p['KBF'][0,1] += ElmntStff*p['ddShapeF1'][J]*p['ddShapeF2'][J]
-        p['KBF'][1,0] += ElmntStff*p['ddShapeF2'][J]*p['ddShapeF1'][J]
-        p['KBF'][1,1] += ElmntStff*p['ddShapeF2'][J]*p['ddShapeF2'][J]
-        ElmntStff      = p['StiffBE'][J]*p['DRNodes'][J] # Edgewise stiffness of blade element J
-        p['ddShapeE1'][J] = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldEdgSh'], 2);
-        p['KBE'][0,0] += ElmntStff*p['ddShapeE1'][J]*p['ddShapeE1'][J];
-        # Integrate to find the centrifugal-term of the generalized flapwise and edgewise
-        #   stiffness of the blades.  Ignore the cross-correlation terms of KBFCent (i.e.
-        #   KBFCent(i,j) where i ~= j) since these terms will never be used.
-        ElmntStff      = p['FMomAbvNd'][J]*p['DRNodes'][J]*RotSpeed**2 # Centrifugal stiffness of blade element J
-        p['dShapeF1'][J]  = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl1Sh'], 1)
-        p['dShapeF2'][J]  = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl2Sh'], 1)
-        p['dShapeE1'][J]  = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldEdgSh'], 1)
-        p['KBFCent'][0,0] += ElmntStff*p['dShapeF1'][J]*p['dShapeF1'][J]
-        p['KBFCent'][1,1] += ElmntStff*p['dShapeF2'][J]*p['dShapeF2'][J]
-        p['KBECent'][0,0] += ElmntStff*p['dShapeE1'][J]*p['dShapeE1'][J]
-        # Calculate the 2nd derivatives of the twisted shape functions:
-        Shape             = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl1Sh'], 2);
-        p['TwistedSF'][0,0,J+1,2] =  Shape*p['CThetaS'][J+1] # 2nd deriv. of Phi1(J) for blade K
-        p['TwistedSF'][1,0,J+1,2] = -Shape*p['SThetaS'][J+1] # 2nd deriv. of Psi1(J) for blade K
-        Shape  = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldFl2Sh'], 2);
-        p['TwistedSF'][0,1,J+1,2] =  Shape*p['CThetaS'][J+1] # 2nd deriv. of Phi2(J) for blade K
-        p['TwistedSF'][1,1,J+1,2] = -Shape*p['SThetaS'][J+1] # 2nd deriv. of Psi2(J) for blade K
-        Shape  = SHP( p['RNodesNorm'][J], p['BldFlexL'], p['BldEdgSh'], 2);
-        p['TwistedSF'][0,2,J+1,2] =  Shape*p['SThetaS'][J+1] # 2nd deriv. of Phi3(J) for blade K
-        p['TwistedSF'][1,2,J+1,2] =  Shape*p['CThetaS'][J+1] # 2nd deriv. of Psi3(J) for blade K
-        # Integrate to find the 1st derivatives of the twisted shape functions:
         TwstdSF= np.zeros((2, 3, 2))
         order=1;
         for I in [0,1]:   # Loop through Phi and Psi
@@ -235,6 +216,10 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
             for I in [0,1]:  # Loop through Phi and Psi
                 for L in [0,1,2]: # Loop through all blade DOFs
                     p['TwistedSF'][I,L,J+1,order] += p['TwistedSF'][I,L,J,order] + TwstdSFOld[I,L,order];
+        # Store the TwstdSF and AxRdBld terms of the current element (these will be used for the next element)
+#         TwstdSFOld = TwstdSF;
+#     for J  in np.arange(n):    # Loop through the blade nodes / elements
+#         TwstdSF= np.zeros((2, 3, 2))
         # Integrate to find the twisted shape functions themselves (i.e., their zeroeth derivative):
         order = 0
         for I in [0,1]:   # Loop through Phi and Psi
@@ -246,7 +231,19 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
             for I in [0,1]:   # Loop through Phi and Psi
                 for L in [0,1,2]:  # Loop through all blade DOFs
                     p['TwistedSF'][I,L,J+1,order] += p['TwistedSF'][I,L,J,order]  + TwstdSFOld[I,L, order];
-        # Integrate to find the blade axial reduction shape functions:
+        TwstdSFOld = TwstdSF;
+    # Integrate to find the 1st and zeroeth derivatives of the twisted shape functions at the tip:
+    for I in [0,1]:   # Loop through Phi and Psi
+        for L in [0,1,2]:  # Loop through all blade DOFs
+            p['TwistedSF'][I,L,-1,1] = p['TwistedSF'][I,L,-2,1] + TwstdSFOld[I,L,1]
+            p['TwistedSF'][I,L,-1,0] = p['TwistedSF'][I,L,-2,0] + TwstdSFOld[I,L,0]
+    # Blade root
+    p['TwistedSF'][:,:,0,1] = 0.0;
+    p['TwistedSF'][:,:,0,0] = 0.0;
+
+    # Integrate to find the blade axial reduction shape functions:
+    p['AxRedBld']  = np.zeros((3, 3, ED['BldNodes']+2)); #
+    for J  in np.arange(n):    # Loop through the blade nodes / elements
         AxRdBld= np.zeros((3, 3))
         for I in [0,1,2]:     # Loop through all blade DOFs
             for L in [0,1,2]:  # Loop through all blade DOFs
@@ -257,10 +254,13 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
             for I in [0,1,2]:     # Loop through all blade DOFs
                 for L in [0,1,2]:  # Loop through all blade DOFs
                     p['AxRedBld'][I,L,J+1] += p['AxRedBld'][I,L,J]  + AxRdBldOld[I,L]
-        # Store the TwstdSF and AxRdBld terms of the current element (these will be used for the next element)
-        TwstdSFOld = TwstdSF;
         AxRdBldOld = AxRdBld;
-    # End loop on J
+    # Integrate to find the blade axial reduction shape functions at the tip:
+    for I in [0,1,2]:     # Loop through all blade DOFs
+        for L in [0,1,2]:  # Loop through all blade DOFs
+            p['AxRedBld'][I,L,-1] = p['AxRedBld'][I,L,-2] + AxRdBldOld[I,L]
+    # Blade root
+    p['AxRedBld'] [:,:,0  ] = 0.0;
 
     if BD4Blades:
         # the 1st and zeroeth derivatives of the twisted shape functions at the blade root:
@@ -291,80 +291,54 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
                 p['CBF'][I,L] = ( 0.01*p['BldFDamp'][L] )*p['KBF'][I,L]/( np.pi*p['FreqBF'][L,0] );
         L=0; I=0;
         p['CBE'][I,L] = ( 0.01*p['BldEDamp'][L] )*p['KBE'][I,L]/( np.pi*p['FreqBE'][L,0] );
-        # Calculate the 2nd derivatives of the twisted shape functions at the blade root:
-        Shape  = SHP( 0.0, p['BldFlexL'], p['BldFl1Sh'], 2)
-        p['TwistedSF'][0,0,0,2] =  Shape*p['CThetaS'][0] # 2nd deriv. of Phi1(0) for blade K
-        p['TwistedSF'][1,0,0,2] = -Shape*p['SThetaS'][0] # 2nd deriv. of Psi1(0) for blade K
-        Shape  = SHP( 0.0, p['BldFlexL'], p['BldFl2Sh'], 2)
-        p['TwistedSF'][0,1,0,2] =  Shape*p['CThetaS'][0] # 2nd deriv. of Phi2(0) for blade K
-        p['TwistedSF'][1,1,0,2] = -Shape*p['SThetaS'][0] # 2nd deriv. of Psi2(0) for blade K
-        Shape  = SHP( 0.0, p['BldFlexL'], p['BldEdgSh'], 2)
-        p['TwistedSF'][0,2,0,2] =  Shape*p['SThetaS'][0] # 2nd deriv. of Phi3(0) for blade K
-        p['TwistedSF'][1,2,0,2] =  Shape*p['CThetaS'][0] # 2nd deriv. of Psi3(0) for blade K
-        # Calculate the 2nd derivatives of the twisted shape functions at the tip:
-        Shape  = SHP( 1.0, p['BldFlexL'], p['BldFl1Sh'], 2)
-        p['TwistedSF'][0,0,-1,2] =  Shape*p['CThetaS'][-1] # 2nd deriv. of Phi1(p['TipNode) for blade K
-        p['TwistedSF'][1,0,-1,2] = -Shape*p['SThetaS'][-1] # 2nd deriv. of Psi1(p['TipNode) for blade K
-        Shape  = SHP( 1.0, p['BldFlexL'], p['BldFl2Sh'], 2)
-        p['TwistedSF'][0,1,-1,2] =  Shape*p['CThetaS'][-1] # 2nd deriv. of Phi2(p['TipNode) for blade K
-        p['TwistedSF'][1,1,-1,2] = -Shape*p['SThetaS'][-1] # 2nd deriv. of Psi2(p['TipNode) for blade K
-        Shape  = SHP( 1.0, p['BldFlexL'], p['BldEdgSh'], 2)
-        p['TwistedSF'][0,2,-1,2] =  Shape*p['SThetaS'][-1] # 2nd deriv. of Phi3(p['TipNode) for blade K
-        p['TwistedSF'][1,2,-1,2] =  Shape*p['CThetaS'][-1] # 2nd deriv. of Psi3(p['TipNode) for blade K
-        # Integrate to find the 1st and zeroeth derivatives of the twisted shape functions at the tip:
-        for I in [0,1]:   # Loop through Phi and Psi
-            for L in [0,1,2]:  # Loop through all blade DOFs
-                p['TwistedSF'][I,L,-1,1] = p['TwistedSF'][I,L,-2,1] + TwstdSFOld[I,L,1]
-                p['TwistedSF'][I,L,-1,0] = p['TwistedSF'][I,L,-2,0] + TwstdSFOld[I,L,0]
-        # the 1st and zeroeth derivatives of the twisted shape functions at the blade root:
-        p['TwistedSF'][:,:,0,1] = 0.0;
-        p['TwistedSF'][:,:,0,0] = 0.0;
-        p['AxRedBld'] [:,:,0  ] = 0.0;
-        # Integrate to find the blade axial reduction shape functions at the tip:
-        for I in [0,1,2]:     # Loop through all blade DOFs
-            for L in [0,1,2]:  # Loop through all blade DOFs
-                p['AxRedBld'][I,L,-1] = p['AxRedBld'][I,L,-2] + AxRdBldOld[I,L]
-
 
     nq = 3
-    rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
+    if inertiaAtBladeRoot:
+        rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
+    else:
+        rh = 0
 
-    # --- Shape functions
+    # --- Twisted and untwisted shape functions
     nNodes=n+2
-    p['U']=np.zeros((nq, 3, nNodes))
-    p['V']=np.zeros((nq, 3, nNodes))
-    p['K']=np.zeros((nq, 3, nNodes))
-    for j in range(0,nq):
-        p['U'][j][0,:] = p['TwistedSF'][0, j, :, 0]  # x
-        p['U'][j][1,:] = p['TwistedSF'][1, j, :, 0]  # y
-        p['V'][j][0,:] = p['TwistedSF'][0, j, :, 1]  # x
-        p['V'][j][1,:] = p['TwistedSF'][1, j, :, 1]  # y
-        p['K'][j][0,:] = p['TwistedSF'][0, j, :, 2]  # x
-        p['K'][j][1,:] = p['TwistedSF'][1, j, :, 2]  # y
+    p['Ut'] = np.zeros((nq, 3, nNodes))
+    p['Vt'] = np.zeros((nq, 3, nNodes))
+    p['Kt'] = np.zeros((nq, 3, nNodes))
+    p['U']  = np.zeros((nq, 3, nNodes))
+    p['V']  = np.zeros((nq, 3, nNodes))
+    p['K']  = np.zeros((nq, 3, nNodes))
+    for j,idir,name in zip(range(0,nq), (0,0,1), ('F1','F2','E1')): # direction is x, x, y
+        p['Ut'][j][0,:] = p['TwistedSF'][0, j, :, 0]  # x
+        p['Ut'][j][1,:] = p['TwistedSF'][1, j, :, 0]  # y
+        p['Vt'][j][0,:] = p['TwistedSF'][0, j, :, 1]  # x
+        p['Vt'][j][1,:] = p['TwistedSF'][1, j, :, 1]  # y
+        p['Kt'][j][0,:] = p['TwistedSF'][0, j, :, 2]  # x
+        p['Kt'][j][1,:] = p['TwistedSF'][1, j, :, 2]  # y
+        p['U'][j][idir,:]  = p['Shape'+name+'_full']  
+        p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
+        p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
-    from welib.yams.flexibility import GMBeam, GKBeam
-    # TODO TODO TODO
-    #MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
     #KK0 = GKBeam(s_span, EI, PhiK, bOrth=False)
     #if bStiffening:
     #    KKg     = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis)
     #    KKg_self= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=True , bMtop=False, bRot=False)
     #    KKg_Mtop= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=True,  bRot=False)
     #    KKg_rot = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=False, bRot=True)
+    # ---
     s_G0 = np.zeros((3, len(p['s_span'])))
-    s_G0[2,:] = p['s_span'] + rh # TODO hub radius option
-    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['U'], rot_terms=True) 
+    s_G0[2,:] = p['s_span'] + rh 
+    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
     #, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
 
     # --- Rigid mass matrix terms
-    p['J']    = np.zeros((3,3))
     p['mdCM'] = np.zeros((3,3))
-    p['mdCM'][2,0]= sum(p['BElmntMass'][:]*(p['RNodes']+rh));
+    p['mdCM'][1,0]=  sum(p['BElmntMass'][:]*(p['RNodes']+rh));
+    p['mdCM'][0,1]= -sum(p['BElmntMass'][:]*(p['RNodes']+rh));
     #sid.md1_1_1_1= sum(squeeze(p.TwistedSF(1, 1, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
     #sid.md1_1_2_1= sum(squeeze(p.TwistedSF(1, 2, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
     #sid.md1_2_1_1= sum(squeeze(p.TwistedSF(1, 1, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
     #sid.md1_2_2_1= sum(squeeze(p.TwistedSF(1, 2, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
 
+    p['J']    = np.zeros((3,3))
     p['J'][0,0] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2) # TODO better integration
     p['J'][1,1] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2) # TODO
 
@@ -411,7 +385,6 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     p['Cr'][2,0]= -sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][1, 2, 1:-1, 0])*p['BElmntMass'][:])# 3nd mode acceleration about x axis (1) -> movement in negative y
     p['Cr'][2,1]=  sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][0, 2, 1:-1, 0])*p['BElmntMass'][:])# 3nd mode acceleration about y axis (2) -> movement in x
 
-
     # --- Oe,  Oe_j = \int [~Phi_j] [~s] = { \int [~s] [~Phi_j] }^t = -1/2 *(Gr_j)^t
     # M0: nq x 6
     # M1: nq x 6 x nq
@@ -433,6 +406,23 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     Oe_M1_2_2_1= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + p['KBECent'][0,0];
     Oe_M1_2_2_2= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass']) + p['KBECent'][0,0];
     Oe_M1_2_2_4= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
+
+
+#     print('MM',MM[0,0])
+#     print('Ms',p['BldMass'])
+#     print('J\n',p['J'])
+#     print('J\n',MM[3:6,3:6])
+#     print('mdCM_GM\n',MM[3:6,0:3])
+#     print('mdCM_OF\n',p['mdCM'])
+#     print('me_GM\n',MM[6:,6:])
+#     print('me_OF\n',p['Me'])
+#     print('Ct_GM\n',MM[0:3,6:])
+#     print('Ct_OF\n',p['Ct'].T)
+#     print('Cr_GM\n',MM[3:6,6:])
+#     print('Cr_OF\n',p['Cr'].T)
+#     print('Oe6_GM\n',Oe6.T)
+
+
 
     #for j in range(nf):
     #    sxx = trapzs(s_G[0,:]*U[j][0,:]*m)

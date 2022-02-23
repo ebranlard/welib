@@ -20,10 +20,10 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(p['BldCG'], 20.65008957491178)
 
         # Shape functions
-        np.testing.assert_almost_equal(p['ShapeF1'][0:2], np.array([9.537890879514419e-05 ,  1.496964261332097e-03]))
-        np.testing.assert_almost_equal(p['ShapeF1'][-2:], np.array([7.907408392607156e-01 , 9.302315172663902e-01]))
-        np.testing.assert_almost_equal(p['ddShapeF1'][0:2], np.array([ 1.051074892093353e-04,   2.102754797663044e-04]))
-        np.testing.assert_almost_equal(p['ddShapeF1'][-2:], np.array([ 4.957076482520056e-04,  -9.910176341969626e-05]))
+        np.testing.assert_almost_equal(p['ShapeF1_full'][1:3], np.array([9.537890879514419e-05 ,  1.496964261332097e-03]))
+        np.testing.assert_almost_equal(p['ShapeF1_full'][-3:-1], np.array([7.907408392607156e-01 , 9.302315172663902e-01]))
+        np.testing.assert_almost_equal(p['ddShapeF1_full'][1:3], np.array([ 1.051074892093353e-04,   2.102754797663044e-04]))
+        np.testing.assert_almost_equal(p['ddShapeF1_full'][-3:-1], np.array([ 4.957076482520056e-04,  -9.910176341969626e-05]))
 
         # Generalized quantities
         np.testing.assert_almost_equal(p['MBF'][0,0], 884.8557898849025)

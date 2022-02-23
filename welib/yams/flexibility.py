@@ -9,7 +9,7 @@ Reference:
 '''
 
 def fcumtrapzlr(s_span, p):
-    """ Cumulative trapezoidal integration, flipped left-right 
+    r""" Cumulative trapezoidal integration, flipped left-right 
     Useful to return the following:
          P(x) = \int_x^R p(r) dr
     """
@@ -18,7 +18,7 @@ def fcumtrapzlr(s_span, p):
     return P
 
 
-def polyshape(x, coeff, exp, x_max=None):
+def polyshape(x, coeff, exp=None, x_max=None, doscale=True):
     """ 
     Computes a shape function described as a polynomial expression y = a_i x^e_i
         where the a_i are given by `coeff`
@@ -26,20 +26,27 @@ def polyshape(x, coeff, exp, x_max=None):
     The shape function is normalized such as to have a unitary tip deflection
 
     INPUTS:
-        x : spanwise dimension, from 0 to L, not dimensionless!
-
-        xmax:value used to non-dimensionlize x:  x_bar = x/x_max. default: max(x)
-
+      - x : spanwise dimension, from 0 to L, not dimensionless!
+            The points 0 and L may not be present in x but in that case prescribing 
+            xmax is very important)
+      - coeff : polynomial coefficients
+      - exp: exponents of the polynomial. Should be length of coeff. 
+            If None, exp = [2,3,4,5,6] as used in OpenFAST
+      - xmax:value used to non-dimensionlize x:  x_bar = x/x_max. default: max(x)
+      - doscale: used the tip value to scale the shapes and ensure a unit value at the tip
+               In this case the "tip" is defined as xbar=1 
     Returns:
-        U, dU, ddU the shape, slope and curvature
+      - U, dU, ddU the shape, slope and curvature
     """
+    if exp is None:
+        exp = np.arange(2,7)
     mode   = np.zeros(x.shape)
     dmode  = np.zeros(x.shape)
     ddmode = np.zeros(x.shape)
     # Polynomials assume x to be dimensionless
     # TODO TODO TODO substract x[0]
     if x_max is None: 
-        x_max= (x[-1]-0)  # Might not alsways be desired if "x" are mid-points
+        x_max= (x[-1]-0)  # Might not always be desired if "x" are mid-points
     x_bar=(x-0)/x_max
     mode_max =0   #  value of shape function at max x
     for i in range(0,len(coeff)):
@@ -51,12 +58,15 @@ def polyshape(x, coeff, exp, x_max=None):
             ddmode += coeff[i]*exp[i]*(exp[i]-1) * x_bar**(exp[i]-2)
     # Scaling by the tip deflection, and include x_max for derivatives since derivates were computed w.r.t. x_bar not x
     #scale= mode[-1]
-    scale= mode_max
+    if doscale:
+        scale= mode_max
+    else:
+        scale=1
     return mode/scale, dmode/(scale*x_max), ddmode/(scale*x_max*x_max)
 
 
 def integrationWeights(s_span,m):
-    """ Returns integration weights convenient to integrate functions along the span of the beam
+    r""" Returns integration weights convenient to integrate functions along the span of the beam
     The equations are written such that s_span(1) is not necessary 0
     
     - Span Integration weights  IW and IW_x 
@@ -150,8 +160,8 @@ def GKBeam(s_span, EI, ddU, bOrth=False):
     KK0[6:,6:] = Kgg
     return KK0
     
-def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False):
-    """
+def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False, method='trapz', U_untwisted=None):
+    r"""
     Computes generalized mass matrix for a beam.
     Eq.(2) from [1]
 
@@ -169,11 +179,50 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
      - U , if omitted, then rigid body (6x6) mass matrix is returned
      - split_outputs: if false (default) return MM, else returns Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
      - rot_terms : if True, outputs the rotational terms as well
-    
+     - method: 'trapz', 'Flex', 'OpenFAST' (see below)
+     - U_untwsited: untwisted shape functions, used with OpenFAST method only
+
+    OpenFAST method:
+      - s_span needs to be [0, np.arange(L/n/2, L, L./n), L]
+      - The values for indices 1:-1 represent "elements" (at mid points). 
+        First element extends from 0 to L/n, with mid point at L/n/2 
+      - Integrals are obtained using summations
+      - If provided, the untwisted spape functions "U_untwisted" is used for the mass matrix
+        Mgg. The twisted shape functions (likely in U) are used for the coupling terms Ct Cr
     """
+
+    # --- Sanity check on method
+    if method=='OpenFAST':
+        n = len(s_span)-2
+        L = s_span[-1]-s_span[0]
+        ds = L/n
+        dr = np.diff(s_span[1:-1])
+        vds = np.unique(np.around(dr,5))
+        dr = np.concatenate( (dr, [ds]))
+        melem = m[1:-1]*dr
+        if len(vds)>1:
+            raise Exception('When using `OpenFAST` method, the user should provide inputs at 0, L, and mid nodes similar to OpenFAST ElastoDYn nodes')
+        if vds[0]!=np.around(ds,5):
+            raise Exception('When using `OpenFAST` method, the mid nodes should have a spacing equal to L/n')
+        # We will only use the inner nodes ("elements")
+        U   = U[:,:,1:-1]
+        s_G = s_G[:,1:-1]
+        m      = m[1:-1]  # NOTE: temporary, m shouldn't me used with this method
+        s_span = s_span[1:-1]  # NOTE: temporary, m shouldn't me used with this method
+        if U_untwisted is not None:
+            U_untwisted = U_untwisted[:,:,1:-1]
+
+
+    elif method=='trapz':
+        pass
+    elif method=='Flex':
+        bUseIW=True
+    else:
+        raise NotImplementedError()
+
     # Speed up integration along the span, using integration weight
     def trapzs(yy,**args):
-        return np.sum(yy*IW)
+        return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
     if IW is None or IW_xm is None:
         IW,_,_,IW_xm=integrationWeights(s_span,m)
 
@@ -201,18 +250,26 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
                 VJ       = jxxG*V[j][2,:]
                 GMJxx[j] = trapzs(V[j][2,:]*VJ)
                 I_Jxx[j] = trapzs(VJ)
-            
 
     # --- Mxx
-    M = trapzs(m)
+    if method=='OpenFAST':
+        M = sum(melem)
+    else:
+        M = trapzs(m)
     Mxx = np.identity(3)*M
     #print('Mxx\n',Mxx)
 
     # --- Mxt = -\int [~s] dm    =  -Skew(sigma+Psi g)    Or: +/- Skew(mdCM)
-    C_x = trapzs(s_G[0,:]*m)
-    C_y = trapzs(s_G[1,:]*m)
-    C_z = trapzs(s_G[2,:]*m)
+    if method=='OpenFAST':
+        C_x = sum(s_G[0,:]*melem)
+        C_y = sum(s_G[1,:]*melem)
+        C_z = sum(s_G[2,:]*melem)
+    else:
+        C_x = trapzs(s_G[0,:]*m)
+        C_y = trapzs(s_G[1,:]*m)
+        C_z = trapzs(s_G[2,:]*m)
     Mxt = np.array([[0, C_z, -C_y],[-C_z, 0, C_x],[C_y, -C_x, 0]])
+
     if bAxialCorr:
         # TODO TODO TODO m15 and m16 may need to be additive!
         # --- Variables for axial correction
@@ -232,10 +289,16 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
     # --- Mxg = \int Phi dm     Or:  Psi , Ct^T
     Mxg      = np.zeros((3,nf))
-    for j in range(nf):
-        Mxg[0,j] = trapzs(U[j][0,:]*m)
-        Mxg[1,j] = trapzs(U[j][1,:]*m)
-        Mxg[2,j] = trapzs(U[j][2,:]*m)
+    if method == 'OpenFAST':
+        for j in range(nf):
+            Mxg[0,j] = sum(U[j][0,:]*melem)
+            Mxg[1,j] = sum(U[j][1,:]*melem)
+            Mxg[2,j] = sum(U[j][2,:]*melem)
+    else:
+        for j in range(nf):
+            Mxg[0,j] = trapzs(U[j][0,:]*m)
+            Mxg[1,j] = trapzs(U[j][1,:]*m)
+            Mxg[2,j] = trapzs(U[j][2,:]*m)
     if bAxialCorr:
         # TODO TODO TODO correction may need to be additive
         if (V_tot is not None) and (Peq_tot is not None):
@@ -259,33 +322,38 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #print('Mxg\n',Mxg)
         
     # --- Mtt = - \int [~s][~s] dm  - Or: J, Mrr
-    if main_axis=='x':
-        if bUseIW:
-            s00= np.sum(IW_xm * s_G[0,:]);
-            s01= np.sum(IW_xm * s_G[1,:]);
-            s02= np.sum(IW_xm * s_G[2,:]);
-        else:
+    if method=='OpenFAST':
+        s00 = sum((s_G[0,:]*s_G[0,:])*melem)
+        s01 = sum((s_G[0,:]*s_G[1,:])*melem)
+        s02 = sum((s_G[0,:]*s_G[2,:])*melem)
+        s11 = sum((s_G[1,:]*s_G[1,:])*melem)
+        s12 = sum((s_G[1,:]*s_G[2,:])*melem)
+        s22 = sum((s_G[2,:]*s_G[2,:])*melem)
+    else:
+        if main_axis=='x':
+            if bUseIW:
+                s00= np.sum(IW_xm * s_G[0,:]);
+                s01= np.sum(IW_xm * s_G[1,:]);
+                s02= np.sum(IW_xm * s_G[2,:]);
+            else:
+                s00 = trapzs(s_G[0,:]*s_G[0,:]*m)
+                s01 = trapzs(s_G[0,:]*s_G[1,:]*m)
+                s02 = trapzs(s_G[0,:]*s_G[2,:]*m)
+            s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
+            s12 = trapzs(s_G[1,:]*s_G[2,:]*m)
+            s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
+        elif main_axis=='z':
+            if bUseIW:
+                s02= np.sum(IW_xm * s_G[0,:]);
+                s12= np.sum(IW_xm * s_G[1,:]);
+                s22= np.sum(IW_xm * s_G[2,:]);
+            else:
+                s02 = trapzs(s_G[2,:]*s_G[0,:]*m)
+                s12 = trapzs(s_G[2,:]*s_G[1,:]*m)
+                s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
+            s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
             s00 = trapzs(s_G[0,:]*s_G[0,:]*m)
             s01 = trapzs(s_G[0,:]*s_G[1,:]*m)
-            s02 = trapzs(s_G[0,:]*s_G[2,:]*m)
-
-        s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
-        s12 = trapzs(s_G[1,:]*s_G[2,:]*m)
-        s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
-    elif main_axis=='z':
-        if bUseIW:
-            s02= np.sum(IW_xm * s_G[0,:]);
-            s12= np.sum(IW_xm * s_G[1,:]);
-            s22= np.sum(IW_xm * s_G[2,:]);
-        else:
-            s02 = trapzs(s_G[2,:]*s_G[0,:]*m)
-            s12 = trapzs(s_G[2,:]*s_G[1,:]*m)
-            s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
-
-        s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
-        s00 = trapzs(s_G[0,:]*s_G[0,:]*m)
-        s01 = trapzs(s_G[0,:]*s_G[1,:]*m)
-
     Mtt = np.zeros((3,3))
     Mtt[0,0] = s11 + s22    ;     Mtt[0,1] = -s01;       Mtt[0,2] = -s02
     Mtt[1,0] = -s01;              Mtt[1,1] = s00 + s22;  Mtt[1,2] = -s12
@@ -301,36 +369,49 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #      [ z  0 -x]
     #      [-y  x  0]
     Mtg      = np.zeros((3,nf))
-    if main_axis=='x':
-        if bUseIW:
+    if method=='OpenFAST':
+        for j in range(nf):
+            Mtg[0,j] = sum((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*melem)
+            Mtg[1,j] = sum(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*melem)
+            Mtg[2,j] = sum((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*melem)
+        pass
+    elif bUseIW:
+        if main_axis=='x':
             for j in range(nf):
-                Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m) + I_Jxx[j]
+                Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
                 Mtg[1,j] = trapzs(  (+s_G[2,:]*U[j][0,:]*m)) - sum(IW_xm*U[j][2,:]);
                 Mtg[2,j] = trapzs(  (-s_G[1,:]*U[j][0,:]*m)) + sum(IW_xm*U[j][1,:]);
-        else:
-            for j in range(nf):
-                Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m) + I_Jxx[j]
-                Mtg[1,j] = trapzs(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
-                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)
-    elif main_axis=='z':
-        if bUseIW:
+        elif main_axis=='z':
             for j in range(nf):
                 Mtg[0,j] = -sum(IW_xm*U[j][1,:])+trapzs((+ s_G[1,:]*U[j][2,:])*m) 
                 Mtg[1,j] =  sum(IW_xm*U[j][0,:])+trapzs((- s_G[0,:]*U[j][2,:])*m)
-                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:]   + s_G[0,:]*U[j][1,:])*m)+ I_Jxx[j]
-        else:
-            for j in range(nf):
-                Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m) 
-                Mtg[1,j] = trapzs(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
-                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)+ I_Jxx[j]
+                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:]   + s_G[0,:]*U[j][1,:])*m)
+    else:
+        for j in range(nf):
+            Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
+            Mtg[1,j] = trapzs(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
+            Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)
+    if main_axis=='x':
+        Mtg[0,:] +=I_Jxx[:]
+    elif main_axis=='z':
+        Mtg[2,:] +=I_Jxx[:]
 
     #print('Mtg\n',Mtg)
         
     # --- Mgg  = \int Phi^t Phi dm  =  Sum Upsilon_kl(i,i)  Or: Me
     Mgg = np.zeros((nf,nf))
-    for i in range(nf):
-        for j in range(nf):
-            Mgg[i,j] = trapzs((U[i][0,:]*U[j][0,:] + U[i][1,:]*U[j][1,:] + U[i][2,:]*U[j][2,:])*m)
+    if method=='OpenFAST':
+        if U_untwisted is not None:
+            U0=U_untwisted[:,:,:]
+        else:
+            U0=U[:,:,:]
+        for i in range(nf):
+            for j in range(nf): # NOTE: we could remove cross couplings here
+                Mgg[i,j] = sum((U0[i][0,:]*U0[j][0,:] + U0[i][1,:]*U0[j][1,:] + U0[i][2,:]*U0[j][2,:])*melem)
+    else:
+        for i in range(nf):
+            for j in range(nf):
+                Mgg[i,j] = trapzs((U[i][0,:]*U[j][0,:] + U[i][1,:]*U[j][1,:] + U[i][2,:]*U[j][2,:])*m)
 
     # Adding torsion contribution if any
     Mgg=Mgg+np.diag(GMJxx)
@@ -404,7 +485,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
 
 def beamSectionLoads1D(z, p, Ftop=0, Mtop=0, s=1, F_lumped=None, method='plin'):
-    """ 
+    r""" 
     Integrate section loads along a beam based on inline and lumped loads and top load.
 
     S(z) = int_z^L p(z') dz',   dS/dz = - p(z)
