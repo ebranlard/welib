@@ -324,25 +324,40 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
     #    KKg_Mtop= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=True,  bRot=False)
     #    KKg_rot = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=False, bRot=True)
     # ---
-    s_G0 = np.zeros((3, len(p['s_span'])))
-    s_G0[2,:] = p['s_span'] + rh 
-    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
+#     s_G0 = np.zeros((3, len(p['s_span'])))
+#     s_G0[2,:] = p['s_span'] + rh 
+#     MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
     #, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+    return p
+
+
+def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
+    """ Compute blade derived parameters, suitable for SID:
+      - Inertial matrices
+      - Stiffness matrices
+    The parameters are computed "by hand" (as opposed to using GMBeam)
+    NOTE: this function is mostly for debugging purposes. 
+          Use GMBeam with method='OpenFAST' instead
+    """
+
+    nq = 3
+    if inertiaAtBladeRoot:
+        rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
+    else:
+        rh = 0
 
     # --- Rigid mass matrix terms
     p['mdCM'] = np.zeros((3,3))
     p['mdCM'][1,0]=  sum(p['BElmntMass'][:]*(p['RNodes']+rh));
     p['mdCM'][0,1]= -sum(p['BElmntMass'][:]*(p['RNodes']+rh));
+    # TODO TODO
     #sid.md1_1_1_1= sum(squeeze(p.TwistedSF(1, 1, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
     #sid.md1_1_2_1= sum(squeeze(p.TwistedSF(1, 2, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
     #sid.md1_2_1_1= sum(squeeze(p.TwistedSF(1, 1, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
     #sid.md1_2_2_1= sum(squeeze(p.TwistedSF(1, 2, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
-
     p['J']    = np.zeros((3,3))
-    p['J'][0,0] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2) # TODO better integration
-    p['J'][1,1] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2) # TODO
-
-
+    p['J'][0,0] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2)
+    p['J'][1,1] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2)
     # --- Elastic matrices
     p['Ke'] = np.zeros((nq,nq))
     p['De'] = np.zeros((nq,nq))
@@ -406,47 +421,8 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
     Oe_M1_2_2_1= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + p['KBECent'][0,0];
     Oe_M1_2_2_2= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass']) + p['KBECent'][0,0];
     Oe_M1_2_2_4= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
-
-
-#     print('MM',MM[0,0])
-#     print('Ms',p['BldMass'])
-#     print('J\n',p['J'])
-#     print('J\n',MM[3:6,3:6])
-#     print('mdCM_GM\n',MM[3:6,0:3])
-#     print('mdCM_OF\n',p['mdCM'])
-#     print('me_GM\n',MM[6:,6:])
-#     print('me_OF\n',p['Me'])
-#     print('Ct_GM\n',MM[0:3,6:])
-#     print('Ct_OF\n',p['Ct'].T)
-#     print('Cr_GM\n',MM[3:6,6:])
-#     print('Cr_OF\n',p['Cr'].T)
-#     print('Oe6_GM\n',Oe6.T)
-
-
-
-    #for j in range(nf):
-    #    sxx = trapzs(s_G[0,:]*U[j][0,:]*m)
-    #    sxy = trapzs(s_G[0,:]*U[j][1,:]*m)
-    #    sxz = trapzs(s_G[0,:]*U[j][2,:]*m)
-    #    syx = trapzs(s_G[1,:]*U[j][0,:]*m)
-    #    syy = trapzs(s_G[1,:]*U[j][1,:]*m)
-    #    syz = trapzs(s_G[1,:]*U[j][2,:]*m)
-    #    szx = trapzs(s_G[2,:]*U[j][0,:]*m)
-    #    szy = trapzs(s_G[2,:]*U[j][1,:]*m)
-    #    szz = trapzs(s_G[2,:]*U[j][2,:]*m)
-    #    Gr[j][0,:] = 2*np.array([ syy+szz, -syx  , -szx     ])
-    #    Gr[j][1,:] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
-    #    Gr[j][2,:] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
-
-    #    Oe[j] = -0.5*Gr[j].T
-    #    Oe6[j][0] = Oe[j][0,0]
-    #    Oe6[j][1] = Oe[j][1,1]
-    #    Oe6[j][2] = Oe[j][2,2]
-    #    Oe6[j][3] = Oe[j][0,1] + Oe[j][1,0] 
-    #    Oe6[j][4] = Oe[j][1,2] + Oe[j][2,1]
-    #    Oe6[j][5] = Oe[j][0,2] + Oe[j][2,0]
-    #import pdb; pdb.set_trace()
     return p
+
 
 def towerParameters(EDfilename, gravity, RotMass=None):
     """

@@ -77,6 +77,71 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(p['FreqBE'][0,:], np.array([1.112056253877955, 1.112056253877955, 1.128488446907760]))
         np.testing.assert_almost_equal(p['CBE']   [0,0],91.32399596067735)
 
+	
+        # --------------------------------------------------------------------------------}
+        # --- Mass Matrix using GM or not
+        # --------------------------------------------------------------------------------{
+        from welib.yams.flexibility import GMBeam, GKBeam
+        # --- Twisted and untwisted shape functions
+        n = p['BldNodes']
+        nq=3
+        nNodes=n+2
+        p['Ut'] = np.zeros((nq, 3, nNodes))
+        p['Vt'] = np.zeros((nq, 3, nNodes))
+        p['Kt'] = np.zeros((nq, 3, nNodes))
+        p['U']  = np.zeros((nq, 3, nNodes))
+        p['V']  = np.zeros((nq, 3, nNodes))
+        p['K']  = np.zeros((nq, 3, nNodes))
+        for j,idir,name in zip(range(0,nq), (0,0,1), ('F1','F2','E1')): # direction is x, x, y
+            p['Ut'][j][0,:] = p['TwistedSF'][0, j, :, 0]  # x
+            p['Ut'][j][1,:] = p['TwistedSF'][1, j, :, 0]  # y
+            p['Vt'][j][0,:] = p['TwistedSF'][0, j, :, 1]  # x
+            p['Vt'][j][1,:] = p['TwistedSF'][1, j, :, 1]  # y
+            p['Kt'][j][0,:] = p['TwistedSF'][0, j, :, 2]  # x
+            p['Kt'][j][1,:] = p['TwistedSF'][1, j, :, 2]  # y
+            p['U'][j][idir,:]  = p['Shape'+name+'_full']  
+            p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
+            p['K'][j][idir,:]  = p['ddShape'+name+'_full']
+
+        # --- Calling GM Beam with OpenFAST method
+        inertiaAtBladeRoot=True # TODO for loop around that
+        if inertiaAtBladeRoot:
+            rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
+        else:
+            rh = 0
+        s_G0 = np.zeros((3, len(p['s_span'])))
+        s_G0[2,:] = p['s_span'] + rh 
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
+        #, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+
+        # --- Call bladeDerivedParameters for "manual" calculation
+        p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
+
+        print('MM',MM[0,0])
+        print('Ms',p['BldMass'])
+        print('J\n',p['J'])
+        print('J\n',MM[3:6,3:6])
+        print('mdCM_GM\n',MM[3:6,0:3])
+        print('mdCM_OF\n',p['mdCM'])
+        print('me_GM\n',MM[6:,6:])
+        print('me_OF\n',p['Me'])
+        print('Ct_GM\n',MM[0:3,6:])
+        print('Ct_OF\n',p['Ct'].T)
+        print('Cr_GM\n',MM[3:6,6:])
+        print('Cr_OF\n',p['Cr'].T)
+
+        # --- Compare both "manual" and GMBeam approach
+        np.testing.assert_almost_equal(MM[0,0,]           , p['BldMass'])
+        np.testing.assert_almost_equal(MM[3:6,3:6]       ,  p['J'])
+        np.testing.assert_almost_equal(MM[3:6,0:3]       ,  p['mdCM'])
+        np.testing.assert_almost_equal(np.diag(MM[6:,6:]),  np.diag(p['Me']))
+        np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
+        np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
+
+
+
+
+
 
     def test_ED_tower_params(self):
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')

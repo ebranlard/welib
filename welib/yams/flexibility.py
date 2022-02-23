@@ -207,8 +207,9 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         # We will only use the inner nodes ("elements")
         U   = U[:,:,1:-1]
         s_G = s_G[:,1:-1]
-        m      = m[1:-1]  # NOTE: temporary, m shouldn't me used with this method
+        #m      = m[1:-1]  # NOTE: temporary, m shouldn't me used with this method
         s_span = s_span[1:-1]  # NOTE: temporary, m shouldn't me used with this method
+        m = melem # Important Hack we replace m by melem
         if U_untwisted is not None:
             U_untwisted = U_untwisted[:,:,1:-1]
 
@@ -221,8 +222,12 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         raise NotImplementedError()
 
     # Speed up integration along the span, using integration weight
-    def trapzs(yy,**args):
-        return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
+    if method=='OpenFAST':
+        def trapzs(yy):
+            return np.sum(yy) 
+    else:
+        def trapzs(yy,**args):
+            return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
     if IW is None or IW_xm is None:
         IW,_,_,IW_xm=integrationWeights(s_span,m)
 
@@ -252,22 +257,14 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
                 I_Jxx[j] = trapzs(VJ)
 
     # --- Mxx
-    if method=='OpenFAST':
-        M = sum(melem)
-    else:
-        M = trapzs(m)
+    M = trapzs(m)
     Mxx = np.identity(3)*M
     #print('Mxx\n',Mxx)
 
     # --- Mxt = -\int [~s] dm    =  -Skew(sigma+Psi g)    Or: +/- Skew(mdCM)
-    if method=='OpenFAST':
-        C_x = sum(s_G[0,:]*melem)
-        C_y = sum(s_G[1,:]*melem)
-        C_z = sum(s_G[2,:]*melem)
-    else:
-        C_x = trapzs(s_G[0,:]*m)
-        C_y = trapzs(s_G[1,:]*m)
-        C_z = trapzs(s_G[2,:]*m)
+    C_x = trapzs(s_G[0,:]*m)
+    C_y = trapzs(s_G[1,:]*m)
+    C_z = trapzs(s_G[2,:]*m)
     Mxt = np.array([[0, C_z, -C_y],[-C_z, 0, C_x],[C_y, -C_x, 0]])
 
     if bAxialCorr:
@@ -289,17 +286,12 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
     # --- Mxg = \int Phi dm     Or:  Psi , Ct^T
     Mxg      = np.zeros((3,nf))
-    if method == 'OpenFAST':
-        for j in range(nf):
-            Mxg[0,j] = sum(U[j][0,:]*melem)
-            Mxg[1,j] = sum(U[j][1,:]*melem)
-            Mxg[2,j] = sum(U[j][2,:]*melem)
-    else:
-        for j in range(nf):
-            Mxg[0,j] = trapzs(U[j][0,:]*m)
-            Mxg[1,j] = trapzs(U[j][1,:]*m)
-            Mxg[2,j] = trapzs(U[j][2,:]*m)
+    for j in range(nf):
+        Mxg[0,j] = trapzs(U[j][0,:]*m)
+        Mxg[1,j] = trapzs(U[j][1,:]*m)
+        Mxg[2,j] = trapzs(U[j][2,:]*m)
     if bAxialCorr:
+        # NOTE: not implement with method OpenFAST for now
         # TODO TODO TODO correction may need to be additive
         if (V_tot is not None) and (Peq_tot is not None):
             raise Exception('Provide either V_tot or Peq_tot')
