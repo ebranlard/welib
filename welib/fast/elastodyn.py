@@ -55,9 +55,16 @@ def SHP(Fract, FlexL, ModShpAry, Deriv):
     return shp
 
 
-def rotorParameters(EDfilename):
+def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
     ED = FASTInputFile(EDfilename)
-    pbld=[bladeParameters(EDfilename, ibld+1) for ibld in  range(ED['NumBl'])]
+
+    if pbld1 is None:
+        if identicalBlades:
+            pbld = [bladeParameters(EDfilename, ibld+1)]*ED['NumBl']
+        else:
+            pbld=[bladeParameters(EDfilename, ibld+1) for ibld in  range(ED['NumBl'])]
+    else:
+        pbld = [pbld1]*ED['NumBl']
 
     p=dict()
     p['RotMass'] = sum([pbld[k]['BldMass'] for k in range(ED['NumBl'])])
@@ -90,6 +97,7 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     # --- 
     p=dict()
     BD4Blades = False
+    p['HubRad'] = ED['HubRad']
     p['BldNodes'] = ED['BldNodes']
     p['BldFlexL'] = ED['TipRad']- ED['HubRad'] # Length of the flexible portion of the blade.
     p['BldMass'] =0 
@@ -102,12 +110,16 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
 
     # --- Interpolate the blade properties to this discretization:
     p['RNodesNorm'] = p['RNodes']/p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
+    p['s_span'] = np.concatenate(([0], p['RNodesNorm'], [1]))*p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
     p['BlFract']= bldProp['BlFract_[-]'].values
     StrcTwst    = bldProp['StrcTwst_[deg]'].values
     p['ThetaS']  = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['StrcTwst_[deg]']) 
     p['MassB']   = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
     p['StiffBF'] = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
     p['StiffBE'] = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
+    p['m_full']    = np.interp(p['s_span'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
+    p['EI_F_full'] = np.interp(p['s_span'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
+    p['EI_E_full'] = np.interp(p['s_span'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
     p['ThetaS']  = np.concatenate( ([StrcTwst[0]], p['ThetaS'] , [StrcTwst[-1]]) )
     # Set the blade damping and stiffness tuner
     p['BldFDamp'] = [bld['BldFlDmp(1)'], bld['BldFlDmp(2)'] ]
@@ -313,6 +325,137 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
             for L in [0,1,2]:  # Loop through all blade DOFs
                 p['AxRedBld'][I,L,-1] = p['AxRedBld'][I,L,-2] + AxRdBldOld[I,L]
 
+
+    nq = 3
+    rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
+
+    # --- Shape functions
+    nNodes=n+2
+    p['U']=np.zeros((nq, 3, nNodes))
+    p['V']=np.zeros((nq, 3, nNodes))
+    p['K']=np.zeros((nq, 3, nNodes))
+    for j in range(0,nq):
+        p['U'][j][0,:] = p['TwistedSF'][0, j, :, 0]  # x
+        p['U'][j][1,:] = p['TwistedSF'][1, j, :, 0]  # y
+        p['V'][j][0,:] = p['TwistedSF'][0, j, :, 1]  # x
+        p['V'][j][1,:] = p['TwistedSF'][1, j, :, 1]  # y
+        p['K'][j][0,:] = p['TwistedSF'][0, j, :, 2]  # x
+        p['K'][j][1,:] = p['TwistedSF'][1, j, :, 2]  # y
+
+    from welib.yams.flexibility import GMBeam, GKBeam
+    # TODO TODO TODO
+    #MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+    #KK0 = GKBeam(s_span, EI, PhiK, bOrth=False)
+    #if bStiffening:
+    #    KKg     = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis)
+    #    KKg_self= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=True , bMtop=False, bRot=False)
+    #    KKg_Mtop= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=True,  bRot=False)
+    #    KKg_rot = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=False, bRot=True)
+    s_G0 = np.zeros((3, len(p['s_span'])))
+    s_G0[2,:] = p['s_span'] + rh # TODO hub radius option
+    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['U'], rot_terms=True) 
+    #, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+
+    # --- Rigid mass matrix terms
+    p['J']    = np.zeros((3,3))
+    p['mdCM'] = np.zeros((3,3))
+    p['mdCM'][2,0]= sum(p['BElmntMass'][:]*(p['RNodes']+rh));
+    #sid.md1_1_1_1= sum(squeeze(p.TwistedSF(1, 1, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
+    #sid.md1_1_2_1= sum(squeeze(p.TwistedSF(1, 2, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
+    #sid.md1_2_1_1= sum(squeeze(p.TwistedSF(1, 1, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
+    #sid.md1_2_2_1= sum(squeeze(p.TwistedSF(1, 2, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
+
+    p['J'][0,0] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2) # TODO better integration
+    p['J'][1,1] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2) # TODO
+
+
+    # --- Elastic matrices
+    p['Ke'] = np.zeros((nq,nq))
+    p['De'] = np.zeros((nq,nq))
+    p['Me'] = np.zeros((nq,nq))
+    # Me
+    p['Me'][0,0]= p['MBF'][0, 0]
+    p['Me'][0,1]= p['MBF'][0, 1]
+    p['Me'][1,0]= p['MBF'][1, 0]
+    p['Me'][1,1]= p['MBF'][1, 1]
+    p['Me'][2,2]= p['MBE'][0, 0]
+    # Ke
+    p['Ke'][0,0]= p['KBF'][0, 0]
+    p['Ke'][0,1]= p['KBF'][0, 1]
+    p['Ke'][1,0]= p['KBF'][1, 0]
+    p['Ke'][1,1]= p['KBF'][1, 1]
+    p['Ke'][2,2]= p['KBE'][0, 0]
+    # De
+    p['De'][0,0]= p['CBF'][0, 0]
+    p['De'][0,1]= p['CBF'][0, 1]
+    p['De'][1,0]= p['CBF'][1, 0]
+    p['De'][1,1]= p['CBF'][1, 1]
+    p['De'][2,2]= p['CBE'][0, 0]
+
+    # --- Elastic mass matrix terms
+    # Ct
+    p['Ct'] = np.zeros((nq,3))
+    p['Ct'][0,0] = sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, 0])*p['BElmntMass'][:])# 1st mode acceleration in x
+    p['Ct'][0,1] = sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, 0])*p['BElmntMass'][:])# 1st mode acceleration in y
+    p['Ct'][1,0] = sum(np.squeeze(p['TwistedSF'][0, 1, 1:-1, 0])*p['BElmntMass'][:])# 2nd mode acceleration in x
+    p['Ct'][1,1] = sum(np.squeeze(p['TwistedSF'][1, 1, 1:-1, 0])*p['BElmntMass'][:])# 2nd mode acceleration in y
+    p['Ct'][2,0] = sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, 0])*p['BElmntMass'][:])# 3nd mode acceleration in x
+    p['Ct'][2,1] = sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, 0])*p['BElmntMass'][:])# 3nd mode acceleration in y
+
+    # Cr
+    p['Cr'] = np.zeros((nq,3))
+    p['Cr'][0,0]= -sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][1, 0, 1:-1, 0])*p['BElmntMass'][:])# 1st mode acceleration about x axis (1) -> movement in negative y
+    p['Cr'][0,1]=  sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][0, 0, 1:-1, 0])*p['BElmntMass'][:])# 1st mode acceleration about y axis (2) -> movement in x
+    p['Cr'][1,0]= -sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][1, 1, 1:-1, 0])*p['BElmntMass'][:])# 2nd mode acceleration about x axis (1) -> movement in negative y
+    p['Cr'][1,1]=  sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][0, 1, 1:-1, 0])*p['BElmntMass'][:])# 2nd mode acceleration about y axis (2) -> movement in x
+    p['Cr'][2,0]= -sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][1, 2, 1:-1, 0])*p['BElmntMass'][:])# 3nd mode acceleration about x axis (1) -> movement in negative y
+    p['Cr'][2,1]=  sum((p['RNodes']+rh)*np.squeeze(p['TwistedSF'][0, 2, 1:-1, 0])*p['BElmntMass'][:])# 3nd mode acceleration about y axis (2) -> movement in x
+
+
+    # --- Oe,  Oe_j = \int [~Phi_j] [~s] = { \int [~s] [~Phi_j] }^t = -1/2 *(Gr_j)^t
+    # M0: nq x 6
+    # M1: nq x 6 x nq
+    #Oe = np.zeros((nf,3,3))
+    #Oe6= np.zeros((nf,6))
+    # TODO TODO TODO
+    # Below is for flap1 + edge1 not flap1 flap2 edge
+    # and ordering is nq x nq x 6
+    o=0 # derivative order 0=shape
+    Oe_M1_1_1_1= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass']) + p['KBFCent'][0, 0];
+    Oe_M1_1_1_2= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*p['BElmntMass']) + p['KBFCent'][0, 0];
+    Oe_M1_1_1_4= 2*sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_1_2_1= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_1_2_2= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_1_2_4=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_2_1_1= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_2_1_2= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_2_1_4=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+    Oe_M1_2_2_1= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + p['KBECent'][0,0];
+    Oe_M1_2_2_2= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass']) + p['KBECent'][0,0];
+    Oe_M1_2_2_4= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
+
+    #for j in range(nf):
+    #    sxx = trapzs(s_G[0,:]*U[j][0,:]*m)
+    #    sxy = trapzs(s_G[0,:]*U[j][1,:]*m)
+    #    sxz = trapzs(s_G[0,:]*U[j][2,:]*m)
+    #    syx = trapzs(s_G[1,:]*U[j][0,:]*m)
+    #    syy = trapzs(s_G[1,:]*U[j][1,:]*m)
+    #    syz = trapzs(s_G[1,:]*U[j][2,:]*m)
+    #    szx = trapzs(s_G[2,:]*U[j][0,:]*m)
+    #    szy = trapzs(s_G[2,:]*U[j][1,:]*m)
+    #    szz = trapzs(s_G[2,:]*U[j][2,:]*m)
+    #    Gr[j][0,:] = 2*np.array([ syy+szz, -syx  , -szx     ])
+    #    Gr[j][1,:] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
+    #    Gr[j][2,:] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
+
+    #    Oe[j] = -0.5*Gr[j].T
+    #    Oe6[j][0] = Oe[j][0,0]
+    #    Oe6[j][1] = Oe[j][1,1]
+    #    Oe6[j][2] = Oe[j][2,2]
+    #    Oe6[j][3] = Oe[j][0,1] + Oe[j][1,0] 
+    #    Oe6[j][4] = Oe[j][1,2] + Oe[j][2,1]
+    #    Oe6[j][5] = Oe[j][0,2] + Oe[j][2,0]
+    #import pdb; pdb.set_trace()
     return p
 
 def towerParameters(EDfilename, gravity, RotMass=None):
@@ -378,10 +521,10 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         p['MTSS'][I,I] = p['TwrTpMass'];
     nModesPerDir=2
     nDeriv =3
-    p['TwrFASF'] = np.zeros((nModesPerDir, n+2, nDeriv))
-    p['TwrSSSF'] = np.zeros((nModesPerDir, n+2, nDeriv))
-    p['AxRedTFA']= np.zeros((nModesPerDir, nModesPerDir, n+2))
-    p['AxRedTSS']= np.zeros((nModesPerDir, nModesPerDir, n+2))
+    p['TwrFASF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
+    p['TwrSSSF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
+    p['AxRedTFA']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
+    p['AxRedTSS']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
     p['KTFA']       = np.zeros((nModesPerDir, nModesPerDir))
     p['KTSS']       = np.zeros((nModesPerDir, nModesPerDir))
     p['KTFAGrav']   = np.zeros((nModesPerDir, nModesPerDir))

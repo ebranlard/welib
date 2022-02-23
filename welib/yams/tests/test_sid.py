@@ -11,7 +11,8 @@ MyDir=os.path.dirname(__file__)
 # --------------------------------------------------------------------------------{
 class Test(unittest.TestCase):
 
-    def test_fast2sid_twr(self):
+    def test_fast2sid_twr_FEM(self):
+        # Use FEM to determine SID
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
@@ -69,14 +70,11 @@ class Test(unittest.TestCase):
         except:
             pass
 
-
-
-
-    def test_fast2sid_bld(self):
+    def test_fast2sid_bld_FEM(self):
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        _, sid = FAST2SID(EDFile, Imodes_bld=[0,1])
+        _, sid = FAST2SID(EDFile, Imodes_bld=[0,1], method='FEM')
         with open('_OUT_SID_BLD_PY.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
         try:
@@ -84,7 +82,24 @@ class Test(unittest.TestCase):
         except:
             pass
 
+    def test_fast2sid_twr_OF(self):
+        Gravity = 9.80665
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        sid, _ = FAST2SID(EDFile, method='OpenFAST', gravity=Gravity, Imodes_twr=[0,1,2,3])
+        #with open('_OUT_SID_TWR_PY_OF.txt','w') as f:
+        #   f.write(str(sid).replace('-0.000000',' 0.000000'))
+
+    def test_fast2sid_bld_OF(self):
+        Gravity = 9.80665
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        _, sid = FAST2SID(EDFile, method='OpenFAST', gravity=Gravity, Imodes_bld=[0,1,2])
+
+        #with open('_OUT_SID_BLD_PY_OF.txt','w') as f:
+        #   f.write(str(sid).replace('-0.000000',' 0.000000'))
+
+
 if __name__=='__main__':
-    np.seterr(all='raise')
-    #Test().test_fast2sid_bld()
+    #np.seterr(all='raise')
+    #Test().test_fast2sid_bld_OF()
+    #Test().test_fast2sid_twr_OF()
     unittest.main()
