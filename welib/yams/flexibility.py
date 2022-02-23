@@ -160,7 +160,7 @@ def GKBeam(s_span, EI, ddU, bOrth=False):
     KK0[6:,6:] = Kgg
     return KK0
     
-def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False, method='trapz', U_untwisted=None):
+def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False, method='trapz', U_untwisted=None, M1=False):
     r"""
     Computes generalized mass matrix for a beam.
     Eq.(2) from [1]
@@ -210,8 +210,13 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         #m      = m[1:-1]  # NOTE: temporary, m shouldn't me used with this method
         s_span = s_span[1:-1]  # NOTE: temporary, m shouldn't me used with this method
         m = melem # Important Hack we replace m by melem
+        if jxxG is not None:
+            jxxG = jxxG[1:-1]*dr # Important Hack
         if U_untwisted is not None:
             U_untwisted = U_untwisted[:,:,1:-1]
+        if V is not None:
+            V = V[:,:,1:-1]
+        bUseIW=False
 
 
     elif method=='trapz':
@@ -221,11 +226,13 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     else:
         raise NotImplementedError()
 
-    # Speed up integration along the span, using integration weight
     if method=='OpenFAST':
+        # OpenFAST integration is simple mid-rule summation
+        # NOTE: yy is hacked to include "dr" in it already
         def trapzs(yy):
             return np.sum(yy) 
     else:
+        # Speed up integration along the span, using integration weight
         def trapzs(yy,**args):
             return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
     if IW is None or IW_xm is None:
@@ -314,38 +321,29 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #print('Mxg\n',Mxg)
         
     # --- Mtt = - \int [~s][~s] dm  - Or: J, Mrr
-    if method=='OpenFAST':
-        s00 = sum((s_G[0,:]*s_G[0,:])*melem)
-        s01 = sum((s_G[0,:]*s_G[1,:])*melem)
-        s02 = sum((s_G[0,:]*s_G[2,:])*melem)
-        s11 = sum((s_G[1,:]*s_G[1,:])*melem)
-        s12 = sum((s_G[1,:]*s_G[2,:])*melem)
-        s22 = sum((s_G[2,:]*s_G[2,:])*melem)
-    else:
+    if bUseIW:
         if main_axis=='x':
-            if bUseIW:
-                s00= np.sum(IW_xm * s_G[0,:]);
-                s01= np.sum(IW_xm * s_G[1,:]);
-                s02= np.sum(IW_xm * s_G[2,:]);
-            else:
-                s00 = trapzs(s_G[0,:]*s_G[0,:]*m)
-                s01 = trapzs(s_G[0,:]*s_G[1,:]*m)
-                s02 = trapzs(s_G[0,:]*s_G[2,:]*m)
+            s00= np.sum(IW_xm * s_G[0,:]);
+            s01= np.sum(IW_xm * s_G[1,:]);
+            s02= np.sum(IW_xm * s_G[2,:]);
             s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
             s12 = trapzs(s_G[1,:]*s_G[2,:]*m)
             s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
         elif main_axis=='z':
-            if bUseIW:
-                s02= np.sum(IW_xm * s_G[0,:]);
-                s12= np.sum(IW_xm * s_G[1,:]);
-                s22= np.sum(IW_xm * s_G[2,:]);
-            else:
-                s02 = trapzs(s_G[2,:]*s_G[0,:]*m)
-                s12 = trapzs(s_G[2,:]*s_G[1,:]*m)
-                s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
+            s02= np.sum(IW_xm * s_G[0,:]);
+            s12= np.sum(IW_xm * s_G[1,:]);
+            s22= np.sum(IW_xm * s_G[2,:]);
             s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
             s00 = trapzs(s_G[0,:]*s_G[0,:]*m)
             s01 = trapzs(s_G[0,:]*s_G[1,:]*m)
+    else:
+        # OpenFAST & trapz (unified via trapzs & m=melem)
+        s00 = trapzs(s_G[0,:]*s_G[0,:]*m)
+        s01 = trapzs(s_G[0,:]*s_G[1,:]*m)
+        s02 = trapzs(s_G[0,:]*s_G[2,:]*m)
+        s11 = trapzs(s_G[1,:]*s_G[1,:]*m)
+        s12 = trapzs(s_G[1,:]*s_G[2,:]*m)
+        s22 = trapzs(s_G[2,:]*s_G[2,:]*m)
     Mtt = np.zeros((3,3))
     Mtt[0,0] = s11 + s22    ;     Mtt[0,1] = -s01;       Mtt[0,2] = -s02
     Mtt[1,0] = -s01;              Mtt[1,1] = s00 + s22;  Mtt[1,2] = -s12
@@ -361,13 +359,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #      [ z  0 -x]
     #      [-y  x  0]
     Mtg      = np.zeros((3,nf))
-    if method=='OpenFAST':
-        for j in range(nf):
-            Mtg[0,j] = sum((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*melem)
-            Mtg[1,j] = sum(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*melem)
-            Mtg[2,j] = sum((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*melem)
-        pass
-    elif bUseIW:
+    if bUseIW:
         if main_axis=='x':
             for j in range(nf):
                 Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
@@ -379,6 +371,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
                 Mtg[1,j] =  sum(IW_xm*U[j][0,:])+trapzs((- s_G[0,:]*U[j][2,:])*m)
                 Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:]   + s_G[0,:]*U[j][1,:])*m)
     else:
+        # OpenFAST & trapz (unified via trapzs & m=melem)
         for j in range(nf):
             Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
             Mtg[1,j] = trapzs(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
@@ -392,18 +385,13 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         
     # --- Mgg  = \int Phi^t Phi dm  =  Sum Upsilon_kl(i,i)  Or: Me
     Mgg = np.zeros((nf,nf))
-    if method=='OpenFAST':
-        if U_untwisted is not None:
-            U0=U_untwisted[:,:,:]
-        else:
-            U0=U[:,:,:]
-        for i in range(nf):
-            for j in range(nf): # NOTE: we could remove cross couplings here
-                Mgg[i,j] = sum((U0[i][0,:]*U0[j][0,:] + U0[i][1,:]*U0[j][1,:] + U0[i][2,:]*U0[j][2,:])*melem)
+    if method=='OpenFAST' and U_untwisted is not None:
+        U0=U_untwisted[:,:,:]
     else:
-        for i in range(nf):
-            for j in range(nf):
-                Mgg[i,j] = trapzs((U[i][0,:]*U[j][0,:] + U[i][1,:]*U[j][1,:] + U[i][2,:]*U[j][2,:])*m)
+        U0=U[:,:,:]
+    for i in range(nf):
+        for j in range(nf): # NOTE: we could remove cross couplings here
+            Mgg[i,j] = trapzs((U0[i][0,:]*U0[j][0,:] + U0[i][1,:]*U0[j][1,:] + U0[i][2,:]*U0[j][2,:])*m)
 
     # Adding torsion contribution if any
     Mgg=Mgg+np.diag(GMJxx)
@@ -460,17 +448,58 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
             for k in range(nf):
                 Ge[j][k,0] = -2*( trapzs(U[k][1,:]*U[j][2,:]*m) - trapzs(U[k][2,:]*U[j][1,:]*m))
                 Ge[j][k,1] = -2*(-trapzs(U[k][0,:]*U[j][2,:]*m) + trapzs(U[k][2,:]*U[j][0,:]*m))
-                Ge[j][k,2] = -2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))
+                Ge[j][k,2] = -2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))	
 
+    # --- M1 terms
+    # Computing the M1 terms, this assumes that "s_G" is the undisplaced position!
+    # The displaced position for each dof l is then s_G+ U[l]q_l with q_l=1
+    if M1:
+        OeM1 = np.zeros((nf,3,3,nf))
+        Oe6M1= np.zeros((nf,6,nf))
+        GrM1 = np.zeros((nf,3,3)) # we do not really store all of them
+        for j in range(nf):
+            for l in range(nf):
+                sxx = trapzs((s_G[0,:]+U[l][0,:])*U[j][0,:]*m)
+                sxy = trapzs((s_G[0,:]+U[l][0,:])*U[j][1,:]*m)
+                sxz = trapzs((s_G[0,:]+U[l][0,:])*U[j][2,:]*m)
+                syx = trapzs((s_G[1,:]+U[l][1,:])*U[j][0,:]*m)
+                syy = trapzs((s_G[1,:]+U[l][1,:])*U[j][1,:]*m)
+                syz = trapzs((s_G[1,:]+U[l][1,:])*U[j][2,:]*m)
+                szx = trapzs((s_G[2,:]+U[l][2,:])*U[j][0,:]*m)
+                szy = trapzs((s_G[2,:]+U[l][2,:])*U[j][1,:]*m)
+                szz = trapzs((s_G[2,:]+U[l][2,:])*U[j][2,:]*m)
+                GrM1[j][0,:] = 2*np.array([ syy+szz, -syx  , -szx     ])
+                GrM1[j][1,:] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
+                GrM1[j][2,:] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
 
+                OeM1[j][l] = -0.5*GrM1[j].T
+                Oe6M1[j][0][l] = OeM1[j][l][0,0]
+                Oe6M1[j][1][l] = OeM1[j][l][1,1]
+                Oe6M1[j][2][l] = OeM1[j][l][2,2]
+                Oe6M1[j][3][l] = OeM1[j][l][0,1] + Oe[j][1,0]
+                Oe6M1[j][4][l] = OeM1[j][l][1,2] + Oe[j][2,1]
+                Oe6M1[j][5][l] = OeM1[j][l][0,2] + Oe[j][2,0]
+# --- TODO
+#         MxgM1      = np.zeros((3,nf,nf))
+#         for j in range(nf):
+#             for l in range(nf):
+#                 MxgM1[0,j,l] = trapzs(U[j][0,:]*m)
+#                 MxgM1[1,j,l] = trapzs(U[j][1,:]*m)
+#                 MxgM1[2,j,l] = trapzs(U[j][2,:]*m)
     if split_outputs:
         if rot_terms:
-            return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6
+            if M1:
+                return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6, Oe6M1
+            else:
+                return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6
         else:
             return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
     else:
         if rot_terms:
-            return MM, Gr, Ge, Oe, Oe6
+            if M1:
+                return MM, Gr, Ge, Oe, Oe6, Oe6M1
+            else:
+                return MM, Gr, Ge, Oe, Oe6
         else:
             return MM
 

@@ -111,24 +111,36 @@ class TestED(unittest.TestCase):
             rh = 0
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
+        MM, Gr, Ge, Oe, Oe6, Oe6M1 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
         #, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
 
         # --- Call bladeDerivedParameters for "manual" calculation
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
 
-        print('MM',MM[0,0])
-        print('Ms',p['BldMass'])
-        print('J\n',p['J'])
-        print('J\n',MM[3:6,3:6])
-        print('mdCM_GM\n',MM[3:6,0:3])
-        print('mdCM_OF\n',p['mdCM'])
-        print('me_GM\n',MM[6:,6:])
-        print('me_OF\n',p['Me'])
-        print('Ct_GM\n',MM[0:3,6:])
-        print('Ct_OF\n',p['Ct'].T)
-        print('Cr_GM\n',MM[3:6,6:])
-        print('Cr_OF\n',p['Cr'].T)
+        # --- TODOs
+        # - get rid of bUseIW
+        # - double check OeM1
+        # - compute mdCm M1
+        # - better interface for return arguments of GMBeam
+        # - Implement method "OpenFAST" for  GK beam
+        # - compute general centrifugal stiffening tersm in GMBeam
+        # - Simplify towerParameters
+        # - Update SID/ *parameters functions to use GM/GK beam
+
+#         print('MM',MM[0,0])
+#         print('Ms',p['BldMass'])
+#         print('J\n',p['J'])
+#         print('J\n',MM[3:6,3:6])
+#         print('mdCM_GM\n',MM[3:6,0:3])
+#         print('mdCM_OF\n',p['mdCM'])
+#         print('me_GM\n',MM[6:,6:])
+#         print('me_OF\n',p['Me'])
+#         print('Ct_GM\n',MM[0:3,6:])
+#         print('Ct_OF\n',p['Ct'].T)
+#         print('Cr_GM\n',MM[3:6,6:])
+#         print('Cr_OF\n',p['Cr'].T)
+#         print('OeM1_GM\n',Oe6M1)
+#         print('OeM1_OF\n',p['OeM1'])
 
         # --- Compare both "manual" and GMBeam approach
         np.testing.assert_almost_equal(MM[0,0,]           , p['BldMass'])
