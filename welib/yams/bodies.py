@@ -479,7 +479,7 @@ class BeamBody(FlexibleBody):
     def computeMassMatrix(B, s_G = None, inPlace=True):
         if s_G is None:
             s_G = B.s_G
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, bUseIW=True, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, method='Flex', main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
         if len(np.isnan(MM))>0:
             #print('>>> WARNING, some mass matrix values are nan, replacing with 0')
             MM[np.isnan(MM)]=0

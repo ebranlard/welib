@@ -112,13 +112,12 @@ class TestED(unittest.TestCase):
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
         MM, Gr, Ge, Oe, Oe6, Oe6M1 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
-        #, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+        #, jxxG=jxxG, method='Flex', main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
 
         # --- Call bladeDerivedParameters for "manual" calculation
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
 
         # --- TODOs
-        # - get rid of bUseIW
         # - double check OeM1
         # - compute mdCm M1
         # - better interface for return arguments of GMBeam

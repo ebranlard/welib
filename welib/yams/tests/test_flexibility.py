@@ -83,7 +83,7 @@ class Test(unittest.TestCase):
         # --- Testing for straight COG
         s_G      = np.zeros((3,nSpan))
         s_G[0,:] = x
-        MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
+        MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis='x') # Ref uses IW_xm
         KK = GKBeam(s_span, EI, PhiK)
 
         #np.testing.assert_equal(np.all(MDiff<1e-3),True)
@@ -96,7 +96,7 @@ class Test(unittest.TestCase):
         s_G[1,:] = x/20
         s_G[2,:] = x/10
         V_tot=PhiV[0]
-        MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x', V=PhiV, bAxialCorr=True,V_tot=V_tot) # Ref uses IW_xm
+        MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis='x', V=PhiV, bAxialCorr=True,V_tot=V_tot) # Ref uses IW_xm
         ##np.testing.assert_equal(np.all(MDiff<1e-3),True)
         np.testing.assert_allclose(MM,MM2_ref,rtol=1e-5)
         #np.testing.assert_allclose(KK[6:,6:],KKg_ref,rtol=1e-5)
@@ -145,9 +145,9 @@ class Test(unittest.TestCase):
         # --- Testing for straight COG
         s_span = z
         jxxG= z*0 + m # NOTE: unknown
-        #MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
-        Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=True, rot_terms=True)
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
+        #MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis='x') # Ref uses IW_xm
+        Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis=main_axis, split_outputs=True, rot_terms=True)
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis=main_axis, split_outputs=False, rot_terms=True)
         MM_ref=np.array( # NOTE: this is onshore tower
         [[ 3.474602316e+05,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.322633773e+07, -0.000000000e+00,  1.046938838e+05,  0.000000000e+00],
          [ 0.000000000e+00,  3.474602316e+05,  0.000000000e+00, -1.322633773e+07,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.046938838e+05],
@@ -218,7 +218,7 @@ class Test(unittest.TestCase):
         # --- Testing for straight COG
         s_span = z
         jxxG= z*0 + m # NOTE: unknown
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
+        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis=main_axis, split_outputs=False, rot_terms=True)
 
         MM_ref=np.array(
         [[ 1.684475202e+04,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  3.707069074e+05, -0.000000000e+00,  1.976263092e+03, -6.366476591e+00],

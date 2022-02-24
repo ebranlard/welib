@@ -160,7 +160,7 @@ def GKBeam(s_span, EI, ddU, bOrth=False):
     KK0[6:,6:] = Kgg
     return KK0
     
-def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', bUseIW=True, V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False, method='trapz', U_untwisted=None, M1=False):
+def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False, method='trapz', U_untwisted=None, M1=False):
     r"""
     Computes generalized mass matrix for a beam.
     Eq.(2) from [1]
@@ -216,13 +216,10 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
             U_untwisted = U_untwisted[:,:,1:-1]
         if V is not None:
             V = V[:,:,1:-1]
-        bUseIW=False
-
-
     elif method=='trapz':
         pass
     elif method=='Flex':
-        bUseIW=True
+        pass
     else:
         raise NotImplementedError()
 
@@ -321,7 +318,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #print('Mxg\n',Mxg)
         
     # --- Mtt = - \int [~s][~s] dm  - Or: J, Mrr
-    if bUseIW:
+    if method=='Flex':
         if main_axis=='x':
             s00= np.sum(IW_xm * s_G[0,:]);
             s01= np.sum(IW_xm * s_G[1,:]);
@@ -359,7 +356,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #      [ z  0 -x]
     #      [-y  x  0]
     Mtg      = np.zeros((3,nf))
-    if bUseIW:
+    if method=='Flex':
         if main_axis=='x':
             for j in range(nf):
                 Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
@@ -775,7 +772,7 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     KK=KK0+KKg
 
     # --- Generalized mass
-    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True, method='Flex')
 
     # Beam COG
     s_COG = np.trapz(m*s_G0,s_span)/MM[0,0]
