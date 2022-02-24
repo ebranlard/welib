@@ -401,28 +401,73 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
 
     # --- Oe,  Oe_j = \int [~Phi_j] [~s] = { \int [~s] [~Phi_j] }^t = -1/2 *(Gr_j)^t
     # M0: nq x 6
+    # Straight blade: Oe6_j= [0, 0, 0, 0, szy, szx]
+    p['Oe6'] = np.zeros((nq,6))
+    for j in np.arange(nq):
+        szx = sum((p['RNodes']+rh) * p['TwistedSF'][0, j, 1:-1, 0]*p['BElmntMass'])
+        szy = sum((p['RNodes']+rh) * p['TwistedSF'][1, j, 1:-1, 0]*p['BElmntMass'])
+        p['Oe6'][j,4] = szy
+        p['Oe6'][j,5] = szx
+
     # M1: nq x 6 x nq
     #Oe = np.zeros((nf,3,3))
     #Oe6= np.zeros((nf,6))
-    # TODO TODO TODO
-    # Below is for flap1 + edge1 not flap1 flap2 edge
-    # and ordering is nq x nq x 6
     o=0 # derivative order 0=shape
     OeM1 = np.zeros((nq,6,nq))
-    OeM1[0,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
-    OeM1[0,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*p['BElmntMass'])
-    OeM1[0,3,0]= 2*sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
-    OeM1[0,0,2]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[0,1,2]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[0,3,2]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[2,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[2,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[2,3,0]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[2,0,2]= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[2,1,2]= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-    OeM1[2,3,2]= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
+    SS=np.zeros((nq,nq,3,3))
+    for j in np.arange(nq):
+        for k in np.arange(nq):
+            s=np.zeros((3,3))
+            for i1 in [0,1]: # NOTE: z,2 is 0
+                for i2 in [0,1]: # NOTE: z,2 is 0
+                    s[i1,i2] = sum(np.squeeze(p['TwistedSF'][i1, k, 1:-1, o])*np.squeeze(p['TwistedSF'][i2, j, 1:-1, o])*p['BElmntMass'])
+            SS[j,k,:,:]=s
+            #Oe6_j=  [       -(syy+szz),        -(sxx+szz),       -(sxx+syy),       sxy+syx,        syz+szy,    sxz+szx] 
+            OeM1[j,:,k] = [-(s[1,1]+s[2,2]), -(s[0,0]+s[2,2]), -(s[0,0]+s[1,1]), s[0,1]+s[1,0], s[1,2]+s[2,1], s[0,2]+s[2,0] ]
+    p['SSM1']=SS
+
+#     OeM1[0,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,3,0]= 2*sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
+# 
+#     OeM1[0,0,2]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,1,2]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,3,2]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+# 
+#     OeM1[2,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[2,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[2,3,0]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+# 
+#     OeM1[2,0,2]= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[2,1,2]= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[2,3,2]= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
+# 
+#     nq=2
+#     OeM1 = np.zeros((nq,6,nq))
+#     OeM1[0,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,3,0]= 2*sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
+# 
+#     #                                           xy  k                                     xy j
+#     OeM1[0,0,1]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,1,1]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     T1= sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     T2= sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[0,3,1]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     print('T1',T1)
+#     print('T2',T2)
+# 
+#     OeM1[1,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[1,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[1,3,0]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[1,0,1]= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[1,1,1]= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
+#     OeM1[1,3,1]= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
 
     # Centrifugal stiffening
+    # TODO TODO
+    # TODO TODO TODO
+    # Below is for flap1 + edge1 not flap1 flap2 edge
     OeM1g = np.zeros((nq,6,nq))
     OeM1g[0,0,0]= p['KBFCent'][0,0];
     OeM1g[0,1,0]= p['KBFCent'][0,0];

@@ -103,6 +103,26 @@ class TestED(unittest.TestCase):
             p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
             p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
+#         nq=2
+#         nNodes=n+2
+#         p['Ut'] = np.zeros((nq, 3, nNodes))
+#         p['Vt'] = np.zeros((nq, 3, nNodes))
+#         p['Kt'] = np.zeros((nq, 3, nNodes))
+#         p['U']  = np.zeros((nq, 3, nNodes))
+#         p['V']  = np.zeros((nq, 3, nNodes))
+#         p['K']  = np.zeros((nq, 3, nNodes))
+#         for j,jj,idir,name in zip(range(0,nq), (0,2), (0,1), ('F1','E1')): # direction is x, x, y
+#             p['Ut'][j][0,:] = p['TwistedSF'][0, jj, :, 0]  # x
+#             p['Ut'][j][1,:] = p['TwistedSF'][1, jj, :, 0]  # y
+#             p['Vt'][j][0,:] = p['TwistedSF'][0, jj, :, 1]  # x
+#             p['Vt'][j][1,:] = p['TwistedSF'][1, jj, :, 1]  # y
+#             p['Kt'][j][0,:] = p['TwistedSF'][0, jj, :, 2]  # x
+#             p['Kt'][j][1,:] = p['TwistedSF'][1, jj, :, 2]  # y
+#             p['U'][j][idir,:]  = p['Shape'+name+'_full']  
+#             p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
+#             p['K'][j][idir,:]  = p['ddShape'+name+'_full']
+
+
         # --- Calling GM Beam with OpenFAST method
         inertiaAtBladeRoot=True # TODO for loop around that
         if inertiaAtBladeRoot:
@@ -112,13 +132,15 @@ class TestED(unittest.TestCase):
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+        #MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
         Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+
 
         # --- Call bladeDerivedParameters for "manual" calculation
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
 
         # --- TODOs
-        # - double check OeM1
+        # - check inertia At Blade Root
         # - compute mdCm M1
         # - Implement method "OpenFAST" for  GK beam
         # - compute general centrifugal stiffening tersm in GMBeam
@@ -137,8 +159,33 @@ class TestED(unittest.TestCase):
 #         print('Ct_OF\n',p['Ct'].T)
 #         print('Cr_GM\n',MM[3:6,6:])
 #         print('Cr_OF\n',p['Cr'].T)
-#         print('OeM1_GM\n',Oe6M1)
+#         print('OeM1_GM\n',IT['Oe6M1'])
 #         print('OeM1_OF\n',p['OeM1'])
+#         for j in np.arange(nq):
+#             for l in np.arange(nq):
+#                 print('')
+#                 print('OeM1_GM {} {}\n'.format(j,l),'      {:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}'.format(*IT['Oe6M1'][j,:,l]))
+#                 print('OeM1_OF {} {}\n'.format(j,l),'      {:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}'.format(* p['OeM1'] [j,:,l]))
+
+#         for j in np.arange(nq):
+#             for l in np.arange(nq):
+#                 print('')
+#                 print('SSM1_GM {} {}\n'.format(j,l),IT['SSM1'][j,l,:,:])
+#                 print('SSM1_OF {} {}\n'.format(j,l), p['SSM1'][j,l,:,:])
+#                 print('SSM1_OF {} {}\n'.format(j,l),IT['SSM1'][j,l,:,:]-p['SSM1'][j,l,:,:])
+
+#         for j in np.arange(nq):
+#             print('')
+#             print('Gr {}\n'.format(j), Gr[j])
+
+        #for j in np.arange(nq):
+        #    print('')
+        #    print('Oe GM{}\n'.format(j), Oe[j])
+        #    #print('Oe OF{}\n'.format(j), p['Oe'][j])
+#         for j in np.arange(nq):
+#             print('')
+#             print('Oe6 GM{}\n'.format(j), Oe6[j])
+#             print('Oe6 OF{}\n'.format(j), p['Oe6'][j])
 
         # --- Compare both "manual" and GMBeam approach
         np.testing.assert_almost_equal(MM[0,0,]           , p['BldMass'])

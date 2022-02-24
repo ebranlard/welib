@@ -419,6 +419,41 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     # --- Additional shape functions
     if rot_terms:
         # --- Gr_j = - 2*\int [~s] [~Phi_j]
+        #        [ 0  -z   y ]
+        # [s~] = [ z   0   x ]
+        #        [-y   x   0 ]
+        # 
+        #           [ syy+szz, -syx  , -szx     ]
+        #  Gr_j =  2[ -sxy   ,sxx+szz, -szy     ]
+        #           [ -sxz   , -syz  , sxx+syy  ]
+        #
+        #           [-(syy+szz),    sxy    , sxz      ]
+        #  Oe_j =   [   syx    ,-(sxx+szz), syz     ]
+        #           [   szx    ,    szy   ,-(sxx+syy) ]
+        #           
+        #  Oe6_j=  [-(syy+szz), -(sxx+szz), -(sxx+syy), sxy+syx, syz+szy, sxz+szx] 
+        #
+        # NOTE: for a straight blade along z:
+        #     s_Gx=0 (so sxx,sxy,sxz=0), 
+        #     s_Gy=0 (so syx,syy,syz=0) 
+        #     and no axial deflection Uz=0  (sxz,syz szz=0)
+        #        
+        #          [ 0   0  -szx ]
+        #  Gr_j = 2[ 0   0  -szy ]
+        #          [ 0   0   0   ]
+        # 
+        #          [ 0   0     0 ]
+        #  Oe_j =  [ 0   0     0 ]
+        #          [ szx szy   0 ]
+        # 
+        #  Oe6_j= [0, 0, 0, 0, szy, szx]
+        # 
+        # NOTE: for M1 we use s=Uj, then for a straight blade along z:
+        #           we mostly have Uz=0 (now meaning: szx, szy, szz=0 and sxz,syz,szz=0)
+        # 
+        #  Oe6_j=  [-syy, -sxx, -(sxx+syy), sxy+syx, 0, 0] 
+        # 
+        # 
         Gr = np.zeros((nf,3,3))
 
         # --- Oe_j = \int [~Phi_j] [~s] = { \int [~s] [~Phi_j] }^t = -1/2 *(Gr_j)^t
@@ -464,39 +499,49 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     # Computing the M1 terms, this assumes that "s_G" is the undisplaced position!
     # The displaced position for each dof l is then s_G+ U[l]q_l with q_l=1
     if M1:
+        print('nf',nf)
         OeM1 = np.zeros((nf,3,3,nf))
         Oe6M1= np.zeros((nf,6,nf))
         GrM1 = np.zeros((nf,3,3)) # we do not really store all of them
+        SSM1=np.zeros((nf,nf,3,3))
         for j in range(nf):
             for l in range(nf):
-                sxx = trapzs((s_G[0,:]+U[l][0,:])*U[j][0,:]*m)
-                sxy = trapzs((s_G[0,:]+U[l][0,:])*U[j][1,:]*m)
-                sxz = trapzs((s_G[0,:]+U[l][0,:])*U[j][2,:]*m)
-                syx = trapzs((s_G[1,:]+U[l][1,:])*U[j][0,:]*m)
-                syy = trapzs((s_G[1,:]+U[l][1,:])*U[j][1,:]*m)
-                syz = trapzs((s_G[1,:]+U[l][1,:])*U[j][2,:]*m)
-                szx = trapzs((s_G[2,:]+U[l][2,:])*U[j][0,:]*m)
-                szy = trapzs((s_G[2,:]+U[l][2,:])*U[j][1,:]*m)
-                szz = trapzs((s_G[2,:]+U[l][2,:])*U[j][2,:]*m)
+                # NOTE: we remove s_G as this is second order effect, and we would need Phi1
+                # Look at Wallrap 1993
+                sxx = trapzs((         U[l][0,:])*U[j][0,:]*m)
+                sxy = trapzs((         U[l][0,:])*U[j][1,:]*m)
+                sxz = trapzs((         U[l][0,:])*U[j][2,:]*m)
+                syx = trapzs((         U[l][1,:])*U[j][0,:]*m)
+                syy = trapzs((         U[l][1,:])*U[j][1,:]*m)
+                syz = trapzs((         U[l][1,:])*U[j][2,:]*m)
+                szx = trapzs((         U[l][2,:])*U[j][0,:]*m)
+                szy = trapzs((         U[l][2,:])*U[j][1,:]*m)
+                szz = trapzs((         U[l][2,:])*U[j][2,:]*m)
+                s=np.array([[ sxx, sxy, sxz], [ syx, syy, syz], [ szx, szy, szz]])
+                SSM1[j,l,:,:] = s
+
                 GrM1[j][0,:] = 2*np.array([ syy+szz, -syx  , -szx     ])
                 GrM1[j][1,:] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
                 GrM1[j][2,:] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
 
-                OeM1[j][l] = -0.5*GrM1[j].T
-                Oe6M1[j][0][l] = OeM1[j][l][0,0]
-                Oe6M1[j][1][l] = OeM1[j][l][1,1]
-                Oe6M1[j][2][l] = OeM1[j][l][2,2]
-                Oe6M1[j][3][l] = OeM1[j][l][0,1] + Oe[j][1,0]
-                Oe6M1[j][4][l] = OeM1[j][l][1,2] + Oe[j][2,1]
-                Oe6M1[j][5][l] = OeM1[j][l][0,2] + Oe[j][2,0]
-# --- TODO
-#         MxgM1      = np.zeros((3,nf,nf))
-#         for j in range(nf):
-#             for l in range(nf):
-#                 MxgM1[0,j,l] = trapzs(U[j][0,:]*m)
-#                 MxgM1[1,j,l] = trapzs(U[j][1,:]*m)
-#                 MxgM1[2,j,l] = trapzs(U[j][2,:]*m)
-        IT['Oe6M1']  = Oe6M1
+                OeM1[j,:,:,l] = -0.5*GrM1[j].T
+                Oe6M1[j,0,l] = OeM1[j,0,0,l]
+                Oe6M1[j,1,l] = OeM1[j,1,1,l]
+                Oe6M1[j,2,l] = OeM1[j,2,2,l]
+                Oe6M1[j,3,l] = OeM1[j,0,1,l] + OeM1[j,1,0,l]
+                Oe6M1[j,4,l] = OeM1[j,1,2,l] + OeM1[j,2,1,l]
+                Oe6M1[j,5,l] = OeM1[j,0,2,l] + OeM1[j,2,0,l]
+#                 Oe6M1[j,:,l] = [-(s[1,1]+s[2,2]), -(s[0,0]+s[2,2]), -(s[0,0]+s[1,1]), s[0,1]+s[1,0], s[1,2]+s[2,1], s[0,2]+s[2,0] ]
+        
+        MxgM1 = np.zeros((3,nf,nf))
+        for j in range(nf):
+            for l in range(nf):
+                MxgM1[0,j,l] = trapzs(U[j][0,:]*m)
+                MxgM1[1,j,l] = trapzs(U[j][1,:]*m)
+                MxgM1[2,j,l] = trapzs(U[j][2,:]*m)
+        IT['Oe6M1'] = Oe6M1
+        IT['SSM1']  = SSM1
+        IT['MxgM1'] = MxgM1
 
     return MM, IT
 
