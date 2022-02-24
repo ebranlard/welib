@@ -111,8 +111,8 @@ class TestED(unittest.TestCase):
             rh = 0
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
-        MM, Gr, Ge, Oe, Oe6, Oe6M1 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
-        #, jxxG=jxxG, method='Flex', main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True)
+        MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+        Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
         # --- Call bladeDerivedParameters for "manual" calculation
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
@@ -120,7 +120,6 @@ class TestED(unittest.TestCase):
         # --- TODOs
         # - double check OeM1
         # - compute mdCm M1
-        # - better interface for return arguments of GMBeam
         # - Implement method "OpenFAST" for  GK beam
         # - compute general centrifugal stiffening tersm in GMBeam
         # - Simplify towerParameters

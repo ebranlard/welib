@@ -326,7 +326,7 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
     # ---
 #     s_G0 = np.zeros((3, len(p['s_span'])))
 #     s_G0[2,:] = p['s_span'] + rh 
-#     MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
+#     MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
     return p
 
 

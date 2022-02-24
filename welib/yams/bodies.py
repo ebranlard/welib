@@ -460,18 +460,21 @@ class BeamBody(FlexibleBody):
         for j in np.arange(B.nf):
             # Positive perturbation
             qe  = np.zeros(B.nf); qe[j]=+delta; B.updateFlexibleKinematics(qe,qep)
-            MMp, Grp, Gep, Oep, Oe6p = B.computeMassMatrix(s_G=B.s_G, inPlace=False)
+            MMp, ITp = B.computeMassMatrix(s_G=B.s_G, inPlace=False)
             # Negative perturbation
             qe  = np.zeros(B.nf); qe[j]=-delta; B.updateFlexibleKinematics(qe,qep)
-            MMm, Grm, Gem, Oem, Oe6m = B.computeMassMatrix(s_G=B.s_G, inPlace=False)
+            MMm, ITm = B.computeMassMatrix(s_G=B.s_G, inPlace=False)
             # Derivative
-            MM, Gr, Ge, Oe, Oe6 = (MMp-MMm)/(2*delta), (Grp-Grm)/(2*delta), (Gep-Gem)/(2*delta), (Oep-Oem)/(2*delta), (Oe6p-Oe6m)/(2*delta)
+            ITd = dict()
+            for k in ['Gr','Ge','Oe','Oe6']:
+                ITd[k] = (ITp[k]-ITm[k])/(2*delta)
+            MM = (MMp-MMm)/(2*delta)
             # Store in object
             B.MM1.append(MM)
-            B.Gr1.append(Gr)
-            B.Ge1.append(Ge)
-            B.Oe1.append(Oe)
-            B.Oe61.append(Oe6)
+            B.Gr1.append (ITd['Gr'])
+            B.Ge1.append (ITd['Ge'])
+            B.Oe1.append (ITd['Oe'])
+            B.Oe61.append(ITd['Oe6'])
         # Revert back 
         B.s_G = s_G_bkp
 
@@ -479,13 +482,13 @@ class BeamBody(FlexibleBody):
     def computeMassMatrix(B, s_G = None, inPlace=True):
         if s_G is None:
             s_G = B.s_G
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, method='Flex', main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
+        MM, IT = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, method='Flex', main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
         if len(np.isnan(MM))>0:
             #print('>>> WARNING, some mass matrix values are nan, replacing with 0')
             MM[np.isnan(MM)]=0
         if inPlace:
-            B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = MM, Gr, Ge, Oe, Oe6
-        return MM, Gr, Ge, Oe, Oe6
+            B.MM, B.Gr, B.Ge, B.Oe, B.Oe6 = MM, IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+        return MM, IT
 
 
     @property

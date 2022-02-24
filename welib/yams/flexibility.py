@@ -160,7 +160,7 @@ def GKBeam(s_span, EI, ddU, bOrth=False):
     KK0[6:,6:] = Kgg
     return KK0
     
-def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', V_tot=None, Peq_tot=None, split_outputs=False, rot_terms=False, method='trapz', U_untwisted=None, M1=False):
+def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', V_tot=None, Peq_tot=None, rot_terms=False, method='trapz', U_untwisted=None, M1=False):
     r"""
     Computes generalized mass matrix for a beam.
     Eq.(2) from [1]
@@ -177,7 +177,6 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
      - jxxG   : [kg.m] second moment of inertia of cross section # TODO
      - bOrth : if true, enforce orthogonality of modes
      - U , if omitted, then rigid body (6x6) mass matrix is returned
-     - split_outputs: if false (default) return MM, else returns Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
      - rot_terms : if True, outputs the rotational terms as well
      - method: 'trapz', 'Flex', 'OpenFAST' (see below)
      - U_untwsited: untwisted shape functions, used with OpenFAST method only
@@ -189,6 +188,9 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
       - Integrals are obtained using summations
       - If provided, the untwisted spape functions "U_untwisted" is used for the mass matrix
         Mgg. The twisted shape functions (likely in U) are used for the coupling terms Ct Cr
+    OUTPUTS:
+      - MM: generalized mass matrix
+      - IT: dictionary containing inertial terms
     """
 
     # --- Sanity check on method
@@ -406,6 +408,13 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     MM[i_lower] = MM.T[i_lower]
 
 
+    IT=dict()
+    IT['Mxx'] = Mxx
+    IT['Mtt'] = Mtt
+    IT['Mxt'] = Mxt
+    IT['Mtg'] = Mtg
+    IT['Mxg'] = Mxg
+    IT['Mgg'] = Mgg
 
     # --- Additional shape functions
     if rot_terms:
@@ -446,6 +455,10 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
                 Ge[j][k,0] = -2*( trapzs(U[k][1,:]*U[j][2,:]*m) - trapzs(U[k][2,:]*U[j][1,:]*m))
                 Ge[j][k,1] = -2*(-trapzs(U[k][0,:]*U[j][2,:]*m) + trapzs(U[k][2,:]*U[j][0,:]*m))
                 Ge[j][k,2] = -2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))	
+        IT['Ge']  = Ge
+        IT['Gr']  = Gr
+        IT['Oe']  = Oe
+        IT['Oe6'] = Oe6
 
     # --- M1 terms
     # Computing the M1 terms, this assumes that "s_G" is the undisplaced position!
@@ -483,22 +496,9 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 #                 MxgM1[0,j,l] = trapzs(U[j][0,:]*m)
 #                 MxgM1[1,j,l] = trapzs(U[j][1,:]*m)
 #                 MxgM1[2,j,l] = trapzs(U[j][2,:]*m)
-    if split_outputs:
-        if rot_terms:
-            if M1:
-                return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6, Oe6M1
-            else:
-                return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6
-        else:
-            return Mxx, Mtt, Mxt, Mtg, Mxg, Mgg
-    else:
-        if rot_terms:
-            if M1:
-                return MM, Gr, Ge, Oe, Oe6, Oe6M1
-            else:
-                return MM, Gr, Ge, Oe, Oe6
-        else:
-            return MM
+        IT['Oe6M1']  = Oe6M1
+
+    return MM, IT
 
 
 
@@ -772,7 +772,8 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     KK=KK0+KKg
 
     # --- Generalized mass
-    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True, method='Flex')
+    MM, IT = GMBeam(s_G0, s_span, m, PhiU, jxxG=jxxG, main_axis=main_axis, bAxialCorr=bAxialCorr, bOrth=False, rot_terms=True, method='Flex')
+    Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
     # Beam COG
     s_COG = np.trapz(m*s_G0,s_span)/MM[0,0]
