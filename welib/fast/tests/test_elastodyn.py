@@ -3,6 +3,7 @@ import os
 import unittest
 import numpy as np
 from welib.fast.elastodyn import *
+from welib.yams.utils import skew
 
 MyDir=os.path.dirname(__file__)
 
@@ -139,18 +140,15 @@ class TestED(unittest.TestCase):
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
 
         # --- TODOs
-        # - check inertia At Blade Root
-        # - compute mdCm M1
         # - Implement method "OpenFAST" for  GK beam
         # - compute general centrifugal stiffening tersm in GMBeam
         # - Update SID/ *parameters functions to use GM/GK beam
-
 #         print('MM',MM[0,0])
 #         print('Ms',p['BldMass'])
 #         print('J\n',p['J'])
 #         print('J\n',MM[3:6,3:6])
 #         print('mdCM_GM\n',MM[3:6,0:3])
-#         print('mdCM_OF\n',p['mdCM'])
+#         print('mdCM_OF\n',-skew(p['mdCM']))
 #         print('me_GM\n',MM[6:,6:])
 #         print('me_OF\n',p['Me'])
 #         print('Ct_GM\n',MM[0:3,6:])
@@ -160,42 +158,48 @@ class TestED(unittest.TestCase):
 #         print('OeM1_GM\n',IT['Oe6M1'])
 #         print('OeM1_OF\n',p['OeM1'])
 #         for j in np.arange(nq):
-#             for l in np.arange(nq):
-#                 print('')
-#                 print('OeM1_GM {} {}\n'.format(j,l),'      {:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}'.format(*IT['Oe6M1'][j,:,l]))
-#                 print('OeM1_OF {} {}\n'.format(j,l),'      {:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}{:12.3f}'.format(* p['OeM1'] [j,:,l]))
-
-#         for j in np.arange(nq):
-#             for l in np.arange(nq):
-#                 print('')
-#                 print('SSM1_GM {} {}\n'.format(j,l),IT['SSM1'][j,l,:,:])
-#                 print('SSM1_OF {} {}\n'.format(j,l), p['SSM1'][j,l,:,:])
-#                 print('SSM1_OF {} {}\n'.format(j,l),IT['SSM1'][j,l,:,:]-p['SSM1'][j,l,:,:])
-
-#         for j in np.arange(nq):
-#             print('')
-#             print('Gr {}\n'.format(j), Gr[j])
-
-        #for j in np.arange(nq):
-        #    print('')
-        #    print('Oe GM{}\n'.format(j), Oe[j])
-        #    #print('Oe OF{}\n'.format(j), p['Oe'][j])
-#         for j in np.arange(nq):
 #             print('')
 #             print('Oe6 GM{}\n'.format(j), Oe6[j])
 #             print('Oe6 OF{}\n'.format(j), p['Oe6'][j])
-
+        #for j in np.arange(nq):
+        #    print('')
+        #    print('mdCM1_GM {}\n'.format(j),IT['mdCM1'][:,j])
+        #    print('mdCM1_OF {}\n'.format(j), p['mdCM1'][:,j])
         # --- Compare both "manual" and GMBeam approach
         np.testing.assert_almost_equal(MM[0,0,]           , p['BldMass'])
         np.testing.assert_almost_equal(MM[3:6,3:6]       ,  p['J'])
-        np.testing.assert_almost_equal(MM[3:6,0:3]       ,  p['mdCM'])
+        np.testing.assert_almost_equal(MM[3:6,0:3]       ,  skew(p['mdCM']))
         np.testing.assert_almost_equal(np.diag(MM[6:,6:]),  np.diag(p['Me']))
         np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
         np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
         np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
+        np.testing.assert_almost_equal(IT['mdCM1'], p['mdCM1'])
 
 
-
+        # --------------------------------------------------------------------------------}
+        # --- Using inertia at rotor center
+        # --------------------------------------------------------------------------------{
+        # --- Calling GM Beam with OpenFAST method
+        inertiaAtBladeRoot=False
+        if inertiaAtBladeRoot:
+            rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
+        else:
+            rh = 0
+        s_G0 = np.zeros((3, len(p['s_span'])))
+        s_G0[2,:] = p['s_span'] + rh 
+        MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+        Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+        # --- Call bladeDerivedParameters for "manual" calculation
+        p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
+        # --- Compare both "manual" and GMBeam approach
+        np.testing.assert_almost_equal(MM[0,0,]           , p['BldMass'])
+        np.testing.assert_almost_equal(MM[3:6,3:6]       ,  p['J'])
+        np.testing.assert_almost_equal(MM[3:6,0:3]       ,  skew(p['mdCM']))
+        np.testing.assert_almost_equal(np.diag(MM[6:,6:]),  np.diag(p['Me']))
+        np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
+        np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
+        np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
+        np.testing.assert_almost_equal(IT['mdCM1'], p['mdCM1'])
 
 
 
@@ -231,7 +235,7 @@ class TestED(unittest.TestCase):
         # --- Mass Matrix using GM or not
         # --------------------------------------------------------------------------------{
         from welib.yams.flexibility import GMBeam, GKBeam
-        # --- Twisted and untwisted shape functions
+        # ---  Shape functions (FA1 FA2 SS1 SS2)
         n = p['TwrNodes']
         nq=4
         nNodes=n+2
@@ -271,10 +275,10 @@ class TestED(unittest.TestCase):
         # --- Compare both "manual" and GMBeam approach
         np.testing.assert_almost_equal(MM[0,0,]          , p['TwrMass'])
         np.testing.assert_almost_equal(MM[3:6,3:6]/1e6   , p['J']/1e6)
-        np.testing.assert_almost_equal(MM[3:6,0:3]       , p['mdCM'])
+        np.testing.assert_almost_equal(MM[3:6,0:3]       , skew(p['mdCM']))
         np.testing.assert_almost_equal(MM[6:,6:]         , p['Me'])
-        np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
-        np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
+        np.testing.assert_almost_equal(MM[0:3,6:],         p['Ct'].T)
+        np.testing.assert_almost_equal(MM[3:6,6:],         p['Cr'].T)
 
 
 

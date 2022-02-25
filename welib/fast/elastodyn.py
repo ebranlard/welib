@@ -346,14 +346,15 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
         rh = 0
 
     # --- Rigid mass matrix terms
-    p['mdCM'] = np.zeros((3,3))
-    p['mdCM'][1,0]=  sum(p['BElmntMass'][:]*(p['RNodes']+rh));
-    p['mdCM'][0,1]= -sum(p['BElmntMass'][:]*(p['RNodes']+rh));
-    # TODO TODO
-    #sid.md1_1_1_1= sum(squeeze(p.TwistedSF(1, 1, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
-    #sid.md1_1_2_1= sum(squeeze(p.TwistedSF(1, 2, 1, 2:end-1, 1)).*p.BElmntMass(:, 1));
-    #sid.md1_2_1_1= sum(squeeze(p.TwistedSF(1, 1, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
-    #sid.md1_2_2_1= sum(squeeze(p.TwistedSF(1, 2, 3, 2:end-1, 1)).*p.BElmntMass(:, 1));
+    # Mxt term 
+    p['mdCM'] = np.zeros((3))
+    p['mdCM'][2]=  sum(p['BElmntMass'][:]*(p['RNodes']+rh));
+    # 
+    p['mdCM1'] = np.zeros((3,nq))
+    for j in np.arange(nq):
+        p['mdCM1'][0,j]= sum(p['TwistedSF'][0, j, 1:-1, 0]*p['BElmntMass'])
+        p['mdCM1'][1,j]= sum(p['TwistedSF'][1, j, 1:-1, 0]*p['BElmntMass'])
+
     p['J']    = np.zeros((3,3))
     p['J'][0,0] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2)
     p['J'][1,1] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2)
@@ -627,9 +628,8 @@ def towerDerivedParameters(p):
 
     nq = 4
     # --- Rigid mass matrix terms
-    p['mdCM'] = np.zeros((3,3))
-    p['mdCM'][1,0]=  sum(p['TElmntMass'][:]*(p['HNodes']));
-    p['mdCM'][0,1]= -sum(p['TElmntMass'][:]*(p['HNodes']));
+    p['mdCM'] = np.zeros((3))
+    p['mdCM'][2]=  sum(p['TElmntMass'][:]*(p['HNodes']));
     p['J']    = np.zeros((3,3))
     p['J'][0,0] = sum(p['TElmntMass'][:]*(p['HNodes'])**2)
     p['J'][1,1] = sum(p['TElmntMass'][:]*(p['HNodes'])**2)
