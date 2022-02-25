@@ -4,6 +4,7 @@ import unittest
 import numpy as np
 from welib.fast.elastodyn import *
 from welib.yams.utils import skew
+from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening
 
 MyDir=os.path.dirname(__file__)
 
@@ -12,6 +13,7 @@ class TestED(unittest.TestCase):
     """ See examples/ for more examples """
 
     def test_ED_blade_params(self):
+        Gravity = 9.80665
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         p = bladeParameters(EDfilename)
         # Physical quantities / Inertias
@@ -82,7 +84,6 @@ class TestED(unittest.TestCase):
         # --------------------------------------------------------------------------------}
         # --- Mass Matrix using GM or not
         # --------------------------------------------------------------------------------{
-        from welib.yams.flexibility import GMBeam, GKBeam
         # --- Twisted and untwisted shape functions
         n = p['BldNodes']
         nq=3
@@ -104,6 +105,9 @@ class TestED(unittest.TestCase):
             p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
             p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
+        EI = np.zeros((3,nNodes))
+        EI[0,:] = p['EI_F_full']
+        EI[1,:] = p['EI_E_full']
 #         nq=2
 #         nNodes=n+2
 #         p['Ut'] = np.zeros((nq, 3, nNodes))
@@ -124,7 +128,7 @@ class TestED(unittest.TestCase):
 #             p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
 
-        # --- Calling GM Beam with OpenFAST method
+        # --- Calling GM/GK Beam with OpenFAST method
         inertiaAtBladeRoot=True # TODO for loop around that
         if inertiaAtBladeRoot:
             rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
@@ -135,14 +139,24 @@ class TestED(unittest.TestCase):
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
         Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
+        KK = GKBeam(p['s_span'], EI, p['K'], bOrth=False, method='OpenFAST')
+
+        KKg_SW = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=True,  bMtop=False, bRot=False, main_axis='z', method='OpenFAST')
+        #KKg_TM = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=False, bMtop=True, bRot=False, main_axis='z')
+        KKg_Om = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=1, bSelfWeight=False, bMtop=False, bRot=True, main_axis='z', method='OpenFAST')
 
         # --- Call bladeDerivedParameters for "manual" calculation
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
+#         print('KK\n',KK[6:,6:])
+#         print('KKe\n',p['Ke'])
+        print('KKg_SW\n',KKg_SW[6:,6:])
+        print('KKg_Om\n',KKg_Om[6:,6:])
+        print('KKg_Om\n',p['Kg_Om'])
 
         # --- TODOs
-        # - Implement method "OpenFAST" for  GK beam
-        # - compute general centrifugal stiffening tersm in GMBeam
+        # - compute general centrifugal stiffening tersm in GM/GKBeam
         # - Update SID/ *parameters functions to use GM/GK beam
+
 #         print('MM',MM[0,0])
 #         print('Ms',p['BldMass'])
 #         print('J\n',p['J'])
@@ -165,7 +179,7 @@ class TestED(unittest.TestCase):
         #    print('')
         #    print('mdCM1_GM {}\n'.format(j),IT['mdCM1'][:,j])
         #    print('mdCM1_OF {}\n'.format(j), p['mdCM1'][:,j])
-        # --- Compare both "manual" and GMBeam approach
+        # --- Compare both "manual" and GM/GKBeam approach
         np.testing.assert_almost_equal(MM[0,0,]           , p['BldMass'])
         np.testing.assert_almost_equal(MM[3:6,3:6]       ,  p['J'])
         np.testing.assert_almost_equal(MM[3:6,0:3]       ,  skew(p['mdCM']))
@@ -174,6 +188,7 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
         np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
         np.testing.assert_almost_equal(IT['mdCM1'], p['mdCM1'])
+        np.testing.assert_almost_equal(KK[6:,6:]  , p['Ke'])
 
 
         # --------------------------------------------------------------------------------}
@@ -250,14 +265,32 @@ class TestED(unittest.TestCase):
                 p['K'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 2]
                 j+=1
 
+        EI = np.zeros((3,nNodes))
+        EI[0,:] = p['EI_FA_full']
+        EI[1,:] = p['EI_SS_full']
+
         # --- Call bladeDerivedParameters for "manual" calculation
         p = towerDerivedParameters(p)
 
-        # --- Calling GM Beam with OpenFAST method
+        # --- Calling GM/GK Beam with OpenFAST method
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span']
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['U'], rot_terms=True, method='OpenFAST', main_axis='z', M1=True) 
         Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+
+        KK = GKBeam(p['s_span'], EI, p['K'], bOrth=False, method='OpenFAST')
+        Mtop = p['TwrTpMass']
+        KKg_SW = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=True,  bMtop=False, bRot=False, main_axis='z')
+        KKg_TM = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=1, Omega=0, bSelfWeight=False, bMtop=True, bRot=False, main_axis='z')
+        #KKg_Om = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=1, bSelfWeight=False, bMtop=False, bRot=True, main_axis='z')
+
+        # --- 
+        print('KKg_SW\n',KKg_SW[6:,6:])
+        print('KKg_SW\n',p['Kg_SW'])
+        print('KKg_TM\n',KKg_TM[6:,6:])
+        print('KKg_TM\n',p['Kg_TM'])
+#         print('Ke\n',KK[6:,6:])
+#         print('Ke\n',p['Ke'])
 
 #         print('MM',MM[0,0])
 #         print('Ms',p['TwrMass'])
@@ -279,6 +312,8 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(MM[6:,6:]         , p['Me'])
         np.testing.assert_almost_equal(MM[0:3,6:],         p['Ct'].T)
         np.testing.assert_almost_equal(MM[3:6,6:],         p['Cr'].T)
+
+        np.testing.assert_almost_equal(KK[6:,6:]/1e6,         p['Ke']/1e6)
 
 
 

@@ -381,6 +381,12 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
     p['De'][1,1]= p['CBF'][1, 1]
     p['De'][2,2]= p['CBE'][0, 0]
 
+    # KgOm
+    p['Kg_Om'] = np.zeros((nq,nq))
+    p['Kg_Om'][0,0] = p['KBFCent'][0,0]
+    p['Kg_Om'][1,1] = p['KBFCent'][1,1]
+    p['Kg_Om'][2,2] = p['KBECent'][0,0]
+
     # --- Elastic mass matrix terms
     # Ct
     p['Ct'] = np.zeros((nq,3))
@@ -474,10 +480,12 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     p['s_span_norm'] = p['s_span']/p['TwrFlexL']
     # --- Interpolate properties to new nodal positions
     HtFract= twrProp['HtFract_[-]'].values
-    p['MassT']    = np.interp(p['HNodesNorm'], HtFract, twrProp['TMassDen_[kg/m]']);
-    p['StiffTFA'] = np.interp(p['HNodesNorm'], HtFract, twrProp['TwFAStif_[Nm^2]']);
-    p['StiffTSS'] = np.interp(p['HNodesNorm'], HtFract, twrProp['TwSSStif_[Nm^2]']);
-    p['m_full']   = np.interp(p['s_span_norm'],HtFract, twrProp['TMassDen_[kg/m]'])                     ;
+    p['MassT']     = np.interp(p['HNodesNorm'], HtFract, twrProp['TMassDen_[kg/m]'])     ;
+    p['StiffTFA']  = np.interp(p['HNodesNorm'], HtFract, twrProp['TwFAStif_[Nm^2]'])     ;
+    p['StiffTSS']  = np.interp(p['HNodesNorm'], HtFract, twrProp['TwSSStif_[Nm^2]'])     ;
+    p['m_full']    = np.interp(p['s_span_norm'],HtFract, twrProp['TMassDen_[kg/m]'])     ;
+    p['EI_FA_full'] = np.interp(p['s_span_norm'], HtFract, twrProp['TwFAStif_[Nm^2]'])
+    p['EI_SS_full'] = np.interp(p['s_span_norm'], HtFract, twrProp['TwSSStif_[Nm^2]'])
     # Shape coefficients
     p['TwFAM1Sh'] = [twr[c] for c in ['TwFAM1Sh(2)', 'TwFAM1Sh(3)', 'TwFAM1Sh(4)', 'TwFAM1Sh(5)', 'TwFAM1Sh(6)']]
     p['TwFAM2Sh'] = [twr[c] for c in ['TwFAM2Sh(2)', 'TwFAM2Sh(3)', 'TwFAM2Sh(4)', 'TwFAM2Sh(5)', 'TwFAM2Sh(6)']]
@@ -645,6 +653,13 @@ def towerDerivedParameters(p):
             p['Ke'][I+2,L+2] = p['KTSS'][I, L]
             p['De'][I  ,L]   = p['CTFA'][I, L]
             p['De'][I+2,L+2] = p['CTSS'][I, L]
+
+    # --- Self-weight, and top mass geometrical stiffness
+    p['Kg_SW'] = np.zeros((nq,nq))
+    p['Kg_TM'] = np.zeros((nq,nq))
+    for I in [0,1]: 
+        p['Kg_SW'][I,   L]   = p['KTFAGravTT'][I,L]
+        p['Kg_SW'][I+2, L+2] = p['KTSSGravTT'][I,L]
     # --- Elastic mass matrix terms
     # Ct
     p['Ct'] = np.zeros((nq,3))
