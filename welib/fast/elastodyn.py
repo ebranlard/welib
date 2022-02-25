@@ -425,45 +425,6 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
             #Oe6_j=  [       -(syy+szz),        -(sxx+szz),       -(sxx+syy),       sxy+syx,        syz+szy,    sxz+szx] 
             OeM1[j,:,k] = [-(s[1,1]+s[2,2]), -(s[0,0]+s[2,2]), -(s[0,0]+s[1,1]), s[0,1]+s[1,0], s[1,2]+s[2,1], s[0,2]+s[2,0] ]
     p['SSM1']=SS
-
-#     OeM1[0,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,3,0]= 2*sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
-# 
-#     OeM1[0,0,2]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,1,2]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,3,2]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-# 
-#     OeM1[2,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[2,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[2,3,0]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-# 
-#     OeM1[2,0,2]= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[2,1,2]= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[2,3,2]= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
-# 
-#     nq=2
-#     OeM1 = np.zeros((nq,6,nq))
-#     OeM1[0,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,3,0]= 2*sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*p['BElmntMass'])
-# 
-#     #                                           xy  k                                     xy j
-#     OeM1[0,0,1]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,1,1]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     T1= sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     T2= sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[0,3,1]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     print('T1',T1)
-#     print('T2',T2)
-# 
-#     OeM1[1,0,0]= - sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[1,1,0]= - sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[1,3,0]=   sum(np.squeeze(p['TwistedSF'][0, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']) + sum(np.squeeze(p['TwistedSF'][1, 0, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[1,0,1]= - sum(np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[1,1,1]= - sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*p['BElmntMass'])
-#     OeM1[1,3,1]= 2*sum(np.squeeze(p['TwistedSF'][0, 2, 1:-1, o])*np.squeeze(p['TwistedSF'][1, 2, 1:-1, o])*p['BElmntMass']);
-
     # Centrifugal stiffening
     # TODO TODO
     # TODO TODO TODO
@@ -486,6 +447,7 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     Compute tower parameters exactly like OpenFAST
     See Routine Coeff from ElastoDyn.f90
     """
+    from welib.yams.flexibility import polyshape
     # --- Read inputs
     ED      = FASTInputFile(EDfilename)
     EDtwr   = os.path.join(os.path.dirname(EDfilename), ED['TwrFile'].replace('"',''))
@@ -498,7 +460,9 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     p['TwrFlexL']  = ED['TowerHt'] - ED['TowerBsHt'] # Height / length of the flexible portion of the tower.
 
     # New nodal positions
-    n = ED['TwrNodes']
+    n            = ED['TwrNodes']
+    nModesPerDir = 2
+    nDeriv       = 3
     twr_fract    = np.arange(1./n/2., 1, 1./n)
     p['DHNodes'] = np.ones(n)*p['TwrFlexL']/n
     p['HNodes']  = twr_fract*(ED['TowerHt']-ED['TowerBsHt']) + ED['TowerBsHt']
@@ -519,15 +483,11 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     p['TwrSSDmp'] = [twr['TwrSSDmp(1)'], twr['TwrSSDmp(2)']]
     # Calculate the tower-top mass:
     p['TwrTpMass'] = RotMass + ED['NacMass'] + ED['YawBrMass'];
-    p['TElmntMass'] = np.zeros(n)
+    p['TElmntMass'] = p['MassT']*p['DHNodes']  # Mass of tower element J
+    p['TwrMass'] = sum(p['TElmntMass'])
+    # Mass above node
     p['TMssAbvNd'] = np.zeros(n)
-    p['TwrMass']=0
-    for J in np.arange(n-1,-1,-1): # Loop through the tower nodes / elements in reverse
-        # Calculate the mass of the current element
-        p['TElmntMass'][J]    = p['MassT'][J]*p['DHNodes'][J];     # Mass of tower element J
-        # Integrate to find the tower mass which will be output in .fsm
-        p['TwrMass'] += p['TElmntMass'][J];
-        # Integrate to find TMssAbvNd:
+    for J in np.arange(n-1,-1,-1): 
         p['TMssAbvNd'][J] = 0.5*p['TElmntMass'][J];
         if J == n-1:   # Uppermost tower element
             # Add the TwrTpMass effects:
@@ -535,66 +495,50 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         else:         # All other tower elements
             # Add to TMssAbvNd'][J] the effects from the (not yet used) portion of element J+1
             p['TMssAbvNd'][J] = 0.5*p['TElmntMass'][J+1] + p['TMssAbvNd'][J] + p['TMssAbvNd'][J+1];
-# end loop on J - Tower nodes / elements in reverse
-# Initialize the generalized tower masses using tower-top mass effects:
-    p['MTFA']= np.zeros((2, 2))
-    p['MTSS']= np.zeros((2, 2))
+
+    p['s_span'] = np.concatenate(([0], p['HNodesNorm'], [1]))*p['TwrFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
+    p['s_span_norm'] = p['s_span']/p['TwrFlexL']
+
+    # --- Tower shape functions (all derivatives) for mode 1&2 FA and SS
+    p['TwrFASF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
+    p['TwrSSSF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
+    p['TwrFASF'][0,:,0],p['TwrFASF'][0,:,1],p['TwrFASF'][0,:,2] = polyshape(p['s_span'], coeff=p['TwFAM1Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrFASF'][1,:,0],p['TwrFASF'][1,:,1],p['TwrFASF'][1,:,2] = polyshape(p['s_span'], coeff=p['TwFAM2Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrSSSF'][0,:,0],p['TwrSSSF'][0,:,1],p['TwrSSSF'][0,:,2] = polyshape(p['s_span'], coeff=p['TwSSM1Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrSSSF'][1,:,0],p['TwrSSSF'][1,:,1],p['TwrSSSF'][1,:,2] = polyshape(p['s_span'], coeff=p['TwSSM2Sh'], x_max=p['TwrFlexL'], doscale=False)
+    
+    # --- Generalized mass
+    p['MTFA'] = np.zeros((2, 2))
+    p['MTSS'] = np.zeros((2, 2))
     for I in [0,1]:  # Loop through all tower modes in a single direction
         p['MTFA'][I,I] = p['TwrTpMass'];
         p['MTSS'][I,I] = p['TwrTpMass'];
-    nModesPerDir=2
-    nDeriv =3
-    p['TwrFASF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
-    p['TwrSSSF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
-    p['AxRedTFA']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
-    p['AxRedTSS']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
-    p['KTFA']       = np.zeros((nModesPerDir, nModesPerDir))
-    p['KTSS']       = np.zeros((nModesPerDir, nModesPerDir))
-    p['KTFAGrav']   = np.zeros((nModesPerDir, nModesPerDir))
-    p['KTSSGrav']   = np.zeros((nModesPerDir, nModesPerDir))
+    for I in [0,1]:    # Loop through all tower DOFs in one direction
+        p['MTFA'][I,I] += sum(p['TElmntMass']*p['TwrFASF'][I,1:-1,0]**2)
+        p['MTSS'][I,I] += sum(p['TElmntMass']*p['TwrSSSF'][I,1:-1,0]**2)
+    # --- Generalized stiffness
+    p['KTFA'] = np.zeros((nModesPerDir, nModesPerDir))
+    p['KTSS'] = np.zeros((nModesPerDir, nModesPerDir))
+    for I in [0,1]:    # Loop through all tower DOFs in one direction
+        for L in [0,1]:  # Loop through all tower DOFs in one direction
+            p['KTFA'][I,L] = sum(p['StiffTFA']*p['DHNodes']*p['TwrFASF'][I,1:-1,2]*p['TwrFASF'][L,1:-1,2])
+            p['KTSS'][I,L] = sum(p['StiffTSS']*p['DHNodes']*p['TwrSSSF'][I,1:-1,2]*p['TwrSSSF'][L,1:-1,2])
+    # --- Self-weight geometrical stiffness
+    p['KTFAGrav'] = np.zeros((nModesPerDir, nModesPerDir))
+    p['KTSSGrav'] = np.zeros((nModesPerDir, nModesPerDir))
+    for I in [0,1]:    # Loop through all tower DOFs in one direction
+        p['KTFAGrav'][I,I] = sum(p['TMssAbvNd']*p['DHNodes']*p['TwrFASF'][I,1:-1,1]**2)
+        p['KTSSGrav'][I,I] = sum(p['TMssAbvNd']*p['DHNodes']*p['TwrSSSF'][I,1:-1,1]**2)
+    # --- Tower top geometric stiffness
     p['KTFAGravTT'] = np.zeros((nModesPerDir, nModesPerDir))
     p['KTSSGravTT'] = np.zeros((nModesPerDir, nModesPerDir))
-    # set values for tower base (note that we haven't corrctly defined the values for (:,0,2) in the arrays below):
-    #p['TwrFASF'] [:,0  ,:2] = 0.0;
-    #p['TwrSSSF'] [:,0  ,:2] = 0.0;
-    #p['AxRedTFA'][:,:2 ,0]  = 0.0;
-    #p['AxRedTSS'][:,:2 ,0]  = 0.0;
-    
+    for I in [0,1]:    # Loop through all tower DOFs in one direction
+        p['KTFAGravTT'][I,I] = sum( p['DHNodes']*p['TwrFASF'][I,1:-1,1]**2)
+        p['KTSSGravTT'][I,I] = sum( p['DHNodes']*p['TwrSSSF'][I,1:-1,1]**2)
+    # --- Integrate to find the tower axial reduction shape functions:
+    p['AxRedTFA']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
+    p['AxRedTSS']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
     for J in np.arange(n):   # Loop through the tower nodes / elements
-        # Calculate the tower shape functions (all derivatives):
-        p['TwrFASF'][0,J+1,2] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwFAM1Sh'], 2);
-        p['TwrFASF'][1,J+1,2] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwFAM2Sh'], 2);
-        p['TwrFASF'][0,J+1,1] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwFAM1Sh'], 1);
-        p['TwrFASF'][1,J+1,1] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwFAM2Sh'], 1);
-        p['TwrFASF'][0,J+1,0] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwFAM1Sh'], 0);
-        p['TwrFASF'][1,J+1,0] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwFAM2Sh'], 0);
-        p['TwrSSSF'][0,J+1,2] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwSSM1Sh'], 2);
-        p['TwrSSSF'][1,J+1,2] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwSSM2Sh'], 2);
-        p['TwrSSSF'][0,J+1,1] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwSSM1Sh'], 1);
-        p['TwrSSSF'][1,J+1,1] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwSSM2Sh'], 1);
-        p['TwrSSSF'][0,J+1,0] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwSSM1Sh'], 0);
-        p['TwrSSSF'][1,J+1,0] = SHP( p['HNodesNorm'][J], p['TwrFlexL'], p['TwSSM2Sh'], 0);
-        # Integrate to find the generalized mass of the tower (including tower-top mass effects).
-        #   Ignore the cross-correlation terms of p['MTFA (i.e. p['MTFA(i,j) where i ~= j) and p['MTSS
-        #   since these terms will never be used.
-        for I in [0,1]:     # Loop through all tower DOFs in one direction
-            p['MTFA'][I,I] += p['TElmntMass'][J]*p['TwrFASF'][I,J+1,0]**2;
-            p['MTSS'][I,I] += p['TElmntMass'][J]*p['TwrSSSF'][I,J+1,0]**2;
-        # Integrate to find the generalized stiffness of the tower (not including gravitational effects).
-        ElStffFA = p['StiffTFA'][J]*p['DHNodes'][J] # Fore-aft stiffness of tower element J
-        ElStffSS = p['StiffTSS'][J]*p['DHNodes'][J] # Side-to-side stiffness of tower element J
-        for I in [0,1]:    # Loop through all tower DOFs in one direction
-            for L in [0,1]:  # Loop through all tower DOFs in one direction
-                p['KTFA'][I,L] += ElStffFA *p['TwrFASF'][I,J+1,2]*p['TwrFASF'][L,J,2];
-                p['KTSS'][I,L] += ElStffSS *p['TwrSSSF'][I,J+1,2]*p['TwrSSSF'][L,J,2];
-        # Integrate to find the gravitational-term of the generalized stiffness of the tower.
-        #   Ignore the cross-correlation terms of p['KTFAGrav (i.e. p['KTFAGrav(i,j) where i ~= j)
-        #   and p['KTSSGrav since these terms will never be used.
-        ElmntStff = -p['TMssAbvNd'][J]*p['DHNodes'][J]*1  # stiffness of tower element J due to unity acceleration
-        for I in [0,1]:    # Loop through all tower DOFs in one direction
-            p['KTFAGrav'][I,I] += ElmntStff*p['TwrFASF'][I,J+1,1]**2
-            p['KTSSGrav'][I,I] += ElmntStff*p['TwrSSSF'][I,J+1,1]**2
-        # Integrate to find the tower axial reduction shape functions:
         AxRdTFA= np.zeros((2, 2))
         AxRdTSS= np.zeros((2, 2))
         for I in [0,1]:     # Loop through all tower DOFs in one direction
@@ -612,11 +556,11 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         # Store the AxRdTFA and AxRdTSS terms of the current element (these will be used for the next element)
         AxRdTFAOld = AxRdTFA;
         AxRdTSSOld = AxRdTSS;
-    #end # J - Tower nodes / elements
-    ElmntStff      = -1*p['TwrFlexL']*1; # due to unitiy mass under unity acceleration stiffness of tower element J due to unity acceleration
-    for I in [0,1]:
-        p['KTFAGravTT'][I,I] = ElmntStff*p['TwrFASF'][I,-2,1]**2;
-        p['KTSSGravTT'][I,I] = ElmntStff*p['TwrSSSF'][I,-2,1]**2;
+    # Integrate to find the tower axial reduction shape functions at the tower-top:
+    for I in [0,1]:     # Loop through all tower DOFs in one direction
+        for L in [0,1]:  # Loop through all tower DOFs in one direction
+            p['AxRedTFA'][I,L,-1] = p['AxRedTFA'][I,L,-2] + AxRdTFAOld[I,L]
+            p['AxRedTSS'][I,L,-1] = p['AxRedTSS'][I,L,-2] + AxRdTSSOld[I,L]
     # Apply the modal stiffness tuners of the tower to KTFA() and KTSS():
     for I in [0,1]:     # Loop through all tower DOFs in one direction
         for L in [0,1]:  # Loop through all tower DOFs in one direction
@@ -639,24 +583,10 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         for L in [0,1]:  # Loop through all tower DOFs in one direction
             p['CTFA'][I,L] = ( 0.01*p['TwrFADmp'][L] )*p['KTFA'][I,L]/( np.pi*p['FreqTFA'][L,0] );
             p['CTSS'][I,L] = ( 0.01*p['TwrSSDmp'][L] )*p['KTSS'][I,L]/( np.pi*p['FreqTSS'][L,0] );
-    # Calculate the tower shape functions (all derivatives) at the tower-top:
-    p['TwrFASF'][0,-1,2] = SHP( 1.0, p['TwrFlexL'], p['TwFAM1Sh'], 2);
-    p['TwrFASF'][1,-1,2] = SHP( 1.0, p['TwrFlexL'], p['TwFAM2Sh'], 2);
-    p['TwrFASF'][0,-1,1] = SHP( 1.0, p['TwrFlexL'], p['TwFAM1Sh'], 1);
-    p['TwrFASF'][1,-1,1] = SHP( 1.0, p['TwrFlexL'], p['TwFAM2Sh'], 1);
-    p['TwrFASF'][0,-1,0] = SHP( 1.0, p['TwrFlexL'], p['TwFAM1Sh'], 0);
-    p['TwrFASF'][1,-1,0] = SHP( 1.0, p['TwrFlexL'], p['TwFAM2Sh'], 0);
-    p['TwrSSSF'][0,-1,2] = SHP( 1.0, p['TwrFlexL'], p['TwSSM1Sh'], 2);
-    p['TwrSSSF'][1,-1,2] = SHP( 1.0, p['TwrFlexL'], p['TwSSM2Sh'], 2);
-    p['TwrSSSF'][0,-1,1] = SHP( 1.0, p['TwrFlexL'], p['TwSSM1Sh'], 1);
-    p['TwrSSSF'][1,-1,1] = SHP( 1.0, p['TwrFlexL'], p['TwSSM2Sh'], 1);
-    p['TwrSSSF'][0,-1,0] = SHP( 1.0, p['TwrFlexL'], p['TwSSM1Sh'], 0);
-    p['TwrSSSF'][1,-1,0] = SHP( 1.0, p['TwrFlexL'], p['TwSSM2Sh'], 0);
-    # Integrate to find the tower axial reduction shape functions at the tower-top:
-    for I in [0,1]:     # Loop through all tower DOFs in one direction
-        for L in [0,1]:  # Loop through all tower DOFs in one direction
-            p['AxRedTFA'][I,L,-1] = p['AxRedTFA'][I,L,-2] + AxRdTFAOld[I,L]
-            p['AxRedTSS'][I,L,-1] = p['AxRedTSS'][I,L,-2] + AxRdTSSOld[I,L]
+    for I in [0,1]: #Loop through all tower modes in a single direction
+        p['MTFA'][I,I] = p['MTFA'][I,I] - p['TwrTpMass']
+        p['MTSS'][I,I] = p['MTSS'][I,I] - p['TwrTpMass']
+
 #     for k,v in p.items():
 #         if hasattr(v, '__len__'):
 #             v = np.asarray(v)
@@ -683,8 +613,6 @@ if __name__ == '__main__':
     fst = FASTInputFile(FSTfilename)
 
     p,pbld = rotorParameters(EDfilename)
-    print(p)
-    print(fst['Gravity'])
 
     ptwr=towerParameters(EDfilename, gravity=fst['Gravity'], RotMass=p['RotMass'])
 

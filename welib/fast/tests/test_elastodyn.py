@@ -144,7 +144,6 @@ class TestED(unittest.TestCase):
         # - compute mdCm M1
         # - Implement method "OpenFAST" for  GK beam
         # - compute general centrifugal stiffening tersm in GMBeam
-        # - Simplify towerParameters
         # - Update SID/ *parameters functions to use GM/GK beam
 
 #         print('MM',MM[0,0])
@@ -215,18 +214,19 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(p['TwrSSSF'][1,:4, 1], [0, -0.065390448129370,-0.175841634092733,-0.263419614469624])
 
         # Generalized quantities
-        np.testing.assert_almost_equal(np.diag(p['MTFA'])/1e6,np.array([4.010392552595473e+05, 2.755960009968935e+07])/1e6)
-        np.testing.assert_almost_equal(np.diag(p['MTSS'])/1e6,np.array([4.008128638209492e+05, 3.558329856444363e+07])/1e6)
-        np.testing.assert_almost_equal(       (p['KTSS'])/1e6, np.array([[1.620074333887758e+06, 4.338323386161570e+06],[2.943153808092614e+07, 1.125981782739319e+10]])/1e6)
-        np.testing.assert_almost_equal(       (p['KTFA'])/1e6, np.array([[1.722040410360708e+06,-7.442658427757327e+06],[2.400069959451868e+07, 9.087764067630390e+09]])/1e6)
-        np.testing.assert_almost_equal(np.diag(p['KTFAGrav']),[ -1.066694734234754e+03 , -1.169976720444022e+06])
-        np.testing.assert_almost_equal(np.diag(p['KTSSGravTT']), [-3.763420370177263e-02,-8.551393808571898e+01])
-        # 
+        np.testing.assert_almost_equal(np.diag(p['MTFA'])/1e6,np.array([4.010392552595473e+05, 2.755960009968935e+07])/1e6-p['TwrTpMass']/1e6)
+        np.testing.assert_almost_equal(np.diag(p['MTSS'])/1e6,np.array([4.008128638209492e+05, 3.558329856444363e+07])/1e6-p['TwrTpMass']/1e6)
+        np.testing.assert_almost_equal(       (p['KTFA'])/1e6, np.array([[1.910902930730452e+06   ,2.908366961340314e+06],[2.908366961340315e+06   ,1.024457413318486e+10]])/1e6)
+        np.testing.assert_almost_equal(       (p['KTSS'])/1e6, np.array([[1.838181636362126e+06  , 5.692201925965283e+06],[  5.692201925965278e+06 ,  1.319779713916086e+10]])/1e6)
+        np.testing.assert_almost_equal(np.diag(p['KTFAGrav']),[ 1.066694734234754e+03 , 1.169976720444022e+06])
+        np.testing.assert_almost_equal(np.diag(p['KTSSGravTT']), [1.491565303636175e-02 , 1.838391204221678e+01])
+
         np.testing.assert_almost_equal(p['AxRedTFA'][0,0,-3:],[1.158577163756421e-02,1.332102574930896e-02,1.417295499349627e-02])
 
         # Frequencies
-        np.testing.assert_almost_equal(p['FreqTSS'], np.array([[0.874131532646607, 0.306008233418085],[2.845059363346653 ,2.792516489887383]]))
-        np.testing.assert_almost_equal(p['CTFA'], np.array([[ 6.095030992638342e+03,-8.145424597927582e+03],[8.494864986527940e+04, 9.945867823326178e+06]]))
+        np.testing.assert_almost_equal(p['FreqTSS'], np.array([[0.931115438458394 , 0.346445103037537], [3.080181973131150 , 3.074014122773748]]))
+        np.testing.assert_almost_equal(p['CTFA'], np.array([[6.420569660348690e+03  , 2.997894941172623e+03],[9.772015298550068e+03,1.055993187124818e+07]]))
+
 
 
 

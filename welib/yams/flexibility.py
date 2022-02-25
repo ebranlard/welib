@@ -499,7 +499,6 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     # Computing the M1 terms, this assumes that "s_G" is the undisplaced position!
     # The displaced position for each dof l is then s_G+ U[l]q_l with q_l=1
     if M1:
-        print('nf',nf)
         OeM1 = np.zeros((nf,3,3,nf))
         Oe6M1= np.zeros((nf,6,nf))
         GrM1 = np.zeros((nf,3,3)) # we do not really store all of them
