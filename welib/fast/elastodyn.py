@@ -457,21 +457,26 @@ def towerParameters(EDfilename, gravity, RotMass=None):
 
     # --- 
     p=dict()
-    p['TwrFlexL']  = ED['TowerHt'] - ED['TowerBsHt'] # Height / length of the flexible portion of the tower.
 
-    # New nodal positions
-    n            = ED['TwrNodes']
-    nModesPerDir = 2
-    nDeriv       = 3
-    twr_fract    = np.arange(1./n/2., 1, 1./n)
+    # --- Main dimensions
+    p['TwrFlexL'] = ED['TowerHt'] - ED['TowerBsHt'] # Height / length of the flexible portion of the tower.
+    p['TwrNodes'] = ED['TwrNodes']
+    n             = ED['TwrNodes']
+    nModesPerDir  = 2
+    nDeriv        = 3
+    # --- Spanwise nodes
+    twr_fract     = np.arange(1./n/2., 1, 1./n)
     p['DHNodes'] = np.ones(n)*p['TwrFlexL']/n
-    p['HNodes']  = twr_fract*(ED['TowerHt']-ED['TowerBsHt']) + ED['TowerBsHt']
+    p['HNodes']     = twr_fract*(ED['TowerHt']-ED['TowerBsHt']) + ED['TowerBsHt'] # Nodes (mid points)
     p['HNodesNorm'] = p['HNodes']/p['TwrFlexL']
-    # Interpolate properties to new nodal positions
+    p['s_span'] = np.concatenate(([0], p['HNodesNorm'], [1]))*p['TwrFlexL']; # Midpoints + 0 and L
+    p['s_span_norm'] = p['s_span']/p['TwrFlexL']
+    # --- Interpolate properties to new nodal positions
     HtFract= twrProp['HtFract_[-]'].values
     p['MassT']    = np.interp(p['HNodesNorm'], HtFract, twrProp['TMassDen_[kg/m]']);
     p['StiffTFA'] = np.interp(p['HNodesNorm'], HtFract, twrProp['TwFAStif_[Nm^2]']);
     p['StiffTSS'] = np.interp(p['HNodesNorm'], HtFract, twrProp['TwSSStif_[Nm^2]']);
+    p['m_full']   = np.interp(p['s_span_norm'],HtFract, twrProp['TMassDen_[kg/m]'])                     ;
     # Shape coefficients
     p['TwFAM1Sh'] = [twr[c] for c in ['TwFAM1Sh(2)', 'TwFAM1Sh(3)', 'TwFAM1Sh(4)', 'TwFAM1Sh(5)', 'TwFAM1Sh(6)']]
     p['TwFAM2Sh'] = [twr[c] for c in ['TwFAM2Sh(2)', 'TwFAM2Sh(3)', 'TwFAM2Sh(4)', 'TwFAM2Sh(5)', 'TwFAM2Sh(6)']]
@@ -496,9 +501,6 @@ def towerParameters(EDfilename, gravity, RotMass=None):
             # Add to TMssAbvNd'][J] the effects from the (not yet used) portion of element J+1
             p['TMssAbvNd'][J] = 0.5*p['TElmntMass'][J+1] + p['TMssAbvNd'][J] + p['TMssAbvNd'][J+1];
 
-    p['s_span'] = np.concatenate(([0], p['HNodesNorm'], [1]))*p['TwrFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
-    p['s_span_norm'] = p['s_span']/p['TwrFlexL']
-
     # --- Tower shape functions (all derivatives) for mode 1&2 FA and SS
     p['TwrFASF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
     p['TwrSSSF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
@@ -514,8 +516,9 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         p['MTFA'][I,I] = p['TwrTpMass'];
         p['MTSS'][I,I] = p['TwrTpMass'];
     for I in [0,1]:    # Loop through all tower DOFs in one direction
-        p['MTFA'][I,I] += sum(p['TElmntMass']*p['TwrFASF'][I,1:-1,0]**2)
-        p['MTSS'][I,I] += sum(p['TElmntMass']*p['TwrSSSF'][I,1:-1,0]**2)
+        for L in [0,1]:  # Loop through all tower DOFs in one direction
+            p['MTFA'][I,L] += sum(p['TElmntMass']*p['TwrFASF'][I,1:-1,0]*p['TwrFASF'][L,1:-1,0])
+            p['MTSS'][I,L] += sum(p['TElmntMass']*p['TwrSSSF'][I,1:-1,0]*p['TwrSSSF'][L,1:-1,0])
     # --- Generalized stiffness
     p['KTFA'] = np.zeros((nModesPerDir, nModesPerDir))
     p['KTSS'] = np.zeros((nModesPerDir, nModesPerDir))
@@ -601,6 +604,61 @@ def towerParameters(EDfilename, gravity, RotMass=None):
 #             print('{:15s}:{}'.format(k,v))
     return p
 
+def towerDerivedParameters(p):
+    """ Compute blade derived parameters, suitable for SID:
+      - Inertial matrices
+      - Stiffness matrices
+    The parameters are computed "by hand" (as opposed to using GMBeam)
+    NOTE: this function is mostly for debugging purposes. 
+          Use GMBeam with method='OpenFAST' instead
+
+    Order of shape functions: FA1 FA2 SS1 SS2
+    """
+
+    # param.tower_Ct1_1_1_3= p.KTFAGrav(1, 1);
+    # param.tower_Ct1_2_2_3= p.KTSSGrav(1, 1);
+
+    # param.tower_frame_11_origin1_1_1_1= 1;
+    # param.tower_frame_11_origin1_2_2_1= 1;
+    # param.tower_frame_11_phi1_1_3_1 = p.KTFAGravTT(1, 1)   ;
+    # param.tower_frame_11_phi1_2_3_2 = p.KTSSGravTT(1, 1)   ;
+    # param.tower_frame_11_psi0_1_2   = -p.TwrFASF(1, end, 2);
+    # param.tower_frame_11_psi0_2_1   = p.TwrSSSF(1, end, 2) ;
+
+    nq = 4
+    # --- Rigid mass matrix terms
+    p['mdCM'] = np.zeros((3,3))
+    p['mdCM'][1,0]=  sum(p['TElmntMass'][:]*(p['HNodes']));
+    p['mdCM'][0,1]= -sum(p['TElmntMass'][:]*(p['HNodes']));
+    p['J']    = np.zeros((3,3))
+    p['J'][0,0] = sum(p['TElmntMass'][:]*(p['HNodes'])**2)
+    p['J'][1,1] = sum(p['TElmntMass'][:]*(p['HNodes'])**2)
+    # --- Elastic matrices
+    p['Ke'] = np.zeros((nq,nq))
+    p['De'] = np.zeros((nq,nq))
+    p['Me'] = np.zeros((nq,nq))
+    for I in [0,1]:     # Loop through all tower DOFs in one direction
+        for L in [0,1]:  # Loop through all tower DOFs in one direction
+            p['Me'][I  ,L]   = p['MTFA'][I, L]
+            p['Me'][I+2,L+2] = p['MTSS'][I, L]
+            p['Ke'][I  ,L]   = p['KTFA'][I, L]
+            p['Ke'][I+2,L+2] = p['KTSS'][I, L]
+            p['De'][I  ,L]   = p['CTFA'][I, L]
+            p['De'][I+2,L+2] = p['CTSS'][I, L]
+    # --- Elastic mass matrix terms
+    # Ct
+    p['Ct'] = np.zeros((nq,3))
+    p['Ct'][0,0] = sum(np.squeeze(p['TwrFASF'][0, 1:-1, 0])*p['TElmntMass'][:])
+    p['Ct'][1,0] = sum(np.squeeze(p['TwrFASF'][1, 1:-1, 0])*p['TElmntMass'][:])
+    p['Ct'][2,1] = sum(np.squeeze(p['TwrSSSF'][0, 1:-1, 0])*p['TElmntMass'][:])
+    p['Ct'][3,1] = sum(np.squeeze(p['TwrSSSF'][1, 1:-1, 0])*p['TElmntMass'][:])
+    # Cr
+    p['Cr'] = np.zeros((nq,3))
+    p['Cr'][0,1]=  sum((p['HNodes'])*np.squeeze(p['TwrFASF'][0, 1:-1, 0])*p['TElmntMass'][:])
+    p['Cr'][1,1]=  sum((p['HNodes'])*np.squeeze(p['TwrFASF'][1, 1:-1, 0])*p['TElmntMass'][:])
+    p['Cr'][2,0]= -sum((p['HNodes'])*np.squeeze(p['TwrSSSF'][0, 1:-1, 0])*p['TElmntMass'][:])
+    p['Cr'][3,0]= -sum((p['HNodes'])*np.squeeze(p['TwrSSSF'][1, 1:-1, 0])*p['TElmntMass'][:])
+    return p
 
 if __name__ == '__main__':
 #     EDfilename='../yams/_Jens/FEMBeam_NewFASTCoeffs/data/NREL5MW_ED_Onshore.dat'

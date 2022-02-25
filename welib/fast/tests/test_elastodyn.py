@@ -132,7 +132,6 @@ class TestED(unittest.TestCase):
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
-        #MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
         Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
 
@@ -193,6 +192,7 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(np.diag(MM[6:,6:]),  np.diag(p['Me']))
         np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
         np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
+        np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
 
 
 
@@ -226,6 +226,55 @@ class TestED(unittest.TestCase):
         # Frequencies
         np.testing.assert_almost_equal(p['FreqTSS'], np.array([[0.931115438458394 , 0.346445103037537], [3.080181973131150 , 3.074014122773748]]))
         np.testing.assert_almost_equal(p['CTFA'], np.array([[6.420569660348690e+03  , 2.997894941172623e+03],[9.772015298550068e+03,1.055993187124818e+07]]))
+
+        # --------------------------------------------------------------------------------}
+        # --- Mass Matrix using GM or not
+        # --------------------------------------------------------------------------------{
+        from welib.yams.flexibility import GMBeam, GKBeam
+        # --- Twisted and untwisted shape functions
+        n = p['TwrNodes']
+        nq=4
+        nNodes=n+2
+        p['U']  = np.zeros((nq, 3, nNodes))
+        p['V']  = np.zeros((nq, 3, nNodes))
+        p['K']  = np.zeros((nq, 3, nNodes))
+        j=0
+        for idir, name in zip((0,1),('FA','SS')):
+            for jm in [0,1]:
+                p['U'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 0]
+                p['V'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 1]
+                p['K'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 2]
+                j+=1
+
+        # --- Call bladeDerivedParameters for "manual" calculation
+        p = towerDerivedParameters(p)
+
+        # --- Calling GM Beam with OpenFAST method
+        s_G0 = np.zeros((3, len(p['s_span'])))
+        s_G0[2,:] = p['s_span']
+        MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['U'], rot_terms=True, method='OpenFAST', main_axis='z', M1=True) 
+        Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+
+#         print('MM',MM[0,0])
+#         print('Ms',p['TwrMass'])
+#         print('J\n',p['J'])
+#         print('J\n',MM[3:6,3:6])
+#         print('mdCM_GM\n',MM[3:6,0:3])
+#         print('mdCM_OF\n',p['mdCM'])
+#         print('me_GM\n',MM[6:,6:])
+#         print('me_OF\n',p['Me'])
+#         print('Ct_GM\n',MM[0:3,6:])
+#         print('Ct_OF\n',p['Ct'].T)
+#         print('Cr_GM\n',MM[3:6,6:])
+#         print('Cr_OF\n',p['Cr'].T)
+
+        # --- Compare both "manual" and GMBeam approach
+        np.testing.assert_almost_equal(MM[0,0,]          , p['TwrMass'])
+        np.testing.assert_almost_equal(MM[3:6,3:6]/1e6   , p['J']/1e6)
+        np.testing.assert_almost_equal(MM[3:6,0:3]       , p['mdCM'])
+        np.testing.assert_almost_equal(MM[6:,6:]         , p['Me'])
+        np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
+        np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
 
 
 
