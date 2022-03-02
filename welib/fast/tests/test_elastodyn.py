@@ -15,7 +15,7 @@ class TestED(unittest.TestCase):
     def test_ED_blade_params(self):
         Gravity = 9.80665
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        p = bladeParameters(EDfilename)
+        p = bladeParameters(EDfilename) 
         # Physical quantities / Inertias
         np.testing.assert_almost_equal(p['BldMass'], 16775.66975907849)
         np.testing.assert_almost_equal(p['FirstMom'], 346419.0832041095)
@@ -84,30 +84,6 @@ class TestED(unittest.TestCase):
         # --------------------------------------------------------------------------------}
         # --- Mass Matrix using GM or not
         # --------------------------------------------------------------------------------{
-        # --- Twisted and untwisted shape functions
-        n = p['BldNodes']
-        nq=3
-        nNodes=n+2
-        p['Ut'] = np.zeros((nq, 3, nNodes))
-        p['Vt'] = np.zeros((nq, 3, nNodes))
-        p['Kt'] = np.zeros((nq, 3, nNodes))
-        p['U']  = np.zeros((nq, 3, nNodes))
-        p['V']  = np.zeros((nq, 3, nNodes))
-        p['K']  = np.zeros((nq, 3, nNodes))
-        for j,idir,name in zip(range(0,nq), (0,0,1), ('F1','F2','E1')): # direction is x, x, y
-            p['Ut'][j][0,:] = p['TwistedSF'][0, j, :, 0]  # x
-            p['Ut'][j][1,:] = p['TwistedSF'][1, j, :, 0]  # y
-            p['Vt'][j][0,:] = p['TwistedSF'][0, j, :, 1]  # x
-            p['Vt'][j][1,:] = p['TwistedSF'][1, j, :, 1]  # y
-            p['Kt'][j][0,:] = p['TwistedSF'][0, j, :, 2]  # x
-            p['Kt'][j][1,:] = p['TwistedSF'][1, j, :, 2]  # y
-            p['U'][j][idir,:]  = p['Shape'+name+'_full']  
-            p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
-            p['K'][j][idir,:]  = p['ddShape'+name+'_full']
-
-        EI = np.zeros((3,nNodes))
-        EI[0,:] = p['EI_F_full']
-        EI[1,:] = p['EI_E_full']
 #         nq=2
 #         nNodes=n+2
 #         p['Ut'] = np.zeros((nq, 3, nNodes))
@@ -130,16 +106,13 @@ class TestED(unittest.TestCase):
 
         # --- Calling GM/GK Beam with OpenFAST method
         inertiaAtBladeRoot=True # TODO for loop around that
-        if inertiaAtBladeRoot:
-            rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
-        else:
-            rh = 0
+        rh = 0 # Hub Radius # TODO make this an option if from blade root or not
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
         Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
-        KK = GKBeam(p['s_span'], EI, p['K'], bOrth=False, method='OpenFAST')
+        KK = GKBeam(p['s_span'], p['EI'], p['K'], bOrth=False, method='OpenFAST')
 
         KKg_SW = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=True,  bMtop=False, bRot=False, main_axis='z', method='OpenFAST')
         #KKg_TM = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=False, bMtop=True, bRot=False, main_axis='z')
@@ -196,10 +169,7 @@ class TestED(unittest.TestCase):
         # --------------------------------------------------------------------------------{
         # --- Calling GM Beam with OpenFAST method
         inertiaAtBladeRoot=False
-        if inertiaAtBladeRoot:
-            rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
-        else:
-            rh = 0
+        rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
         s_G0 = np.zeros((3, len(p['s_span'])))
         s_G0[2,:] = p['s_span'] + rh 
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
@@ -215,7 +185,7 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
         np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
         np.testing.assert_almost_equal(IT['mdCM1'], p['mdCM1'])
-
+# 
 
 
     def test_ED_tower_params(self):
@@ -264,11 +234,6 @@ class TestED(unittest.TestCase):
                 p['V'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 1]
                 p['K'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 2]
                 j+=1
-
-        EI = np.zeros((3,nNodes))
-        EI[0,:] = p['EI_FA_full']
-        EI[1,:] = p['EI_SS_full']
-
         # --- Call bladeDerivedParameters for "manual" calculation
         p = towerDerivedParameters(p)
 
@@ -278,7 +243,7 @@ class TestED(unittest.TestCase):
         MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['U'], rot_terms=True, method='OpenFAST', main_axis='z', M1=True) 
         Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
-        KK = GKBeam(p['s_span'], EI, p['K'], bOrth=False, method='OpenFAST')
+        KK = GKBeam(p['s_span'], p['EI'], p['K'], bOrth=False, method='OpenFAST')
         Mtop = p['TwrTpMass']
         KKg_SW = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=True,  bMtop=False, bRot=False, main_axis='z')
         KKg_TM = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=1, Omega=0, bSelfWeight=False, bMtop=True, bRot=False, main_axis='z')

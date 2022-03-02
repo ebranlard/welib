@@ -79,7 +79,7 @@ def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
     return p, pbld
 
 
-def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
+def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     """
     Compute blade parameters in a way similar to OpenFAST
     See Routine Coeff from ElastoDyn.f90
@@ -95,16 +95,14 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
 
     # --- 
     p=dict()
-    BD4Blades = False
-    p['HubRad'] = ED['HubRad']
+    p['HubRad']   = ED['HubRad']
     p['BldNodes'] = ED['BldNodes']
     p['BldFlexL'] = ED['TipRad']- ED['HubRad'] # Length of the flexible portion of the blade.
     p['BldMass'] =0 
     n=ED['BldNodes']
-    if not BD4Blades:
-        p['DRNodes'] = np.ones(ED['BldNodes'])*p['BldFlexL']/ED['BldNodes']
-        bld_fract    = np.arange(1./ED['BldNodes']/2., 1, 1./ED['BldNodes'])
-        p['RNodes'] = bld_fract*p['BldFlexL']
+    p['DRNodes'] = np.ones(ED['BldNodes'])*p['BldFlexL']/ED['BldNodes']
+    bld_fract    = np.arange(1./ED['BldNodes']/2., 1, 1./ED['BldNodes'])
+    p['RNodes'] = bld_fract*p['BldFlexL']
 
 
     # --- Interpolate the blade properties to this discretization:
@@ -153,9 +151,8 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
         else:  
            # Add to p['FMomAbvNd(K,J) the effects from the (not yet used) portion of element J+1
            p['FMomAbvNd'][J] += p['FMomAbvNd'][J+1] + (0.5*p['BElmntMass'][J+1])*( ED['HubRad'] + p['RNodes'][J+1] - 0.5*p['DRNodes'][J+1] );
-    if not BD4Blades:
-        # Calculate BldCG() using FirstMom() and BldMass(); and calculate RotMass and RotIner:
-        p['BldCG']= p['FirstMom']/p['BldMass'];
+    # Calculate BldCG() using FirstMom() and BldMass(); and calculate RotMass and RotIner:
+    p['BldCG']= p['FirstMom']/p['BldMass'];
     p['MBF']       = np.zeros((2, 2))
     p['MBE']       = np.zeros((1, 1))
     p['KBFCent']   = np.zeros((2, 2))
@@ -262,41 +259,31 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
     # Blade root
     p['AxRedBld'] [:,:,0  ] = 0.0;
 
-    if BD4Blades:
-        # the 1st and zeroeth derivatives of the twisted shape functions at the blade root:
-        p['TwistedSF'][:,:,:,1] = 0.0;
-        p['TwistedSF'][:,:,:,0] = 0.0;
-        p['AxRedBld'] [:,:,:  ] = 0.0;
-    else:
-        # Apply the flapwise modal stiffness tuners of the blades to KBF():
-        for I in [0,1]:     # Loop through flap DOFs
-            for L in [0,1]:  # Loop through flap DOFs
-                p['KBF'][I,L] = np.sqrt( p['FStTunr'][I]*p['FStTunr'][L] )*p['KBF'][I,L];
-        # Calculate the blade natural frequencies:
-        p['FreqBF'] = np.zeros((2,3))
-        p['FreqBE'] = np.zeros((1,3))
-        for I in [0,1]:     # Loop through flap DOFs
-            p['FreqBF'][I,0] = (1/2/np.pi)*np.sqrt(   p['KBF'][I,I]                     /( p['MBF'][I,I] - p['TipMass']) )# Natural blade I-flap frequency w/o centrifugal stiffening nor     tip mass effects
-            p['FreqBF'][I,1] = (1/2/np.pi)*np.sqrt(   p['KBF'][I,I]                     /  p['MBF'][I,I]                 )# Natural blade I-flap frequency w/o centrifugal stiffening, but w/ tip mass effects
-            p['FreqBF'][I,2] = (1/2/np.pi)*np.sqrt( ( p['KBF'][I,I] + p['KBFCent'][I,I])/  p['MBF'][I,I]                 )# Natural blade I-flap frequency w/  centrifugal stiffening and     tip mass effects
-        I=0
-        p['FreqBE'][I,0] =     (1/2/np.pi)*np.sqrt(   p['KBE'][I,I]                     /( p['MBE'][I,I] - p['TipMass']) )# Natural blade 1-edge frequency w/o centrifugal stiffening nor      tip mass effects
-        p['FreqBE'][I,1] =     (1/2/np.pi)*np.sqrt(   p['KBE'][I,I]                     /  p['MBE'][I,I]                 )# Natural Blade 1-edge frequency w/o  centrifugal stiffening, but w/ tip mass effects
-        p['FreqBE'][I,2] =     (1/2/np.pi)*np.sqrt( ( p['KBE'][I,I] + p['KBECent'][I,I])/  p['MBE'][I,I]                 )# Natural Blade 1-edge frequency w/  centrifugal stiffening and      tip mass effects
-        # Calculate the generalized damping of the blades:
-        p['CBF'] = np.zeros((2,2))
-        p['CBE'] = np.zeros((1,1))
-        for I in [0,1]:     # Loop through flap DOFs
-            for L in [0,1]:     # Loop through flap DOFs
-                p['CBF'][I,L] = ( 0.01*p['BldFDamp'][L] )*p['KBF'][I,L]/( np.pi*p['FreqBF'][L,0] );
-        L=0; I=0;
-        p['CBE'][I,L] = ( 0.01*p['BldEDamp'][L] )*p['KBE'][I,L]/( np.pi*p['FreqBE'][L,0] );
+    # Apply the flapwise modal stiffness tuners of the blades to KBF():
+    for I in [0,1]:     # Loop through flap DOFs
+        for L in [0,1]:  # Loop through flap DOFs
+            p['KBF'][I,L] = np.sqrt( p['FStTunr'][I]*p['FStTunr'][L] )*p['KBF'][I,L];
+    # Calculate the blade natural frequencies:
+    p['FreqBF'] = np.zeros((2,3))
+    p['FreqBE'] = np.zeros((1,3))
+    for I in [0,1]:     # Loop through flap DOFs
+        p['FreqBF'][I,0] = (1/2/np.pi)*np.sqrt(   p['KBF'][I,I]                     /( p['MBF'][I,I] - p['TipMass']) )# Natural blade I-flap frequency w/o centrifugal stiffening nor     tip mass effects
+        p['FreqBF'][I,1] = (1/2/np.pi)*np.sqrt(   p['KBF'][I,I]                     /  p['MBF'][I,I]                 )# Natural blade I-flap frequency w/o centrifugal stiffening, but w/ tip mass effects
+        p['FreqBF'][I,2] = (1/2/np.pi)*np.sqrt( ( p['KBF'][I,I] + p['KBFCent'][I,I])/  p['MBF'][I,I]                 )# Natural blade I-flap frequency w/  centrifugal stiffening and     tip mass effects
+    I=0
+    p['FreqBE'][I,0] =     (1/2/np.pi)*np.sqrt(   p['KBE'][I,I]                     /( p['MBE'][I,I] - p['TipMass']) )# Natural blade 1-edge frequency w/o centrifugal stiffening nor      tip mass effects
+    p['FreqBE'][I,1] =     (1/2/np.pi)*np.sqrt(   p['KBE'][I,I]                     /  p['MBE'][I,I]                 )# Natural Blade 1-edge frequency w/o  centrifugal stiffening, but w/ tip mass effects
+    p['FreqBE'][I,2] =     (1/2/np.pi)*np.sqrt( ( p['KBE'][I,I] + p['KBECent'][I,I])/  p['MBE'][I,I]                 )# Natural Blade 1-edge frequency w/  centrifugal stiffening and      tip mass effects
+    # Calculate the generalized damping of the blades:
+    p['CBF'] = np.zeros((2,2))
+    p['CBE'] = np.zeros((1,1))
+    for I in [0,1]:     # Loop through flap DOFs
+        for L in [0,1]:     # Loop through flap DOFs
+            p['CBF'][I,L] = ( 0.01*p['BldFDamp'][L] )*p['KBF'][I,L]/( np.pi*p['FreqBF'][L,0] );
+    L=0; I=0;
+    p['CBE'][I,L] = ( 0.01*p['BldEDamp'][L] )*p['KBE'][I,L]/( np.pi*p['FreqBE'][L,0] );
 
     nq = 3
-    if inertiaAtBladeRoot:
-        rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
-    else:
-        rh = 0
 
     # --- Twisted and untwisted shape functions
     nNodes=n+2
@@ -317,15 +304,20 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, inertiaAtBladeRoot=False):
         p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
         p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
+    p['m'] = p['m_full']
+    p['EI'] = np.zeros((3,nNodes))
+    p['EI'][0,:] = p['EI_F_full']
+    p['EI'][1,:] = p['EI_E_full']
+
+    p['s_G0'] = np.zeros((3, len(p['s_span'])))
+    p['s_G0'][2,:] = p['s_span']  # TODO add hub radius
+
     #KK0 = GKBeam(s_span, EI, PhiK, bOrth=False)
     #if bStiffening:
     #    KKg     = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis)
     #    KKg_self= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=True , bMtop=False, bRot=False)
     #    KKg_Mtop= GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=True,  bRot=False)
     #    KKg_rot = GKBeamStiffnening(s_span, PhiV, gravity, m, Mtop, Omega, main_axis=main_axis, bSelfWeight=False, bMtop=False, bRot=True)
-    # ---
-#     s_G0 = np.zeros((3, len(p['s_span'])))
-#     s_G0[2,:] = p['s_span'] + rh 
 #     MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U']) 
     return p
 
@@ -341,9 +333,9 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
 
     nq = 3
     if inertiaAtBladeRoot:
-        rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
-    else:
         rh = 0
+    else:
+        rh = p['HubRad'] # Hub Radius # TODO make this an option if from blade root or not
 
     # --- Rigid mass matrix terms
     # Mxt term 
@@ -598,6 +590,12 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     for I in [0,1]: #Loop through all tower modes in a single direction
         p['MTFA'][I,I] = p['MTFA'][I,I] - p['TwrTpMass']
         p['MTSS'][I,I] = p['MTSS'][I,I] - p['TwrTpMass']
+
+
+    # ---
+    p['EI'] = np.zeros((3,n+2))
+    p['EI'][0,:] = p['EI_FA_full']
+    p['EI'][1,:] = p['EI_SS_full']
 
 #     for k,v in p.items():
 #         if hasattr(v, '__len__'):

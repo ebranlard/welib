@@ -6,6 +6,7 @@ Flexible beam tools:
 
 Reference:
      [1]: Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex
+     [2]: Standard Input Data of Flexible Members in Multibody Systems. Wallrapp 1993
 '''
 
 def skew(x):
@@ -474,7 +475,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     if rot_terms:
         # --- Gr_j = - 2*\int [~s] [~Phi_j]
         #        [ 0  -z   y ]
-        # [s~] = [ z   0   x ]
+        # [s~] = [ z   0  -x ]
         #        [-y   x   0 ]
         # 
         #           [ syy+szz, -syx  , -szx     ]
@@ -571,7 +572,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         for j in range(nf):
             for l in range(nf):
                 # NOTE: we remove s_G as this is second order effect, and we would need Phi1
-                # Look at Wallrap 1993
+                # Look at Wallrap 1993 [2]
                 sxx = trapzs((         U[l][0,:])*U[j][0,:]*m)
                 sxy = trapzs((         U[l][0,:])*U[j][1,:]*m)
                 sxz = trapzs((         U[l][0,:])*U[j][2,:]*m)
@@ -615,9 +616,212 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     return MM, IT
 
 
+def shapeIntegrals(s_G, s_span, m, U, dU, ddU, method='trapz'):
+    """
+    Compute shape integrals according to Wallrapp 1993 [2]
+
+    INPUTS
+     - s_G    : [m] 3 x nSpan , location of cross sections COG
+     - s_span : [m] span integration variable (e.g. s_G(1,:))
+     - m      : [kg/m] cross section mass along the beam
+     - U      : nf x 3 x nSpan, shape functions
+     - dU     : nf x 3 x nSpan, shape functions slopes
+     - ddU    : nf x 3 x nSpan, shape functions curvatures
+
+
+    Wallrapp notations:
+         r_P = r_O + d
+         d   = c + u   "c" is "s_G0"
+         u     = Phi_u q , Phi_u =[Phi_ul]  Phi_ul = Phi_l^0 + 0.5 Phi^1_ln qn
+         udot  = Phi q ,   Phi   =[Phi_l]   Phi_l  = Phi_l^0 +     Phi^1_ln qn
+
+           [ 0  -z   y ]
+    [s~] = [ z   0  -x ]
+           [-y   x   0 ]
+
+    """
+    DR  = np.diff(s_G) # TODO
+    m0      = m.copy()
+    s_span0 = s_span.copy()
+    dU0     = dU.copy()
+
+    if method=='OpenFAST':
+        DR=DR[:,1:] # TODO
+        dr = checkRegularNode(s_span)
+        DR[2,: ] =dr
+        # We will only use the inner nodes ("elements")
+        U      =   U[:,:,1:-1]
+        dU     =  dU[:,:,1:-1]
+        ddU    = ddU[:,:,1:-1]
+        s_G    = s_G[:,1:-1]
+        s_span = s_span[1:-1]
+        m = m[1:-1]*dr # Important Hack we replace m by melem
+        # OpenFAST integration is simple mid-rule summation
+        # NOTE: yy is hacked to include "dr" in it already
+        def trapzs(yy):
+            return np.sum(yy) 
+    else:
+        # Speed up integration along the span, using integration weight
+        def trapzs(yy,**args):
+            #return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
+            return np.trapz(yy, s_span)
+
+
+    p     = dict()
+    nf    = len(U)
+    nSpan = len(s_span)
+    # --- C1_k = \int Phi^0_k dm
+    # 3 x nf
+    p['C1'] = np.zeros((3, nf))
+    for j in range(nf):
+        p['C1'][0,j]= trapzs(m*U[j][0,:])
+        p['C1'][1,j]= trapzs(m*U[j][1,:])
+        p['C1'][2,j]= trapzs(m*U[j][2,:])
+
+    # --- C2_k = \int [~c] [Phi^0_k] dm
+    # 3 x nf
+    p['C2'] = np.zeros((3, nf))
+    for j in range(nf):
+        p['C2'][0,j]= trapzs( (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
+        p['C2'][1,j]= trapzs( ( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
+        p['C2'][2,j]= trapzs( (-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)
+
+    # --- C3_kl = \int [Phi^0_k]^T [phi^0_l] dm
+    # nf x nf x 3 x 3
+    # 3 x 3 x nf x nf
+    p['C3'] = np.zeros((3,3,nf,nf))
+    for i in range(nf):
+        for j in range(nf):
+            for a in [0,1,2]:
+                for b in [0,1,2]:
+                    #p['C3'][i,j,a,b] = trapzs(U[i][a,:]*U[j][b,:]) 
+                    p['C3'][a,b,i,j] = trapzs(U[i][a,:]*U[j][b,:]*m) 
+
+    # --- C4_k = \int [~c] [~Phi^0_k] dm
+    # nf x 3 x 3 
+    p['C4'] = np.zeros((nf,3,3))
+    for j in range(nf):
+        sxx = trapzs(s_G[0,:]*U[j][0,:]*m)
+        sxy = trapzs(s_G[0,:]*U[j][1,:]*m)
+        sxz = trapzs(s_G[0,:]*U[j][2,:]*m)
+        syx = trapzs(s_G[1,:]*U[j][0,:]*m)
+        syy = trapzs(s_G[1,:]*U[j][1,:]*m)
+        syz = trapzs(s_G[1,:]*U[j][2,:]*m)
+        szx = trapzs(s_G[2,:]*U[j][0,:]*m)
+        szy = trapzs(s_G[2,:]*U[j][1,:]*m)
+        szz = trapzs(s_G[2,:]*U[j][2,:]*m)
+        p['C4'][j][0,:] = -np.array([ syy+szz, -syx  , -szx     ])
+        p['C4'][j][1,:] = -np.array([ -sxy   ,sxx+szz, -szy     ])
+        p['C4'][j][2,:] = -np.array([ -sxz   , -syz  , sxx+syy  ])
+
+    # --- C5_kl = \int [~Phi_k^0][Phi_l^0]
+    p['C5'] = np.zeros((nf,3,nf))
+    for j in range(nf):
+        for k in range(nf):
+            p['C5'][j][0,k]= trapzs( (-U[j][2,:]*U[k][1,:] + U[j][1,:]*U[k][2,:])*m)
+            p['C5'][j][1,k]= trapzs( ( U[j][2,:]*U[k][0,:] - U[j][0,:]*U[k][2,:])*m)
+            p['C5'][j][2,k]= trapzs( (-U[j][1,:]*U[k][0,:] + U[j][0,:]*U[k][1,:])*m)
+
+    # --- C6_kl = \int [~Phi_k^0][~Phi_l^0]
+    p['C6'] = np.zeros((nf,nf,3,3))
+    for j in range(nf):
+        for k in range(nf):
+            sxx = trapzs(U[j][0,:]*U[k][0,:]*m)
+            sxy = trapzs(U[j][0,:]*U[k][1,:]*m)
+            sxz = trapzs(U[j][0,:]*U[k][2,:]*m)
+            syx = trapzs(U[j][1,:]*U[k][0,:]*m)
+            syy = trapzs(U[j][1,:]*U[k][1,:]*m)
+            syz = trapzs(U[j][1,:]*U[k][2,:]*m)
+            szx = trapzs(U[j][2,:]*U[k][0,:]*m)
+            szy = trapzs(U[j][2,:]*U[k][1,:]*m)
+            szz = trapzs(U[j][2,:]*U[k][2,:]*m)
+            p['C6'][j,k][0,:] = -np.array([ syy+szz, -syx  , -szx     ])
+            p['C6'][j,k][1,:] = -np.array([ -sxy   ,sxx+szz, -szy     ])
+            p['C6'][j,k][2,:] = -np.array([ -sxz   , -syz  , sxx+syy  ])
+
+    # Komega
+    p['Komega'] = np.zeros((3,3,nf,nf))
+    for a in [0,1,2]:
+        for b in [0,1,2]:
+            if a!=b:
+                p['Komega'][a, b,:,:]= p['C3'][a, b,:,:]
+            else:
+                c= np.mod(a+1, 3)
+                d= np.mod(c+1, 3)
+                p['Komega'][a, b, :, :]= -p['C3'][c, c, :,:] - p['C3'][d, d,:,:]
+    p['Komega_b'] = np.zeros((3,3,nf,nf))
+    for a in [0,1,2]:
+        for b in [0,1,2]:
+            for j in range(nf):
+                for k in range(nf):
+                    p['Komega_b'][a,b,j,k] = p['C6'][j,k,b,a] # Somehow transpose
+    # Kr
+    p['Kr'] = np.zeros((3,nf,nf))
+    for a in [0,1,2]:
+        c = np.mod(a+1, 3)
+        d = np.mod(c+1, 3)
+        p['Kr'][a]= -p['C3'][c, d] + p['C3'][c, d]
+
+
+    # --- Geometric stiffnesses
+    # stiffening due to point load
+    if method=='OpenFAST':
+        p['K0F'] = np.zeros((nSpan, 3, nf, nf))
+        for i_elem in range(nSpan):
+            if i_elem>0:
+                p['K0F'][i_elem,:,:,:]= p['K0F'][i_elem-1,:,:,:]
+            else:
+                p['K0F'][i_elem,:,:,:]= np.zeros((3, nf, nf))
+            for a in [0,1,2]:
+                for j in range(nf):
+                    for k in range(nf):
+                        p['K0F'][i_elem,a, j, k] += DR[a,i_elem]*(sum( dU[j][:,i_elem]* dU[k][:,i_elem] )  )
+    else:
+        print('TODO, shape integral K0F with trapz')
+
+    # stiffening due to acceleration
+    m_cum= np.cumsum(m[-1::-1])[-1::-1] - 0.5*m
+    p['K0t'] = np.zeros((3,nf,nf))
+    for i_elem in range(nSpan):
+        for a in [0,1,2]:
+            for j in range(nf):
+                for k in range(nf):
+                    p['K0t'][a,j,k]+=  m_cum[i_elem]*DR[a,i_elem]*(sum( dU[j][:,i_elem]* dU[k][:,i_elem] )  )
+
+    # stiffening due to rotational acceleration
+    # TODO
+
+    # stiffening due to rotational velocity (centrifugal stiffening)
+    # force due to rotation results from cumulated moment of inertia I_cum
+    # for i_elem= n_elem:-1:1
+    Kgrot= GKBeamStiffnening(s_span0, dU0, 0, m0, Mtop=0, Omega=1, bSelfWeight=False, bMtop=False, bRot=True, main_axis='z', method='OpenFAST')
+    p['Kgrot'] = Kgrot
+    I_cum = np.zeros((nSpan,3))
+    for i_elem in list(range(nSpan))[-1::-1]:
+        I_cum[i_elem]= 0.5*m[i_elem] * (s_G[:,i_elem] + 0.5*DR[:,i_elem])
+        if i_elem<nSpan-1:
+            I_cum[i_elem,:]+= I_cum[i_elem+1] + 0.5*m[i_elem+1]*(  s_G[:,i_elem+1] - 0.5*DR[:,i_elem+1])
+    # 
+    p['K0omega'] = np.zeros((3,3, nf, nf))
+    for i_elem in range(nSpan):
+        for a in [0,1,2]:
+            for b in [0,1,2]:
+                w1 = np.zeros(3)
+                w2 = np.zeros(3)
+                w1[a]= 1;
+                w2[b]= 1;
+                AA = -skew(w1).dot(skew(w2).dot(I_cum[i_elem, :])).dot(DR[:,i_elem])
+                for j in range(nf):
+                    for k in range(nf):
+                        BB =  (sum( dU[j][:,i_elem]* dU[k][:,i_elem] )  )
+                        p['K0omega'][a,b,j,k] += AA*BB
+
+    return p
+
+
 
 def beamSectionLoads1D(z, p, Ftop=0, Mtop=0, s=1, F_lumped=None, method='plin'):
-    r""" 
+    r"""
     Integrate section loads along a beam based on inline and lumped loads and top load.
 
     S(z) = int_z^L p(z') dz',   dS/dz = - p(z)
