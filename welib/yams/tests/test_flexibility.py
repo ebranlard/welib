@@ -261,52 +261,14 @@ class Test(unittest.TestCase):
         p = bladeParameters(EDfilename)
         p['s_G0'][2,:] += p['HubRad']
 
-
         # --- Use GMBeam
-        inertiaAtBladeRoot=True # TODO for loop around that
-        rh = 0 # Hub Radius # TODO make this an option if from blade root or not
-        s_G0 = np.zeros((3, len(p['s_span'])))
-        s_G0[2,:] = p['s_span'] + rh 
-        MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
-        Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+        #inertiaAtBladeRoot=True # TODO for loop around that
+        #rh = 0 # Hub Radius # TODO make this an option if from blade root or not
+        #s_G0 = np.zeros((3, len(p['s_span'])))
+        #s_G0[2,:] = p['s_span'] + rh 
+        #MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
 
-        
-        p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['Ut'], p['Vt'], p['Kt'], method='OpenFAST')
-
-#         import pdb; pdb.set_trace()
-#         print('Kom\n',np.squeeze(p['K0omega'][0,0,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][0,1,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][0,2,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][1,0,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][1,1,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][1,2,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][2,0,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][2,1,:,:]))
-#         print('Kom\n',np.squeeze(p['K0omega'][2,2,:,:]))
-#         print('Kom\n',np.squeeze(p['Komega_b'][0,0,:,:]))
-#         print('Kom\n',np.squeeze(p['Komega'][0,1,:,:]))
-#         print('Kom\n',np.squeeze(p['Komega_b'][0,1,:,:]))
-
-#         print('K0t\n',np.squeeze(p['K0F'][0,:,:]))
-#         print('K0t\n',np.squeeze(p['K0F'][1,:,:]))
-#         print('K0F\n',np.squeeze(p['K0F'][2,2,:,:]))
-#         print('K0F\n',np.squeeze(p['K0F'][3,2,:,:]))
-#         print('K0F\n',np.squeeze(p['K0F'][15,2,:,:]))
-#         print('K0F\n',np.squeeze(p['K0F'][16,2,:,:]))
-#         print('Kr\n',np.squeeze(p['Kr'][0,:,:]))
-#         print('Kr\n',np.squeeze(p['Kr'][1,:,:]))
-#         for k,v in p.items():
-#             if hasattr(v, '__len__'):
-#                 v = np.asarray(v)
-#                 if len(v.shape)>=3:
-#                     print('{:15s}:({})'.format(k,v.shape))
-#                 elif len(v.shape)==2:
-#                     print('{:15s}:\n {} ({})'.format(k,v, v.shape))
-#                 else:
-#                     n=len(v)
-#                     print('{:15s}:{} ({})'.format(k,v,n))
-#             else:
-#                 print('{:15s}:{}'.format(k,v))
+        p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['Ut'], p['Vt'], p['Kt'], method='OpenFAST', EI=p['EI'])
 
         np.testing.assert_almost_equal(p['C1'][:,0], [2.056364349106070e+03, -3.486607748638750e+02,0])
         np.testing.assert_almost_equal(np.diag(p['C2']),[1.462005717660103e+04, -2.754429727254338e+04,0])
@@ -324,14 +286,45 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(p['K0omega'][0,0,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
         np.testing.assert_almost_equal(p['K0omega'][1,1,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
 
+    def test_tower_shapeIntegrals(self):
+        from welib.fast.elastodyn import towerParameters
+        
+        np.set_printoptions(linewidth=300, precision=9)
 
+        # --- Read data from NREL5MW Blade
+        EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        RotMass = 107107.00927723547
+        Gravity = 9.80665
+        p = towerParameters(EDfilename, RotMass=RotMass, gravity=Gravity)
 
-                                                                                    
+        # --- Use GMBeam
+        #inertiaAtBladeRoot=True # TODO for loop around that
+        #rh = 0 # Hub Radius # TODO make this an option if from blade root or not
+        #s_G0 = np.zeros((3, len(p['s_span'])))
+        #s_G0[2,:] = p['s_span'] 
+        #MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+
+        p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['U'], p['V'], p['K'], method='OpenFAST', EI=p['EI'])
+
+#         np.testing.assert_almost_equal(p['C1'][:,0], [2.056364349106070e+03, -3.486607748638750e+02,0])
+#         np.testing.assert_almost_equal(np.diag(p['C2']),[1.462005717660103e+04, -2.754429727254338e+04,0])
+#         np.testing.assert_almost_equal(p['C3'][0,0,0,1], 45.91191972528230)
+#         np.testing.assert_almost_equal(p['C3'][1,0,2,0], 1062.349259665119)
+#         np.testing.assert_almost_equal(p['C4'][1,1,2], 1.633287798657276e4)
+#         np.testing.assert_almost_equal(p['C5'][1,2,2], -1.146819701714611e2)
+#         np.testing.assert_almost_equal(p['C5'][2,2,0], -1.093206978207040e+03)
+#         np.testing.assert_almost_equal(p['C6'][0,0,1,1], -8.729092245330838e+02)
+#         np.testing.assert_almost_equal(p['C6'][0,1,2,2], -2.650910274433677e1)
+#         np.testing.assert_almost_equal(p['Komega'][0,1,1,0], 6.835792583751914e+00)
+#         np.testing.assert_almost_equal(p['Kr'], np.zeros((3,3,3)))
+#         np.testing.assert_almost_equal(p['K0F'][15,2,:,:],  np.array([[ 2.186488455449226e-02   ,2.938551060365397e-02   ,6.751794953988675e-04], [ 2.938551060365397e-02   ,6.285119048343284e-02   ,3.373762175167497e-03], [ 6.751794953988673e-04   ,3.373762175167497e-03   ,1.875551457120793e-02]]))
+#         np.testing.assert_almost_equal(p['K0t'][2,:,:], np.array([[3.214313717812766e+01  , 1.184358304167647e+01 ,  8.421117828704653e-01], [1.184358304167647e+01   ,6.189506551818468e+01  , 3.537578397663436e+00], [8.421117828704648e-01   ,3.537578397663437e+00  , 4.400055910641722e+01]]))
+#         np.testing.assert_almost_equal(p['K0omega'][0,0,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+#         np.testing.assert_almost_equal(p['K0omega'][1,1,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+
 
 
 
 
 if __name__=='__main__':
-    #Test().test_TowerBeam_SID()
-    #Test().test_BladeBeam_SID()
     unittest.main()

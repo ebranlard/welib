@@ -304,6 +304,7 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
         p['V'][j][idir,:]  = p['dShape'+name+'_full'] 
         p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
+    # --- Parameters consistent with "YAMS" flexibility module
     p['m'] = p['m_full']
     p['EI'] = np.zeros((3,nNodes))
     p['EI'][0,:] = p['EI_F_full']
@@ -342,10 +343,10 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
     p['mdCM'] = np.zeros((3))
     p['mdCM'][2]=  sum(p['BElmntMass'][:]*(p['RNodes']+rh));
     # 
-    p['mdCM1'] = np.zeros((3,nq))
+    p['mdCM_M1'] = np.zeros((3,nq))
     for j in np.arange(nq):
-        p['mdCM1'][0,j]= sum(p['TwistedSF'][0, j, 1:-1, 0]*p['BElmntMass'])
-        p['mdCM1'][1,j]= sum(p['TwistedSF'][1, j, 1:-1, 0]*p['BElmntMass'])
+        p['mdCM_M1'][0,j]= sum(p['TwistedSF'][0, j, 1:-1, 0]*p['BElmntMass'])
+        p['mdCM_M1'][1,j]= sum(p['TwistedSF'][1, j, 1:-1, 0]*p['BElmntMass'])
 
     p['J']    = np.zeros((3,3))
     p['J'][0,0] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2)
@@ -412,7 +413,7 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
     #Oe = np.zeros((nf,3,3))
     #Oe6= np.zeros((nf,6))
     o=0 # derivative order 0=shape
-    OeM1 = np.zeros((nq,6,nq))
+    Oe_M1 = np.zeros((nq,6,nq))
     SS=np.zeros((nq,nq,3,3))
     for j in np.arange(nq):
         for k in np.arange(nq):
@@ -422,20 +423,20 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
                     s[i1,i2] = sum(np.squeeze(p['TwistedSF'][i1, k, 1:-1, o])*np.squeeze(p['TwistedSF'][i2, j, 1:-1, o])*p['BElmntMass'])
             SS[j,k,:,:]=s
             #Oe6_j=  [       -(syy+szz),        -(sxx+szz),       -(sxx+syy),       sxy+syx,        syz+szy,    sxz+szx] 
-            OeM1[j,:,k] = [-(s[1,1]+s[2,2]), -(s[0,0]+s[2,2]), -(s[0,0]+s[1,1]), s[0,1]+s[1,0], s[1,2]+s[2,1], s[0,2]+s[2,0] ]
-    p['SSM1']=SS
+            Oe_M1[j,:,k] = [-(s[1,1]+s[2,2]), -(s[0,0]+s[2,2]), -(s[0,0]+s[1,1]), s[0,1]+s[1,0], s[1,2]+s[2,1], s[0,2]+s[2,0] ]
+    p['SS_M1']=SS
     # Centrifugal stiffening
     # TODO TODO
     # TODO TODO TODO
     # Below is for flap1 + edge1 not flap1 flap2 edge
-    OeM1g = np.zeros((nq,6,nq))
-    OeM1g[0,0,0]= p['KBFCent'][0,0];
-    OeM1g[0,1,0]= p['KBFCent'][0,0];
-    OeM1g[2,0,2]= p['KBECent'][0,0];
-    OeM1g[2,1,2]= p['KBECent'][0,0];
+    Oe_M1g = np.zeros((nq,6,nq))
+    Oe_M1g[0,0,0]= p['KBFCent'][0,0];
+    Oe_M1g[0,1,0]= p['KBFCent'][0,0];
+    Oe_M1g[2,0,2]= p['KBECent'][0,0];
+    Oe_M1g[2,1,2]= p['KBECent'][0,0];
 
-    p['OeM1']  = OeM1
-    p['OeM1g'] = OeM1g
+    p['Oe_M1']  = Oe_M1
+    p['Oe_M1g'] = Oe_M1g
 
 
     return p
@@ -592,11 +593,27 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         p['MTSS'][I,I] = p['MTSS'][I,I] - p['TwrTpMass']
 
 
-    # ---
+    # ---  Shape functions (FA1 FA2 SS1 SS2)
+    nq=4
+    nNodes=n+2
+    p['U']  = np.zeros((nq, 3, nNodes))
+    p['V']  = np.zeros((nq, 3, nNodes))
+    p['K']  = np.zeros((nq, 3, nNodes))
+    j=0
+    for idir, name in zip((0,1),('FA','SS')):
+        for jm in [0,1]:
+            p['U'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 0]
+            p['V'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 1]
+            p['K'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 2]
+            j+=1
+    # --- Parameters consistent with "YAMS" flexibility module
+    p['m'] = p['m_full']
     p['EI'] = np.zeros((3,n+2))
     p['EI'][0,:] = p['EI_FA_full']
     p['EI'][1,:] = p['EI_SS_full']
 
+    p['s_G0'] = np.zeros((3, len(p['s_span'])))
+    p['s_G0'][2,:] = p['s_span']  # TODO add hub radius
 #     for k,v in p.items():
 #         if hasattr(v, '__len__'):
 #             v = np.asarray(v)

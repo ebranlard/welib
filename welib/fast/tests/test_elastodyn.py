@@ -122,11 +122,11 @@ class TestED(unittest.TestCase):
         p = bladeDerivedParameters(p, inertiaAtBladeRoot=inertiaAtBladeRoot)
 #         print('KK\n',KK[6:,6:])
 #         print('KKe\n',p['Ke'])
-        print('KKg_SW\n',KKg_SW[6:,6:])
-        print('KKg_Om\n',KKg_Om[6:,6:])
-        print('KKg_Om\n',p['Kg_Om'])
+#         print('KKg_SW\n',KKg_SW[6:,6:])
+#         print('KKg_Om\n',KKg_Om[6:,6:])
+#         print('KKg_Om\n',p['Kg_Om'])
 
-        # --- TODOs
+        # --- TODO TODO TODO TODOs
         # - compute general centrifugal stiffening tersm in GM/GKBeam
         # - Update SID/ *parameters functions to use GM/GK beam
 
@@ -159,8 +159,8 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(np.diag(MM[6:,6:]),  np.diag(p['Me']))
         np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
         np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
-        np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
-        np.testing.assert_almost_equal(IT['mdCM1'], p['mdCM1'])
+        np.testing.assert_almost_equal(IT['Oe6_M1'] , p['Oe_M1'])
+        np.testing.assert_almost_equal(IT['mdCM_M1'], p['mdCM_M1'])
         np.testing.assert_almost_equal(KK[6:,6:]  , p['Ke'])
 
 
@@ -183,8 +183,8 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(np.diag(MM[6:,6:]),  np.diag(p['Me']))
         np.testing.assert_almost_equal(MM[0:3,6:],          p['Ct'].T)
         np.testing.assert_almost_equal(MM[3:6,6:],          p['Cr'].T)
-        np.testing.assert_almost_equal(IT['Oe6M1'], p['OeM1'])
-        np.testing.assert_almost_equal(IT['mdCM1'], p['mdCM1'])
+        np.testing.assert_almost_equal(IT['Oe6_M1'], p['Oe_M1'])
+        np.testing.assert_almost_equal(IT['mdCM_M1'], p['mdCM_M1'])
 # 
 
 
@@ -220,20 +220,6 @@ class TestED(unittest.TestCase):
         # --- Mass Matrix using GM or not
         # --------------------------------------------------------------------------------{
         from welib.yams.flexibility import GMBeam, GKBeam
-        # ---  Shape functions (FA1 FA2 SS1 SS2)
-        n = p['TwrNodes']
-        nq=4
-        nNodes=n+2
-        p['U']  = np.zeros((nq, 3, nNodes))
-        p['V']  = np.zeros((nq, 3, nNodes))
-        p['K']  = np.zeros((nq, 3, nNodes))
-        j=0
-        for idir, name in zip((0,1),('FA','SS')):
-            for jm in [0,1]:
-                p['U'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 0]
-                p['V'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 1]
-                p['K'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 2]
-                j+=1
         # --- Call bladeDerivedParameters for "manual" calculation
         p = towerDerivedParameters(p)
 
@@ -250,10 +236,10 @@ class TestED(unittest.TestCase):
         #KKg_Om = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=1, bSelfWeight=False, bMtop=False, bRot=True, main_axis='z')
 
         # --- 
-        print('KKg_SW\n',KKg_SW[6:,6:])
-        print('KKg_SW\n',p['Kg_SW'])
-        print('KKg_TM\n',KKg_TM[6:,6:])
-        print('KKg_TM\n',p['Kg_TM'])
+#         print('KKg_SW\n',KKg_SW[6:,6:])
+#         print('KKg_SW\n',p['Kg_SW'])
+#         print('KKg_TM\n',KKg_TM[6:,6:])
+#         print('KKg_TM\n',p['Kg_TM'])
 #         print('Ke\n',KK[6:,6:])
 #         print('Ke\n',p['Ke'])
 

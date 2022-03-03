@@ -1,7 +1,7 @@
 import unittest
 import os
 import numpy as np
-from welib.yams.sid import FAST2SID
+from welib.yams.sid import FASTTower2SID, FASTBlade2SID
 
 
 MyDir=os.path.dirname(__file__)
@@ -19,7 +19,7 @@ class Test(unittest.TestCase):
 
         old_settings = np.seterr()
         np.seterr(all='ignore')
-        sid, _ = FAST2SID(EDFile, Imodes_twr=[(0,1)])
+        sid = FASTTower2SID(EDFile, Imodes_twr=[(0,1)], method='FEM')
         np.seterr(**old_settings)
 
         # --- Generalized mass matrix
@@ -70,11 +70,38 @@ class Test(unittest.TestCase):
         except:
             pass
 
+    def test_fast2sid_twr_SF_OF(self):
+        Gravity = 9.80665
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        sid = FASTTower2SID(EDFile, method='ShapeFunctions', gravity=Gravity, Imodes_twr=[0,1,2,3])
+
+        with open('_OUT_SID_TWR_PY_SHAPEFUNCTIONS.txt','w') as f:
+           f.write(str(sid).replace('-0.000000',' 0.000000'))
+# 
+#         try:
+#             os.remove('_OUT_SID_TWR_PY_SHAPEFUNCTIONS.txt')
+#         except:
+#             pass
+
+    def test_fast2sid_twr_SF_SI(self):
+        Gravity = 9.80665
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        sid = FASTTower2SID(EDFile, method='ShapeIntegral', Imodes_twr=[0,1,2,3], gravity=Gravity)
+
+        with open('_OUT_SID_TWR_PY_SHAPEINTEGRAL.txt','w') as f:
+           f.write(str(sid).replace('-0.000000',' 0.000000'))
+# 
+#         try:
+#             os.remove('_OUT_SID_TWR_PY_SHAPEINTEGRAL.txt')
+#         except:
+#             pass
+
+
     def test_fast2sid_bld_FEM(self):
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        _, sid = FAST2SID(EDFile, Imodes_bld=[0,1], method='FEM')
+        sid = FASTBlade2SID(EDFile, Imodes_bld=[0,1], method='FEM')
         with open('_OUT_SID_BLD_PY.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
         try:
@@ -82,20 +109,31 @@ class Test(unittest.TestCase):
         except:
             pass
 
-    def test_fast2sid_twr_OF(self):
-        Gravity = 9.80665
+    def test_fast2sid_bld_SF_OF(self):
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        sid, _ = FAST2SID(EDFile, method='OpenFAST', gravity=Gravity, Imodes_twr=[0,1,2,3])
-        #with open('_OUT_SID_TWR_PY_OF.txt','w') as f:
-        #   f.write(str(sid).replace('-0.000000',' 0.000000'))
+        sid = FASTBlade2SID(EDFile, method='ShapeFunctions', Imodes_bld=[0,1,2], startAtRoot=False)
 
-    def test_fast2sid_bld_OF(self):
-        Gravity = 9.80665
+        with open('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt','w') as f:
+           f.write(str(sid).replace('-0.000000',' 0.000000'))
+        try:
+            os.remove('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt')
+        except:
+            pass
+
+    def test_fast2sid_bld_SF_SI(self):
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        _, sid = FAST2SID(EDFile, method='OpenFAST', gravity=Gravity, Imodes_bld=[0,1,2])
+        sid = FASTBlade2SID(EDFile, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False)
 
-        #with open('_OUT_SID_BLD_PY_OF.txt','w') as f:
-        #   f.write(str(sid).replace('-0.000000',' 0.000000'))
+        with open('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt','w') as f:
+           f.write(str(sid).replace('-0.000000',' 0.000000'))
+        try:
+            os.remove('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt')
+        except:
+            pass
+
+
+
+
 
 
 if __name__=='__main__':
