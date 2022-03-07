@@ -6,7 +6,10 @@ try:
     from sympy.core.compatibility import range
 except:
     pass
-from sympy.utilities import default_sort_key
+try:
+    from sympy.core.sorting import default_sort_key
+except:
+    from sympy.utilities import default_sort_key
 from sympy.physics.vector import (ReferenceFrame, dynamicsymbols)
                              
 from sympy.physics.vector import partial_velocity
@@ -30,6 +33,9 @@ __all__+= ['kane_frstar','kane_fr','kane_fr_alt','kane_frstar_alt']
 
 class YAMSKanesMethod(object):
     """Kane's method object.
+
+    Explanation
+    ===========
 
     This object is used to do the "book-keeping" as you go through and form
     equations of motion in the way Kane presents in:
@@ -129,7 +135,7 @@ class YAMSKanesMethod(object):
     def __init__(self, frame, q_ind, u_ind, kd_eqs=None, q_dependent=None,
             configuration_constraints=None, u_dependent=None,
             velocity_constraints=None, acceleration_constraints=None,
-            u_auxiliary=None):
+            u_auxiliary=None, bodies=None, forcelist=None):
 
         """Please read the online documentation. """
         if not q_ind:
@@ -143,8 +149,8 @@ class YAMSKanesMethod(object):
         self._fr = None
         self._frstar = None
 
-        self._forcelist = None
-        self._bodylist = None
+        self._forcelist = forcelist
+        self._bodylist = bodies
 
         self._initialize_vectors(q_ind, q_dependent, u_ind, u_dependent,
                 u_auxiliary)
@@ -245,16 +251,26 @@ class YAMSKanesMethod(object):
             self._Ars = Matrix()
 
     def _initialize_kindiffeq_matrices(self, kdeqs):
-        """Initialize the kinematic differential equation matrices."""
+        """Initialize the kinematic differential equation matrices.
+
+        Parameters
+        ==========
+        kdeqs : sequence of sympy expressions
+            Kinematic differential equations in the form of f(u,q',q,t) where
+            f() = 0. The equations have to be linear in the generalized
+            coordinates and generalized speeds.
+
+        """
 
         if kdeqs:
             if len(self.q) != len(kdeqs):
                 raise ValueError('There must be an equal number of kinematic '
                                  'differential equations and coordinates.')
-            kdeqs = Matrix(kdeqs)
 
             u = self.u
             qdot = self._qdot
+
+            kdeqs = Matrix(kdeqs)
             # Dictionaries setting things to zero
             u_zero = dict((i, 0) for i in u)
             uaux_zero = dict((i, 0) for i in self._uaux)
@@ -606,6 +622,9 @@ class YAMSKanesMethod(object):
     def linearize(self, **kwargs):
         """ Linearize the equations of motion about a symbolic operating point.
 
+        Explanation
+        ===========
+
         If kwarg A_and_B is False (default), returns M, A, B, r for the
         linearized form, M*[q', u']^T = A*[q_ind, u_ind]^T + B*r.
 
@@ -627,16 +646,15 @@ class YAMSKanesMethod(object):
         you can specify beforehand, the faster this computation will run.
 
         For more documentation, please see the ``Linearizer`` class."""
-
-        # TODO : Remove this after 1.1 has been released.
-        _ = kwargs.pop('new_method', None)
-
         linearizer = self.to_linearizer()
         result = linearizer.linearize(**kwargs)
         return result + (linearizer.r,)
 
     def kanes_equations(self, bodies, loads=None, Mform='TaylorExpanded',addGravity=True, g_vect=None):
         """ Method to form Kane's equations, Fr + Fr* = 0.
+
+        Explanation
+        ===========
 
         Returns (Fr, Fr*). In the case where auxiliary generalized speeds are
         present (say, s auxiliary speeds, o generalized speeds, and m motion
@@ -691,6 +709,10 @@ class YAMSKanesMethod(object):
             self._frstar = frstar.col_join(frstaraux)
         return (self._fr, self._frstar)
 
+    def _form_eoms(self):
+        fr, frstar = self.kanes_equations(self.bodylist, self.forcelist)
+        return fr + frstar
+
     def rhs(self, inv_method=None):
         """Returns the system's equations of motion in first order form. The
         output is the right hand side of::
@@ -703,6 +725,7 @@ class YAMSKanesMethod(object):
 
         Parameters
         ==========
+
         inv_method : str
             The specific sympy inverse matrix calculation method to use. For a
             list of valid methods, see
@@ -789,8 +812,13 @@ class YAMSKanesMethod(object):
     def forcelist(self):
         return self._forcelist
 
+    @property
+    def bodies(self):
+        return self._bodylist
 
-
+    @property
+    def loads(self):
+        return self._forcelist
 
 
 # --------------------------------------------------------------------------------}
