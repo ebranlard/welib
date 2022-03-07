@@ -63,12 +63,12 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(sid.GKg['omyz'][0,0],   0, 5)
 
         #print(sid)
-        with open('_OUT_SID_TWR_PY.txt','w') as f:
+        with open('_OUT_SID_TWR_PY_FEM.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
-        try:
-            os.remove('_OUT_SID_TWR_PY.txt')
-        except:
-            pass
+#         try:
+#             os.remove('_OUT_SID_TWR_PY_FEM.txt')
+#         except:
+#             pass
 
     def test_fast2sid_twr_SF_OF(self):
         Gravity = 9.80665
@@ -102,12 +102,12 @@ class Test(unittest.TestCase):
         # --- Read data from NREL5MW tower
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         sid = FASTBlade2SID(EDFile, Imodes_bld=[0,1], method='FEM')
-        with open('_OUT_SID_BLD_PY.txt','w') as f:
+        with open('_OUT_SID_BLD_PY_FEM.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
-        try:
-            os.remove('_OUT_SID_BLD_PY.txt')
-        except:
-            pass
+#         try:
+#             os.remove('_OUT_SID_BLD_PY_FEM.txt')
+#         except:
+#             pass
 
     def test_fast2sid_bld_SF_OF(self):
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
@@ -115,10 +115,10 @@ class Test(unittest.TestCase):
 
         with open('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
-        try:
-            os.remove('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt')
-        except:
-            pass
+#         try:
+#             os.remove('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt')
+#         except:
+#             pass
 
     def test_fast2sid_bld_SF_SI(self):
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
@@ -126,10 +126,10 @@ class Test(unittest.TestCase):
 
         with open('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt','w') as f:
            f.write(str(sid).replace('-0.000000',' 0.000000'))
-        try:
-            os.remove('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt')
-        except:
-            pass
+#         try:
+#             os.remove('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt')
+#         except:
+#             pass
 
 
 

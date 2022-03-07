@@ -515,17 +515,16 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
 
         p = shapeIntegrals(s_G, s_span, m, U, dU, ddU, method=int_method, EI=EI)
         sid = shapeIntegrals2SID(p, consistency=consistency)
+        sid.p=p
         return sid
 
     # --- Method 2 relying on Generalized functions
-    from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening
+    from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GKBeamStiffneningSplit
     MM, IT = GMBeam(s_G, s_span, m, U, rot_terms=True, method=int_method, main_axis='z', M1=True) 
     Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
-    KK = GKBeam(s_span, EI, ddU, bOrth=False, method=int_method)
-    #Mtop = p['TwrTpMass']
-    #KKg_SW = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=0, Omega=0, bSelfWeight=True,  bMtop=False, bRot=False, main_axis='z')
-    #KKg_TM = GKBeamStiffnening(p['s_span'], p['V'], Gravity, p['m_full'], Mtop=1, Omega=0, bSelfWeight=False, bMtop=True, bRot=False, main_axis='z')
+    KK  = GKBeam(s_span, EI, ddU, bOrth = False,                method = int_method)
+    pKg = GKBeamStiffneningSplit(s_span, dU, m , main_axis='z', method = int_method)
 
     nq = U.shape[0]
     nNodes = U.shape[2]
@@ -538,8 +537,7 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
 
     sid.refmod.mass= MM[0,0]
     for i in np.arange(nq):
-        sid.refmod.ielastq[i]= 'Eigen Mode {:4d}'.format(i)
-
+        sid.refmod.ielastq[i]= 'Eigen Mode {:4d}'.format(i+1)
 
     for ii, i in enumerate(I):
         f=Node(nq=nq)
@@ -583,7 +581,7 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
     # --- J
     sid.J.M0= IT['Mtt']
     for j in np.arange(nq):
-        sid.J.M1[:, :, j]= IT['Mtt_M1'][j,:,:]
+        sid.J.M1[:, :, j]= IT['Mtt_M1'][:,:,j]
     #   sid.J.M1[:, :, j]= -C4[:, :, j] - C4[:, :, j].T;
 
 
@@ -601,6 +599,10 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
     # NOTE: Ct.M1 = K0t is geometrical stiffening due to translational acceleration
     sid.Ct.M0= IT['Mxg'].T
     #sid.Ct.M0= p['C1'].T
+    sid.Ct.M1[:, 0, :] = pKg['Kgt'][0,:,:] # Gkg['t_ax'], K0t is (3,nf,nf)
+    sid.Ct.M1[:, 1, :] = pKg['Kgt'][1,:,:]
+    sid.Ct.M1[:, 2, :] = pKg['Kgt'][2,:,:]
+
     #param.tower_Ct1_1_1_3= p.KTFAGrav(1, 1); # Stiffening
     #param.tower_Ct1_2_2_3= p.KTSSGrav(1, 1); # Stiffening
     #sid.Ct.M0 = IT['Mxg'].T

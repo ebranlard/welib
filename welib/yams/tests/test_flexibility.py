@@ -260,14 +260,6 @@ class Test(unittest.TestCase):
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         p = bladeParameters(EDfilename)
         p['s_G0'][2,:] += p['HubRad']
-
-        # --- Use GMBeam
-        #inertiaAtBladeRoot=True # TODO for loop around that
-        #rh = 0 # Hub Radius # TODO make this an option if from blade root or not
-        #s_G0 = np.zeros((3, len(p['s_span'])))
-        #s_G0[2,:] = p['s_span'] + rh 
-        #MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
-
         p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['Ut'], p['Vt'], p['Kt'], method='OpenFAST', EI=p['EI'])
 
         np.testing.assert_almost_equal(p['C1'][:,0], [2.056364349106070e+03, -3.486607748638750e+02,0])
@@ -285,6 +277,66 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(p['K0t'][2,:,:], np.array([[3.214313717812766e+01  , 1.184358304167647e+01 ,  8.421117828704653e-01], [1.184358304167647e+01   ,6.189506551818468e+01  , 3.537578397663436e+00], [8.421117828704648e-01   ,3.537578397663437e+00  , 4.400055910641722e+01]]))
         np.testing.assert_almost_equal(p['K0omega'][0,0,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
         np.testing.assert_almost_equal(p['K0omega'][1,1,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+
+
+    def test_blade_shapeFunction(self):
+        from welib.fast.elastodyn import bladeParameters
+        from welib.yams.sid import FASTBlade2SID
+
+        np.set_printoptions(linewidth=300, precision=9)
+
+        # --- Read data from NREL5MW Blade
+        EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        p = bladeParameters(EDfilename)
+        p['s_G0'][2,:] += p['HubRad']
+
+        # --- Use GMBeam
+        #s_G0 = np.zeros((3, len(p['s_span'])))
+        #s_G0[2,:] = p['s_span'] + rh 
+        MM, IT = GMBeam(p['s_G0'], p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+
+        pg = GKBeamStiffneningSplit(p['s_span'], p['Vt'], p['m_full'], main_axis='z', method='OpenFAST')
+#         pg = GKBeamStiffneningSplit(p['s_span'], p['Vt'], p['m_full'], main_axis='z', method='trapz')
+
+        # --- Compare with SID from ShapeIntegral
+        sid = FASTBlade2SID(EDfilename, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False)
+
+        pw=sid.p
+
+        print(IT.keys())
+        print(pg.keys())
+
+        np.testing.assert_almost_equal(IT['Mtt_M1'], sid.J.M1)
+        np.testing.assert_almost_equal(pg['Kgt'], pw['K0t'])
+        np.testing.assert_almost_equal(pg['KgF'], pw['K0F'])
+# 
+#         print(pg['Kgt'].shape)
+#         print(pw['K0t'].shape)
+#         print('Kgt\n', pg['Kgt'][2,:,:])
+#         print('K0t\n', pw['K0t'][2,:,:])
+#         print(pg['KgF'].shape)
+#         print(pw['K0F'].shape)
+#         print('KgF\n', pg['KgF'][-1,2,:,:])
+#         print('K0F\n', pw['K0F'][-1,2,:,:])
+
+#         import matplotlib.pyplot as plt
+#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#         ax.plot(pg['KgF'][:,2,0,1], '-' , label='g')
+#         ax.plot(pw['K0F'][:,2,0,1], '--', label='0')
+#         ax.set_xlabel('')
+#         ax.set_ylabel('')
+#         ax.legend()
+#         plt.show()
+# 
+
+
+
+
+
+
+
+
 
     def test_tower_shapeIntegrals(self):
         from welib.fast.elastodyn import towerParameters
