@@ -6,6 +6,19 @@ from welib.yams.sid import FASTTower2SID, FASTBlade2SID
 
 MyDir=os.path.dirname(__file__)
 
+
+def writeSID(sid, filename):
+
+    with open(filename, 'w') as f:
+        f.write(str(sid).replace('-0.000000',' 0.000000'))
+
+    Delete=True
+    if Delete:
+        try:
+            os.remove(filename)
+        except:
+            pass
+
 # --------------------------------------------------------------------------------}
 # --- TESTS
 # --------------------------------------------------------------------------------{
@@ -61,40 +74,20 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(sid.GKg['omyy'][0,0],   77201.43393, 5)
         np.testing.assert_almost_equal(sid.GKg['omzz'][0,0],   0, 5)
         np.testing.assert_almost_equal(sid.GKg['omyz'][0,0],   0, 5)
-
-        #print(sid)
-        with open('_OUT_SID_TWR_PY_FEM.txt','w') as f:
-           f.write(str(sid).replace('-0.000000',' 0.000000'))
-#         try:
-#             os.remove('_OUT_SID_TWR_PY_FEM.txt')
-#         except:
-#             pass
+        writeSID(sid, '_OUT_SID_TWR_PY_FEM.txt')
 
     def test_fast2sid_twr_SF_OF(self):
         Gravity = 9.80665
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         sid = FASTTower2SID(EDFile, method='ShapeFunctions', gravity=Gravity, Imodes_twr=[0,1,2,3])
+        writeSID(sid, '_OUT_SID_TWR_PY_SHAPEFUNCTIONS.txt')
 
-        with open('_OUT_SID_TWR_PY_SHAPEFUNCTIONS.txt','w') as f:
-           f.write(str(sid).replace('-0.000000',' 0.000000'))
-# 
-#         try:
-#             os.remove('_OUT_SID_TWR_PY_SHAPEFUNCTIONS.txt')
-#         except:
-#             pass
 
     def test_fast2sid_twr_SF_SI(self):
         Gravity = 9.80665
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         sid = FASTTower2SID(EDFile, method='ShapeIntegral', Imodes_twr=[0,1,2,3], gravity=Gravity)
-
-        with open('_OUT_SID_TWR_PY_SHAPEINTEGRAL.txt','w') as f:
-           f.write(str(sid).replace('-0.000000',' 0.000000'))
-# 
-#         try:
-#             os.remove('_OUT_SID_TWR_PY_SHAPEINTEGRAL.txt')
-#         except:
-#             pass
+        writeSID(sid, '_OUT_SID_TWR_PY_SHAPEINTEGRAL.txt')
 
 
     def test_fast2sid_bld_FEM(self):
@@ -102,38 +95,65 @@ class Test(unittest.TestCase):
         # --- Read data from NREL5MW tower
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         sid = FASTBlade2SID(EDFile, Imodes_bld=[0,1], method='FEM')
-        with open('_OUT_SID_BLD_PY_FEM.txt','w') as f:
-           f.write(str(sid).replace('-0.000000',' 0.000000'))
-#         try:
-#             os.remove('_OUT_SID_BLD_PY_FEM.txt')
-#         except:
-#             pass
+        writeSID(sid, '_OUT_SID_BLD_PY_FEM.txt')
 
     def test_fast2sid_bld_SF_OF(self):
+        consistency='OpenFAST'
+#         consistency=''
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        sid = FASTBlade2SID(EDFile, method='ShapeFunctions', Imodes_bld=[0,1,2], startAtRoot=False)
+        sid = FASTBlade2SID(EDFile, method='ShapeFunctions', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency)
+        writeSID(sid, '_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt')
 
-        with open('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt','w') as f:
-           f.write(str(sid).replace('-0.000000',' 0.000000'))
-#         try:
-#             os.remove('_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt')
-#         except:
-#             pass
+        np.testing.assert_almost_equal(sid.J.M0 [0,0], 12319399.637394847)
+        np.testing.assert_almost_equal(sid.Oe.M0[0,4],-14620.057176601025)
+        np.testing.assert_almost_equal(sid.Ct.M0[0,0],2056.3643491060693)
+        np.testing.assert_almost_equal(sid.Gr.M0[0,2],-180861.62393339022)
+        np.testing.assert_almost_equal(sid.Ge.M0[0,5],-220.06947247279106)
+        np.testing.assert_almost_equal(sid.J.M1 [0,2,0],-90430.81196669511)
+        np.testing.assert_almost_equal(sid.Oe.M1[0,0,0],1576.2541285535062)
+        np.testing.assert_almost_equal(sid.Ct.M1[0,2,0],32.143137178127645)
+        np.testing.assert_almost_equal(sid.Gr.M1[0,0,0],40.94259631698493)
+
+
+
 
     def test_fast2sid_bld_SF_SI(self):
+        consistency='OpenFAST'
+#         consistency=''
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        sid = FASTBlade2SID(EDFile, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False)
+        sid = FASTBlade2SID(EDFile, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency)
+        writeSID(sid, '_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt')
 
-        with open('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt','w') as f:
-           f.write(str(sid).replace('-0.000000',' 0.000000'))
-#         try:
-#             os.remove('_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt')
-#         except:
-#             pass
+        np.testing.assert_almost_equal(sid.J.M0 [0,0], 12319399.637394847)
+        np.testing.assert_almost_equal(sid.Oe.M0[0,4],-14620.057176601025)
+        np.testing.assert_almost_equal(sid.Ct.M0[0,0],2056.3643491060693)
+        np.testing.assert_almost_equal(sid.Gr.M0[0,2],-180861.62393339022)
+        np.testing.assert_almost_equal(sid.Ge.M0[0,5],-220.06947247279106)
+        np.testing.assert_almost_equal(sid.J.M1 [0,2,0],-90430.81196669511)
+        np.testing.assert_almost_equal(sid.Oe.M1[0,0,0],1576.2541285535062)
+        np.testing.assert_almost_equal(sid.Ct.M1[0,2,0],32.143137178127645)
+        np.testing.assert_almost_equal(sid.Gr.M1[0,0,0],40.94259631698493)
 
 
+    def test_fast2sid_bld_CompareSID(self):
+        consistency=''
+        EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
 
+        sid_SI = FASTBlade2SID(EDFile, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency)
+        sid_SF = FASTBlade2SID(EDFile, method='ShapeFunctions', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency)
 
+        np.testing.assert_almost_equal(sid_SI.J.M0 ,sid_SF.J.M0 )
+        np.testing.assert_almost_equal(sid_SI.Oe.M0,sid_SF.Oe.M0)
+        np.testing.assert_almost_equal(sid_SI.Ct.M0,sid_SF.Ct.M0)
+        np.testing.assert_almost_equal(sid_SI.Cr.M0,sid_SF.Cr.M0)
+        np.testing.assert_almost_equal(sid_SI.Gr.M0,sid_SF.Gr.M0)
+        np.testing.assert_almost_equal(sid_SI.Ge.M0,sid_SF.Ge.M0)
+
+        np.testing.assert_almost_equal(sid_SI.J.M1 ,sid_SF.J.M1 )
+        np.testing.assert_almost_equal(sid_SI.Oe.M1,sid_SF.Oe.M1)
+        np.testing.assert_almost_equal(sid_SI.Ct.M1,sid_SF.Ct.M1)
+        np.testing.assert_almost_equal(sid_SI.Cr.M1,sid_SF.Cr.M1)
+        np.testing.assert_almost_equal(sid_SI.Gr.M1,sid_SF.Gr.M1)
 
 
 if __name__=='__main__':

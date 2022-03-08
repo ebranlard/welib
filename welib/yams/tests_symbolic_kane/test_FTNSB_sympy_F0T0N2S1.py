@@ -38,9 +38,7 @@ def main(unittest=False):
 
 class TestF0T0N2S1(unittest.TestCase):
     def test_F0T0N2S1(self):
-        """ 
-        Test expression of mass and forcing
-        """
+        #Test expression of mass and forcing
         model=main(unittest=True)
         print('Gyroscope test not ready')
 

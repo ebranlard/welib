@@ -168,7 +168,7 @@ class Test(unittest.TestCase):
 
         np.testing.assert_allclose(Gr[0][0,:],[0,0,-12945834],rtol=1e-5)
         np.testing.assert_allclose(Gr[1][1,:],[0,0,-12945834],rtol=1e-5)
-        np.testing.assert_allclose(Ge[0][1,:],[0,0,122911],rtol=1e-5)
+        np.testing.assert_allclose(Ge[0][1,:],[0,0, 122911],rtol=1e-5)
         np.testing.assert_allclose(Ge[1][0,:],[0,0,-122911],rtol=1e-5)
         np.testing.assert_allclose(Oe6[0][:],[0,0,0,0,0,6472917],rtol=1e-5)
         np.testing.assert_allclose(Oe6[1][:],[0,0,0,0,6472917,0],rtol=1e-5)
@@ -272,11 +272,17 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(p['C6'][0,0,1,1], -8.729092245330838e+02)
         np.testing.assert_almost_equal(p['C6'][0,1,2,2], -2.650910274433677e1)
         np.testing.assert_almost_equal(p['Komega'][0,1,1,0], 6.835792583751914e+00)
-        np.testing.assert_almost_equal(p['Kr'], np.zeros((3,3,3)))
+        np.testing.assert_almost_equal(p['Kr'][2,0,1],-110.0347362363956)
+        np.testing.assert_almost_equal(p['Kr'][2,1,0], 110.0347362363956)
         np.testing.assert_almost_equal(p['K0F'][15,2,:,:],  np.array([[ 2.186488455449226e-02   ,2.938551060365397e-02   ,6.751794953988675e-04], [ 2.938551060365397e-02   ,6.285119048343284e-02   ,3.373762175167497e-03], [ 6.751794953988673e-04   ,3.373762175167497e-03   ,1.875551457120793e-02]]))
         np.testing.assert_almost_equal(p['K0t'][2,:,:], np.array([[3.214313717812766e+01  , 1.184358304167647e+01 ,  8.421117828704653e-01], [1.184358304167647e+01   ,6.189506551818468e+01  , 3.537578397663436e+00], [8.421117828704648e-01   ,3.537578397663437e+00  , 4.400055910641722e+01]]))
         np.testing.assert_almost_equal(p['K0omega'][0,0,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
         np.testing.assert_almost_equal(p['K0omega'][1,1,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+        #print('>>> 2C5\t', 2*p['C5'][0,:,:].T)
+        #nq=3
+        #j=0
+        #M0j = 2*np.vstack([p['Kr'][0,0:nq, j],p['Kr'][1,0:nq, j],p['Kr'][2,0:nq, j]])  # 3 x nq # TODO TODO CHECK THIS
+        #print('M0j\n',M0j.T);
 
 
     def test_blade_shapeFunction(self):
@@ -284,6 +290,7 @@ class Test(unittest.TestCase):
         from welib.yams.sid import FASTBlade2SID
 
         np.set_printoptions(linewidth=300, precision=9)
+        nShapes=3
 
         # --- Read data from NREL5MW Blade
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
@@ -293,43 +300,70 @@ class Test(unittest.TestCase):
         # --- Use GMBeam
         #s_G0 = np.zeros((3, len(p['s_span'])))
         #s_G0[2,:] = p['s_span'] + rh 
-        MM, IT = GMBeam(p['s_G0'], p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+        MM, IT = GMBeam(p['s_G0'], p['s_span'], p['m_full'], p['Ut'][:nShapes], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
 
-        pg = GKBeamStiffneningSplit(p['s_span'], p['Vt'], p['m_full'], main_axis='z', method='OpenFAST')
+        pg = GKBeamStiffneningSplit(p['s_G0'],p['s_span'], p['Vt'][:nShapes], p['m_full'], main_axis='z', method='OpenFAST')
 #         pg = GKBeamStiffneningSplit(p['s_span'], p['Vt'], p['m_full'], main_axis='z', method='trapz')
 
         # --- Compare with SID from ShapeIntegral
-        sid = FASTBlade2SID(EDfilename, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False)
+        sid = FASTBlade2SID(EDfilename, method='ShapeIntegral', Imodes_bld=np.array([0,1,2])[:nShapes], startAtRoot=False)
 
         pw=sid.p
 
-        print(IT.keys())
-        print(pg.keys())
-
         np.testing.assert_almost_equal(IT['Mtt_M1'], sid.J.M1)
-        np.testing.assert_almost_equal(pg['Kgt'], pw['K0t'])
-        np.testing.assert_almost_equal(pg['KgF'], pw['K0F'])
+        np.testing.assert_almost_equal(pg['K0t'], pw['K0t'])
+        np.testing.assert_almost_equal(pg['K0F'], pw['K0F'])
+        for j in np.arange(nShapes):
+            np.testing.assert_almost_equal(IT['Gr_M1'][0,:,:,j],sid.Gr.M1[:,:3,j])
+            if nShapes>1:
+                np.testing.assert_almost_equal(IT['Gr_M1'][1,:,:,j],sid.Gr.M1[:,3:6,j])
+            if nShapes>2:
+                np.testing.assert_almost_equal(IT['Gr_M1'][2,:,:,j],sid.Gr.M1[:,6:9,j])
+
+        np.testing.assert_almost_equal(IT['Oe6_M1'], sid.Oe.M1_base)
+
+        np.testing.assert_almost_equal(pg['K0omega'], sid.p['K0omega'])
+
+        np.testing.assert_almost_equal(IT['Ge'][0,1,2],220.06947247279106)
+
 # 
-#         print(pg['Kgt'].shape)
+#         print(pg['K0t'].shape)
 #         print(pw['K0t'].shape)
-#         print('Kgt\n', pg['Kgt'][2,:,:])
+#         print('K0t\n', pg['K0t'][2,:,:])
 #         print('K0t\n', pw['K0t'][2,:,:])
-#         print(pg['KgF'].shape)
+#         print(pg['K0F'].shape)
 #         print(pw['K0F'].shape)
-#         print('KgF\n', pg['KgF'][-1,2,:,:])
+#         print('K0F\n', pg['K0F'][-1,2,:,:])
 #         print('K0F\n', pw['K0F'][-1,2,:,:])
 
 #         import matplotlib.pyplot as plt
 #         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
 #         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-#         ax.plot(pg['KgF'][:,2,0,1], '-' , label='g')
+#         ax.plot(pg['K0F'][:,2,0,1], '-' , label='g')
 #         ax.plot(pw['K0F'][:,2,0,1], '--', label='0')
 #         ax.set_xlabel('')
 #         ax.set_ylabel('')
 #         ax.legend()
 #         plt.show()
 # 
+#         print(IT['Gr'].shape)
+#         print(sid.Gr.M0.shape)
+#         print(IT['Gr_M1'].shape)
+#         print(sid.Gr.M1.shape)
+#         print('Gr\n', IT['Gr_M1'][1,:,:,0])
+#         print('Gr\n', sid.Gr.M1[:,3:6,0])
 
+#         print(IT['Oe6'].shape)
+#         print(sid.Oe.M0.shape)
+#         print(IT['Oe6_M1'].shape)
+#         print(sid.Oe.M1_base.shape)
+#         print(pg['Oe6_M1'].shape)
+#         print('Oe\n', IT['Oe6_M1'][:,:,0])
+#         print('Oe\n', sid.Oe.M1_base[:,:,0])
+#         print('Oe\n', pg['KgOm'][:,:,0])
+#         print('Oe\n', sid.Oe.M1_geom[:,:,0])
+#         print('Oe\n', IT['Oe6_M1'][:,:,1])
+#         print('Oe\n', sid.Oe.M1_base[:,:,1])
 
 
 
@@ -379,4 +413,5 @@ class Test(unittest.TestCase):
 
 
 if __name__=='__main__':
+    #Test().test_blade_shapeFunction()
     unittest.main()

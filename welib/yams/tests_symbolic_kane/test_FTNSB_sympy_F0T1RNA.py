@@ -37,9 +37,7 @@ def main(unittest=False):
 
 class TestF0T1RNA(unittest.TestCase):
     def test_F0T1RNA(self):
-        """ 
-        Test expression of mass and forcing
-        """
+        #Test expression of mass and forcing
 
         model=main(unittest=True)
         twr=model.twr

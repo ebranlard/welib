@@ -457,7 +457,7 @@ def shapeIntegrals2SID(p, consistency=''):
     # Ge Taylor(0,nq,3*nq,0 ,0) # Gyroscopic matrix for modal coordinates
     # see [2] (6.405) p. 340 = 2*C5'
     for j in np.arange(nq):
-          M0j = 2*np.vstack([p['Kr'][0,0:nq, j],p['Kr'][1,0:nq, j],p['Kr'][2,0:nq, j]])  # 3 x nq
+          M0j = 2*np.vstack([p['Kr'][0,0:nq, j],p['Kr'][1,0:nq, j],p['Kr'][2,0:nq, j]])  # 3 x nq # TODO TODO CHECK THIS
           sid.Ge.M0[0:nq, 3*j:3*j+3]= M0j.T;  # columns concatenation 3 per shapes
     
     # --- Oe 
@@ -468,20 +468,33 @@ def shapeIntegrals2SID(p, consistency=''):
     # Oe.M0 = Kom0
     for j in np.arange(nq):
         sid.Oe.M0[j, :]= [p['C4'][j,0,0], p['C4'][j,1,1], p['C4'][j,2,2], p['C4'][j,0,1]+p['C4'][j,1,0], p['C4'][j,1,2]+p['C4'][j,2,1], p['C4'][j,2,0]+p['C4'][j,0,2]]
-    for m in np.arange(6):
-        if m<3:
-            sid.Oe.M1[:, m, :]= p['Komega'][m, m] + p['K0omega'][m, m];
-        else:
-            c= m-3
-            d= np.mod(c+1, 3)
-            sid.Oe.M1[:, m, :]= p['Komega'][c, d]+p['Komega'][c, d].T + p['K0omega'][c, d]+p['K0omega'][c, d].T
+
+    sid.Oe.M1_base = np.zeros(sid.Oe.M1.shape)
+    sid.Oe.M1_geom = np.zeros(sid.Oe.M1.shape)
+
+    sid.Oe.M1_base[:, 0, :]= p['Komega'][0, 0] 
+    sid.Oe.M1_base[:, 1, :]= p['Komega'][1, 1] 
+    sid.Oe.M1_base[:, 2, :]= p['Komega'][2, 2] 
+    sid.Oe.M1_base[:, 3, :]= p['Komega'][0, 1] + p['Komega'][1, 0] 
+    sid.Oe.M1_base[:, 4, :]= p['Komega'][1, 2] + p['Komega'][2, 1] 
+    sid.Oe.M1_base[:, 5, :]= p['Komega'][0, 2] + p['Komega'][2, 0] 
+
+    sid.Oe.M1_geom[:, 0, :]= p['K0omega'][0, 0] 
+    sid.Oe.M1_geom[:, 1, :]= p['K0omega'][1, 1] 
+    sid.Oe.M1_geom[:, 2, :]= p['K0omega'][2, 2] 
+    sid.Oe.M1_geom[:, 3, :]= p['K0omega'][0, 1] + p['K0omega'][1, 0] 
+    sid.Oe.M1_geom[:, 4, :]= p['K0omega'][1, 2] + p['K0omega'][2, 1] 
+    sid.Oe.M1_geom[:, 5, :]= p['K0omega'][0, 2] + p['K0omega'][2, 0] 
+
+    sid.Oe.M1 = sid.Oe.M1_base + sid.Oe.M1_geom 
+    #sid.Oe.M1 = sid.Oe.M1_base 
+    #sid.Oe.M1 = sid.Oe.M1_geom 
 
     # ---  sid.Ke 
     sid.Ke.M0= p['Ke']
 
     # --- De
     #sid.De.M0= [];
-
 
     # --- remove some off-diagonal terms to conform to FAST approach
     if consistency=='OpenFAST':
@@ -490,11 +503,11 @@ def shapeIntegrals2SID(p, consistency=''):
             sid.Ct.M1[:, a, :]= np.diag(np.diag(np.squeeze(sid.Ct.M1[:, a, :])))
         for m in np.arange(6):
             if m<3:
-                sid.Oe.M1[:, m, :]= np.squeeze(sid.Oe.M1[:, m, :]) - p['K0omega'][m, m] + np.diag(np.diag(p['K0omega'][m, m]))
+                sid.Oe.M1[:, m, :] += - p['K0omega'][m, m] + np.diag(np.diag(p['K0omega'][m, m]))
             else:
                 c= m-3;
                 d= np.mod(c+1, 3)
-                sid.Oe.M1[:, m, :]= np.squeeze(sid.Oe.M1[:, m, :]) - p['K0omega'][c, d] - p['K0omega'][c, d].T + 2*np.diag(np.diag(p['K0omega'][c, d]))
+                sid.Oe.M1[:, m, :] += - p['K0omega'][c, d] - p['K0omega'][c, d].T + 2*np.diag(np.diag(p['K0omega'][c, d]))
 
     return sid
 
@@ -524,7 +537,7 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
     Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
     KK  = GKBeam(s_span, EI, ddU, bOrth = False,                method = int_method)
-    pKg = GKBeamStiffneningSplit(s_span, dU, m , main_axis='z', method = int_method)
+    pKg = GKBeamStiffneningSplit(s_G, s_span, dU, m , main_axis='z', method = int_method)
 
     nq = U.shape[0]
     nNodes = U.shape[2]
@@ -588,100 +601,71 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
     # --- Cr  -  Mtg  = \int [~s] Phi dm Or: Mrg, Cr^T
     sid.Cr.M0 = IT['Mtg'].T
     # TODO TODO TODO M1 term
-    #     sid.Cr.M1[:, 0, :]= Kr[0][:,:]; # nq x nq
-    #     sid.Cr.M1[:, 1, :]= Kr[1][:,:]; 
-    #     sid.Cr.M1[:, 2, :]= Kr[2][:,:]; 
-    #     sid.Cr.M1[:, 0, :]= Kr[0][:,:]; # nq x nq
-    #     sid.Cr.M1[:, 1, :]= Kr[1][:,:]; 
-    #     sid.Cr.M1[:, 2, :]= Kr[2][:,:]; 
+    sid.Cr.M1[:,0,:] = IT['Mtg_M1'][0,:,:] # Kr[0][:,:]; # nq x nq # TODO TODO TODO WEIRD NO NEED FOR TRANSPOSE
+    sid.Cr.M1[:,1,:] = IT['Mtg_M1'][1,:,:] # Kr[1][:,:]; 
+    sid.Cr.M1[:,2,:] = IT['Mtg_M1'][2,:,:] # Kr[2][:,:]; 
 
     # --- Ct  -  Mxg = \int Phi dm     Or:  Psi , Ct^T
-    # NOTE: Ct.M1 = K0t is geometrical stiffening due to translational acceleration
+    # NOTE: Ct.M1 = K0t is geometrical stiffening due to translational acceleration/gravity
     sid.Ct.M0= IT['Mxg'].T
     #sid.Ct.M0= p['C1'].T
-    sid.Ct.M1[:, 0, :] = pKg['Kgt'][0,:,:] # Gkg['t_ax'], K0t is (3,nf,nf)
-    sid.Ct.M1[:, 1, :] = pKg['Kgt'][1,:,:]
-    sid.Ct.M1[:, 2, :] = pKg['Kgt'][2,:,:]
-
-    #param.tower_Ct1_1_1_3= p.KTFAGrav(1, 1); # Stiffening
-    #param.tower_Ct1_2_2_3= p.KTSSGrav(1, 1); # Stiffening
-    #sid.Ct.M0 = IT['Mxg'].T
-    # TODO TODO TODO M1 term
-    #for j in np.arange(nq):
-    #    sid.Ct.M1[:, :, j]= IT['Mxg_M1'][:,:,j].T # TODO Geometrical stiffening
-
-    # --- Oe   self.Oe     = Taylor(1,nq,6   ,nq,0,   name = 'Oe') # Centrifugal matrix for modal coordinates
-    # see [2] (6.407) 
-    # M0: nq x 6
-    # M1: nq x 6 x nq
+    sid.Ct.M1[:, 0, :] = pKg['K0t'][0,:,:] # Gkg['t_ax'], K0t is (3,nf,nf)
+    sid.Ct.M1[:, 1, :] = pKg['K0t'][1,:,:]
+    sid.Ct.M1[:, 2, :] = pKg['K0t'][2,:,:]
 
     # --- Gr 
     for j in np.arange(nq):
         sid.Gr.M0[0:3, 3*j:3*j+3]= IT['Gr'][j][:,:];  # columns concatenation 3 per shapes
-    # TODO TODO TODO M1 term
+    for j in np.arange(nq):
+        for k in np.arange(nq):
+            sid.Gr.M1[0:3, 3*j:3*j+3, k]= IT['Gr_M1'][j][:,:,k];  # columns concatenation 3 per shapes
 
     # --- Ge = 2 \int Phi^t phi_j~^t dm  = [2C5']
     # Ge Taylor(0,nq,3*nq,0 ,0) # Gyroscopic matrix for modal coordinates
-    #for j in np.arange(nq):
-    #      # see [2] (6.405) p. 340 = 2*C5'
-    #      M0j = 2*np.vstack([Kr[0,0:nq, j],Kr[1,0:nq, j],Kr[2,0:nq, j]])  # 3 x nq
-    #      sid.Ge.M0[0:nq, 3*j:3*j+3]= M0j.T;  # columns concatenation 3 per shapes
+    # IT['Ge'] = np.zeros((nf,nf,3))
+    for j in np.arange(nq):
+        sid.Ge.M0[0:nq, 3*j:3*j+3]= IT['Ge'][j,:,:] 
+        # TODO revisit this
     
     # --- Oe 
     # see [2] (6.407) 
     # M0: nq x 6
     # M1: nq x 6 x nq
     sid.Oe.M0= IT['Oe6']  # nq x 6
-    # TODO TODO TODO M1 term
-#     sid.Oe.M1[:, 0, :]= Kom[0]   # nq x nq
-#     sid.Oe.M1[:, 1, :]= Kom[1]  
-#     sid.Oe.M1[:, 2, :]= Kom[2]  
-#     sid.Oe.M1[:, 3, :]= Kom[3]  
-#     sid.Oe.M1[:, 4, :]= Kom[4]  
-#     sid.Oe.M1[:, 5, :]= Kom[5]  
-#     if 'omxx' in GKg.keys():
-#         sid.Oe.M1[:, 0, :]+= GKg['omxx'];  # nq x nq
-#         sid.Oe.M1[:, 1, :]+= GKg['omyy'];
-#         sid.Oe.M1[:, 2, :]+= GKg['omzz'];
-#         sid.Oe.M1[:, 3, :]+= GKg['omxy'];
-#         sid.Oe.M1[:, 4, :]+= GKg['omxz'];
-#         sid.Oe.M1[:, 5, :]+= GKg['omyz'];
-# 
+
+    sid.Oe.M1_base = np.zeros(sid.Oe.M1.shape)
+    sid.Oe.M1_geom = np.zeros(sid.Oe.M1.shape)
+
+    sid.Oe.M1_base= IT['Oe6_M1']
+
+    sid.Oe.M1_geom[:, 0, :]= pKg['K0omega'][0, 0] 
+    sid.Oe.M1_geom[:, 1, :]= pKg['K0omega'][1, 1] 
+    sid.Oe.M1_geom[:, 2, :]= pKg['K0omega'][2, 2] 
+    sid.Oe.M1_geom[:, 3, :]= pKg['K0omega'][0, 1] + pKg['K0omega'][1, 0] 
+    sid.Oe.M1_geom[:, 4, :]= pKg['K0omega'][1, 2] + pKg['K0omega'][2, 1] 
+    sid.Oe.M1_geom[:, 5, :]= pKg['K0omega'][0, 2] + pKg['K0omega'][2, 0] 
+
+    sid.Oe.M1 = sid.Oe.M1_base + sid.Oe.M1_geom 
+    #sid.Oe.M1 = sid.Oe.M1_base 
+    #sid.Oe.M1 = sid.Oe.M1_geom 
 
     ## --- Me, Ke, De
     sid.Me.M0= MM[6:,6:]
     sid.Ke.M0= KK[6:,6:]
     #sid.De.M0= p['De']
 
-        #param.tower_D0_1_1= p.CTFA(1, 1);
-        #param.tower_D0_2_2= p.CTSS(1, 1);
-        #param.tower_K0_1_1= p.KTFA(1, 1);
-        #param.tower_K0_1_2= 0;
-        #param.tower_K0_2_1= 0; 
-        #param.tower_K0_2_2= p.KTSS(1, 1);
-        #param.tower_Me0_1_1= p.MTFA(1, 1)-p.TwrTpMass;
-        #param.tower_Me0_2_2= p.MTSS(1, 1)-p.TwrTpMass;
-
-        #param.tower_frame_11_origin1_1_1_1= 1;
-        #param.tower_frame_11_origin1_2_2_1= 1;
-        #param.tower_frame_11_phi1_1_3_1= p.KTFAGravTT(1, 1);
-        #param.tower_frame_11_phi1_2_3_2= p.KTSSGravTT(1, 1);
-        #param.tower_frame_11_psi0_1_2= -p.TwrFASF(1, end, 2); 
-        #param.tower_frame_11_psi0_2_1= p.TwrSSSF(1, end, 2);
-
-
     # --- remove some off-diagonal terms to conform to FAST approach
     if consistency=='OpenFAST':
         sid.Me.M0 = np.diag(np.diag(sid.Me.M0))
         for a in [0,1,2]:
             sid.Ct.M1[:, a, :]= np.diag(np.diag(np.squeeze(sid.Ct.M1[:, a, :])))
-#         for m in np.arange(6):
-#             if m<3:
-#                 sid.Oe.M1[:, m, :]= np.squeeze(sid.Oe.M1[:, m, :]) - p['K0omega'][m, m] + np.diag(np.diag(p['K0omega'][m, m]))
-#             else:
-#                 c= m-3;
-#                 d= np.mod(c+1, 3)
-#                 sid.Oe.M1[:, m, :]= np.squeeze(sid.Oe.M1[:, m, :]) - p['K0omega'][c, d] - p['K0omega'][c, d].T + 2*np.diag(np.diag(p['K0omega'][c, d]))
+        for m in np.arange(6):
+            if m<3:
+                sid.Oe.M1[:, m, :]+= - pKg['K0omega'][m, m] + np.diag(np.diag(pKg['K0omega'][m, m]))
+            else:
+                c= m-3;
+                d= np.mod(c+1, 3)
+                sid.Oe.M1[:, m, :]+= - pKg['K0omega'][c, d] - pKg['K0omega'][c, d].T + 2*np.diag(np.diag(pKg['K0omega'][c, d]))
 
     return sid
 
@@ -689,7 +673,7 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
 # --------------------------------------------------------------------------------}
 # --- FAST Blade 2 SID
 # --------------------------------------------------------------------------------{
-def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', startAtRoot=True, int_method='OpenFAST'):
+def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', startAtRoot=True, int_method='OpenFAST', consistency='OpenFAST'):
     """ 
     Create a SID of the Blade from an OpenFAST ElastoDyn file
     """
@@ -731,7 +715,7 @@ def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', sta
             p['s_G0'][2,:] += p['HubRad']
         # TODO downselect modes
         # Compute SID based on twisted shape functions
-        sid = BeamShapes2SID(p['s_G0'], p['s_span'], p['m'], p['EI'], p['Ut'], p['Vt'], p['Kt'], int_method=int_method, damping=None, consistency='OpenFAST', shapeIntegrals=True)
+        sid = BeamShapes2SID(p['s_G0'], p['s_span'], p['m'], p['EI'], p['Ut'][Imodes_bld], p['Vt'][Imodes_bld], p['Kt'][Imodes_bld], int_method=int_method, damping=None, consistency=consistency, shapeIntegrals=True)
 
 
     elif method=='ShapeFunctions':
@@ -741,7 +725,7 @@ def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', sta
             p['s_G0'][2,:] += p['HubRad']
         # TODO downselect modes
         # Compute SID based on twisted shape functions
-        sid = BeamShapes2SID(p['s_G0'], p['s_span'], p['m'], p['EI'], p['Ut'], p['Vt'], p['Kt'], int_method=int_method, damping=None, consistency='OpenFAST', shapeIntegrals=False)
+        sid = BeamShapes2SID(p['s_G0'], p['s_span'], p['m'], p['EI'], p['Ut'][Imodes_bld], p['Vt'][Imodes_bld], p['Kt'][Imodes_bld], int_method=int_method, damping=None, consistency=consistency, shapeIntegrals=False)
 
     else:
         raise NotImplementedError(method)

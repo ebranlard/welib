@@ -588,6 +588,7 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         for L in [0,1]:  # Loop through all tower DOFs in one direction
             p['CTFA'][I,L] = ( 0.01*p['TwrFADmp'][L] )*p['KTFA'][I,L]/( np.pi*p['FreqTFA'][L,0] );
             p['CTSS'][I,L] = ( 0.01*p['TwrSSDmp'][L] )*p['KTSS'][I,L]/( np.pi*p['FreqTSS'][L,0] );
+    # Remove tower top mass to be consistent with "purely" elastic mass
     for I in [0,1]: #Loop through all tower modes in a single direction
         p['MTFA'][I,I] = p['MTFA'][I,I] - p['TwrTpMass']
         p['MTSS'][I,I] = p['MTSS'][I,I] - p['TwrTpMass']

@@ -177,7 +177,7 @@ def GKBeamStiffnening(s_span, dU, gravity, m, Mtop=0, Omega=0, bSelfWeight=True,
     return KKg
 
 
-def GKBeamStiffneningSplit(s_span, dU, m, main_axis='x', method='trapz'):
+def GKBeamStiffneningSplit(s_G, s_span, dU, m, main_axis='x', method='trapz'):
     """ 
     TODO swap gravity and m
     TODO Use Mtop Omega as flag, would still need a flag for selfweight
@@ -186,19 +186,35 @@ def GKBeamStiffneningSplit(s_span, dU, m, main_axis='x', method='trapz'):
 
     OUTPUTS:
      - KKg: Geometrical stiffeness matrix. 
+
+
+    xx=trapz(s_span, Pacc .* PhiV{i}(1,:).* o.PhiV{j}(1,:));
+     where Pacc is a normal load, typically accumulated over the blade length
+
+
     """
+
+    DR  = np.diff(s_G) # TODO
+    m0      = m.copy()
+    s_span0 = s_span.copy()
+    dU0     = dU.copy()
     if method=='OpenFAST':
         dr = checkRegularNode(s_span)
+        DR=DR[:,1:] 
+        DR[2,: ] =dr
         # We will only use the inner nodes ("elements")
         dU     = dU[:,:,1:-1]
         s_span = s_span[1:-1]
+        s_G    = s_G[:, 1:-1]
         m      = m[1:-1]
         # OpenFAST integration is simple mid-rule summation
         def trapzs(yy):
             return np.sum(yy * dr)  # NOTE: adding dr
+
         def fcumtrapzlrs(s, p):
             p_cum= np.cumsum(p[-1::-1])[-1::-1] - 0.5*p
             return p_cum*dr
+
 
     elif method=='trapz' or method=='Flex':
         dr = np.ones(s_span.shape)
@@ -216,66 +232,81 @@ def GKBeamStiffneningSplit(s_span, dU, m, main_axis='x', method='trapz'):
 
     # --- 
     p=dict()
-    # --- Axial force 
-    Pacc    = np.zeros(nSpan) 
-#     # TopMass contribution to Pacc
-#     if bMtop:
-#         Pacc_MT = -Mtop * gravity*np.ones(nSpan)
-#         Pacc=Pacc+Pacc_MT
-#     if bSelfWeight:
-#     if bRot:
-#         Pacc_Rot = fcumtrapzlr(s_span,  m * Omega**2 * s_span)
-#         Pacc=Pacc+Pacc_Rot
+
+    if main_axis=='x':
+        i1=1
+        i2=2
+        i3=0
+    elif main_axis=='z':
+        i1=0
+        i2=1
+        i3=2
+    else:
+        raise Exception('Axis not suported')
+
+
 
     # --- Translational acceleration ("self weight" with unit gravity)
     # TODO not too sure what to do in other directions
     Pacc = fcumtrapzlrs(s_span, m)
-    Kgt = np.zeros((3,nf,nf)) # xyz, nf x nf
+    K0t = np.zeros((3,nf,nf)) # xyz, nf x nf
     for i in range(0,nf):
         for j in range(0,nf):
-            #xx=trapz(s_span, Pacc .* PhiV{i}(1,:).* o.PhiV{j}(1,:));
-            if main_axis=='x':
-                yy=trapzs(Pacc * dU[i][1,:] * dU[j][1,:])
-                zz=trapzs(Pacc * dU[i][2,:] * dU[j][2,:])
-                Kgt[0, i,j]=yy+zz
-            elif main_axis=='z':
-                xx=trapzs(Pacc * dU[i][0,:] * dU[j][0,:])
-                yy=trapzs(Pacc * dU[i][1,:] * dU[j][1,:])
-                Kgt[2, i,j]=yy+xx
-            else:
-                raise Exception('Axis not suported')
-    #m_cum= np.cumsum(m[-1::-1])[-1::-1] - 0.5*m
-    #p['K0t'] = np.zeros((3,nf,nf))
-    #for i_elem in range(nSpan):
-    #    for a in [0,1,2]:
-    #        for j in range(nf):
-    #            for k in range(nf):
-    #                p['K0t'][a,j,k]+=  m_cum[i_elem]*DR[a,i_elem]*(sum( dU[j][:,i_elem]* dU[k][:,i_elem] )  )
-
+            K0t[i3, i,j]=trapzs(Pacc * (dU[i][i1,:] * dU[j][i1,:] + dU[i][i2,:] * dU[j][i2,:]))
 
     # --- Point loads 
-    KgF = np.zeros((nSpan,3,nf,nf)) # nS, xyz, nf x nf
+    K0F = np.zeros((nSpan,3,nf,nf)) # nS, xyz, nf x nf
+    Pacc = np.zeros(nSpan)
     for iS in range(0,nSpan):
-        Pacc = np.zeros(nSpan)
         Pacc[:iS+1]=1
         for i in range(0,nf):
             for j in range(0,nf):
-                #xx=trapz(s_span, Pacc .* PhiV{i}(1,:).* o.PhiV{j}(1,:));
-                if main_axis=='x':
-                    yy=trapzs(Pacc * dU[i][1,:] * dU[j][1,:])
-                    zz=trapzs(Pacc * dU[i][2,:] * dU[j][2,:])
-                    KgF[iS, 0, i,j]=yy+zz
-                elif main_axis=='z':
-                    xx=trapzs(Pacc * dU[i][0,:] * dU[j][0,:])
-                    yy=trapzs(Pacc * dU[i][1,:] * dU[j][1,:])
-                    KgF[iS, 2, i,j]=yy+xx
-                else:
-                    raise Exception('Axis not suported')
+                K0F[iS, i3, i,j]=trapzs(Pacc * (dU[i][i1,:] * dU[j][i1,:] + dU[i][i2,:] * dU[j][i2,:]))
 
+    # --- Rotational velocity K0omega
+    I_acc = np.zeros((3,nSpan))
+    if method=='OpenFAST':
+        for i_elem in list(range(nSpan))[-1::-1]:
+            I_acc[:,i_elem]=                           0.5*m[i_elem]  *(  s_G[:,i_elem  ] + 0.5*DR[:,i_elem  ])
+            if i_elem<nSpan-1:
+                I_acc[:, i_elem]+= I_acc[:,i_elem+1] + 0.5*m[i_elem+1]*(  s_G[:,i_elem+1] - 0.5*DR[:,i_elem+1])
+        I_acc[0,:]*=dr
+        I_acc[1,:]*=dr
+        I_acc[2,:]*=dr
+    else:
+        I_acc[0,:] = fcumtrapzlrs(s_span,  m * s_G[0,:])
+        I_acc[1,:] = fcumtrapzlrs(s_span,  m * s_G[1,:])
+        I_acc[2,:] = fcumtrapzlrs(s_span,  m * s_G[2,:])
+    # Using sum 
+    #Kom = np.zeros((3,3, nf, nf))
+    #for a in [0,1,2]:
+    #    ea = np.zeros(3); ea[a]= 1;
+    #    for b in [0,1,2]:
+    #        eb = np.zeros(3); eb[b]= 1;
+    #        for i_elem in range(nSpan):
+    #            AA = -skew(ea).dot(skew(eb)).dot(I_acc[:,i_elem]).dot(DR[:,i_elem])
+    #            for j in range(nf):
+    #                for k in range(nf):
+    #                    BB =  (sum( dU[j][:,i_elem]* dU[k][:,i_elem] )  )
+    #                    Kom[a,b,j,k] += AA*BB
+    # Using trapz 
+    Pacc=np.zeros((3,3,nSpan))
+    K0om = np.zeros((3,3, nf, nf))
+    for a in [0,1,2]:
+        ea = np.zeros(3); ea[a]= 1;
+        for b in [0,1,2]:
+            eb = np.zeros(3); eb[b]= 1;
+            # Compute accumulation force
+            for i_elem in range(nSpan):
+                Pacc[a,b,i_elem] = -skew(ea).dot(skew(eb)).dot(I_acc[:,i_elem]).dot(DR[:,i_elem]/dr[i_elem])
+            # Integrate
+            for j in range(nf):
+                for k in range(nf):
+                    K0om[a,b,j,k] = trapzs(Pacc[a,b] * (dU[j][i1,:] * dU[k][i1,:] + dU[j][i2,:] * dU[k][i2,:]))
 
-
-    p['Kgt'] = Kgt
-    p['KgF'] = KgF
+    p['K0t']     = K0t
+    p['K0F']     = K0F
+    p['K0omega'] = K0om
     return p 
 
 
@@ -641,14 +672,27 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
             Oe6[j][4] = Oe[j][1,2] + Oe[j][2,1]
             Oe6[j][5] = Oe[j][0,2] + Oe[j][2,0]
 
-        # --- Ge_j = - 2*\int [Phi]^t  [~Phi_j]
+        # --- Ge_j = - 2*\int [Phi]^t [~Phi_j] dm
+        #     Ge_j =   2*\int [Phi]^t [~Phi_j]^t dm  = [2C5_jk']
+        #     Ge_j =   2 Kr
         # [Phi]: 3xnf
+        # TODO revisit this
         Ge = np.zeros((nf,nf,3))
         for j in range(nf):
             for k in range(nf):
-                Ge[j][k,0] = -2*( trapzs(U[k][1,:]*U[j][2,:]*m) - trapzs(U[k][2,:]*U[j][1,:]*m))
-                Ge[j][k,1] = -2*(-trapzs(U[k][0,:]*U[j][2,:]*m) + trapzs(U[k][2,:]*U[j][0,:]*m))
-                Ge[j][k,2] = -2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))	
+                Ge[j][k,0] =-2*( trapzs(U[k][1,:]*U[j][2,:]*m) - trapzs(U[k][2,:]*U[j][1,:]*m))
+                Ge[j][k,1] =-2*(-trapzs(U[k][0,:]*U[j][2,:]*m) + trapzs(U[k][2,:]*U[j][0,:]*m))
+                Ge[j][k,2] =-2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))	
+
+        ## --- C5_jk = \int [~Phi_j^0][Phi_k^0]
+        #IT['C5'] = np.zeros((nf,3,nf))
+        #for j in range(nf):
+        #    for k in range(nf):
+        #        IT['C5'][j][0,k]= trapzs( (-U[j][2,:]*U[k][1,:] + U[j][1,:]*U[k][2,:])*m)
+        #        IT['C5'][j][1,k]= trapzs( ( U[j][2,:]*U[k][0,:] - U[j][0,:]*U[k][2,:])*m)
+        #        IT['C5'][j][2,k]= trapzs( (-U[j][1,:]*U[k][0,:] + U[j][0,:]*U[k][1,:])*m)
+
+
         IT['Ge']  = Ge
         IT['Gr']  = Gr
         IT['Oe']  = Oe
@@ -696,15 +740,20 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         #        Mxg_M1[1,j,l] = trapzs(U[j][1,:]*m)
         #        Mxg_M1[2,j,l] = trapzs(U[j][2,:]*m)
 
-        # --- M1 Mtg = \int Phi dm  Or:  Psi , Ct^T
+        # --- M1 Mtg  = \int [~s] Phi dm -  Or: Mrg, Cr^T
         # See Kr 
         Mtg_M1 = np.zeros((3,nf,nf))
+        for j in range(nf):
+            for l in range(nf):
+                Mtg_M1[0,j,l] = trapzs((-U[l][2,:]*U[j][1,:] + U[l][1,:]*U[j][2,:])*m)
+                Mtg_M1[1,j,l] = trapzs(( U[l][2,:]*U[j][0,:] - U[l][0,:]*U[j][2,:])*m)
+                Mtg_M1[2,j,l] = trapzs((-U[l][1,:]*U[j][0,:] + U[l][0,:]*U[j][1,:])*m)
 
 
-        # --- Oe M1
+        # --- Gr/Oe M1
         Oe_M1 = np.zeros((nf,3,3,nf))
         Oe6_M1= np.zeros((nf,6,nf))
-        Gr_M1 = np.zeros((nf,3,3)) # we do not really store all of them
+        Gr_M1 = np.zeros((nf,3,3,nf)) 
         SS_M1=np.zeros((nf,nf,3,3))
         for j in range(nf):
             for l in range(nf):
@@ -722,11 +771,11 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
                 s=np.array([[ sxx, sxy, sxz], [ syx, syy, syz], [ szx, szy, szz]])
                 SS_M1[j,l,:,:] = s
 
-                Gr_M1[j][0,:] = 2*np.array([ syy+szz, -syx  , -szx     ])
-                Gr_M1[j][1,:] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
-                Gr_M1[j][2,:] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
+                Gr_M1[j,0,:,l] = 2*np.array([ syy+szz, -syx  , -szx     ])
+                Gr_M1[j,1,:,l] = 2*np.array([ -sxy   ,sxx+szz, -szy     ])
+                Gr_M1[j,2,:,l] = 2*np.array([ -sxz   , -syz  , sxx+syy  ])
 
-                Oe_M1[j,:,:,l] = -0.5*Gr_M1[j].T
+                Oe_M1[j,:,:,l] = -0.5*Gr_M1[j,:,:,l].T
                 Oe6_M1[j,0,l] = Oe_M1[j,0,0,l]
                 Oe6_M1[j,1,l] = Oe_M1[j,1,1,l]
                 Oe6_M1[j,2,l] = Oe_M1[j,2,2,l]
@@ -914,7 +963,7 @@ def shapeIntegrals(s_G, s_span, m, U, dU, ddU, method='trapz', EI=None):
     for a in [0,1,2]:
         c = np.mod(a+1, 3)
         d = np.mod(c+1, 3)
-        p['Kr'][a]= -p['C3'][c, d] + p['C3'][c, d]
+        p['Kr'][a]= -p['C3'][c, d] + p['C3'][c, d].T
 
 
     # --- Geometric stiffnesses
@@ -955,6 +1004,7 @@ def shapeIntegrals(s_G, s_span, m, U, dU, ddU, method='trapz', EI=None):
         I_cum[i_elem]= 0.5*m[i_elem] * (s_G[:,i_elem] + 0.5*DR[:,i_elem])
         if i_elem<nSpan-1:
             I_cum[i_elem,:]+= I_cum[i_elem+1] + 0.5*m[i_elem+1]*(  s_G[:,i_elem+1] - 0.5*DR[:,i_elem+1])
+
     # 
     p['K0omega'] = np.zeros((3,3, nf, nf))
     for i_elem in range(nSpan):
