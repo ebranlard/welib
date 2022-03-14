@@ -84,6 +84,10 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(B,B0, 4)
  
 
+        def F(x,p=None):
+            return A.dot(x)
+        A0 = linearize_Fx(F, x0, dx)
+        np.testing.assert_almost_equal(A,A0, 4)
 
 
 

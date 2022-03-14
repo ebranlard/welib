@@ -2,6 +2,9 @@ import numpy as np
 import copy
 
 
+# --------------------------------------------------------------------------------}
+# --- Generic functions 
+# --------------------------------------------------------------------------------{
 def numerical_jacobian(f, op, arg_number, deltas, *f_args):
     """
     Compute the jacobian of the function `f` at the operating point `op`
@@ -99,6 +102,30 @@ def linearize_function(F, xop, Iargs, delta_args,  *p):
         Jacs.append(jac)
     return Jacs
 
+
+def linearize_explicit_system():
+    pass
+
+
+# --------------------------------------------------------------------------------}
+# --- Dedicated functions for usual cases 
+# --------------------------------------------------------------------------------{
+def linearize_Fx(F, x0, dx, *p):
+    """ 
+    Computes jacobian wrt to states and inputs for function F(x, p)
+
+    INPUTS:
+        F: function with the following interface: F(x, p)
+            where x is an array, p is an optional array or dict
+        x0: operating point values for x (array)
+        dx: array of perturbations for finite differences (same size as x)
+        p : optional arry or dict
+    OUTPUTS:
+       df_dx: Jacobian df/dx
+    """
+    return numerical_jacobian(F, (x0,), 0, dx, *p)
+    #return linearize_function(F, (x0,), [0], (dx,), *p)[0]
+
 def linearize_Fxu(F, x0, u0, dx, du, *p):
     """ 
     Computes jacobian wrt to states and inputs for function F(x, u, p)
@@ -114,12 +141,9 @@ def linearize_Fxu(F, x0, u0, dx, du, *p):
     OUTPUTS:
        df_dx, df_du: Jacobian df/dx df/du
     """
-    return linearize_function(F, (x0, u0), [0,1], (dx, du))
+    return linearize_function(F, (x0, u0), [0,1], (dx, du), *p)
 
 
-
-def linearize_explicit_system():
-    pass
 
 
 
