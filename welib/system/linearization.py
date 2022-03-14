@@ -8,10 +8,10 @@ def numerical_jacobian(f, op, arg_number, deltas, *f_args):
     with respect to its argument `arg_number` using the symmetric difference quotient method.
 
     example:
-        f(x,u,p) where x,u are arrays
+        f(x,u,p) where x,u are arrays, p parameters array/dict, optional
 
-        partial f / partial x  = numerical_jacobian(f, dx, (x0,u0), 0, p) 
-        partial f / partial u  = numerical_jacobian(f, du, (x0,u0), 1, p) 
+        partial f / partial x  = numerical_jacobian(f, (x0,u0), dx, 0, p) 
+        partial f / partial u  = numerical_jacobian(f, (x0,u0), du, 1, p) 
 
     INPUTS:
         f: function of n arguments
@@ -56,8 +56,6 @@ def numerical_jacobian(f, op, arg_number, deltas, *f_args):
     return jac
 
 
-
-
 def linearize_function(F, xop, Iargs, delta_args,  *p):
     """ 
     Compute the jacobians of a vectorial function
@@ -66,12 +64,16 @@ def linearize_function(F, xop, Iargs, delta_args,  *p):
 
     F: function with the following interface
           F(x0, x1, ..., xn, p0, p1)
-       where each xi is a numpy array
+          F(x, u, p)                 (typically)
+       where each xi is a numpy array. 
+
     op: tuple of values for the operating point:
          (x0op, x1op, ..., xnop)
+         (xop, uop)                (typically)
 
     Iargs: list of argument indices for which jacobians are to be computed
           for instance [2, 4,  n] implies jacobains for x2 x4 and xn
+          typically: [0,1] gives "A" and "B" matrix
 
     delta_args: list of deltas used for finite differences, the list follows Iargs
           [ deltax2, deltax4] where each deltaxi is an array of the same size of xi
@@ -81,6 +83,14 @@ def linearize_function(F, xop, Iargs, delta_args,  *p):
 
     returns: list of jacobians
         [  partial F/partial xi  for i in Iargs ]
+
+    example:
+        def F(x,u,p):
+            return A(p).dot(x) + B(p).dot(u)
+
+        dx=[0.01]*3
+        du=[0.01]*3
+        A,B  = linearize_function(F, (xop, uop), [0,1], (dx, du), p)
     
     """
     Jacs = []
@@ -89,72 +99,33 @@ def linearize_function(F, xop, Iargs, delta_args,  *p):
         Jacs.append(jac)
     return Jacs
 
+def linearize_Fxu(F, x0, u0, dx, du, *p):
+    """ 
+    Computes jacobian wrt to states and inputs for function F(x, u, p)
+
+    INPUTS:
+        F: function with the following interface: F(x, u, p)
+            where x is an array, u is an array, p is an optional array or dict
+        x0: operating point values for x (array)
+        u0: operating point values for u (array)
+        dx: array of perturbations for finite differences (same size as x)
+        du: array of perturbations for finite differences (same size as y)
+        p : optional arry or dict
+    OUTPUTS:
+       df_dx, df_du: Jacobian df/dx df/du
+    """
+    return linearize_function(F, (x0, u0), [0,1], (dx, du))
+
+
+
 def linearize_explicit_system():
     pass
 
 
 
 if __name__ == '__main__':
-    from pybra.clean_exceptions import *
-
-    def f_test(x, u):
-        xdot=np.zeros(len(x))
-
-        xdot[0] = x[0]**2 + x[2] + 3*u[0] 
-        xdot[1] = x[1]**3            
-        xdot[2] =             u[2]**3
-
-        return xdot
-
-    def f_testp(x, u, p):
-        xdot=np.zeros(len(x))
-
-        xdot[0] = x[0]**2 + x[2] + 3*u[0] 
-        xdot[1] = x[1]**3                 + p[0]
-        xdot[2] =             u[2]**3
-
-        return xdot
-
-    def jacx_test(x, u):
-        jacx=np.zeros((x.shape[0],x.shape[0]))
-        jacx[0,0] = 2*x[0];  jacx[0,2] = 1 
-        jacx[1,1] = 3*x[1]**2; 
-        return jacx
-
-    def jacu_test(x, u):
-        jacu=np.zeros((x.shape[0],u.shape[0]))
-        jacu[0,0] = 3
-        jacu[2,2] = 3*u[2]**2
-        return jacu
-
-    # Define an operating point
-    p=np.zeros(2)
-    x0=np.zeros((3,1))
-    u0=np.zeros((3,1))
-    x0[:,0]=[1,2,3]
-    u0[:,0]=[10,20,30]
-    dx=[0.01]*3
-    du=[0.01]*3
-    p[0]=100
-    p[1]=2
-
-    print(f_test (x0,u0))
-    print(f_testp(x0,u0,p))
-    print('---- Jac x')
-    print(jacx_test(x0,u0))
-
-    jacx_num = numerical_jacobian(f_test , dx, (x0,u0), 0)
-    print(jacx_num)
-    jacx_nump= numerical_jacobian(f_testp, dx, (x0,u0), 0, p)
-    print(jacx_nump)
-
-    print('---- Jac u')
-    print(jacu_test(x0,u0))
-    jacu_num = numerical_jacobian(f_test , du, (x0,u0), 1)
-    print(jacu_num)
-    jacu_nump= numerical_jacobian(f_testp, du, (x0,u0), 1, p)
-    print(jacu_nump)
-
+    # see tests/test_linearization.py
+    pass
 
 
 
