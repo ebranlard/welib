@@ -108,20 +108,6 @@ class File(dict):
     def formatName():
         raise NotImplementedError("Method must be implemented in the subclass")
 
-    @classmethod
-    def isRightFormat(cls, filename, **kwargs):
-        """ Tries to open a file, return true and the file if it succeeds """
-        #raise NotImplementedError("Method must be implemented in the subclass")
-        try:
-            F=cls(filename=filename, **kwargs)
-            return True,F
-        except MemoryError:
-            raise
-        except WrongFormatError:
-            return False,None
-        except:
-            raise
-
     def test_write_read(self,bDelete=False):
         """ Test that we can write and then read what we wrote
         NOTE: this does not check that what we read is the same..

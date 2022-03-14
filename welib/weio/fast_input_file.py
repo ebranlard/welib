@@ -989,8 +989,7 @@ def _merge_value(splits):
     merged = splits.pop(0)
     if merged[0] == '"':
         while merged[-1] != '"':
-            merged += f" {splits.pop(0)}"
-
+            merged += " "+splits.pop(0)
     splits.insert(0, merged)
 
 

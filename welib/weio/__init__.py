@@ -1,11 +1,27 @@
 from .file  import File, WrongFormatError, BrokenFormatError, FileNotFoundError, EmptyFileError
-from .file_formats  import FileFormat
+from .file_formats  import FileFormat, isRightFormat
+import sys
+import os
+import numpy as np
 
 class FormatNotDetectedError(Exception):
     pass
 
-def fileFormats():
-    # User defined formats
+class UserFormatImportError(Exception):
+    pass
+
+
+_FORMATS=None
+
+def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
+    """ return list of fileformats supported by the library
+    If userpath is provided, 
+
+    """
+    global _FORMATS
+    if _FORMATS is not None:
+        return _FORMATS
+    # --- Library formats
     from .fast_input_file         import FASTInputFile
     from .fast_output_file        import FASTOutputFile
     from .csv_file                import CSVFile
@@ -21,6 +37,7 @@ def fileFormats():
     from .hawcstab2_pwr_file      import HAWCStab2PwrFile
     from .hawcstab2_ind_file      import HAWCStab2IndFile
     from .hawcstab2_cmb_file      import HAWCStab2CmbFile
+    from .mannbox_file            import MannBoxFile 
     from .flex_blade_file         import FLEXBladeFile
     from .flex_profile_file       import FLEXProfileFile
     from .flex_out_file           import FLEXOutFile
@@ -38,40 +55,150 @@ def fileFormats():
     from .cactus_file             import CactusFile
     from .raawmat_file            import RAAWMatFile
     from .rosco_performance_file  import ROSCOPerformanceFile
+    priorities = []
     formats = []
-    formats.append(FileFormat(CSVFile))
-    formats.append(FileFormat(TecplotFile))
-    formats.append(FileFormat(ExcelFile))
-    formats.append(FileFormat(BladedFile))
-    formats.append(FileFormat(FASTInputFile))
-    formats.append(FileFormat(FASTOutputFile))
-    formats.append(FileFormat(FASTWndFile))
-    formats.append(FileFormat(FASTLinearizationFile))
-    formats.append(FileFormat(FASTSummaryFile))
-    formats.append(FileFormat(BModesOutFile))
-    formats.append(FileFormat(TurbSimTSFile))
-    formats.append(FileFormat(TurbSimFile))
-    formats.append(FileFormat(HAWC2DatFile))
-    formats.append(FileFormat(HAWC2HTCFile))
-    formats.append(FileFormat(HAWC2StFile))
-    formats.append(FileFormat(HAWC2PCFile))
-    formats.append(FileFormat(HAWC2AEFile))
-    formats.append(FileFormat(HAWCStab2PwrFile))
-    formats.append(FileFormat(HAWCStab2IndFile))
-    formats.append(FileFormat(HAWCStab2CmbFile))
-    formats.append(FileFormat(FLEXBladeFile))
-    formats.append(FileFormat(FLEXProfileFile))
-    formats.append(FileFormat(FLEXOutFile))
-    formats.append(FileFormat(FLEXWaveKinFile))
-    formats.append(FileFormat(FLEXDocFile))
-    formats.append(FileFormat(NetCDFFile))
-    formats.append(FileFormat(VTKFile))
-    formats.append(FileFormat(TDMSFile))
-    formats.append(FileFormat(ParquetFile))
-    formats.append(FileFormat(CactusFile))
-    formats.append(FileFormat(RAAWMatFile))
-    formats.append(FileFormat(ROSCOPerformanceFile))
-    return formats
+    def addFormat(priority, fmt):
+        priorities.append(priority)
+        formats.append(fmt)
+    addFormat(0, FileFormat(CSVFile))
+    addFormat(0, FileFormat(ExcelFile))
+    addFormat(10, FileFormat(TecplotFile))
+    addFormat(10, FileFormat(BladedFile))
+    addFormat(20, FileFormat(FASTInputFile))
+    addFormat(20, FileFormat(FASTOutputFile))
+    addFormat(20, FileFormat(FASTWndFile))
+    addFormat(20, FileFormat(FASTLinearizationFile))
+    addFormat(20, FileFormat(FASTSummaryFile))
+    addFormat(20, FileFormat(TurbSimTSFile))
+    addFormat(20, FileFormat(TurbSimFile))
+    addFormat(30, FileFormat(HAWC2DatFile))
+    addFormat(30, FileFormat(HAWC2HTCFile))
+    addFormat(30, FileFormat(HAWC2StFile))
+    addFormat(30, FileFormat(HAWC2PCFile))
+    addFormat(30, FileFormat(HAWC2AEFile))
+    addFormat(30, FileFormat(HAWCStab2PwrFile))
+    addFormat(30, FileFormat(HAWCStab2IndFile))
+    addFormat(30, FileFormat(HAWCStab2CmbFile))
+    addFormat(30, FileFormat(MannBoxFile))
+    addFormat(40, FileFormat(FLEXBladeFile))
+    addFormat(40, FileFormat(FLEXProfileFile))
+    addFormat(40, FileFormat(FLEXOutFile))
+    addFormat(40, FileFormat(FLEXWaveKinFile))
+    addFormat(40, FileFormat(FLEXDocFile))
+    addFormat(50, FileFormat(BModesOutFile))
+    addFormat(50, FileFormat(ROSCOPerformanceFile))
+    addFormat(60, FileFormat(NetCDFFile))
+    addFormat(60, FileFormat(VTKFile))
+    addFormat(60, FileFormat(TDMSFile))
+    addFormat(60, FileFormat(ParquetFile))
+    addFormat(70, FileFormat(CactusFile))
+    addFormat(70, FileFormat(RAAWMatFile))
+
+    # --- User defined formats from user path
+    UserClasses, UserPaths, UserModules, UserModuleNames, errors = userFileClasses(userpath, ignoreErrors, verbose=verbose)
+    for cls, f in zip(UserClasses, UserPaths):
+        try:
+            ff = FileFormat(cls)
+        except Exception as e:
+            s='Error registering a user fileformat.\n\nThe module location was: {}\n\nThe class name was: {}\n\nMake sure the class has `defaultExtensions` and `formatName` as static methods.\n\nThe exception was:\n{}'.format(f, cls.__name__, e)
+            if ignoreErrors:
+                errors.append(s)
+                continue
+            else:
+                raise UserFormatImportError(s)
+        # Use class.priority 
+        try:
+            priority = cls.priority()
+        except:
+            priority=2
+        addFormat(priority, ff)
+
+    # --- Sort fileformats by priorities
+    formats = np.asarray(formats)[np.argsort(priorities, kind='stable')]
+
+    _FORMATS=formats
+    if ignoreErrors:
+        return formats, errors
+    else:
+        return formats
+
+
+
+def userFileClasses(userpath=None, ignoreErrors=False, verbose=True):
+    """ return list of user file class in UserData folder"""
+    if userpath is None:
+        dataDir = defaultUserDataDir()
+        userpath = os.path.join(dataDir, 'weio')
+    errors          = []
+    UserClasses     = []
+    UserPaths       = []
+    UserModules     = []
+    UserModuleNames = []
+    if os.path.exists(userpath):
+        if verbose:
+            print('>>> Looking for user modules in folder:',userpath)
+        import glob
+        from importlib.machinery import SourceFileLoader
+        import inspect
+        pyfiles = glob.glob(os.path.join(userpath,'*.py'))
+        # Loop through files, look for classes of the form ClassNameFile, 
+        for f in pyfiles:
+            if f in ['__init__.py']:
+                continue
+            mod_name = os.path.basename(os.path.splitext(f)[0])
+            try:
+                if verbose:
+                    print('>>> Trying to load user module:',f)
+                module = SourceFileLoader(mod_name,f).load_module()
+            except Exception as e:
+                s='Error importing a user module.\n\nThe module location was: {}\n\nTry importing this module to debug it.\n\nThe Exception was:\n{}'.format(f, e)
+                if ignoreErrors:
+                    errors.append(s)
+                    continue
+                else:
+                    raise UserFormatImportError(s)
+            found=False
+            for name, obj in inspect.getmembers(module):
+                if inspect.isclass(obj):
+                    classname = obj.__name__.lower()
+                    if classname!='file' and classname.find('file')>=0 and classname.find('error')<0:
+                        if verbose:
+                            print('    Found File class with name:',obj.__name__)
+                        UserClasses.append(obj)
+                        UserPaths.append(f)
+                        UserModules.append(module)
+                        UserModuleNames.append(mod_name)
+                        found=True # allowing only one class per file for now..
+                        break
+            if not found:
+                s='Error finding a class named "*File" in the user module.\n\nThe module location was: {}\n\nNo class containing the string "File" in its name was found.'.format(f)
+                if ignoreErrors:
+                    errors.append(s)
+                else:
+                    raise UserFormatImportError(s)
+    return UserClasses, UserPaths, UserModules, UserModuleNames, errors
+
+
+def defaultUserDataDir():
+    """
+    Returns a parent directory path
+    where persistent application data can be stored.
+    # linux: ~/.local/share
+    # macOS: ~/Library/Application Support
+    # windows: C:/Users/<USER>/AppData/Roaming
+    """
+    home = os.path.expanduser('~')
+    ptfm = sys.platform
+    if ptfm == "win32":
+        return os.path.join(home , 'AppData','Roaming')
+    elif ptfm.startswith("linux"):
+        return os.path.join(home, '.local', 'share')
+    elif ptfm == "darwin":
+        return os.path.join(home, 'Library','Application Support')
+    else:
+        print('>>>>>>>>>>>>>>>>> Unknown Platform', sys.platform)
+        return './UserData'
+
 
 
 def detectFormat(filename, **kwargs):
@@ -80,7 +207,11 @@ def detectFormat(filename, **kwargs):
         the read file is returned. """
     import os
     import re
-    formats=fileFormats()
+    global _FORMATS
+    if _FORMATS is None:
+        formats=fileFormats()
+    else:
+        formats=_FORMATS
     ext = os.path.splitext(filename.lower())[1]
     detected = False
     i = 0 
@@ -97,7 +228,7 @@ def detectFormat(filename, **kwargs):
             else:
                 extMatch = False
         if extMatch: # we have a match on the extension
-            valid, F = myformat.isValid(filename, **kwargs)
+            valid, F = isRightFormat(myformat, filename, **kwargs)
             if valid:
                 #print('File detected as :',myformat)
                 detected=True
@@ -108,13 +239,13 @@ def detectFormat(filename, **kwargs):
     if not detected:
         raise FormatNotDetectedError('The file format could not be detected for the file: '+filename)
 
-def read(filename,fileformat=None, **kwargs):
+def read(filename, fileformat=None, **kwargs):
     F = None
     # Detecting format if necessary
     if fileformat is None:
         fileformat,F = detectFormat(filename, **kwargs)
     # Reading the file with the appropriate class if necessary
-    if not isinstance(F,fileformat.constructor):
+    if not isinstance(F, fileformat.constructor):
         F=fileformat.constructor(filename=filename)
     return F
 

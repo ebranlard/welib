@@ -39,6 +39,10 @@ class XXXFile(File):
         """ Short string (~100 char) identifying the file format"""
         return 'XXX file'
 
+    @staticmethod
+    def priority(): return 60 # Priority in weio.read fileformat list between 0=high and 100:low
+
+
     def __init__(self, filename=None, **kwargs):
         """ Class constructor. If a `filename` is given, the file is read. """
         self.filename = filename
