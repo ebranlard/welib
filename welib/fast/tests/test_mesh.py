@@ -17,8 +17,8 @@ class TestMesh(unittest.TestCase):
         # --- 
         time =np.linspace(0,10,100)
         q       = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
-        qd      = (1   , 2   , -0.2  , 0.01 , 0.02 , 0.001 )
-        qdd     = (0.1 , 0.2 , -0.02 , 0.01 , 0.02 , 0.0001)
+        qd      = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
+        qdd     = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
         pm.rigidBodyMotion(q=q, qd=qd, qdd=qdd)
 
         np.testing.assert_almost_equal(pm.TranslationDisp[0,:] ,[ 9.9807925 , 20.02426565, -2.29323805] )

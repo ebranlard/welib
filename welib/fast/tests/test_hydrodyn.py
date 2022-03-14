@@ -54,9 +54,9 @@ class TestSpar(unittest.TestCase):
         hd, u, y = getHDSpar()
         umesh = u['Morison']['Mesh']
         ymesh = y['Morison']['Mesh']
-        q   = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
-        qd  = (1   , 2   , -0.2  , 0.01 , 0.02 , 0.001 )
-        qdd = (0.1 , 0.2 , -0.02 , 0.01 , 0.02 , 0.0001)
+        q    = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
+        qd   = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
+        qdd  = (10  , 20  , -2    , 0.1  , 0.2  , 0.01  )
         umesh.rigidBodyMotion(q=q, qd=qd, qdd=qdd)
         y=hd.calcOutput(t=0, u=u, y=y)
         Fh, Mh = ymesh.mapLoadsToPoint((q[0],q[1],q[2]))

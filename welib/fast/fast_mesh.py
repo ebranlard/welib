@@ -42,12 +42,12 @@ class PointMesh:
             self.RefPoint = self.Position[0,:]
 
         if q is not None:
-            u         = np.array([q[0], q[1], q[2]])
-            u_dot     = np.array([q[0], q[1], q[2]])
-            u_ddot    = np.array([q[0], q[1], q[2]])
-            theta     = np.array([q[3], q[4], q[5]])
-            omega     = np.array([q[3], q[4], q[5]]) # NOTE, small angle approx here
-            omega_dot = np.array([q[3], q[4], q[5]]) # NOTE, small angle approx here
+            u         = np.array([q[0]   , q[1]   , q[2]])
+            u_dot     = np.array([qd[0]  , qd[1]  , qd[2]])
+            u_ddot    = np.array([qdd[0] , qdd[1] , qdd[2]])
+            theta     = np.array([q[3]   , q[4]   , q[5]])
+            omega     = np.array([qd[3]  , qd[4]  , qd[5]]) # NOTE  , small angle approx here
+            omega_dot = np.array([qdd[3] , qdd[4] , qdd[5]]) # NOTE , small angle approx here
 
 
         if R_b2g is None:
