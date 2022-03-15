@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
 # Local 
 from welib.tools.clean_exceptions import *
 from welib.weio import FASTInputFile
@@ -13,20 +14,50 @@ from welib.fast.hydrodyn_waves import Waves
 class HydroDyn:
 
     def __init__(self, filename=None, hdData=None):
+        """ 
+        INPUTS:
+          - filename: optional, name of HydroDyn input file, or OpenFAST or HydroDyn Driver input file
+                  NOTE: if an fst or dvr file is provided, init is called
+        """
+        # Main object data
+        self.File        = None
+        self.outFilename = None
+        self.p           = {}
+        self.m           = {}
+        self.u           = {}
+        self.y           = {}
+        self._graph      = None
 
-        self._graph=None
-        self.File=None
-
-        # Read SubDyn file
+        # Read HydroDyn file (and optionally Driver file)
         if filename is not None:
-            self.File = FASTInputFile(filename)
+            File = FASTInputFile(filename)
+            if 'WaveMod' in File.keys(): # User provided a HydroDyn input file
+                self.File = File
+                self.outFilename = os.path.splitext(filename)[0]+'.pyHD.outb'
+            else:
+                if 'HydroFile' in File.keys(): # User provided and OpenFAST inputs file
+                    hdFilename = os.path.join(os.path.dirname(filename), File['HydroFile'].replace('"','') )
+                    outFilenames= [filename.replace('.fst',ext) for ext in ['.outb','.out'] if os.path.exists(filename.replace('.fst',ext))]
+                    if len(outFilenames)==0:
+                        self.outFilename = filename.replace('.fst','.outb')
+                    else:
+                        self.outFilename = outFilenames[0]
+
+                elif 'HDInputFile' in File.keys(): # User provided a hydrodyn driver input file
+                    hdFilename = os.path.join(os.path.dirname(filename), File['HDInputFile'].replace('"','') )
+                    self.outFilename = filename.replace('.dvr','.HD.out')
+                else:
+                    raise Exception()
+
+                self.File = FASTInputFile(hdFilename)
+
+                # Calling init since we know important environmental conditions
+                self.init(Gravity = File['Gravity'], WtrDens=File['WtrDens'], WtrDpth=File['WtrDpth'])
+
+
         elif hdData is not None:
             self.File = hdData
 
-        # Internal
-        self.p={}
-        self.m={}
-        self._graph=None
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
@@ -161,16 +192,67 @@ class HydroDyn:
         uMor, yMor = self.morison.init(initData)
         u['Morison'] = uMor
         y['Morison'] = yMor
+        self.u = u 
+        self.y = y 
         return u, y
 
     
-    def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None):
-        yMor = self.morison.calcOutput(t, x=x, xd=xd, xo=xo, u=u['Morison'], y=y['Morison'])
+    def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None, optsM=None):
+        yMor = self.morison.calcOutput(t, x=x, xd=xd, xo=xo, u=u['Morison'], y=y['Morison'], opts=optsM)
         y['Morison'] = yMor
 
         return y
 
 
+
+    def linearize_RigidMotion2Loads(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, optsM=None, saveFile=None):
+        """ 
+        Linearize the outputs force at the reference point with respect to
+           motions of the reference point (assuming rigid body motion of the structure)
+           Return: M=df/dqdd C=df/dqd K=df/dq 
+
+        -q0, qd0, qdd0: 6-array of rigid DOFs positions, velocities and accelerations at platform ref 
+        -dq, dqd, dqdd: 6-array of perturbations around q0, qd0 and qdd0
+        -optsM: options for Morison Calculation
+
+        NOTE: only Morison for now
+        """
+        from welib.system.linearization import numerical_jacobian
+        print('Computing HydroDyn linearized model...')
+
+        # --- Define a function that returns outputs
+        def fh(q,qd,qdd,p=None):
+            # Rigid body motion of the mesh
+            self.u['Morison']['Mesh'].rigidBodyMotion(q=q, qd=qd, qdd=qdd)
+            # Calculate hydrodynamic loads at every nodes 
+            self.calcOutput(t=0, u=self.u, y=self.y, optsM=p)
+            # Compute integral loads (force&moment) at the reference point (translated but not rotated)
+            fh=np.zeros(6)
+            fh[:3], fh[3:] = self.y['Morison']['Mesh'].mapLoadsToPoint((q[0],q[1],q[2]))
+            return fh
+
+        # --- Operating point and perturbation sizes
+        if q0 is None:
+            q0  = np.zeros(6)
+        if qd0 is None:
+            qd0  = np.zeros(6)
+        if qdd0 is None:
+            qdd0 = np.zeros(6)
+        if dq is None:
+            dq   = [0.01]*3 + [0.01]*3
+        if dqd is None:
+            dqd  = [0.01]*3 + [0.01]*3
+        if dqdd is None:
+            dqdd = [0.1]*3  + [.1]*3
+
+        # --- Linearization
+        f0 = fh(q0,qd0,qdd0, optsM)
+        Kall = -numerical_jacobian(fh, (q0,qd0,qdd0), 0, dq  , optsM)
+        Call = -numerical_jacobian(fh, (q0,qd0,qdd0), 1, dqd , optsM)
+        Mall = -numerical_jacobian(fh, (q0,qd0,qdd0), 2, dqdd, optsM)
+
+
+        return Mall, Call, Kall, f0
 
    
     @property

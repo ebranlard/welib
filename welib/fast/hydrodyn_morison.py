@@ -166,6 +166,7 @@ class Morison:
                             # All member nodes at this joint will have the same MG thickness and density, so only do this once
                             tMG =    member['tMG'][MemberEndIndx      ]
                             MGdens = member['MGdensity'][MemberEndIndx]
+                Vn *= 2*np.pi/3   # Semisphere volume is Vn = 2/3 pi \sum (r_MG^3 k)   # TODO TODO TODO uncomment when OpenFAST fixed
                 p['An_End'][:,i] = An_drag 
                 Amag_drag =  An_drag.dot(An_drag)
                 Amag      =  An.dot(An)
@@ -630,7 +631,7 @@ class Morison:
             self._setMemberProperties(member, m)
 
 
-    def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None):
+    def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None, opts=None):
         """ NOTE: Morison has no state
         u:
 
@@ -645,12 +646,18 @@ class Morison:
         ymesh = y['Mesh']
         g = p['Gravity']
 
-        bVerbose = False
-        bMG      = True
-        bBuoy    = True
-        bBallast = True
-        bHydro   = True
-        bEnd     = True
+        # Calculation options
+        defaultOpts ={'verbose':False, 'MG':True, 'Buoyancy':True, 'Ballast':True, 'HydroD':True, 'HydroA':True, 'HydroI':True, 'End':True}
+        if opts is not None:
+            defaultOpts.update(opts)
+        bVerbose = defaultOpts['verbose'] 
+        bMG      = defaultOpts['MG']
+        bBuoy    = defaultOpts['Buoyancy']
+        bBallast = defaultOpts['Ballast']
+        bHydroD  = defaultOpts['HydroD']
+        bHydroA  = defaultOpts['HydroA']
+        bHydroI  = defaultOpts['HydroI']
+        bEnd     = defaultOpts['End']
 
         def myprint(*args, **kwargs):
             if bVerbose:
@@ -964,52 +971,52 @@ class Morison:
             # --- Hydrodynamic loads on sides 
             # --------------------------------------------------------------------------------{
             # NOTE: All geometry-related calculations are based on the undisplaced configuration of the structure
-            if bHydro:
-                for i in range(N+1): # Loop through member nodes
-                    myprint('---------------------------NODAL LOADS ',im+1, i+1)
-                    # We need to subtract the MSL2SWL offset to place this in the SWL reference system
-                    z1 = umesh.Position[idx[i],2] - p['MSL2SWL']
-                    if i > mem['i_floor'] and z1 <= 0.0:  # node is above (or at? TODO: check) seabed and below or at free-surface)
-                        # TODO: Note that for computational efficiency, we could precompute h_c and deltal for each element when we are NOT using wave stretching
-                        # We would still need to test at time marching for nodes just below the free surface because that uses the current locations not the reference locations
-                        # see table in Section 7.1.1
-                        if i == 0:
-                            deltal = mem['dl']/2.0
-                            h_c    = mem['dl']/4.0
-                        elif (i == N):
-                            deltal =  mem['dl']/2.0
-                            h_c    = -mem['dl']/4.0
-                        elif mem['i_floor'] == i+1 : # This node is the upper node of an element which crosses the seabed
-                            deltal = mem['dl']/2.0 - mem['h_floor']  # TODO: h_floor is negative valued, should we be subrtracting it from dl/2? GJH
-                            h_c    = 0.5*(mem['dl']/2.0 + mem['h_floor'])
-                        else:
+            for i in range(N+1): # Loop through member nodes
+                myprint('---------------------------NODAL LOADS ',im+1, i+1)
+                # We need to subtract the MSL2SWL offset to place this in the SWL reference system
+                z1 = umesh.Position[idx[i],2] - p['MSL2SWL']
+                if i > mem['i_floor'] and z1 <= 0.0:  # node is above (or at? TODO: check) seabed and below or at free-surface)
+                    # TODO: Note that for computational efficiency, we could precompute h_c and deltal for each element when we are NOT using wave stretching
+                    # We would still need to test at time marching for nodes just below the free surface because that uses the current locations not the reference locations
+                    # see table in Section 7.1.1
+                    if i == 0:
+                        deltal = mem['dl']/2.0
+                        h_c    = mem['dl']/4.0
+                    elif (i == N):
+                        deltal =  mem['dl']/2.0
+                        h_c    = -mem['dl']/4.0
+                    elif mem['i_floor'] == i+1 : # This node is the upper node of an element which crosses the seabed
+                        deltal = mem['dl']/2.0 - mem['h_floor']  # TODO: h_floor is negative valued, should we be subrtracting it from dl/2? GJH
+                        h_c    = 0.5*(mem['dl']/2.0 + mem['h_floor'])
+                    else:
+                        # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
+                        pos1    = umesh.Position[idx[i], :]
+                        pos1[2] = pos1[2] - p['MSL2SWL']
+                        pos2    = umesh.Position[idx[i+1],:]
+                        pos2[2] = pos2[2] - p['MSL2SWL']
+                        if pos1[2] <= 0.0 and 0.0 < pos2[2]: # This node is just below the free surface #TODO: Needs to be augmented for wave stretching
                             # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
-                            pos1    = umesh.Position[idx[i], :]
+                            #TODO: Fix this one
+                            pos1    = umesh.Position[idx[i],:] # use reference position for following equation
                             pos1[2] = pos1[2] - p['MSL2SWL']
-                            pos2    = umesh.Position[idx[i+1],:]
-                            pos2[2] = pos2[2] - p['MSL2SWL']
-                            if pos1[2] <= 0.0 and 0.0 < pos2[2]: # This node is just below the free surface #TODO: Needs to be augmented for wave stretching
-                                # We need to subtract the MSL2SWL offset to place this  in the SWL reference system
-                                #TODO: Fix this one
-                                pos1    = umesh.Position[idx[i],:] # use reference position for following equation
-                                pos1[2] = pos1[2] - p['MSL2SWL']
-                                h       = ( pos1[2] ) / mem['cosPhi_ref'] #TODO: Needs to be augmented for wave stretching
-                                deltal  = mem['dl']/2.0 + h
-                                h_c     = 0.5*(h-mem['dl']/2.0)
-                            else:
-                                # This node is a fully submerged interior node
-                                deltal = mem['dl']
-                                h_c    = 0.0
-                        if i == 0:
-                            dRdl_p  = abs(mem['dRdl_mg'][i])
-                            dRdl_pp = mem['dRdl_mg'][i]   
-                        elif i > 0 and i<N:
-                            dRdl_p  = 0.5*( abs(mem['dRdl_mg'][i-1]) + abs(mem['dRdl_mg'][i]) )
-                            dRdl_pp = 0.5*( mem['dRdl_mg'][i-1] + mem['dRdl_mg'][i] )
+                            h       = ( pos1[2] ) / mem['cosPhi_ref'] #TODO: Needs to be augmented for wave stretching
+                            deltal  = mem['dl']/2.0 + h
+                            h_c     = 0.5*(h-mem['dl']/2.0)
                         else:
-                            dRdl_p  = abs(mem['dRdl_mg'][-1])
-                            dRdl_pp = mem['dRdl_mg'][-1]
-                        # ------------------- hydrodynamic drag loads: sides: Section 7.1.2 ------------------------ 
+                            # This node is a fully submerged interior node
+                            deltal = mem['dl']
+                            h_c    = 0.0
+                    if i == 0:
+                        dRdl_p  = abs(mem['dRdl_mg'][i])
+                        dRdl_pp = mem['dRdl_mg'][i]   
+                    elif i > 0 and i<N:
+                        dRdl_p  = 0.5*( abs(mem['dRdl_mg'][i-1]) + abs(mem['dRdl_mg'][i]) )
+                        dRdl_pp = 0.5*( mem['dRdl_mg'][i-1] + mem['dRdl_mg'][i] )
+                    else:
+                        dRdl_p  = abs(mem['dRdl_mg'][-1])
+                        dRdl_pp = mem['dRdl_mg'][-1]
+                    # ------------------- hydrodynamic drag loads: sides: Section 7.1.2 ------------------------ 
+                    if bHydroD:
                         vec = mem['Ak'].dot(m['vrel'][:,idx[i]] )
                         dotp = mem['k'].dot( m['vrel'][:,idx[i]].flatten())
                         KV   = dotp*mem['kkt'] # 3x3 matrix
@@ -1025,15 +1032,17 @@ class Morison:
                         memLoads['F_D'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
                         ymesh.Force [idx[i], :] += memLoads['F_D'][:3, i]
                         ymesh.Moment[idx[i], :] += memLoads['F_D'][3:, i]
-                        if not e.data['Pot']:
-                            # ------------------- hydrodynamic added mass loads: sides: Section 7.1.3 ------------------------
+                    if not e.data['Pot']:
+                        # ------------------- hydrodynamic added mass loads: sides: Section 7.1.3 ------------------------
+                        if bHydroA:
                             Am = mem['Ca'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*mem['Ak'] + 2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p*mem['kkt']
                             f_hydro = - Am.dot( umesh.TranslationAcc[idx[i], :] )
                             myprint('f_hydro_a {:16.4f}{:16.4f}{:16.4f}'.format(*f_hydro))
                             memLoads['F_A'][:, i]  = LumpDistrHydroLoads( f_hydro, mem['k'], deltal, h_c )
                             ymesh.Force [idx[i], :] += memLoads['F_A'][:3, i]
                             ymesh.Moment[idx[i], :] += memLoads['F_A'][3:, i]
-                            # ------------------- hydrodynamic inertia loads: sides: Section 7.1.4 ------------------------
+                        # ------------------- hydrodynamic inertia loads: sides: Section 7.1.4 ------------------------
+                        if bHydroI:
                             t1 = (mem['Ca'][i]+mem['Cp'][i])*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*          mem['Ak'] .dot( m['FA'][:,idx[i]] )
                             t2 =          2.0*mem['AxCa'][i]*p['WtrDens']*np.pi*mem['RMG'][i]*mem['RMG'][i]*dRdl_p *  mem['kkt'].dot( m['FA'][:,idx[i]] )
                             t3 =          2.0*m['FDynP'][idx[i]]*mem['AxCp'][i]*np.pi*mem['RMG'][i]*dRdl_pp*mem['k'] 

@@ -131,8 +131,8 @@ class FASTOutputFile(File):
 
         return df
 
-    def writeDataframe(self, df, filename, binary=True):
-        writeDataframe(df, filename, binary=binary)
+    def writeDataFrame(self, df, filename, binary=True):
+        writeDataFrame(df, filename, binary=binary)
 
 # --------------------------------------------------------------------------------
 # --- Helper low level functions 
@@ -358,7 +358,7 @@ def load_binary_output(filename, use_buffer=True):
     return data, info
 
 
-def writeDataframe(df, filename, binary=True):
+def writeDataFrame(df, filename, binary=True):
     channels  = df.values
     # attempt to extract units from channel names
     chanNames=[]
@@ -493,6 +493,6 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=2, descStr=''):
 if __name__ == "__main__":
     B=FASTOutputFile('tests/example_files/FASTOutBin.outb')
     df=B.toDataFrame()
-    B.writeDataframe(df, 'tests/example_files/FASTOutBin_OUT.outb')
+    B.writeDataFrame(df, 'tests/example_files/FASTOutBin_OUT.outb')
 
 
