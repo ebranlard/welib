@@ -1,6 +1,12 @@
 """ 
 Compute hydrodynamics loads on a structure under rigid body motion using "Python HydroDyn"
 
+NOTE:
+   the code below can be replaced by a simple call to hydrodyn_driver.py:
+
+       dfPH, dfOF, msy = hydroSimFromOpenFAST(fstFilename, tMax=None)
+
+
 - Hydrodynamic parameters are read from an HydroDyn input file
 - Motion (displacement, velocities, accelerations) are taken from an OpenFAST simulation
   NOTES:
@@ -123,12 +129,6 @@ def hydroSim(fstFilename, plot=True, json=True, tMax=None):
     return dfPH, dfOF
 
 if __name__ == '__main__':
-    # fstFilename = 'C:/W0/Work/2018-NREL/DigiTwin-Stiesdal/models/SparNoRNA_F001000/Main.fst'
-    # fstFilename = 'C:/W0/Work/2018-NREL/DigiTwin-Stiesdal/models/SparNoRNA_F101010/Main.fst'
-    # fstFilename = 'C:/W0/Work/2018-NREL/DigiTwin-Stiesdal/models/SparNoRNA_F101010_Static/Main.fst'
-    # fstFilename = 'C:/W0/Work/2018-NREL/DigiTwin-Stiesdal/models/SparNoRNA_F000010/Main.fst'
-    # fstFilename = 'C:/W0/Work/2018-NREL/DigiTwin-Stiesdal/models/MD0HD1SD0_PitchDecayRigid_Heave/Main.fst'
-    # fstFilename = '../_debug/tapercyl.dvr'
     fstFilename = os.path.join(MyDir, '../../../data/Spar/Main_Spar_ED_HydroExample.fst');
     dfPH, dfOF = hydroSim(fstFilename, tMax=None)
     plt.show()
