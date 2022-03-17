@@ -145,15 +145,70 @@ def rigidTransformationLine(dx,dy,dz,iLine):
     elif iLine ==6: Line = (0, 0, 0, 0 ,  0 ,  1 )
     return Line
 
-def rigidTransformationTwoPoints(Pj, Pk):
-    """ Rigid transformation matrix between DOFs of node j and k where node j is the leader node. """
-    T_rigid = np.eye(6)
-    T_rigid[ 0, 4 ] =  (Pk[2] - Pj[2])
-    T_rigid[ 0, 5 ] = -(Pk[1] - Pj[1])
-    T_rigid[ 1, 3 ] = -(Pk[2] - Pj[2])
-    T_rigid[ 1, 5 ] =  (Pk[0] - Pj[0])
-    T_rigid[ 2, 3 ] =  (Pk[1] - Pj[1])
-    T_rigid[ 2, 4 ] = -(Pk[0] - Pj[0])
-    return T_rigid
+def rigidTransformationTwoPoints(Ps, Pd):
+    """
+    Linear rigid transformation matrix between DOFs of node j and k where node j (source) is the leader node. 
+        Ps: source
+        Pd: destination
+        T =[ I3   skew(Psource - Pdest)  ]
+           [ 0    I3                     ]
+    """
+    T = np.eye(6) # 1 on the diagonal
+    T[0,4] =  (Pd[2] - Ps[2]) 
+    T[0,5] = -(Pd[1] - Ps[1])
+    T[1,3] = -(Pd[2] - Ps[2])
+    T[1,5] =  (Pd[0] - Ps[0])
+    T[2,3] =  (Pd[1] - Ps[1])
+    T[2,4] = -(Pd[0] - Ps[0]);
+    #T[0:3,3:6] = skew(Ps-Pd)
+    return T
+
+def rigidTransformationTwoPoints_Loads(Ps, Pd):
+    """ 
+    Relate loads at source node to destination node:
+      fd = T.dot(fs)
+
+       T =[ I3           0  ]
+          [ skew(Ps-Pd)  I3 ]
+    """
+    Ps=np.asarray(Ps)
+    Pd=np.asarray(Pd)
+    T = np.eye(6) # 1 on the diagonal
+    T[3:6,0:3] = skew(Ps-Pd)
+    #T_rigid[0,4] =  (Pd[2] - Ps[2]) 
+    #T_rigid[0,5] = -(Pd[1] - Ps[1])
+    #T_rigid[1,3] = -(Pd[2] - Ps[2])
+    #T_rigid[1,5] =  (Pd[0] - Ps[0])
+    #T_rigid[2,3] =  (Pd[1] - Ps[1])
+    #T_rigid[2,4] = -(Pd[0] - Ps[0]);
+    return T
+
+
+
+def rigidTransformationTwoPoints18(Ps, Pd):
+    """
+    Linear rigid body transformation matrix relating the motion between two points
+        motion = position, velocity, acceleration in all 6 DOFs (translation rotation)
+        TODO: in theory, this should be a function fo the operating point velocities
+        Simplified "steady state" version for now
+    """
+    T6 = rigidTransformationTwoPoints(Ps, Pd)
+    T = np.zeros((18,18))
+    T[0:6  ,0:6]   = T6
+    T[6:12 ,6:12]  = T6
+    T[12:18,12:18] = T6
+    return T
+
+def rigidTransformationOnePointToPoints18(Psource, DestPoints):
+    """ 
+    Psource: 3-array: location of the source point
+    DestPoints: n x 3-array: location of the destination points
+    """
+    assert(DestPoints.shape[1]==3)
+    nNodes = DestPoints.shape[0] 
+    T = np.zeros((18*nNodes, 18))
+    for iNode, Pdest in enumerate(DestPoints):
+        T[iNode*18:(iNode+1)*18,:] = rigidTransformationTwoPoints18(Psource, Pdest)
+    return T
 
 
