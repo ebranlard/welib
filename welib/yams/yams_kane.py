@@ -2,10 +2,10 @@ from __future__ import print_function, division
 
 from sympy.core.backend import zeros, Matrix, diff, eye
 from sympy import solve_linear_system_LU
-try:
-    from sympy.core.compatibility import range
-except:
-    pass
+# try:
+#     from sympy.core.compatibility import range
+# except:
+#     pass
 try:
     from sympy.core.sorting import default_sort_key
 except:

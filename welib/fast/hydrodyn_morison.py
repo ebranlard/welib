@@ -166,7 +166,7 @@ class Morison:
                             # All member nodes at this joint will have the same MG thickness and density, so only do this once
                             tMG =    member['tMG'][MemberEndIndx      ]
                             MGdens = member['MGdensity'][MemberEndIndx]
-                Vn *= 2*np.pi/3   # Semisphere volume is Vn = 2/3 pi \sum (r_MG^3 k)   # TODO TODO TODO uncomment when OpenFAST fixed
+                #Vn *= 2*np.pi/3   # Semisphere volume is Vn = 2/3 pi \sum (r_MG^3 k)   # TODO TODO TODO uncomment when OpenFAST fixed
                 p['An_End'][:,i] = An_drag 
                 Amag_drag =  An_drag.dot(An_drag)
                 Amag      =  An.dot(An)

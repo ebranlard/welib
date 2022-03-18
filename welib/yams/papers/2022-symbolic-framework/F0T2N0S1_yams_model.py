@@ -59,10 +59,8 @@ def main(runSim=True, runFAST=False, create=True):
         else:
             time = np.linspace(0,50,1000)
             dfFS = None
-        resNL, sysNL = WT.simulate_py    (model_pkg, p, time)
-        resLI, sysLI = WT.simulate_py_lin(model_pkg, p, time)
-        dfNL = sysNL.toDataFrame(WT.channels, WT.FASTDOFScales)
-        dfLI = sysLI.toDataFrame(WT.channels, WT.FASTDOFScales)
+        resNL, sysNL, dfNL = WT.simulate_py    (model_pkg, p, time)
+        resLI, sysLI, dfLI = WT.simulate_py_lin(model_pkg, p, time)
 
         # --- Simple Plot
         fig,axes = plt.subplots(3, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)

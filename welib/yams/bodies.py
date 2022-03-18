@@ -252,7 +252,9 @@ class BeamBody(FlexibleBody):
             s_min=None, s_max=None,
             r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
             damp_zeta=None, RayleighCoeff=None, DampMat=None,
-            bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z', massExpected=None):
+            bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z', massExpected=None,
+            int_method='Flex'
+            ):
         """
         Creates a Flexible Beam body 
           Points P0 - Undeformed mean line of the body
@@ -288,6 +290,7 @@ class BeamBody(FlexibleBody):
         self.Mtop       = Mtop
         self.Omega      = Omega # rad/s
         self.gravity    = gravity
+        self.int_method = int_method
 
         self.damp_zeta  = damp_zeta
         self.RayleighCoeff  = RayleighCoeff
@@ -648,7 +651,8 @@ class FASTBeamBody(BeamBody):
         try:
             gravity=ED['Gravity']
         except:
-            print('[WARN] yams/bodies.py: gravity is no longer present in elastodyn file, provide it as input')
+            if gravity is None:
+                print('[WARN] yams/bodies.py: gravity is no longer present in elastodyn file, provide it as input')
 
         if name in ['twr','bld']:
             m *= mass_fact

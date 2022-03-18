@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 # Local 
-import weio
 from welib.tools.tictoc import Timer
 
 import welib.weio as weio
@@ -15,7 +14,7 @@ from welib.tools.clean_exceptions import *
 from welib.tools.tictoc import Timer
 
 
-def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, verbose=False, base=None, MCK=None, q0=None, F0=None):
+def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, MCK=None, q0=None, F0=None):
     """ 
     """
     if base is None:
@@ -42,7 +41,7 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
     if 'PRPSurge_[m]' in dfOF.columns:
         qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]'     ]
         qdCol  = ['PRPTVxi_[m/s]'   ,'PRPTVyi_[m/s]'  ,'PRPTVzi_[m/s]'  ,'PRPRVxi_[rad/s]'  ,'PRPRVyi_[rad/s]'  ,'PRPRVzi_[rad/s]'  ]
-        qddCol = [ 'PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
+        qddCol = ['PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
     else:
         raise NotImplementedError()
 
@@ -82,15 +81,16 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
         axes[0,1].legend()
         axes[5,0].set_xlabel('Time [s]')
         axes[5,1].set_xlabel('Time [s]')
-        fig.savefig(base+'_pylin.png')
+        if png:
+            fig.savefig(base+'_hydroPyPrescrMotion_Lin.png')
 
     if out:
-        writeDataFrame(dfPH, base + '_pylin.outb')
+        writeDataFrame(dfPH, base + '_hydroPyPrescrMotion_Lin.outb')
 
     return dfPH, dfOF
 
 
-def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, verbose=False, base=None):
+def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None):
     """ 
     Compute hydrodynamics loads on a structure under rigid body motion based on an OpenFAST simulation
     fstFilename: OpenFAST or HydroDyn driver input file
@@ -175,13 +175,14 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
         axes[0,1].legend()
         axes[5,0].set_xlabel('Time [s]')
         axes[5,1].set_xlabel('Time [s]')
-        fig.savefig(base+'_py.png')
+        if png:
+            fig.savefig(base+'_hydroPyPrescrMotion_NL.png')
 
     if json:
-        msy.toJSON3D(ymesh, base + '_py_MeshMotion.json')
+        msy.toJSON3D(ymesh, base + '_hydroPyPrescrMotion_NL_MeshMotion.json')
 
     if out:
-        writeDataFrame(dfPH, base + '_py.outb')
+        writeDataFrame(dfPH, base + '_hydroPyPrescrMotion_NL.outb')
 
     return dfPH, dfOF, msy
 
