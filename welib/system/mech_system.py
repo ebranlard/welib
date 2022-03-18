@@ -413,7 +413,7 @@ class MechSystem():
             else:
                 F = np.zeros((self.nDOF,len(time)))
                 for it, t in enumerate(time):
-                    F[:,it] = self.Forces(t, q=res.y[:,it])
+                    F[:,it] = self.Forces(t, q=res.y[:,it]).ravel()
         if includeCK:
             nDOF = self.nDOF
             FK = np.zeros((self.nDOF,len(time)))
