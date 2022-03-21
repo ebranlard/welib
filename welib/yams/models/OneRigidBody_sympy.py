@@ -19,6 +19,7 @@ _defaultOpts={
     'CG_on_z':False,  #< 
     'J_cross':True,  #< 
     'J_at_Origin':False,  #< 
+    'NoDOFImpliesNoSpeed':False,  #< if the DOF is not active, then its derivative and accelerations (arising from rotation of COG) are zeroed
 }
 
 
@@ -63,7 +64,7 @@ def get_model_one_body(model_name, **opts):
         bDOFs[3]=nDOF_body>=5 # phi_x
         bDOFs[5]=nDOF_body>=5 # phi_z
     else:
-        bDOFs=[s=='1' for s in s]
+        bDOFs=[s=='1' for s in s[:6]]
         nDOF_body  = sum(bDOFs)
 
     print('body',','.join(['1' if b else '0' for b in bDOFs]))
@@ -132,18 +133,31 @@ def get_model_one_body(model_name, **opts):
     # --- Kinematic equations 
     kdeqsSubs =[]
     # Kdeqs for body: 
-    bodyVelAll = [diff(x,time), diff(y,time),  diff(z,time)]
+    bodyVelAll= [0]*6
+    bodyVelAll[:3] = [diff(x,time), diff(y,time),  diff(z,time)]
     if opts['linRot']:
-        bodyVelAll += [diff(phi_x,time), diff(phi_y,time),  diff(phi_z,time)]  
+        if opts['NoDOFImpliesNoSpeed']:
+            bodyVelAll[3] = diff(phi_x,time) if bDOFs[3] else 0
+            bodyVelAll[4] = diff(phi_y,time) if bDOFs[4] else 0
+            bodyVelAll[5] = diff(phi_z,time) if bDOFs[5] else 0
+        else:
+            bodyVelAll[3] = diff(phi_x,time) 
+            bodyVelAll[4] = diff(phi_y,time)
+            bodyVelAll[5] = diff(phi_z,time)
     else:
         omega_TE = body.ang_vel_in(ref)        # Angular velocity of nacelle in inertial frame, then expressed in body coordinates
         print('>>> Omega TE: ',omega_TE)
-        bodyVelAll +=[ omega_TE.dot(body.frame.x).simplify(), omega_TE.dot(body.frame.y).simplify(), omega_TE.dot(body.frame.z).simplify()]  
+        bodyVelAll[3:6] =[ omega_TE.dot(body.frame.x).simplify(), omega_TE.dot(body.frame.y).simplify(), omega_TE.dot(body.frame.z).simplify()]  
 
     kdeqsSubs+=[ (bodySpeedsAll[i], bodyVelAll[i]) for i,dof in enumerate(bDOFs) if dof] 
+    #print('>>> BodyVelRot:   ',bodyVelAll[:3])
+    #print('>>> BodyVelTrans: ',bodyVelAll[3:])
 
     # --- Setting body omega
-    body.frame.set_ang_vel(ref.frame,  omega_x *body.frame.x + omega_y *body.frame.y + omega_z *body.frame.z)
+    # NOTE: I COMMENTED THIS TO AVOID HAVING ISSUES WITH OMEGAs SHOWING UP IF NO DOF INVOLVED
+    #       DOUBLE CHECK< IT MIGHT HAVE IMPLICATIONS
+    #body.frame.set_ang_vel(ref.frame,  omega_x *body.frame.x + omega_y *body.frame.y + omega_z *body.frame.z)
+    body.frame.set_ang_vel(ref.frame,  bodyVelAll[3] *body.frame.x + bodyVelAll[4] *body.frame.y + bodyVelAll[5] *body.frame.z)
     print('>>> Omega TE: ',  body.ang_vel_in(ref))
     ref.update_kinematics_trigger()
         # >>> TODO sort out frame
@@ -172,5 +186,6 @@ def get_model_one_body(model_name, **opts):
     # Small angles
     model.smallAngles    = [phi_x,phi_y,phi_z]
     model.shapeNormSubs= []
+    model.bDOFs= bDOFs
 
     return model
