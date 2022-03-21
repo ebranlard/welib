@@ -53,7 +53,7 @@ def rsquare(y,f, c = True):
     rmse = np.sqrt(np.mean((y - f) ** 2))
     return r2,rmse
 
-def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='mean', verbose=False):
+def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='mean', verbose=False, varname=''):
     """ 
     return mean relative error in % 
 
@@ -94,7 +94,10 @@ def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='mean', verbose=Fals
         raise Exception('Unknown method',method)
 
     if verbose:
-        print('Mean rel error {:7.2f} %'.format( meanrelerr))
+        if len(varname)>0:
+            print('Mean rel error {:15s} {:7.2f} %'.format(varname, meanrelerr))
+        else:
+            print('Mean rel error {:7.2f} %'.format( meanrelerr))
     return meanrelerr
 
 

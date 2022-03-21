@@ -53,9 +53,13 @@ class SimulatorFromOF():
 
     def loadPackage(self, modelName=None, packageDir='', packagePath=None):
         if modelName is not None:
-            packagePath = os.path.join(packageDir, modelName)
-        packageString = packagePath.replace('/','.').replace('\\','.')
-        self.pkg = importlib.import_module(packageString)
+            packagePath = os.path.join(packageDir, modelName)+'.py'
+        else:
+            modelName = os.path.basename(packagePath)
+        spec = importlib.util.spec_from_file_location(modelName, packagePath)
+        if spec is None:
+            raise Exception('Package not found: ',packagePath)
+        self.pkg = spec.loader.load_module()
         self.info = self.pkg.info()
 
     def setupSim(self, outFile=None, tMax=None, **kwargs):
