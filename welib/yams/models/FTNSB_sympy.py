@@ -9,6 +9,7 @@ from sympy.physics.mechanics import dynamicsymbols, ReferenceFrame, Point, inert
 from welib.yams.yams_sympy       import YAMSRigidBody, YAMSInertialBody, YAMSFlexibleBody
 from welib.yams.yams_sympy_model import YAMSModel
 from welib.yams.models.FTNSB_sympy_symbols import *
+from welib.yams.models.utils import stiffness6DOF
 from welib.tools.tictoc import Timer
 
 
@@ -33,7 +34,8 @@ _defaultOpts={
     'rot_elastic_type':'Body',     #<<< Very important, SmallRot, or Body, will affect the rotation matrix
     'rot_elastic_subs':True,       #<<< Very important, will substitute alpha_y with nuy q. Recommended True
     'rot_elastic_smallAngle':False,#<<< Very important, will perform small angle approx: sin(nu q) = nu q and nu^2=0 !!! Will remove all nu^2 and nu^3 terms!! might not be recommended
-    'fnd_loads':False, # Add loads on the foundation (restoring and buoyancy)
+    'moor_loads':False, # Add mooring loads on the foundation
+    'hydro_loads':False, # Add hydro on the foundation 
     'aero_torques':False, # Add aerodynamic torques
     'aero_forces':True, # Add aerodynamic torques
     'orderMM':2, #< order of taylor expansion for Mass Matrix
@@ -443,27 +445,47 @@ def get_model(model_name, **opts):
     if fnd is not None:
         grav_F = (fnd.masscenter, -fnd.mass * gravity * ref.frame.z)
         # Point of application for Buoyancy and mooring
-        P_B = twr.origin.locatenew('P_B', z_TB * fnd.frame.z) # <<<< Measured from T
-        P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # <<<< Measured from T
-        P_B.v2pt_theory(twr.origin, ref.frame, twr.frame); # PB & T are fixed in e_T
+
+        P_O = twr.origin                                       # Body origin
+        #P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # Mooring      <<<< Measured from T
+        P_M = twr.origin                                       # Mooring (transfered to tower origin)
+        #P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # <<<< Measured from T
+        P_0 = twr.origin.locatenew('P_0', z_T0 * fnd.frame.z) # 0- sea level <<<< Measured from T
         P_M.v2pt_theory(twr.origin, ref.frame, twr.frame); # PM & T are fixed in e_T
-        if opts['fnd_loads']:
-            K_Mx, K_My, K_Mz          = symbols('K_x_M, K_y_M, K_z_M') # Mooring restoring
-            K_Mphix, K_Mphiy, K_Mphiz = symbols('K_phi_x_M, K_phi_y_M, K_phi_z_M') # Mooring restoring
-            F_B = dynamicsymbols('F_B') # Buoyancy force
-            #print('>>> Adding fnd loads. NOTE: reference might need to be adapted')
-            # Buoyancy
-            body_loads  += [(fnd, (P_B, F_B * ref.frame.z))]
-            ## Restoring mooring and torques
-            fr=0
-            fr += -K_Mx * x *ref.frame.x if bFndDOFs[0] else 0
-            fr += -K_My * y *ref.frame.y if bFndDOFs[1] else 0
-            fr += -K_Mz * z *ref.frame.z if bFndDOFs[2] else 0
-            Mr += -K_MPhix * phi_x *ref.frame.x if bFndDOFs[3] else 0
-            Mr += -K_MPhiy * phi_y *ref.frame.y if bFndDOFs[4] else 0
-            Mr += -K_MPhiz * phi_z *ref.frame.z if bFndDOFs[5] else 0
+        P_0.v2pt_theory(twr.origin, ref.frame, twr.frame); # P0 & T are fixed in e_T
+
+        if opts['moor_loads']:
+            #K_Mx, K_My, K_Mz          = symbols('K_x_M, K_y_M, K_z_M') # Mooring restoring
+            #K_Mphix, K_Mphiy, K_Mphiz = symbols('K_phi_x_M, K_phi_y_M, K_phi_z_M') # Mooring restoring
+            ### Restoring mooring and torques
+            #fr=0
+            #fr += -K_Mx * x *ref.frame.x if bFndDOFs[0] else 0
+            #fr += -K_My * y *ref.frame.y if bFndDOFs[1] else 0
+            #fr += -K_Mz * z *ref.frame.z if bFndDOFs[2] else 0
+            #Mr += -K_MPhix * phi_x *ref.frame.x if bFndDOFs[3] else 0
+            #Mr += -K_MPhiy * phi_y *ref.frame.y if bFndDOFs[4] else 0
+            #Mr += -K_MPhiz * phi_z *ref.frame.z if bFndDOFs[5] else 0
+            KMoorKeep=[(0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(0,4),(1,5)]
+            DOFs=[x, y, z, phi_x, phi_y, phi_z]
+            fr, Mr, KM = stiffness6DOF(DOFs, ref.frame, label='KM', bDOFs=bFndDOFs, IKeep=KMoorKeep)
             body_loads  += [(fnd, (P_M,  fr))]
             body_loads  += [(fnd, (fnd.frame, Mr))]
+            print('>>> Adding mooring loads')
+
+        if opts['hydro_loads']:
+            # Hydro force
+            #F_B = dynamicsymbols('F_B') # Buoyancy force
+            F_hx, F_hy, F_hz = dynamicsymbols('F_hx, F_hy, F_hz') # Hydrodynamic force, function to time 
+            M_hx, M_hy, M_hz = dynamicsymbols('M_hx, M_hy, M_hz') # Hydrodynamic moment, function to time 
+            #if modelName.find('hydro0'):
+            fh = F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z
+            Mh = M_hx * ref.frame.x + M_hy * ref.frame.y + M_hz * ref.frame.z
+
+            body_loads  += [(fnd, (P_0,  fh))] # NOTE: using P_0
+            body_loads  += [(fnd, (ref.frame, Mh))] 
+            print('>>> Adding hydro loads')
+
+        # Gravity
         body_loads  += [(fnd,grav_F)]
 
     # --- Tower loads
@@ -495,25 +517,22 @@ def get_model(model_name, **opts):
             body_loads  += [(rot,grav_R)]  
 
             # NOTE: loads on rot, but expressed in N frame
+            # TODO more than just thrust
             if opts['tiltShaft']:
                 # TODO actually tilt shaft, introduce non rotating shaft body
-                if opts['aero_forces']:
-                    #thrustR = (rot.origin, T_a *cos(tiltDOF) * nac.frame.x -T_a *sin(tiltDOF) * nac.frame.z)
-                    thrustR = (rot.origin, T_a * rot.frame.x)
-                if opts['aero_torques']:
-                    print('>>> Adding aero torques 1')
-                    M_a_R = (rot.frame, M_ax*rot.frame.x )# TODO TODO
-                    body_loads+=[(rot, M_a_R)]
+                #thrustR = (rot.origin, T_a *cos(tiltDOF) * nac.frame.x -T_a *sin(tiltDOF) * nac.frame.z)
+                fa_R = (rot.origin, T_a * rot.frame.x)
+                Ma_R = (rot.frame, M_ax*rot.frame.x )# TODO TODO
             else:
-                thrustR = (rot.origin, T_a * nac.frame.x )
+                fa_R = (rot.origin, T_a * nac.frame.x )
                 #thrustR = (rot.origin, T_a * rot.frame.x )
-                #M_a_R = (rot.frame, M_ax*rot.frame.x +  M_ay*rot.frame.y  + M_az*rot.frame.z) # TODO TODO TODO introduce a non rotating shaft
-                if opts['aero_torques']:
-                    print('>>> Adding aero torques 2')
-                    #M_a_R = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z) 
-                    M_a_R = (rot.frame, M_ax*rot.frame.x +  M_ay*rot.frame.y  + M_az*rot.frame.z)
-                    body_loads+=[(nac, M_a_R)]
-            body_loads  += [(rot,thrustR)]
+                #M_a_R = (nac.frame, M_ax*nac.frame.x +  M_ay*nac.frame.y  + M_az*nac.frame.z) 
+                Ma_R = (rot.frame, M_ax*rot.frame.x +  M_ay*rot.frame.y  + M_az*rot.frame.z)  # TODO TODO TODO introduce a non rotating shaft
+            if opts['aero_forces']:
+                body_loads  += [(rot,fa_R)]
+            if opts['aero_torques']:
+                print('>>> Adding aero torques ')
+                body_loads+=[(nac, Ma_R)]
 
     else:
         # RNA loads, point load at R

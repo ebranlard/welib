@@ -71,6 +71,7 @@ x_BG, y_BG, z_BG = symbols('x_BG, y_BG, z_BG') # Position of Blade COG in Blade 
 # Points
 x_NR, z_NR = symbols('x_NR, z_NR') # From Nacelle origin to rotor center 
 z_TM, z_TB = symbols('z_TM, z_TB') # Position of mooring line attachment point and Buoyancy center in F, measured from point T
+z_T0       = symbols('z_T0') # Position of tower bottom wrt to the "(0,0,0)" point
 #x_RB, z_RB = symbols('x_RB, z_RB') # From rotor center to blade root
 r_hub = symbols('r_h') # From rotor center to blade root
 
