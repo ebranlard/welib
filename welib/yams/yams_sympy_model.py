@@ -187,6 +187,7 @@ class YAMSModel(object):
 
     def linearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None):
         """ 
+        (YAMS Model)
         Linearize the "non" linear equations
         NOTE: EOM has kdeqsSubs in it
         """
@@ -277,14 +278,19 @@ class YAMSModel(object):
         if linearize:
             EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
 
-        # --- Export path
+        # --- Python export path
         if len(path)>0:
             folder = os.path.dirname(path)
             name= os.path.basename(path)
-            try:
-                os.makedirs(folder)
-            except:
+            if os.path.exists(folder):
                 pass
+            else:
+                try:
+                    os.makedirs(folder)
+                    with open(os.path.join(folder,'__init__.py'),'w') as f:
+                        pass
+                except:
+                    pass
         else:
             folder = './'
             name   = self.name
@@ -562,7 +568,9 @@ class EquationsOfMotionQ(object):
         self.F = self.F.expand()
 
     def linearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None):
-        """ """
+        """
+        Linearize EOM
+        """
         op_point  = [] if op_point is None else op_point
         extraSubs = [] if extraSubs is None else extraSubs
         self.M0,self.C0,self.K0,self.B0, self.input_vars = linearizeQ(self.EOM, self.q, op_point=op_point, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)

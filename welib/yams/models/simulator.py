@@ -9,6 +9,7 @@ import importlib
 # Local
 from welib.yams.windturbine import FASTWindTurbine
 import welib.weio as weio
+from welib.weio.fast_output_file import writeDataFrame
 
 
 # --------------------------------------------------------------------------------}
@@ -22,7 +23,7 @@ def _loadOFOut(filename, tMax=None):
         elif os.path.exists(filename.replace('.fst','.out')): 
             dfFS = weio.read(filename.replace('.fst','.out')).toDataFrame()
         else:
-            raise NotImplementedError()
+            raise Exception('Cannot find an OpenFAST output file near: {}'.format(filename))
     else:
         dfFS = weio.read(filename).toDataFrame()
     if tMax is not None:
@@ -86,7 +87,7 @@ class SimulatorFromOF():
         # --- Non-linear Inputs
         u=dict()
         for su in self.info['su']:
-            u[su] = lambda t, q, qd: 0  # Setting inputs as zero as funciton of time
+            u[su] = lambda t, q=None, qd=None: 0  # Setting inputs as zero as funciton of time
 
         # --- Linear inputs
         uop=dict() # Inputs at operating points
@@ -128,40 +129,73 @@ class SimulatorFromOF():
         self.qop = qop
         self.qdop = qdop
 
-    def simulate(self):
+    def simulate(self, out=True, prefix=''):
         # --- Time Integration
-        resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop)
+        resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop)
         resNL, sysNL, dfNL = self.WT.simulate_py    (self.pkg, self.p, self.time, u=self.u)
         # Store in object
         self.resLI, self.sysLI, self.dfLI = resLI, sysLI, dfLI
         self.resNL, self.sysNL, self.dfNL = resNL, sysNL, dfNL
 
+        if out:
+            writeDataFrame(dfLI, self.fstFilename.replace('.fst', '{}_yamsSim_Lin.outb'.format(prefix)))
+            writeDataFrame(dfNL, self.fstFilename.replace('.fst', '{}_yamsSim_NL.outb'.format(prefix)))
+
         return dfNL, dfLI
 
+    # --------------------------------------------------------------------------------}
+    # --- property
+    # --------------------------------------------------------------------------------{
+    # Linear properties
+    @property
+    def M_lin(self): return self.sysLI.M
+    @property
+    def K_lin(self): return self.sysLI.K
+    @property
+    def C_lin(self): return self.sysLI.C
+    @property
+    def B_lin(self): return self.sysLI._B
+    @property
+    def q0_lin(self): return self.sysLI.q0
+    @property
+    def forcing0_lin(self): return self.sysLI._forcing0
+    # Non-linear properties
+    @property
+    def M0(self): return self.sysNL._M0
+    @property
+    def forcing0(self): return self.sysNL._forcing0
+    @property
+    def q0(self): return self.sysNL.q0
 
-    def plot(self, export=True, nPlotCols=2):
+
+    def plot(self, export=True, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
         # --- Simple Plot
         dfNL=self.dfNL
         dfLI=self.dfLI
         dfFS=self.dfFS
-        fig,axes = plt.subplots(int(np.ceil((len(dfNL.columns)-1)/nPlotCols)), nPlotCols, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        for i,axi in enumerate((np.asarray(axes).T).ravel()):
-            if i+1<len(dfNL.columns):
-                ax=axi
-                chan=dfNL.columns[i+1]
-                print(chan)
-                ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
-                ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
-                if dfFS is not None:
-                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
-                ax.set_xlabel('Time [s]')
-                ax.set_ylabel(chan)
-                ax.tick_params(direction='in')
-        ax.legend()
+        if fig is None:
+            fig,axes = plt.subplots(int(np.ceil((len(dfNL.columns)-1)/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
+        else:
+            axes=fig.axes
+            assert(len(axes)>0)
+        fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        for i,ax in enumerate((np.asarray(axes).T).ravel()):
+            if i+1>len(dfNL.columns):
+                continue
+            chan=dfNL.columns[i+1]
+            ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
+            ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
+            if dfFS is not None:
+                ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel(chan)
+            ax.tick_params(direction='in')
+            if i==0:
+                ax.legend()
+        fig.suptitle(title)
 
         if export:
-            fig.savefig(self.fstFilename.replace('.fst','_yamsSim.png'))
+            fig.savefig(self.fstFilename.replace('.fst','{}_yamsSim.png'.format(prefix)))
 
         return fig
 

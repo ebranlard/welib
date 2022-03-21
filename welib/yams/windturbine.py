@@ -335,6 +335,8 @@ class WindTurbineStructure():
         sysNL = MechSystem(fM, F=fF, x0=q0, xdot0=qd0 )
         #print(sysNL)
         resNL = sysNL.integrate(time, method='RK45')
+        sysNL._M0       = MM0
+        sysNL._forcing0 = forcing0.ravel()
 
         # --- Convert to dataframe
         dfNL = sysNL.toDataFrame(self.channels, self.FASTDOFScales)
@@ -370,6 +372,13 @@ class WindTurbineStructure():
         # --- Initial conditions (of pertubations)
         dq0  = self.q0  - qop
         dqd0 = self.qd0 - qdop
+        print('q0  :',self.q0)
+        print('qd0 :',self.qd0)
+        print('qop :',qop)
+        print('qdop:',qdop)
+        #print('dq0 :',dq0)
+        #print('dqd0:',dqd0)
+        #print('DOFScales:',self.FASTDOFScales)
 
         # --- Evaluate linear structural model at operating point
         M_lin   = pkg.M_lin(qop,p)
@@ -381,6 +390,8 @@ class WindTurbineStructure():
         fdu = lambda t,x=None,xd=None: interpArray(t, time, du)
         fF  = lambda t,x=None,xd=None: B_lin.dot( interpArray(t, time, du) )
 
+        forcing0=fF(0)
+
         sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=dq0, xdot0=dqd0)
         #print(sysLI)
         #print('nu',nu)
@@ -388,7 +399,11 @@ class WindTurbineStructure():
         #print('fF',fF(0))
         #print('fF',fF(0,dq0))
         resLI=sysLI.integrate(time, method='RK45') # **options):
-        sysLI._B = B_lin
+        sysLI._B    = B_lin
+        sysLI._qop  = qop
+        sysLI._qdop = qdop
+        sysLI._uop  = uop
+        sysLI._forcing0  = forcing0.ravel()
 
 
         # --- Print linearized mass damping 
@@ -406,7 +421,7 @@ class WindTurbineStructure():
         #     print(B_lin)
 
         # --- Convert to dataframe
-        dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, q0=qop)
+        dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, q0=qop, qd0=qdop)
 
         print('-----------------------------------------------------------------------------')
         return resLI, sysLI, dfLI
