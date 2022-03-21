@@ -51,14 +51,13 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
         body = model.body
         ref  = model.ref
         # Points
-        z_BM= symbols('z_BM')
         z_B0= symbols('z_B0')
         P_0 = body.origin.locatenew('P_0', z_B0 * body.frame.z) # 0- sea level <<<< Measured from T
         P_O = body.origin                                       # Body origin
         # Hydro force
         F_hx, F_hy, F_hz = dynamicsymbols('F_hx, F_hy, F_hz') # Hydrodynamic force, function to time 
         M_hx, M_hy, M_hz = dynamicsymbols('M_hx, M_hy, M_hz') # Hydrodynamic moment, function to time 
-        if modelName.find('hydro0'):
+        if modelName.find('hydro0')>1:
             model.addForce(body,  P_0,        F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z)
         else:
             model.addForce(body,  P_O,        F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z)
@@ -77,12 +76,13 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
         z_B0= symbols('z_B0')
         P_0 = body.origin.locatenew('P_0', z_B0 * body.frame.z) # 0- sea level <<<< Measured from T
         P_O = body.origin                                       # Body origin
-        if modelName.find('moorM'):
+        if modelName.find('moorM')>1:
+            raise Exception(modelName)
             P_M = body.origin.locatenew('P_M', z_BM * body.frame.z) # Mooring      <<<< Measured from T
-        elif modelName.find('moor0'):
-            P_M=P0
-        elif modelName.find('moorO'):
-            P_M=PO
+        elif modelName.find('moor0')>1:
+            P_M=P_0
+        elif modelName.find('moorO')>1:
+            P_M=P_O
         else:
             raise NotImplementedError()
 

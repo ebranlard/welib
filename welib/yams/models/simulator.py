@@ -59,6 +59,7 @@ class SimulatorFromOF():
         spec = importlib.util.spec_from_file_location(modelName, packagePath)
         if spec is None:
             raise Exception('Package not found: ',packagePath)
+        print('>>> Loading package', packagePath)
         self.pkg = spec.loader.load_module()
         self.info = self.pkg.info()
 
@@ -133,7 +134,7 @@ class SimulatorFromOF():
         self.qop = qop
         self.qdop = qdop
 
-    def simulate(self, out=True, prefix=''):
+    def simulate(self, out=False, prefix=''):
         # --- Time Integration
         resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop)
         resNL, sysNL, dfNL = self.WT.simulate_py    (self.pkg, self.p, self.time, u=self.u)
@@ -172,7 +173,7 @@ class SimulatorFromOF():
     def q0(self): return self.sysNL.q0
 
 
-    def plot(self, export=True, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
+    def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
         # --- Simple Plot
         dfNL=self.dfNL
         dfLI=self.dfLI
