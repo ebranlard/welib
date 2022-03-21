@@ -317,17 +317,19 @@ class Map(object):
             ext = os.path.splitext(filename)[1].lower()
             if ext=='.fst':
                 fst = FASTInputFile(filename)
-                print('>>> extract gravity, WtrDens and WtrDepth and MAP input file from FAST inputs')
-                raise NotImplementedError()
                 if WtrDepth is None:
-                    WtrDepth=fst['WtrDepth'] # m
+                    WtrDepth=fst['WtrDpth'] # m
                 if gravity is None:
                     gravity=fst['gravity'] # m/s^2
-                if TwrDens is None:
+                if WtrDens is None:
                     WtrDens=fst['WtrDens'] # kg/m^3
+                filename = os.path.join(os.path.dirname(filename), fst['MooringFile'].replace('"',''))
+                #print('>>> WtrDens={}, WtrDepth={}, gravity={}'.format(WtrDens,WtrDepth,gravity))
             else:
                 # Assume that it's a MAP input file
-                self.read_file(filename)
+                pass
+
+            self.read_file(filename)
             sumFile = os.path.splitext(filename)[0]+'.map.sum'
 
         # Set summary file
