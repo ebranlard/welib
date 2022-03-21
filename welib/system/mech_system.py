@@ -214,7 +214,12 @@ class MechSystem():
             # Force is a function of time and states, M may be varying
             F          = self._force_fn(t,x,xd).ravel()
             B          = np.zeros((2*nDOF,1)) 
-            B[nDOF:,0] = np.dot(self._fMinv(x),F)
+            if len(F)>0: 
+                B[nDOF:,0] = np.dot(self._fMinv(x),F)
+            else:
+                # If no input for instance or not forcing F might be empty array..
+                # TODO DO THIS BETTER, very at init or something
+                pass
             return B
         else:
             raise Exception('Please specify a time series of force using `setForceTimeSeries` or a function using `setForceFunction` ')
@@ -319,6 +324,10 @@ class MechSystem():
         B[nDOF:,:] = self._Minv
         return B
 
+    @property
+    def x0(self): return self.q0[:self.nDOF]
+    @property
+    def xd0(self): return self.q0[self.nDOF:]
 
     # --------------------------------------------------------------------------------}
     # ---  IO functions for printing/plotting/saving
@@ -461,7 +470,7 @@ class MechSystem():
         df = self.toDataFrame(DOFs=DOFs, Factors=Factors)
         df.to_csv(filename, sep=',', index=False)
 
-    def toDataFrame(self, DOFs=None, Factors=None, q0=None):
+    def toDataFrame(self, DOFs=None, Factors=None, q0=None, qd0=None):
         """ Return time integration results as a dataframe
         DOFs:    array of string for DOFs names   (2xnDOF)
         Factors: array of floats to scale the DOFs (2xnDOF)
@@ -478,12 +487,22 @@ class MechSystem():
 
         res = self.res
         M=np.column_stack((res.t, res.y.T))
+        time=res.t
 
         # Scaling
         if Factors is not None:
             for i, f in enumerate(Factors):
                 M[:,i+1] *= f
-        # Offset
+        # Offset Velocity
+        if qd0 is not None:
+            for i, xd0 in enumerate(qd0):
+                if Factors is not None:
+                    M[:,self.nDOF+i+1] += xd0*Factors[i+self.nDOF]
+                    M[:,i+1] += (xd0*time)*Factors[i] # Position increases linearily
+                else:
+                    M[:,self.nDOF+i+1] += xd0
+                    M[:,i+1] += xd0*time
+        # Offset position
         if q0 is not None:
             for i, x0 in enumerate(q0):
                 if Factors is not None:
