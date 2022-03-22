@@ -444,7 +444,7 @@ def sine_approx(t, x, method='least_square'):
 # --- Convolution 
 # --------------------------------------------------------------------------------{
 def convolution_integral(time, f, g, method='auto'):
-    """
+    r"""
     Compute convolution integral:
        f * g = \int 0^t f(tau) g(t-tau) dtau  = g * f
     For now, only works for uniform time vector, an exception is raised otherwise
