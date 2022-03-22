@@ -65,7 +65,7 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
 
 #         extraSubs    =[(omega_x,0),(omega_y,0),(omega_z,0)]  # TODO TODO TODO
 
-    if modelName in  MMModels+MOModels:
+    elif modelName in  MMModels+MOModels:
         # --- Mooring Load
         model = get_model_one_body(modelName, linRot=False, orderMM=1, orderH=1, 
                                    J_cross=False, CG_on_z=CG_on_z, J_at_Origin=True)
