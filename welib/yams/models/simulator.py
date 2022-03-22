@@ -208,30 +208,38 @@ class SimulatorFromOF():
     # --------------------------------------------------------------------------------}
     # --- Model specific
     # --------------------------------------------------------------------------------{
-    def setPrescribedHydroInputs(self, modelName):
-        pass
-        # TODO TODO TODO
-        # B MODEL
-        #if noHydro:
-        #    pass
-        #    #u['F_hz'] = lambda t,q=None,qd=None: 0
-        #    #u['M_hy'] = lambda t,q=None,qd=None: 0
-        #else:
-        #    u['F_hx'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFxi_[N]'])
-        #    u['F_hz'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFzi_[N]'])
-        #    u['M_hy'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMyi_[N-m]'])
-        # B model
-        #uop=dict()
-        #uop['F_hx'] = np.mean(dfFS['HydroFxi_[N]'].values)*0
-        ##uop['F_hz'] = np.mean(dfFS['HydroFzi_[N]'].values)   
-        #uop['F_hz'] = p['M_B']*p['g']
-        #uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)*0
-        #du = np.zeros((nu, len(time)))
-        #du[0,:] = dfFS['HydroFxi_[N]'].values     - uop['F_hx']
-        #du[1,:] = dfFS['HydroFzi_[N]'].values     - uop['F_hz']  #- p['M_B']*p['g']
-        #du[2,:] = dfFS['HydroMyi_[N-m]'].values   - uop['M_hy']
-        #du[0,:] *= 0
-        #du[2,:] *= 0
+    def setPrescribedHydroInputs(self):
+        """ Set inputs based on OpenFAST"""
+        dfFS = self.dfFS
+        p    = self.p
+        time = self.time
+        u = self.u
+        u['F_hx'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFxi_[N]'])
+        u['F_hy'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFyi_[N]'])
+        u['F_hz'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFzi_[N]'])
+        u['M_hx'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMxi_[N-m]'])
+        u['M_hy'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMyi_[N-m]'])
+        u['M_hz'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMzi_[N-m]'])
+
+        # --- Linear model input operating point
+        uop=self.uop
+        uop['F_hx'] = np.mean(dfFS['HydroFxi_[N]'].values)  *0
+        uop['F_hy'] = np.mean(dfFS['HydroFyi_[N]'].values)  *0
+        #uop['F_hz'] = np.mean(dfFS['HydroFzi_[N]'].values)
+        uop['F_hz'] = p['M_B']*p['g']
+        uop['M_hx'] = np.mean(dfFS['HydroMxi_[N-m]'].values)*0
+        uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)*0
+        uop['M_hz'] = np.mean(dfFS['HydroMzi_[N-m]'].values)*0
+
+        # --- Linear pertubation inputs
+        du = self.du
+        for i,su in enumerate(self.info['su']):
+            if su=='F_hx': du[i,:] = dfFS['HydroFxi_[N]'].values     - uop['F_hx']
+            if su=='F_hy': du[i,:] = dfFS['HydroFyi_[N]'].values     - uop['F_hy']
+            if su=='F_hz': du[i,:] = dfFS['HydroFzi_[N]'].values     - uop['F_hz']  #- p['M_B']*p['g']
+            if su=='M_hx': du[i,:] = dfFS['HydroMxi_[N-m]'].values   - uop['M_hx']
+            if su=='M_hy': du[i,:] = dfFS['HydroMyi_[N-m]'].values   - uop['M_hy']
+            if su=='M_hz': du[i,:] = dfFS['HydroMzi_[N-m]'].values   - uop['M_hz']
 
 if __name__ == '__main__':
     pass

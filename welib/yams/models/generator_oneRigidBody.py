@@ -42,7 +42,7 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
     MMModels = ['B100000_moorM','B100010_moorM','B001000_moorM','B000010_moorM','B101010_moorM','B110111_moorM']# Mooring force at "M" point
     MOModels = ['B100000_moorO','B100010_moorO','B001000_moorO','B000010_moorO','B101010_moorO','B110111_moorO']# Mooring force at "M" point
 
-    H0Models = ['B100010_hydro0','B001000_hydro0','B000010_hydro0','B101010_hydro0']# Force at "0" point
+    H0Models = ['B100010_hydro0','B001000_hydro0','B000010_hydro0','B101010_hydro0', 'B111111_hydro0']# Force at "0" point
     HOModels = ['B100010_hydroO','B001000_hydroO','B000010_hydroO','B101010_hydroO']# Force at body origin
     if modelName in  H0Models+HOModels:
         # --- Hydro Dynamic Load

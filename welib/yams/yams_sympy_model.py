@@ -248,7 +248,7 @@ class YAMSModel(object):
 
         return EquationsOfMotionQ(EOM, self.coordinates, self.name, bodyReplaceDict)
 
-    def exportPackage(self, path='', extraSubs=None, smallAngles=None, linearize=True, replaceDict=None, pathtex=None, fullPage=True):
+    def exportPackage(self, path='', extraSubs=None, smallAngles=None, linearize=True, replaceDict=None, pathtex=None, fullPage=True, silentTimer=True):
         """ 
         Export to a python package
         - replaceDict: replace dictionary for python export
@@ -258,25 +258,31 @@ class YAMSModel(object):
         """
         # --- Compute Kane's equations of motion
         if self.kane is None:
-            self.kaneEquations(Mform='TaylorExpanded')
+            with Timer('Kanes equations', silent=silentTimer):
+                self.kaneEquations(Mform='TaylorExpanded')
 
         # --- Use EOM
-        EOM = self.to_EOM(extraSubs=extraSubs)
+        with Timer('EOM', silent=silentTimer):
+            EOM = self.to_EOM(extraSubs=extraSubs)
 
         #  --- Small angle approximations
         if smallAngles is not None:
-            for sa_list_order in smallAngles:
-                sa_list = sa_list_order[0]
-                order   = sa_list_order[1]
-                EOM.smallAngleApprox(sa_list, order=order)
-            EOM.simplify()
+            with Timer('Small angle approx', silent=silentTimer):
+                for sa_list_order in smallAngles:
+                    sa_list = sa_list_order[0]
+                    order   = sa_list_order[1]
+                    EOM.smallAngleApprox(sa_list, order=order)
+            with Timer('Simplify', silent=silentTimer):
+                EOM.simplify()
 
         # --- Separate EOM into mass matrix and forcing
-        EOM.mass_forcing_form() # EOM.M and EOM.F
+        with Timer('Mass forcing term', silent=silentTimer):
+            EOM.mass_forcing_form() # EOM.M and EOM.F
 
         # --- Linearize equation of motions 
         if linearize:
-            EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
+            with Timer('Linearization', silent=silentTimer):
+                EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
 
         # --- Python export path
         if len(path)>0:
@@ -296,7 +302,8 @@ class YAMSModel(object):
             name   = self.name
 
         # --- Export equations
-        EOM.savePython(name=name, folder=folder, replaceDict=replaceDict)
+        with Timer('Export to python', silent=silentTimer):
+            EOM.savePython(name=name, folder=folder, replaceDict=replaceDict)
         if pathtex is not None:
             folder = os.path.dirname(pathtex)
             name= os.path.basename(pathtex)
@@ -304,7 +311,8 @@ class YAMSModel(object):
                 os.makedirs(folder)
             except:
                 pass
-            EOM.saveTex(name=name, folder=folder, variables=['M','F','M0','K0','C0','B0'], fullPage=fullPage)
+            with Timer('Export to latex', silent=silentTimer):
+                EOM.saveTex(name=name, folder=folder, variables=['M','F','M0','K0','C0','B0'], fullPage=fullPage)
 
 
     def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['MM','FF','M','C','K','B','MMsa','FFsa','Msa','Csa','Ksa','Bsa','body_details'], doSimplify=False, velSubs=[(0,0)], fullPage=True):
