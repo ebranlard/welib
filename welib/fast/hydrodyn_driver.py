@@ -64,6 +64,10 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
     lCols = ['HydroFxi_[N]','HydroFyi_[N]','HydroFzi_[N]','HydroMxi_[N-m]','HydroMyi_[N-m]','HydroMzi_[N-m]']
     dfPH = pd.DataFrame(data=np.column_stack((time,fh)), columns=['Time_[s]']+lCols)
 
+    # --- Adding operating point values if present
+    for iCol, col in enumerate(lCols):
+        dfPH[col]+=F0[iCol]
+
 
     # --- Plot
     if plot:
