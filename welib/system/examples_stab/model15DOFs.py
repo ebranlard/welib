@@ -221,7 +221,7 @@ def MCKmat(p, Omega, psi1 = 0):
 
 def Bmat(psi1,Omega): 
     """ 
-     See Hansen 2003 Eq. 15, 16
+     See Hansen 2003 Eq. 14 15, 16
     """
     psi2 = psi1 + (2 * np.pi / 3)
     psi3 = psi2 + (2 * np.pi / 3)
@@ -238,7 +238,7 @@ def Bmat(psi1,Omega):
     mu = np.block([
         [(1 / 3) * np.eye(3 , 3)  , np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3 , 3)) , np.zeros((3 , 3))]  , 
         [np.zeros((3        , 3)) , (2 / 3) * np.eye(3 , 3)  , np.zeros((3        , 3)) , np.zeros((3 , 3)) , np.zeros((3 , 3))]  , 
-        [np.zeros((3        , 3)) , np.zeros((3        , 3)) , (2 / 3) * np.eye(3 , 3)  , np.zeros((3 , 3)) , np.zeros((3 , 3))]  , 
+        [np.zeros((3        , 3)) , np.zeros((3        , 3)) , (2 / 3) * np.eye(3 , 3)  , np.zeros((3 , 3)) , np.zeros((3 , 3))]  ,  # Should be 2/3
         [np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.eye(3    , 3)  , np.zeros((3 , 3))]  , 
         [np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3 , 3)) , np.eye(3    , 3)]])
     R = np.linalg.inv(B).dot(Bdot)

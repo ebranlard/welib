@@ -20,11 +20,11 @@ class Test(unittest.TestCase):
         psi0_2 = psi0_1 + (2 * np.pi / 3)
         psi0_3 = psi0_2 + (2 * np.pi / 3)
         nqb=1; nb=3; nf=0
-        nDOF= nqb*nb+nf
+        n= nqb*nb+nf
 
         # --- From rotating to fixed
         time = np.array([0,1]) #np.linspace(0,100,100)
-        xrot = np.zeros((len(time), nDOF))
+        xrot = np.zeros((len(time), n))
         xrot[:,0]=5+2*np.sin(Omega*time + psi0_1)+3*np.cos(Omega*time + psi0_1)
         xrot[:,1]=5+2*np.sin(Omega*time + psi0_2)+3*np.cos(Omega*time + psi0_2)
         xrot[:,2]=5+2*np.sin(Omega*time + psi0_3)+3*np.cos(Omega*time + psi0_3)
@@ -40,11 +40,11 @@ class Test(unittest.TestCase):
         Omega = 0.1
         psi0_1 = 0
         nqb=1; nb=3; nf=0
-        nDOF= nqb*nb+nf
+        n= nqb*nb+nf
 
         # --- From rotating to fixed - Cos component only
         time = np.linspace(0,2*np.pi/Omega,20)
-        xf = np.zeros((len(time), nDOF))
+        xf = np.zeros((len(time), n))
         xf[:,0]=0
         xf[:,1]=1
         xf[:,2]=0
@@ -69,6 +69,28 @@ class Test(unittest.TestCase):
         np.testing.assert_array_almost_equal(xrot[:,1], 2+time*0)
         np.testing.assert_array_almost_equal(xrot[:,2], 2+time*0)
 
+
+    def test_mbc3_mat(self):
+        # Test matrices B, Bdot and Binv computed analytially or numerically
+        # --- One blade
+        Omega = 0.1
+        # Phase offsets
+        psi0_1 = np.pi/12
+        psi0_2 = psi0_1 + (2 * np.pi / 3)
+        psi0_3 = psi0_2 + (2 * np.pi / 3)
+
+        B, Binv, Bdot, mu, R = MBC3_Bmat(nq=1, nf=2, psi1=0, Omega=Omega)
+        Binv_num= np.linalg.inv(B)
+        np.testing.assert_array_almost_equal(Binv, Binv_num, 8)
+
+        # Compute B at t+dt
+        dt=0.001
+        B1 = MBC3_Bmat(nq=1, nf=2, psi1=Omega*dt, Omega=Omega)[0]
+        Bdot_num = (B1-B)/dt
+        np.testing.assert_array_almost_equal(Bdot, Bdot_num, 5)
+
+
+
     def test_mbc3_misc(self):
         # --- One blade
         Omega = 0.1
@@ -77,7 +99,7 @@ class Test(unittest.TestCase):
         psi0_2 = psi0_1 + (2 * np.pi / 3)
         psi0_3 = psi0_2 + (2 * np.pi / 3)
 
-        B = MBC3_Bmat(ndofq=1, ndoff=0, psi1=0, Omega=None)
+        B = MBC3_Bmat(nq=1, nf=0, psi1=0, Omega=Omega)[0]
 
         Binv= np.linalg.inv(B)
 
@@ -154,4 +176,6 @@ class Test(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    #np.set_printoptions(linewidth=300, precision=3)
+    #Test().test_mbc3_mat()
     unittest.main()

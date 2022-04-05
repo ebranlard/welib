@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def MBC3_Bmat(ndofq, ndoff, psi1=0, Omega=None): 
+def MBC3_Bmat(nq, nf, psi1=0, Omega=None, symb=False): 
     """ 
     Multiblade transformation matrix for three blades
      See Hansen 2003 Eq. 14 15, 16
@@ -14,27 +14,91 @@ def MBC3_Bmat(ndofq, ndoff, psi1=0, Omega=None):
 
     # TODO return inverse as well
     """
-    psi2 = psi1 + (2 * np.pi / 3)
-    psi3 = psi2 + (2 * np.pi / 3)
-    B = np.block([
-        [np.eye(ndofq)  , np.eye(ndofq) * np.cos(psi1) , np.eye(ndofq) * np.sin(psi1) , np.zeros((ndofq, ndoff))] , 
-        [np.eye(ndofq)  , np.eye(ndofq) * np.cos(psi2) , np.eye(ndofq) * np.sin(psi2) , np.zeros((ndofq, ndoff))] , 
-        [np.eye(ndofq)  , np.eye(ndofq) * np.cos(psi3) , np.eye(ndofq) * np.sin(psi3) , np.zeros((ndofq, ndoff))] , 
-        [np.zeros((ndoff , 3*ndofq)) , np.eye(ndoff)]]) # TODO Omega t for shaft DOFs?
-#     Bdot = np.block([
-#         [np.zeros((3 , 3)) , Omega * np.eye(3 , 3) * - np.sin(psi1) , Omega * np.eye(3 , 3) * np.cos(psi1) , np.zeros((3 , 6))] , 
-#         [np.zeros((3 , 3)) , Omega * np.eye(3 , 3) * - np.sin(psi2) , Omega * np.eye(3 , 3) * np.cos(psi2) , np.zeros((3 , 6))] , 
-#         [np.zeros((3 , 3)) , Omega * np.eye(3 , 3) * - np.sin(psi3) , Omega * np.eye(3 , 3) * np.cos(psi3) , np.zeros((3 , 6))] , 
-#         [np.zeros((6 , 9)) , np.zeros((6      , 6))]])
-#     mu = np.block([
-#         [(1 / 3) * np.eye(3 , 3)  , np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3 , 3)) , np.zeros((3 , 3))]  , 
-#         [np.zeros((3        , 3)) , (2 / 3) * np.eye(3 , 3)  , np.zeros((3        , 3)) , np.zeros((3 , 3)) , np.zeros((3 , 3))]  , 
-#         [np.zeros((3        , 3)) , np.zeros((3        , 3)) , (2 / 3) * np.eye(3 , 3)  , np.zeros((3 , 3)) , np.zeros((3 , 3))]  , 
-#         [np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.eye(3    , 3)  , np.zeros((3 , 3))]  , 
-#         [np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3        , 3)) , np.zeros((3 , 3)) , np.eye(3    , 3)]])
-#     R = np.linalg.inv(B).dot(Bdot)
+    if symb:
+        from sympy import pi, cos, sin, eye, zeros, Rational
+    else:
+        from numpy import pi, cos, sin, eye, zeros
 
-    return B
+    psi2 = psi1 + (2 * pi / 3)
+    psi3 = psi2 + (2 * pi / 3)
+    if not symb:
+        B = np.block([
+            [eye(nq)  , eye(nq) * cos(psi1) , eye(nq) * sin(psi1) , zeros((nq, nf))] , 
+            [eye(nq)  , eye(nq) * cos(psi2) , eye(nq) * sin(psi2) , zeros((nq, nf))] , 
+            [eye(nq)  , eye(nq) * cos(psi3) , eye(nq) * sin(psi3) , zeros((nq, nf))] , 
+            [zeros((nf , 3*nq)) , eye(nf)]]) # TODO Omega t for shaft DOFs?
+
+        mu = np.block([
+            [(1 / 3) * eye(nq) , zeros((nq , nq)), zeros((nq, nq)), zeros((nq, nf))], 
+            [zeros((nq, nq)), (2 / 3) * eye(nq)  , zeros((nq, nq)), zeros((nq, nf))], 
+            [zeros((nq, nq)), zeros((nq, nq)) , (2 / 3) * eye(nq) , zeros((nq, nf))],  # NOTE: should be 2/3
+            [zeros((nf, nq)), zeros((nf, nq)) , zeros((nf, nq)), eye(nf)]])
+
+        if Omega is None:
+            Bdot = None
+        else:
+            Bdot = np.block([
+                [zeros((nq, nq)) , Omega * eye(nq) * - sin(psi1) , Omega * eye(nq) * cos(psi1) , zeros((nq, nf))] , 
+                [zeros((nq, nq)) , Omega * eye(nq) * - sin(psi2) , Omega * eye(nq) * cos(psi2) , zeros((nq, nf))] , 
+                [zeros((nq, nq)) , Omega * eye(nq) * - sin(psi3) , Omega * eye(nq) * cos(psi3) , zeros((nq, nf))] , 
+                [zeros((nf , 3*nq)), zeros((nf, nf))]])
+
+        Binv = mu.dot(B.T)
+        R = Binv.dot(Bdot) # TODO analytical
+
+    else:
+        Iq = eye(nq)
+        If = eye(nf)
+        Z0 = zeros(nq,nq)
+        Z1 = zeros(nq,nf)
+        Z2 = zeros(nf,3*nq)
+        # B matrix
+        B0= Iq
+        B0= B0.row_join(Iq*cos(psi1))
+        B0= B0.row_join(Iq*sin(psi1))
+        B0= B0.row_join(Z1)
+        B1= Iq
+        B1= B1.row_join(Iq*cos(psi2))
+        B1= B1.row_join(Iq*sin(psi2))
+        B1= B1.row_join(Z1)
+        B2= Iq
+        B2= B2.row_join(Iq*cos(psi3))
+        B2= B2.row_join(Iq*sin(psi3))
+        B2= B2.row_join(Z1)
+        B3= Z2
+        B3= B3.row_join(If)
+        B=B0
+        B=B.col_join(B1)
+        B=B.col_join(B2)
+        B=B.col_join(B3)
+
+        # Mu
+        mu0= Rational(1,3)*Iq
+        mu0= mu0.row_join(Z0)
+        mu0= mu0.row_join(Z0)
+        mu0= mu0.row_join(Z1)
+        mu1= Z0
+        mu1= mu1.row_join(Rational(2,3)*Iq)
+        mu1= mu1.row_join(Z0)
+        mu1= mu1.row_join(Z1)
+        mu2= Z0
+        mu2= mu2.row_join(Z0)
+        mu2= mu2.row_join(Rational(2,3)*Iq)
+        mu2= mu2.row_join(Z1)
+        mu3= Z2
+        mu3= mu3.row_join(If)
+        mu=mu0
+        mu=mu.col_join(mu1)
+        mu=mu.col_join(mu2)
+        mu=mu.col_join(mu3)
+
+        Bdot = None
+        Binv = mu * (B.T)
+        R = None
+        #R = Binv.dot(Bdot) # TODO analytical
+
+
+    return B, Binv, Bdot, mu, R
 
 def MBC3_Rot2Fixed_TS(Omega, time, q, nqb, nb, nf):
     """
@@ -47,41 +111,41 @@ def MBC3_Rot2Fixed_TS(Omega, time, q, nqb, nb, nf):
     INPUTS:
         Omega: rotational speed (rad/s)
         time : array (nt) time vector
-        q : array (nt, nDOF) degrees of freedom as function of time, arranged according to:
+        q : array (nt, n) degrees of freedom as function of time, arranged according to:
                 q: [q_B1,   ...   , q_Bnb   , q_f]
         nqb: number of DOFs per blade
         nb: number of blades
         nf: number of non rotating DOFs
     """
-    nt, nDOF = q.shape
+    nt, n = q.shape
 
-    nDOF2 = nqb*nb+nf
-    if nDOF!=nDOF2:
-        raise Exception('Input vector `q` should have {} columns instead of {}'.format(nDOF,nDOF2))
+    n2 = nqb*nb+nf
+    if n!=n2:
+        raise Exception('Input vector `q` should have {} columns instead of {}'.format(n,n2))
     if nt!=len(time):
         raise Exception('Input vector `time` should have {} lines instead of {}'.format(len(time),nt))
 
-    z   = np.zeros((len(time),nDOF))
+    z   = np.zeros((len(time),n))
 
     for it,t in enumerate(time):
         psi1 = Omega*t 
-        B = MBC3_Bmat(ndofq=nqb, ndoff=nf, psi1=psi1, Omega=Omega)
+        B = MBC3_Bmat(nq=nqb, nf=nf, psi1=psi1, Omega=Omega)[0]
         Binv= np.linalg.inv(B)  # TODO TODO TODO analytical B
         z[it,:] = Binv.dot(q[it,:])
     return z
 
 def MBC3_Fixed2Rot_TS(Omega, time, z, nqb, nb, nf):
     """ """
-    nt, nDOF = z.shape
-    nDOF2 = nqb*nb+nf
-    if nDOF!=nDOF2:
-        raise Exception('Input vector `z` should have {} columns instead of {}'.format(nDOF,nDOF2))
+    nt, n = z.shape
+    n2 = nqb*nb+nf
+    if n!=n2:
+        raise Exception('Input vector `z` should have {} columns instead of {}'.format(n,n2))
     if nt!=len(time):
         raise Exception('Input vector `time` should have {} lines instead of {}'.format(len(time),nt))
 
-    q   = np.zeros((len(time),nDOF))
+    q   = np.zeros((len(time),n))
     for it,t in enumerate(time):
         psi1 = Omega*t 
-        B = MBC3_Bmat(ndofq=nqb, ndoff=nf, psi1=psi1, Omega=Omega)
+        B = MBC3_Bmat(nq=nqb, nf=nf, psi1=psi1, Omega=Omega)[0]
         q[it,:] = B.dot(z[it,:])
     return q
