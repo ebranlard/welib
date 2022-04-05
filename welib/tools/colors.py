@@ -46,6 +46,8 @@ def adjust_color_lightness(rgb, factor):
 
 
 def lighten_color(rgb, factor=0.1):
+    if factor ==0:
+        return rgb
     return adjust_color_lightness(rgb, 1 + factor)
 
 def darken_color(rgb, factor=0.1):
