@@ -280,8 +280,11 @@ class MechSystem():
 
             dqdt_[0:self.nDOF]=  xd
             Minv = self._fMinv(x)
-            F = self._force_fn(t,x,xd) # NOTE: something is weird here if no "A" but timeseires function 
-            dqdt_[self.nDOF:] =  Minv.dot(F)
+            F = self._force_fn(t,x,xd).flatten() # NOTE: something is weird here if no "A" but timeseires function 
+            try:
+                dqdt_[self.nDOF:] =  Minv.dot(F)
+            except:
+                dqdt_[self.nDOF:,0] =  Minv.dot(F)
             return dqdt_
 
     @property
@@ -353,7 +356,7 @@ class MechSystem():
         xdd = np.zeros((self.nDOF,len(self.res.t)))
         for it, t in enumerate(self.res.t):
             dqdt=self.dqdt(t, self.res.y[:,it])
-            xdd[:,it] = dqdt[nDOF:,0]
+            xdd[:,it] = dqdt.flatten()[nDOF:]
         return xdd
 
     # --------------------------------------------------------------------------------}
@@ -444,6 +447,8 @@ class MechSystem():
 
         axes = np.atleast_1d(axes)
         n=self.nDOF
+
+        df=self.toDataFrame(DOFs=None, Factors=None, x0=None, xd0=None, acc=False, sAcc=None, forcing=False, sForcing=None)
         for i,ax in enumerate(axes):
             if i+1>len(df.columns):
                 continue
@@ -507,7 +512,7 @@ class MechSystem():
         df.to_csv(filename, sep=',', index=False)
 
     def toDataFrame(self, DOFs=None, Factors=None, x0=None, xd0=None, 
-            acc=False, sAcc=None, Forcing=False, sForcing=None):
+            acc=False, sAcc=None, forcing=False, sForcing=None):
         """ Return time integration results as a dataframe
         DOFs:    array of string for DOFs names   (2xnDOF, positions and velocities)
         Factors: array of floats to scale the DOFs (2xnDOF)
@@ -568,7 +573,7 @@ class MechSystem():
             M     = np.column_stack((M,xdd.T))
             cols += sAcc
         # Forcing
-        if Forcing:
+        if forcing:
             F     = self.TS_Forcing
             M     = np.column_stack((M,F.T))
             cols += sForcing

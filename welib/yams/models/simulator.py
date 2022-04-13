@@ -46,6 +46,8 @@ class SimulatorFromOF():
         else:
             self.WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)  # TODO
 
+        self.dfNL = None
+        self.dfLI = None
         # --- Import the python module that was generated
         self.modelName=modelName
         if modelName is not None:
@@ -134,17 +136,42 @@ class SimulatorFromOF():
         self.qop = qop
         self.qdop = qdop
 
-    def simulate(self, out=False, prefix=''):
+    def simulate(self, out=False, prefix='', NL=True, Lin=True, MCKextra=None, MCKu=None, calcOutput=True):
+        dfNL = None
+        dfLI = None
+        if calcOutput:
+            acc=True
+            forcing=False
         # --- Time Integration
-        resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop)
-        resNL, sysNL, dfNL = self.WT.simulate_py    (self.pkg, self.p, self.time, u=self.u)
+        if Lin:
+            resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop, MCKextra=MCKextra, MCKu=MCKu, acc=acc, forcing=forcing)
+        if NL:
+            resNL, sysNL, dfNL = self.WT.simulate_py    (self.pkg, self.p, self.time, u=self.u, acc=acc, forcing=forcing)
+
+        if calcOutput:
+            if Lin:
+                pass
+                #uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop, MCKextra=MCKextra, MCKu=MCKu
+#             for it, t in enumerate(time):
+#                 # Reference point motion
+#                 q   = dfOF[qCol].iloc[it].values
+#                 qd  = dfOF[qdCol].iloc[it].values
+#                 qdd = dfOF[qddCol].iloc[it].values
+# 
+#                 fh[it,:] = -M.dot(qdd) - C.dot(qd) - K.dot(q)
+#                 pass
         # Store in object
-        self.resLI, self.sysLI, self.dfLI = resLI, sysLI, dfLI
-        self.resNL, self.sysNL, self.dfNL = resNL, sysNL, dfNL
+        self.MCKu=MCKu
+        if Lin:
+            self.resLI, self.sysLI, self.dfLI = resLI, sysLI, dfLI
+        if NL:
+            self.resNL, self.sysNL, self.dfNL = resNL, sysNL, dfNL
 
         if out:
-            writeDataFrame(dfLI, self.fstFilename.replace('.fst', '{}_yamsSim_Lin.outb'.format(prefix)))
-            writeDataFrame(dfNL, self.fstFilename.replace('.fst', '{}_yamsSim_NL.outb'.format(prefix)))
+            if Lin:
+                writeDataFrame(dfLI, self.fstFilename.replace('.fst', '{}_yamsSim_Lin.outb'.format(prefix)))
+            if NL:
+                writeDataFrame(dfNL, self.fstFilename.replace('.fst', '{}_yamsSim_NL.outb'.format(prefix)))
 
         return dfNL, dfLI
 
@@ -177,26 +204,49 @@ class SimulatorFromOF():
         # --- Simple Plot
         dfNL=self.dfNL
         dfLI=self.dfLI
+        if dfLI is None:
+            df = dfNL
+        else:
+            df = dfLI
+
         dfFS=self.dfFS
         if fig is None:
-            fig,axes = plt.subplots(int(np.ceil((len(dfNL.columns)-1)/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
+            fig,axes = plt.subplots(int(np.ceil((len(df.columns)-1)/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
         else:
             axes=fig.axes
             assert(len(axes)>0)
         fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
         for i,ax in enumerate((np.asarray(axes).T).ravel()):
-            if i+1>len(dfNL.columns):
+            if i+1>=len(df.columns):
                 continue
-            chan=dfNL.columns[i+1]
-            ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
-            ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
+            chan=df.columns[i+1]
+            if dfNL is not None:
+                if chan in dfNL.columns:
+                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
+                else:
+                    print('Missing column in NL: ',chan)
+            if dfLI is not None:
+                if chan in dfLI.columns:
+                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
+                else:
+                    print('Missing column in Lin: ',chan)
             if dfFS is not None:
-                ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+                if chan in dfFS.columns:
+                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+                else:
+                    print('Missing column in OpenFAST: ',chan)
             ax.set_xlabel('Time [s]')
             ax.set_ylabel(chan)
             ax.tick_params(direction='in')
             if i==0:
                 ax.legend()
+
+        # Scale axes if tiny range
+        for i,ax in enumerate((np.asarray(axes).T).ravel()):
+            mi, mx = ax.get_ylim()
+            mn = (mx+mi)/2
+            if np.abs(mx-mn)<1e-6:
+                ax.set_ylim(mn-1e-5, mn+1e-5)
         fig.suptitle(title)
 
         if export:
@@ -204,6 +254,14 @@ class SimulatorFromOF():
 
         return fig
 
+    def save(self, filename=None, prefix=''):
+        if filename is None:
+            filename = self.fstFilename.replace('.fst','{}_yamsSim.pkl'.format(prefix))
+
+        import pickle
+        D={'dfNL':self.dfNL, 'dfLI':self.dfLI, 'dfFS':self.dfFS, 'p':self.p}
+        print('>>> Export to:',filename)
+        pickle.dump(D,  open(filename,'wb'))
 
     # --------------------------------------------------------------------------------}
     # --- Model specific
@@ -234,12 +292,12 @@ class SimulatorFromOF():
         # --- Linear pertubation inputs
         du = self.du
         for i,su in enumerate(self.info['su']):
-            if su=='F_hx': du[i,:] = dfFS['HydroFxi_[N]'].values     - uop['F_hx']
-            if su=='F_hy': du[i,:] = dfFS['HydroFyi_[N]'].values     - uop['F_hy']
-            if su=='F_hz': du[i,:] = dfFS['HydroFzi_[N]'].values     - uop['F_hz']  #- p['M_B']*p['g']
-            if su=='M_hx': du[i,:] = dfFS['HydroMxi_[N-m]'].values   - uop['M_hx']
-            if su=='M_hy': du[i,:] = dfFS['HydroMyi_[N-m]'].values   - uop['M_hy']
-            if su=='M_hz': du[i,:] = dfFS['HydroMzi_[N-m]'].values   - uop['M_hz']
+            if su=='F_hx': du[i,:] = dfFS['HydroFxi_[N]'].values     - uop[su]
+            if su=='F_hy': du[i,:] = dfFS['HydroFyi_[N]'].values     - uop[su]
+            if su=='F_hz': du[i,:] = dfFS['HydroFzi_[N]'].values     - uop[su]  #- p['M_B']*p['g']
+            if su=='M_hx': du[i,:] = dfFS['HydroMxi_[N-m]'].values   - uop[su]
+            if su=='M_hy': du[i,:] = dfFS['HydroMyi_[N-m]'].values   - uop[su]
+            if su=='M_hz': du[i,:] = dfFS['HydroMzi_[N-m]'].values   - uop[su]
 
 if __name__ == '__main__':
     pass

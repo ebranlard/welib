@@ -14,7 +14,7 @@ from welib.tools.clean_exceptions import *
 from welib.tools.tictoc import Timer
 
 
-def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, MCK=None, q0=None, F0=None):
+def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, MCKF=None, q0=None, fig=None):
     """ 
     """
     if base is None:
@@ -25,9 +25,9 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
     # --- Initialize a python HydroDyn instance
     hd = HydroDyn(fstFilename)
 
-    if MCK is None:
-        MCK = hd.linearize_RigidMotion2Loads(q0)
-    M,C,K=MCK
+    if MCKF is None:
+        MCKF = hd.linearize_RigidMotion2Loads(q0)
+    M,C,K,F0=MCKF
 
     # --- Open OpenFAST output file
     dfOF = weio.read(hd.outFilename).toDataFrame()
@@ -71,17 +71,34 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
 
     # --- Plot
     if plot:
-        fig,axes = plt.subplots(6, 2, sharey=False, figsize=(12.8,8.5)) # (6.4,4.8)
-        fig.subplots_adjust(left=0.11, right=0.95, top=0.95, bottom=0.07, hspace=0.40, wspace=0.22)
+        if fig is None:
+            fig,axes = plt.subplots(6, 2, sharey=False, figsize=(12.8,8.5)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.11, right=0.95, top=0.95, bottom=0.07, hspace=0.40, wspace=0.22)
+            newFig = True
+        else:
+            axes= np.array(fig.axes).reshape(6,2)
+            newFig = False
+
         # DOF
-        for iCol, col in enumerate(qCol):
-            axes[iCol,0].plot(time, dfOF[col].values  , '-', label='OpenFAST')
-            axes[iCol,0].set_ylabel(col.replace('_',' '))
+        if newFig:
+            for iCol, col in enumerate(qCol):
+                axes[iCol,0].plot(time, dfOF[col].values  , '-', label='OpenFAST')
+                axes[iCol,0].set_ylabel(col.replace('_',' '))
         # Forces
         for iCol, col in enumerate(lCols):
-            axes[iCol,1].plot(time, dfPH[col].values+F0[iCol]  , label='Python linear')
-            axes[iCol,1].plot(time, dfOF[col].values           , 'k:', label='OpenFAST')
-            axes[iCol,1].set_ylabel(col.replace('_',' '))
+            axes[iCol,1].plot(time, dfPH[col].values, '--', label='Python linear')
+            if newFig:
+                axes[iCol,1].plot(time, dfOF[col].values, 'k:', label='OpenFAST')
+                mi=np.min(dfOF[col].values)
+                mx=np.max(dfOF[col].values)
+                mn=np.mean(dfOF[col].values)
+
+        # Scale axes if tiny range
+        for iCol, col in enumerate(lCols):
+                mi, mx = axes[iCol,1].get_ylim()
+                mn = (mx+mi)/2
+                if np.abs(mx-mn)<1e-5:
+                    axes.set_ylim(mn-1, mn+1)
         axes[0,1].legend()
         axes[5,0].set_xlabel('Time [s]')
         axes[5,1].set_xlabel('Time [s]')
@@ -91,10 +108,10 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
     if out:
         writeDataFrame(dfPH, base + '_hydroPyPrescrMotion_Lin.outb')
 
-    return dfPH, dfOF
+    return dfPH, dfOF, fig
 
 
-def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None):
+def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, fig=None):
     """ 
     Compute hydrodynamics loads on a structure under rigid body motion based on an OpenFAST simulation
     fstFilename: OpenFAST or HydroDyn driver input file
@@ -165,17 +182,24 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
 
     # --- Plot
     if plot:
-        fig,axes = plt.subplots(6, 2, sharey=False, figsize=(12.8,8.5)) # (6.4,4.8)
-        fig.subplots_adjust(left=0.11, right=0.95, top=0.95, bottom=0.07, hspace=0.40, wspace=0.22)
+        if fig is None:
+            fig,axes = plt.subplots(6, 2, sharey=False, figsize=(12.8,8.5)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.11, right=0.95, top=0.95, bottom=0.07, hspace=0.40, wspace=0.22)
+            newFig=True
+        else:
+            newFig=False
+            axes= np.array(fig.axes).reshape(6,2)
         # DOF
-        for iCol, col in enumerate(qCol):
-            axes[iCol,0].plot(time, dfOF[col].values  , '-', label='OpenFAST')
-            axes[iCol,0].set_ylabel(col.replace('_',' '))
+        if newFig:
+            for iCol, col in enumerate(qCol):
+                axes[iCol,0].plot(time, dfOF[col].values  , '-', label='OpenFAST')
+                axes[iCol,0].set_ylabel(col.replace('_',' '))
         # Forces
         for iCol, col in enumerate(lCols):
             axes[iCol,1].plot(time, dfPH[col].values  , label='Python non-linear')
-            axes[iCol,1].plot(time, dfOF[col].values  , 'k:', label='OpenFAST')
-            axes[iCol,1].set_ylabel(col.replace('_',' '))
+            if newFig:
+                axes[iCol,1].plot(time, dfOF[col].values  , 'k:', label='OpenFAST')
+                axes[iCol,1].set_ylabel(col.replace('_',' '))
         axes[0,1].legend()
         axes[5,0].set_xlabel('Time [s]')
         axes[5,1].set_xlabel('Time [s]')
@@ -188,7 +212,7 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
     if out:
         writeDataFrame(dfPH, base + '_hydroPyPrescrMotion_NL.outb')
 
-    return dfPH, dfOF, msy
+    return dfPH, dfOF, msy, fig
 
 
 if __name__ == '__main__':

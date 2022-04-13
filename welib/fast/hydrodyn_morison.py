@@ -616,7 +616,7 @@ class Morison:
                 doSwap=True # Z1>Z2
 
             if doSwap:
-                print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
+                #print('>>> Swapping mID',m.ID, 'NodeIDs:', m.nodeIDs)
                 m.swapNodes()
                 m.MorisonData['SubNodesPositions'] =  m.MorisonData['SubNodesPositions'][-1::-1,:]
                 m.MorisonData['nodeIDs']           =  m.MorisonData['nodeIDs'][-1::-1]
