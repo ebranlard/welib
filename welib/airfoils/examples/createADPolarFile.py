@@ -12,18 +12,50 @@ import welib.weio as weio
 MyDir=os.path.dirname(__file__)
 
 
-def main_wrap(test=False):
-    polarFile_in = os.path.join(MyDir,'../data/DU21_A17.csv')
-    polarFile_AD='_Polar_out.dat.ignore'
+def main_ReWriteADFile():
+    """ 
+    Example 1: 
+      - open an existing AeroDyn polar file
+      - rewrite it (unsteady parameters are recomputed)
+    """
+    AD_polarFile_in = os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
+    AD_polarFile_out = '_Polar_out.dat.ignore'
 
-    polar = Polar(polarFile_in)
-    ADpol = polar.toAeroDyn(polarFile_AD)
+    # Open an existing AeroDyn polar file
+    polar = Polar(AD_polarFile_in)
+    # Rewrite it (unsteady parameters are recomputed)
+    # NOTE: you can provide templateFile=AD_polarFile_in to the function below
+    #       to ensure that the file will look the same
+    comment = 'Cylinder at Re=6Million\nUpdated unsteady parameters' # Optional comment
+    Re      = 6 # Reynolds number in Million (Optional)
+    ADpol = polar.toAeroDyn(AD_polarFile_out, Re=6, comment=comment)
 
     return ADpol, polar
 
-def main(test=False):
 
-    # --- Reading a existing AD file, just as a template, we'll replace things in it
+def main_WriteADPolar():
+    """ 
+    Example 2: 
+      - Open a tabulated file with alpha,Cl,Cd,Cm 
+      - Write an AeroDyn file from it (unsteady parameters are computed)
+    """
+    polarFile_in     = os.path.join(MyDir,'../data/DU21_A17.csv')
+    polarFile_AD_out = '_Polar_out.dat.ignore'
+
+    # Open a tabulated file with alpha,Cl,Cd,Cm 
+    polar = Polar(polarFile_in)
+    # Write an AeroDyn file from it (unsteady parameters are computed)
+    # NOTE: you can provide templateFile='ADTemplate.dat' to the function below
+    #       to ensure that the AD file will look the same as the template.
+    ADpol = polar.toAeroDyn(polarFile_AD_out)
+
+    return ADpol, polar
+
+def main_WriteADPolarLowLevel():
+    """
+    Example 3: Same as Example 2, but with low level interface.
+    """
+    # --- Reading an existing AD file, just as a template, we'll replace things in it
     templateADFile = os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
     ADpol = weio.read(templateADFile)
 
@@ -53,28 +85,31 @@ def main(test=False):
     ADpol['NumAlf'] = polar.cl.shape[0]
     ADpol['AFCoeff'] = np.around(PolarTable, 5)
 
-    if not test:
-        filename='_Polar_out.dat.ignore'
-        ADpol.write(filename)
+    filename='_Polar_out.dat.ignore'
+    ADpol.write(filename)
     #print('Writing polar to file:',filename,' thick={}'.format(t))
 
     return ADpol, polar
 
 
 
+ADpol,polar = main_ReWriteADFile()
+ADpol,polar = main_WriteADPolar()
+ADpol,polar = main_WriteADPolarLowLevel()
 
 if __name__ == '__main__':
-    #ADpol,polar = main()
-
-    ADpol,polar = main_wrap()
-
+    print(polar)
     import matplotlib.pyplot as plt
-    plt.plot(polar.alpha   ,polar.cl   ,label= 'cl')
+    plt.plot(polar.alpha   ,polar.cl     , '-' , label= 'cl')
+    plt.plot(polar.alpha   ,polar.cl_lin , '--', label= 'cl_lin')
+    plt.ylim([-2,2])
     plt.legend()
     plt.show()
 
 if __name__ == '__test__':
-    main()
+    ADpol,polar = main_ReWriteADFile()
+    ADpol,polar = main_WriteADPolar()
+    ADpol,polar = main_WriteADPolar()
     try:
         os.remove('_Polar_out.dat.ignore')
     except:

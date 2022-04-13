@@ -78,15 +78,19 @@ class Polar(object):
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
-        s+=' - alpha, cl, cd, cm  \n'
+        s+='Parameters:\n'
+        s+=' - alpha, cl, cd, cm  : arrays of size {}\n'.format(len(self.alpha))
         s+=' - Re     :            {} \n'.format(self.Re)
+        s+=' - _radians:           {} (True if alpha in radians)\n'.format(self._radians)
         s+=' - _alpha0:            {} \n'.format(self._alpha0)
         s+=' - _linear_slope:      {} \n'.format(self._linear_slope)
+        s+='Derived parameters:\n'
+        s+=' * cl_lin             : array of size {} \n'.format(len(self.alpha))
         s+=' * alpha0 :            {} \n'.format(self.alpha0())
         s+=' * cl_linear_slope :   {} \n'.format(self.cl_linear_slope())
         s+=' * cl_max :            {} \n'.format(self.cl_max())
         s+=' * unsteadyParams :    {} \n'.format(self.unsteadyParams())
-        s+=' useful functions:   cl_interp, cd_interp, cm_interp, f_st_interp \n'
+        s+='Useful functions:   cl_interp, cd_interp, cm_interp, f_st_interp \n'
         s+='                      plot, extrapolate\n'
         return s
 
@@ -127,6 +131,13 @@ class Polar(object):
             return self.cl*np.cos(self.alpha) + self.cd*np.sin(self.alpha)
         else:
             return self.cl*np.cos(self.alpha*np.pi/180) + self.cd*np.sin(self.alpha*np.pi/180)
+
+    @property
+    def cl_lin(self):
+        if (self._linear_slope is None) and (self._alpha0 is None):
+            self._linear_slope,self._alpha0=self.cl_linear_slope()
+        return self._linear_slope*(self.alpha-self._alpha0)
+
 
 
 
@@ -879,12 +890,15 @@ class Polar(object):
         Cl = fs*Clinv+(1-fs)*Clfs               
         return Cl,fs
 
-    def toAeroDyn(self, filenameOut=None, templateFile=None):
+    def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None):
         from welib.weio.fast_input_file import FASTInputFile
+        cleanComments=comment is not None
         # Read a template file for AeroDyn polars
         if templateFile is None:
             MyDir=os.path.dirname(__file__)
             templateFile = os.path.join(MyDir,'../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
+            cleanComments=True
+
         ADpol = FASTInputFile(templateFile)
 
         # Compute unsteady parameters
@@ -892,7 +906,7 @@ class Polar(object):
 
         # --- Updating the AD polar file 
         # Setting unsteady parameters
-        ADpol['Re'] = 1.0000 # TODO UNKNOWN
+        ADpol['Re'] = Re # TODO UNKNOWN
         if np.isnan(alpha0):
             ADpol['alpha0'] = 0
         else:
@@ -909,6 +923,22 @@ class Polar(object):
         PolarTable = np.column_stack((self.alpha,self.cl,self.cd,self.cm))
         ADpol['NumAlf'] = self.cl.shape[0]
         ADpol['AFCoeff'] = np.around(PolarTable, 5)
+
+        # --- Comment
+        # Find lines that are comments
+        I=[]
+        for i in [1,2,3]:
+            if ADpol.data[i]['value'].startswith('!'):
+                if not ADpol.data[i]['value'].startswith('! ---'):
+                    I.append(i)
+	# remove comment from template
+        if cleanComments:
+            for i in I:
+                ADpol.data[i]['value'] = '!'
+        if comment is not None:
+            splits = comment.split('\n')
+            for i,com in zip(I,splits):
+                ADpol.data[i]['value'] = '! '+com
 
         if filenameOut is not None:
             ADpol.write(filenameOut)
