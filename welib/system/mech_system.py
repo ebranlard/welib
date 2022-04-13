@@ -67,7 +67,7 @@ class MechSystem():
         # Forcing
         if F is not None:
             if type(F) is tuple:
-                self.setForceTimeSeries(F[0], F[1])
+                self.setForceTimeSeries(F[0], F[1]) # Time vector, Force vector
             else:
                 self.setForceFunction(F)
 
@@ -280,7 +280,7 @@ class MechSystem():
 
             dqdt_[0:self.nDOF]=  xd
             Minv = self._fMinv(x)
-            F = self._force_fn(t,x,xd)
+            F = self._force_fn(t,x,xd) # NOTE: something is weird here if no "A" but timeseires function 
             dqdt_[self.nDOF:] =  Minv.dot(F)
             return dqdt_
 
@@ -295,6 +295,66 @@ class MechSystem():
             raise Exception('A matrix not a property when M is a function')
         else:
             return StateMatrix(self._Minv,self.C,self.K)
+
+    # --------------------------------------------------------------------------------}
+    # --- Time series after time integration
+    # --------------------------------------------------------------------------------{
+    @property
+    def TS_Forcing_CK(self):
+        """ Return time series of forcing from Stiffness and Damping matrix """
+        if self.res is None:
+            raise Exception('Run `integrate` before calling CKforcing')
+        nDOF = self.nDOF
+        FK = np.zeros((self.nDOF,len(time)))
+        FC = np.zeros((self.nDOF,len(time)))
+        if self.K is not None:
+            for it, t in enumerate(time):
+                q  = res.y[:,it]
+                x  = q[0:nDOF]
+                xd = q[nDOF:]
+                FK[:,it] = -self.K.dot(x)
+        if self.C is not None:
+            for it, t in enumerate(time):
+                q  = res.y[:,it]
+                x  = q[0:nDOF]
+                xd = q[nDOF:]
+                FC[:,it] = -self.C.dot(xd)
+        return FC, FK
+
+    @property
+    def TS_Forcing(self):
+        if self.res is None:
+            # Res or self.res not provided, return time series provided by user
+            if hasattr(self,'_force_ts'):
+                time = self._time_ts
+                F    = self._force_ts
+            else:
+                raise Exception('Cannot compute forcing when a function is used and no time integration was performed. Call `integrate`.')
+        else:
+            # Res provided
+            time =self.res.t
+            if hasattr(self,'_force_ts'):
+                F = self.Forces(time)
+            else:
+                F = np.zeros((self.nDOF,len(time)))
+                for it, t in enumerate(time):
+                    F[:,it] = self.Forces(t, q=res.y[:,it]).ravel()
+        return F
+
+    @property
+    def TS_Acceleration(self):
+        """ Return time series of acceleration
+        NOTE: some optimizations are possible here, if forcing is known for instance, or not computing 
+        the "top" part of dqdt..
+        """
+        if self.res is None:
+            raise Exception('Run `integrate` before calling TS_Acceleration')
+        nDOF = self.nDOF
+        xdd = np.zeros((self.nDOF,len(self.res.t)))
+        for it, t in enumerate(self.res.t):
+            dqdt=self.dqdt(t, self.res.y[:,it])
+            xdd[:,it] = dqdt[nDOF:,0]
+        return xdd
 
     # --------------------------------------------------------------------------------}
     # --- "Linear"
@@ -385,6 +445,9 @@ class MechSystem():
         axes = np.atleast_1d(axes)
         n=self.nDOF
         for i,ax in enumerate(axes):
+            if i+1>len(df.columns):
+                continue
+            chan=df.columns[i+1]
             if i<n:
                 lbl=r'$x_{}$'.format(i+1)
             else:
@@ -407,41 +470,14 @@ class MechSystem():
         """
         if res is None:
             res=self.res
-        if res is None:
-            # Res or self.res not provided
-            if hasattr(self,'_force_ts'):
-                time = self._time_ts
-                F    = self._force_ts
-            else:
-                raise Exception('Cannot plot forcing when a function is used and no time integration was performed. Call `integrate`.')
-        else:
-            # Res provided
-            time =res.t
-            if hasattr(self,'_force_ts'):
-                F = self.Forces(time)
-            else:
-                F = np.zeros((self.nDOF,len(time)))
-                for it, t in enumerate(time):
-                    F[:,it] = self.Forces(t, q=res.y[:,it]).ravel()
+
+        # Compute Forcing 
+        F = self.TS_Forcing
+        # Compute Forcing  contributions from Damping and Stiffness
         if includeCK:
-            nDOF = self.nDOF
-            FK = np.zeros((self.nDOF,len(time)))
-            FC = np.zeros((self.nDOF,len(time)))
-            if self.K is not None:
-                for it, t in enumerate(time):
-                    q  = res.y[:,it]
-                    x  = q[0:nDOF]
-                    xd = q[nDOF:]
-                    FK[:,it] = -self.K.dot(x)
-            if self.C is not None:
-                for it, t in enumerate(time):
-                    q  = res.y[:,it]
-                    x  = q[0:nDOF]
-                    xd = q[nDOF:]
-                    FC[:,it] = -self.C.dot(x)
+            FC, FK = self.TS_Forcing_CK
             F0=F.copy()
             F=F0+FK+FC
-
 
         # Plot
         if axes is None:
@@ -470,11 +506,14 @@ class MechSystem():
         df = self.toDataFrame(DOFs=DOFs, Factors=Factors)
         df.to_csv(filename, sep=',', index=False)
 
-    def toDataFrame(self, DOFs=None, Factors=None, q0=None, qd0=None):
+    def toDataFrame(self, DOFs=None, Factors=None, x0=None, xd0=None, 
+            acc=False, sAcc=None, Forcing=False, sForcing=None):
         """ Return time integration results as a dataframe
-        DOFs:    array of string for DOFs names   (2xnDOF)
+        DOFs:    array of string for DOFs names   (2xnDOF, positions and velocities)
         Factors: array of floats to scale the DOFs (2xnDOF)
-        q0:  array of floats to add to the DOF (1xnD)F)
+        x0 :  array of floats to add to the DOF (1xnDOF)
+        xd0:  array of floats to add to the velocities (1xnDOF)
+              NOTE: the positions will be increased linearly
         """
         import pandas as pd
         if self.res is None:
@@ -483,39 +522,59 @@ class MechSystem():
         if DOFs is None:
             DOFs  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]
             DOFs += ['xd_{}'.format(i) for i in np.arange(self.nDOF)]
+        if sAcc is None:
+            sAcc = ['xdd_{}'.format(i) for i in np.arange(self.nDOF)]
+        if sForcing is None:
+            sForcing = ['F_{}'.format(i) for i in np.arange(self.nDOF)]
+
         header = ' Time_[s], '+','.join(DOFs)
 
         res = self.res
-        M=np.column_stack((res.t, res.y.T))
-        time=res.t
+
+        # Combine time series into a matrix
+        M    = np.column_stack((res.t, res.y.T))
+        time = res.t
+        cols = ['Time_[s]']+DOFs
 
         # Scaling
         if Factors is not None:
             for i, f in enumerate(Factors):
                 M[:,i+1] *= f
         # Offset Velocity
-        if qd0 is not None:
-            for i, xd0 in enumerate(qd0):
+        if xd0 is not None:
+            for i, xd0_ in enumerate(xd0):
                 if Factors is not None:
-                    M[:,self.nDOF+i+1] += xd0*Factors[i+self.nDOF]
-                    M[:,i+1] += (xd0*time)*Factors[i] # Position increases linearily
+                    M[:,self.nDOF+i+1] += xd0_*Factors[i+self.nDOF] # Add to velocity
+                    M[:,i+1]           += (xd0_*time)*Factors[i]    # Position increases linearly
                 else:
-                    M[:,self.nDOF+i+1] += xd0
-                    M[:,i+1] += xd0*time
+                    M[:,self.nDOF+i+1] += xd0_      # Add to velocity
+                    M[:,i+1]           += xd0_*time # Position increases linearly
         # Offset position
-        if q0 is not None:
-            for i, x0 in enumerate(q0):
+        if x0 is not None:
+            for i, x0_ in enumerate(x0):
                 if Factors is not None:
-                    M[:,i+1] += x0*Factors[i]
+                    M[:,i+1] += x0_*Factors[i]
                 else:
-                    M[:,i+1] += x0
+                    M[:,i+1] += x0_
 
         for i,d in enumerate(DOFs):
             if DOFs[i].find('[deg]')>1: 
                 if np.max(M[:,i+1])>180:
                     M[:,i+1] = np.mod(M[:,i+1], 360)
 
-        return pd.DataFrame(data=M, columns=['Time_[s]']+DOFs)
+        # Accelerations 
+        if acc:
+            xdd = self.TS_Acceleration
+            M     = np.column_stack((M,xdd.T))
+            cols += sAcc
+        # Forcing
+        if Forcing:
+            F     = self.TS_Forcing
+            M     = np.column_stack((M,F.T))
+            cols += sForcing
+
+
+        return pd.DataFrame(data=M, columns=cols)
 
 
 

@@ -212,6 +212,8 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "Q_GeAz"	Displacement of variable speed generator DOF
 "QD_DrTr"		Velocity of drivetrain rotational-flexibility DOF
 "QD_GeAz"		Velocity of variable speed generator DOF
+"QD2_DrTr"		Velocity of drivetrain rotational-flexibility DOF
+"QD2_GeAz"		Velocity of variable speed generator DOF
 END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
 ---------------------- NODE OUTPUTS --------------------------------------------
           1   BldNd_BladesOut  - Blades to output

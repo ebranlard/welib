@@ -31,7 +31,7 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
 0                      MSL2SWL       - Offset between still-water level and mean sea level (m) [positive upward]
 ---------------------- INPUT FILES ---------------------------------------------
 "onshore/NREL5MW_ED_Onshore.dat"    EDFile          - Name of file containing ElastoDyn input parameters (quoted string)
-"5MW_Baseline/NRELOffshrBsline5MW_BeamDyn.dat"    BDBldFile(1)    - Name of file containing BeamDyn input parameters for blade 1 (quoted string)
+"NA"    BDBldFile(1)    - Name of file containing BeamDyn input parameters for blade 1 (quoted string)
 "NA"    BDBldFile(2)    - Name of file containing BeamDyn input parameters for blade 2 (quoted string)
 "NA"    BDBldFile(3)    - Name of file containing BeamDyn input parameters for blade 3 (quoted string)
 "5MW_Baseline/NREL5MW_IW.dat"    InflowFile      - Name of file containing inflow wind input parameters (quoted string)

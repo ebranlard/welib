@@ -12,7 +12,7 @@ from welib.yams.windturbine import FASTWindTurbine
 
 def main():
     # --- Parameters
-    InFile = '../../../data/NREL5MW/Main_Onshore_OF2_DriveTrainTorsion.fst'
+    InFile = '../../../data/NREL5MW/Main_Onshore_DriveTrainTorsion.fst'
     model=2 # 1=1DOF (theta_r), 2= 2DOF (theta_r, nu), 22: (theta_r, theta_g_LSS), 3: (theta_r, theta_g)
 
     # --- Turbine parameters
@@ -35,12 +35,15 @@ def main():
     Q_r   = df['RtAeroMxh_[N-m]'].values
     Q_g   = df['GenTq_[kN-m]'].values*1000
     Q_LSS = df['RotTorq_[kN-m]'].values*1000
-    q_r   = df['Q_GeAz_[rad]'] # NOTE: weird initial condition
-    q_DT  = df['Q_DrTr_[rad]']
-    qd_r  = df['QD_GeAz_[rad/s]']
-    qd_DT = df['QD_DrTr_[rad/s]']
-    # qdd_r  = df['QD2_GeAz_[rad/s^2]']
-    # qdd_DT = df['QD2_DrTr_[rad/s^2]']
+    sDOF=['Q_GeAz_[rad]', 'Q_DrTr_[rad]']
+    sVel=['QD_GeAz_[rad/s]', 'QD_DrTr_[rad/s]' ]
+    sAcc=['QD2_GeAz_[rad/s^2]','QD2_DrTr_[rad/s^2]']
+    q_r    = df[sDOF[0]] # NOTE: weird initial condition
+    q_DT   = df[sDOF[1]]
+    qd_r   = df[sVel[0]]
+    qd_DT  = df[sVel[1]]
+    qdd_r  = df[sAcc[0]]
+    qdd_DT = df[sAcc[1]]
     GenSpeed     = df['GenSpeed_[rpm]']*2*np.pi/60
     GenSpeed_LSS = GenSpeed/nGear
     RotSpeed     = df['RotSpeed_[rpm]']*2*np.pi/60
@@ -120,6 +123,10 @@ def main():
 
     #res=sys.integrate(time, method='LSODA') # **options):
     res=sys.integrate(time, method='RK45') # **options):
+
+    #dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop)
+    dfNL=sys.toDataFrame(sDOF+sVel, acc=True, sAcc=sAcc)
+    print(dfNL.columns)
 
     # sys.plot()
 

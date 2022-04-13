@@ -437,7 +437,7 @@ class WindTurbineStructure():
         #     print(B_lin)
 
         # --- Convert to dataframe
-        dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, q0=qop, qd0=qdop)
+        dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop)
 
         print('-----------------------------------------------------------------------------')
         return resLI, sysLI, dfLI
