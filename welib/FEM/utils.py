@@ -212,3 +212,16 @@ def rigidTransformationOnePointToPoints18(Psource, DestPoints):
     return T
 
 
+def transferRigidLoads(l6, Ps, Pd, verbose=False):
+    """ 
+    Transfer loads (fx,fy,fz,mx,my,mz) from source poinr Ps to destination point Pd
+
+    l6:  6-array or (6 x nt) array
+    """
+    l6=np.asarray(l6)
+    if l6.shape[0]!=6:
+        raise Exception('First dimension of l6 should be 6 ({})'.format(l6.shape))
+    T = rigidTransformationTwoPoints_Loads(Ps, Pd)
+    return T.dot(l6)
+
+

@@ -25,6 +25,14 @@ class Test(unittest.TestCase):
         fs2 = Tds.dot(fd)
         np.testing.assert_almost_equal(fs2, fs, 5)
 
+    def test_transferLoads(self):
+        # Transfer loads known at a source point to another point
+        Ps = (0,0,0)
+        Pd = (0,0,25)
+
+        Ls = (1,0,0,0,5,0)
+        Ld = transferRigidLoads(Ls, Ps, Pd)
+        np.testing.assert_almost_equal(Ld, (1,0,0,0,-20,0), 5)
 
 if __name__=='__main__':
     unittest.main()
