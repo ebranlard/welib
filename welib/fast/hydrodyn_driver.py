@@ -95,10 +95,10 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
 
         # Scale axes if tiny range
         for iCol, col in enumerate(lCols):
-                mi, mx = axes[iCol,1].get_ylim()
-                mn = (mx+mi)/2
-                if np.abs(mx-mn)<1e-5:
-                    axes.set_ylim(mn-1, mn+1)
+            mi, mx = axes[iCol,1].get_ylim()
+            mn = (mx+mi)/2
+            if np.abs(mx-mn)<1e-5:
+                axes[iCol,1].set_ylim(mn-1, mn+1)
         axes[0,1].legend()
         axes[5,0].set_xlabel('Time [s]')
         axes[5,1].set_xlabel('Time [s]')
