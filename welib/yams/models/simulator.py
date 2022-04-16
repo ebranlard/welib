@@ -269,7 +269,7 @@ class SimulatorFromOF():
     # --------------------------------------------------------------------------------}
     # --- Model specific
     # --------------------------------------------------------------------------------{
-    def setPrescribedHydroInputs(self, zRef=None):
+    def setPrescribedHydroInputs(self, zRef=None, meanMhy=False):
         """ Set inputs based on OpenFAST"""
         dfFS    = self.dfFS
         p       = self.p
@@ -278,7 +278,7 @@ class SimulatorFromOF():
         uop     = self.uop
         du      = self.du
         if zRef is None:
-            zRef = self.p['z_B0'] # TODO TODO TODO WEIRD SHOULD BE -
+            zRef =  self.p['z_B0'] # TODO TODO TODO WEIRD SHOULD BE -
         P_HDRef = np.array((0,0,0))
         P_EDRef = np.array((0,0,zRef))
 
@@ -287,10 +287,20 @@ class SimulatorFromOF():
         elif 'hydroO' in self.modelName:
             print('>>> Precribed Hydro Loads at ',(0,0,zRef), 'NOTE: WEIRD SIGN<<<<<< TODO TODO TODO TODO')
             from welib.FEM.utils import transferRigidLoads
+            from welib.yams.utils import transferLoadsZPoint
             # Input loads are at the body origin (ED ref point)
             cols = ['HydroFxi_[N]', 'HydroFyi_[N]', 'HydroFzi_[N]', 'HydroMxi_[N-m]', 'HydroMyi_[N-m]', 'HydroMzi_[N-m]']
+            if 'Q_R_[rad]' in dfFS.columns:
+                vphi_x = dfFS['Q_R_[rad]']
+            else:
+                vphi_x = dfFS['PtfmRoll_[deg]'].values*np.pi/180
+            if 'Q_P_[rad]' in dfFS.columns:
+                vphi_y = dfFS['Q_P_[rad]']
+            else:
+                vphi_y = dfFS['PtfmPitch_[deg]'].values*np.pi/180
             M = dfFS[cols].values
-            MT = transferRigidLoads(M.T, P_HDRef, P_EDRef).T
+            #MT = transferRigidLoads(M.T, P_HDRef, P_EDRef).T
+            MT = transferLoadsZPoint(M.T, zRef, vphi_x, vphi_y).T
             dfFS = pd.DataFrame(data=MT, columns=cols)
         else:
             raise NotImplementedError()
@@ -308,7 +318,10 @@ class SimulatorFromOF():
         #uop['F_hz'] = np.mean(dfFS['HydroFzi_[N]'].values)
         uop['F_hz'] = p['M_B']*p['g']
         uop['M_hx'] = np.mean(dfFS['HydroMxi_[N-m]'].values)*0
-        uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)*0
+        if meanMhy:
+            uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)
+        else:
+            uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)*0
         #uop['M_hy'] = dfFS['HydroMyi_[N-m]'].values[0]
         uop['M_hz'] = np.mean(dfFS['HydroMzi_[N-m]'].values)*0
         # --- Linear pertubation inputs

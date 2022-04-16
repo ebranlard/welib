@@ -104,7 +104,7 @@ def checkRegularNode(s_span):
     L = s_span[-1]-s_span[0]
     ds = L/n
     dr = np.diff(s_span[1:-1])
-    def round_sigdigit(ref, v, ndigit=4):
+    def round_sigdigit(ref, v, ndigit=3):
         nround=-int(np.floor(np.log10(abs(ref))))+ndigit
         return np.around(v, nround)
     #vds = np.unique(np.around(dr,5))

@@ -188,3 +188,20 @@ def translateInertiaMatrixFromCOG(I_G, Mass, r_GP):
     return I_P
     
 
+
+# --------------------------------------------------------------------------------}
+# --- Loads 
+# --------------------------------------------------------------------------------{
+def transferLoadsZPoint(ls, z, phi_x, phi_y):
+    """ 
+    z: destination to source (z_s - z_d)
+    """
+    ld    = np.zeros(ls.shape)
+    ld[0] = ls[0]
+    ld[1] = ls[1]
+    ld[2] = ls[2]
+    r = (  z*np.sin(phi_y) , -z * np.sin(phi_x) * np.cos(phi_y),  z *np.cos(phi_x)* np.cos(phi_y))
+    ld[3] = ls[3] + r[1] * ls[2] - r[2] * ls[1]
+    ld[4] = ls[4] + r[2] * ls[0] - r[0] * ls[2]
+    ld[5] = ls[5] + r[0] * ls[1] - r[1] * ls[0]
+    return ld
