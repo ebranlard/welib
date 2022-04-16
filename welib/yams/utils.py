@@ -23,10 +23,29 @@ def R_y(t):
 def R_z(t): 
     return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
 
-def skew(x):
-    x=np.asarray(x).ravel()
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
-    return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
+def skew(v):
+    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
+    [ 0, -z , y]
+    [ z,  0 ,-x]
+    [-y,  x , 0]
+    """
+    x,y,z=v
+    return np.array([[ 0, -z , y],
+                     [ z,  0 ,-x],
+                     [-y,  x , 0]])
+
+def skew2(v):
+    """ Returns the skew(v).skew(v) 
+         [ 0 -z  y]   [ 0 -z  y]   [  -y**2 - z**2  ,       xy       ,         xz      ]
+    S2 = [ z  0 -x] . [ z  0 -x] = [       yx       , - x**2 - z**2  ,         yz      ]
+         [-y  x  0]   [-y  x  0]   [       zx       ,       zy       ,   - x**2 - y**2 ]
+    """
+    x,y,z=np.asarray(v).flatten()
+    return np.array( [
+            [ - y**2 - z**2  ,       x*y      ,         x*z      ],
+            [       y*x      , - x**2 - z**2  ,         y*z      ],
+            [       z*x      ,       z*y      ,   - x**2 - y**2 ]])
+
 
 def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
     """ Mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] 
@@ -139,7 +158,7 @@ def translateInertiaMatrix(I_A, Mass, r_BG, r_AG = np.array([0,0,0])):
         r_AG = np.array([0,0,0])
     if len(r_BG) < 3:
         r_BG = np.array([0,0,0])   
-    I_B = I_A - Mass*(np.dot(skew(r_BG), skew(r_BG))-np.dot(skew(r_AG),skew(r_AG)))
+    I_B = I_A - Mass*(skew2(r_BG)-skew2(r_AG))
     #I_G = translateInertiaMatrixToCOG(I_A, Mass, r_AG)
     #I_B = translateInertiaMatrixFromCOG(I_G, Mass, -np.array(r_BG))
     return I_B
@@ -153,7 +172,7 @@ def translateInertiaMatrixToCOG(I_P, Mass, r_PG):
       Mass : Mass of the body
       r_PG: vector from P to COG 
     """
-    I_G = I_P + Mass * np.dot(skew(r_PG), skew(r_PG))
+    I_G = I_P + Mass * skew2(r_PG)
     return I_G
 
 def translateInertiaMatrixFromCOG(I_G, Mass, r_GP): 
@@ -165,7 +184,7 @@ def translateInertiaMatrixFromCOG(I_G, Mass, r_GP):
        Mass : Mass of the body
        r_GP: vector from COG of the body to point P
     """
-    I_P = I_G - Mass * np.dot(skew(r_GP),skew(r_GP))
+    I_P = I_G - Mass * skew2(r_GP)
     return I_P
     
 

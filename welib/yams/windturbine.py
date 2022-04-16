@@ -384,6 +384,7 @@ class WindTurbineStructure():
         print('qd0 :',self.qd0)
         print('qop :',qop)
         print('qdop:',qdop)
+        print('uop: ',uop)
         #print('dq0 :',dq0)
         #print('dqd0:',dqd0)
         #print('DOFScales:',self.FASTDOFScales)
@@ -401,9 +402,9 @@ class WindTurbineStructure():
             C_lin += Ce
             K_lin += Ke
 
+        print('B_lin\n',B_lin)
         if MCKu is not None:
             Mu, Cu, Ku = MCKu
-            print('B_lin\n',B_lin)
             M_lin += B_lin.dot(Mu)
             C_lin += B_lin.dot(Cu)
             K_lin += B_lin.dot(Ku)
@@ -470,7 +471,8 @@ def rigidBlades(blds, hub=None, r_O=[0,0,0]):
 # --------------------------------------------------------------------------------}
 # --- Converters 
 # --------------------------------------------------------------------------------{
-def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, nSpanBld=None, algo=''):
+def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, nSpanBld=None, algo='',
+        bldStartAtRotorCenter=True):
     """
 
     """
@@ -524,14 +526,17 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     # --- Blades 
     bldFile = weio.read(bldfile)
     m    = bldFile['BldProp'][:,3]
-    jxxG = m     # NOTE: unknown
-    print('>>> windturbine.py: TODO: using unknown jxxG')
+    if algo=='OpenFAST':
+        jxxG=0*m
+    else:
+        jxxG = m     # NOTE: unknown
+        print('>>> windturbine.py: TODO: using unknown jxxG')
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
-    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, nSpan=nSpanBld, gravity=gravity) 
+    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, nSpan=nSpanBld, gravity=gravity, algo=algo) 
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
-        bld[iB+1].R_b2g
+        #bld[iB+1].R_b2g
     for iB,B in enumerate(bld):
         B.name='bld'+str(iB+1)
         psi_B= -iB*2*np.pi/len(bld) 
@@ -539,8 +544,13 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
             R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
         elif main_axis=='z':
             R_SB = R_x(0*np.pi + psi_B) # TODO psi0
-        R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
-        B.R_b2g= R_SB
+        if bldStartAtRotorCenter:
+            R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
+            B.R_b2g= R_SB
+        else:
+            print('>>>> TODO TODO TODO Wind Turbine R_SB')
+            R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
+            B.R_b2g= R_SB
 
     # --- Blades (with origin R, using N as "global" ref)
     blds_rigid = rigidBlades(bld, r_O = [0,0,0])

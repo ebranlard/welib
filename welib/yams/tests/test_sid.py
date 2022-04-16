@@ -101,7 +101,7 @@ class Test(unittest.TestCase):
         consistency='OpenFAST'
 #         consistency=''
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        sid = FASTBlade2SID(EDFile, method='ShapeFunctions', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency)
+        sid = FASTBlade2SID(EDFile, method='ShapeFunctions', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency, AdjBlMs=1)
         writeSID(sid, '_OUT_SID_BLD_PY_SHAPEFUNCTIONS.txt')
 
         np.testing.assert_almost_equal(sid.J.M0 [0,0], 12319399.637394847)
@@ -121,7 +121,7 @@ class Test(unittest.TestCase):
         consistency='OpenFAST'
 #         consistency=''
         EDFile=os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        sid = FASTBlade2SID(EDFile, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency)
+        sid = FASTBlade2SID(EDFile, method='ShapeIntegral', Imodes_bld=[0,1,2], startAtRoot=False, consistency=consistency, AdjBlMs=1)
         writeSID(sid, '_OUT_SID_BLD_PY_SHAPEINTEGRAL.txt')
 
         np.testing.assert_almost_equal(sid.J.M0 [0,0], 12319399.637394847)

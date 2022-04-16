@@ -215,7 +215,10 @@ class SimulatorFromOF():
         else:
             axes=fig.axes
             assert(len(axes)>0)
-        fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        if nPlotCols==2:
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        else:
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.33)
         for i,ax in enumerate((np.asarray(axes).T).ravel()):
             if i+1>=len(df.columns):
                 continue
@@ -266,31 +269,49 @@ class SimulatorFromOF():
     # --------------------------------------------------------------------------------}
     # --- Model specific
     # --------------------------------------------------------------------------------{
-    def setPrescribedHydroInputs(self):
+    def setPrescribedHydroInputs(self, zRef=None):
         """ Set inputs based on OpenFAST"""
-        dfFS = self.dfFS
-        p    = self.p
-        time = self.time
-        u = self.u
+        dfFS    = self.dfFS
+        p       = self.p
+        time    = self.time
+        u       = self.u
+        uop     = self.uop
+        du      = self.du
+        if zRef is None:
+            zRef = self.p['z_B0'] # TODO TODO TODO WEIRD SHOULD BE -
+        P_HDRef = np.array((0,0,0))
+        P_EDRef = np.array((0,0,zRef))
+
+        if 'hydro0' in self.modelName:
+            print('>>> Precribed Hydro Loads at ',(0,0,0))
+        elif 'hydroO' in self.modelName:
+            print('>>> Precribed Hydro Loads at ',(0,0,zRef), 'NOTE: WEIRD SIGN<<<<<< TODO TODO TODO TODO')
+            from welib.FEM.utils import transferRigidLoads
+            # Input loads are at the body origin (ED ref point)
+            cols = ['HydroFxi_[N]', 'HydroFyi_[N]', 'HydroFzi_[N]', 'HydroMxi_[N-m]', 'HydroMyi_[N-m]', 'HydroMzi_[N-m]']
+            M = dfFS[cols].values
+            MT = transferRigidLoads(M.T, P_HDRef, P_EDRef).T
+            dfFS = pd.DataFrame(data=MT, columns=cols)
+        else:
+            raise NotImplementedError()
+
+        # Input loads are at the "0" hydro point
         u['F_hx'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFxi_[N]'])
         u['F_hy'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFyi_[N]'])
         u['F_hz'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroFzi_[N]'])
         u['M_hx'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMxi_[N-m]'])
         u['M_hy'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMyi_[N-m]'])
         u['M_hz'] = lambda t,q=None,qd=None: np.interp(t, time, dfFS['HydroMzi_[N-m]'])
-
         # --- Linear model input operating point
-        uop=self.uop
         uop['F_hx'] = np.mean(dfFS['HydroFxi_[N]'].values)  *0
         uop['F_hy'] = np.mean(dfFS['HydroFyi_[N]'].values)  *0
         #uop['F_hz'] = np.mean(dfFS['HydroFzi_[N]'].values)
         uop['F_hz'] = p['M_B']*p['g']
         uop['M_hx'] = np.mean(dfFS['HydroMxi_[N-m]'].values)*0
         uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)*0
+        #uop['M_hy'] = dfFS['HydroMyi_[N-m]'].values[0]
         uop['M_hz'] = np.mean(dfFS['HydroMzi_[N-m]'].values)*0
-
         # --- Linear pertubation inputs
-        du = self.du
         for i,su in enumerate(self.info['su']):
             if su=='F_hx': du[i,:] = dfFS['HydroFxi_[N]'].values     - uop[su]
             if su=='F_hy': du[i,:] = dfFS['HydroFyi_[N]'].values     - uop[su]

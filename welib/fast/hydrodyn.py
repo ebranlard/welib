@@ -205,7 +205,9 @@ class HydroDyn:
 
 
 
-    def linearize_RigidMotion2Loads(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, optsM=None, saveFile=None):
+    def linearize_RigidMotion2Loads(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, 
+            RefPointMotion=None, RefPointMapping=None,
+            optsM=None, saveFile=None):
         """ 
         Linearize the outputs force at the reference point with respect to
            motions of the reference point (assuming rigid body motion of the structure)
@@ -213,22 +215,35 @@ class HydroDyn:
 
         -q0, qd0, qdd0: 6-array of rigid DOFs positions, velocities and accelerations at platform ref 
         -dq, dqd, dqdd: 6-array of perturbations around q0, qd0 and qdd0
+
+        - RefPoint: point used to defined rigid body motion, important parameter
+
         -optsM: options for Morison Calculation
 
         NOTE: only Morison for now
         """
         from welib.system.linearization import numerical_jacobian
         print('Computing HydroDyn linearized model...')
+        uMesh = self.u['Morison']['Mesh']
+        if RefPointMotion is None:
+            RefPointMotion = uMesh.RefPoint
+
+        if RefPointMapping is None:
+            # TODO add options to map to a point in body coordinates (including rotations)
+            RefPointMapping=np.array([0,0,0])
+        print('- RefPoint for Motion : ',RefPointMotion)
+        print('- RefPoint for Mapping: ',RefPointMapping)
 
         # --- Define a function that returns outputs
         def fh(q,qd,qdd,p=None):
             # Rigid body motion of the mesh
-            self.u['Morison']['Mesh'].rigidBodyMotion(q=q, qd=qd, qdd=qdd)
+            self.u['Morison']['Mesh'].rigidBodyMotion(q=q, qd=qd, qdd=qdd, RefPoint=RefPointMotion)
             # Calculate hydrodynamic loads at every nodes 
             self.calcOutput(t=0, u=self.u, y=self.y, optsM=p)
             # Compute integral loads (force&moment) at the reference point (translated but not rotated)
             fh=np.zeros(6)
-            fh[:3], fh[3:] = self.y['Morison']['Mesh'].mapLoadsToPoint((q[0],q[1],q[2]))
+            MappintPoint = RefPointMapping + np.array([q[0],q[1],q[2]])
+            fh[:3], fh[3:] = self.y['Morison']['Mesh'].mapLoadsToPoint(MappintPoint)
             return fh
 
         # --- Operating point and perturbation sizes

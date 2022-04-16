@@ -111,7 +111,7 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
     return dfPH, dfOF, fig
 
 
-def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, fig=None):
+def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, fig=None, motionRef='PRP', zRef=None):
     """ 
     Compute hydrodynamics loads on a structure under rigid body motion based on an OpenFAST simulation
     fstFilename: OpenFAST or HydroDyn driver input file
@@ -135,15 +135,21 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
 
     # --- Relevant columns from OpenFAST outputs
     time  = dfOF['Time_[s]'].values
-    if 'PRPSurge_[m]' in dfOF.columns:
-        qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]'     ]
-        qdCol  = ['PRPTVxi_[m/s]'   ,'PRPTVyi_[m/s]'  ,'PRPTVzi_[m/s]'  ,'PRPRVxi_[rad/s]'  ,'PRPRVyi_[rad/s]'  ,'PRPRVzi_[rad/s]'  ]
-        qddCol = [ 'PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
+    if motionRef=='PRP':
+        RefPoint=(0,0,0)
+        if 'PRPSurge_[m]' in dfOF.columns:
+            qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]'     ]
+            qdCol  = ['PRPTVxi_[m/s]'   ,'PRPTVyi_[m/s]'  ,'PRPTVzi_[m/s]'  ,'PRPRVxi_[rad/s]'  ,'PRPRVyi_[rad/s]'  ,'PRPRVzi_[rad/s]'  ]
+            qddCol = [ 'PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
+        else:
+            raise NotImplementedError()
     else:
-        raise NotImplementedError()
-        qCol  = ['Q_Sg_[m]'   ,'Q_Sw_[m]'   ,'Q_Hv_[m]'   ,'Q_R_[rad]'   ,'Q_P_[rad]'   ,'Q_Y_[rad]']
-        qdCol = ['QD_Sg_[m/s]','QD_Sw_[m/s]','QD_Hv_[m/s]','QD_R_[rad/s]','QD_P_[rad/s]','QD_Y_[rad/s]']
-        qddCol = None
+        qCol   = ['Q_Sg_[m]'      ,'Q_Sw_[m]'      ,'Q_Hv_[m]'      ,'Q_R_[rad]'      ,'Q_P_[rad]'      ,'Q_Y_[rad]']
+        qdCol  = ['QD_Sg_[m/s]'   ,'QD_Sw_[m/s]'   ,'QD_Hv_[m/s]'   ,'QD_R_[rad/s]'   ,'QD_P_[rad/s]'   ,'QD_Y_[rad/s]']
+        qddCol = ['QD2_Sg_[m/s^2]','QD2_Sw_[m/s^2]','QD2_Hv_[m/s^2]','QD2_R_[rad/s^2]','QD2_P_[rad/s^2]','QD2_Y_[rad/s^2]']
+        if zRef is None:
+            raise Exception('When motionRef is not PRP, zRef needs to be provided')
+        RefPoint=(0,0,zRef)
 
     # --- Prepare time stepping
     fh = np.zeros((len(time), 6))
@@ -155,18 +161,12 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
             # Reference point motion
             q  = dfOF[qCol].iloc[it].values
             qd = dfOF[qdCol].iloc[it].values
+            qdd = dfOF[qddCol].iloc[it].values
             omega = (qd[3],qd[4],qd[5]) # ...
-            if qddCol is None:
-                if it==0:
-                    qdd = qd*0
-                else:
-                    qdd =(qd -  dfOF[qdCol].iloc[it-1].values) / (time[it]-time[it-1])
-            else:
-                qdd = dfOF[qddCol].iloc[it].values
 
             # Rigid body motion of the mesh
             #umesh.rigidBodyMotion(u=(q[0],q[1],q[2]), theta=(q[3],q[4],q[5]), u_dot=(qd[0],qd[1],qd[2]), omega=omega, u_ddot=(qdd[0],qdd[1],qdd[2]), omega_dot = (qdd[3],qdd[4],qdd[5])  )
-            umesh.rigidBodyMotion(q=q, qd=qd, qdd=qdd)
+            umesh.rigidBodyMotion(q=q, qd=qd, qdd=qdd, RefPoint=RefPoint)
             # Calculate hydrodynamic loads at every nodes 
             hd.y=hd.calcOutput(t, u=hd.u, y=hd.y, optsM=optsM)
             # Store mesh

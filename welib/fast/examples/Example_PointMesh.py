@@ -26,7 +26,7 @@ ms = MeshStorage(pm, time)
 for it, t in enumerate(time):
 
     #pm.rigidBodyMotion(u=(x[it],0,0))
-    pm.rigidBodyMotion(u=(x[it],0,0), theta=(0,theta_y[it],0))
+    pm.rigidBodyMotion(u=(x[it],0,0), theta=(0,theta_y[it],0), RefPoint=(0,0,0))
     ms.store(pm, it)
 
 

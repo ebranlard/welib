@@ -53,11 +53,16 @@ def SHP(Fract, FlexL, ModShpAry, Deriv):
 
 
 def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
+    """ 
+    Return rotor parameters computed like ElastoDyn
+    p: rotor parametesr
+    pbld: list of parameters for each blades.
+    """
     ED = FASTInputFile(EDfilename)
 
     if pbld1 is None:
         if identicalBlades:
-            pbld = [bladeParameters(EDfilename, ibld+1)]*ED['NumBl']
+            pbld = [bladeParameters(EDfilename, 1)]*ED['NumBl']
         else:
             pbld=[bladeParameters(EDfilename, ibld+1) for ibld in  range(ED['NumBl'])]
     else:
@@ -73,13 +78,17 @@ def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
     #    p.Hubg1Iner = GetFASTPar(edDataOut, 'HubIner');
     #    p.Hubg2Iner = 0.0;
     #end
-    p['RotMass'] += ED['HubMass']
-    p['RotIner'] += ED['HubIner']
+    phub=dict()
+    phub['HubMass'] = ED['HubMass']
+    phub['HubIner'] = ED['HubIner']
 
-    return p, pbld
+    p['RotMass'] += phub['HubMass']
+    p['RotIner'] += phub['HubIner']
+
+    return p, pbld, phub
 
 
-def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
+def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
     """
     Compute blade parameters in a way similar to OpenFAST
     See Routine Coeff from ElastoDyn.f90
@@ -98,11 +107,17 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     p['HubRad']   = ED['HubRad']
     p['BldNodes'] = ED['BldNodes']
     p['BldFlexL'] = ED['TipRad']- ED['HubRad'] # Length of the flexible portion of the blade.
-    p['BldMass'] =0 
     n=ED['BldNodes']
     p['DRNodes'] = np.ones(ED['BldNodes'])*p['BldFlexL']/ED['BldNodes']
     bld_fract    = np.arange(1./ED['BldNodes']/2., 1, 1./ED['BldNodes'])
     p['RNodes'] = bld_fract*p['BldFlexL']
+
+    # Adjust mass
+    if AdjBlMs is None:
+        p['AdjBlMs'] = bld['AdjBlMs']
+    else:
+        p['AdjBlMs'] = AdjBlMs
+    bldProp['BMassDen_[kg/m]'] *= p['AdjBlMs']
 
 
     # --- Interpolate the blade properties to this discretization:
@@ -135,13 +150,10 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1):
     # --- Inertial properties
     # Initialize BldMass(), FirstMom(), and SecondMom() using TipMass() effects
     p['TipMass']   = ED['TipMass({:d})'.format(ibld)]                            
-    p['BldMass']   = p['TipMass']                            
-    p['FirstMom']  = p['TipMass']*p['BldFlexL']             
-    p['SecondMom'] = p['TipMass']*p['BldFlexL']*p['BldFlexL']
     p['BElmntMass'] = p['MassB']*p['DRNodes'] # Mass of blade element
-    p['BldMass']   = sum(p['BElmntMass'])
-    p['FirstMom']  = sum(p['BElmntMass']*p['RNodes'])    # wrt blade root    
-    p['SecondMom'] = sum(p['BElmntMass']*p['RNodes']**2) # wrt blade root
+    p['BldMass']   = sum(p['BElmntMass'])                + p['TipMass']
+    p['FirstMom']  = sum(p['BElmntMass']*p['RNodes'])    + p['TipMass']*p['BldFlexL']               # wrt blade root    
+    p['SecondMom'] = sum(p['BElmntMass']*p['RNodes']**2) + p['TipMass']*p['BldFlexL']*p['BldFlexL'] # wrt blade root
     p['FMomAbvNd']  = np.zeros(n)
     # Integrate to find FMomAbvNd:
     for J in  np.arange(ED['BldNodes']-1,-1,-1): # Loop through the blade nodes / elements in reverse

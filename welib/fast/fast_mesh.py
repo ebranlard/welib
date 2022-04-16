@@ -3,8 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 class PointMesh:
-    def __init__(self, nPoints, name='mesh', RefPoint=None, Connectivity=None):
-        # NOTE: for now, using Fortran convention for memory order
+    def __init__(self, nPoints, name='mesh', Connectivity=None, RefPoint=None):
+        """
+        """
         self.Position        = np.zeros((nPoints, 3))
         self.TranslationDisp = np.zeros((nPoints, 3))
         self.TranslationVel  = np.zeros((nPoints, 3))
@@ -16,8 +17,9 @@ class PointMesh:
         self.Force           = np.zeros((nPoints, 3))
         self.Moment          = np.zeros((nPoints, 3))
         self.Connectivity = Connectivity
-        self.RefPoint     = RefPoint
         self.name         = name
+
+        self.RefPoint = RefPoint
 
         self.RefOrientation[:,:,:] = np.eye(3)
         self.Orientation   [:,:,:] = np.eye(3)
@@ -26,7 +28,7 @@ class PointMesh:
     def nNodes(self): 
         return self.Position.shape[0]
 
-    def rigidBodyMotion(self, u=(0,0,0), u_dot=(0,0,0), u_ddot=(0,0,0), theta=(0,0,0), omega=(0,0,0), omega_dot=(0,0,0), R_b2g=None, q=None, qd=None, qdd=None):
+    def rigidBodyMotion(self, RefPoint=None, u=(0,0,0), u_dot=(0,0,0), u_ddot=(0,0,0), theta=(0,0,0), omega=(0,0,0), omega_dot=(0,0,0), R_b2g=None, q=None, qd=None, qdd=None):
         """
         Apply a rigid body motion to the mesh:
         u         : translation     of reference point
@@ -35,11 +37,14 @@ class PointMesh:
         R_b2g     : rotation matrix from body 2 global
         omega     : rotational vel of body
         omega_dot : rotational acc of body
+        RefPoint: Define the reference point where the Rigid Body Motion is to be applied, very important parameter
         """
         from welib.yams.rotations import BodyXYZ_A, SmallRot_DCM
         # --- Default arguments
-        if self.RefPoint is None:
-            self.RefPoint = self.Position[0,:]
+        if RefPoint is None:
+            RefPoint = self.RefPoint
+            if RefPoint is None: 
+                raise Exception('Provide a reference point for rigid body motion')
 
         if q is not None:
             u         = np.array([q[0]   , q[1]   , q[2]])
@@ -61,7 +66,7 @@ class PointMesh:
         omega     = np.asarray(omega)
         omega_dot = np.asarray(omega_dot)
         # --- Motion
-        r_AB0  = (self.Position[:,:] - self.RefPoint)
+        r_AB0  = (self.Position[:,:] - RefPoint)
         r_AB   = (R_b2g.dot(r_AB0.T)).T
         om_x_r = (np.cross(omega, r_AB))
         self.TranslationDisp[:,:] = u + (r_AB - r_AB0)

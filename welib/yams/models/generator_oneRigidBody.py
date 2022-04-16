@@ -43,7 +43,7 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
     MOModels = ['B100000_moorO','B100010_moorO','B001000_moorO','B000010_moorO','B101010_moorO','B110111_moorO']# Mooring force at "M" point
 
     H0Models = ['B100010_hydro0','B001000_hydro0','B000010_hydro0','B101010_hydro0', 'B111111_hydro0']# Force at "0" point
-    HOModels = ['B100010_hydroO','B001000_hydroO','B000010_hydroO','B101010_hydroO']# Force at body origin
+    HOModels = ['B100010_hydroO','B001000_hydroO','B000010_hydroO','B101010_hydroO', 'B111111_hydroO']# Force at body origin
     if modelName in  H0Models+HOModels:
         # --- Hydro Dynamic Load
         model = get_model_one_body(modelName, linRot=False, orderMM=1, orderH=1, 
@@ -53,14 +53,18 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
         # Points
         z_B0= symbols('z_B0')
         P_0 = body.origin.locatenew('P_0', z_B0 * body.frame.z) # 0- sea level <<<< Measured from T
+        #P_0 = body.origin.locatenew('P_0', z_B0 * ref.frame.z) # 0- sea level <<<< Measured from T Does not work
+        #P_0 = body.origin.locatenew('P_0', z_B0*cos(phi_y) * body.frame.z - z_B0*sin(phi_y) * body.frame.x) # 0- sea level <<<< Measured from T Does not Work
         P_O = body.origin                                       # Body origin
         # Hydro force
         F_hx, F_hy, F_hz = dynamicsymbols('F_hx, F_hy, F_hz') # Hydrodynamic force, function to time 
         M_hx, M_hy, M_hz = dynamicsymbols('M_hx, M_hy, M_hz') # Hydrodynamic moment, function to time 
         if modelName.find('hydro0')>1:
             model.addForce(body,  P_0,        F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z)
-        else:
+        elif modelName.find('hydroO')>1:
             model.addForce(body,  P_O,        F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z)
+        else:
+            raise NotImplementedError()
         model.addMoment(body, body.frame, M_hx * ref.frame.x + M_hy * ref.frame.y + M_hz * ref.frame.z)
 
 #         extraSubs    =[(omega_x,0),(omega_y,0),(omega_z,0)]  # TODO TODO TODO

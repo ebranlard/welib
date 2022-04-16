@@ -252,13 +252,14 @@ class Test(unittest.TestCase):
 
 
     def test_blade_shapeIntegrals(self):
+        # Unfortunately, these values are for AdjBlMs=1...
         from welib.fast.elastodyn import bladeParameters
 
         np.set_printoptions(linewidth=300, precision=9)
 
         # --- Read data from NREL5MW Blade
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        p = bladeParameters(EDfilename)
+        p = bladeParameters(EDfilename, AdjBlMs=1)
         p['s_G0'][2,:] += p['HubRad']
         p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['Ut'], p['Vt'], p['Kt'], method='OpenFAST', EI=p['EI'])
 
@@ -324,7 +325,7 @@ class Test(unittest.TestCase):
 
         np.testing.assert_almost_equal(pg['K0omega'], sid.p['K0omega'])
 
-        np.testing.assert_almost_equal(IT['Ge'][0,1,2],220.06947247279106)
+        np.testing.assert_almost_equal(IT['Ge'][0,1,2],230.051823744)
 
 # 
 #         print(pg['K0t'].shape)

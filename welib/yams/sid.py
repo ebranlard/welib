@@ -673,7 +673,7 @@ def BeamShapes2SID(s_G, s_span, m, EI, U, dU, ddU, int_method='trapz', damping=N
 # --------------------------------------------------------------------------------}
 # --- FAST Blade 2 SID
 # --------------------------------------------------------------------------------{
-def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', startAtRoot=True, int_method='OpenFAST', consistency='OpenFAST'):
+def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', startAtRoot=True, int_method='OpenFAST', consistency='OpenFAST', AdjBlMs=None):
     """ 
     Create a SID of the Blade from an OpenFAST ElastoDyn file
     """
@@ -710,7 +710,7 @@ def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', sta
 
     elif method=='ShapeIntegral':
         # Extract relevant blade data
-        p = bladeParameters(ed_file)
+        p = bladeParameters(ed_file, AdjBlMs=AdjBlMs)
         if not startAtRoot:
             p['s_G0'][2,:] += p['HubRad']
         # TODO downselect modes
@@ -719,7 +719,7 @@ def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', sta
 
 
     elif method=='ShapeFunctions':
-        p = bladeParameters(ed_file)
+        p = bladeParameters(ed_file, AdjBlMs=AdjBlMs)
         #p = bladeDerivedParameters(p, inertiaAtBladeRoot=startAtRoot)
         if not startAtRoot:
             p['s_G0'][2,:] += p['HubRad']
@@ -770,7 +770,7 @@ def FASTTower2SID(ed_file, method='ShapeFunctions', gravity=None, RotMass=None, 
         from welib.yams.flexibility import shapeIntegrals
         # We need the blade parameters for now to get tower top mass...
         if RotMass is None:
-            prot, pbld = rotorParameters(ed_file, identicalBlades=False)
+            prot, pbld, phub = rotorParameters(ed_file, identicalBlades=False)
             RotMass = prot['RotMass']
         p = towerParameters(ed_file, RotMass=RotMass, gravity=gravity)
         # TODO downselect modes here
@@ -779,7 +779,7 @@ def FASTTower2SID(ed_file, method='ShapeFunctions', gravity=None, RotMass=None, 
     elif method=='ShapeFunctions':
         # We need the blade parameters for now to get tower top mass...
         if RotMass is None:
-            prot, pbld = rotorParameters(ed_file, identicalBlades=False)
+            prot, pbld, phub = rotorParameters(ed_file, identicalBlades=False)
             RotMass = prot['RotMass']
         p = towerParameters(ed_file, gravity, RotMass=RotMass)
         # TODO downselect modes here

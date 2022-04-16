@@ -12,10 +12,36 @@ MyDir=os.path.dirname(__file__)
 class TestED(unittest.TestCase):
     """ See examples/ for more examples """
 
-    def test_ED_blade_params(self):
+    def test_ED_rot_params(self):
         Gravity = 9.80665
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
-        p = bladeParameters(EDfilename) 
+        #p = bladeParameters(EDfilename, AdjBlMs=1)  # <<<<<<
+        prot,pbld,phub = rotorParameters(EDfilename)
+
+        # --- ElastoDyn Summary file
+        #  Rotor Mass            (kg)       109389.842
+        #  Rotor Inertia         (kg-m^2) 38677040.613
+        #  Mass                  (kg)        17536.614    17536.614    17536.614
+        #  Second Mass Moment    (kg-m^2) 11752352.265 11752352.265 11752352.265
+        #  First Mass Moment     (kg-m)     362132.653   362132.653   362132.653
+        #  Center of Mass        (m)            20.650       20.650       20.650
+        np.testing.assert_almost_equal(prot['RotMass'],        109389.842 , 3)
+        np.testing.assert_almost_equal(prot['RotIner'],      38677040.613 , 3)
+        np.testing.assert_almost_equal(pbld[0]['BldMass'],      17536.614 , 3)
+        np.testing.assert_almost_equal(pbld[0]['SecondMom'], 11752352.265 , 3)
+        np.testing.assert_almost_equal(pbld[0]['FirstMom'] ,   362132.653 , 3)
+        np.testing.assert_almost_equal(pbld[0]['BldCG'] ,           20.650, 3)
+
+
+
+
+    def test_ED_blade_params_NoBldAdj(self):
+        # 
+        # NOTE:  These parameters were obtained for AdjBlMs=1!!!
+        # Kept to avoid redoing all these tests..
+        Gravity = 9.80665
+        EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        p = bladeParameters(EDfilename, AdjBlMs=1)  # <<<<<<
         # Physical quantities / Inertias
         np.testing.assert_almost_equal(p['BldMass'], 16775.66975907849)
         np.testing.assert_almost_equal(p['FirstMom'], 346419.0832041095)
