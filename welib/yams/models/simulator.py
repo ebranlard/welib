@@ -52,6 +52,7 @@ class SimulatorFromOF():
         self.modelName=modelName
         if modelName is not None:
             self.loadPackage(modelName, packageDir)
+            self.WT.checkPackage(self.pkg)
 
     def loadPackage(self, modelName=None, packageDir='', packagePath=None):
         if modelName is not None:
@@ -201,6 +202,7 @@ class SimulatorFromOF():
 
 
     def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
+        from welib.tools.colors import python_colors
         # --- Simple Plot
         dfNL=self.dfNL
         dfLI=self.dfLI
@@ -225,12 +227,12 @@ class SimulatorFromOF():
             chan=df.columns[i+1]
             if dfNL is not None:
                 if chan in dfNL.columns:
-                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear')
+                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear', c=python_colors(0))
                 else:
                     print('Missing column in NL: ',chan)
             if dfLI is not None:
                 if chan in dfLI.columns:
-                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear')
+                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear', c=python_colors(1))
                 else:
                     print('Missing column in Lin: ',chan)
             if dfFS is not None:
@@ -278,7 +280,10 @@ class SimulatorFromOF():
         uop     = self.uop
         du      = self.du
         if zRef is None:
-            zRef =  self.p['z_B0'] # TODO TODO TODO WEIRD SHOULD BE -
+            if self.modelName[0]=='B':
+                zRef =  self.p['z_B0']
+            else:
+                zRef =  -self.p['z_OT'] 
         P_HDRef = np.array((0,0,0))
         P_EDRef = np.array((0,0,zRef))
 

@@ -229,6 +229,7 @@ def extractRNAInertia(fstFile, fastExe=None, workDir=None, method='fastlin', nAz
 
 
 def extractRigidBodyInertia(fstFile, fastExe=None, workDir=None, method='fastlin', nAzim=1, cleanUp=True, 
+        zeroInit=True,
         includeYawBearingMass=True, showOutputs=False, verbose=False, EDDict=None):
     """ 
     Compute the RigidBody inertia of an openfast model
@@ -244,6 +245,7 @@ def extractRigidBodyInertia(fstFile, fastExe=None, workDir=None, method='fastlin
       - includeYawBearingMass: if true, the yaw bearing mass will be included in the RNA mass.
       - showOutputs: show Outputs when running the fast executable, useful to debug
       - verbose: display some status on commands being run
+      - zeroInit: zero the initial conditions
       - EDDict: Additional dictionary to set values of ElastoDyn, e.g.
               EDDict={'PreCone(1)':-4, 'HubMass':0}
 
@@ -329,6 +331,26 @@ def extractRigidBodyInertia(fstFile, fastExe=None, workDir=None, method='fastlin
         if not includeYawBearingMass:
             ED['YawBrMass'] = 0
         ED['OutList']  = ['','PtfmTAxt', 'PtfmTAyt', 'PtfmTAzt', 'PtfmRAxt', 'PtfmRAyt', 'PtfmRAzt']
+        # Remove initial conditions
+        if zeroInit:
+            ED['OoPDefl']     = 0
+            ED['IPDefl']      = 0
+            ED['BlPitch(1)']  = 0
+            ED['BlPitch(2)']  = 0
+            ED['BlPitch(3)']  = 0
+            ED['TeetDefl']    = 0
+            ED['Azimuth']     = 0
+            ED['RotSpeed']    = 0
+            ED['NacYaw']      = 0
+            ED['TTDspFA']     = 0
+            ED['TTDspSS']     = 0
+            ED['PtfmSurge']   = 0
+            ED['PtfmSway']    = 0
+            ED['PtfmHeave']   = 0
+            ED['PtfmRoll']    = 0
+            ED['PtfmPitch']   = 0
+            ED['PtfmYaw']     = 0
+
         # Override ED
         if EDDict is not None:
             for k,v in EDDict.items():
@@ -343,7 +365,6 @@ def extractRigidBodyInertia(fstFile, fastExe=None, workDir=None, method='fastlin
     success, fail = runner.run_fastfiles(fstFiles, fastExe=fastExe, parallel=True, showOutputs=showOutputs, nCores=None, showCommand=verbose, reRun=True, verbose=verbose)
     if not success:
         raise Exception('Some simulation failed. Run with `showOutputs=True` to debug.')
-
     # --- Postprocess lin
     vmass  = []
     vJ_Ref = []

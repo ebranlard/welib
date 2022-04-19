@@ -10,7 +10,6 @@ from welib.yams.yams_sympy       import YAMSRigidBody, YAMSInertialBody, YAMSFle
 from welib.yams.yams_sympy_model import YAMSModel
 from welib.yams.models.FTNSB_sympy_symbols import *
 from welib.yams.models.utils import stiffness6DOF
-from welib.tools.tictoc import Timer
 
 
 _defaultOpts={
@@ -450,7 +449,8 @@ def get_model(model_name, **opts):
         #P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # Mooring      <<<< Measured from T
         P_M = twr.origin                                       # Mooring (transfered to tower origin)
         #P_M = twr.origin.locatenew('P_M', z_TM * fnd.frame.z) # <<<< Measured from T
-        P_0 = twr.origin.locatenew('P_0', z_T0 * fnd.frame.z) # 0- sea level <<<< Measured from T
+        #P_0 = twr.origin.locatenew('P_0', (-z_OT) * twr.frame.z) # 0- sea level <<<< Measured from T
+        P_0 = twr.origin.locatenew('P_0', (-z_OT) * fnd.frame.z) # 0- sea level <<<< Measured from T
         P_M.v2pt_theory(twr.origin, ref.frame, twr.frame); # PM & T are fixed in e_T
         P_0.v2pt_theory(twr.origin, ref.frame, twr.frame); # P0 & T are fixed in e_T
 
@@ -477,13 +477,27 @@ def get_model(model_name, **opts):
             #F_B = dynamicsymbols('F_B') # Buoyancy force
             F_hx, F_hy, F_hz = dynamicsymbols('F_hx, F_hy, F_hz') # Hydrodynamic force, function to time 
             M_hx, M_hy, M_hz = dynamicsymbols('M_hx, M_hy, M_hz') # Hydrodynamic moment, function to time 
-            #if modelName.find('hydro0'):
             fh = F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z
             Mh = M_hx * ref.frame.x + M_hy * ref.frame.y + M_hz * ref.frame.z
+            if model_name.find('hydroO')>1:
+                body_loads  += [(fnd, (P_O,  fh))] # NOTE: using P_O
+                print('>>> Adding hydro loads at Tower Origin')
+            else:
+                body_loads  += [(fnd, (P_0,  fh))] # NOTE: using P_0
+                print('>>> Adding hydro loads at Hydro 0-Point')
+            body_loads  += [(fnd, (fnd.frame, Mh))] 
 
-            body_loads  += [(fnd, (P_0,  fh))] # NOTE: using P_0
-            body_loads  += [(fnd, (ref.frame, Mh))] 
-            print('>>> Adding hydro loads')
+            ##P_0 = body.origin.locatenew('P_0', z_B0 * ref.frame.z) # 0- sea level <<<< Measured from T Does not work
+            ##P_0 = body.origin.locatenew('P_0', z_B0*cos(phi_y) * body.frame.z - z_B0*sin(phi_y) * body.frame.x) # 0- sea level <<<< Measured from T Does not Work
+            ## Hydro force
+            #if modelName.find('hydro0')>1:
+            #    model.addForce(body,  P_0,        F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z)
+            #elif modelName.find('hydroO')>1:
+            #    model.addForce(body,  P_O,        F_hx * ref.frame.x + F_hy * ref.frame.y + F_hz * ref.frame.z)
+            #else:
+            #    raise NotImplementedError()
+            #model.addMoment(body, body.frame, M_hx * ref.frame.x + M_hy * ref.frame.y + M_hz * ref.frame.z)
+
 
         # Gravity
         body_loads  += [(fnd,grav_F)]

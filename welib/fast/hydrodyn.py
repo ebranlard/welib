@@ -223,7 +223,7 @@ class HydroDyn:
         NOTE: only Morison for now
         """
         from welib.system.linearization import numerical_jacobian
-        print('Computing HydroDyn linearized model...')
+        print('Computing HydroDyn linearized model, about: ({:.3f} {:.3f} {:.3f} {:.3f} {:.3f} {:.3f})'.format(*q0))
         uMesh = self.u['Morison']['Mesh']
         if RefPointMotion is None:
             RefPointMotion = uMesh.RefPoint
@@ -276,8 +276,6 @@ class HydroDyn:
         if self._graph is None:
             self._graph = self.File.toGraph()
         return copy.deepcopy(self._graph)
-
-
 
 
     def elementDivisions(self, e):

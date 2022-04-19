@@ -13,7 +13,8 @@ def generateModel(modelName, packageDir='py', texDir='tex', fullPage=True,
         smallAngles=None,
         aero_forces=True,
         moor_loads=True,
-        hydro_loads=True
+        hydro_loads=True,
+        silentTimer=True
         ):
     """
     Generate python package for typical models
@@ -43,6 +44,8 @@ def generateModel(modelName, packageDir='py', texDir='tex', fullPage=True,
             opts['hydro_loads']  = hydro_loads
             if modelName.find('noHydro')>1:
                 opts['hydro_loads']  = False
+            elif modelName.find('hydro')>1:
+                opts['hydro_loads']  = True
             if modelName.find('noMoor')>1:
                 opts['moor_loads']  = False
         opts['mergeFndTwr']  =  modelName.find('_fnd')<=0
@@ -65,7 +68,7 @@ def generateModel(modelName, packageDir='py', texDir='tex', fullPage=True,
     # Export
     pkgName = os.path.join(packageDir,modelName)
     texName = os.path.join(texDir,modelName)
-    model.exportPackage(path=pkgName, extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex=texName, fullPage=fullPage)
+    model.exportPackage(path=pkgName, extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex=texName, fullPage=fullPage, silentTimer=silentTimer)
 
 if __name__ == '__main__':
     pass

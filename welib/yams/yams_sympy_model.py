@@ -688,38 +688,37 @@ def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs
     qd  = [qi.diff(dynamicsymbols._t) for qi in q]
     qdd = [qdi.diff(dynamicsymbols._t) for qdi in qd]
 
-    with Timer('Linearization',True,silent=True):
-        # NOTE: order important
-        op_point0=[]
-        if noAcc: 
-            op_point0=[(qddi,0) for qddi in qdd]
-        if noVel: 
-            op_point0=[(qdi,0) for qdi in qd]
-        op_point= op_point0+op_point # order might matter
-        print('>>> TODO sort op point so that diff wrt time are first, or do the trick with symbols')
-        # use if isinstance sympy.core.function.Derivative
-    
-        # --- Inputs are dynamic symbols that are not coordinates
-        if u is None:
-            u = findInputs(EOM, q)
-        # KEEP ME Alternative
-        #M, A, B = linearizer.linearize(op_point=op_point ) #o
+    # NOTE: order important
+    op_point0=[]
+    if noAcc: 
+        op_point0=[(qddi,0) for qddi in qdd]
+    if noVel: 
+        op_point0=[(qdi,0) for qdi in qd]
+    op_point= op_point0+op_point # order might matter
+    print('>>> TODO sort op point so that diff wrt time are first, or do the trick with symbols')
+    # use if isinstance sympy.core.function.Derivative
 
-        #print('>>>> op_point',op_point)
-        #print('>>>> extraSubs',extraSubs)
-        M =-EOM.jacobian(qdd).subs(extraSubs).subs(op_point)
-        C =-EOM.jacobian(qd ).subs(extraSubs).subs(op_point)
-        K =-EOM.jacobian(q  ).subs(extraSubs).subs(op_point)
-        #M =-EOM.jacobian(qdd).subs(extraSubs)
-        #C =-EOM.jacobian(qd ).subs(extraSubs)
-        #K =-EOM.jacobian(q  ).subs(extraSubs)
-        #M =subs_no_diff(M, op_point)
-        #C =subs_no_diff(C, op_point)
-        #K =subs_no_diff(K, op_point)
-        if len(u)>0:
-            B = EOM.jacobian(u).subs(extraSubs).subs(op_point)
-        else:
-            B=Matrix([])
+    # --- Inputs are dynamic symbols that are not coordinates
+    if u is None:
+        u = findInputs(EOM, q)
+    # KEEP ME Alternative
+    #M, A, B = linearizer.linearize(op_point=op_point ) #o
+
+    #print('>>>> op_point',op_point)
+    #print('>>>> extraSubs',extraSubs)
+    M =-EOM.jacobian(qdd).subs(extraSubs).subs(op_point)
+    C =-EOM.jacobian(qd ).subs(extraSubs).subs(op_point)
+    K =-EOM.jacobian(q  ).subs(extraSubs).subs(op_point)
+    #M =-EOM.jacobian(qdd).subs(extraSubs)
+    #C =-EOM.jacobian(qd ).subs(extraSubs)
+    #K =-EOM.jacobian(q  ).subs(extraSubs)
+    #M =subs_no_diff(M, op_point)
+    #C =subs_no_diff(C, op_point)
+    #K =subs_no_diff(K, op_point)
+    if len(u)>0:
+        B = EOM.jacobian(u).subs(extraSubs).subs(op_point)
+    else:
+        B=Matrix([])
     return M,C,K,B,u
 
 

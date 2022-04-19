@@ -140,9 +140,9 @@ class WindTurbineStructure():
         except:
             p['g']        = WT.ED['Gravity']
 
+        p['M_B']      = WT.WT_rigid.mass # useful for hydro Fz
         if flavor=='onebody':
             # One body for all turbine
-            p['M_B']      = WT.WT_rigid.mass
             p['x_BG']     = WT.WT_rigid.masscenter[0]  # From body origin to body COG
             p['y_BG']     = WT.WT_rigid.masscenter[1]
             p['z_BG']     = WT.WT_rigid.masscenter[2]
@@ -611,7 +611,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]', 'qdd_channel':'QD2_TSS1_[m/s^2]'}]
 
     DOFs+=[{'name':'theta_y','active':ED['YawDOF']  , 'q0': ED['NacYaw']*np.pi/180   , 'qd0':0 ,          'q_channel':'NacYaw_[deg]' , 'qd_channel':'QD_Yaw_[rad/s]', 'qdd_channel':'QD2_Yaw_[rad/s^2]'}]
-    DOFs+=[{'name':'psi'    ,'active':ED['GenDOF']  , 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]', 'qdd_channel': 'QD2_GeAzi_[rad/s^2]'}]
+    DOFs+=[{'name':'psi'    ,'active':ED['GenDOF']  , 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]', 'qdd_channel': 'QD2_GeAz_[rad/s^2]'}]
 
     DOFs+=[{'name':'nu'     ,'active':ED['DrTrDOF'] , 'q0': 0  , 'qd0':0 , 'q_channel':'Q_DrTr_[rad]', 'qd_channel':'QD_DrTr_[rad/s]', 'qdd_channel':'QD2_DrTr_[rad/s^2]'}]
 
