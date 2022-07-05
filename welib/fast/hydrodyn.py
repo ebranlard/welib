@@ -207,7 +207,10 @@ class HydroDyn:
 
     def linearize_RigidMotion2Loads(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, 
             RefPointMotion=None, RefPointMapping=None,
-            optsM=None, saveFile=None):
+            moveWithOP=True,
+            optsM=None, saveFile=None,
+            around=None
+            ):
         """ 
         Linearize the outputs force at the reference point with respect to
            motions of the reference point (assuming rigid body motion of the structure)
@@ -242,8 +245,11 @@ class HydroDyn:
             self.calcOutput(t=0, u=self.u, y=self.y, optsM=p)
             # Compute integral loads (force&moment) at the reference point (translated but not rotated)
             fh=np.zeros(6)
-            MappintPoint = RefPointMapping + np.array([q[0],q[1],q[2]])
-            fh[:3], fh[3:] = self.y['Morison']['Mesh'].mapLoadsToPoint(MappintPoint)
+            if moveWithOP:
+                MappingPoint = RefPointMapping + np.array([q[0],q[1],q[2]])
+            else:
+                MappingPoint = RefPointMapping
+            fh[:3], fh[3:] = self.y['Morison']['Mesh'].mapLoadsToPoint(MappingPoint)
             return fh
 
         # --- Operating point and perturbation sizes
@@ -258,13 +264,19 @@ class HydroDyn:
         if dqd is None:
             dqd  = [0.01]*3 + [0.01]*3
         if dqdd is None:
-            dqdd = [0.1]*3  + [.1]*3
+            dqdd = [0.1]*3  + [0.1]*3
 
         # --- Linearization
         f0 = fh(q0,qd0,qdd0, optsM)
         Kall = -numerical_jacobian(fh, (q0,qd0,qdd0), 0, dq  , optsM)
         Call = -numerical_jacobian(fh, (q0,qd0,qdd0), 1, dqd , optsM)
         Mall = -numerical_jacobian(fh, (q0,qd0,qdd0), 2, dqdd, optsM)
+
+        if around is not None:
+            Kall=np.around(Kall,around)
+            Call=np.around(Call,around)
+            Mall=np.around(Mall,around)
+            f0  =np.around(f0,around)
 
 
         return Mall, Call, Kall, f0
