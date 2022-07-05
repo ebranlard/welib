@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy.linalg import expm
 
 def EstimateKFTimeStep(u1,y1,z0,Xxd,Xud,Yx,Yu,P0,Q,R): 
@@ -10,7 +11,7 @@ def EstimateKFTimeStep(u1,y1,z0,Xxd,Xud,Yx,Yu,P0,Q,R):
       z0: Kalman state estimate at time n-1
     OUTPUTS:
       z1: States at time n
-      P1: Process covariance at time n
+      P1: Process covariance at time n  (nx x nx)
       Kk: Kalman gain
 
      Equations number are compared to the following reference:
@@ -19,7 +20,7 @@ def EstimateKFTimeStep(u1,y1,z0,Xxd,Xud,Yx,Yu,P0,Q,R):
     # estimate next step
     z1m   = Xxd.dot(z0)  + Xud.dot(u1)
     y1hat = Yx.dot(z1m)  + Yu.dot(u1)
-    P1m   = (Xxd.dot(P0)).dot(Xxd.T) + Q
+    P1m   = (Xxd.dot(P0)).dot(Xxd.T) + Q  # (nx x nx)
     
     # Calculate Kalman gain
     # same as Lk from [1] - And their Rtilde_k is G*P1m*G'+R
@@ -49,6 +50,8 @@ def KFDiscretize(Xx,Xu,dt,method='exponential'):
     OUTPUTS:
        Xxd,Xud, disrete versions of Xx and Xu
     """
+    Xx = np.asarray(Xx)
+    Xu = np.asarray(Xu)
     # --- A matrix
     if method=='exponential':
         # Using matrix exponential directly
@@ -184,6 +187,17 @@ def EmptyStateMat(nX,nU,nY):
     Xu = np.zeros((nX,nU)) # Xu 
     Yu = np.zeros((nY,nU)) # Jc 
     return Xx,Xu,Yx,Yu
+
+def EmptyStateDF(nX,nU,nY,sX,sU,sY):
+    """ Returns state matrices with proper dimensions, filled with 0 """
+    Xx,Xu,Yx,Yu = EmptyStateMat(nX,nU,nY)
+    Xx = pd.DataFrame(data=Xx, index=sX, columns=sX)
+    Xu = pd.DataFrame(data=Xu, index=sX, columns=sU)
+    Yx = pd.DataFrame(data=Yx, index=sY, columns=sX)
+    Yu = pd.DataFrame(data=Yu, index=sY, columns=sU)
+    return Xx,Xu,Yx,Yu
+
+
 
 def EmptySystemMat(nDOF_2nd, nY, nP=None, nU=None):
     """ Returns matrices with proper dimensions, filled with 0
