@@ -5,16 +5,18 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import importlib
 # Local
-from welib.yams.windturbine import FASTWindTurbine
 import welib.weio as weio
 from welib.weio.fast_output_file import writeDataFrame
+from welib.yams.windturbine import FASTWindTurbine
+from welib.yams.models.packman import loadPackage
 
 
 # --------------------------------------------------------------------------------}
 # --- Helper functions 
 # --------------------------------------------------------------------------------{
+
+
 def _loadOFOut(filename, tMax=None):
     ext = os.path.splitext(filename)[1].lower()
     if ext=='.fst':
@@ -30,7 +32,59 @@ def _loadOFOut(filename, tMax=None):
         dfFS=dfFS[dfFS['Time_[s]']<tMax]
     time =dfFS['Time_[s]'].values
     return dfFS, time
+
+
+def hydroMatToSysMat(M, su, sq=None):
+    """ 
+    Returns a dataframe with row "su" and columns "sq", filling in the 6x6 hydro matrix where necessary
+    """
+    # Create an empty dataframe with relevant columns/index
+    if sq is None:
+        Mout = pd.DataFrame(data=np.zeros(len(su)), index=su)
+        # Transform matrix to a dataframe
+        M = pd.DataFrame(data=M, index=['F_hx','F_hy','F_hz','M_hx','M_hy','M_hz'])
+    else:
+        Mout = pd.DataFrame(data=np.zeros((len(su),len(sq))), index=su, columns=sq)
+        # Transform matrix to a dataframe
+        M = pd.DataFrame(data=M, columns=['x','y','z','phi_x','phi_y','phi_z'], index=['F_hx','F_hy','F_hz','M_hx','M_hy','M_hz'])
+
+    # Columns and rows that are part of the 6x6
+    if sq is not None:
+        sq_h = [s for s in sq if s in M.columns]
+    su_h = [s for s in su if s in M.index]
+
+    # Extract relevant hydro matrix
+    if sq is None:
+        Mh = M.loc[su_h]
+        Mout.loc[su_h] = Mh
+    else:
+        Mh = M.loc[su_h,sq_h]
+        Mout.loc[su_h,sq_h] = Mh
+    return Mout
     
+def moorMatToSysMat(M, sq=None):
+    """ 
+    Returns a dataframe with row "sq" and columns "sq", filling in the 6x6 mooring matrix where necessary
+    """
+    # Create an empty dataframe with relevant columns/index
+    sq6 = ['x','y','z','phi_x','phi_y','phi_z']
+    if sq is None:
+        Mout = pd.DataFrame(data=np.zeros((len(sq),len(sq))), index=sq, columns=sq)
+        # Transform matrix to a dataframe
+        M = pd.DataFrame(data=M, index=sq6, columns=sq6)
+    else:
+        Mout = pd.DataFrame(data=np.zeros((len(sq),len(sq))), index=sq, columns=sq)
+        # Transform matrix to a dataframe
+        M = pd.DataFrame(data=M, columns=sq6, index=sq6)
+
+    # Columns and rows that are part of the 6x6
+    if sq is not None:
+        sq_h = [s for s in sq if s in M.columns]
+
+    # Extract relevant sub matrix
+    Mh = M.loc[sq_h,sq_h]
+    Mout.loc[sq_h,sq_h] = Mh
+    return Mout
 
 
 # --------------------------------------------------------------------------------}
@@ -45,6 +99,7 @@ class SimulatorFromOF():
             self.fstFilename = WT.FST.filename
         else:
             self.WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)  # TODO
+            self.fstFilename = fstFilename
 
         self.dfNL = None
         self.dfLI = None
@@ -55,16 +110,18 @@ class SimulatorFromOF():
             self.WT.checkPackage(self.pkg)
 
     def loadPackage(self, modelName=None, packageDir='', packagePath=None):
-        if modelName is not None:
-            packagePath = os.path.join(packageDir, modelName)+'.py'
-        else:
-            modelName = os.path.basename(packagePath)
-        spec = importlib.util.spec_from_file_location(modelName, packagePath)
-        if spec is None:
-            raise Exception('Package not found: ',packagePath)
-        print('>>> Loading package', packagePath)
-        self.pkg = spec.loader.load_module()
-        self.info = self.pkg.info()
+        pkg, packagePath=loadPackage(modelName=modelName, packageDir=packageDir, packagePath=packagePath)
+        self.pkg          = pkg
+        self._packagePath = packagePath
+        self.info         = self.pkg.info()
+
+    def unloadPackage(self):
+        self.pkg=None
+        self.info=None
+
+    def reloadPackage(self):
+        self.unloadPackage()
+        self.loadPackage(packagePath=self._packagePath)
 
     def setupSim(self, outFile=None, tMax=None, **kwargs):
         # --- Load Reference simulation
@@ -78,7 +135,10 @@ class SimulatorFromOF():
 
         # --- Initial parameters
         #p = WT.yams_parameters(flavor='onebody', J_at_Origin=True) # TODO TODO Change for B or F
-        self.p = self.WT.yams_parameters(**kwargs)
+        if self.modelName[0]=='B':
+            self.p = self.WT.yams_parameters(flavor='onebody',**kwargs)
+        else:
+            self.p = self.WT.yams_parameters(**kwargs)
 
         return self.time, self.dfFS, self.p
 
@@ -137,7 +197,15 @@ class SimulatorFromOF():
         self.qop = qop
         self.qdop = qdop
 
-    def simulate(self, out=False, prefix='', NL=True, Lin=True, MCKextra=None, MCKu=None, calcOutput=True):
+
+
+    def linmodel(self, MCKextra=None, MCKu=None, noBlin=False):
+        # --- Time Integration
+        sysLI = self.WT.py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop, MCKextra=MCKextra, MCKu=MCKu, noBlin=noBlin)
+        return sysLI
+
+
+    def simulate(self, out=False, prefix='', NL=True, Lin=True, MCKextra=None, MCKu=None, calcOutput=True, noBlin=False):
         dfNL = None
         dfLI = None
         if calcOutput:
@@ -145,7 +213,7 @@ class SimulatorFromOF():
             forcing=False
         # --- Time Integration
         if Lin:
-            resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop, MCKextra=MCKextra, MCKu=MCKu, acc=acc, forcing=forcing)
+            resLI, sysLI, dfLI = self.WT.simulate_py_lin(self.pkg, self.p, self.time, uop=self.uop, du=self.du, qop=self.qop, qdop=self.qdop, MCKextra=MCKextra, MCKu=MCKu, acc=acc, forcing=forcing, noBlin=noBlin)
         if NL:
             resNL, sysNL, dfNL = self.WT.simulate_py    (self.pkg, self.p, self.time, u=self.u, acc=acc, forcing=forcing)
 
@@ -204,14 +272,16 @@ class SimulatorFromOF():
     def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
         from welib.tools.colors import python_colors
         # --- Simple Plot
-        dfNL=self.dfNL
-        dfLI=self.dfLI
-        if dfLI is None:
+        dfNL = self.dfNL
+        dfLI = self.dfLI
+        dfFS = self.dfFS
+        if dfLI is None and dfNL is None:
+            df = dfFS
+        elif dfLI is None:
             df = dfNL
         else:
             df = dfLI
 
-        dfFS=self.dfFS
         if fig is None:
             fig,axes = plt.subplots(int(np.ceil((len(df.columns)-1)/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
         else:

@@ -112,21 +112,27 @@ class WindTurbineStructure():
     @property
     def channels(self):
         """ """
-#         for dof in self.DOF:
-#             if dof['q_channel'] is None:
-#                 chan.append(dof['name'])
-#             elif hasattr(dof['q_channel'] , __len__):
-# 
-#             if 
-        chan = [dof['q_channel']  if dof['q_channel']  is not None else dof['name']     for dof in self.DOF if dof['active']]
-        chan+= [dof['qd_channel'] if dof['qd_channel'] is not None else 'd'+dof['name'] for dof in self.DOF if dof['active']]
+        chan = self.pos_channels
+        chan+= self.vel_channels
         return chan
+
+    @property
+    def pos_channels(self):
+        """ """
+        return [dof['q_channel']  if dof['q_channel']  is not None else dof['name']     for dof in self.DOF if dof['active']]
+        
+    @property
+    def vel_channels(self):
+        return [dof['qd_channel'] if dof['qd_channel'] is not None else 'd'+dof['name'] for dof in self.DOF if dof['active']]
 
     @property
     def acc_channels(self):
         return [dof['qdd_channel'] if dof['qdd_channel'] is not None else 'dd'+dof['name'] for dof in self.DOF if dof['active']]
 
-    def yams_parameters(self, flavor='allbodies', J_at_Origin=True):
+    def yams_parameters(self, flavor='allbodies', 
+            J_at_Origin=True,
+            MoorAtRef=True,
+            ):
         """ 
         Export parameters needed by yams based on WT bodies
         INPUTS:
@@ -141,6 +147,7 @@ class WindTurbineStructure():
             p['g']        = WT.ED['Gravity']
 
         p['M_B']      = WT.WT_rigid.mass # useful for hydro Fz
+        p['tilt']     =-WT.ED['ShftTilt']*np.pi/180 # in rad
         if flavor=='onebody':
             # One body for all turbine
             p['x_BG']     = WT.WT_rigid.masscenter[0]  # From body origin to body COG
@@ -174,6 +181,12 @@ class WindTurbineStructure():
                 p['J_yx_B']   = p2['J_yx_BG']
                 p['J_zx_B']   = p2['J_zx_BG']
                 p['J_zy_B']   = p2['J_zy_BG']
+            p['z_OT']     = WT.twr.pos_global[2]         # distance from "Origin" (MSL) to tower base
+
+            # IMU
+            p['x_BI'] = WT.ED['NcIMUxn']
+            p['y_BI'] = WT.ED['NcIMUyn']
+            p['z_BI'] = WT.ED['NcIMUzn'] + WT.ED['TowerHt'] - WT.ED['PtfmRefzt'] # TODO or PtfmRefzt?
 
         if flavor in ['allbodies']:
             p['z_FG']     = WT.fnd.masscenter[2]
@@ -181,7 +194,6 @@ class WindTurbineStructure():
             p['J_xx_F']   = WT.fnd.masscenter_inertia[0,0]
             p['J_yy_F']   = WT.fnd.masscenter_inertia[1,1]
             p['J_zz_F']   = WT.fnd.masscenter_inertia[2,2]
-            p['tilt']     =-WT.ED['ShftTilt']*np.pi/180 # in rad
             p['x_NR']     = WT.r_NR_inN[0]                    # x-coord from N to R in nac-coord
             p['z_NR']     = WT.r_NR_inN[2]                    # z-coord from N to R in nac-coord
             p['x_RNAG']   = WT.RNA.masscenter[0]            # x-coord from N to RNA_G in nac-coord
@@ -202,6 +214,7 @@ class WindTurbineStructure():
             p['Gr_T']     = WT.twr.Gr
             p['Ge_T']     = WT.twr.Ge
             p['MM_T']     = WT.twr.MM
+            p['u_xT1c']   = 1 # TODO remove in equations
             p['v_yT1c']   = WT.twr.Bhat_t_bc[1,0]  # Mode 1  3 x nShapes
             p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
             p['DD_T']     = WT.twr.DD
@@ -235,6 +248,11 @@ class WindTurbineStructure():
             p['DD_B']     = WT.bld[0].DD
             p['KK_B']     = WT.bld[0].KK
             p['MM1_B']    = np.array(WT.bld[0].MM1)
+
+            # IMU
+            p['x_TI'] = WT.ED['NcIMUxn']
+            p['y_TI'] = WT.ED['NcIMUyn']
+            p['z_TI'] = WT.ED['NcIMUzn'] 
 
             # Flap 1
     #         p['MM_B'][6,6] =  9.249926E+02
@@ -280,7 +298,10 @@ class WindTurbineStructure():
 #   0.000000E+00  0.000000E+00  9.337225E+01
 
         # Mooring restoring
-        if flavor in ['allbodies']:
+        if flavor=='onebody':
+            p['z_BM']      = 0
+        elif flavor in ['allbodies']:
+            p['z_BM']      = 0
             p['z_TM']      = 0
             p['K_x_M']     = 0
             
@@ -288,13 +309,34 @@ class WindTurbineStructure():
             p['K_phi_x_M'] = 0
             p['K_phi_y_M'] = 0
             p['K_phi_z_M'] = 0
-
-        # Buoyancy
-        if flavor=='onebody':
-            print('>>> TODO Buoyancy point')
-            p['z_BB']      = 0
+        if WT.MAP is not None:
+            if WT.MAP._K_lin is None:
+                if MoorAtRef:
+                    K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,p['z_OT']))
+                else:
+                    K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,0))
+            else:
+                K_Moor = WT.MAP._K_lin
+            for i in range(6):
+                for j in range(6):
+                    if j>=i:
+                        p['KM_{}{}'.format(i,j)] = K_Moor[i,j] # TODO the best is to add it to the stiffness matrix..
         else:
-            p['z_TB']      = 0
+            for i in range(6):
+                for j in range(6):
+                    if j>=i:
+                        p['KM_{}{}'.format(i,j)] = 0
+
+
+        p['z_T0'] = -p['z_OT'] # TODO get rid of it
+
+        ## Buoyancy
+        #if flavor=='onebody':
+        #    print('>>> TODO Buoyancy point')
+        #    p['z_BB']      = 0
+        #else:
+        #    p['z_TB']      = 0
+
         return p
 
     def checkPackage(self, pkg):
@@ -307,144 +349,55 @@ class WindTurbineStructure():
 
     def simulate_py(self, pkg, p, time, u=None, acc=False, forcing=False):
         """ Perform non-linear simulation based on a `model` (python package) generated by yams_sympy """
-        from welib.system.mech_system import MechSystem
-
-        print('---------------------- NON LINEAR SIMULATION --------------------------------')
+        from welib.yams.models.packman import simulate
 
         # --- Checking package info
         self.checkPackage(pkg)
-        info = pkg.info()
 
-        # --- Initial conditions
+        print('---------------------- NON LINEAR SIMULATION --------------------------------')
         q0  = self.q0
         qd0 = self.qd0
-        print('q0 :',q0)
-        print('qd0:',qd0)
-
-
-        # --- Non linear
-        if u is None:
-            u=dict()
-        for key in info['su']:
-            if key in u.keys():
-                print('[INFO] windturbine.py  u[{}] set by user'.format(key))
-            else:
-                # TODO get it from ref simulation
-                print('[WARN] windturbine.py: u[{}] set to 0'.format(key))
-                u[key]= lambda t,q=None,qd=None: 0
-	# Test to see if model works
-        t=0
-        MM0      = pkg.mass_matrix(q0,p)
-        forcing0 = pkg.forcing(t,q0,qd0,p,u)
-
-        # --- integrate non-linear system
-        fM = lambda x: pkg.mass_matrix(x, p)
-        fF = lambda t,x,xd: pkg.forcing(t, x, xd, p=p, u=u)
-        sysNL = MechSystem(fM, F=fF, x0=q0, xdot0=qd0 )
-        #print(sysNL)
-        resNL = sysNL.integrate(time, method='RK45')
-        sysNL._M0       = MM0
-        sysNL._forcing0 = forcing0.ravel()
-
-        # --- Convert to dataframe
-        dfNL = sysNL.toDataFrame(self.channels, self.FASTDOFScales, acc=acc, forcing=forcing, sAcc=self.acc_channels)
-
+        resNL, sysNL, dfNL = simulate(pkg, time, q0, qd0=qd0, p=p, u=u, acc=acc, forcing=forcing, 
+                DOFs=self.channels, Factors=self.FASTDOFScales, sAcc=self.acc_channels)
         print('-----------------------------------------------------------------------------')
 
         return resNL, sysNL, dfNL
 
-    def simulate_py_lin(self, pkg, p, time, uop=None, qop=None, qdop=None, du=None, MCKextra=None, MCKu=None, acc=False, forcing=False):
+
+    def py_lin(self, pkg, p, time, uop=None, qop=None, qdop=None, du=None, MCKextra=None, MCKu=None, noBlin=False):
         """ Perform linear simulation based on a model (python package) generated by yams_sympy """
-        from welib.system.mech_system import MechSystem
-        from welib.tools.signal_analysis import interpArray
+        # TODO TODO TODO MOVE ME TO packman
+        from welib.yams.models.packman import linearModel
+        print('-------------------------- LINEAR SIMULATION --------------------------------')
+        # --- Checking package info
+        self.checkPackage(pkg)
+        if qop is None:
+            qop = self.q0*0 
+        if qdop is None:
+            qdop= self.qd0*0 
+        # --- Initial conditions (of pertubations)
+        dq0  = self.q0  - qop
+        dqd0 = self.qd0 - qdop
+
+        sysLI = linearModel(pkg, p, dq0=dq0, dqd0=dqd0, time=time, uop=uop, qop=qop, qdop=qdop, du=du, MCKextra=MCKextra, MCKu=MCKu, noBlin=noBlin,
+                sX=self.q_channels, sXd=self.qd_channels)
+        print('-----------------------------------------------------------------------------')
+        return sysLI
+
+
+    def simulate_py_lin(self, pkg, p, time, uop=None, qop=None, qdop=None, du=None, MCKextra=None, MCKu=None, acc=False, forcing=False, noBlin=False):
+        """ Perform linear simulation based on a model (python package) generated by yams_sympy """
         print('-------------------------- LINEAR SIMULATION --------------------------------')
         # --- Checking package info
         self.checkPackage(pkg)
         info = pkg.info()
 
-        # --- Operating point
-        if qop is None:
-            qop = self.q0*0   # TODO
-        if qdop is None:
-            qdop= self.qd0*0  # TODO
-        if uop is None:
-            print('[WARN] simulate_py_lin: Setting all input operating points to 0')
-            uop=dict() # Inputs at operating points
-            for key in info['su']:
-                uop[key]= 0 
-        if du is None:
-            print('[WARN] simulate_py_lin: Setting all input time series to 0')
-            nu = len(info['su'])
-            du = np.zeros((nu, len(time)))
+        # --- Getting linear model
+        #sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=dq0, xdot0=dqd0)
+        sysLI = self.py_lin(pkg, p, time, uop=uop, qop=qop, qdop=qdop, du=du, MCKextra=MCKextra, MCKu=MCKu, noBlin=noBlin)
 
-        # --- Initial conditions (of pertubations)
-        dq0  = self.q0  - qop
-        dqd0 = self.qd0 - qdop
-        print('q0  :',self.q0)
-        print('qd0 :',self.qd0)
-        print('qop :',qop)
-        print('qdop:',qdop)
-        print('uop: ',uop)
-        #print('dq0 :',dq0)
-        #print('dqd0:',dqd0)
-        #print('DOFScales:',self.FASTDOFScales)
-
-        # --- Evaluate linear structural model at operating point
-        M_lin   = pkg.M_lin(qop,p)
-        C_lin   = pkg.C_lin(qop,qdop,p,uop)
-        K_lin   = pkg.K_lin(qop,qdop,p,uop) 
-        B_lin   = pkg.B_lin(qop,qdop,p,uop)
-
-        # --- Integrate linear system
-        if MCKextra is not None:
-            Me, Ce, Ke = MCKextra
-            M_lin += Me
-            C_lin += Ce
-            K_lin += Ke
-
-        print('B_lin\n',B_lin)
-        if MCKu is not None:
-            Mu, Cu, Ku = MCKu
-            M_lin += B_lin.dot(Mu)
-            C_lin += B_lin.dot(Cu)
-            K_lin += B_lin.dot(Ku)
-            Z = np.zeros(B_lin.shape[0])
-            fF  = lambda t,x=None,xd=None: Z
-
-        else:
-            fF  = lambda t,x=None,xd=None: B_lin.dot( interpArray(t, time, du) )
-
-        fdu = lambda t,x=None,xd=None: interpArray(t, time, du)
-
-        forcing0=fF(0)
-
-        sysLI = MechSystem(M=M_lin, K=K_lin, C=C_lin, F=fF, x0=dq0, xdot0=dqd0)
-        #print(sysLI)
-        #print('nu',nu)
-        #print('du',du)
-        #print('fF',fF(0))
-        #print('fF',fF(0,dq0))
+        # --- Setup Mech system (for time integration)
         resLI=sysLI.integrate(time, method='RK45') # **options):
-        sysLI._B    = B_lin
-        sysLI._qop  = qop
-        sysLI._qdop = qdop
-        sysLI._uop  = uop
-        sysLI._forcing0  = forcing0.ravel()
-
-
-        # --- Print linearized mass damping 
-        #     print('--------------------')
-        #     print('Linear Mass Matrix: ')
-        #     print(M_lin)
-        #     print('--------------------')
-        #     print('Linear Damping Matrix: ')
-        #     print(C_lin)
-        #     print('--------------------')
-        #     print('Linear Stifness Matrix: ')
-        #     print(K_lin)
-        #     print('--------------------')
-        #     print('Linear RHS: ')
-        #     print(B_lin)
 
         # --- Convert to dataframe
         dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
@@ -496,7 +449,8 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
         except:
             raise Exception('Variable gravity not found in FST file or ED file.')
 
-    r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ]) 
+    r_EPtfm_inE = np.array([0,0,ED['PtfmRefzt']               ])  # TODO TODO TODO
+    r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ])  # TODO TODO TODO
     r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
     # Basic geometries for nacelle
     theta_tilt_y = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST
@@ -593,7 +547,22 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     RNAb = copy.deepcopy(RNA)
     RNAb.pos_global = r_TN_inT+r_ET_inE
     RNAb.R_b2g      = np.eye(3)
-    WT_rigid = RNAb.combine(twr_rigid, r_O=r_ET_inE).combine(fnd, r_O=r_ET_inE)
+    WT_rigid = RNAb.combine(twr_rigid, r_O=r_ET_inE).combine(fnd, r_O=r_ET_inE) # TODO T or Ptfm
+    #WT_rigid = RNAb.combine(twr_rigid, r_O=r_EPtfm_inE).combine(fnd, r_O=r_EPtfm_inE) # TODO T or Ptfm
+
+    # --- Moorings
+    MAP = None
+    if FST['CompMooring']==1:
+        from welib.moor.mappp import Map
+#         try:
+
+        dllFileName = 'C:/W0/Work/2018-NREL/FAST/_Modules/MAP++/map-plus-plus-ebra/src/libmap-1.30.00.dll'
+        MAP = Map(fstFilename, dllFileName=dllFileName)
+#         except:
+#             print('YAMS Wind Turbine: problem loading MAP model (only supported on windows)')
+    elif FST['CompMooring']==2:
+        print('YAMS Wind Turbine: TODO MoorDyn')
+
 
     # --- Degrees of freedom
     DOFs=[]
@@ -643,6 +612,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     WT.yawBr      = yawBr      # origin at N
     WT.twr        = twr        # origin at T
     WT.fnd        = fnd        # origin at T
+    WT.MAP        = MAP       # typically at (0,0,0) NOTE: not a body
     WT.RNA        = RNA        # origin at N, rigid body bld+hub+gen+nac
     WT.WT_rigid   = WT_rigid   # rigid wind turbine body, origin at MSL
 

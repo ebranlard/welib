@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 #from welib.system.singledof import *
 from welib.system.secondorder import *
-from welib.tools.signal import impulse, step, ramp, hat, correlated_signal
+from welib.tools.signal_analysis import impulse, step, ramp, hat, correlated_signal
 from welib.tools.tictoc import Timer
 
 # --- Script parameters
