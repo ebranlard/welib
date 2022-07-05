@@ -40,7 +40,7 @@ ax.set_ylabel(r'Non-dimensional amplitude, xk/F')
 ax.set_xlim([0,5])
 ax.set_ylim([0,3.5])
 ax.legend()
-ax.set_title('System - 1 DOF forced vibrations')
+ax.set_title('System - 2nd order - forced vibrations')
 
 
 
@@ -50,6 +50,5 @@ if __name__ == '__main__':
 if __name__ == '__test__':
     pass
 if __name__=="__export__":
-    pass
     from welib.tools.repo import export_figs_callback
     export_figs_callback(__file__)

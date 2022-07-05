@@ -139,7 +139,7 @@ if __name__=='__test__':
 #     np.testing.assert_almost_equal(freq[2],     4.45278, 5)
 #     np.testing.assert_almost_equal(freq[-1], 1209.98056, 5)
 
-if __name__=='__export__':
-    from welib.tools.repo import export_figs_callback
-    FEM= compareFEMwithTheory()
-    export_figs_callback(__file__)
+#if __name__=='__export__':
+#    from welib.tools.repo import export_figs_callback
+#    FEM = CraigBamptonReduction() 
+#    export_figs_callback(__file__)

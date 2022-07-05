@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
-from vortilib.elements.VortexCylinder import vc_tang_u
-from pybra.fields    import *
-from pybra.functions import *
+from welib.vortilib.elements.VortexCylinder import vc_tang_u
+from welib.tools.fields    import *
+from welib.tools.functions import delta, Pi
 
 
 def setPressure(p,X,R,x0,r0,p0):
@@ -25,7 +25,7 @@ def getPressure(p,X,R,x0,r0):
     print('Getting pressure at x={:.2f} r={:.2f} ({:.2f} {:.2f}): {:.5f}'.format(vxx[ix],vrr[ir],x0,r0,p0))
     return p0
 
-def pressure_fourquadrants(vr,vx,ur,ux,xoff=0.1,roff=0.1):
+def pressure_fourquadrants(vr,vx,ur,ux,xoff=1.1,roff=0.1, rho=1, Ef=None, DeltaP=None):
     """ 
     1  | 2
     3  | 4
@@ -218,7 +218,7 @@ def main():
     ax=axes[3,1];im=ax.contourf(Xcp, Rcp, E_num , levE   ); cb=fig.colorbar(im, ax=ax);ax.set_title('E_num=intgrad(f)')
 
     # --- Integrate pressure on four quadrants
-    pressure_fourquadrants(vr,vx,ur,ux,xoff=0.000,roff=0.000)
+    pressure_fourquadrants(vr,vx,ur,ux,xoff=0.000,roff=0.000,rho=rho,Ef=Ef,DeltaP=DeltaP)
 
     # --- Verifying if u GradU = grad(u**2/2) - u x omega
     # ar, ax = vdel_cylindrical_axi( (ur,ux), (ur,ux), vr, vx)
@@ -290,6 +290,7 @@ def main():
     # # 
 
 if __name__=="__main__":
+    main()
     plt.show()
 if __name__=="__test__":
     pass

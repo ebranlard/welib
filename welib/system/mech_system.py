@@ -472,6 +472,9 @@ class MechSystem():
             import matplotlib.pyplot as plt
             fig,axes = plt.subplots( self.nStates,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+            axes_provided=False
+        else:
+            axes_provided=True
 
         axes = np.atleast_1d(axes)
         n=self.nDOF
@@ -483,9 +486,11 @@ class MechSystem():
             chan=df.columns[i+1]
             lbl = '$'+self.sQ[i]+'$'
             ax.plot(res.t, res.y[i,:], label=label, **kwargs)
-            ax.set_ylabel(lbl)
+            if not axes_provided:
+                ax.set_ylabel(lbl)
             ax.tick_params(direction='in')
-        axes[-1].set_xlabel('Time [s]')
+        if not axes_provided:
+            axes[-1].set_xlabel('Time [s]')
 
         return fig, axes
 
