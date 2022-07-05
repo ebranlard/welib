@@ -136,21 +136,21 @@ if __name__=="__main__":
     #dfNL, dfLI, dfFS = main(model, simDir, extraSubs, smallAngles, generate=True, runSim=True)
 
     # --- Flap only
-#     model = get_model('R3S0B100', azimuth_init='fixed', pitch='fixed', cone='fixed', r_hub='fixed', coneAtRotorCenter=True, orderMM=2, orderH=1, verbose=True)
-#     simFile='_R3S0BXXX/MainFlap.fst'
-#     extraSubs   +=[(theta_pitch,0)]
-#     extraSubs   +=[(theta_cone,0)]
-#     extraSubs   +=[(psi_0,0)]
-#     dfNL, dfLI, dfFS, WT = main(model, simFile, extraSubs, smallAngles, op_point, generate=True, runSim=True)
-
-
-    # --- Edge only
-    model = get_model('R3S0B010', azimuth_init='fixed', pitch='fixed', cone='fixed', r_hub='fixed', coneAtRotorCenter=True, orderMM=1, orderH=1, verbose=True)
+    model = get_model('R3S0B100', azimuth_init='fixed', pitch='fixed', cone='fixed', r_hub='fixed', coneAtRotorCenter=True, orderMM=2, orderH=1, verbose=True)
+    simFile='_R3S0BXXX/MainFlap.fst'
     extraSubs   +=[(theta_pitch,0)]
     extraSubs   +=[(theta_cone,0)]
     extraSubs   +=[(psi_0,0)]
-    simFile='_R3S0BXXX/MainEdge.fst'
     dfNL, dfLI, dfFS, WT = main(model, simFile, extraSubs, smallAngles, op_point, generate=True, runSim=True)
+
+
+    # --- Edge only
+#     model = get_model('R3S0B010', azimuth_init='fixed', pitch='fixed', cone='fixed', r_hub='fixed', coneAtRotorCenter=True, orderMM=1, orderH=1, verbose=True)
+#     extraSubs   +=[(theta_pitch,0)]
+#     extraSubs   +=[(theta_cone,0)]
+#     extraSubs   +=[(psi_0,0)]
+#     simFile='_R3S0BXXX/MainEdge.fst'
+#     dfNL, dfLI, dfFS, WT = main(model, simFile, extraSubs, smallAngles, op_point, generate=True, runSim=True)
 
 
     # --- Flap with gravity
@@ -162,12 +162,12 @@ if __name__=="__main__":
     #dfNL, dfLI, dfFS, WT = main(model, simFile, extraSubs, smallAngles, op_point, generate=True, runSim=True)
 
     # --- Edge gravity
-    model = get_model('R3S0B010', azimuth_init='fixed', pitch='fixed', cone='fixed', r_hub='fixed', coneAtRotorCenter=True, orderMM=1, orderH=1, verbose=True)
-    extraSubs   +=[(theta_pitch,0)]
-    extraSubs   +=[(theta_cone,0)]
-    extraSubs   +=[(psi_0,0)]
-    simFile='_R3S0BXXX/MainEdgeGravity.fst'
-    dfNL, dfLI, dfFS, WT = main(model, simFile, extraSubs, smallAngles, op_point, generate=True, runSim=True)
+#     model = get_model('R3S0B010', azimuth_init='fixed', pitch='fixed', cone='fixed', r_hub='fixed', coneAtRotorCenter=True, orderMM=1, orderH=1, verbose=True)
+#     extraSubs   +=[(theta_pitch,0)]
+#     extraSubs   +=[(theta_cone,0)]
+#     extraSubs   +=[(psi_0,0)]
+#     simFile='_R3S0BXXX/MainEdgeGravity.fst'
+#     dfNL, dfLI, dfFS, WT = main(model, simFile, extraSubs, smallAngles, op_point, generate=True, runSim=True)
 
     plt.show()
 
