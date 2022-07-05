@@ -21,3 +21,5 @@ _*
 *Copy.py
 tags
 
+!_figs/
+!_figs/*.png
