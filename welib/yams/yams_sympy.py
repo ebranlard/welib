@@ -30,8 +30,8 @@ from collections import OrderedDict
 #display=lambda x: sympy.pprint(x, use_unicode=False,wrap_line=False)
 
 
-__all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody']
-__all__+= ['Body','RigidBody','GroundBody'] # Old implementation
+__all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody'] # New general implementation
+__all__+= ['Body','RigidBody','GroundBody'] # Old "recursive" implementation. TODO merge the two
 __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
 
 # --------------------------------------------------------------------------------}
@@ -141,6 +141,7 @@ class Taylor(object):
             
         self.varname=varname
         self.bodyname=bodyname
+        self.nq=nq
             
         self.M0=Matrix(np.zeros((nr,nc)).astype(int))
         for i in np.arange(nr):
@@ -154,7 +155,11 @@ class Taylor(object):
                 for i in np.arange(nr):
                     for j in np.arange(nc):
                         self.M1[k][i,j] = symbols('{}^1_{}_{}_{}{}'.format(varname,k+1,bodyname,rname[i],cname[j])) 
-    def eval(self, q):
+    def eval(self, q=None, order=None):
+        """ evaluate the taylor series """
+        if q is None:
+            q=[symbols('q_{}'.format(j+1)) for j in np.arange(self.nq)]
+
         M = self.M0
         if hasattr(self,'M1'): 
             nq = len(self.M1)
@@ -163,6 +168,15 @@ class Taylor(object):
             for k in np.arange(nq):
                 M +=self.M1[k]*q[k]
         return M
+
+    def get(self, dof=0, order=0):
+        """ return a given order """
+        if order ==0:
+            return self.M0
+        elif order ==1:
+            return self.M1[dof]
+        else:
+            raise NotImplementedError()
     
     def setOrder(self,order):
         if order==1:
@@ -259,6 +273,10 @@ class YAMSBody(object):
         except:
             posI = 'unknown'
         try:
+            posP=self.pos_parent
+        except:
+            posP = 'unknown'
+        try:
             omI=self.omega_inertial
         except:
             omI = 'unknown'
@@ -289,6 +307,7 @@ class YAMSBody(object):
             #OmSkew = (R.diff(t) *  R.transpose()).simplify()
             #omega_ident = OmSkew[2,1] * N.x + OmSkew[0,2]*N.y + OmSkew[1,0] * N.z
 
+        s+=' * pos_parent:     {} (origin wrt to parent)\n'.format(posP)
         s+=' * pos_global:     {} (origin)\n'.format(posI)
         s+=' * vel_inertial:   {} (origin)\n'.format(velI)
         s+=' * vel_parent:     {} (origin)\n'.format(velP)
@@ -307,8 +326,13 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------{
     @property
     def pos_global(self):
-        """ return velocity of origin in inertial frame """
+        """ return position of body origin in compared to inertial origin"""
         return self.origin.pos_from(self.inertial_origin)
+
+    @property
+    def pos_parent(self):
+        """ return position of body origin with respect to parent origin"""
+        return self.origin.pos_from(self.parent.origin)
 
     @property
     def vel_inertial(self):
@@ -361,7 +385,7 @@ class YAMSBody(object):
     @property
     def R_b2g(self):
         """ Transformation matrix from body to global """
-        return self.inertial_frame.dcm(self.frame)  # from body to global
+        return Matrix(self.inertial_frame.dcm(self.frame)) # from body to global
 
     @property
     def R_g2b(self):
@@ -409,7 +433,7 @@ class YAMSBody(object):
                 raise Exception('Parent body was not connected to an inertial frame. Bodies needs to be connected in order, starting from inertial frame.')
             else:
                 child.inertial_frame  = parent.inertial_frame # the same frame is used for all connected bodies
-                child.inertial_origin = parent.origin
+                child.inertial_origin = parent.inertial_origin
 
         if rel_pos is None or len(rel_pos)!=3:
             raise Exception('rel_pos needs to be an array of size 3')
@@ -434,10 +458,12 @@ class YAMSBody(object):
             for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
                 if d is not None:
                     pos += d * e
-                    if exprHasFunction(d) and not dynamicAllowed:
+                    d_ = diff(d,t)
+                    #if exprHasFunction(d) and not dynamicAllowed:
+                    if d_!=0 and not dynamicAllowed:
                         raise Exception('Position variable cannot be a dynamic variable for a rigid connection: variable {}'.format(d))
                     if dynamicAllowed:
-                        vel += diff(d,t) * e
+                        vel += d_ * e
         elif type=='Joint':
             # Defining relative position and velocity of child wrt parent
             for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
@@ -463,7 +489,8 @@ class YAMSBody(object):
         else:
             if rot_type in ['Body','Space']:
                 child.frame.orient(parent.frame, rot_type, rot_amounts, rot_order) # <<< 
-            else:
+            else: 
+                # rot_type is DCM
                 child.frame.orient(parent.frame, rot_type, rot_amounts) # <<< 
 
         # Position of child origin wrt parent origin
@@ -707,7 +734,8 @@ class GroundBody(Body):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class YAMSRigidBody(YAMSBody,SympyRigidBody):
-    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False, J_at_Origin=False):
+    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False, J_at_Origin=False,
+             name_for_var = None):
         """
         Define a rigid body and introduce symbols for convenience.
         
@@ -722,16 +750,20 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             J_G  : 3x3 array or 3-array defining the coordinates of the inertia tensor in the body frame at the COG
             rho_G: array-like of length 3 defining the coordinates of the COG in the body frame
             J_diag: if true, the inertial tensor J_G is initialized as diagonal
-            J_diag: if true, the inertial tensor J_G is initialized as a "cross"
+            J_cross: if true, the inertial tensor J_G is initialized as a "cross"
+            name_for_var: name to use for variables names. If None, name is used.
         
         
         """
         # YAMS Body creates a default "origin", "masscenter", and "frame"
         YAMSBody.__init__(self, name)
         
+        if name_for_var is None:
+            name_for_var = name
+
         # --- Mass
         if mass is None:
-            mass=Symbol('M_'+name)
+            mass=Symbol('M_'+name_for_var)
         
         # --- Inertia, creating a dyadic using our frame and G
         if J_G is not None:
@@ -749,12 +781,12 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
                 ixy = J_G[0,1]
                 iyz = J_G[1,2]
         else:
-            ixx = Symbol('J_xx_'+name)
-            iyy = Symbol('J_yy_'+name)
-            izz = Symbol('J_zz_'+name)
-            izx = Symbol('J_zx_'+name)
-            ixy = Symbol('J_xy_'+name)
-            iyz = Symbol('J_yz_'+name)
+            ixx = Symbol('J_xx_'+name_for_var)
+            iyy = Symbol('J_yy_'+name_for_var)
+            izz = Symbol('J_zz_'+name_for_var)
+            izx = Symbol('J_zx_'+name_for_var)
+            ixy = Symbol('J_xy_'+name_for_var)
+            iyz = Symbol('J_yz_'+name_for_var)
         if J_diag:
             ixy, iyz, izx =0,0,0
         if J_cross:
@@ -763,16 +795,13 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         #inertia: dyadic : (inertia(frame, *list), point)
         if J_at_Origin:
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.origin)
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NOTE: inertia at origin')
         else:
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
             
         # --- Position of COG in body frame
         if rho_G is None: 
-            rho_G=symbols('x_G_'+name+ ', y_G_'+name+ ', z_G_'+name)
+            rho_G=symbols('x_G_'+name_for_var+ ', y_G_'+name_for_var+ ', z_G_'+name_for_var)
         self.setGcoord(rho_G)
         self.masscenter.set_vel(self.frame, 0 * self.frame.x)
             
@@ -885,37 +914,50 @@ class RigidBody(Body):
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None):
-        YAMSBody.__init__(self,name)
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None):
+        """ 
+        name:  name used for object name, origin
+        name_for_var: name/string used for inertial variable names
+        name_for_dof: name/string used for degree of freedom and connections
+
+        """
+        YAMSBody.__init__(self, name)
+        if name_for_var is None:
+            name_for_var=name
+        if name_for_DOF is None:
+            name_for_DOF=name # Important, not name_for_var
+
         self.name=name
-        self.L= symbols('L_'+name)
-        self.q=[]     # DOF
-        self.qd=[]    # DOF velocity as "anonymous" variables
-        self.qdot=[]  # DOF velocities
-        self.qddot=[] # DOF accelerations
+        self.name_for_var = name_for_var
+        self.name_for_DOF = name_for_DOF
+        self.L     = symbols('L_'+name_for_var)
+        self.q     = []                         # DOF
+        self.qd    = []                         # DOF velocity as "anonymous" variables
+        self.qdot  = []                         # DOF velocities
+        self.qddot = []                         # DOF accelerations
         t=dynamicsymbols._t
         for i in np.arange(nq):
-            self.q.append(dynamicsymbols('q_{}{}'.format(name,i+1)))
-            self.qd.append(dynamicsymbols('qd_{}{}'.format(name,i+1)))
+            self.q.append   (dynamicsymbols('q_{}{}'. format(name_for_DOF,i+1)))
+            self.qd.append  (dynamicsymbols('qd_{}{}'.format(name_for_DOF,i+1)))
             self.qdot.append(diff(self.q[i],t))
             self.qddot.append(diff(self.qdot[i],t))
         # --- Mass matrix related
-        self.mass=symbols('M_{}'.format(name))
-        self.J   = Taylor(self.name,'J'  , 3 , 3, nq=nq, rname='xyz', cname='xyz', order=orderMM)
-        self.Ct  = Taylor(self.name,'C_t', nq, 3, nq=nq, rname=None , cname='xyz', order=orderMM)
-        self.Cr  = Taylor(self.name,'C_r', nq, 3, nq=nq, rname=None , cname=['x','y','z'], order=orderMM)
-        self.Me  = Taylor(self.name,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM)
-        self.mdCM= Taylor(self.name,'M_d', 3,  1,  nq=nq, rname='xyz', cname=[''], order=orderMM)
+        self.mass=symbols('M_{}'.format(name_for_var))
+        self.J   = Taylor(name_for_var,'J'  , 3 , 3 , nq=nq, rname='xyz', cname='xyz', order=orderMM)
+        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM)
+        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM)
+        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM)
+        self.mdCM= Taylor(name_for_var,'M_d', 3,  1 , nq=nq, rname='xyz', cname=[''], order=orderMM)
         # --- h-omega related terms
         self.Gr=[0]*nq
         self.Ge=[0]*nq
         for i in np.arange(nq):
-            self.Gr[i] = Taylor(self.name, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
-            self.Ge[i] = Taylor(self.name, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
-        self.Oe = Taylor(self.name, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH)
+            self.Gr[i] = Taylor(name_for_var, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
+            self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
+        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH)
         # --- Stiffness and damping
-        self.Ke  = Taylor(self.name,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
-        self.De  = Taylor(self.name,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
+        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
+        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
         
         self.directions=directions
         self.defineExtremity(directions)
@@ -946,6 +988,7 @@ class YAMSFlexibleBody(YAMSBody):
         s+=' - vcList:       {}\n'.format(self.vcList)
         s+=' - uc    :       {}\n'.format(self.uc)
         s+=' - alpha :       {}\n'.format(self.alpha)
+        s+=' - directions:   {}\n'.format(self.directions)
         return s
 
 
@@ -953,8 +996,8 @@ class YAMSFlexibleBody(YAMSBody):
         if directions is None:
             directions=['xyz']*len(self.q)
         # Hard coding 1 connection at beam extremity
-        self.alpha =[dynamicsymbols('alpha_x{}'.format(self.name)),dynamicsymbols('alpha_y{}'.format(self.name)),dynamicsymbols('alpha_z{}'.format(self.name))]
-        self.uc    =[dynamicsymbols('u_x{}c'.format(self.name)),dynamicsymbols('u_y{}c'.format(self.name)),0]
+        self.alpha =[dynamicsymbols('alpha_x{}'.format(self.name_for_DOF)),dynamicsymbols('alpha_y{}'.format(self.name_for_DOF)),dynamicsymbols('alpha_z{}'.format(self.name_for_DOF))]
+        self.uc    =[dynamicsymbols('u_x{}c'.format(self.name_for_DOF)),dynamicsymbols('u_y{}c'.format(self.name_for_DOF)),0]
         alphax = 0
         alphay = 0
         alphaz = 0
@@ -966,17 +1009,17 @@ class YAMSFlexibleBody(YAMSBody):
             u=0
             v=0
             if 'x' in directions[i]:
-                u = symbols('u_x{}{}c'.format(self.name,i+1))
-                v = symbols('v_y{}{}c'.format(self.name,i+1)) 
+                u = symbols('u_x{}{}c'.format(self.name_for_DOF,i+1))
+                v = symbols('v_y{}{}c'.format(self.name_for_DOF,i+1)) 
                 uxc   += u * self.q[i]
                 alphay+= v * self.q[i]
             if 'y' in directions[i]:
-                u = symbols('u_y{}{}c'.format(self.name,i+1))
-                v = symbols('v_x{}{}c'.format(self.name,i+1))
+                u = symbols('u_y{}{}c'.format(self.name_for_DOF,i+1))
+                v = symbols('v_x{}{}c'.format(self.name_for_DOF,i+1))
                 uyc   += u * self.q[i]
                 alphax+= v * self.q[i]
             if 'z' in directions[i]:
-                v = symbols('v_z{}{}c'.format(self.name,i+1))
+                v = symbols('v_z{}{}c'.format(self.name_for_DOF,i+1))
                 alphaz+= v * self.q[i]
             vList.append(v)
             uList.append(u)
@@ -987,8 +1030,8 @@ class YAMSFlexibleBody(YAMSBody):
 
         self.ucList =uList # "PhiU" values at connection point for each mode
         self.vcList =vList # "PhiV" valaes at connection point for each mode
-        
-    def bodyMassMatrix(self, q=None, form='TaylorExpanded'):
+
+    def bodyMassMatrix(self, q=None, form='TaylorExpanded', order=None, dof=None):
         """ Body mass matrix in body coordinates M'(q)
         form is ['symbolic' , 'TaylorExpanded']
         """
@@ -1003,11 +1046,32 @@ class YAMSFlexibleBody(YAMSBody):
         self.M[0,0] = self.mass
         self.M[1,1] = self.mass
         self.M[2,2] = self.mass
-        if form=='symbolic':
+
+        if order is not None and dof is not None:
+            """ Return the term of the mass matrix at a given order.
+            For order 1, terms are different for each dof"""
+            self.M[0,0] = 0
+            self.M[1,1] = 0
+            self.M[2,2] = 0
+            # Mrx, Mxr
+            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            # Mrr
+            self.M[3:6,3:6] = self.J.get(dof,order)
+            # Mgx, Mxg
+            self.M[6:6+nq,0:3] = self.Ct.get(dof,order)
+            self.M[0:3,6:6+nq] = self.M[6:6+nq,0:3].transpose()
+            # Mrg
+            self.M[6:6+nq,3:6] = self.Cr.get(dof,order)
+            self.M[3:6,6:6+nq] = self.M[6:6+nq,3:6].transpose()
+            # Mgg
+            self.M[6:6+nq,6:6+nq] = self.Me.get(dof,order)
+
+        elif form=='symbolic':
             # Mxr, Mxg
             for i in np.arange(0,3):
                 for j in np.arange(3,6+nq):
-                    self.M[i,j]=Symbol('M_{}{}{}'.format(self.name,i+1,j+1))
+                    self.M[i,j]=Symbol('M_{}{}{}'.format(self.name_for_var,i+1,j+1))
             self.M[0,3]=0
             self.M[1,4]=0
             self.M[2,5]=0
@@ -1015,15 +1079,15 @@ class YAMSFlexibleBody(YAMSBody):
             char='xyz'
             for i in np.arange(3,6):
                 for j in np.arange(3,6):
-                    self.M[i,j]=Symbol('J_{}{}{}'.format(self.name,char[i-3],char[j-3]))
+                    self.M[i,j]=Symbol('J_{}{}{}'.format(self.name_for_var,char[i-3],char[j-3]))
             # Mrg
             for i in np.arange(3,6):
                 for j in np.arange(6,6+nq):
-                    self.M[i,j]=Symbol('M_{}{}{}'.format(self.name,i+1,j+1))
+                    self.M[i,j]=Symbol('M_{}{}{}'.format(self.name_for_var,i+1,j+1))
             # Mgg
             for i in np.arange(6,6+nq):
                 for j in np.arange(6,6+nq):
-                    self.M[i,j]=Symbol('GM_{}{}{}'.format(self.name,i-5,j-5))
+                    self.M[i,j]=Symbol('GM_{}{}{}'.format(self.name_for_var,i-5,j-5))
 
             for i in np.arange(0,6+nq):
                 for j in np.arange(0,6+nq):
@@ -1031,6 +1095,7 @@ class YAMSFlexibleBody(YAMSBody):
             pass
 
         elif form=='TaylorExpanded':
+            # We evaluate
             # Mrx, Mxr
             self.M[0:3,3:6] = skew(self.mdCM.eval(q)) # NOTE: sign convention is opposite wallrapp, change convention
             self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
@@ -1043,8 +1108,8 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[6:6+nq,3:6] = self.Cr.eval(q)
             self.M[3:6,6:6+nq] = self.M[6:6+nq,3:6].transpose()
             # Mgg
-            Mgg = self.Me.eval(q)
-            self.M[6:6+nq,6:6+nq] = Mgg
+            self.M[6:6+nq,6:6+nq] = self.Me.eval(q)
+
         else:
             raise Exception('Unknown mass matrix form option `{}`'.format(form))
 
@@ -1085,12 +1150,19 @@ class YAMSFlexibleBody(YAMSBody):
                         if xyz2!=xyz:
                             self.M[6+iq,6+jq]=0
 
-
                 # symmetry
                 for i in np.arange(self.M.shape[0]):
                     for j in np.arange(self.M.shape[0]):
                         if i<j:
                             self.M[j,i]=self.M[i,j]
+            elif self.predefined_kind=='bld-z':
+                print('>>> yams_simpy, TODO simplifications of mass matrix for blade')
+                # symmetry inertial tensor
+                for i in np.arange(3,6):
+                    for j in np.arange(3,6):
+                        if i<j:
+                            self.M[j,i]=self.M[i,j]
+
             else:
                 raise NotImplementedError()
         
@@ -1286,49 +1358,61 @@ class YAMSFlexibleBody(YAMSBody):
         else:
             rd.update(rd)
 
+        # --- Mass matrix
         MM = self.bodyMassMatrix(q = [0]*len(self.q), form = form)
 
-        rd[repr(MM[0,0])] = ('MM_{}'.format(self.name), [0,0])
-        rd[repr(self.mass)] = ('MM_{}'.format(self.name), [0,0])
+        rd[repr(MM[0,0])] = ('MM_{}'.format(self.name_for_var), [0,0])
+        rd[repr(self.mass)] = ('MM_{}'.format(self.name_for_var), [0,0])
 
         for i in np.arange(0,MM.shape[0]):
             for j in np.arange(3,MM.shape[0]):
                 s=repr(MM[i,j])
                 if len(s)>1:
                     if s[0]!='-':
-                        rd[s] = ('MM_{}'.format(self.name), [i,j])
+                        rd[s] = ('MM_{}'.format(self.name_for_var), [i,j])
+        if form=='TaylorExpanded':
+            if hasattr(self.Me, 'M1'):
+                # We retrieve first order terms
+                for iq in np.arange(len(self.q)):
+                    MM1 =  self.bodyMassMatrix(dof=iq, order=1)
+                    for i in np.arange(0,MM1.shape[0]):
+                        for j in np.arange(3,MM1.shape[0]):
+                            s=repr(MM1[i,j])
+                            if len(s)>1:
+                                if s[0]!='-':
+                                    rd[s] = ('MM1_{}'.format(self.name_for_var), [iq,i,j])
 
         for iq in np.arange(len(self.Gr)):
             for i in np.arange(self.Gr[iq].M0.shape[0]):
                 for j in np.arange(self.Gr[iq].M0.shape[1]):
                     s=repr(self.Gr[iq].M0[i,j])
                     if len(s)>1:
-                        rd[s] = ('Gr_{}'.format(self.name), [iq,i,j])
+                        rd[s] = ('Gr_{}'.format(self.name_for_var), [iq,i,j])
 
         for iq in np.arange(len(self.Ge)):
             for i in np.arange(self.Ge[iq].M0.shape[0]):
                 for j in np.arange(self.Ge[iq].M0.shape[1]):
                     s=repr(self.Ge[iq].M0[i,j])
                     if len(s)>1:
-                        rd[s] = ('Ge_{}'.format(self.name), [iq,i,j])
+                        rd[s] = ('Ge_{}'.format(self.name_for_var), [iq,i,j])
 
         for i in np.arange(self.Oe.M0.shape[0]):
             for j in np.arange(self.Oe.M0.shape[1]):
                 s=repr(self.Oe.M0[i,j])
                 if len(s)>1:
-                    rd[s] = ('Oe_{}'.format(self.name), [i,j])
+                    rd[s] = ('Oe_{}'.format(self.name_for_var), [i,j])
 
         for i in np.arange(self.Ke.M0.shape[0]):
             for j in np.arange(self.Ke.M0.shape[1]):
                 s=repr(self.Ke.M0[i,j])
                 if len(s)>1:
-                    rd[s] = ('KK_{}'.format(self.name), [i+6,j+6])
+                    rd[s] = ('KK_{}'.format(self.name_for_var), [i+6,j+6])
 
         for i in np.arange(self.De.M0.shape[0]):
             for j in np.arange(self.De.M0.shape[1]):
                 s=repr(self.De.M0[i,j])
                 if len(s)>1:
-                    rd[s] = ('DD_{}'.format(self.name), [i+6,j+6])
+                    rd[s] = ('DD_{}'.format(self.name_for_var), [i+6,j+6])
         return rd
     
 

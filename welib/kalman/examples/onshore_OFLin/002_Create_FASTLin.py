@@ -6,7 +6,7 @@ Creates a fast linearized model from a set of "OpenFAST .lin files"
 import numpy as np
 import pandas as pd
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 
 # Local
 # from helper_functions import *

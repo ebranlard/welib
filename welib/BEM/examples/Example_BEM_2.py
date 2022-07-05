@@ -20,7 +20,7 @@ def main(test=False):
     The wind turbine is initialized using a FAST input file (.fst)
     """
     OutDir                 = os.path.join(MyDir,'./')
-    MainFASTFile           = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst')
+    MainFASTFile           = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst')
     OperatingConditionFile = os.path.join(MyDir,'../../../data/NREL5MW/NREL5MW_Oper.csv')
 
     #  --- Reading turbine operating conditions, Pitch, RPM, WS  (From FAST)
@@ -68,7 +68,7 @@ def main(test=False):
         ax.set_xlabel('Wind speed [m/s]')
         ax.set_ylabel('[-]')
         ax.legend()
-        ax.set_title('BEM - Steady performance curve')
+        ax.set_title('BEM Steady - Performance curve')
         ax.tick_params(direction='in')
 
 

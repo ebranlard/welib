@@ -15,7 +15,7 @@ def main(test=False):
 
     # --- Read a FAST model to get Aerodynamic parameters to initialze unstady BEM code
     BEM = AeroBEM()
-    BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
 
     # --- Setup a prescribed motion
     motion = PrescribedRotorMotion()
@@ -61,7 +61,7 @@ def main(test=False):
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Axial induction [-]')
         ax.legend()
-        ax.set_title('BEM (unsteady) - Prescribed surge motion')
+        ax.set_title('BEM Unsteady - Prescribed surge motion')
         ax.tick_params(direction='in')
     #import matplotlib.pyplot as plt
     #from mpl_toolkits.mplot3d import Axes3D

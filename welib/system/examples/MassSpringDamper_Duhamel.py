@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # Welib
 from welib.system.mech_system import MechSystem
 from welib.system.statespacelinear import LinearStateSpace
-from welib.tools.signal import correlated_signal, step
+from welib.tools.signal_analysis import correlated_signal, step
 from scipy.interpolate import interp1d
 
 
@@ -47,24 +47,31 @@ print(sysl)
 resln = sysl.integrate(time, method='LSODA')
 resld = sysl.integrate(time, method='impulse')
 
+
+
 # --- Plot
 fig, axes = sys.plot(res  = resn , label = 'MechSys Numerical int.')
 fig, axes = sys.plot(res  = resd , label = 'MechSys convolution (Duhamel)' ,  fig=fig, axes=axes, ls = '--')
 fig, axes = sysl.plot(res = resln, label = 'Lin sys Numerical int.'        ,  fig=fig, axes=axes, ls = ':')
 fig, axes = sysl.plot(res = resld, label = 'Lin sys convolution'           ,  fig=fig, axes=axes, ls = '-.', c = 'k')
-
+fig.subplots_adjust(left=0.14, right=0.99, top=0.98, bottom=0.10, hspace=0.20, wspace=0.20)
 axes[0].legend()
+axes[0].set_title('System - 2nd order - Duhamel or numerical')
 
 # sys.plot_forcing()
-sysl.plot_inputs()
-
-
+# sysl.plot_inputs()
 
 if __name__ == '__main__':
     plt.show()
+
 if __name__ == '__test__':
-    try:
-        plt.close()
-    except:
-        pass
     pass
+    #try:
+    #    plt.close()
+    #except:
+    #    pass
+    #pass
+if __name__=="__export__":
+    pass
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)

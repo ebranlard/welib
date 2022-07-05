@@ -31,8 +31,8 @@ class Structure():
         self.bTiltBeforeNac = bTiltBeforeNac
 
     def compute_RNA(s):
-        s.M_rot= sum([B.Mass for B in s.Blds])
-        s.M_RNA= s.M_rot + s.Sft.Mass + s.Nac.Mass;
+        s.M_rot= sum([B.mass for B in s.Blds])
+        s.M_RNA= s.M_rot + s.Sft.mass + s.Nac.mass;
         s.r_NGnac_inN = s.Nac.s_G_inB
         s.r_NGhub_inN = s.r_NS_inN + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.Sft.s_G_inB))
 
@@ -83,7 +83,7 @@ class Structure():
         except:
             print('[WARN] TNSB: Fail to compute RNA with new method, using legacy')
             s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
-            s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.Mass*s.r_NGnac_inN + s.Sft.Mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
+            s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.mass*s.r_NGnac_inN + s.Sft.mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
 
 
 
@@ -195,8 +195,8 @@ class Structure():
         print('----------------- RNA ---------------------------------------')
         print('M_RNA      ', s.M_RNA)
         print('r_NGrna_inN',s.r_NGrna_inN.T)
-        print('     r_NGnac_inN ',s.r_NGnac_inN.T , 'M_nac',s.Nac.Mass)
-        print('     r_NGhub_inN ',s.r_NGhub_inN.T , 'M_hub',s.Sft.Mass)
+        print('     r_NGnac_inN ',s.r_NGnac_inN.T , 'M_nac',s.Nac.mass)
+        print('     r_NGhub_inN ',s.r_NGhub_inN.T , 'M_hub',s.Sft.mass)
         print('     r_NGrot_inN ',s.r_NGrot_inN.T , 'M_rot',s.M_rot)
 
     def print_couplings(s):
@@ -264,7 +264,7 @@ def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS
         Sft.connectTo(B, Point=r_SR_inS, Type='Rigid', RelOrientation = R_SB)
 
     # Setting DOF index for all bodies and connections 
-    nq=Grd.setupDOFIndex(0);
+    nq=Grd.setupDOFIndex();
     if nq!=len(q):
        print('>>> ',nq,len(q))
        raise Exception('Wrong number of dof')
@@ -278,12 +278,9 @@ def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS
 
     # --- Full system
     nq = len(q)
-    MM = np.zeros((nq,nq))
-    MM = Grd.getFullM(MM)
-    KK = np.zeros((nq,nq))
-    KK = Grd.getFullK(KK)
-    DD = np.zeros((nq,nq))
-    DD = Grd.getFullD(DD)
+    MM = Grd.M
+    KK = Grd.K
+    DD = Grd.D
 
     MM[np.abs(MM)< 1e-09] = 0
     # --- returning everthin in a structure class

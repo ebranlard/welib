@@ -56,13 +56,13 @@ class TestDynamicStall(unittest.TestCase):
            
         # Oye's Parameters
         p_oye = dynstall_oye_param_from_polar(P, tau_chord=chord/U0)
-        p_mhh = dynstall_mhh_param_from_polar(P, chord, tau_chord=chord/U0, FAST=True)
+        p_mhh = dynstall_mhh_param_from_polar(P, chord, constants='OpenFAST')
         # Inputs
         u=dict()
         u['U']         = lambda t: U0
         u['U_dot']     = lambda t: 0 
         u['alpha']     = lambda t: alpha_st
-        u['alpha_dot'] = lambda t: 0
+        u['omega']     = lambda t: 0
         u['alpha_34']  = u['alpha']
 
         # Init values, off
@@ -120,12 +120,12 @@ class TestDynamicStall(unittest.TestCase):
 
         ## MHH Parameters and Inputs
         np.seterr(under='ignore')
-        p = dynstall_mhh_param_from_polar(P, chord, tau_chord=chord/U0, Jones=True)
+        p = dynstall_mhh_param_from_polar(P, chord, constants='Jones')
         u=dict()
         u['U']         = lambda t: U0
         u['U_dot']     = lambda t: 0 
         u['alpha']     = lambda t: alpha1 if t<=0 else alpha2 
-        u['alpha_dot'] = lambda t: 0
+        u['omega']     = lambda t: 0
         u['alpha_34']  = u['alpha']
         ## Steady values
         Cl_st2 = P.cl_interp(alpha2)
@@ -137,7 +137,8 @@ class TestDynamicStall(unittest.TestCase):
         for it,t in enumerate(vt):
             Cl_mhh[it],_,_ = dynstall_mhh_outputs(t,sol_mhh.y[:,it],u,p)
 
-        Cl_wag_Jones=1-A1_Jones*np.exp(-b1_Jones*tau_t)-A2_Jones*np.exp(-b2_Jones*tau_t);
+        Cl_wag_Jones=wagner(tau_t, constants='Jones')
+
         np.testing.assert_almost_equal(Cl_mhh[1:]/Cl_st2,Cl_wag_Jones[1:],decimal=4)
 
         # --- Plot, keep me

@@ -240,7 +240,7 @@ def vcs_tang_u(Xcp,Ycp,Zcp,gamma_t,R,Xcyl,Ycyl,Zcyl,epsilon=0,Ground=False):
     ux = np.zeros(Xcp.shape)
     uy = np.zeros(Xcp.shape)
     uz = np.zeros(Xcp.shape)
-    print('Tang.  (straight) ',end='')
+    #print('Tang.  (straight) ',end='')
     nCyl,nr = R.shape
     for i in np.arange(nCyl):
         Xcp0,Ycp0,Zcp0=Xcp-Xcyl[i],Ycp-Ycyl[i],Zcp-Zcyl[i]
@@ -251,16 +251,16 @@ def vcs_tang_u(Xcp,Ycp,Zcp,gamma_t,R,Xcyl,Ycyl,Zcyl,epsilon=0,Ground=False):
             Ylist = [Ycp0]
         for iy,Y in enumerate(Ylist):
             for j in np.arange(nr):
-                if iy==0:
-                    print('.',end='')
-                else:
-                    print('m',end='')
+                #if iy==0:
+                #    print('.',end='')
+                #else:
+                #    print('m',end='')
                 if np.abs(gamma_t[i,j]) > 0:
                     ux1,uy1,uz1 = vc_tang_u(Xcp0,Y,Zcp0,gamma_t[i,j],R[i,j],polar_out=False,epsilon=epsilon)
                     ux = ux + ux1
                     uy = uy + uy1
                     uz = uz + uz1
-    print('')
+    #print('')
     return ux,uy,uz
     
 def vcs_longi_u(Xcp,Ycp,Zcp,gamma_l,R,Xcyl,Ycyl,Zcyl,Ground=False):
@@ -274,17 +274,17 @@ def vcs_longi_u(Xcp,Ycp,Zcp,gamma_l,R,Xcyl,Ycyl,Zcyl,Ground=False):
     uy = np.zeros(Xcp.shape)
     uz = np.zeros(Xcp.shape)
     nCyl,nr = R.shape
-    print('Longi. (straight) ',end='')
+    #print('Longi. (straight) ',end='')
     for i in np.arange(nCyl):
         Xcp0,Ycp0,Zcp0=Xcp-Xcyl[i],Ycp-Ycyl[i],Zcp-Zcyl[i]
         for j in np.arange(nr):
-            print('.',end='')
+            #print('.',end='')
             if np.abs(gamma_l[i,j]) > 0:
                 ux1,uy1,uz1 = vc_longi_u(Xcp0,Ycp0,Zcp0,gamma_l[i,j],R[i,j],polar_out=False)
                 ux = ux + ux1
                 uy = uy + uy1
                 uz = uz + uz1
-    print('')
+    #print('')
     return ux,uy,uz
 
 def cylinder_tang_u(Xcp,Ycp,Zcp,gamma_t=-1,R=1,z1=-2,z2=2,polar_out=True,epsilon=0):

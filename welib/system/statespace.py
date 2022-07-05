@@ -3,7 +3,11 @@ from numpy.linalg import inv
 # --------------------------------------------------------------------------------}
 # --- Functions for state space model integrations
 # --------------------------------------------------------------------------------{
-def StateMatrix(Minv,C,K):
+def StateMatrix(Minv=None,C=None,K=None,M=None):
+    if M is not None:
+        Minv=inv(M)
+    if C is None:
+        C=np.zeros(K.shape)
     n = len(Minv)
     A = np.zeros((2*n,2*n))
     A[:n,n:] =  np.identity(n)

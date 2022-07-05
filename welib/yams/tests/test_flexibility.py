@@ -11,17 +11,15 @@ MyDir=os.path.dirname(__file__)
 # --------------------------------------------------------------------------------{
 class Test(unittest.TestCase):
     def test_GMGKBeam(self):
-        """ 
-        Given mass, stiffness distribution along the span of a beam and a set of shape functions
-        compute the Generalized mass and stiffness matrix for the flexible beam.
+        #  
+        #Given mass, stiffness distribution along the span of a beam and a set of shape functions
+        #compute the Generalized mass and stiffness matrix for the flexible beam.
 
-        In that test: 
-        - as shape functions the "theoretical" shape function for a clamped-free beam
-         (see welib.beams.theory)
-        - constant properties along the beam
-        - Beam along x axis
-
-        """
+        #In that test: 
+        #- as shape functions the "theoretical" shape function for a clamped-free beam
+        # (see welib.beams.theory)
+        #- constant properties along the beam
+        #- Beam along x axis
         try:
             import welib.beams.theory as bt
         except:
@@ -85,7 +83,7 @@ class Test(unittest.TestCase):
         # --- Testing for straight COG
         s_G      = np.zeros((3,nSpan))
         s_G[0,:] = x
-        MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
+        MM, _ = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis='x') # Ref uses IW_xm
         KK = GKBeam(s_span, EI, PhiK)
 
         #np.testing.assert_equal(np.all(MDiff<1e-3),True)
@@ -98,7 +96,7 @@ class Test(unittest.TestCase):
         s_G[1,:] = x/20
         s_G[2,:] = x/10
         V_tot=PhiV[0]
-        MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x', V=PhiV, bAxialCorr=True,V_tot=V_tot) # Ref uses IW_xm
+        MM, _ = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis='x', V=PhiV, bAxialCorr=True,V_tot=V_tot) # Ref uses IW_xm
         ##np.testing.assert_equal(np.all(MDiff<1e-3),True)
         np.testing.assert_allclose(MM,MM2_ref,rtol=1e-5)
         #np.testing.assert_allclose(KK[6:,6:],KKg_ref,rtol=1e-5)
@@ -107,19 +105,17 @@ class Test(unittest.TestCase):
     # --- NREL5MW Tower 
     # --------------------------------------------------------------------------------{
     def test_TowerBeam_SID(self):
-        """ 
-        In this test we use:
-        - Beam properties from the Tower of the NREL5MW
-        - Shape functions determined using a FEM beam representation (see welib/FEM/tests/test_beam_linear_element.py)
-        - We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
-        - Beam along z axis
-        
-        """
+        # 
+        #In this test we use:
+        #- Beam properties from the Tower of the NREL5MW
+        #- Shape functions determined using a FEM beam representation (see welib/FEM/tests/test_beam_linear_element.py)
+        #- We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
+        #- Beam along z axis
         np.set_printoptions(linewidth=300, precision=9)
         # --- Read data from NREL5MW tower
         TowerHt=87.6;
         TowerBs=0;
-        TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED_Tower_Onshore.dat')
+        TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
         twr = weio.FASTInputFile(TwrFile).toDataFrame()
         z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m   = twr['TMassDen_[kg/m]']  
@@ -149,9 +145,10 @@ class Test(unittest.TestCase):
         # --- Testing for straight COG
         s_span = z
         jxxG= z*0 + m # NOTE: unknown
-        #MM = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='x') # Ref uses IW_xm
-        Mxx, Mtt, Mxt, Mtg, Mxg, Mgg, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=True, rot_terms=True)
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
+        MM, IT = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis=main_axis, rot_terms=True)
+        Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
+        Mxx, Mtt, Mxt, Mtg, Mxg, Mgg = IT['Mxx'], IT['Mtt'], IT['Mxt'], IT['Mtg'], IT['Mxg'], IT['Mgg']
+ 
         MM_ref=np.array( # NOTE: this is onshore tower
         [[ 3.474602316e+05,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.322633773e+07, -0.000000000e+00,  1.046938838e+05,  0.000000000e+00],
          [ 0.000000000e+00,  3.474602316e+05,  0.000000000e+00, -1.322633773e+07,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  1.046938838e+05],
@@ -171,7 +168,7 @@ class Test(unittest.TestCase):
 
         np.testing.assert_allclose(Gr[0][0,:],[0,0,-12945834],rtol=1e-5)
         np.testing.assert_allclose(Gr[1][1,:],[0,0,-12945834],rtol=1e-5)
-        np.testing.assert_allclose(Ge[0][1,:],[0,0,122911],rtol=1e-5)
+        np.testing.assert_allclose(Ge[0][1,:],[0,0, 122911],rtol=1e-5)
         np.testing.assert_allclose(Ge[1][0,:],[0,0,-122911],rtol=1e-5)
         np.testing.assert_allclose(Oe6[0][:],[0,0,0,0,0,6472917],rtol=1e-5)
         np.testing.assert_allclose(Oe6[1][:],[0,0,0,0,6472917,0],rtol=1e-5)
@@ -180,18 +177,17 @@ class Test(unittest.TestCase):
     # --- NREL5MW Blade 
     # --------------------------------------------------------------------------------{
     def test_BladeBeam_SID(self):
-        """ 
-        In this test we use:
-        - Beam properties from the Blade of the NREL5MW
-        - Shape functions determined using a FEM beam representation (see welib/yams/tests/test_sid.py)
-        - We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
-        - Beam along z axis
-        
-        """
+        # 
+        #In this test we use:
+        #- Beam properties from the Blade of the NREL5MW
+        #- Shape functions determined using a FEM beam representation (see welib/yams/tests/test_sid.py)
+        #- We test for the gyroscopic and centrifugal matrix Gr, Ge, Oe
+        #- Beam along z axis
+        #
         np.set_printoptions(linewidth=300, precision=9)
 
         # --- Read data from NREL5MW Blade
-        edFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED.dat')
+        edFile=os.path.join(MyDir,'./../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore.dat')
         parentDir=os.path.dirname(edFile)
         ed = weio.FASTInputFile(edFile)
         TipRad = ed['TipRad']
@@ -223,7 +219,8 @@ class Test(unittest.TestCase):
         # --- Testing for straight COG
         s_span = z
         jxxG= z*0 + m # NOTE: unknown
-        MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis=main_axis, split_outputs=False, rot_terms=True)
+        MM, IT = GMBeam(s_G, s_span, m, PhiU, jxxG=jxxG, method='Flex', main_axis=main_axis, rot_terms=True)
+        Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
         MM_ref=np.array(
         [[ 1.684475202e+04,  0.000000000e+00,  0.000000000e+00,  0.000000000e+00,  3.707069074e+05, -0.000000000e+00,  1.976263092e+03, -6.366476591e+00],
@@ -254,7 +251,168 @@ class Test(unittest.TestCase):
         np.testing.assert_allclose(Oe6[1][:],[0,0,0,0,120063,-257.472],rtol=1e-5)
 
 
+    def test_blade_shapeIntegrals(self):
+        # Unfortunately, these values are for AdjBlMs=1...
+        from welib.fast.elastodyn import bladeParameters
+
+        np.set_printoptions(linewidth=300, precision=9)
+
+        # --- Read data from NREL5MW Blade
+        EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        p = bladeParameters(EDfilename, AdjBlMs=1)
+        p['s_G0'][2,:] += p['HubRad']
+        p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['Ut'], p['Vt'], p['Kt'], method='OpenFAST', EI=p['EI'])
+
+        np.testing.assert_almost_equal(p['C1'][:,0], [2.056364349106070e+03, -3.486607748638750e+02,0])
+        np.testing.assert_almost_equal(np.diag(p['C2']),[1.462005717660103e+04, -2.754429727254338e+04,0])
+        np.testing.assert_almost_equal(p['C3'][0,0,0,1], 45.91191972528230)
+        np.testing.assert_almost_equal(p['C3'][1,0,2,0], 1062.349259665119)
+        np.testing.assert_almost_equal(p['C4'][1,1,2], 1.633287798657276e4)
+        np.testing.assert_almost_equal(p['C5'][1,2,2], -1.146819701714611e2)
+        np.testing.assert_almost_equal(p['C5'][2,2,0], -1.093206978207040e+03)
+        np.testing.assert_almost_equal(p['C6'][0,0,1,1], -8.729092245330838e+02)
+        np.testing.assert_almost_equal(p['C6'][0,1,2,2], -2.650910274433677e1)
+        np.testing.assert_almost_equal(p['Komega'][0,1,1,0], 6.835792583751914e+00)
+        np.testing.assert_almost_equal(p['Kr'][2,0,1],-110.0347362363956)
+        np.testing.assert_almost_equal(p['Kr'][2,1,0], 110.0347362363956)
+        np.testing.assert_almost_equal(p['K0F'][15,2,:,:],  np.array([[ 2.186488455449226e-02   ,2.938551060365397e-02   ,6.751794953988675e-04], [ 2.938551060365397e-02   ,6.285119048343284e-02   ,3.373762175167497e-03], [ 6.751794953988673e-04   ,3.373762175167497e-03   ,1.875551457120793e-02]]))
+        np.testing.assert_almost_equal(p['K0t'][2,:,:], np.array([[3.214313717812766e+01  , 1.184358304167647e+01 ,  8.421117828704653e-01], [1.184358304167647e+01   ,6.189506551818468e+01  , 3.537578397663436e+00], [8.421117828704648e-01   ,3.537578397663437e+00  , 4.400055910641722e+01]]))
+        np.testing.assert_almost_equal(p['K0omega'][0,0,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+        np.testing.assert_almost_equal(p['K0omega'][1,1,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+        #print('>>> 2C5\t', 2*p['C5'][0,:,:].T)
+        #nq=3
+        #j=0
+        #M0j = 2*np.vstack([p['Kr'][0,0:nq, j],p['Kr'][1,0:nq, j],p['Kr'][2,0:nq, j]])  # 3 x nq # TODO TODO CHECK THIS
+        #print('M0j\n',M0j.T);
+
+
+    def test_blade_shapeFunction(self):
+        from welib.fast.elastodyn import bladeParameters
+        from welib.yams.sid import FASTBlade2SID
+
+        np.set_printoptions(linewidth=300, precision=9)
+        nShapes=3
+
+        # --- Read data from NREL5MW Blade
+        EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        p = bladeParameters(EDfilename)
+        p['s_G0'][2,:] += p['HubRad']
+
+        # --- Use GMBeam
+        #s_G0 = np.zeros((3, len(p['s_span'])))
+        #s_G0[2,:] = p['s_span'] + rh 
+        MM, IT = GMBeam(p['s_G0'], p['s_span'], p['m_full'], p['Ut'][:nShapes], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+
+        pg = GKBeamStiffneningSplit(p['s_G0'],p['s_span'], p['Vt'][:nShapes], p['m_full'], main_axis='z', method='OpenFAST')
+#         pg = GKBeamStiffneningSplit(p['s_span'], p['Vt'], p['m_full'], main_axis='z', method='trapz')
+
+        # --- Compare with SID from ShapeIntegral
+        sid = FASTBlade2SID(EDfilename, method='ShapeIntegral', Imodes_bld=np.array([0,1,2])[:nShapes], startAtRoot=False)
+
+        pw=sid.p
+
+        np.testing.assert_almost_equal(IT['Mtt_M1'], sid.J.M1)
+        np.testing.assert_almost_equal(pg['K0t'], pw['K0t'])
+        np.testing.assert_almost_equal(pg['K0F'], pw['K0F'])
+        for j in np.arange(nShapes):
+            np.testing.assert_almost_equal(IT['Gr_M1'][0,:,:,j],sid.Gr.M1[:,:3,j])
+            if nShapes>1:
+                np.testing.assert_almost_equal(IT['Gr_M1'][1,:,:,j],sid.Gr.M1[:,3:6,j])
+            if nShapes>2:
+                np.testing.assert_almost_equal(IT['Gr_M1'][2,:,:,j],sid.Gr.M1[:,6:9,j])
+
+        np.testing.assert_almost_equal(IT['Oe6_M1'], sid.Oe.M1_base)
+
+        np.testing.assert_almost_equal(pg['K0omega'], sid.p['K0omega'])
+
+        np.testing.assert_almost_equal(IT['Ge'][0,1,2],230.051823744)
+
+# 
+#         print(pg['K0t'].shape)
+#         print(pw['K0t'].shape)
+#         print('K0t\n', pg['K0t'][2,:,:])
+#         print('K0t\n', pw['K0t'][2,:,:])
+#         print(pg['K0F'].shape)
+#         print(pw['K0F'].shape)
+#         print('K0F\n', pg['K0F'][-1,2,:,:])
+#         print('K0F\n', pw['K0F'][-1,2,:,:])
+
+#         import matplotlib.pyplot as plt
+#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#         ax.plot(pg['K0F'][:,2,0,1], '-' , label='g')
+#         ax.plot(pw['K0F'][:,2,0,1], '--', label='0')
+#         ax.set_xlabel('')
+#         ax.set_ylabel('')
+#         ax.legend()
+#         plt.show()
+# 
+#         print(IT['Gr'].shape)
+#         print(sid.Gr.M0.shape)
+#         print(IT['Gr_M1'].shape)
+#         print(sid.Gr.M1.shape)
+#         print('Gr\n', IT['Gr_M1'][1,:,:,0])
+#         print('Gr\n', sid.Gr.M1[:,3:6,0])
+
+#         print(IT['Oe6'].shape)
+#         print(sid.Oe.M0.shape)
+#         print(IT['Oe6_M1'].shape)
+#         print(sid.Oe.M1_base.shape)
+#         print(pg['Oe6_M1'].shape)
+#         print('Oe\n', IT['Oe6_M1'][:,:,0])
+#         print('Oe\n', sid.Oe.M1_base[:,:,0])
+#         print('Oe\n', pg['KgOm'][:,:,0])
+#         print('Oe\n', sid.Oe.M1_geom[:,:,0])
+#         print('Oe\n', IT['Oe6_M1'][:,:,1])
+#         print('Oe\n', sid.Oe.M1_base[:,:,1])
+
+
+
+
+
+
+
+
+    def test_tower_shapeIntegrals(self):
+        from welib.fast.elastodyn import towerParameters
+        
+        np.set_printoptions(linewidth=300, precision=9)
+
+        # --- Read data from NREL5MW Blade
+        EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
+        RotMass = 107107.00927723547
+        Gravity = 9.80665
+        p = towerParameters(EDfilename, RotMass=RotMass, gravity=Gravity)
+
+        # --- Use GMBeam
+        #inertiaAtBladeRoot=True # TODO for loop around that
+        #rh = 0 # Hub Radius # TODO make this an option if from blade root or not
+        #s_G0 = np.zeros((3, len(p['s_span'])))
+        #s_G0[2,:] = p['s_span'] 
+        #MM, IT = GMBeam(s_G0, p['s_span'], p['m_full'], p['Ut'], rot_terms=True, method='OpenFAST', main_axis='z', U_untwisted=p['U'], M1=True) 
+
+        p= shapeIntegrals(p['s_G0'], p['s_span'], p['m'], p['U'], p['V'], p['K'], method='OpenFAST', EI=p['EI'])
+
+#         np.testing.assert_almost_equal(p['C1'][:,0], [2.056364349106070e+03, -3.486607748638750e+02,0])
+#         np.testing.assert_almost_equal(np.diag(p['C2']),[1.462005717660103e+04, -2.754429727254338e+04,0])
+#         np.testing.assert_almost_equal(p['C3'][0,0,0,1], 45.91191972528230)
+#         np.testing.assert_almost_equal(p['C3'][1,0,2,0], 1062.349259665119)
+#         np.testing.assert_almost_equal(p['C4'][1,1,2], 1.633287798657276e4)
+#         np.testing.assert_almost_equal(p['C5'][1,2,2], -1.146819701714611e2)
+#         np.testing.assert_almost_equal(p['C5'][2,2,0], -1.093206978207040e+03)
+#         np.testing.assert_almost_equal(p['C6'][0,0,1,1], -8.729092245330838e+02)
+#         np.testing.assert_almost_equal(p['C6'][0,1,2,2], -2.650910274433677e1)
+#         np.testing.assert_almost_equal(p['Komega'][0,1,1,0], 6.835792583751914e+00)
+#         np.testing.assert_almost_equal(p['Kr'], np.zeros((3,3,3)))
+#         np.testing.assert_almost_equal(p['K0F'][15,2,:,:],  np.array([[ 2.186488455449226e-02   ,2.938551060365397e-02   ,6.751794953988675e-04], [ 2.938551060365397e-02   ,6.285119048343284e-02   ,3.373762175167497e-03], [ 6.751794953988673e-04   ,3.373762175167497e-03   ,1.875551457120793e-02]]))
+#         np.testing.assert_almost_equal(p['K0t'][2,:,:], np.array([[3.214313717812766e+01  , 1.184358304167647e+01 ,  8.421117828704653e-01], [1.184358304167647e+01   ,6.189506551818468e+01  , 3.537578397663436e+00], [8.421117828704648e-01   ,3.537578397663437e+00  , 4.400055910641722e+01]]))
+#         np.testing.assert_almost_equal(p['K0omega'][0,0,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+#         np.testing.assert_almost_equal(p['K0omega'][1,1,:,:],np.array([[1.596725426711999e+03 , 8.854787726002767e+02 , 4.357113680750587e+01], [8.854787726002766e+02 , 3.138986589138393e+03 , 1.893486108785139e+02], [4.357113680750586e+01 , 1.893486108785139e+02 , 1.991904477363159e+03]]))
+
+
+
+
+
 if __name__=='__main__':
-    #Test().test_TowerBeam_SID()
-    #Test().test_BladeBeam_SID()
+    #Test().test_blade_shapeFunction()
     unittest.main()

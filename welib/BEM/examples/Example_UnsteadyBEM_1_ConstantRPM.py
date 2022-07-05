@@ -12,7 +12,7 @@ def main(test=False):
 
     # --- Read a FAST model to get Aerodynamic parameters to initialize unsteady BEM code
     BEM = AeroBEM()
-    BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
     # --- Override BEM options (see unsteadyBEM.setDefaultOptions, or print(BEM))
     #BEM.bSwirl = True  # swirl flow model enabled / disabled
     #BEM.bTipLoss = True # enable / disable tip loss model

@@ -85,7 +85,6 @@ def main():
 
     # --- Initial conditions
     x = KF.initFromClean()
-    KF.X_hat[:,0] = x
 
     # --- Time loop
     qh_DC=0 # Part of qh that is put in the input (u) instead of the augmented states
@@ -93,9 +92,9 @@ def main():
     n_avg=int(T_avg/KF.dt)
     for it in range(0,KF.nt-1):    
         # --- "Measurements"
-        y  = KF.Y[:,it]
+        y  = KF.Y.iloc[it,:]
         # --- Inputs
-        u = KF.U_clean[:,it]
+        u = KF.U_clean.iloc[it,:]
         if it>1:
             if algo=='1a':
                 iStart = max(it-n_avg,0) # Option 1a, average over n previous seconds
@@ -104,7 +103,7 @@ def main():
             iEnd   = max(it-1,0)
             if iEnd-iStart>1:
                 if algo=='1a' or algo=='1b':
-                    qh_DC = np.mean(KF.X_hat[KF.iX['qh'], iStart:iEnd]) # Option 1: take mean from previous time
+                    qh_DC = np.mean(KF.X_hat['qh'][iStart:iEnd]) # Option 1: take mean from previous time
                 elif algo=='2':
                     qh_DC = x[KF.iX['qh']] # Option 2: use previous value
                 else:
@@ -121,14 +120,14 @@ def main():
         M_sb = 0                # TODO compute M_sb based on qddot and estimate of Fhydro 
 
         # --- Store states and measurements
-        KF.Y_hat[:,it+1]   = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
-        KF.X_hat[:,it+1]   = x
+        KF.Y_hat.iloc[it+1,:]   = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
+        KF.X_hat.iloc[it+1,:]   = x
         # --- Store extra info
-        KF.S_hat[KF.iS['eta' ], it+1]= eta
-        KF.S_hat[KF.iS['M_sb'], it+1]= M_sb
-        KF.S_hat[KF.iS['GF'  ], it+1]= GF
-        KF.S_hat[KF.iS['qh_avg'], it+1]=qh_DC
-        KF.S_hat[KF.iS['qh'],     it+1]=qh
+        KF.S_hat['eta'   ][it+1] = eta
+        KF.S_hat['M_sb'  ][it+1] = M_sb
+        KF.S_hat['GF'    ][it+1] = GF
+        KF.S_hat['qh_avg'][it+1] = qh_DC
+        KF.S_hat['qh'    ][it+1] = qh
         # --- Propagation to next time step
         if np.mod(it,500) == 0:
             print('Time step %8.0f t=%10.3f ' % (it,KF.time[it]))
@@ -142,8 +141,8 @@ def main():
 
 if __name__ == '__main__':
     main()
-    KF.print_sigmas()
-    print(KF)
+#     KF.print_sigmas()
+#     print(KF)
     plt.show()
 
 if __name__ == '__test__':

@@ -1,0 +1,4 @@
+# NOTE: this is a gitignore for welib only not for weio
+
+# we ignore tools, which contains "graph", also present in welib.FEM.graph
+tools

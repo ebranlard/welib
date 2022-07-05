@@ -28,7 +28,7 @@ def main():
     ax.set_ylabel('Deflection [m]')
     ax.legend()
     ax.tick_params(direction='in')
-    ax.set_title('Analytical mode shapes of a beam')
+    ax.set_title('Beam - Analytical mode shapes of a beam')
 
 
 
@@ -37,7 +37,10 @@ main()
 if __name__ == '__main__':
     plt.show()
 if __name__ == '__test__':
-    pass
+    try:
+        plt.close('all')
+    except:
+        pass
 if __name__=="__export__":
     from welib.tools.repo import export_figs_callback
     export_figs_callback(__file__)

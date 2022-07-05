@@ -3,11 +3,11 @@ Runs a set of OpenFAST linearizations for different operating points
 """
 import numpy as np
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 import welib.fast.fastlib as fastlib # latest fastlib is found in https://github.com/ebranlard/welib
 from   welib.tools.clean_exceptions import *
 # --- Parameters for this script
-main_file   = 'Main_Onshore_OF2.fst'         # Main file in ref_dir, used as a template
+main_file   = 'Main_Onshore.fst'         # Main file in ref_dir, used as a template
 ref_dir     = '../../_data/NREL5MW/'         # Folder where the fast input files are located (will be copied)
 FAST_EXE    = '../../_data/NREL5MW/openfast2.2_x64s.exe' # Location of a FAST exe (and dll)
 trim_points = '../../_data/NREL5MW_Oper.csv'

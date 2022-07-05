@@ -3,7 +3,7 @@ import numpy as np
 from welib.system.eva import eig
 
 
-def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, fullModesOut=False): 
+def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, fullModesOut=False, discardIm=True): 
     """
     Performs the CraigBampton (CB) reduction of a system given some input master dofs index
     and a number of modes. Reduced matrices, and Guyan and Craig-Bampton modes are returned.
@@ -17,6 +17,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
       nModesCB: number of CB modes to keep. Default: all
       Ifollow: indices of follower DOFs. Default: complementary set to Ileader
       fullModesOut: if true, the Guyan and CB modes
+      discardIm: if true, the imaginary part of the eigenvectors is discarded
         
     OUTPUTS
       fc: critical frequency
@@ -44,7 +45,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     Kff= KK[np.ix_(Ifollow, Ifollow)]
     Mlf= MM[np.ix_(Ileader, Ifollow)]
     Klf= KK[np.ix_(Ileader, Ifollow)]
-    
+
     # --- Solve for Guyan modes
     Kff1Kfl = np.linalg.solve(Kff,(np.transpose(Klf))) # Kss1Ksm=Kss\(Kms');
     #Kff1Kfl = np.linalg.inv(Kff).dot(Klf.T)
@@ -52,7 +53,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     Phi_G = - Kff1Kfl;
 
     # --- Solve EVP for constrained system
-    Phi_CB, Lambda_CB = eig(Kff,Mff)
+    Phi_CB, Lambda_CB = eig(Kff,Mff, discardIm=discardIm)
     Omega2 = np.diag(Lambda_CB).copy()
     Omega2[Omega2<0]=0.0
     f_CB  = np.sqrt(Omega2)/(2*np.pi)
@@ -77,7 +78,7 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     ZZ   = np.zeros((len(Ileader),nModesCB))
 
     # --- Guyan frequencies
-    Phi_G2, Lambda_G = eig(Kr11,Mr11)
+    Phi_G2, Lambda_G = eig(Kr11,Mr11, discardIm=discardIm)
     Omega2 = np.diag(Lambda_G).copy()
     Omega2[Omega2<0]=0.0
     f_G  = np.sqrt(Omega2)/(2*np.pi)
@@ -96,7 +97,10 @@ def CraigBampton(MM, KK, Ileader, nModesCB=None, Ifollow=None, F=None, DD=None, 
     if F is not None:
         raise NotImplementedError('Not done')
 
-    return Mr, Kr, Phi_G, Phi_CB, f_G, f_CB
+    I_G  = list(np.arange(len(Ileader)))
+    I_CB = list(np.arange(len(Ifollow)) + len(I_G))
+
+    return Mr, Kr, Phi_G, Phi_CB, f_G, f_CB, I_G, I_CB
 
 
 def augmentModes(Ileader, Phi_G, Phi_CB, Ifollow=None):

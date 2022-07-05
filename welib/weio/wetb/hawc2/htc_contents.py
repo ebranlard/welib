@@ -370,7 +370,8 @@ class HTCOutputSection(HTCSection):
         HTCSection.__init__(self, name, begin_comments=begin_comments, end_comments=end_comments)
         self.sensors = []
 
-    def add_sensor(self, type, sensor, values=[], comment="", nr=None):
+    def add_sensor(self, type, sensor, values=None, comment="", nr=None):
+        values = [] if values is None else values
         self._add_sensor(HTCSensor(type, sensor, values, comment), nr)
 
     def _add_sensor(self, htcSensor, nr=None):

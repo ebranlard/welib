@@ -63,8 +63,31 @@ class Test(unittest.TestCase):
         #print(jacu_num)
         #print(jacu_nump)
 
+    def test_linearizeFunction(self):
+        # Test wrapper funciton which linearize with respect to any arguments
+        A=np.array([[0,1],[2,3]])
+        B=np.array([[5], [6]])
 
+        def F(x,u,p=None):
+            return A.dot(x) + B.dot(u)
 
+        x0=[0,0]
+        u0=[0]
+        dx=[0.01]*2
+        du=[0.01]*1
+        A0,B0  = linearize_function(F, (x0, u0), [0,1], (dx, du))
+        np.testing.assert_almost_equal(A,A0, 4)
+        np.testing.assert_almost_equal(B,B0, 4)
+ 
+        A0,B0 = linearize_Fxu(F, x0, u0, dx, du)
+        np.testing.assert_almost_equal(A,A0, 4)
+        np.testing.assert_almost_equal(B,B0, 4)
+ 
+
+        def F(x,p=None):
+            return A.dot(x)
+        A0 = linearize_Fx(F, x0, dx)
+        np.testing.assert_almost_equal(A,A0, 4)
 
 
 

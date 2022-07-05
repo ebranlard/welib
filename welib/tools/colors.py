@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import itertools
@@ -45,6 +46,8 @@ def adjust_color_lightness(rgb, factor):
 
 
 def lighten_color(rgb, factor=0.1):
+    if factor ==0:
+        return rgb
     return adjust_color_lightness(rgb, 1 + factor)
 
 def darken_color(rgb, factor=0.1):
@@ -98,6 +101,20 @@ def make_colormap(seq,values=None,name='CustomMap'):
             cdict['alpha'].append((v, a1, a2))
     print(cdict)
     return mcolors.LinearSegmentedColormap(name, cdict)
+
+
+def color_scales(n, color='blue'):
+    maps={
+    'blue':mpl.cm.Blues,
+    'purple':mpl.cm.Purples,
+    'orange':mpl.cm.Oranges,
+    'red':mpl.cm.Reds,
+    'green':mpl.cm.Greens,
+    }
+    norm = mpl.colors.Normalize(vmin=0, vmax=n)
+    cmap = mpl.cm.ScalarMappable(norm=norm, cmap=maps[color])
+    cmap.set_array([])
+    return [cmap.to_rgba(i) for i in np.arange(n)]
 
 
 

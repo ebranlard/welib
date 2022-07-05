@@ -31,7 +31,7 @@ class FASTWndFile(CSVFile):
         Cols=['{}_{}'.format(c,u) for c,u in zip(self.colNames,self.units)]
 
         header=[]
-        header+=['!Wind file with step changes in wind speed.']
+        header+=['!Wind file.']
         header+=['!Time  Wind     Wind	Vert.       Horiz.      Vert.       LinV        Gust']
         header+=['!      Speed    Dir    Speed       Shear		Shear       Shear       Speed']
 
@@ -41,6 +41,10 @@ class FASTWndFile(CSVFile):
         if isBinary(self.filename):
             raise WrongFormatError('This is a binary file (turbulence file?) not a FAST ascii determinisctic wind file')
         super(FASTWndFile, self)._read(*args, **kwargs)
+
+    def _write(self, *args, **kwargs):
+        super(FASTWndFile, self)._write(*args, **kwargs)
+
 
     def _toDataFrame(self):
         return self.data

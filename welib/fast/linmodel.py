@@ -2,7 +2,7 @@
 import numpy as np
 import copy
 import os
-import weio
+import welib.weio as weio
 
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model
@@ -63,6 +63,9 @@ class FASTLinModel():
         s+=str(self.q_init)+'\n'
         return s
 
+# --------------------------------------------------------------------------------}
+# --- Helper functions 
+# --------------------------------------------------------------------------------{
 def unit(s):
     iu=s.rfind('[')
     if iu>1:
@@ -103,6 +106,60 @@ def matToSIunits(Mat, name='', verbose=False):
             Mat.iloc[irow,:] /=1000 # to Nm
             Mat.index.values[irow]=nu+'_[Nm]'
     return Mat
+
+
+def subMat(df, rows=None, cols=None, check=True):
+    """ Extract relevant part from a dataframe, perform a safety check """
+    if rows is None:
+        rows=df.index
+    if cols is None:
+        cols=df.columns
+    if check:
+        missingRows = [l for l in rows if l not in df.index]
+        missingCols = [c for c in cols  if c not in df.columns]
+        if len(missingRows)>0:
+            raise Exception('The following rows are missing from outputs: {}'.format(missingRows))
+        if len(missingCols)>0:
+            raise Exception('The following columns are missing from inputs: {}'.format(missingCols))
+    return df[cols].loc[rows].copy()
+
+def matLabelNoUnit(df):
+    """ remove unit from index and columns of matrix"""
+    rows = [no_unit(row) for row in df.index.values]
+    cols = [no_unit(col) for col in df.columns.values]
+    df.index =  rows
+    df.columns = cols
+    return df
+
+def matLabelReplace(df, s1, s2):
+    """ remove unit from index and columns of matrix"""
+    rows = [row.replace(s1,s2) for row in df.index.values]
+    cols = [col.replace(s1,s2) for col in df.columns.values]
+    df.index =  rows
+    df.columns = cols
+    return df
+
+
+def matSimpleStateLabels(df, inplace=False):
+    RenameMap={
+    'PtfmSurge_[m]'       : 'x',
+    'PtfmSway_[m]'        : 'y',
+    'PtfmHeave_[m]'       : 'z',
+    'PtfmRoll_[rad]'      : 'phi_x',
+    'PtfmPitch_[rad]'     : 'phi_y',
+    'PtfmYaw_[rad]'       : 'phi_z',
+    'psi_rot_[rad]'       : 'psi',
+    'qt1FA_[m]'           : 'q_FA1',
+    'd_PtfmSurge_[m/s]'   : 'dx',
+    'd_PtfmSway_[m/s]'    : 'dy',
+    'd_PtfmHeave_[m/s]'   : 'dz',
+    'd_PtfmRoll_[rad/s]'  : 'dphi_x',
+    'd_PtfmPitch_[rad/s]' : 'dphi_y',
+    'd_PtfmYaw_[rad/s]'   : 'dphi_z',
+    'd_psi_rot_[rad/s]'   : 'dpsi',
+    'd_qt1FA_[m/s]'       : 'dq_FA1',
+    }
+    return df.rename(columns=RenameMap, index=RenameMap, inplace=inplace)
 
 
 def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, ):

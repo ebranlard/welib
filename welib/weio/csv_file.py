@@ -33,8 +33,10 @@ class CSVFile(File):
     def formatName():
         return 'CSV file'
 
-    def __init__(self, filename=None, sep=None, colNames=[], commentChar=None, commentLines=[],\
+    def __init__(self, filename=None, sep=None, colNames=None, commentChar=None, commentLines=None,\
                        colNamesLine=None, detectColumnNames=True, header=None, **kwargs):
+        colNames     = [] if colNames is None else colNames
+        commentLines = [] if commentLines is None else commentLines
         self.sep          = sep
         self.colNames     = colNames
         self.commentChar  = commentChar

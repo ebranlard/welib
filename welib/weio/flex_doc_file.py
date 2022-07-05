@@ -95,7 +95,7 @@ class FLEXDocFile(File):
                     header=lines[i]
                     i=i+1
                     while i<len(lines) and len(lines[i])>0 and lines[i][0]!='#':
-                        array_lines.append(np.array([np.float(v) if v not in ['Fnd','Twr','COG'] else ['Fnd','Twr','COG'].index(v) for v in lines[i].split()]))
+                        array_lines.append(np.array([float(v) if v not in ['Fnd','Twr','COG'] else ['Fnd','Twr','COG'].index(v) for v in lines[i].split()]))
                         i=i+1
                     # --- Process array
                     M = np.array(array_lines)
@@ -132,7 +132,7 @@ class FLEXDocFile(File):
                     header=lines[i]
                     i=i+1
                     while i<len(lines) and len(lines[i])>0 and lines[i][0]!='#':
-                        array_lines.append(np.array([np.float(v) for v in lines[i].split()]))
+                        array_lines.append(np.array([float(v) for v in lines[i].split()]))
                         i=i+1
                     # --- Process array
                     M = np.array(array_lines)

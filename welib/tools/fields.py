@@ -9,7 +9,7 @@ intgrad: (grad f) -> f
 """
 
 import numpy as np
-import numpy.matlib
+#import numpy.matlib
 import scipy.sparse as sparse
 import scipy.sparse.linalg
 

@@ -36,21 +36,24 @@ f      = omega/(2*np.pi)
 fig,axes = plt.subplots(2, 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
 fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
 ax =axes[0]
-ax.plot(f, G[0,0],       label='00 u1 ->x ')
-ax.plot(f, G[1,0],       label='10 u1 ->xd')
-ax.plot(f, G[0,1], '--', label='01 u2 ->x ')
-ax.plot(f, G[1,1], '--', label='11 u2 ->xd')
+ax.plot(f, G[0,0],       label=r'00  $u_1$ -> $x $'     )
+ax.plot(f, G[1,0],       label=r'10  $u_1$ -> $\dot{x}$')
+ax.plot(f, G[0,1], '--', label=r'01  $u_2$ -> $x $'     )
+ax.plot(f, G[1,1], '--', label=r'11  $u_2$ -> $\dot{x}$')
 ax.set_ylabel('Amplitude')
 ax.set_yscale('log')
 ax.set_xscale('log')
 ax =axes[1]
-ax.plot(f, phi[0,0]*180/np.pi      , label='00  u1 ->x ')
-ax.plot(f, phi[1,0]*180/np.pi      , label='10  u1 ->xd')
-ax.plot(f, phi[0,1]*180/np.pi, '--', label='01  u2 ->x ')
-ax.plot(f, phi[1,1]*180/np.pi, '--', label='11  u2 ->xd')
+ax.plot(f, phi[0,0]*180/np.pi      , label=r'00  $u_1$ -> $x $'     )
+ax.plot(f, phi[1,0]*180/np.pi      , label=r'10  $u_1$ -> $\dot{x}$')
+ax.plot(f, phi[0,1]*180/np.pi, '--', label=r'01  $u_2$ -> $x $'     )
+ax.plot(f, phi[1,1]*180/np.pi, '--', label=r'11  $u_2$ -> $\dot{x}$')
 ax.set_xscale('log')
 ax.set_xlabel('Frequency [Hz]')
 ax.set_ylabel('Phase [deg]')
+ax.set_title('System - 2nd order -Frequency response LTI')
+for ax in axes:
+    ax.tick_params(direction='in')
 
 ax.legend()
 
@@ -59,3 +62,9 @@ ax.legend()
 
 if __name__ == '__main__':
     plt.show()
+if __name__ == '__test__':
+    pass
+if __name__=="__export__":
+    pass
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)

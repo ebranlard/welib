@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 
 class KalmanFilter(object):
-    def __init__(self,sX0,sXa,sU,sY,sS=[]):
+    def __init__(self,sX0,sXa,sU,sY,sS=None):
+        sS = [] if sS is None else sS
         self.sX0 = sX0
         self.sXa = sXa
         self.sU  = sU
@@ -54,10 +55,11 @@ class KalmanFilter(object):
 
     def __repr__(self):
         def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
-            s=sindent
-            for iline,line in enumerate(M):
-                s+=''.join([(fmt.format(v) if int(v)!=v else fmt_int.format(int(v))) for v in line ])
-                s+='\n'+sindent
+            s=str(M)
+#             s=sindent
+#             for iline,line in enumerate(M):
+#                 s+=''.join([(fmt.format(v) if int(v)!=v else fmt_int.format(int(v))) for v in line ])
+#                 s+='\n'+sindent
             return s
 
         s=''
@@ -68,39 +70,40 @@ class KalmanFilter(object):
         s+='  sU  : {} \n'.format(self.sU)
         s+='  sY  : {} \n'.format(self.sY)
         s+='  sS  : {} \n'.format(self.sS)
-        try:
+        if self.Xx is not None:
             s+=' Xx: State-State Matrix  \n'
             s+=pretty_PrintMat(self.Xx)+'\n'
+        if self.Xu is not None:
             s+=' Xu: State-Input Matrix  \n'
             s+=pretty_PrintMat(self.Xu)+'\n'
+        if self.Yx is not None:
             s+=' Yx: Output-State Matrix  \n'
             s+=pretty_PrintMat(self.Yx)+'\n'
+        if self.Yu is not None:
             s+=' Yu: Output-Input Matrix  \n'
             s+=pretty_PrintMat(self.Yu)+'\n'
-        except:
-            pass
         return s
 
     @property
     def A(self):
-        return pd.DataFrame(data = self.Xx, index=self.sX, columns=self.sX)
+        return self.Xx
 
     @property
     def B(self):
-        return pd.DataFrame(data = self.Xu, index=self.sX, columns=self.sU)
+        return self.Xu
 
     @property
     def C(self):
-        return pd.DataFrame(data = self.Yx, index=self.sY, columns=self.sX)
+        return self.Yx
 
     @property
     def D(self):
-        return pd.DataFrame(data = self.Yu, index=self.sY, columns=self.sU)
+        return self.Yu
 
 
     def setMat(self, Xx, Xu, Yx, Yu):
         # --- 
-        self.Xx, self.Xu, self.Yx, self.Yu= EmptyStateMat(self.nX,self.nU,self.nY)
+        self.Xx, self.Xu, self.Yx, self.Yu= EmptyStateDF(self.nX,self.nU,self.nY, self.sX, self.sU, self.sY)
 
         if Xx.shape != self.Xx.shape:
             raise Exception('Shape of Xx ({}) not compatible with KF Xx shape ({}) '.format(Xx.shape, self.Xx.shape))
@@ -110,10 +113,10 @@ class KalmanFilter(object):
             raise Exception('Shape of Yx ({}) not compatible with KF Yx shape ({}) '.format(Yx.shape, self.Yx.shape))
         if Yu.shape != self.Yu.shape:
             raise Exception('Shape of Yu ({}) not compatible with KF Yu shape ({}) '.format(Yu.shape, self.Yu.shape))
-        self.Xx=Xx
-        self.Xu=Xu
-        self.Yx=Yx
-        self.Yu=Yu
+        self.Xx.iloc[:,:]=Xx
+        self.Xu.iloc[:,:]=Xu
+        self.Yx.iloc[:,:]=Yx
+        self.Yu.iloc[:,:]=Yu
 
     def discretize(self,dt,method='exponential'):
         self.dt=dt
@@ -126,7 +129,7 @@ class KalmanFilter(object):
           P1: Process covariance at time n
           Kk: Kalman gain
         """
-        return EstimateKFTimeStep(u,y,x,self.Xxd,self.Xud,self.Yx,self.Yu,P,Q,R)
+        return EstimateKFTimeStep(u,y,x,self.Xxd,self.Xud,self.Yx.values,self.Yu.values,P,Q,R)
 
     def covariancesFromSig(self):
         if not hasattr(self,'sigX'):
@@ -142,7 +145,6 @@ class KalmanFilter(object):
             if self.sigY[lab]==0:
                 print('[WARN] Sigma for y[{}] is zero, replaced by 1e-4'.format(lab))
                 self.sigY[lab]=1e-4
-
 
         P = np.eye(self.nX)
         Q = np.diag([self.sigX[lab]**2 for lab in self.sX])
@@ -168,29 +170,29 @@ class KalmanFilter(object):
                 ColMap[k]=k
 
         # --- Defining "clean" values 
-        self.X_clean = np.zeros((self.nX,self.nt))
-        self.Y_clean = np.zeros((self.nY,self.nt))
-        self.U_clean = np.zeros((self.nU,self.nt))
-        self.S_clean = np.zeros((self.nS,self.nt))
+        self.X_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sX)
+        self.Y_clean = pd.DataFrame(data=np.zeros((self.nt,self.nY)), columns=self.sY)
+        self.U_clean = pd.DataFrame(data=np.zeros((self.nt,self.nU)), columns=self.sU)
+        self.S_clean = pd.DataFrame(data=np.zeros((self.nt,self.nS)), columns=self.sS)
         for i,lab in enumerate(self.sX):
             try:
-                self.X_clean[i,:]=df[ColMap[lab]]
+                self.X_clean[lab]=df[ColMap[lab]].values
             except:
                 print('[WARN] Clean state not available      :', lab)
 
         for i,lab in enumerate(self.sY):
             try:
-                self.Y_clean[i,:]=df[ColMap[lab]]
+                self.Y_clean[lab]=df[ColMap[lab]].values
             except:
                 print('[WARN] Clean measurement not available:', lab)
         for i,lab in enumerate(self.sU):
             try:
-                self.U_clean[i,:] =df[ColMap[lab]]
+                self.U_clean[lab] =df[ColMap[lab]].values
             except:
                 print('[WARN] Clean output not available     :', lab)
         for i,lab in enumerate(self.sS):
             try:
-                self.S_clean[i,:] =df[ColMap[lab]]
+                self.S_clean[lab] =df[ColMap[lab]].values
             except:
                 print('[WARN] Clean misc var not available   :', lab)
 
@@ -201,42 +203,41 @@ class KalmanFilter(object):
                 ColMap[k]=k
 
         for i,lab in enumerate(self.sY):
-            self.Y[i,:]=df[ColMap[lab]]
+            self.Y[lab]=df[ColMap[lab]]
 
     def initTimeStorage(self):
-        self.X_hat = np.zeros((self.nX,self.nt))
-        self.Y_hat = np.zeros((self.nY,self.nt))
-        self.Y     = np.zeros((self.nY,self.nt))
-        self.S_hat = np.zeros((self.nS,self.nt))
+        self.X_hat = pd.DataFrame(data=np.zeros((self.nt, self.nX)), columns=self.sX)
+        self.Y_hat = pd.DataFrame(data=np.zeros((self.nt, self.nY)), columns=self.sY)
+        self.Y     = pd.DataFrame(data=np.zeros((self.nt, self.nY)), columns=self.sY)
+        self.S_hat = pd.DataFrame(data=np.zeros((self.nt, self.nS)), columns=self.sS)
     
-    # TODO use property or dict syntax
-    def get_vY(self,lab):
-        return self.Y[self.iY[lab],:]
-    def set_vY(self,lab, val ):
-        self.Y[self.iY[lab],:]=val
-
-    def get_vX_hat(self,lab):
-        return self.X_hat[self.iX[lab],:]
-    def set_vX_hat(self,lab, val ):
-        self.X_hat[self.iX[lab],:]=val
-
-    def get_Y(self,lab,it):
-        return self.Y[self.iY[lab],it]
-    def set_Y(self,lab, val ):
-        self.Y[self.iY[lab],it]=val
-
-    def get_X_hat(self,lab,it):
-        return self.X_hat[self.iX[lab],it]
-    def set_X_hat(self,lab, val ):
-        self.X_hat[self.iX[lab],it]=val
-
+#     # TODO use property or dict syntax
+#     def get_vY(self,lab):
+#         return self.Y[lab].values
+#     def set_vY(self, lab, val ):
+#         self.Y[lab]=val
+# 
+#     def get_vX_hat(self,lab):
+#         return self.X_hat[lab].values
+#     def set_vX_hat(self, lab, val ):
+#         self.X_hat[lab]=val
+# 
+#     def get_Y(self,lab,it):
+#         return self.Y[lab][it]
+#     def set_Y(self, lab, val ):
+#         self.Y[self.iY[lab],it]=val
+# 
+#     def get_X_hat(self,lab,it):
+#         return self.X_hat[self.iX[lab],it]
+#     def set_X_hat(self,lab, val ):
+#         self.X_hat[self.iX[lab],it]=val
 
 
     def initFromClean(self):
-        x = self.X_clean[:,0]
+        x = self.X_clean.iloc[0,:].values
         # x = np.zeros(nX)
-        self.X_hat[:,0] = x
-        self.Y_hat[:,0] = self.Y_clean[:,0]
+        self.X_hat.iloc[0,:] = x
+        self.Y_hat.iloc[0,:] = self.Y_clean.iloc[0,:]
         return x
 
     def initZero(self):
@@ -298,12 +299,12 @@ class KalmanFilter(object):
             Ey = np.sqrt(R)*NoiseRFactor
 
         for it in range(0,self.nt):    
-            self.Y[:,it] = self.Y_clean[:,it] + np.dot(Ey,np.random.randn(self.nY,1)).ravel() + y_bias
+            self.Y.iloc[it,:] = self.Y_clean.iloc[it,:] + np.dot(Ey,np.random.randn(self.nY,1)).ravel() + y_bias
 
     def sigmasFromClean(self,factor=1):
         sigX   = dict()
         for iX,lab in enumerate(self.sX):
-            std = np.std(self.X_clean[iX,:])
+            std = np.std(self.X_clean[lab])
             if std==0:
                 res=1
             else:
@@ -311,7 +312,7 @@ class KalmanFilter(object):
             sigX[lab]=np.floor(std/res)*res  * factor
         sigY   = dict()
         for iY,lab in enumerate(self.sY):
-            std = np.std(self.Y_clean[iY,:])
+            std = np.std(self.Y_clean[lab])
             if std==0:
                 res=1
             else:
@@ -378,7 +379,7 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1):
     import matplotlib
     import matplotlib.pyplot as plt
     # --- Compare States
@@ -400,17 +401,27 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
         I=np.arange(len(sX))
 
     if fig is None:
-        fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
-        fig.subplots_adjust(left=0.16, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
+
+        if nPlotCols==2:
+            fig,axes = plt.subplots(int(np.ceil(len(I)/2)), 2, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        else:
+            fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.16, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
+
+
+
         if not hasattr(axes,'__len__'):
             axes=[axes]
+    axes=(np.asarray(axes).T).ravel()
+    
     for j,i in enumerate(I):
         s  = sX[i]
         ax = axes[j]
-        ax.plot(time,X_clean[i,:],''  , color=COLRS[0],label='Reference')
+        ax.plot(time,X_clean[s],''  , color=COLRS[0],label='Reference')
         if X_noisy is not None:
-            ax.plot(time,X_noisy[i,:],'-.',  color=COLRS[2] ,label='Noisy')
-        ax.plot(time,X_hat  [i,:],'--', color=COLRS[1],label='Estimate')
+            ax.plot(time,X_noisy[s],'-.',  color=COLRS[2] ,label='Noisy')
+        ax.plot(time,X_hat[s],'--', color=COLRS[1],label='Estimate')
         ax.set_ylabel(s)
         ax.tick_params(direction='in')
     axes[0].set_title(title)

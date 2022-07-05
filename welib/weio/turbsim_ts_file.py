@@ -47,7 +47,7 @@ class TurbSimTSFile(File):
             f.readline()
             lines=[]
             # reading full data
-            self['data'] = np.array([l.strip().split() for l in takewhile(lambda x: len(x.strip())>0, f.readlines())]).astype(np.float)
+            self['data'] = np.array([l.strip().split() for l in takewhile(lambda x: len(x.strip())>0, f.readlines())]).astype(float)
 
     def columns(self):
         Comp=['u','v','w']
