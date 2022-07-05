@@ -33,271 +33,300 @@ from ctypes import *
 import os
 import platform
 
-MyDir=os.path.dirname(__file__)
 
 class Map(object):
-    # lib = cdll.LoadLibrary("map_x64.dll")
-    if platform.system()=='Windows':
-        lib = cdll.LoadLibrary(os.path.join(MyDir,'libmap.dll'))
-    else:
-        lib = cdll.LoadLibrary(os.path.join(MyDir,'libmap.so'))
 
-    '''
-    these are the fortran derived types created by the FAST registry.
-    '''
-    f_type_init = None
-    f_type_initout = None
-    f_type_d = None
-    f_type_u = None
-    f_type_x = None
-    f_type_y = None
-    f_type_z = None
-    f_type_p = None
-
-
-    ierr = c_int(0)
-    status = create_string_buffer(1024)
-    summary_file = c_char_p
-    val = c_double
-
-    class ModelData_Type(Structure):
-        _fields_ = []
-
-
-    '''
-    void * object ;
-    double gravity ;
-    double seaDensity ;
-    double depth ;
-    char fileName[255] ;
-    char summaryFileName[255] ;
-    char libraryInputLine[255] ;
-    char nodeInputLine[255] ;
-    char elementInputLine[255] ;
-    char optionInputLine[255] ;
-    '''
-    class InitializationData_Type(Structure):
-        _fields_= [("object",c_void_p),
-                   ("gravity",c_double),
-                   ("seaDensity",c_double),
-                   ("depth",c_double),
-                   ("fileName",c_char*255),
-                   ("summaryFileName",c_char*255),
-                   ("libraryInputLine",c_char*255),
-                   ("nodeInputLine",c_char*255),
-                   ("elementInputLine",c_char*255),
-                   ("optionInputLine",c_char*255)]
-
-        
-    '''
-    void * object ;
-    char progName[99] ;
-    char version[99] ;
-    char compilingData[24] ;
-    char * writeOutputHdr ;     int writeOutputHdr_Len ;
-    char * writeOutputUnt ;     int writeOutputUnt_Len ;
-    '''
-    class InitializationOutputData_Type(Structure):
-        _fields_ = [("object",c_void_p),
-                    ("progName",c_char*99),
-                    ("version",c_char*99),
-                    ("CompilingData",c_char*99),
-                    ("writeOutputHdr",c_char_p),
-                    ("writeOutputHdr_Len",c_int),
-                    ("writeOutputUnt",c_char_p),
-                    ("writeOutputUnt_Len",c_int)]
-
-    class InputData_Type(Structure):
-        _fields_ = []
-
-
-    class OutputData_Type(Structure):
-        _fields_ = [("object", c_void_p),
-                    ("Fx",POINTER(c_double)),
-                    ("Fx_Len", c_int),
-                    ("Fy",POINTER(c_double)),
-                    ("Fy_Len", c_int),
-                    ("Fz",POINTER(c_double)),
-                    ("Fz_Len", c_int),
-                    ("WriteOuput",POINTER(c_float)),
-                    ("WriteOutput_Len", c_int),
-                    ("wrtOuput",POINTER(c_double)),
-                    ("wrtOutput_Len", c_int)]
-
-        
-    '''
-    void * object ;
-    double g ;
-    double depth ;
-    double rhoSea ;
-    '''
-    class ParameterData_Type(Structure):
-        _fields_ = [("object",c_void_p),
-                    ("g",c_double),
-                    ("depth",c_double), 
-                    ("rhoSea", c_double)]
-
-    class ConstraintData_Type(Structure):
-        _fields_ = []
-
-    class ContinuousData_Type(Structure):
-        _fields_ = []
-
-    '''
-    fields for the fortran types
-
-    MAP_EXTERNCALL MAP_InitInputType_t* map_create_init_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_InitOutputType_t* map_create_initout_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_InputType_t* map_create_input_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_ParameterType_t* map_create_parameter_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_ConstraintStateType_t* map_create_constraint_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_OtherStateType_t* map_create_other_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_OutputType_t* map_create_output_type( char* msg, MAP_ERROR_CODE* status );
-    MAP_EXTERNCALL MAP_ContinuousStateType_t* map_create_continuous_type( char* msg, MAP_ERROR_CODE* status );
-    '''
-    MapData_Type       = POINTER(ModelData_Type)
-    MapInit_Type       = POINTER(InitializationData_Type)
-    MapInitOut_Type    = POINTER(InitializationOutputData_Type)
-    MapInput_Type      = POINTER(InputData_Type)
-    MapOutput_Type     = POINTER(OutputData_Type)
-    MapParameter_Type  = POINTER(ParameterData_Type)
-    MapConstraint_Type = POINTER(ConstraintData_Type)
-    MapContinuous_Type = POINTER(ContinuousData_Type)
-
+    lib = None # Will hold the dll library handle
     # read file stuff
-    lib.set_init_to_null.argtype=[MapInit_Type, c_char_p, POINTER(c_int) ]
-    lib.map_set_summary_file_name.argtype=[MapInit_Type, c_char_p, POINTER(c_int) ]
-    lib.map_add_cable_library_input_text.argtype=[MapInit_Type]
-    lib.map_add_node_input_text.argtype=[MapInit_Type]
-    lib.map_add_line_input_text.argtype=[MapInit_Type]
-    lib.map_add_options_input_text.argtype=[MapInit_Type]
+    @classmethod
+    def initLib(cls, dllFileName=None):
+        #lib =None
+        # lib = cdll.LoadLibrary("map_x64.dll")
+        if dllFileName is None:
+            MyDir=os.path.dirname(__file__)
+            if platform.system()=='Windows':
+                dllFileName=os.path.join(MyDir,'libmap.dll')
+            else:
+                dllFileName=os.path.join(MyDir,'libmap.so')
+        print('Loading MAP library: ',dllFileName)
+        lib = cdll.LoadLibrary(dllFileName)
 
-    lib.map_create_init_type.argtype       = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_initout_type.argtype    = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_input_type.argtype      = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_parameter_type.argtype  = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_constraint_type.argtype = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_other_type.argtype      = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_output_type.argtype     = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_continuous_type.argtype = [ c_char_p, POINTER(c_int) ]
-    lib.map_create_continuous_type.argtype = [ MapData_Type ]
-    
-    lib.map_create_init_type.restype       = MapInit_Type
-    lib.map_create_initout_type.restype    = MapInitOut_Type
-    lib.map_create_input_type.restype      = MapInput_Type
-    lib.map_create_parameter_type.restype  = MapParameter_Type
-    lib.map_create_constraint_type.restype = MapConstraint_Type
-    lib.map_create_other_type.restype      = MapData_Type
-    lib.map_create_output_type.restype     = MapOutput_Type
-    lib.map_create_continuous_type.restype = MapContinuous_Type
+        '''
+        these are the fortran derived types created by the FAST registry.
+        '''
+        f_type_init = None
+        f_type_initout = None
+        f_type_d = None
+        f_type_u = None
+        f_type_x = None
+        f_type_y = None
+        f_type_z = None
+        f_type_p = None
 
-    lib.map_set_sea_depth.argtypes   = [ MapParameter_Type, c_double ]
-    lib.map_set_gravity.argtypes     = [ MapParameter_Type, c_double ]
-    lib.map_set_sea_density.argtypes = [ MapParameter_Type, c_double ]
-    
-    lib.map_size_lines.restype = c_int
-
-    # numeric routines
-    lib.map_residual_function_length.restype = c_double
-    lib.map_residual_function_height.restype = c_double
-    lib.map_jacobian_dxdh.restype            = c_double
-    lib.map_jacobian_dxdv.restype            = c_double
-    lib.map_jacobian_dzdh.restype            = c_double
-    lib.map_jacobian_dzdv.restype            = c_double
- 
-    lib.map_residual_function_length.argtypes = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_residual_function_height.argtypes = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_jacobian_dxdh.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_jacobian_dxdv.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_jacobian_dzdh.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_jacobian_dzdv.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
-      
-    lib.map_get_fairlead_force_2d.argtypes = [POINTER(c_double), POINTER(c_double), MapData_Type, c_int, c_char_p, POINTER(c_int)]
-      
-    # plot routines
-    lib.map_plot_x_array.argtypes = [ MapData_Type, c_int, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_plot_x_array.restype  = POINTER(c_double)
-    lib.map_plot_y_array.argtypes = [ MapData_Type, c_int, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_plot_y_array.restype  = POINTER(c_double)
-    lib.map_plot_z_array.argtypes = [ MapData_Type, c_int, c_int, c_char_p, POINTER(c_int) ]
-    lib.map_plot_z_array.restype  = POINTER(c_double)
-    lib.map_plot_array_free.argtypes = [ POINTER(c_double) ]
- 
-    # modifyers
-    lib.map_offset_vessel.argtypes = [MapData_Type, MapInput_Type, c_double, c_double, c_double, c_double, c_double, c_double, c_char_p, POINTER(c_int)]        
-    lib.map_linearize_matrix.argtypes = [MapInput_Type, MapParameter_Type, MapData_Type, MapOutput_Type, MapConstraint_Type, c_double, POINTER(c_int), c_char_p]        
-    lib.map_linearize_matrix.restype  = POINTER(POINTER(c_double))
-    lib.map_free_linearize_matrix.argtypes = [POINTER(POINTER(c_double))]
-
-    lib.map_init.argtypes = [ MapInit_Type,
-                              MapInput_Type,
-                              MapParameter_Type,
-                              MapContinuous_Type,
-                              c_void_p,
-                              MapConstraint_Type,
-                              MapData_Type,
-                              MapOutput_Type,
-                              MapInitOut_Type,
-                              POINTER(c_int),
-                              c_char_p]
+        class ModelData_Type(Structure):
+            _fields_ = []
 
 
-    lib.map_update_states.argtypes = [ c_float,
-                                       c_int,
-                                       MapInput_Type,
-                                       MapParameter_Type,
-                                       MapContinuous_Type,
-                                       c_void_p,
-                                       MapConstraint_Type,
-                                       MapData_Type,
-                                       POINTER(c_int),
-                                       c_char_p]
+        '''
+        void * object ;
+        double gravity ;
+        double seaDensity ;
+        double depth ;
+        char fileName[255] ;
+        char summaryFileName[255] ;
+        char libraryInputLine[255] ;
+        char nodeInputLine[255] ;
+        char elementInputLine[255] ;
+        char optionInputLine[255] ;
+        '''
+        class InitializationData_Type(Structure):
+            _fields_= [("object",c_void_p),
+                       ("gravity",c_double),
+                       ("seaDensity",c_double),
+                       ("depth",c_double),
+                       ("fileName",c_char*255),
+                       ("summaryFileName",c_char*255),
+                       ("libraryInputLine",c_char*255),
+                       ("nodeInputLine",c_char*255),
+                       ("elementInputLine",c_char*255),
+                       ("optionInputLine",c_char*255)]
 
-    lib.map_calc_output.argtypes = [c_float,
-                                    MapInput_Type,
-                                    MapParameter_Type,
-                                    MapContinuous_Type,
-                                    c_void_p,
-                                    MapConstraint_Type,
-                                    MapData_Type,
-                                    MapOutput_Type,
-                                    POINTER(c_int),
-                                    c_char_p]            
-    
-    lib.map_end.argtypes = [ MapInput_Type,
-                             MapParameter_Type,
-                             MapContinuous_Type,
-                             c_void_p,
-                             MapConstraint_Type,
-                             MapData_Type,
-                             MapOutput_Type,
-                             POINTER(c_int),
-                             c_char_p]
-    
-    lib.map_initialize_msqs_base.argtypes = [MapInput_Type,
-                                             MapParameter_Type,
-                                             MapContinuous_Type,
-                                             MapConstraint_Type,
-                                             MapData_Type,
-                                             MapOutput_Type,
-                                             MapInitOut_Type]
+            
+        '''
+        void * object ;
+        char progName[99] ;
+        char version[99] ;
+        char compilingData[24] ;
+        char * writeOutputHdr ;     int writeOutputHdr_Len ;
+        char * writeOutputUnt ;     int writeOutputUnt_Len ;
+        '''
+        class InitializationOutputData_Type(Structure):
+            _fields_ = [("object",c_void_p),
+                        ("progName",c_char*99),
+                        ("version",c_char*99),
+                        ("CompilingData",c_char*99),
+                        ("writeOutputHdr",c_char_p),
+                        ("writeOutputHdr_Len",c_int),
+                        ("writeOutputUnt",c_char_p),
+                        ("writeOutputUnt_Len",c_int)]
 
-    lib.map_size_lines.argtypes = [ MapData_Type,
-                                    POINTER(c_int),
-                                    c_char_p]
-    
+        class InputData_Type(Structure):
+            _fields_ = []
+
+
+        class OutputData_Type(Structure):
+            _fields_ = [("object", c_void_p),
+                        ("Fx",POINTER(c_double)),
+                        ("Fx_Len", c_int),
+                        ("Fy",POINTER(c_double)),
+                        ("Fy_Len", c_int),
+                        ("Fz",POINTER(c_double)),
+                        ("Fz_Len", c_int),
+                        ("WriteOuput",POINTER(c_float)),
+                        ("WriteOutput_Len", c_int),
+                        ("wrtOuput",POINTER(c_double)),
+                        ("wrtOutput_Len", c_int)]
+
+            
+        '''
+        void * object ;
+        double g ;
+        double depth ;
+        double rhoSea ;
+        '''
+        class ParameterData_Type(Structure):
+            _fields_ = [("object",c_void_p),
+                        ("g",c_double),
+                        ("depth",c_double), 
+                        ("rhoSea", c_double)]
+
+        class ConstraintData_Type(Structure):
+            _fields_ = []
+
+        class ContinuousData_Type(Structure):
+            _fields_ = []
+
+        '''
+        fields for the fortran types
+
+        MAP_EXTERNCALL MAP_InitInputType_t* map_create_init_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_InitOutputType_t* map_create_initout_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_InputType_t* map_create_input_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_ParameterType_t* map_create_parameter_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_ConstraintStateType_t* map_create_constraint_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_OtherStateType_t* map_create_other_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_OutputType_t* map_create_output_type( char* msg, MAP_ERROR_CODE* status );
+        MAP_EXTERNCALL MAP_ContinuousStateType_t* map_create_continuous_type( char* msg, MAP_ERROR_CODE* status );
+        '''
+
+        MapData_Type       = POINTER(ModelData_Type)
+        MapInit_Type       = POINTER(InitializationData_Type)
+        MapInitOut_Type    = POINTER(InitializationOutputData_Type)
+        MapInput_Type      = POINTER(InputData_Type)
+        MapOutput_Type     = POINTER(OutputData_Type)
+        MapParameter_Type  = POINTER(ParameterData_Type)
+        MapConstraint_Type = POINTER(ConstraintData_Type)
+        MapContinuous_Type = POINTER(ContinuousData_Type)
+
+
+
+        lib.set_init_to_null.argtype=[MapInit_Type, c_char_p, POINTER(c_int) ]
+        lib.map_set_summary_file_name.argtype=[MapInit_Type, c_char_p, POINTER(c_int) ]
+        lib.map_add_cable_library_input_text.argtype=[MapInit_Type]
+        lib.map_add_node_input_text.argtype=[MapInit_Type]
+        lib.map_add_line_input_text.argtype=[MapInit_Type]
+        lib.map_add_options_input_text.argtype=[MapInit_Type]
+
+        lib.map_create_init_type.argtype       = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_initout_type.argtype    = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_input_type.argtype      = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_parameter_type.argtype  = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_constraint_type.argtype = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_other_type.argtype      = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_output_type.argtype     = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_continuous_type.argtype = [ c_char_p, POINTER(c_int) ]
+        lib.map_create_continuous_type.argtype = [ MapData_Type ]
+        
+        lib.map_create_init_type.restype       = MapInit_Type
+        lib.map_create_initout_type.restype    = MapInitOut_Type
+        lib.map_create_input_type.restype      = MapInput_Type
+        lib.map_create_parameter_type.restype  = MapParameter_Type
+        lib.map_create_constraint_type.restype = MapConstraint_Type
+        lib.map_create_other_type.restype      = MapData_Type
+        lib.map_create_output_type.restype     = MapOutput_Type
+        lib.map_create_continuous_type.restype = MapContinuous_Type
+
+        lib.map_set_sea_depth.argtypes   = [ MapParameter_Type, c_double ]
+        lib.map_set_gravity.argtypes     = [ MapParameter_Type, c_double ]
+        lib.map_set_sea_density.argtypes = [ MapParameter_Type, c_double ]
+        
+        lib.map_size_lines.restype = c_int
+
+        # numeric routines
+        lib.map_residual_function_length.restype = c_double
+        lib.map_residual_function_height.restype = c_double
+        lib.map_jacobian_dxdh.restype            = c_double
+        lib.map_jacobian_dxdv.restype            = c_double
+        lib.map_jacobian_dzdh.restype            = c_double
+        lib.map_jacobian_dzdv.restype            = c_double
+     
+        lib.map_residual_function_length.argtypes = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_residual_function_height.argtypes = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_jacobian_dxdh.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_jacobian_dxdv.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_jacobian_dzdh.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_jacobian_dzdv.argtypes            = [ MapData_Type, c_int, c_char_p, POINTER(c_int) ]
+          
+        lib.map_get_fairlead_force_2d.argtypes = [POINTER(c_double), POINTER(c_double), MapData_Type, c_int, c_char_p, POINTER(c_int)]
+          
+        # plot routines
+        lib.map_plot_x_array.argtypes = [ MapData_Type, c_int, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_plot_x_array.restype  = POINTER(c_double)
+        lib.map_plot_y_array.argtypes = [ MapData_Type, c_int, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_plot_y_array.restype  = POINTER(c_double)
+        lib.map_plot_z_array.argtypes = [ MapData_Type, c_int, c_int, c_char_p, POINTER(c_int) ]
+        lib.map_plot_z_array.restype  = POINTER(c_double)
+        lib.map_plot_array_free.argtypes = [ POINTER(c_double) ]
+     
+        # modifyers
+        lib.map_offset_vessel.argtypes = [MapData_Type, MapInput_Type, c_double, c_double, c_double, c_double, c_double, c_double, c_char_p, POINTER(c_int)]        
+        lib.map_linearize_matrix.argtypes = [MapInput_Type, MapParameter_Type, MapData_Type, MapOutput_Type, MapConstraint_Type, c_double, POINTER(c_int), c_char_p]        
+        lib.map_linearize_matrix.restype  = POINTER(POINTER(c_double))
+        lib.map_free_linearize_matrix.argtypes = [POINTER(POINTER(c_double))]
+
+        try:
+            lib.map_f_op.argtypes = [MapInput_Type, MapParameter_Type, MapData_Type, MapOutput_Type, MapConstraint_Type, POINTER(c_int), c_char_p]        
+            lib.map_f_op.restype  = POINTER(c_double)
+            lib.map_free_f_op.argtypes = [POINTER(c_double)]
+        except:
+            print('[WARN] map_f_op not available in this version of MAP')
+
+        lib.map_init.argtypes = [ MapInit_Type,
+                                  MapInput_Type,
+                                  MapParameter_Type,
+                                  MapContinuous_Type,
+                                  c_void_p,
+                                  MapConstraint_Type,
+                                  MapData_Type,
+                                  MapOutput_Type,
+                                  MapInitOut_Type,
+                                  POINTER(c_int),
+                                  c_char_p]
+
+
+        lib.map_update_states.argtypes = [ c_float,
+                                           c_int,
+                                           MapInput_Type,
+                                           MapParameter_Type,
+                                           MapContinuous_Type,
+                                           c_void_p,
+                                           MapConstraint_Type,
+                                           MapData_Type,
+                                           POINTER(c_int),
+                                           c_char_p]
+
+        lib.map_calc_output.argtypes = [c_float,
+                                        MapInput_Type,
+                                        MapParameter_Type,
+                                        MapContinuous_Type,
+                                        c_void_p,
+                                        MapConstraint_Type,
+                                        MapData_Type,
+                                        MapOutput_Type,
+                                        POINTER(c_int),
+                                        c_char_p]            
+        
+        lib.map_end.argtypes = [ MapInput_Type,
+                                 MapParameter_Type,
+                                 MapContinuous_Type,
+                                 c_void_p,
+                                 MapConstraint_Type,
+                                 MapData_Type,
+                                 MapOutput_Type,
+                                 POINTER(c_int),
+                                 c_char_p]
+        
+        lib.map_initialize_msqs_base.argtypes = [MapInput_Type,
+                                                 MapParameter_Type,
+                                                 MapContinuous_Type,
+                                                 MapConstraint_Type,
+                                                 MapData_Type,
+                                                 MapOutput_Type,
+                                                 MapInitOut_Type]
+
+        lib.map_size_lines.argtypes = [ MapData_Type,
+                                        POINTER(c_int),
+                                        c_char_p]
+
+        lib.map_get_header_string.argtypes = [c_void_p, POINTER(c_char_p),   MapData_Type]
+        lib.map_get_unit_string.argtypes = [c_void_p, POINTER(c_char_p),   MapData_Type]
+        lib.map_offset_fairlead.argtypes = [MapInput_Type, c_int, c_double, c_double, c_double, c_char_p, POINTER(c_int)]                    
+        # Store
+        cls.lib = lib
+
+        cls.ierr = c_int(0)
+        cls.status = create_string_buffer(1024)
+        cls.val = c_double
+
     # --------------------------------------------------------------------------------}
     # --- INIT 
     # --------------------------------------------------------------------------------{
-    def __init__(self, filename=None, WtrDepth=None, gravity=None, WtrDens=None, sumFile=None) :
+    def __init__(self, filename=None, WtrDepth=None, gravity=None, WtrDens=None, sumFile=None, dllFileName=None) :
         """
 
         """
+        # Call Class method
+        if Map.lib is None:
+            Map.initLib(dllFileName)
+        else:
+            print('Not reinitializing lib.')
         # Misc Data
         self._gravity=None
         self._WtrDepth=None
         self._WtrDens=None
         self._filename=None
+        self._K_lin       = None # Linear stiffness matrix
+        self._K_lin_point = None # Point where linear stiffness matrix was computed
 
         # Wrapper data
         self.f_type_d       = self.CreateDataState()
@@ -351,6 +380,16 @@ class Map(object):
             if self._filename is not None:
                 self.init()
 
+    def __repr__(self):
+        s ='<{} object> with attributes:\n'.format(type(self).__name__)
+        s+='|- Nodes: {}\n'.format(len(self.Nodes))
+        for n in self.Nodes:
+            s+='|   {}\n'.format(n)
+        s+='|- _WtrDepth: {}\n'.format(self._WtrDepth)
+        s+='|- _WtrDens : {}\n'.format(self._WtrDens)
+        s+='|- _gravity : {}\n'.format(self._gravity)
+        s+='| main methods: \n'
+        return s
 
 
 
@@ -389,7 +428,6 @@ class Map(object):
 
 
 
-    lib.map_get_header_string.argtypes = [c_void_p, POINTER(c_char_p),   MapData_Type]
     def get_output_labels(self):
         size = self.f_type_y.contents.WriteOutput_Len + self.f_type_y.contents.wrtOutput_Len
         string_buffers = [create_string_buffer(16) for i in range(size)]
@@ -398,7 +436,6 @@ class Map(object):
         return [s.value for s in string_buffers]
 
     
-    lib.map_get_unit_string.argtypes = [c_void_p, POINTER(c_char_p),   MapData_Type]
     def get_output_units(self):
         size = self.f_type_y.contents.WriteOutput_Len + self.f_type_y.contents.wrtOutput_Len
         string_buffers = [create_string_buffer(16) for i in range(size)]
@@ -673,16 +710,66 @@ class Map(object):
         return self.val
 
 
-    def linear( self, epsilon=1.e-3 ) :
+    def linear( self, epsilon=1.e-3, point=None) :
+        """
+        Return linear matrix, transpose of stiffness matrix
+        """
+        if point is not None:
+            raise Exception('Do not call `linear` with argument point, call `stiffness_matrix` instead.') 
         array = POINTER(POINTER(c_double))
         array = Map.lib.map_linearize_matrix( self.f_type_u, self.f_type_p, self.f_type_d, self.f_type_y, self.f_type_z, epsilon, pointer(self.ierr), self.status)        
         if self.ierr.value != 0 :
            print(self.status.value)
            self.end( )
            sys.exit('MAP terminated premature.')
-        arr = [[array[j][i] for i in range(6)] for j in range(6)]
+        arr = [[array[j][i] for i in range(6)] for j in range(6)] 
         Map.lib.map_free_linearize_matrix(array)        
-        return np.array(arr)
+        # Stiffness matrix is defined at (0,0,0)
+        K_0   = np.array(arr) # NOTE: this is a transposed of a stiffness matrix !!!
+        return K_0
+
+
+    def stiffness_matrix(self, epsilon=1.e-3, point=None) :
+        # Stiffness matrix at (0,0,0)
+        K_0 = self.linear(epsilon).T # NOTE: transpose needed
+
+        # Operating point loads
+        F_op_0 = self.f_op()
+
+        if point is None:
+            K_D    = K_0
+            F_op_D = F_op_0
+        else:
+            # Transfer to requested reference point
+            r_S  = np.array((0,0,0)) # Source # TODO is it OK when vessel has been displaced?
+            r_D = np.array(point)    # Destination
+            r0  = r_S - r_D  # 
+            K_D = - translateLoadsJacobian(-K_0, r0, F_op_0[:3]) # Jacobians are -K
+            #from welib.FEM.utils import rigidTransformationTwoPoints, rigidTransformationTwoPoints_Loads
+            #T_Ref2HD   = rigidTransformationTwoPoints(r_D, r_S)
+            #T_HD2Ref_l = rigidTransformationTwoPoints_Loads(r_S, r_D)
+            #K_Ref = T_HD2Ref_l.dot(K_0.dot(T_Ref2HD))
+            F_op_D = F_op_0.copy()
+            F_op_D[3:6] += np.cross(r0,F_op_0[:3])
+        self._K_lin       = K_D
+        self._K_lin_point = point
+        return K_D, F_op_D
+
+    def f_op(self) :
+        try:
+            array = POINTER(c_double)
+            array = Map.lib.map_f_op( self.f_type_u, self.f_type_p, self.f_type_d, self.f_type_y, self.f_type_z, pointer(self.ierr), self.status)        
+            if self.ierr.value != 0 :
+               print(self.status.value)
+               self.end( )
+               sys.exit('MAP terminated premature.')
+            arr = [array[i] for i in range(6)]
+            Map.lib.map_free_f_op(array)        
+            Fop   = np.array(arr)
+        except:
+            print('[WARN] MAP f_op not available in this version of the library')
+            Fop=np.zeros(6)
+        return Fop
     
 
     def displace_vessel(self,x,y,z,phi,the,psi) :
@@ -699,7 +786,6 @@ class Map(object):
             sys.exit('MAP terminated premature.')    
 
             
-    lib.map_offset_fairlead.argtypes = [MapInput_Type, c_int, c_double, c_double, c_double, c_char_p, POINTER(c_int)]                    
     def offset_fairlead(self,x,y,z, idx):
         Map.lib.map_offset_fairlead(self.f_type_u, c_int(idx), x, y, z, self.status, pointer(self.ierr) )
         if self.ierr.value != 0 :
@@ -711,31 +797,32 @@ class Map(object):
     def read_file(self, file_name):
         self._filename = file_name
         f           = open(file_name, 'r')
-        charptr     = POINTER(c_char)
         option_breaks = ("LINE DICTIONARY", "NODE PROPERTIES", "LINE PROPERTIES", "SOLVER OPTIONS")
 
+        # --- Read file lines
+        sCabLib = []
+        sNodes = []
+        sProps = []
+        sOpts  = []
         for line in f:
             line = line
 
             if "LINE DICTIONARY" in line.upper():
-                for _ in range(3): line = next(f)
+                for _ in range(3): line = next(f) # Header
                 while not any(opt in line for opt in option_breaks):
-                    self.f_type_init.contents.libraryInputLine =  (line+'\0').encode('utf-8')
-                    Map.lib.map_add_cable_library_input_text(self.f_type_init)                    
+                    sCabLib.append(line)
                     line = next(f)
 
             if "NODE PROPERTIES" in line.upper():
-                for _ in range(3): line = next(f)#.rstrip('\n')
+                for _ in range(3): line = next(f) #Header
                 while not any(opt in line for opt in option_breaks):
-                    self.f_type_init.contents.nodeInputLine = (line+'\0').encode('utf-8')
-                    Map.lib.map_add_node_input_text(self.f_type_init)
+                    sNodes.append(line)
                     line = next(f)
 
             if "LINE PROPERTIES" in line.upper():
                 for _ in range(3): line = next(f)
                 while not any(opt in line for opt in option_breaks):
-                    self.f_type_init.contents.elementInputLine =(line+'\0').encode('utf-8')
-                    Map.lib.map_add_line_input_text(self.f_type_init)
+                    sProps.append(line)
                     line = next(f)
 
             if "SOLVER OPTIONS" in line.upper():
@@ -743,12 +830,72 @@ class Map(object):
                 try:
                     line=next(f)
                     while not any(opt in line for opt in option_breaks):
-                        print('>>> line',line.strip())
-                        self.f_type_init.contents.optionInputLine = (line+'\0').encode('utf-8')
-                        Map.lib.map_add_options_input_text(self.f_type_init)            
+                        sOpts.append(line)
                         line = next(f,"SOLVER OPTIONS")
                 except StopIteration:
                     pass
+
+        # --- Store into object
+        self.Nodes=[]
+        for line in sNodes:
+            sp=line.split()
+            n = {}
+            n['ID']   = int(sp[0])
+            n['type'] = sp[1]
+            z=sp[4]
+            if z.strip()=='depth':
+                z=self._WtrDepth
+            elif z.startswith('#'):
+                print('>>> TODO mappp.py: z starting with #: ', z)
+                z=float(z[1:])
+            else:
+                z=float(z)
+            x=sp[2]
+            y=sp[3]
+            if x.startswith('#'):
+                print('>>> TODO mappp.py: x starting with #: ', z)
+                x=x[1:]
+            if y.startswith('#'):
+                print('>>> TODO mappp.py: y starting with #: ', z)
+                y=y[1:]
+            x = float(x)
+            y = float(y)
+            n['position'] = np.array((x, y, z))
+            self.Nodes.append(n)
+# ---------------------- LINE DICTIONARY ---------------------------------------
+# LineType     Diam     MassDenInAir    EA        CB   CIntDamp  Ca   Cdn  Cdt
+# (-)          (m)      (kg/m)         (N)       (-)   (Pa-s)   (-)  (-)  (-)
+# Equiv        0.169724 130.0           7.12E9    0.0     0       0   0    0 	
+# ---------------------- NODE PROPERTIES ---------------------------------------
+# Node    Type          X           Y        Z       M     B     FX    FY    FZ
+# (-)     (-)          (m)         (m)      (m)     (kg)  (m?3)  (N)   (N)   (N)
+# 1      fix          330.5       0.0      depth     0     0      #    #    #
+# 2      fix         -165.25   -286.221    depth     0     0      #    #    #
+# 3      fix         -165.25    286.221    depth     0     0      #    #    #
+# 4      vessel       36.0950     0.0      -13.97    0     0      #    #    #
+# 5      vessel      -18.0475   -31.25896  -13.97    0     0      #    #    #
+# 6      vessel      -18.0475    31.25896  -13.97    0     0      #    #    #
+# ---------------------- LINE PROPERTIES ---------------------------------------
+# Line   LineType  UnstrLen    NodeAnch  NodeFair  Flags
+# (-)      (-)       (m)         (-)       (-)       (-)
+# 1      Equiv     371.5          1         4     tension_fair
+# 2      Equiv     371.5          2         5     tension_fair
+# 3      Equiv     371.5          3         6     tension_fair
+
+        # --- Load input lines into library
+        for line in sCabLib:
+            self.f_type_init.contents.libraryInputLine =  (line+'\0').encode('utf-8')
+            Map.lib.map_add_cable_library_input_text(self.f_type_init)                    
+        for line in sNodes:
+            self.f_type_init.contents.nodeInputLine = (line+'\0').encode('utf-8')
+            Map.lib.map_add_node_input_text(self.f_type_init)
+        for line in sProps:
+            self.f_type_init.contents.elementInputLine =(line+'\0').encode('utf-8')
+            Map.lib.map_add_line_input_text(self.f_type_init)
+        for line in sOpts:
+            self.f_type_init.contents.optionInputLine = (line+'\0').encode('utf-8')
+            Map.lib.map_add_options_input_text(self.f_type_init)            
+
 
 
     # --------------------------------------------------------------------------------}
@@ -827,3 +974,42 @@ def set_vessel_prescribed_motion(table,index):
 
 
 
+def translateLoadsJacobian(JS, r0, FS0):
+    """ 
+    Transfer Jacobians of loads at a source point "S" to a destination point "D"
+    assuming a rigid body motion between the source and destination point
+
+    INPUTS:
+    - JS: Jacobian of loads at the source point, 6x6 array dF_S/dx_S
+          where F_S  = (f_x, f_y, f_z, m_x, m_y, m_z)_S
+          where dx_S = (dx, dy, dz, dt_x, dt_y, dt_z)_S (displacement and small rotations)
+    - r0 = rS-rD : 3-vector from the destination point to the source point
+    - FS0: 3-vector of the operating point forces at the source node
+
+    OUTPUTS:
+    - JD: Jacobian of loads at the source point, 6x6 array dF_S/dx_S
+
+    Reference:
+       See Branlard, Jonkman, Brown to be published 2022
+
+    """
+    def skew(x):
+        """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
+        [ 0, -z , y]
+        [ z,  0 ,-x]
+        [-y,  x , 0]
+        """
+        x=np.asarray(x).ravel()
+        return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
+    r0til  = skew(r0)
+    FS0til = skew(FS0)
+    I3 = np.eye(3)
+    Z3 = np.zeros((3,3))
+    T1 = np.block([ [ I3   ,  Z3 ],
+                    [ r0til,  I3 ]])
+    T2 = np.block([ [ I3   ,-r0til ],
+                    [ Z3   ,  I3 ]])
+    T3 = np.block([ [ Z3   ,  Z3 ],
+                    [ Z3   ,  FS0til.dot(r0til) ] ])
+    JD = T1.dot(JS.dot(T2)) + T3
+    return JD
