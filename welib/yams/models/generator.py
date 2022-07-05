@@ -14,7 +14,8 @@ def generateModel(modelName, packageDir='py', texDir='tex', fullPage=True,
         aero_forces=True,
         moor_loads=True,
         hydro_loads=True,
-        silentTimer=True
+        silentTimer=True,
+        IMU = True,
         ):
     """
     Generate python package for typical models
@@ -64,6 +65,21 @@ def generateModel(modelName, packageDir='py', texDir='tex', fullPage=True,
         replaceDict['theta_tilt']=('tilt',None)
     else:
         raise NotImplementedError(modelName)
+
+    if IMU:
+        x_TI, z_TI = symbols('x_TI, z_TI')
+        twr = model.twr
+        nac = model.nac
+        P_IMU = nac.origin.locatenew('P_IMU', x_TI * nac.frame.x + z_TI * nac.frame.z) 
+
+        # IMU of OpenFAST is in tilted shaft frame
+        tilt=symbols('tilt')
+        shaft_frame = ReferenceFrame('e_s')
+        shaft_frame.orient(model.nac.frame, 'Body', (0,tilt,0), 'XYZ') 
+
+        model.addPoint(P_IMU, shaft_frame)
+        model.computePointsMotion(noPosInJac=False)
+        print('>>> Adding IMU point')
 
     # Export
     pkgName = os.path.join(packageDir,modelName)

@@ -59,12 +59,15 @@ class YAMSModel(object):
         self.var         = [] # Independent variables
         self.smallAnglesUsed=[]
 
-        self.M=None # Non-linear Mass matrix
-        self.F=None # Non-linear Forcing
-        self.M0=None # linear Mass matrix
-        self.K0=None # linear Stiffness matrix
-        self.C0=None # linear Damping matrix
-        self.B0=None # linear Forcing
+        self.M      = None # Non-linear Mass matrix
+        self.F      = None # Non-linear Forcing
+        self.M0     = None # linear Mass matrix
+        self.K0     = None # linear Stiffness matrix
+        self.C0     = None # linear Damping matrix
+        self.B0     = None # linear Forcing
+        self.Points = [] # Points of interest
+        self.PointsFrames = [] # Frames for Points of interest 
+        self.PointsMotions = [] # Points of interest
 
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
@@ -77,6 +80,10 @@ class YAMSModel(object):
         s+=' - opts             : {}\n'.format(self.opts)
         s+=' * loads            : {}\n'.format(self.loads)
         return s
+
+    @property
+    def q(self):
+        return self.coordinates
     
     @property
     def kdeqs(self):
@@ -109,6 +116,13 @@ class YAMSModel(object):
     def addMoment(self, body, frame, moment):
         """ """
         self.body_loads.append((body, (frame, moment)))
+
+    def addPoint(self, P, frame=None):
+        """ add a point of interest """
+        if frame is None:
+            frame =self.ref.frame
+        self.Points.append(P)
+        self.PointsFrames.append(frame)
 
 
     def kaneEquations(self, Mform='symbolic', addGravity=True):
@@ -248,6 +262,43 @@ class YAMSModel(object):
 
         return EquationsOfMotionQ(EOM, self.coordinates, self.name, bodyReplaceDict)
 
+    def computeBodiesMotion(self):
+        ref = self.ref
+        for b in self.bodies:
+            O = b.origin
+            acc =  O.acc(ref.frame)
+            vel =  O.vel(ref.frame)
+            pos =  O.pos_from(ref.origin).express(ref.frame)
+            print(pos)
+            print(vel)
+            print(acc)
+
+
+    def computePointsMotion(self, noPosInJac=False):
+        ref = self.ref
+        qd  = [diff(c,dynamicsymbols._t) for c in self.q]
+        qdd = [diff(diff(c,dynamicsymbols._t),dynamicsymbols._t) for c in self.q]
+        self.PointsMotions=[]
+        for P, pf in zip(self.Points, self.PointsFrames):
+            # Express pos, vel, acc in point frame
+            pos =  P.pos_from(ref.origin).to_matrix(pf)
+            vel =  P.vel(ref.frame).to_matrix(pf)
+            acc =  P.acc(ref.frame).to_matrix(pf)
+
+            noAcc = [(qddi,0) for qddi in qdd]
+            if noPosInJac:
+                noPos = [(qi,0) for qi in self.q]
+                accJac = subs_no_diff(acc,noPos)
+            else:
+                accJac = acc
+
+            Ma= myjacobian(accJac, qdd)
+            Ca= myjacobian(accJac.subs(noAcc), qd)
+            Ka= myjacobian(accJac.subs(noAcc), self.q)
+
+            self.PointsMotions.append((pos,vel,acc,Ma,Ca,Ka))
+        return acc,accJac,Ma,Ca,Ka
+
     def exportPackage(self, path='', extraSubs=None, smallAngles=None, linearize=True, replaceDict=None, pathtex=None, fullPage=True, silentTimer=True):
         """ 
         Export to a python package
@@ -284,6 +335,11 @@ class YAMSModel(object):
             with Timer('Linearization', silent=silentTimer):
                 EOM.linearize(noAcc=True) # EOM.M0, EOM.K0, EOM.C0, EOM.B0
 
+        # --- Points Motion
+        #if len(self.Points)>0:
+        #    self.computePointsMotion(noPosInJac=False)
+
+
         # --- Python export path
         if len(path)>0:
             folder = os.path.dirname(path)
@@ -303,7 +359,22 @@ class YAMSModel(object):
 
         # --- Export equations
         with Timer('Export to python', silent=silentTimer):
-            EOM.savePython(name=name, folder=folder, replaceDict=replaceDict)
+            outFileName=EOM.savePython(name=name, folder=folder, replaceDict=replaceDict)
+
+        if len(self.PointsMotions)>0:
+            with Timer('Export Point Motion', silent=silentTimer):
+                with open(outFileName, 'a') as f:
+                    for p,pm in zip(self.Points, self.PointsMotions):
+                        pos,vel,acc,Ma,Ca,Ka = pm
+                        s = PointAcc2Py(p, acc, self.q)
+                        f.write(s)
+                        s = PointAccLin2Py(p, Ma, Ca, Ka, self.q)
+                        f.write(s)
+
+
+
+
+
         if pathtex is not None:
             folder = os.path.dirname(pathtex)
             name= os.path.basename(pathtex)
@@ -447,7 +518,7 @@ class YAMSModel(object):
 
         #print(replaceDict)
     def savePython(self, name='', prefix='', suffix='', folder='./', **kwargs):
-        """ see toPython for arguments"""
+        """ model save to python, see toPython for arguments"""
         if len(name)==0:
             name=self.name
         name=prefix+name
@@ -663,6 +734,7 @@ class EquationsOfMotionQ(object):
         with Timer('Python to {}'.format(filename),True,silent=True):
             with open(filename, 'w') as f:
                 f.write(self.toPython(**kwargs))
+        return filename
 
 
 # --------------------------------------------------------------------------------}
@@ -866,6 +938,45 @@ def infoToPy(name, q, u):
     s += '    I[\'su\']=[{}]\n'.format(','.join(['\''+repr(ui).replace('(t)','')+'\'' for ui in u]))
     s += '    return I\n\n'
     return s
+
+def PointAcc2Py(P, acc, q, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='forcing', extraComment=''):
+    extraSubs = [] if extraSubs is None else extraSubs
+    acc = subs_no_diff(acc, extraSubs)
+    acc = acc.subs(velSubs)
+    if doSimplify:
+        acc=trigsimp(acc)
+    s0, params, inputs, sdofs  = cleanPy(acc, varname='acc', dofs = q, indent=4, replDict=replaceDict)
+    Pname=str(P)
+    s=''
+    s += 'def Acceleration{}(q=None,qd=None,qdd=None,p=None):\n'.format(Pname)
+    s += '    """ Acceleration of point {} {} \n'.format(Pname,extraComment)
+    s += '    q:  degrees of freedom, array-like: {}\n'.format(sdofs)
+    s += '    qd: dof velocities, array-like\n'
+    s += '    qdd:dof accelerations, array-like\n'
+    s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
+    s += '    """\n'
+    s += s0
+    s += '    return acc\n\n'
+    return s
+
+def PointAccLin2Py(P, Ma, Ca, Ka, q, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=False, fname='forcing', extraComment=''):
+    sMa, params, inputs, sdofs  = cleanPy(Ma, varname='Ma', dofs = q, indent=4, replDict=replaceDict)
+    sCa, params, inputs, sdofs  = cleanPy(Ca, varname='Ca', dofs = q, indent=4, replDict=replaceDict)
+    sKa, params, inputs, sdofs  = cleanPy(Ca, varname='Ka', dofs = q, indent=4, replDict=replaceDict)
+    Pname=str(P)
+    s=''
+    s += 'def AccLin{}(q=None,qd=None,p=None):\n'.format(Pname)
+    s += '    """ Acceleration of point {} {} \n'.format(Pname,extraComment)
+    s += '    q:  degrees of freedom, array-like: {}\n'.format(sdofs)
+    s += '    qd: dof velocities, array-like\n'
+    s += '    p:  parameters, dictionary with keys: {}\n'.format(params)
+    s += '    """\n'
+    s += sMa
+    s += sCa
+    s += sKa
+    s += '    return Ma, Ca, Ka\n\n'
+    return s
+
 
 
 def toTex(f, FF, label='', fullPage=False, extraSubs=None, velSubs=[(0,0)], doSimplify=False):

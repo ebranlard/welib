@@ -353,7 +353,11 @@ class BeamBody(FlexibleBody):
         for j,zeta in enumerate(damp_zeta):
             gm = self.MM[6+j,6+j]
             gk = self.KK[6+j,6+j]
-            om = np.sqrt(gk/gm)
+            if gk<0:
+                print('[WARN] Bodies: Shape function has negative stiffness (likely due to geometrical stiffening)')
+                om = 0
+            else:
+                om            = np.sqrt(gk/gm)
             xi = zeta*2*np.pi
             c  = xi * gm * om / np.pi
             self.DD[6+j,6+j] = c
