@@ -316,10 +316,25 @@ def Rodriguez_A(a):
 
 
 # --------------------------------------------------------------------------------}
-# --- Small Rotations/ OpenFAST like 
+# --- Small Rotations
 # --------------------------------------------------------------------------------{
-def SmallRot_DCM(theta1, theta2, theta3):
+def smallRot_A(tx, ty, tz):
+    """ 
+    small angle approximation: I+skew(theta)
+    from body to global
+    """
+    R=np.zeros((3,3))
+    R[0,:] =( 1., -tz,  ty )
+    R[1,:] =( tz,  1., -tx )
+    R[2,:] =(-ty,  tx,  1. )
+    return R
+
+
+def smallRot_OF(theta1, theta2, theta3):
     r"""
+
+    NOTE: this is a DCM from global to body!!!
+
     !>  This routine computes the 3x3 transformation matrix, \f$TransMat\f$,
     !!   to a coordinate system \f$x\f$ (with orthogonal axes \f$x_1, x_2, x_3\f$)
     !!   resulting from three rotations (\f$\theta_1\f$, \f$\theta_2\f$, \f$\theta_3\f$) about the

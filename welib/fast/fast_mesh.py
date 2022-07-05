@@ -28,7 +28,7 @@ class PointMesh:
     def nNodes(self): 
         return self.Position.shape[0]
 
-    def rigidBodyMotion(self, RefPoint=None, u=(0,0,0), u_dot=(0,0,0), u_ddot=(0,0,0), theta=(0,0,0), omega=(0,0,0), omega_dot=(0,0,0), R_b2g=None, q=None, qd=None, qdd=None):
+    def rigidBodyMotion(self, RefPoint=None, u=(0,0,0), u_dot=(0,0,0), u_ddot=(0,0,0), theta=(0,0,0), omega=(0,0,0), omega_dot=(0,0,0), R_b2g=None, q=None, qd=None, qdd=None, rot_type='smallRot_OF'):
         """
         Apply a rigid body motion to the mesh:
         u         : translation     of reference point
@@ -39,13 +39,17 @@ class PointMesh:
         omega_dot : rotational acc of body
         RefPoint: Define the reference point where the Rigid Body Motion is to be applied, very important parameter
         """
-        from welib.yams.rotations import BodyXYZ_A, SmallRot_DCM
+        from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
         # --- Default arguments
         if RefPoint is None:
             RefPoint = self.RefPoint
             if RefPoint is None: 
                 raise Exception('Provide a reference point for rigid body motion')
 
+        if qd is None:
+            qd=(0,0,0,0,0,0)
+        if qdd is None:
+            qdd=(0,0,0,0,0,0)
         if q is not None:
             u         = np.array([q[0]   , q[1]   , q[2]])
             u_dot     = np.array([qd[0]  , qd[1]  , qd[2]])
@@ -57,7 +61,12 @@ class PointMesh:
 
         if R_b2g is None:
 #             R_b2g = BodyXYZ_A(theta[0], theta[1], theta[2])# matrix body 2 global, order XYZ
-            R_b2g = SmallRot_DCM(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
+            if rot_type=='smallRot_OF':
+                R_b2g = smallRot_OF(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
+            elif rot_type=='smallRot':
+                R_b2g = smallRot_A(theta[0], theta[1], theta[2])
+            else:
+                raise Exception('Rotation type not supported: {}'.format(rot_type))
         # --- Sanitation    
         u         = np.asarray(u)
         u_dot     = np.asarray(u_dot)
