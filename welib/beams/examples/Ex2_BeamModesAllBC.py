@@ -20,7 +20,7 @@ def main():
     m  = 8.82e+03
 
     fig,axes = plt.subplots(BC.shape[0], BC.shape[1], sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.87, bottom=0.02, hspace=0.31, wspace=0.19)
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.97, bottom=0.02, hspace=0.31, wspace=0.19)
 
     for i in range(BC.shape[0]):
         for j in range(BC.shape[1]):

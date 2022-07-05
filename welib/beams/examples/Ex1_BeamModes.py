@@ -28,7 +28,7 @@ def main():
     ax.set_ylabel('Deflection [m]')
     ax.legend()
     ax.tick_params(direction='in')
-    ax.set_title('Analytical mode shapes of a beam')
+    ax.set_title('Beam - Analytical mode shapes of a beam')
 
 
 
