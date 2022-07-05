@@ -1,8 +1,12 @@
 import numpy as np
 
 def skew(x):
+    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
+    [ 0, -z , y]
+    [ z,  0 ,-x]
+    [-y,  x , 0]
+    """
     x=np.asarray(x).ravel()
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
     return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
 
@@ -150,8 +154,8 @@ def rigidTransformationTwoPoints(Ps, Pd):
     Linear rigid transformation matrix between DOFs of node j and k where node j (source) is the leader node. 
         Ps: source
         Pd: destination
-        T =[ I3   skew(Psource - Pdest)  ]
-           [ 0    I3                     ]
+        T =[ I3   skew(Psource - Pdest)  ] =[ I3   skew(r_0)  ]
+           [ 0    I3                     ]  [ 0    I3         ]
     """
     T = np.eye(6) # 1 on the diagonal
     T[0,4] =  (Pd[2] - Ps[2]) 
@@ -168,8 +172,8 @@ def rigidTransformationTwoPoints_Loads(Ps, Pd):
     Relate loads at source node to destination node:
       fd = T.dot(fs)
 
-       T =[ I3           0  ]
-          [ skew(Ps-Pd)  I3 ]
+       T =[ I3           0  ] =  [ I3         0  ]
+          [ skew(Ps-Pd)  I3 ]    [ skew(r0)   I3 ]
     """
     Ps=np.asarray(Ps)
     Pd=np.asarray(Pd)
@@ -210,6 +214,37 @@ def rigidTransformationOnePointToPoints18(Psource, DestPoints):
     for iNode, Pdest in enumerate(DestPoints):
         T[iNode*18:(iNode+1)*18,:] = rigidTransformationTwoPoints18(Psource, Pdest)
     return T
+
+def rigidTransformationOnePointToPoints(Psource, DestPoints):
+    """ 
+    INPUTS:
+     - Psource: 3-array: location of the source point
+     - DestPoints: n x 3-array: location of the destination points
+    OUTPUTS:
+     - matrix 6*nNodes x 6
+    """
+    assert(DestPoints.shape[1]==3)
+    nNodes = DestPoints.shape[0] 
+    T = np.zeros((6*nNodes, 6))
+    for iNode, Pdest in enumerate(DestPoints):
+        T[iNode*6:(iNode+1)*6,:] = rigidTransformationTwoPoints(Psource, Pdest)
+    return T
+
+def rigidTransformationOnePointToPoints_Loads(Psource, DestPoints):
+    """ 
+    INPUTS:
+     - Psource: 3-array: location of the source point
+     - DestPoints: n x 3-array: location of the destination points
+    OUTPUTS:
+     - matrix 6*nNodes x 6
+    """
+    assert(DestPoints.shape[1]==3)
+    nNodes = DestPoints.shape[0] 
+    T = np.zeros((6*nNodes, 6))
+    for iNode, Pdest in enumerate(DestPoints):
+        T[iNode*6:(iNode+1)*6,:] = rigidTransformationTwoPoints_Loads(Psource, Pdest)
+    return T
+
 
 
 def transferRigidLoads(l6, Ps, Pd, verbose=False):
