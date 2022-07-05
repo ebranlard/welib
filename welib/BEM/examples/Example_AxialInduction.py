@@ -31,7 +31,7 @@ def main(test=False):
     ax.set_ylim([0,2])
     ax.legend()
     ax.grid()
-    ax.set_title('BEM - High thrust correction')
+    ax.set_title('BEM Steady - High thrust correction')
 
 
 if __name__=="__main__":

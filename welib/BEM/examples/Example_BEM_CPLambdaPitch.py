@@ -73,7 +73,7 @@ def main(test=False,extra=False):
         ax.set_xlabel('Lambda [-]')
         ax.set_ylabel('Pitch [deg]')
         ax.set_zlabel(r'Power coefficient [-]')
-        ax.set_title('BEM - CP-lambda-pitch ')
+        ax.set_title('BEM Steady - CP-lambda-pitch ')
         #fig.colorbar(surf, shrink=0.5, aspect=5)
 
 
