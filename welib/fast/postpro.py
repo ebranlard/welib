@@ -6,6 +6,7 @@ import numpy as np
 import re
 
 # --- fast libraries
+import welib.weio as weio
 from welib.weio.fast_input_file import FASTInputFile
 from welib.weio.fast_output_file import FASTOutputFile
 from welib.weio.fast_input_deck import FASTInputDeck
@@ -1373,7 +1374,8 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
     # Loop trough files and populate result
     for i,f in enumerate(outFiles):
         try:
-            df=FASTOutputFile(f).toDataFrame()
+            df=weio.read(f).toDataFrame()
+            #df=FASTOutputFile(f).toDataFrame()A # For pyFAST
         except:
             invalidFiles.append(f)
             continue
