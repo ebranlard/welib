@@ -555,9 +555,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     if FST['CompMooring']==1:
         from welib.moor.mappp import Map
 #         try:
-
-        dllFileName = 'C:/W0/Work/2018-NREL/FAST/_Modules/MAP++/map-plus-plus-ebra/src/libmap-1.30.00.dll'
-        MAP = Map(fstFilename, dllFileName=dllFileName)
+        MAP = Map(fstFilename)
 #         except:
 #             print('YAMS Wind Turbine: problem loading MAP model (only supported on windows)')
     elif FST['CompMooring']==2:
