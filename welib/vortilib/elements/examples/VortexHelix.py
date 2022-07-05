@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 # Local 
 
-from vortilib.elements.VortexHelix import *
+from welib.vortilib.elements.VortexHelix import *
 
 
 def Params(a=1/3,U0=10,Lambda=6,R=100,nB=3):
