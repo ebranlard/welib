@@ -538,7 +538,7 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
 
     # --- Creating set of parameters to be changed
     # TODO: verify that RtAeroCp and RtAeroCt are present in AeroDyn outlist
-    PARAMS = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,baseDict=baseDict, FlatInputs=True)
+    PARAMS = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,baseDict=baseDict, flatInputs=True)
 
     # --- Generating all files in a workDir
     workDir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
