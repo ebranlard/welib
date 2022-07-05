@@ -12,7 +12,7 @@ import welib.weio.fast_input_deck as fd
 import welib.weio.fast_linearization_file as fl
 import welib.fast.runner as runner
 import welib.fast.postpro as postpro
-from welib.fast.linmodel import matToSIunits
+from welib.fast.linmodel import matToSIunits, subMat
 from welib.yams.utils import identifyRigidBodyMM, translateInertiaMatrixFromCOG
 
 
@@ -439,17 +439,9 @@ def extractPtfmInertiaFromLinFile(linFile):
     D   = lin['D']
     dfD = dfs['D']
     # --- Extract the relevant 6x6 matrix
-    #print('------- Extract 6x6 matrix')
     Cols  = ['PtfmFxN1_[N]', 'PtfmFyN1_[N]', 'PtfmFzN1_[N]', 'PtfmMxN1_[Nm]', 'PtfmMyN1_[Nm]', 'PtfmMzN1_[Nm]']
     Lines = ['PtfmTAxt_[m/s^2]', 'PtfmTAyt_[m/s^2]', 'PtfmTAzt_[m/s^2]', 'PtfmRAxt_[deg/s^2]', 'PtfmRAyt_[deg/s^2]', 'PtfmRAzt_[deg/s^2]']
-
-    missingRows = [l for l in Lines if l not in dfD.index]
-    missingCols = [c for c in Cols  if c not in dfD.columns]
-    if len(missingRows)>0:
-        raise Exception('The following rows are missing from outputs: {}'.format(missingRows))
-    if len(missingCols)>0:
-        raise Exception('The following columns are missing from inputs: {}'.format(missingCols))
-    Minv = dfD[Cols].loc[Lines].copy()
+    Minv = subMat(dfD, rows=Lines, cols=Cols, check=True)
     #print(Minv)
 
     # --- Convert the units to SI units
@@ -481,8 +473,64 @@ def extractPtfmInertiaFromLinFile(linFile):
 
 
 
+def mainLinInputs(all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
+    if all:
+        cols=None
+    else:
+        cols=[]
+        if pitch==1:
+            cols+=['PitchColl_[rad]']
+        if gen==1:
+            cols+=['Qgen_[Nm]']
+        if hub>=1:
+            cols+=['HubFxN1_[N]'] 
+            cols+=['HubFyN1_[N]'] 
+            cols+=['HubFzN1_[N]'] 
+        if hub>=2:
+            cols+=['HubMxN1_[Nm]'] 
+            cols+=['HubMyN1_[Nm]'] 
+            cols+=['HubMzN1_[Nm]'] 
+        if nac>=1:
+            cols+=['NacFxN1_[N]'] 
+            cols+=['NacFyN1_[N]'] 
+            cols+=['NacFzN1_[N]'] 
+        if nac>=2:
+            cols+=['NacMxN1_[Nm]'] 
+            cols+=['NacMyN1_[Nm]'] 
+            cols+=['NacMzN1_[Nm]'] 
+        if ptfm>=1:
+            cols+=['PtfmFxN1_[N]'] 
+            cols+=['PtfmFyN1_[N]'] 
+            cols+=['PtfmFzN1_[N]'] 
+        if ptfm>=2:
+            cols+=['PtfmMxN1_[Nm]'] 
+            cols+=['PtfmMyN1_[Nm]'] 
+            cols+=['PtfmMzN1_[Nm]'] 
+    return cols
 
 
+
+def extractIMUAccFromLinFile(linFile, all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
+    """ 
+    Extract C and D matrices relevant for IMU
+    """
+
+    colIMU=['NcIMUTAxs_[m/s^2]', 'NcIMUTAys_[m/s^2]', 'NcIMUTAzs_[m/s^2]']
+
+    # --- Read the linearization file
+    if not isinstance(linFile, fl.FASTLinearizationFile):
+        lin = fl.FASTLinearizationFile(linFile)
+    else:
+        lin=linFile
+    dfs = lin.toDataFrame()
+    colAugForce = mainLinInputs(all=all, hub=hub, nac=nac, ptfm=ptfm, gen=gen, pitch=pitch)
+
+    # --- Extract the relevant 6x6 matrix
+    C = subMat(dfs['C'], rows=colIMU, cols=None       , check=True)
+    D = subMat(dfs['D'], rows=colIMU, cols=colAugForce, check=True)
+    C=matToSIunits(C, 'C')
+    D=matToSIunits(D, 'D')
+    return C, D
 
 
 
@@ -508,7 +556,6 @@ if __name__ == '__main__':
 
 
     print(RNA)
-    import pdb; pdb.set_trace()
 # {'mass': 7815719.392152023, 'CM': array([-9.0578e-03,  0.0000e+00, -8.3596e+01]), 'J_G': array([[6.9453e+09, 0.0000e+00, 1.1100e+07],
 #        [0.0000e+00, 6.9303e+09, 0.0000e+00],
 #        [1.1100e+07, 0.0000e+00, 1.8958e+08]]), 'J_TT': array([[6.1564e+10, 0.0000e+00, 5.1821e+06],

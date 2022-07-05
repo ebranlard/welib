@@ -108,8 +108,12 @@ def matToSIunits(Mat, name='', verbose=False):
     return Mat
 
 
-def subMat(df, rows, cols, check=True):
+def subMat(df, rows=None, cols=None, check=True):
     """ Extract relevant part from a dataframe, perform a safety check """
+    if rows is None:
+        rows=df.index
+    if cols is None:
+        cols=df.columns
     if check:
         missingRows = [l for l in rows if l not in df.index]
         missingCols = [c for c in cols  if c not in df.columns]
@@ -135,6 +139,27 @@ def matLabelReplace(df, s1, s2):
     df.columns = cols
     return df
 
+
+def matSimpleStateLabels(df, inplace=False):
+    RenameMap={
+    'PtfmSurge_[m]'       : 'x',
+    'PtfmSway_[m]'        : 'y',
+    'PtfmHeave_[m]'       : 'z',
+    'PtfmRoll_[rad]'      : 'phi_x',
+    'PtfmPitch_[rad]'     : 'phi_y',
+    'PtfmYaw_[rad]'       : 'phi_z',
+    'psi_rot_[rad]'       : 'psi',
+    'qt1FA_[m]'           : 'q_FA1',
+    'd_PtfmSurge_[m/s]'   : 'dx',
+    'd_PtfmSway_[m/s]'    : 'dy',
+    'd_PtfmHeave_[m/s]'   : 'dz',
+    'd_PtfmRoll_[rad/s]'  : 'dphi_x',
+    'd_PtfmPitch_[rad/s]' : 'dphi_y',
+    'd_PtfmYaw_[rad/s]'   : 'dphi_z',
+    'd_psi_rot_[rad/s]'   : 'dpsi',
+    'd_qt1FA_[m/s]'       : 'dq_FA1',
+    }
+    return df.rename(columns=RenameMap, index=RenameMap, inplace=inplace)
 
 
 def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, ):

@@ -2,12 +2,18 @@ import numpy as np
 import pickle
 import glob
 import os
-import welib.weio as weio
+from welib.weio.fast_linearization_file import FASTLinearizationFile
 import pandas as pd
 
 
-class FASTPeriodicOP(object):
-    """ Class for a set of *.lin files, all assumed to be for the same periodic operating point"""
+class FASTLinPeriodicOP(object):
+    """ Class for a set of *.lin files, all assumed to be for the same periodic operating point
+    e.g. 
+       ws05mps.1.lin
+              [...]
+       ws05mps.36.lin
+
+    """
     def __init__(self,prefix,nLin=None):
         if nLin is None:
             linfiles= glob.glob(prefix + '.*.lin') # TODO we want a more rigorous regexp
@@ -28,7 +34,7 @@ class FASTPeriodicOP(object):
             print(linfilename)
             if not os.path.exists(linfilename):
                 print('Linearization file missing: ',linfilename)
-            linfile=weio.read(linfilename)
+            linfile=FASTLinearizationFile(linfilename)
             df=linfile.toDataFrame()
             self.Data.append(linfile)
             #self.A=lin['A']
@@ -85,7 +91,7 @@ class FASTLin(object):
         nSim      = len(Sim_Prefix)
         # --- Read period operating points
         print('Reading linearizations for {} operating points'.format(nSim))
-        self.OP_Data=[FASTPeriodicOP(pref,nLin=nLin) for pref in Sim_Prefix]
+        self.OP_Data=[FASTLinPeriodicOP(pref,nLin=nLin) for pref in Sim_Prefix]
         # --- Sort by wind speed
         Isort = np.argsort(self.WS)
         self.OP_Data  = [self.OP_Data[i] for i in Isort]
@@ -185,11 +191,18 @@ class FASTLin(object):
         #self.M_mean = self.stats('M',WS=WS)[0]
         return A_mean, B_mean, C_mean, D_mean
 
-    def average_subset(self, sX_sel, sU_sel, sY_sel, sE_sel=None, WS=None, exportFile=None, baseDict=None):
+    def average_subset(self, sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, WS=None, exportFile=None, baseDict=None):
         """ 
         Average state spaces based on WS, then extract a subset based on sensor names
         """
         sX, sU, sY, sED = self.xdescr, self.udescr, self.ydescr, self.EDdescr
+
+        if sX_sel is None:
+            sX_sel=sX
+        if sU_sel is None:
+            sU_sel=sU
+        if sY_sel is None:
+            sY_sel=sY
 
         # Average
         A,B,C,D = self.average(WS=WS)
@@ -205,7 +218,7 @@ class FASTLin(object):
         if sE_sel is not None:
             IDOFE = np.array([list(sE).index(s) for s in sE_sel])
 
-        # Subset
+        # Subset. TODO use DataFrame directly and subMat in linmodel
         Ar = A[np.ix_(IDOFX,IDOFX)]
         Br = B[np.ix_(IDOFX,IDOFU)]
         Cr = C[np.ix_(IDOFY,IDOFX)]
