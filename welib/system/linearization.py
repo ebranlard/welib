@@ -32,6 +32,15 @@ def numerical_jacobian(f, op, arg_number, deltas, *f_args):
     op     = list(op)
     f_args = list(f_args)
 
+    # Convert op[arg_number] to array of floats
+    deltas = np.asarray(deltas)
+    op = copy.deepcopy(op)
+    op[arg_number] = np.asarray(op[arg_number]).astype(float)
+    #dtype_op   = op[arg_number].dtype
+    #dtype_delta =deltas.dtype
+    #if dtype_op!=dtype_op:
+    #    raise Exception('Type of op ({}) and deltas ({}) are not the same'.format(dtype_op, dtype_delta))
+
     # Number of states assumed from call at operating point
     f_op= f(*(op+f_args))
     nx=len(f_op)
