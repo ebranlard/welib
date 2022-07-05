@@ -73,7 +73,7 @@ def integrate_convolution(time, A, B, fU, C=None):
 
     x = np.zeros((A.shape[0], len(time)))
 
-    from welib.tools.signal import convolution_integral
+    from welib.tools.signal_analysis import convolution_integral
     # TODO inline and optimize
     try:
         U = fU(time)

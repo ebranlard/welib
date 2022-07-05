@@ -1529,7 +1529,7 @@ def _zero_crossings(y,x=None,direction=None):
       if direction is not provided, also returns:
               sign, equal to 1 for up crossing
 
-    NOTE: keep in harmony with welib.tools.signals
+    NOTE: keep in harmony with welib.tools.signals_analysis
     """
     y=np.asarray(y)
     if x is None:

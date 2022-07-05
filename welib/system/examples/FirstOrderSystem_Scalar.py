@@ -7,7 +7,7 @@ Example showing the responses of a first order system defined by:
 import numpy as np
 import matplotlib.pyplot as plt
 from welib.system.firstorder import *
-from welib.tools.signal import impulse, step, ramp, hat, correlated_signal
+from welib.tools.signal_analysis import impulse, step, ramp, hat, correlated_signal
 from welib.tools.tictoc import Timer
 
 # --- Script parameters

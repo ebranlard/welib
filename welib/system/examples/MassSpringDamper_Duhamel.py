@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # Welib
 from welib.system.mech_system import MechSystem
 from welib.system.statespacelinear import LinearStateSpace
-from welib.tools.signal import correlated_signal, step
+from welib.tools.signal_analysis import correlated_signal, step
 from scipy.interpolate import interp1d
 
 

@@ -1,13 +1,13 @@
 import unittest
 import numpy as np
-from welib.tools.signal import zero_crossings 
-from welib.tools.signal import convolution_integral 
-from welib.tools.signal import find_time_offset 
-from welib.tools.signal import intervals 
-from welib.tools.signal import peaks 
-from welib.tools.signal import sine_approx
-from welib.tools.signal import multiInterp
-from welib.tools.signal import interpArray
+from welib.tools.signal_analysis import zero_crossings 
+from welib.tools.signal_analysis import convolution_integral 
+from welib.tools.signal_analysis import find_time_offset 
+from welib.tools.signal_analysis import intervals 
+from welib.tools.signal_analysis import peaks 
+from welib.tools.signal_analysis import sine_approx
+from welib.tools.signal_analysis import multiInterp
+from welib.tools.signal_analysis import interpArray
 from welib.tools.clean_exceptions import *
 
 # --------------------------------------------------------------------------------}

@@ -182,7 +182,7 @@ def duhamel(time, omega0, zeta, u, b=1, q0=[0,0], both=False):
     #dt = t_eval[1]-t_eval[0]
     #x  = np.convolve(F.ravel(), H.ravel()  )[:len(t_eval)]*dt
     #xd = np.convolve(F.ravel(), Hp.ravel() )[:len(t_eval)]*dt
-    from welib.tools.signal import convolution_integral
+    from welib.tools.signal_analysis import convolution_integral
     x  = convolution_integral(time, u.ravel(), H )
     if both:
         xd = convolution_integral(time, u.ravel(), Hp)

@@ -158,7 +158,7 @@ def duhamel(time, tau, u, x0=0):
     H = impulse_response(time, tau, t0=time[0], A=1)
     #dt = t_eval[1]-t_eval[0]
     #x  = np.convolve(u.ravel(), H.ravel()  )[:len(t_eval)]*dt
-    from welib.tools.signal import convolution_integral
+    from welib.tools.signal_analysis import convolution_integral
     x  = convolution_integral(time, u.ravel(), H )
     x += tau*H*x0
     return x
