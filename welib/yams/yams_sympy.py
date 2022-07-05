@@ -489,7 +489,8 @@ class YAMSBody(object):
         else:
             if rot_type in ['Body','Space']:
                 child.frame.orient(parent.frame, rot_type, rot_amounts, rot_order) # <<< 
-            else:
+            else: 
+                # rot_type is DCM
                 child.frame.orient(parent.frame, rot_type, rot_amounts) # <<< 
 
         # Position of child origin wrt parent origin

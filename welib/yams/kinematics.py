@@ -35,7 +35,7 @@ def rigidBodyMotion2Points_q6(PSource0, PDest0, q=None, qd=None, qdd=None, rot='
         R_b2g = BodyXYZ_A(theta[0], theta[1], theta[2])# matrix body 2 global, order XYZ
     r_AB         = R_b2g.dot(r_AB0)
     om_x_r       = (np.cross(omega, r_AB))
-    q_Dest  [:3] = q  [:3] + (r_AB - r_AB0)
+    q_Dest  [:3] = q  [:3] + (r_AB - r_AB0)  # NOTE: this is displacement field, hence -r_AB0
     qd_Dest [:3] = qd [:3] + om_x_r
     qdd_Dest[:3] = qdd[:3] + np.cross(omega_dot, r_AB) + np.cross(omega, om_x_r)
 

@@ -1341,7 +1341,11 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     for j in range(nShapes):
         gm             = MM[6+j,6+j]
         gk             = KK[6+j,6+j]
-        om            = np.sqrt(gk/gm)
+        if gk<0:
+            print('[WARN] Flexibility: Shape function has negative stiffness (likely due to geometrical stiffening)')
+            om = 0
+        else:
+            om            = np.sqrt(gk/gm)
         xi            = damp_zeta[j]*2*np.pi
         c             = xi * gm * om / np.pi
         DD[6+j,6+j] = c
