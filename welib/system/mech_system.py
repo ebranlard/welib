@@ -32,7 +32,11 @@ class MechSystem():
        NOTE: A~, B~ are not linear state space matrices in the general case
 
     """
-    def __init__(self, M, C=None, K=None, F=None, x0=None, xdot0=None):
+    def __init__(self, M, C=None, K=None, F=None, x0=None, xdot0=None, sX=None, sXd=None):
+        """ 
+        sX:  list of variable names for x    (e.g., used for plotting)
+        sXd: list of variable names for xdot (e.g., used for plotting)
+        """
 
         # Functions that return the mass matrix and its inverse
         if hasattr(M, '__call__'):  
@@ -77,6 +81,10 @@ class MechSystem():
         # Time integration results
         self.res=None
 
+        # Channel names
+        self._sX = sX
+        self._sXd = sXd
+
 
     def find_nDOF(self):
         if self.M_is_func:
@@ -87,6 +95,24 @@ class MechSystem():
     @property
     def nStates(self):
         return 2*self.nDOF
+
+    @property
+    def sX(self):
+        if self._sX is None:
+            return [r'x_{}'.format(i+1) for i in range(self.nDOF)]
+        else:
+            return self._sX
+
+    @property
+    def sXd(self):
+        if self._sXd is None:
+            return [r'\dot{x}'+r'_{}'.format(i+1) for i in range(self.nDOF)]
+        else:
+            return self._sXd
+
+    @property
+    def sQ(self):
+        return self.sX+self.sXd
 
     # --------------------------------------------------------------------------------}
     # --- Time domain
@@ -412,6 +438,8 @@ class MechSystem():
             s+='|Force function {} \n'.format(self._force_fn)
         else:
             s+='|Force not defined yet\n'
+        s+='| * sX:  {} \n'.format(self.sX)
+        s+='| * sXd: {} \n'.format(self.sXd)
         s+='|Attributes:\n'
         s+='| - M: Mass Matrix  \n'
         s+=str(self.M)+'\n'
@@ -453,10 +481,7 @@ class MechSystem():
             if i+1>len(df.columns):
                 continue
             chan=df.columns[i+1]
-            if i<n:
-                lbl=r'$x_{}$'.format(i+1)
-            else:
-                lbl=r'$\dot{x}_'+r'{}$'.format(i-n+1)
+            lbl = '$'+self.sQ[i]+'$'
             ax.plot(res.t, res.y[i,:], label=label, **kwargs)
             ax.set_ylabel(lbl)
             ax.tick_params(direction='in')
