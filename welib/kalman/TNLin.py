@@ -9,7 +9,7 @@ from welib.fast.linmodel import FASTLinModel
 
 # --- External dependencies!
 import welib.fast.fastlib as fastlib
-import weio
+import welib.weio as weio
 
 #          'WS':'Wind1VelX', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}
 #          'Thrust':'RotThrust','Qaero':'RtAeroMxh','Qgen':'GenTq',

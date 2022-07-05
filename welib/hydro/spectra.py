@@ -54,9 +54,10 @@ def jonswap(freq, Hs, Tp=None, Tz=None, g=9.81):
     sigma = np.ones(freq.shape)*0.09
     sigma[freq<=fp]=0.7
     beta  = np.exp(-0.5*(((freq/fp)-1.)*(1./sigma))**2)
-    alpha = 5*(Hs**2*fp**4/g**2)*(1-0.287*np.log(gamma))*np.pi**4
-    S     = alpha*g**2/(2*np.pi)**4*freq**(-5)*np.exp(-1.25*(freq/fp)**(-4))*gamma**beta
+    # Formulation using gravity even though it cancels out)
+    #alpha = 5*(Hs**2*fp**4/g**2)*(1-0.287*np.log(gamma))*np.pi**4
+    #S     = alpha*g**2/(2*np.pi)**4*freq**(-5)*np.exp(-1.25*(freq/fp)**(-4))*gamma**beta
     # Alternative expression for g=9.81)
-    # S = 0.3125*Hs**2*Tp*((f/fp)**(-5))* np.exp(-1.25*(f/fp)**(-4))* (1-0.287*np.log(gamma))* gamma**beta
+    S= 0.3125*Hs**2*Tp*((freq/fp)**(-5))* np.exp(-1.25*(freq/fp)**(-4))* (1-0.287*np.log(gamma))* gamma**beta
     return S
         

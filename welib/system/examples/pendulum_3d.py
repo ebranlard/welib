@@ -16,7 +16,7 @@ from numpy import cos, sin
 import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
-from welib.system.mech_system import MechSystem
+# from welib.system.mech_system import MechSystem # NOTE: not suitable due to kinematics relations theta/omega
 from welib.yams.rotations import *
 
 from scipy.integrate import  solve_ivp #odeint

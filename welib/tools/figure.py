@@ -121,15 +121,18 @@ def findtitle(fig):
     axTitle=None
     title=''
     # storing the title, figure name
-    title=fig._suptitle
-    if title is not None  and len(title.get_text())>0:
-        title=title.get_text()
-    else:
-        for ax in fig.get_axes():
-            title=ax.get_title()
-            if title is not None and len(title)>0:
-                axTitle=ax
-                break
+    try:
+        title=fig._title
+    except:
+        title=fig._suptitle
+        if title is not None  and len(title.get_text())>0:
+            title=title.get_text()
+        else:
+            for ax in fig.get_axes():
+                title=ax.get_title()
+                if title is not None and len(title)>0:
+                    axTitle=ax
+                    break
     return title,axTitle
 
 class FigureExporter:
@@ -282,9 +285,9 @@ def getMonitors():
     return get_monitors()
 
 def getRightScreenArea(LeftPanel=0,BottomPanel=0,TopPanel=0,RightPanel=0):
-    Monitors=get_monitors()
+    Monitors=getMonitors()
     if len(Monitors)>1:
-        for m in get_monitors():
+        for m in Monitors:
             if m.__repr__().find('+0+0')<=0:
                 SA = m
     else:
@@ -299,7 +302,7 @@ def getRightScreenArea(LeftPanel=0,BottomPanel=0,TopPanel=0,RightPanel=0):
     return SA
 
 def getLeftScreenArea(LeftPanel=105,BottomPanel=0,TopPanel=0,RightPanel=0):
-    SA         = get_monitors()[0]
+    SA         = getMonitors()[0]
     SA.y      += LeftPanel
     SA.x      += TopPanel
     SA.width  = SA.width-LeftPanel-RightPanel
@@ -381,16 +384,16 @@ def fig_grid(nX=1,nY=1,AreaName=None,ScreenName='rightscreen',Area=None):
             else:
                 figs.append(plt.figure())
             
-    fW=int(W/nY)
-    fH=int(H/nX)
+    Area=_getArea(AreaName,ScreenName)
+    fW=int(Area.width/nY)
+    fH=int(Area.height/nX)
     #print('Window Dimensions: Width={} Height={}'.format(fW,fH))
     c=0
     for i in range(nX):
         for j in range(nY):
             fx=int(i*fH+Area.y)
             fy=int(j*fW+Area.x)
-            s='{:d}x{:d}+{:d}+{:d}'.format(fW,fH,fy,fx)
-            figs[c].canvas.manager.window.wm_geometry(s) # NOTE for TK, QT TODO
+            _move_fig(figs[c], fW, fH, fx, fy)
             c += 1
     if not bKeepFirstFig:
         plt.close(fig1)
@@ -400,33 +403,51 @@ def fig_move(fig, AreaName=None,ScreenName='rightscreen',Area=None):
     """ Moves a figure to a given place on the screen """ 
     if Area is None:
         Area=_getArea(AreaName,ScreenName)
-    s='{:d}x{:d}+{:d}+{:d}'.format(int(Area.width),int(Area.height),int(Area.x),int(Area.y))
-    fig.canvas.manager.window.wm_geometry(s) # NOTE for TK, QT TODO
+    _move_fig(fig, Area.width, Area.height, Area.x, Area.y) 
     return fig
     
+def _move_fig(fig, w, h, x, y):
+    if isinstance(fig,int) : fig = plt.figure(fig)
+    manager = fig.canvas.manager
+    backend = mpl.get_backend()
+    if backend == 'TkAgg':
+        s='{:d}x{:d}+{:d}+{:d}'.format(int(w),int(h),int(x),int(y))
+        manager.window.wm_geometry("+%d+%d" % (x, y))
+    elif backend == 'WXAgg':
+        manager.window.SetPosition((x, y))
+    else:
+        # This works for QT and GTK
+        manager.window.setGeometry(y,x,w,h)
+        #manager.window.move(x, y)
+
 
 # --------------------------------------------------------------------------------
 # --- Example/tests
 # --------------------------------------------------------------------------------
 def test_fig_move():
+    import numpy as np
     import matplotlib.pyplot as plt
     # --- Test fig_move
-    fig=plt.figure()
-    fig_move(fig,AreaName='Right')
-    plt.show()
+#     fig=plt.figure()
+#     fig_move(fig,AreaName='Right')
+#     plt.show()
     # --- Test fig_grid
-#     plt.ion()
-#     figs=fig_grid(2,2)
+    plt.ion()
+    figs=fig_grid(2,2)
 #     # figs=[]
 #     # figs+=fig_grid(AreaName='topright')
 #     # figs+=fig_grid(AreaName='topleft')
 #     # figs+=fig_grid(AreaName='bottomleft')
 #     # figs+=fig_grid(AreaName='bottomright')
 #     #figs=create_fig_grid(2,2,Name='rightscreen')
-#     plt.show()
+    for f in figs:
+        f.add_subplot(111)
+    figs[0].axes[0].plot(np.linspace(0,1,10))
+    figs[2].axes[0].plot(np.linspace(0,1,10))
+
+    plt.ioff()
+    plt.show()
 # 
-#     for f in figs:
-#         f.add_subplot(111)
 # 
 #     n=1000
 #     for i in range(1):
@@ -476,4 +497,4 @@ def test_export():
 
 if __name__ == "__main__":
     test_fig_move()
-    test_export()
+    #test_export()

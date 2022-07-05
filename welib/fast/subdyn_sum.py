@@ -4,10 +4,13 @@ Convert a SubDyn summary file to a FEM model
 """
 import numpy as np
 import pandas as pd
-try:
-    from welib.FEM.fem_model import FEMModel, FEMNode, BeamElement
-except ModuleNotFoundError:
-    raise
+
+from welib.FEM.graph import Node as GraphNode
+from welib.FEM.graph import Element as GraphElement
+from welib.FEM.graph import NodeProperty
+from welib.FEM.graph import GraphModel
+
+from welib.FEM.fem_model import FEMModel
 
 
 # --------------------------------------------------------------------------------}
@@ -51,7 +54,7 @@ class SubDynModel(FEMModel):
                 N=N.astype(np.float32)
             ID = int(N[0])-1
             nodeDOFs=DOF2Nodes[(DOF2Nodes[:,1]==ID),0]
-            node = FEMNode(ID=ID, x=N[1], y=N[2], z=N[3], Type=int(N[4]), DOFs=nodeDOFs)
+            node = GraphNode(ID=ID, x=N[1], y=N[2], z=N[3], Type=int(N[4]), DOFs=nodeDOFs)
             self.addNode(node)
 
         # Elements
@@ -59,7 +62,7 @@ class SubDynModel(FEMModel):
             nodeIDs=[int(E[1]),int(E[2])]
             N1 = self.Nodes[nodeIDs[0]]
             N2 = self.Nodes[nodeIDs[1]]
-            elem= BeamElement(int(E[0]), nodeIDs, nodes=[N1, N2])
+            elem= GraphElement(int(E[0]), nodeIDs, nodes=[N1, N2])
             self.addElement(elem)
 
         #print(self.extent)
@@ -115,7 +118,7 @@ class SubDynModel(FEMModel):
 #         print(data['PhiL'])
 
     def NodesDisp(self, IDOF, UDOF, maxDisp=None, sortDim=None):
-        DOF2Nodes = self.DOF2Nodes()
+        DOF2Nodes = self.DOF2Nodes
         INodes = list(np.sort(np.unique(DOF2Nodes[IDOF,1]))) # NOTE: sorted
         nShapes = UDOF.shape[1]
         disp=np.empty((len(INodes),3,nShapes)); disp.fill(np.nan)
@@ -152,4 +155,6 @@ if __name__=='__main__':
     np.set_printoptions(linewidth=500)
     mdl=SubDynModel()
     mdl.fromSummaryFile('../../data/example_files/FASTSum_Pendulum.SD.sum.yaml')
+    mdl.toJSON('./_out.json')
+    print(mdl)
 

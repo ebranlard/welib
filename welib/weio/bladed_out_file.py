@@ -107,7 +107,7 @@ def read_bladed_sensor_file(sensorfile):
                 s = s.replace('TT','s^2').replace('T','s').replace('A','rad')
                 s = s.replace('P','W').replace('L','m').replace('F','N').replace('M','kg')
                 return s
-            dat['ChannelUnit']=[repUnits(s) for s in t_line[7:].strip().split()]
+            dat['ChannelUnit']=[repUnits(s) for s in shlex.split(t_line[7:].strip())]
 
         elif t_line.startswith('MIN '):
             dat['MIN'] = float(t_line[3:].strip()) # Start time?

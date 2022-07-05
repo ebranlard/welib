@@ -266,9 +266,19 @@ def SteadyBEM(Omega,pitch,V0,xdot,u_turb,
 def FASTFile2SteadyBEM(FASTFileName):
     from welib.weio.fast_input_deck import FASTInputDeck
     F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
+    if F.AD is None:
+        raise Exception('Cannot open AD file referenced in:'.format(FASTFileName))
+    if F.ED is None:
+        raise Exception('Cannot open ED file referenced in:'.format(FASTFileName))
 
-    rho     = F.AD['AirDens']
-    KinVisc = F.AD['KinVisc']
+    try:
+        rho     = float(F.fst['AirDens'])  # New OF > 3.0
+    except:
+        rho     = float(F.AD['AirDens'])   # Old OF <=3.0
+    try:
+        KinVisc = float(F.fst['KinVisc'])  # New OF > 3.0
+    except:
+        KinVisc = float(F.AD['KinVisc'])   # Old OF <= 3.0
 
     nB   =  F.ED['NumBl']
     cone = -F.ED['PreCone(1)']
@@ -323,7 +333,7 @@ if __name__=="__main__":
     """ See examples/ for more examples """
 
     # --- Read a FAST model to get the main parameters needed
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM('../../data/NREL5MW/Main_Onshore_OF2.fst')
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM('../../data/NREL5MW/Main_Onshore.fst')
 
     # --- Run BEM on a set of operating points
     WS =[5,10]

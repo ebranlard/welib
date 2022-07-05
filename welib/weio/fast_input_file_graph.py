@@ -3,10 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Local 
-try:
-    from .tools.graph import *
-except ImportError:
-    from welib.FEM.graph import *
+# try:
+#     from .tools.graph import *
+# except ImportError:
+from welib.FEM.graph import *
 
 
 # --------------------------------------------------------------------------------}
@@ -75,13 +75,37 @@ def subdynToGraph(sd):
     PropSets = ['Beam','Cable','Rigid']
     for ie,E in enumerate(Members):
         Type=1 if len(E)==5 else E[5]
-        #elem= Element(E[0], E[1:3], propset=PropSets[Type-1], propIDs=E[3:5], Type=PropSets[Type-1])
-        elem= Element(E[0], E[1:3], Type=PropSets[Type-1])
+        #elem= Element(E[0], E[1:3], propset=PropSets[Type-1], propIDs=E[3:5])
+        elem= Element(E[0], E[1:3], Type=PropSets[Type-1], propIDs=E[3:5], propset=PropSets[Type-1])
         elem.data['object']='cylinder'
         elem.data['color'] = type2Color[Type]
         Graph.addElement(elem)
         # Nodal prop data
-        Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
+        #Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
+
+    # --- Concentrated Masses (in global coordinates), node data
+    for iC, CM in enumerate(sd['ConcentratedMasses']):
+        #CMJointID, JMass, JMXX, JMYY, JMZZ, JMXY, JMXZ, JMYZ, MCGX, MCGY, MCGZ   
+        nodeID = CM[0]
+        n = Graph.getNode(nodeID)
+        M66 = np.zeros((6,6))
+        if len(CM)==11:
+            m = CM[1]
+            x, y ,z = (CM[8], CM[9], CM[10])
+            Jxx = CM[2]; Jyy = CM[3]; Jzz = CM[4]
+            Jxy = CM[5]; Jxz = CM[6]; Jyz = CM[7];
+        else:
+            raise NotImplementedError('TODO legacy')
+            m = CM[1]
+            Jxx = CM[2]; Jyy = CM[3]; Jzz = CM[4]
+            Jxy = 0; Jyz =0; Jzz = 0; x,y,z=0,0,0
+        M66[0, :] =[   m     ,   0     ,   0     ,   0                 ,  z*m                , -y*m                 ]
+        M66[1, :] =[   0     ,   m     ,   0     , -z*m                ,   0                 ,  x*m                 ]
+        M66[2, :] =[   0     ,   0     ,   m     ,  y*m                , -x*m                ,   0                  ]
+        M66[3, :] =[   0     , -z*m    ,  y*m    , Jxx + m*(y**2+z**2) , Jxy - m*x*y         , Jxz  - m*x*z         ]
+        M66[4, :] =[  z*m    ,   0     , -x*m    , Jxy - m*x*y         , Jyy + m*(x**2+z**2) , Jyz  - m*y*z         ]
+        M66[5, :] =[ -y*m    , x*m     ,   0     , Jxz - m*x*z         , Jyz - m*y*z         , Jzz  + m*(x**2+y**2) ]
+        n.setData({'addedMassMatrix':M66})
 
     # Nodal data
     for iN,N in enumerate(sd['InterfaceJoints']):
@@ -117,23 +141,23 @@ def hydrodynToGraph(hd):
     Graph = GraphModel()
 
     # --- Properties
-    if 'AxCoefs' in hd.keys():
-        Props     = hd['AxCoefs']
-        Graph.addNodePropertySet('AxCoefs')
-        for ip,P in enumerate(Props):
-            prop= NodeProperty(ID=P[0], JointAxCd=P[1], JointAxCa=P[2], JointAxCp=P[3])
-            Graph.addNodeProperty('AxCoefs',prop)
     if 'SectionProp' in hd.keys():
-        Props     = hd['SectionProp']
+        # NOTE: setting it as element property since two memebrs may connect on the same node with different diameters/thicknesses
         Graph.addNodePropertySet('Section')
-        for ip,P in enumerate(Props):
+        for ip,P in enumerate(hd['SectionProp']):
             # PropSetID    PropD         PropThck
             prop= NodeProperty(ID=P[0], D=P[1], t=P[2])
             Graph.addNodeProperty('Section',prop)
+
+    # --- Hydro Coefs - will be stored in AxCoefs, SimpleCoefs, DepthCoefs, MemberCoefs
+    if 'AxCoefs' in hd.keys():
+        Graph.addNodePropertySet('AxCoefs')
+        for ip,P in enumerate(hd['AxCoefs']):
+            prop= NodeProperty(ID=P[0], JAxCd=P[1], JAxCa=P[2], JAxCp=P[3])
+            Graph.addNodeProperty('AxCoefs',prop)
     if 'SmplProp' in hd.keys():
-        Props     = hd['SmplProp']
-        Graph.addNodePropertySet('Smpl')
-        for ip,P in enumerate(Props):
+        Graph.addNodePropertySet('SimpleCoefs')
+        for ip,P in enumerate(hd['SmplProp']):
             #      SimplCd    SimplCdMG    SimplCa    SimplCaMG    SimplCp    SimplCpMG   SimplAxCd  SimplAxCdMG   SimplAxCa  SimplAxCaMG  SimplAxCp   SimplAxCpMG
             if len(P)==12:
                 prop= NodeProperty(ID=ip+1, Cd=P[0], CdMG=P[1], Ca=P[2], CaMG=P[3], Cp=P[4], CpMG=P[5], AxCd=P[6], AxCdMG=P[7], AxCa=P[8], AxCaMG=P[9], AxCp=P[10], AxCpMG=P[11])
@@ -141,25 +165,39 @@ def hydrodynToGraph(hd):
                 prop= NodeProperty(ID=ip+1, Cd=P[0], CdMG=P[1], Ca=P[2], CaMG=P[3], Cp=P[4], CpMG=P[5], AxCa=P[6], AxCaMG=P[7], AxCp=P[8], AxCpMG=P[9])
             else:
                 raise NotImplementedError()
-            Graph.addNodeProperty('Smpl',prop)
+            Graph.addNodeProperty('SimpleCoefs',prop)
     if 'DpthProp' in hd.keys():
-        Props     = hd['DpthProp']
-        Graph.addMiscPropertySet('Dpth')
-        for ip,P in enumerate(Props):
+        Graph.addMiscPropertySet('DepthCoefs')
+        for ip,P in enumerate(hd['DpthProp']):
             # Dpth      DpthCd   DpthCdMG   DpthCa   DpthCaMG       DpthCp   DpthCpMG   DpthAxCd   DpthAxCdMG   DpthAxCa   DpthAxCaMG   DpthAxCp   DpthAxCpMG
             prop= Property(ID=ip+1, Dpth=P[0], Cd=P[1], CdMG=P[2], Ca=P[3], CaMG=P[4], Cp=P[5], CpMG=P[6], AxCd=P[7], AxCdMG=P[8], AxCa=P[9], AxCaMG=P[10], AxCp=P[11], AxCpMG=P[12])
-            Graph.addMiscProperty('Dpth',prop)
+            Graph.addMiscProperty('DepthCoefs',prop)
+
     if 'MemberProp' in hd.keys():
-        # MemberID    MemberCd1     MemberCd2    MemberCdMG1   MemberCdMG2    MemberCa1     MemberCa2    MemberCaMG1   MemberCaMG2    MemberCp1     MemberCp2    MemberCpMG1   MemberCpMG2   MemberAxCd1   MemberAxCd2  MemberAxCdMG1 MemberAxCdMG2  MemberAxCa1   MemberAxCa2  MemberAxCaMG1 MemberAxCaMG2  MemberAxCp1  MemberAxCp2   MemberAxCpMG1   MemberAxCpMG2
-        pass # TODO
-    # ---------------------- FILLED MEMBERS ------------------------------------------
-    #              0   NFillGroups     - Number of filled member groups (-) [If FillDens = DEFAULT, then FillDens = WtrDens; FillFSLoc is related to MSL2SWL]
-    # FillNumM FillMList             FillFSLoc     FillDens
-    # (-)      (-)                   (m)           (kg/m^3)
-    # ---------------------- MARINE GROWTH -------------------------------------------
-    #              0   NMGDepths      - Number of marine-growth depths specified (-)
-    # MGDpth     MGThck       MGDens
-    # (m)        (m)         (kg/m^3)
+        # Member-based hydro coefficinet
+        Graph.addMiscPropertySet('MemberCoefs')
+        for ip,P in enumerate(hd['MemberProp']):
+            # MemberID    MemberCd1     MemberCd2    MemberCdMG1   MemberCdMG2    MemberCa1     MemberCa2    MemberCaMG1   MemberCaMG2    MemberCp1     MemberCp2    MemberCpMG1   MemberCpMG2   MemberAxCd1   MemberAxCd2  MemberAxCdMG1 MemberAxCdMG2  MemberAxCa1   MemberAxCa2  MemberAxCaMG1 MemberAxCaMG2  MemberAxCp1  MemberAxCp2   MemberAxCpMG1   MemberAxCpMG2
+            prop = Property(ID=ip+1, MemberID=P[0], Cd1=P[1], Cd2=P[2], CdMG1=P[3], CdMG2=P[4], Ca1=P[5], Ca2=P[6], CaMG1=P[7], CaMG2=P[8], Cp1=P[9], Cp2=P[10], CpMG1=P[11], CpMG2=P[12], AxCd1=P[14], AxCd2=P[15], axCdMG1=P[16], axCdMG2=P[17], AxCa1=P[18], AxCa2=P[19], AxCaMG1=P[20], AxCaMG2=P[21], AxCp1=P[22], AxCp2=P[23])
+            Graph.addMiscProperty('MemberCoefs',prop)
+    # ---
+    if 'FillGroups' in hd.keys():
+        # Filled members
+        Graph.addMiscPropertySet('FillGroups')
+        for ip,P in enumerate(hd['FillGroups']):
+            #                       FillNumM FillMList             FillFSLoc     FillDens
+            raise NotImplementedError('hydroDynToGraph, Fill List might not be properly set, verify below')
+            prop = MiscProperty(ID=ip+1, FillNumM=P[0], FillMList=P[1],  FillFSLoc=P[2], FillDens=P[3])
+            Graph.addMiscProperty('FillGroups',prop)
+
+    if 'MGProp' in hd.keys():
+        # Marine Growth
+        Graph.addMiscPropertySet('MG')
+        for ip,P in enumerate(hd['MGProp']):
+            # MGDpth     MGThck       MGDens
+            # (m)        (m)         (kg/m^3)
+            prop = Property(ID=ip+1, MGDpth=P[0], MGThck=P[1],  MGDens=P[2])
+            Graph.addMiscProperty('FillGroups',prop)
 
     # --- Nodes
     Nodes     = hd['Joints']
@@ -169,24 +207,24 @@ def hydrodynToGraph(hd):
         Graph.setNodeNodalProp(node, 'AxCoefs', N[4])
    
     # --- Elements
-    PropSets=['Smpl','Dpth','Member']
+    PropSets=['SimpleCoefs','DepthCoefs','MemberCoefs']
     Members   = hd['Members']
     for ie,E in enumerate(Members):
         # MemberID  MJointID1  MJointID2  MPropSetID1  MPropSetID2  MDivSize   MCoefMod  PropPot 
         EE   = E[:5].astype(int)
         Type = int(E[6]) # MCoefMod
         Pot  = E[7].lower()[0]=='t'
-        elem= Element(EE[0], EE[1:3], CoefMod=PropSets[Type-1], DivSize=E[5], Pot=Pot)
+        elem= Element(ID=EE[0], nodeIDs=EE[1:3], propIDs=EE[3:5], propset='Section', CoefMod=PropSets[Type-1], DivSize=float(E[5]), Pot=Pot)
         elem.data['object']='cylinder'
         elem.data['color'] = type2Color(Pot)
         Graph.addElement(elem)
-        # Nodal prop data
-        Graph.setElementNodalProp(elem, propset='Section', propIDs=EE[3:5])
+        # Nodal prop data NOTE: can't do that anymore for memebrs with different diameters at the same node
+        #Graph.setElementNodalProp(elem, propset='Section', propIDs=EE[3:5])
         if Type==1:
             # Simple
-            Graph.setElementNodalProp(elem, propset='Smpl', propIDs=[1,1])
+            Graph.setElementNodalProp(elem, propset='SimpleCoefs', propIDs=[1,1])
         else:
-            print('>>> TODO type Depth and member')
+            print('>>> TODO type DepthCoefs and MemberCoefs')
 
     return Graph
 
@@ -254,7 +292,7 @@ def subdynSumToGraph(data):
 
 
 if __name__ == '__main__':
-    import weio
+    import welib.weio as weio
 
     filename='../../_data/Monopile/MT100_SD.dat'
     # filename='../../_data/Monopile/TetraSpar_SubDyn_v3.dat'

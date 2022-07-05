@@ -60,12 +60,12 @@ def prescribed_oscillations():
         u_oye['alpha']    = lambda t: np.interp(t, vt, valpha_t[ia,:])
 
         # MHH Parameters and Inputs
-        p = dynstall_mhh_param_from_polar(P, chord, tau_chord=chord/U0, FAST=True)
+        p = dynstall_mhh_param_from_polar(P, chord, constants='OpenFAST')
         u=dict()
         u['U']         = lambda t: U0
         u['U_dot']     = lambda t: 0
         u['alpha']     = lambda t: np.interp(t, vt, valpha_t[ia,:])
-        u['alpha_dot'] = lambda t: np.interp(t, vt, valpha_dot_t)
+        u['omega'] = lambda t: np.interp(t, vt, valpha_dot_t)
         u['alpha_34']  = lambda t: np.interp(t, vt, valpha_t[ia,:]) # using alpha
 
 
@@ -113,7 +113,7 @@ def prescribed_oscillations():
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(8.4,5.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
     ax.plot(P.alpha/deg_scale  , P.f_st ,     label='f_st')
-    ax.plot(P.alpha/deg_scale  , P.cl  , 'k-',label='Cl static', LineWidth=2)
+    ax.plot(P.alpha/deg_scale  , P.cl  , 'k-',label='Cl static', linewidth=2)
     ax.plot(P.alpha/deg_scale  , P.cl_fs  ,'k--',  label='Cl fully separated')
     ax.plot(P.alpha/deg_scale  , P.cl_inv ,'k-.',  label='Cl inviscid')
     iStart=np.argmin(np.abs(vt-(vt[-1]-T)))-1

@@ -69,7 +69,7 @@ def h(x, u_2, u_3, u_5, u_6, L):
 # --- Element formulation 
 # --------------------------------------------------------------------------------{
 
-def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None): 
+def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'): 
     """ 
     Stiffness and mass matrices for Hermitian beam element with 6DOF per node
     Beam directed along x
@@ -225,43 +225,6 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None):
     #        zeros(3) zeros(3) zeros(3)   An    ];
     #     Ke1=Grot'*Kle*Grot;  fe1=Grot'*fle;
 
-
-# !------------------------------------------------------------------------------------------------------
-# !> calculates the lumped forces and moments due to gravity on a given element:
-# !! the element has two nodes, with the loads for both elements stored in array F. Indexing of F is:
-# !!    Fx_n1=1,Fy_n1=2,Fz_n1=3,Mx_n1= 4,My_n1= 5,Mz_n1= 6,
-# !!    Fx_n2=7,Fy_n2=8,Fz_n2=9,Mx_n2=10,My_n2=11,Mz_n2=12
-# SUBROUTINE ElemG(A, L, rho, DirCos, F, g)
-#    REAL(ReKi), INTENT( IN ) :: A     !< area
-#    REAL(ReKi), INTENT( IN ) :: L     !< element length
-#    REAL(ReKi), INTENT( IN ) :: rho   !< density
-#    REAL(FEKi), INTENT( IN)  :: DirCos(3,3)      !< From element to global: xg = DC.xe,  Kg = DC.Ke.DC^t
-#    REAL(ReKi), INTENT( IN ) :: g     !< gravity
-#    REAL(FEKi), INTENT( OUT) :: F(12) !< returned loads. positions 1-6 are the loads for node 1 ; 7-12 are loads for node 2.
-#    REAL(FEKi) :: TempCoeff
-#    REAL(FEKi) :: w            ! weight per unit length
-#    
-#    F = 0.0_FEKi      ! initialize whole array to zero, then set the non-zero portions
-#    w = rho*A*g       ! weight per unit length
-#    
-#    ! lumped forces on both nodes (z component only):
-#    F(3) = -0.5_FEKi*L*w 
-#    F(9) = F(3)
-#           
-#    ! lumped moments on node 1 (x and y components only):
-#    ! bjj: note that RRD wants factor of 1/12 because of boundary conditions. Our MeshMapping routines use factor of 1/6 (assuming generic/different boundary  
-#    !      conditions), so we may have some inconsistent behavior. JMJ suggests using line2 elements for SubDyn's input/output meshes to improve the situation.
-#    TempCoeff = L*L*w/12.0_FEKi ! let's not calculate this twice  
-#    F(4) = -TempCoeff * DirCos(2,3) ! = -L*w*Dy/12._FEKi   !bjj: DirCos(2,3) = Dy/L
-#    F(5) =  TempCoeff * DirCos(1,3) ! =  L*w*Dx/12._FEKi   !bjj: DirCos(1,3) = Dx/L
-# 
-#       ! lumped moments on node 2: (note the opposite sign of node 1 moment)
-#    F(10) = -F(4)
-#    F(11) = -F(5)
-#    !F(12) is 0 for g along z alone
-#    
-# END SUBROUTINE ElemG
-# !------------------------------------------------------------------------------------------------------
 
 
 if __name__=='__main__':

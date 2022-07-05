@@ -1,48 +1,37 @@
 """ 3rd edition of IEC standard 61400-1 """
+import numpy as np
+
+# --------------------------------------------------------------------------------}
+# --- Reference values 
+# --------------------------------------------------------------------------------{
 def fVref(WT_class='I'):
+    """ Reference velocity """
     if WT_class== 'I':
-          Vref = 50.0
+        Vref = 50.0
     elif WT_class== 'II':
-          Vref = 42.5
+        Vref = 42.5
     elif WT_class=='III':
         Vref = 37.5
+    elif WT_class == 'IV':
+        V_ref = 30.
     else:
-        raise Exception('Unknown wind turbine class '+IEC_class)
+        raise Exception('Unknown wind turbine class '+turbulence_class)
     return Vref
 
-
-def fIref(IEC_class='A'):
-    if IEC_class=='A':
+def fIref(turbulence_class='A'):
+    """ Reference turbulence intensity """
+    if turbulence_class=='A+':
+        Iref=0.18
+    elif turbulence_class=='A':
         Iref=0.16
-    elif IEC_class=='B':
+    elif turbulence_class=='B':
         Iref=0.14
-    elif IEC_class=='C':
+    elif turbulence_class=='C':
         Iref=0.12
     else:
-        raise Exception('Unknown class '+IEC_class)
+        raise Exception('Unknown class '+turbulence_class)
     return Iref
 
-def sigma1_ETM(WS, IEC_class='A'): 
-    # "sigma1" from extreme turbulence model
-    Iref = fIref(IEC_class)
-    c    = 2.
-    Vave = 10.
-    return  c * Iref * (0.072 * (Vave / c + 3.) * (WS / c - 4.) + 10.)
-
-def sigma1_NTM(WS, IEC_class='A'):
-    # Normal turbulence model
-    # Function sigma, offshore
-    #   sigma1 = fE_sigma(U_10_hub) + 1.28*fD_sigma(U_10_hub)
-    Iref = fIref(IEC_class)
-    return Iref * (0.75 * WS + 5.6) 
-    
-def ETM(WS, IEC_class='A'): 
-    # Turbulence intensity from extreme turbulence model
-    return sigma1_ETM(WS, IEC_class)/ WS
-
-def NTM(WS, IEC_class='A'):
-    # Turbulence intensity from normal turbulence model
-    return sigma1_NTM(WS, IEC_class)/ WS
 
 def Lambda(zhub, IECedition=3):
     """
@@ -53,17 +42,124 @@ def Lambda(zhub, IECedition=3):
         return 0.7 * min(30, zhub)
     return 0.7 * min(60, zhub)
 
+# --------------------------------------------------------------------------------}
+# --- Turbulence models 
+# --------------------------------------------------------------------------------{
+def sigma1_ETM(WS, turbulence_class='A'): 
+    """ "sigma1" from extreme turbulence model """
+    Iref = fIref(turbulence_class)
+    c    = 2.
+    Vave = 10.
+    return  c * Iref * (0.072 * (Vave / c + 3.) * (WS / c - 4.) + 10.)
 
-def KaimalSpectrum(f, zhub, uhub, Model='ETM', IEC_class='A' ):
+def sigma1_NTM(WS, turbulence_class='A'):
+    # Normal turbulence model
+    # Function sigma, offshore
+    #   sigma1 = fE_sigma(U_10_hub) + 1.28*fD_sigma(U_10_hub)
+    Iref = fIref(turbulence_class)
+    return Iref * (0.75 * WS + 5.6) 
+
+def Sigma1_zHub(z_hub): 
+    if z_hub > 60:
+       return 42
+    else:
+        return 0.7*z_hub
+    
+def ETM(WS, turbulence_class='A'): 
+    # Turbulence intensity from extreme turbulence model
+    return sigma1_ETM(WS, turbulence_class)/ WS
+
+def NTM(WS, turbulence_class='A'):
+    # Turbulence intensity from normal turbulence model
+    return sigma1_NTM(WS, turbulence_class)/ WS
+
+def EWM(WS, WT_class='I'):
+    # Extreme wind speed model: 6.3.2.1
+    V_ref = fVref(WT_class=WT_class)
+    # Steady
+    V_e50 = 1.4*V_ref
+    V_e1  = 0.8*V_e50
+    # Turbulent
+    V_50    = V_ref
+    V_1     = 0.8*V_50
+    sigma_1 = 0.11*WS
+    return sigma_1, V_e50, V_e1, V_50, V_1
+
+
+# --------------------------------------------------------------------------------}
+# --- Gusts 
+# --------------------------------------------------------------------------------{
+def EOG(WS, D, z_hub, WT_class='I',turbulence_class='A', vert_slope=0, tStart=0, filename=None, shearExp=None):
+    """
+    D    : rotor diameter [m]
+    z_hub: hub height [m]
+    WS   : hub velocity [m/s]
+    vert_slope: vertical slope [deg]
+    """
+    # Extreme operating gust: 6.3.2.2
+    T  = 10.5
+    dt = T/100
+    t  = np.linspace(tStart, tStart+T, int((T/dt)+1))
+
+    # constants from standard
+    if shearExp is None:
+        alpha = 0.2
+    else:
+        alpha = shearExp
+
+    # Flow angle adjustments
+    V_hub      = WS*np.cos(vert_slope*np.pi/180)
+    V_vert_mag = WS*np.sin(vert_slope*np.pi/180)
+
+    sigma_1 = NTM(V_hub, turbulence_class=turbulence_class)
+    __, __, V_e1, __, __ = EWM(V_hub, WT_class=WT_class)
+
+    # Contant variables
+    V              = np.zeros_like(t)+V_hub
+    V_dir          = np.zeros_like(t)
+    V_vert         = np.zeros_like(t)+V_vert_mag
+    shear_horz     = np.zeros_like(t)
+    shear_vert     = np.zeros_like(t)+alpha
+    shear_vert_lin = np.zeros_like(t)
+    V_gust         = np.zeros_like(t)
+
+    V_gust = min([ 1.35*(V_e1 - V_hub), 3.3*(sigma_1/(1+0.1*(D/Sigma1_zHub(z_hub)))) ])
+
+    V_gust_t = np.zeros_like(t)
+    V_gust_t = 0. - 0.37*V_gust*np.sin(3*np.pi*(t-tStart)/T)*(1-np.cos(2*np.pi*(t-tStart)/T))
+    V_gust_t[t<tStart] = 0
+    V_gust_t[t>tStart+T] = 0
+
+    data = np.column_stack((t, V, V_dir, V_vert, shear_horz, shear_vert, shear_vert_lin, V_gust_t))
+
+    if filename is not None:
+        from welib.weio.fast_wind_file import FASTWndFile
+        import pandas as pd
+        f = FASTWndFile()
+        f.header[0] = '! EOG wind file for OpenFAST. V_hub0 = {:.2f}m/s - sigma_1: {:.2f}m/s - vert_slope={:.2f}deg'.format(V_hub, sigma_1, vert_slope)
+        f.data = pd.DataFrame(data = data, columns=f.colNames)
+        f.write(filename)
+
+    return t, V_gust_t+WS, V_vert_mag, shear_vert
+
+
+    
+
+# --------------------------------------------------------------------------------}
+# --- Turbulence spectra 
+# --------------------------------------------------------------------------------{
+
+
+def KaimalSpectrum(f, zhub, uhub, Model='ETM', turbulence_class='A' ):
     """IEC Kaimal spectrum model.
     See IEC 61400-3 Appendix B.2
         S_k(f) = \frac{4 \sigma_k^2 L_k/V }{(1+6 f L_k/V)^{5/3}} 
         k=0,1,2 = longi, lateral, upward
     """
     if Model == 'ETM':
-        sigma1 = sigma1_ETM(uhub, IEC_class)
+        sigma1 = sigma1_ETM(uhub, turbulence_class)
     elif Model == 'NTM':
-        sigma1 = sigma1_NTM(uhub, IEC_class)
+        sigma1 = sigma1_NTM(uhub, turbulence_class)
 
     S_k = np.zeros(3,len(f))
     sigma_k = sigma1       * np.array([1.0,  0.8,  0.5 ])
@@ -72,7 +168,7 @@ def KaimalSpectrum(f, zhub, uhub, Model='ETM', IEC_class='A' ):
         S_k[k] = (4 * sigma[k]**2 * L_k[k]/uhub)/( 1 + 6 * f * L_k[k]/uhub)**(5/3)
     return S_k
 
-def VonKarmanSpectrum(f, zhub, uhub, Model='ETM', IEC_class='A'):
+def VonKarmanSpectrum(f, zhub, uhub, Model='ETM', turbulence_class='A'):
     r"""IEC Von-Karman spectral model
     The form of this model is,
     .. math::
@@ -82,9 +178,9 @@ def VonKarmanSpectrum(f, zhub, uhub, Model='ETM', IEC_class='A'):
       :math:`\hat{f} = \bar{u}_{hub}/\Lambda`
     """
     if Model == 'ETM':
-        sigma1 = sigma1_ETM(uhub, IEC_class)
+        sigma1 = sigma1_ETM(uhub, turbulence_class)
     elif Model == 'NTM':
-        sigma1 = sigma1_NTM(uhub, IEC_class)
+        sigma1 = sigma1_NTM(uhub, turbulence_class)
     
     spec    = np.zeros(3,len(f))
     sig2 = 4 * sigma1 ** 2 

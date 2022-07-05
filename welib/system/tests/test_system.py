@@ -2,7 +2,7 @@ import unittest
 import sys
 #sys.path.insert(0,'..')
 from welib.system.system import *
-from welib.system.statespacelinear import lti_state_space_function, lti_output_function
+from welib.system.statespacelinear import state_function, output_function
 
 import random
 
@@ -32,10 +32,10 @@ class Test(unittest.TestCase):
         nx = 5
         p, x0, u0 = self.get_LTI(nx)
         # Initial system
-        sys = System(Fx=lti_state_space_function, Y=lti_output_function, interface='xup', param = p )
+        sys = System(Fx=state_function, Y=output_function, interface='xup', param = p )
 
         # Compute RHS
-        xdot0=lti_state_space_function(0,x0,u0,p) 
+        xdot0=state_function(0,x0,u0,p) 
 
         # Generate implicit function
         F=sys.implicit_function
@@ -49,7 +49,7 @@ class Test(unittest.TestCase):
         
         # Create some simple state space 
         p, x0, u0 = self.get_LTI()
-        sys = System(Fx=lti_state_space_function, Y=lti_output_function, interface='xup', param = p )
+        sys = System(Fx=state_function, Y=output_function, interface='xup', param = p )
 
         delta_x  = np.zeros(x0.shape)+0.001
         delta_xd = np.zeros(x0.shape)+0.001

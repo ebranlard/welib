@@ -27,7 +27,7 @@ try:
         conservative=False,
         styles=STYLES)
 except:
-    print('Module `backtrace` not installed')
+    print('Cannot use clean_exceptions, module `backtrace` not installed')
 
     # more code...
 

@@ -1,6 +1,6 @@
 import numpy as np
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 import wtDigiTwin.fast.fastlib as fastlib # latest fastlib is found at https://github.com/ebranlard/welib
 
 def CPLambda():
@@ -12,7 +12,7 @@ def CPLambda():
     ReRun=False # we don't rerun simulations that were already run
     base             = '../../_data/NREL5MW'
     ref_dir          = '../../_data/NREL5MW/'  # Folder where the fast input files are located (will be copied)
-    main_file        = '../../_data/NREL5MW/Main_Onshore_OF2.fst'  # Main file in ref_dir, used as a template
+    main_file        = '../../_data/NREL5MW/Main_Onshore.fst'  # Main file in ref_dir, used as a template
     FAST_EXE         = '../../_data/OpenFAST2_x64s_ebra.exe' # Location of a FAST exe (and dll)
 
     # --- Computing CP and CT matrices for range of lambda and pitches

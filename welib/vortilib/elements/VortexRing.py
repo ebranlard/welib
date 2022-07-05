@@ -285,7 +285,7 @@ class TestRing(unittest.TestCase):
     def test_Ring_doublet_approx(self):
         # Far away, the velocity field from a ring is similar to a doublet
         try:
-            import VortexDoublet as vd
+            import welib.vortilib.elements.VortexDoublet as vd
         except:
             print('Test skipped, vortex doublet missing')
             return

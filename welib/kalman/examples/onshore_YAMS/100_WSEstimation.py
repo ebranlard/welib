@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import weio # https://github.com/ebranlard/weio
+import welib.weio as weio # https://github.com/ebranlard/weio
 
 # Local 
 from wtDigiTwin.ws_estimator.tabulated import TabulatedWSEstimator
@@ -54,7 +54,7 @@ if 1 in IStudy:
 if 3 in IStudy:
     base='../../_data/NREL5MW'
     #Main='../../_data/NREL5MW_SimpleSimulations/TurbWindStep_AllDOF.fst'; 
-    Main='../../_data/NREL5MW/Main_Onshore_OF2.fst'; 
+    Main='../../_data/NREL5MW/Main_Onshore.fst'; 
     wse = TabulatedWSEstimator(fst_file=Main)
     wse.load_files(base=base,suffix='')
     print(wse)

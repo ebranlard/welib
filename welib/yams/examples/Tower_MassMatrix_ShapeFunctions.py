@@ -13,7 +13,7 @@ def main():
     np.set_printoptions(linewidth=300, precision=2)
 
     # Read ED file
-    edFilename  = os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED.dat')
+    edFilename  = os.path.join(MyDir,'./../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
     ed          = weio.FASTInputFile(edFilename)
     TowerHt     = ed['TowerHt']
     TowerBsHt   = ed['TowerBsHt']
@@ -31,7 +31,8 @@ def main():
     s_G      = np.zeros((3,nSpan))       # COG location
     s_G[2,:] = z
     jxxG= z*0 + m # NOTE: unknown
-    MM, Gr, Ge, Oe, Oe6 = GMBeam(s_G, z, m, PhiU, jxxG=jxxG, bUseIW=True, main_axis='z', split_outputs=False, rot_terms=True)
+    MM, IT = GMBeam(s_G, z, m, PhiU, jxxG=jxxG, method='Flex', main_axis='z', rot_terms=True)
+    Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
     print(MM)
     print('Gr')

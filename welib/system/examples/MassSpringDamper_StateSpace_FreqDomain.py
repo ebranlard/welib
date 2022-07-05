@@ -1,3 +1,8 @@
+""" 
+Frequency response of a mass spring damper system, put into state space form, 
+given some misc forcing inputs
+
+"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -26,8 +31,6 @@ sys= LinearStateSpace(A,B,C,D)
 omega  = np.linspace(0.01,10, 1000)
 G, phi = sys.frequency_response(omega)
 f      = omega/(2*np.pi)
-print('>>>',G.shape)
-
 
 # --- Bode Plot
 fig,axes = plt.subplots(2, 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -56,3 +59,9 @@ ax.legend()
 
 if __name__ == '__main__':
     plt.show()
+if __name__ == '__test__':
+    pass
+if __name__=="__export__":
+    pass
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)

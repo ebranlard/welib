@@ -1,4 +1,7 @@
 """
+
+Yams numerical and recursive formulation.
+
 Reference:
      [1]: Branlard, Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex, Wind Energy, 2019
 """
@@ -17,19 +20,20 @@ from numpy import eye, cross, cos ,sin
 def Matrix(m):
 	return np.asarray(m)
 def colvec(v): 
-    v=np.asarray(v).ravel()
-    return np.array([[v[0]],[v[1]],[v[2]]])
+    return np.asarray(v).ravel().reshape(3,1)
 
 
 # --------------------------------------------------------------------------------}
 # --- Connections 
 # --------------------------------------------------------------------------------{
 class Connection():
-    def __init__(self,Type,RelPoint=None,RelOrientation=None,JointRotations=None, OrientAfter=True):
+    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True, parentNode=None, parentBody=None):
         if RelOrientation is None:
             RelOrientation=eye(3)
         if RelPoint is None:
             RelPoint=colvec([0,0,0])
+        else:
+            RelPoint=colvec(RelPoint)
 
         self.Type=Type
         
@@ -38,6 +42,9 @@ class Connection():
         self.R_ci_0    = RelOrientation
         self.R_ci      = self.R_ci_0     
         self.OrientAfter= OrientAfter
+        self.parentNode = parentNode
+        self.parentBody = parentBody
+        self.I_DOF= None  # < Index of joints DOF in global DOF vector
 
         if self.Type=='Rigid':
             self.nj=0
@@ -47,7 +54,7 @@ class Connection():
         else:
             raise NotImplementedError()
 
-    def updateKinematics(j,q):
+    def updateKinematics(j, q):
         j.B_ci=Matrix(np.zeros((6,j.nj)))
         if j.Type=='Rigid':
             j.R_ci=j.R_ci_0
@@ -77,6 +84,25 @@ class Connection():
                 else:
                     j.R_ci = np.dot(j.R_ci_0, R )
 
+        # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
+        if j.parentNode is not None:
+            #print('>>>> Joint Kinematics. Updating joint position based on parent node position')
+            iNode=j.parentNode
+            j.s_C_inB = (j.parentBody.s_P[:,iNode]).reshape(3,1)
+
+    def __repr__(self):
+        s ='<Connection object>:\n'
+        s+='|Properties:\n'
+        s+='| - Type:     {} \n'.format(self.Type)
+        s+='| - OrientAfter:  {} \n'.format(self.OrientAfter)
+        s+='| - s_C_0_inB:(init pos. of conn. in body)   \n{} \n'.format(self.s_C_0_inB)
+        s+='| - s_C_inB:  (current pos. of conn. in body)\n{} \n'.format(self.s_C_inB)
+        s+='| - R_ci_0:   (init rot. ro conn. in body)   \n{} \n'.format(self.R_ci_0)
+        s+='| - R_ci:     (current rot. ro conn. in body)\n{} \n'.format(self.R_ci)
+        s+='|Methods: updateKinematics\n'
+        s+='|Usefull getters: None \n'
+        return s
+
 
 # --------------------------------------------------------------------------------}
 # --- Bodies 
@@ -89,20 +115,62 @@ class Body(GenericBody):
         B.MM     = None
         B.B           = [] # Velocity transformation matrix
         B.updatePosOrientation(colvec([0,0,0]), eye(3))
+        B.I_DOF = None
+#         B.r_O   = None
+        B.gzf   = None
+#         B.R_0b  = None
+#         B.RR_0b = None
+
+    def __repr__(B):
+        s='<YAMSRec Body {} object>:\n'.format(B.name)
+        s+='|Properties:\n'
+        try: 
+            names = [c.name for c in B.Children]
+        except:
+            names=''
+        s+='| - Children: {} {}\n'.format(len(B.Children), names)
+        try: 
+            types = [c.Type for c in B.Connections]
+        except:
+            types=''
+        s+='| - Connections: {} {}\n'.format(len(B.Connections), types)
+        s+='| - I_DOF:  {}\n'.format(B.I_DOF)
+        s+='| - r_O  :  {}\n'.format(B.r_O.flatten())
+        s+='| - gzf  :  {}\n'.format(B.gzf)
+        s+='| - R_0b : \n{}\n'.format(B.R_0b)
+        s+='| * nf  : {}\n'.format(B.nf)
+        s+='| * R_bc: \n{}\n'.format(B.R_bc)
+        s+='| * Bhat_x_bc: \n{}\n'.format(B.Bhat_x_bc)
+        s+='| * Bhat_t_bc: \n{}\n'.format(B.Bhat_t_bc)
+        s+='| * mass     :   {}\n'.format(B.mass) 
+        s+='|Methods: connectTo, updateChildrenKinematicsNonRecursive \n'
+        s+='|         updatePosOrientation'
+        return s
 
     def updatePosOrientation(o,x_0,R_0b):
         o.r_O = x_0      # position of body origin in global coordinates
         o.R_0b=R_0b      # transformation matrix from body to global
 
-    def connectTo(self, Child, Point=None, Type=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
-        if Type =='Rigid':
+    def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
+        if BodyPoint is not None and Type =='Rigid':
+            if BodyPoint is not None:
+                if BodyPoint == 'FirstPoint':
+                    i_C_inB=0;
+                elif BodyPoint == 'LastPoint':
+                    i_C_inB=self.nSpan-1
+                else:
+                    raise NotImplementedError()
+                RelPoint = self.s_P0[:,i_C_inB].reshape(3,1)
+                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self)
+        elif Type =='Rigid':
             c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation)
         else: # TODO first node, last node
             c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter)
+
         self.Children.append(Child)
         self.Connections.append(c)
 
-    def setupDOFIndex(o,n):
+    def _setupDOFIndex(o,n):
         nForMe=o.nf
         # Setting my dof index
         o.I_DOF=n+ np.arange(nForMe) 
@@ -115,28 +183,21 @@ class Body(GenericBody):
             # Update
             n=n+nForConn;
             # Then Children
-            n=child.setupDOFIndex(n)
+            n=child._setupDOFIndex(n)
         return n
 
-    #def __repr__(B):
-    #    return GenericBody.__repr__(B)
-
-    @property
-    def R_bc(self):
-        return eye(3);
-    @property
-    def Bhat_x_bc(self):
-        return Matrix(np.zeros((3,0)))
-    @property
-    def Bhat_t_bc(self):
-        return Matrix(np.zeros((3,0)))
-
-    def updateChildrenKinematicsNonRecursive(p,q):
+    def updateChildrenKinematicsNonRecursive(p,q, qdot=None, qddot=None):
+        if p.I_DOF is None:
+            raise Exception('Call setupDOFIndex on the reference body first')
+        if qdot is None:
+            qdot = q*0
+        if qddot is None:
+            qddot = q*0
         # At this stage all the kinematics of the body p are known
         # Useful variables
         R_0p =  p.R_0b
         B_p  =  p.B
-        r_0p  = p.r_O
+        r_0p  = p.r_O  # Position of body origin in global coordinates
 
         nf_all_children=sum([child.nf for child in p.Children])
 
@@ -173,8 +234,8 @@ class Body(GenericBody):
             # Position of connection point in P and 0 system
             r_pi_inP= conn_pi.s_C_inB
             r_pi    = np.dot (R_0p , r_pi_inP )
-            #print('r_pi')
-            #print(r_pi_inP)
+            #print('Body {} to {}'.format(p.name, body_i.name))
+            #print('r_pi:',r_pi_inP.flatten())
             #print('r_pi')
             #print(r_pi)
             #print('Bx_pi')
@@ -197,47 +258,68 @@ class Body(GenericBody):
             # TODO flexible dofs and velocities/acceleration
             body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
 
-    def getFullM(o,M):
-        if not isinstance(o,GroundBody):
-            MqB      = fBMB(o.BB_inB,o.MM)
-            n        = MqB.shape[0]
-            M[:n,:n] = M[:n,:n]+MqB     
-        for c in o.Children:
-            M=c.getFullM(M)
-        return M
-        
-    def getFullK(o,K):
-        if not isinstance(o,GroundBody):
-            KqB      = fBMB(o.BB_inB,o.KK)
-            n        = KqB.shape[0]
-            K[:n,:n] = K[:n,:n]+KqB     
-        for c in o.Children:
-            K=c.getFullK(K)
-        return K
-        
-    def getFullD(o,D):
-        if not isinstance(o,GroundBody):
-            DqB      = fBMB(o.BB_inB,o.DD)
-            n        = DqB.shape[0]
-            D[:n,:n] = D[:n,:n]+DqB     
-        for c in o.Children:
-            D=c.getFullD(D)
-        return D
+#            TODO TODO TODO: remaining from matlab?????
+            gzf  = q[body_i.I_DOF,0]
+#             gz   = q    (i.I_DOF);
+#             gzp  = qdot (i.I_DOF);
+#             gzpp = qddot(i.I_DOF);
+# 
+#             % Velocity
+#             v_pi_inP  = Bx_pi*qdot(IHat)    ;
+#             om_pi_inP = Bt_pi*qdot(IHat)    ;
+# 
+#             % All velocities
+#             %v_0(1:3)      = B_i(1:3,:) * qdot(1:n_to_i);
+#             %v_0(4:6)      = B_i(4:6,:) * qdot(1:n_to_i);
+#             %v_0(7:6+i.nf) = qdot(n_to_i+1:i.nf);
+#             v_i_in0 = BB_i_inI * qdot(I_with_i);
+            v_i_in0 = np.zeros((6+body_i.nf,1))
+#             %  
+#             % V-Accelerations in P and 0
+#             a_i_v_in0=zeros(6+i.nf,1); % All v accelerations
+#             a_i_v_inP =p.a_O_v_inB + ...
+#                      cross(p.om_O_inB,cross(p.om_O_inB, r_pi_inP) )+...
+#                      2*cross(p.om_O_inB,  v_pi_inP ) + ...
+#                      cross(p.omp_O_v_inB, r_pi_inP);
+# 
+#             omp_i_v_inP =p.omp_O_v_inB +  cross(p.om_O_inB, om_pi_inP);
+#             omp_i_v_inI_bis = R_pi'*omp_i_v_inP; % <<<<<<<< ALTERNATIVE
+#             omp_i_v_inI =zeros(3,1);
+#             dom=zeros(3,1);
+#             om=zeros(3,1);
+#             for j=size(B_i_inI,2):-1:1
+#                 dom         = B_i_inI(4:6,j)*qdot(j)      ;
+#                 omp_i_v_inI = omp_i_v_inI +  cross(dom,om);
+#                 om          = om + dom                    ;
+#             end
+#             om_in0     = B_i(4:6,:) * qdot(1:n_to_i);
+#             om_inI_bis = R_0i *om_in0; % <<<<<<<< ALTERNATIVE
+# 
+#             % Accelerations in 0
+            a_i_v_in0=np.zeros((6+body_i.nf,1))
+#             a_i_v_in0(1:3)=R_0p*a_i_v_inP;
+#             a_i_v_in0(4:6)=R_0p*omp_i_v_inP;
+#             a_i_v_in0(4:6)=R_0i*omp_i_v_inI; % <<<<<<<< ALTERNTIVE
+#             a_i_v_in0(7:6+i.nf)=gzpp;
+# 
+# 
+#             i.R_pb = R_pi ;
+            body_i.updateKinematics(r_0i, R_0i, gzf, v_i_in0, a_i_v_in0)
+#             if ~isequal(i.Type,'Rigid')
+#                 if i.nf>0
+#                     i.computeMassMatrix(); % Triggers 
+#                     i.computeInertiaForces();
+#                 end
+#             end
+# %             nf_N=0;
+# %             BB_N_inN =[B_N_inN zeros(6,nf_N) ; zeros(nf_N, size(B_N_inN,2)) eye(nf_N)];
+# %             % Update of mass matrix
+# %             MM_N= BB_N_inN'*Nac.MM*BB_N_inN;
+# %             KK_N= BB_N_inN'*Nac.KK*BB_N_inN;
 
-    @property
-    def nf(B):
-        if hasattr(B,'PhiU'):
-            return len(B.PhiU)
-        else:
-            return 0
-
-    @property
-    def Mass(B):
-        if B.MM is None:
-            return 0
-        return B.MM[0,0]
 
     def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
+        # NOTE: this is overriden by BeamBody
         # Updating position of body origin in global coordinates
         o.r_O = x_0[0:3]
         o.gzf = gz
@@ -249,6 +331,74 @@ class Body(GenericBody):
         o.a_O_v_inB   = np.dot(R_0b, a_v_0[0:3])
         o.omp_O_v_inB = np.dot(R_0b, a_v_0[3:6])
 
+    @property
+    def _positions_global(B): # todo rename
+        # NOTE: this is overriden by BeamBody
+        return B.r_O # for rigid bodies
+
+
+
+    def _getFullM(o,M):
+        if isinstance(o,GroundBody):
+            raise Exception('Not intended to be called for Ground body')
+        MqB      = fBMB(o.BB_inB,o.MM)
+        n        = MqB.shape[0]
+        M[:n,:n] = M[:n,:n]+MqB     
+        for c in o.Children:
+            M=c._getFullM(M)
+        return M
+        
+    def _getFullK(o,K):
+        if isinstance(o,GroundBody):
+            raise Exception('Not intended to be called for Ground body')
+        KqB      = fBMB(o.BB_inB,o.KK)
+        n        = KqB.shape[0]
+        K[:n,:n] = K[:n,:n]+KqB     
+        for c in o.Children:
+            K=c._getFullK(K)
+        return K
+        
+    def _getFullD(o,D):
+        if isinstance(o,GroundBody):
+            raise Exception('Not intended to be called for Ground body')
+        DqB      = fBMB(o.BB_inB,o.DD)
+        n        = DqB.shape[0]
+        D[:n,:n] = D[:n,:n]+DqB     
+        for c in o.Children:
+            D=c._getFullD(D)
+        return D
+
+    @property
+    def bodies(o):
+        """ List of bodies recursively (children of children, etc)"""
+        bodies = [o]
+        for c in o.Children:
+            bodies += c.bodies
+        return bodies
+
+
+    @property
+    def R_bc(self):
+        return eye(3);
+    @property
+    def Bhat_x_bc(self):
+        return Matrix(np.zeros((3,0)))
+    @property
+    def Bhat_t_bc(self):
+        return Matrix(np.zeros((3,0)))
+    @property
+    def nf(B):
+        if hasattr(B,'PhiU'):
+            return len(B.PhiU)
+        else:
+            return 0
+    @property
+    def mass(B):
+        if B.MM is None:
+            return 0
+        return B.MM[0,0]
+
+
 # --------------------------------------------------------------------------------}
 # --- Ground Body 
 # --------------------------------------------------------------------------------{
@@ -256,24 +406,143 @@ class GroundBody(Body, GenericInertialBody):
     def __init__(B):
         Body.__init__(B, 'Grd')
         GenericInertialBody.__init__(B)
+        # We'll use the GroundBody object for global "assembly"
+        B.nq = 0
+        B.q  = []
+
+    def setupDOFIndex(o):
+        n=0
+        o.nq = o._setupDOFIndex(n)
+        return o.nq
+
+    def setDOF(o, q):  
+        q   = q.reshape(o.nq,1)
+        o.q = q
+        if o.I_DOF is None:
+            o.setupDOFIndex()
+        # Update kinematics of all bodies
+        for b in o.bodies:
+            b.updateChildrenKinematicsNonRecursive(o.q)
+
+
+    def __repr__(self):
+        s='<YAMSRec GroundBody {} object>:\n'.format(self.name)
+        #s+='|Inherits:\n'
+        #s+='||'+'\n|'.join(Body.__repr__(self).split('\n'))+'\n'
+        #s+='||'+'\n|'.join(GenericInertialBody.__repr__(self).split('\n'))+'\n'
+        s+='|Properties:\n'
+        s+='|- nq: {}\n'.format(self.nq)
+        s+='|- q:  {}\n'.format(self.q)
+        try:
+            bnames = [b.name for b in self.bodies]
+        except:
+            bnames=''
+        s+='|* bodies: {}\n'.format(len(self.bodies))
+        for b in self.bodies:
+            s+='|    name : {:8s}, I_DOF : {}\n'.format(b.name, b.I_DOF)
+        s+='|Derived properties: M, K, D'
+        return s
+
+    def eva(o):
+        """ Perform eigenvalue analysis based on system matrices"""
+        from welib.system.eva import eigMCK
+        MM = o.M
+        KK = o.K
+        DD = o.D
+        freq_d, zeta, Q, freq_0 = eigMCK(MM, DD, KK, method='full_matrix', sort=True)
+        return freq_d, zeta, Q, freq_0
+
+    def modes(o, norm='tip_norm'):
+        # Backup current q
+        q_before = o.q
+        # Perform EVA
+        freq_d, zeta, Q, freq_0 = o.eva()
+        # Apply each mode, to compute full position of structure
+        Modes=[]
+        for q in Q.T: # loop though columns
+            o.setDOF(q)
+            mode = o._all_positions_global
+            Modes.append(mode)
+            # --- Mode scaling
+            # TODO figure out main "dimension"
+            # Sript below assumes x is main dimension
+            # TODO TODO normalization is not bullet proof..
+            Uy = mode[1,:]
+            Uz = mode[2,:]
+            maxAmp  = [np.max(np.abs(Uy)), np.max(np.abs(Uz))]
+            iMaxAmp = np.mod(np.argmax(maxAmp)+1,3)
+            iOther  = 1 if iMaxAmp==2 else 2
+            if norm=='tip_norm':
+                tipVal = mode[iMaxAmp, -1]
+                fact = tipVal
+                mode[iMaxAmp,:] /= fact
+                mode[iOther,:] /= fact
+            elif norm=='max':
+                maxVal = np.max(np.abs(mode[iMaxAmp, :]))
+                iMaxVal = np.argmax(np.abs(mode[iMaxAmp,:]))
+                fact = 1 / mode[iMaxAmp, iMaxVal]
+                mode[iMaxAmp,:] /= fact
+                mode[iOther,:] /= fact
+            elif norm=='mode_mass':
+                raise Exception()
+                pass
+
+
+        # Restore current q
+        o.setDOF(q_before)
+
+        return Modes
+
+    @property
+    def _all_positions_global(o): # TODO rename 
+        """ Return shape of full structure"""
+        for ib, b in enumerate(o.bodies):
+            pos = b._positions_global
+            if ib==0:
+                all_pos = pos
+            else:
+                all_pos = np.column_stack((all_pos,pos))
+        return all_pos
+
+
+    @property
+    def M(o):
+        M = np.zeros((o.nq, o.nq))
+        for c in o.Children:
+            M=c._getFullM(M)
+        return M
+        
+    @property
+    def K(o):
+        K = np.zeros((o.nq, o.nq))
+        for c in o.Children:
+            K=c._getFullK(K)
+        return K
+        
+    @property
+    def D(o):
+        D = np.zeros((o.nq, o.nq))
+        for c in o.Children:
+            D=c._getFullD(D)
+        return D
+
 
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class RigidBody(Body,GenericRigidBody):
-    def __init__(B, name, Mass, J_G, rho_G):
+    def __init__(B, name, mass, J_G, rho_G):
         """
         Creates a rigid body 
         """
         Body.__init__(B,name)
-        GenericRigidBody.__init__(B, name, Mass, J_G, rho_G)
+        GenericRigidBody.__init__(B, name, mass, J_G, rho_G)
         B.s_G_inB = B.masscenter
         B.J_G_inB = B.masscenter_inertia
-        B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, Mass, -B.s_G_inB)
-        B.MM = rigidBodyMassMatrix(Mass, B.J_O_inB, B.s_G_inB) # TODO change interface
+        B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, mass, -B.s_G_inB)
+        B.MM = rigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
-
 
 
 
@@ -284,14 +553,15 @@ class BeamBody(GenericBeamBody, Body):
     def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
-            massExpected=None
+            massExpected=None,
+            name='dummy'
             ):
         """ 
           Points P0 - Undeformed mean line of the body
         """
         # --- nherit from BeamBody and Body 
         Body.__init__(B)
-        GenericBeamBody.__init__(B,'dummy', s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
+        GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
                  massExpected=massExpected
                 )
@@ -348,35 +618,51 @@ class BeamBody(GenericBeamBody, Body):
             o.V_tot=o.V+o.V0;
             o.K_tot=o.K+o.K0;
 
-            # Position of mean line
+            # Position of mean line in body coordinates
             o.s_P=o.s_P0+o.U;
 
-            # Position of deflected COG
+            # Position of deflected COG in body coordinates
             # TODO TODO TODO mean_axis not x
             o.rho_G      = np.zeros((3,o.nSpan))
             if o.main_axis=='x':
                 o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
                 o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
             else:
-                raise NotImplementedError()
-                o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
-                o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
-            o.s_G = o.s_P+o.rho_G;
+                print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
+                #raise NotImplementedError()
+                #o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
+                #o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
+            o.s_G = o.s_P+o.rho_G; 
             # Alternative:
             #rho_G2     = zeros(3,o.nSpan);
             #rho_G2(2,:) = o.rho_G0(2,:).*cos(o.V(1,:))-o.rho_G0(3,:).*sin(o.V(1,:));
             #rho_G2(3,:) = o.rho_G0(2,:).*sin(o.V(1,:))+o.rho_G0(3,:).*cos(o.V(1,:));
             #compare(o.rho_G,rho_G2,'rho_G');
             # Position of connection point
-            print('TODO connection points')
-            #for ic=1:length(o.Connections)
-            #    iNode=o.Connections{ic}.ParentNode;
-            #    %o.Connections{ic}.s_C_inB = o.U(1:3,iNode);
-            #    o.Connections{ic}.s_C_inB = o.s_P(1:3,iNode);
+            for ic, conn in enumerate(o.Connections):
+                if conn.parentNode is not None:
+                    # TODO: this is done twice see Connection
+                    iNode=conn.parentNode;
+                    conn.s_C_inB = o.s_P[:,iNode]
+
+    @property
+    def _positions_global(B): # TODO rename
+        displ_g = B.R_0b.dot(B.s_P) # TODO reference line or COG
+        pos_g   = B.r_O + displ_g
+        return pos_g
 
     @property
     def nSpan(B):
         return len(B.s_span)
+
+    def __repr__(self):
+        s='<YAMSRec BeamBody {} object>:\n'.format(self.name)
+        s+='|Inherits:\n'
+        s+='|'+'\n||'.join(Body.__repr__(self).split('\n'))+'\n'
+        #s+='|'+'\n||'.join(GenericBeamBody.__repr__(self).split('\n'))+'\n'
+        s+='|Properties:\n'
+        s+='| * nSpan: {}\n'.format(self.nSpan)
+        return s
 
 
 # --------------------------------------------------------------------------------}
@@ -390,11 +676,13 @@ class UniformBeamBody(BeamBody):
             jxxG=0
         if GKt is None:
             GKt=0
+        if gravity is None and (bStiffening or Mtop>0):
+            raise Exception('`gravity` is None, but `bStiffening` is true or `Mtop`>0. Please provide `gravity`.')
 
         A=1; rho=A*m;
         x=np.linspace(0,L,nSpan);
         # Mode shapes
-        freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-clamped-free',EI0,rho,A,L,x=x,Mtop=Mtop)
+        freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-clamped-free',EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)
         PhiU = np.zeros((nShapes,3,nSpan)) # Shape
         PhiV = np.zeros((nShapes,3,nSpan)) # Slope
         PhiK = np.zeros((nShapes,3,nSpan)) # Curvature
@@ -403,9 +691,9 @@ class UniformBeamBody(BeamBody):
         elif main_axis=='z':
             iModeAxis=0      # Setting modes along x
         for j in np.arange(nShapes):  
-                PhiU[j][iModeAxis,:] = U[j,:] 
-                PhiV[j][iModeAxis,:] = V[j,:]
-                PhiK[j][iModeAxis,:] = K[j,:]
+            PhiU[j][iModeAxis,:] = U[j,:] 
+            PhiV[j][iModeAxis,:] = V[j,:]
+            PhiK[j][iModeAxis,:] = K[j,:]
         m       = m    * np.ones(nSpan)
         jxxG    = jxxG * np.ones(nSpan)
         EI      = np.zeros((3,nSpan))
@@ -426,7 +714,15 @@ class UniformBeamBody(BeamBody):
             s_P0[2,:] = x
 
 	# Create a beam body
-        super(UniformBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis)
+        super(UniformBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, Mtop=Mtop, bStiffening=bStiffening,
+                gravity=gravity, main_axis=main_axis, name=name)
+
+
+    def __repr__(self):
+        s='<YAMSRec UniformBeamBody {} object>:\n'.format(self.name)
+        s+='|Inherits:\n'
+        s+='|'+'\n||'.join(BeamBody.__repr__(self).split('\n'))+'\n'
+        return s
 
 
 # --------------------------------------------------------------------------------}
@@ -434,7 +730,7 @@ class UniformBeamBody(BeamBody):
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
-            spanFrom0=False, massExpected=None
+            spanFrom0=False, massExpected=None, gravity=None
             ):
         """ 
         """
@@ -449,7 +745,8 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
                 raise NotImplementedError('>> TODO')
         GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
                 spanFrom0=spanFrom0,
-                massExpected=massExpected
+                massExpected=massExpected,
+                gravity=gravity
                 )
         # We need to inherit from "YAMS" Beam not just generic Beam
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 

@@ -16,7 +16,7 @@ class TestUtils(unittest.TestCase):
     def test_inertia(self):
         np.set_printoptions(linewidth=300, precision=2)
         # read ElastoDyn file
-        edFile=os.path.join(MyDir,'./../../../data/NREL5MW/data/NREL5MW_ED.dat')
+        edFile=os.path.join(MyDir,'./../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore.dat')
         ED = weio.FASTInputFile(edFile)
 
         #def __init__(self, name, mass, J, s_OG, R_b2g=np.eye(3), s_OP=None, r_O=[0,0,0]):

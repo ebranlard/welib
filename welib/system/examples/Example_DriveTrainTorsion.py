@@ -6,12 +6,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 from welib.system.mech_system import MechSystem
+from welib.system.eva import eig, eigA
 import welib.weio as weio
 from welib.yams.windturbine import FASTWindTurbine
 
 def main():
     # --- Parameters
-    InFile = '../../../data/NREL5MW/Main_Onshore_OF2_DriveTrainTorsion.fst'
+    InFile = '../../../data/NREL5MW/Main_Onshore_DriveTrainTorsion.fst'
     model=2 # 1=1DOF (theta_r), 2= 2DOF (theta_r, nu), 22: (theta_r, theta_g_LSS), 3: (theta_r, theta_g)
 
     # --- Turbine parameters
@@ -34,12 +35,15 @@ def main():
     Q_r   = df['RtAeroMxh_[N-m]'].values
     Q_g   = df['GenTq_[kN-m]'].values*1000
     Q_LSS = df['RotTorq_[kN-m]'].values*1000
-    q_r   = df['Q_GeAz_[rad]'] # NOTE: weird initial condition
-    q_DT  = df['Q_DrTr_[rad]']
-    qd_r  = df['QD_GeAz_[rad/s]']
-    qd_DT = df['QD_DrTr_[rad/s]']
-    # qdd_r  = df['QD2_GeAz_[rad/s^2]']
-    # qdd_DT = df['QD2_DrTr_[rad/s^2]']
+    sDOF=['Q_GeAz_[rad]', 'Q_DrTr_[rad]']
+    sVel=['QD_GeAz_[rad/s]', 'QD_DrTr_[rad/s]' ]
+    sAcc=['QD2_GeAz_[rad/s^2]','QD2_DrTr_[rad/s^2]']
+    q_r    = df[sDOF[0]] # NOTE: weird initial condition
+    q_DT   = df[sDOF[1]]
+    qd_r   = df[sVel[0]]
+    qd_DT  = df[sVel[1]]
+    qdd_r  = df[sAcc[0]]
+    qdd_DT = df[sAcc[1]]
     GenSpeed     = df['GenSpeed_[rpm]']*2*np.pi/60
     GenSpeed_LSS = GenSpeed/nGear
     RotSpeed     = df['RotSpeed_[rpm]']*2*np.pi/60
@@ -117,17 +121,22 @@ def main():
         sys=MechSystem(M, D, K, F=(time,F), x0=q0     , xdot0=qd0 )
     print(sys)
 
-    res=sys.integrate(time, method='LSODA') # **options):
-    # res=sys.integrate(time, method='RK45') # **options):
+    #res=sys.integrate(time, method='LSODA') # **options):
+    res=sys.integrate(time, method='RK45') # **options):
+
+    #dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop)
+    dfNL=sys.toDataFrame(sDOF+sVel, acc=True, sAcc=sAcc)
+    print(dfNL.columns)
 
     # sys.plot()
 
     # --- Plot states
     fig,axes = plt.subplots( sys.nStates,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    axes[0].plot(sys.res.t, np.mod(sys.res.y[0,:],2*np.pi))
-    axes[0].plot(sys.res.t, q_r)
+    axes[0].plot(sys.res.t, np.mod(sys.res.y[0,:],2*np.pi), label='Python')
+    axes[0].plot(sys.res.t, q_r, label='OpenFAST')
     axes[0].set_ylabel(r'$\theta_r$ [rad]')
+    axes[0].legend()
 
     if model==1:
         axes[1].plot(sys.res.t, sys.res.y[1,:])
@@ -167,6 +176,20 @@ def main():
         axes[3].plot(sys.res.t, GenSpeed)
 
     axes[-1].set_xlabel('Time [s]')
+
+
+
+    # --- Frequencies
+    Q,Lambda = eig(K, M)# , freq_out=False, sort=True, normQ=None, discardIm=False):
+    freq_02 = np.sqrt(np.diag(Lambda))/(2*np.pi) # frequencies [Hz]
+    freq_d, zeta, Q, freq_0 = eigA(sys.A) #, nq=None, nq1=None, fullEV=False, normQ=None)
+    print('EVA  (zeta)    :',zeta   )
+    print('f_EVA          :',freq_d , '(damped)' )
+    print('f_EVA          :',freq_02, '(natural)' )
+    print('f_EVA          :',freq_0 , '(natural)' )
+    print('f_free-free    :',np.sqrt(K_DT/Jr_LSS + K_DT/Jg_LSS)/(2*np.pi))
+    print('f_fixed-free   :',np.sqrt(K_DT/(Jr_LSS))/(2*np.pi))
+
 
 
 if __name__=="__main__":

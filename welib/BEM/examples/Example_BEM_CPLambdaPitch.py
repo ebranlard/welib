@@ -10,7 +10,7 @@ MyDir=os.path.dirname(__file__)
 def main(test=False,extra=False):
     """ Run a parametric study on lambda and pitch, save CP and CT """
     # --- Turbine data
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore_OF2.fst'))
+    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
 
     if test:
         vlambda = np.linspace( 2,15,3)

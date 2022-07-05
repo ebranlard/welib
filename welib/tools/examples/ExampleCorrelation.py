@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from welib.tools.signal import *
+from welib.tools.signal_analysis import *
 from numpy.random import seed; seed(0)
 
 # --- Parameters

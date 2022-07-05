@@ -4,7 +4,7 @@ Tools to work with OLAF the vortex code implemented in openfast
 import numpy as np
 
 
-def OLAFParams(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPerRot=None, totalRot=None, show=True):
+def OLAFParams(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPerRot=None, totalRot=None, show=True, dt_glue_code=None):
     """ 
     Computes recommended time step and wake length based on the rotational speed in RPM
 
@@ -26,13 +26,23 @@ def OLAFParams(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPer
     T = 2*np.pi/omega
     if nPerRot is not None:
         dt_wanted    = np.around(T/nPerRot,5)
+        deltaPsiDeg  = np.around(omega*dt_wanted*180/np.pi ,2)
     else:
         dt_wanted    = np.around(deltaPsiDeg/(6*omega_rpm),5)
         nPerRot = int(2*np.pi /(deltaPsiDeg*np.pi/180))
+    if dt_glue_code is not None:
+        dt_rounded = round(dt_wanted/dt_glue_code)*dt_glue_code
+        deltaPsiDeg2 = np.around(omega*dt_rounded *180/np.pi ,2)
+        print('>>> To satisfy glue-code dt:')
+        print('    Rounding dt   from {} to {}'.format(dt_wanted, dt_rounded    ))
+        print('    Changing dpsi from {} to {}'.format(deltaPsiDeg, deltaPsiDeg2))
+        dt_wanted   = dt_rounded
+        deltaPsiDeg = deltaPsiDeg2
+        nPerRot = int(2*np.pi /(deltaPsiDeg*np.pi/180))
 
-    nNWPanel     = nNWrot*nPerRot
-    nFWPanel     = nFWrot*nPerRot
-    nFWPanelFree = nFWrotFree*nPerRot
+    nNWPanel     = int(nNWrot*nPerRot)
+    nFWPanel     = int(nFWrot*nPerRot)
+    nFWPanelFree = int(nFWrotFree*nPerRot)
 
     if totalRot is None:
         totalRot = (nNWrot + nFWrot)*3 # going three-times through the entire wake

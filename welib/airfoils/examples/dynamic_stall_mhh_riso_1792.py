@@ -16,7 +16,7 @@ from welib.airfoils.DynamicStall import *
 def prescribed_oscillations_ris_r_1792():
     """
         See Riso-R-1792 report, p23-26 Figure 4.1 4.2
-        """
+    """
     radians=True
     #FFA-W3-241 airfoil Dyna Stall
     P=Polar.fromfile(os.path.join(MyDir,'../data/DU21_A17.csv'),compute_params=True,to_radians=radians)
@@ -26,7 +26,7 @@ def prescribed_oscillations_ris_r_1792():
     else:
         deg_scale=1
 
-    print('alpha0:',P._alpha0/deg_scale)
+    #print('alpha0:',P._alpha0/deg_scale)
 
     K_omega    = 0.05    # reduced frequency k=omega*c/(2U0)
     U0         = 1
@@ -64,11 +64,11 @@ def prescribed_oscillations_ris_r_1792():
 
         # MHH Parameters and Inputs
         u=dict()
-        p = dynstall_mhh_param_from_polar(P, chord, tau_chord=chord/U0, Jones=True)
+        p = dynstall_mhh_param_from_polar(P, chord, constants='Jones')
         u['U']         = lambda t: U0
         u['U_dot']     = lambda t: 0
         u['alpha']     = lambda t: np.interp(t, vt, valpha_t[ia,:])
-        u['alpha_dot'] = lambda t: np.interp(t, vt, valpha_dot_t)
+        u['omega']     = lambda t: np.interp(t, vt, valpha_dot_t)
         u['alpha_34']  = lambda t: np.interp(t, vt, valpha_t[ia,:]) # using alpha
 
         y0_mhh=[0,0,0,0]
@@ -124,10 +124,14 @@ def prescribed_oscillations_ris_r_1792():
         ax.set_ylim(YLIM[ia])
         ax.grid()
     ax.legend()
+    return Cl_mhh, Cd_mhh, Cm_mhh
 
 
 if __name__ == '__main__':
-    prescribed_oscillations_ris_r_1792()
+    Cl_mhh, Cd_mhh, Cm_mhh = prescribed_oscillations_ris_r_1792()
     plt.show()
 if __name__ == '__test__':
-    prescribed_oscillations_ris_r_1792()
+    Cl_mhh, Cd_mhh, Cm_mhh = prescribed_oscillations_ris_r_1792()
+    np.testing.assert_almost_equal(Cl_mhh[0,1299], 0.9520, 3)
+    np.testing.assert_almost_equal(Cd_mhh[0,1299], 0.0106, 3)
+    np.testing.assert_almost_equal(Cm_mhh[0,1299],-0.1397, 3)

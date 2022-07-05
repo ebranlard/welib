@@ -3,9 +3,10 @@ Functions for a single DOF, second order system
 
 """
 import numpy as np
+import welib.system.secondorder as so
 
 # --------------------------------------------------------------------------------}
-# --- Harmonic 
+# --- Unforced/Homogeneous/Harmonic responses
 # --------------------------------------------------------------------------------{
 def harmonic_vibration(vt, x0, xdot0, omega0, zeta=0):
     """ 
@@ -41,6 +42,7 @@ def _harmonic_vibration_raw(vt, c1, c2, omega0, zeta=0):
         # --- Underdamped
         x = c1 * np.exp(- zeta * omega0 * vt)*np.sin(omega0 * np.sqrt(1-zeta**2)* vt + c2)
         omegad = omega0 * np.sqrt(1 - zeta ** 2)
+        # TODO combine sin and cos
         xdot        = c1 * np.exp(- zeta * omega0 * vt)*( omegad * np.cos(omegad * vt + c2) - zeta * omega0 * np.sin(omegad * vt + c2))
         xdot_approx = c1 * np.exp(- zeta * omega0 * vt) * omegad * np.cos(omegad * vt + c2)
 
@@ -55,16 +57,13 @@ def _harmonic_vibration_raw(vt, c1, c2, omega0, zeta=0):
         # TODO
         x = [c1 + c2*vt]* np.exp(omega0*vt)
         xdot=0
-
-
     return x, xdot
 
 
 
 # --------------------------------------------------------------------------------}
-## --- Forced damped vibrations
+# --- Forced damped vibrations
 # --------------------------------------------------------------------------------{
-
 def forced_vibration_particular_cst(frat, F0_over_k, zeta):
     """ 
     Constants for the particular solution (H0 and Phi), x=H0 sin(Omega t - Phi)
@@ -105,6 +104,56 @@ def forced_vibration(vt, k, m, F0, Omega, zeta, x0=0, xdot0=0):
     return x
 
 
+# --------------------------------------------------------------------------------}
+# --- Characteristic transient responses
+# --------------------------------------------------------------------------------{
+def impulse_response(time, m, c, k, both=False):
+    """ 
+    See impulse_response in secondorder.py 
+    """
+    zeta   = c/(2*np.sqrt(k*m))
+    omega0 = np.sqrt(k/m)
+    return so.impulse_response(time, omega0, zeta, b=1/m, both=both)
+
+def step_response(time, m, c, k, both=False):
+    """ 
+    See step_response in secondorder.py 
+    """
+    zeta   = c/(2*np.sqrt(k*m))
+    omega0 = np.sqrt(k/m)
+    return so.step_response(time, omega0, zeta, b=1/m, both=both)
+
+
+# --------------------------------------------------------------------------------}
+# --- Time integration 
+# --------------------------------------------------------------------------------{
+
+def duhamel(time, F, m, c, k, both=False):
+    r""" 
+    See duhamel in secondorder.py 
+
+    Compute time response of a single DOF system using Duhamel's integral
+
+        x(t)    = \int_0^t F(t') H(t-t') dt' 
+        xdot(t) = \int_0^t F(t') H'(t-t') dt'
+    with
+     - F: force
+     - H: impulse response function
+     - H' derivative of impulse function
+
+    NOTE: assumes that initial conditions are (0,0)
+    If this is not the case, some transient responses need to be added.
+
+    INPUTS:
+      - time : 1d-array of time stamps
+      - F    : 1d-array of force at each time step
+      - m,c,k: scalar mass, damping, stiffness
+    OUTPUTS:
+      - x, xd: 1d-array, of position and speed
+    """
+    zeta   = c/(2*np.sqrt(k*m))
+    omega0 = np.sqrt(k/m)
+    return so.duhamel(time, omega0, zeta, F, b=1/m, both=both)
 
 if __name__=='__main__':
     pass
