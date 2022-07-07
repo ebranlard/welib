@@ -131,8 +131,8 @@ def linearModel(pkg, p, dq0=None, dqd0=None, time=None, uop=None, qop=None, qdop
         K_lin += Ke
     print('B_lin\n',B_lin)
     if noBlin:
-        n=B_lin.shape[1]
-        B_lin[:n,:n] = np.eye(n)
+        n,m=B_lin.shape
+        B_lin = np.eye(max(n,m))[:n,:m]
         print('B_lin\n',B_lin)
 
     if MCKu is not None:

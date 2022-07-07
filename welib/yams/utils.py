@@ -23,28 +23,37 @@ def R_y(t):
 def R_z(t): 
     return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
 
-def skew(v):
+def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
     [ 0, -z , y]
     [ z,  0 ,-x]
     [-y,  x , 0]
     """
-    x,y,z=v
-    return np.array([[ 0, -z , y],
-                     [ z,  0 ,-x],
-                     [-y,  x , 0]])
+    x=np.asarray(x).ravel()
+    return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
-def skew2(v):
-    """ Returns the skew(v).skew(v) 
+def skew2(x):
+    """ Returns the skew(x).skew(x) 
          [ 0 -z  y]   [ 0 -z  y]   [  -y**2 - z**2  ,       xy       ,         xz      ]
     S2 = [ z  0 -x] . [ z  0 -x] = [       yx       , - x**2 - z**2  ,         yz      ]
          [-y  x  0]   [-y  x  0]   [       zx       ,       zy       ,   - x**2 - y**2 ]
     """
-    x,y,z=np.asarray(v).flatten()
+    x,y,z=np.asarray(x).flatten()
     return np.array( [
             [ - y**2 - z**2  ,       x*y      ,         x*z      ],
             [       y*x      , - x**2 - z**2  ,         y*z      ],
             [       z*x      ,       z*y      ,   - x**2 - y**2 ]])
+
+def extractVectFromSkew(M):
+    """ Return a 3-vector from a skew matrix """
+    # [ 0, -z , y]
+    # [ z,  0 ,-x]
+    # [-y,  x , 0]
+    M = np.asarray(M)
+    x = 0.5*( M[2,1]-M[1,2])
+    y = 0.5*( M[0,2]-M[2,0])
+    z = 0.5*(-M[0,1]+M[1,0])
+    return np.array([x,y,z])
 
 
 def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
@@ -192,15 +201,49 @@ def translateInertiaMatrixFromCOG(I_G, Mass, r_GP):
 # --------------------------------------------------------------------------------}
 # --- Loads 
 # --------------------------------------------------------------------------------{
-def transferLoadsZPoint(ls, z, phi_x, phi_y):
+def transferLoadsZPoint(ls, z, phi_x, phi_y, phi_z, rot_type='default'):
     """ 
-    z: destination to source (z_s - z_d)
+    Used to transfer loads from HydroF*i to the Platform ref point
+
+    HydroF*i are translated similarly to the ref point, but due to rotation, an extra laver arm is present
+
+    Undisplaced  ->   Displaced:
+           P     ->      P
+           |              \
+           |               \
+           0     ->         0
+
+    HydroF*i are computed at "0" above. 
+    They need to be transfered to P
+
+    z: destination to source (z_s - z_d) = (z_0 - z_P)
     """
+    # --- Rotation
+    s_b=[0,0,z]
+    from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
+    if rot_type=='default' or rot_type=='bodyXYZ':
+        #  BodyXYZ_A.dot(s_b)
+        r = (  z*np.sin(phi_y) , -z * np.sin(phi_x) * np.cos(phi_y),  z *np.cos(phi_x)* np.cos(phi_y))
+
+    elif rot_type=='smallRot_OF':
+        #  smallRot_OF.T .dot(s_b)
+        r = np.zeros((3,len(phi_z)))
+        for i,(phi_x1,phi_y1, phi_z1) in enumerate(zip(phi_x,phi_y,phi_z)):
+            R_b2g = smallRot_OF(phi_x1, phi_y1, phi_z1).T
+            r[:,i] = R_b2g.dot(s_b)
+
+    elif rot_type=='smallRot':
+        #  smallRot_A .dot(s_b)
+        r = (z*phi_y, -z*phi_x , z)
+
+    else:
+        raise Exception()
     ld    = np.zeros(ls.shape)
+    # Forces
     ld[0] = ls[0]
     ld[1] = ls[1]
     ld[2] = ls[2]
-    r = (  z*np.sin(phi_y) , -z * np.sin(phi_x) * np.cos(phi_y),  z *np.cos(phi_x)* np.cos(phi_y))
+    # Moments
     ld[3] = ls[3] + r[1] * ls[2] - r[2] * ls[1]
     ld[4] = ls[4] + r[2] * ls[0] - r[0] * ls[2]
     ld[5] = ls[5] + r[0] * ls[1] - r[1] * ls[0]

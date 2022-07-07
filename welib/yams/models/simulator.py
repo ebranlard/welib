@@ -341,8 +341,10 @@ class SimulatorFromOF():
     # --------------------------------------------------------------------------------}
     # --- Model specific
     # --------------------------------------------------------------------------------{
-    def setPrescribedHydroInputs(self, zRef=None, meanMhy=False):
-        """ Set inputs based on OpenFAST"""
+    def setPrescribedHydroInputs(self, zRef=None, meanMhy=False, forceTransfer=False):
+        """ 
+        Set inputs "u" based on OpenFAST HydroFxi etc time series
+        """
         dfFS    = self.dfFS
         p       = self.p
         time    = self.time
@@ -357,10 +359,10 @@ class SimulatorFromOF():
         P_HDRef = np.array((0,0,0))
         P_EDRef = np.array((0,0,zRef))
 
-        if 'hydro0' in self.modelName:
-            print('>>> Precribed Hydro Loads at ',(0,0,0))
-        elif 'hydroO' in self.modelName:
-            print('>>> Precribed Hydro Loads at ',(0,0,zRef), 'NOTE: WEIRD SIGN<<<<<< TODO TODO TODO TODO')
+        if 'hydro0' in self.modelName and (not forceTransfer):
+            print('setInputs: >>> Precribed Hydro Loads at ',(0,0,0), '(Using HydroFxi etc directly)')
+        elif 'hydroO' in self.modelName or (forceTransfer):
+            print('setInputs: >>> Precribed Hydro Loads at ',(0,0,zRef), '(Transfering HydroFxi Loads to ref point) NOTE: WEIRD SIGN<<<<<< TODO TODO TODO TODO')
             from welib.FEM.utils import transferRigidLoads
             from welib.yams.utils import transferLoadsZPoint
             # Input loads are at the body origin (ED ref point)
@@ -373,9 +375,15 @@ class SimulatorFromOF():
                 vphi_y = dfFS['Q_P_[rad]']
             else:
                 vphi_y = dfFS['PtfmPitch_[deg]'].values*np.pi/180
+            if 'Q_Y_[rad]' in dfFS.columns:
+                vphi_z = dfFS['Q_Y_[rad]']
+            else:
+                vphi_z = dfFS['PtfmYaw_[deg]'].values*np.pi/180
             M = dfFS[cols].values
             #MT = transferRigidLoads(M.T, P_HDRef, P_EDRef).T
-            MT = transferLoadsZPoint(M.T, zRef, vphi_x, vphi_y).T
+            #MT = transferLoadsZPoint(M.T, zRef, vphi_x, vphi_y, vphi_z, rot_type='smallRot_OF').T
+            #MT = transferLoadsZPoint(M.T, zRef, vphi_x, vphi_y, vphi_z, rot_type='smallRot').T
+            MT = transferLoadsZPoint(M.T, zRef, vphi_x, vphi_y, vphi_z, rot_type='default').T
             dfFS = pd.DataFrame(data=MT, columns=cols)
         else:
             raise NotImplementedError()

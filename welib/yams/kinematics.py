@@ -8,18 +8,25 @@ import numpy as np
 
 
 
-def rigidBodyMotion2Points_q6(PSource0, PDest0, q=None, qd=None, qdd=None, rot='smallRot'):
+def rigidBodyMotion2Points_q6(PSource0, PDest0, q=None, qd=None, qdd=None, rot='smallRot_OF'):
     """ 
     Rigid body motion between two points using 6DOFs for displacement, speed and acceleration.
 
     PSource0: Reference Position of source vector 
     PDest0:   Reference Position of destination point
-    q: displacements (3 translations, 3 rotations)
+    q: displacements (3 translations, 3 rotations) at Source
 
      See also welib.FEM.utils
      See also welib.fast.fast_mesh
     """
-    from welib.yams.rotations import BodyXYZ_A, SmallRot_DCM
+    from welib.yams.rotations import BodyXYZ_A, smallRot_OF
+
+    if qd is None:
+        qd=(0,0,0,0,0,0)
+    if qdd is None:
+        qdd=(0,0,0,0,0,0)
+    PDest0   = np.asarray(PDest0)
+    PSource0 = np.asarray(PSource0)
 
     q_Dest   = np.zeros(6)
     qd_Dest  = np.zeros(6)
@@ -29,10 +36,10 @@ def rigidBodyMotion2Points_q6(PSource0, PDest0, q=None, qd=None, qdd=None, rot='
     r_AB0           = PDest0-PSource0
     omega           = qd[3:]
     omega_dot       = qdd[3:]
-    if rot =='smallRot':
-        R_b2g           = SmallRot_DCM(q[3], q[4], q[5]).T  # To Match OpenFAST
+    if rot=='smallRot_OF':
+        R_b2g           = smallRot_OF(q[3], q[4], q[5]).T  # To Match OpenFAST
     elif rot =='bodyXYZ':
-        R_b2g = BodyXYZ_A(theta[0], theta[1], theta[2])# matrix body 2 global, order XYZ
+        R_b2g = BodyXYZ_A(q[3], q[4], q[5])# matrix body 2 global, order XYZ
     r_AB         = R_b2g.dot(r_AB0)
     om_x_r       = (np.cross(omega, r_AB))
     q_Dest  [:3] = q  [:3] + (r_AB - r_AB0)  # NOTE: this is displacement field, hence -r_AB0

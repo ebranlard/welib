@@ -37,7 +37,7 @@ class PointMesh:
         R_b2g     : rotation matrix from body 2 global
         omega     : rotational vel of body
         omega_dot : rotational acc of body
-        RefPoint: Define the reference point where the Rigid Body Motion is to be applied, very important parameter
+        RefPoint: Define the reference point (on the undisplaced mesh) where the Rigid Body Motion is to be applied, very important parameter
         """
         from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
         # --- Default arguments
