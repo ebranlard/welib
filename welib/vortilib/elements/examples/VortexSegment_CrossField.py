@@ -125,7 +125,15 @@ def main():
     # ax.plot(vX/L,Uy[iy,:]/Gamma *np.pi*L , label='y=0')
     # ax.legend()
     # 
-
-
-    # fig.savefig('VortexFilamentRegularization.pdf')
+if __name__ == '__main__':
+    main()
     plt.show()
+#if __name__=="__test__":
+#    main()
+#    pass
+#if __name__=="__export__":
+#    main()
+#    from welib.tools.repo import export_figs_callback
+#    export_figs_callback(__file__)
+
+

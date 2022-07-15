@@ -294,10 +294,11 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
     if BDMainTemplate is not None and BDMainFileOut is not None:
         BD=FASTInputFile(BDMainTemplate)
         #print(BD.keys())
-        BD.data[1]['value']=Label
+        BD.comment=Label
         BD['MemberGeom'] = np.column_stack((x_O,y_O,z_O,twist))
         BD['kp_total']   = len(x_O)
         BD['BldFile']    = '"'+os.path.basename(BDBldFileOut)+'"' 
+        # TODO TODO 
         BD.data[BD.getID('kp_total')+1]['value']= '1 {}'.format(len(x_O))
 
         print('Writing BeamDyn file:',BDMainFileOut)

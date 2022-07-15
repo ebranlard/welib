@@ -12,10 +12,7 @@ import re
 import welib.weio.fast_input_file as fi
 import welib.fast.runner as runner
 import welib.fast.postpro as postpro
-#import pyFAST.input_output.fast_input_file as fi
-#import pyFAST.case_generation.runner as runner
-#import pyFAST.input_output.postpro as postpro
-
+from welib.weio.fast_wind_file import FASTWndFile
 
 # --------------------------------------------------------------------------------}
 # --- Template replace 
@@ -445,9 +442,7 @@ def paramsLinearTrim(p=None):
 # ---  
 # --------------------------------------------------------------------------------{
 def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tmax=999):
-    import welib.weio
-    import welib.weio.fast_wind_file
-    f = welib.weio.fast_wind_file.FASTWndFile()
+    f = FASTWndFile()
     Steps= np.arange(WSmin,WSmax+WSstep,WSstep)
     print(Steps)
     nCol = len(f.colNames)

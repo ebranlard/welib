@@ -14,7 +14,7 @@ from welib.tools.clean_exceptions import *
 from welib.tools.tictoc import Timer
 
 
-def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, MCKF=None, q0=None, fig=None):
+def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=True, out=True, png=True, verbose=False, base=None, MCKF=None, q0=None, fig=None, motionRef='PRP', zRef=None):
     """ 
     """
     if base is None:
@@ -38,12 +38,25 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
 
     # --- Relevant columns from OpenFAST outputs
     time  = dfOF['Time_[s]'].values
-    if 'PRPSurge_[m]' in dfOF.columns:
-        qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]'     ]
-        qdCol  = ['PRPTVxi_[m/s]'   ,'PRPTVyi_[m/s]'  ,'PRPTVzi_[m/s]'  ,'PRPRVxi_[rad/s]'  ,'PRPRVyi_[rad/s]'  ,'PRPRVzi_[rad/s]'  ]
-        qddCol = ['PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
+    if motionRef=='PRP':
+        # q is HDRefPoint
+        RefPoint=(0,0,0)
+        if 'PRPSurge_[m]' in dfOF.columns:
+            qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]'     ]
+            qdCol  = ['PRPTVxi_[m/s]'   ,'PRPTVyi_[m/s]'  ,'PRPTVzi_[m/s]'  ,'PRPRVxi_[rad/s]'  ,'PRPRVyi_[rad/s]'  ,'PRPRVzi_[rad/s]'  ]
+            qddCol = ['PRPTAxi_[m/s^2]','PRPTAyi_[m/s^2]','PRPTAzi_[m/s^2]','PRPRAxi_[rad/s^2]','PRPRAyi_[rad/s^2]','PRPRAzi_[rad/s^2]']
+        else:
+            raise NotImplementedError()
+    elif motionRef=='EDRP':
+        # q is EDRefPoint
+        qCol   = ['Q_Sg_[m]'      ,'Q_Sw_[m]'      ,'Q_Hv_[m]'      ,'Q_R_[rad]'      ,'Q_P_[rad]'      ,'Q_Y_[rad]']
+        qdCol  = ['QD_Sg_[m/s]'   ,'QD_Sw_[m/s]'   ,'QD_Hv_[m/s]'   ,'QD_R_[rad/s]'   ,'QD_P_[rad/s]'   ,'QD_Y_[rad/s]']
+        qddCol = ['QD2_Sg_[m/s^2]','QD2_Sw_[m/s^2]','QD2_Hv_[m/s^2]','QD2_R_[rad/s^2]','QD2_P_[rad/s^2]','QD2_Y_[rad/s^2]']
+        if zRef is None:
+            raise Exception('When motionRef is not PRP, zRef needs to be provided') 
+        RefPoint=(0,0,zRef)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(motionRef)
 
     # --- Prepare time stepping
     fh = np.zeros((len(time), 6))
@@ -117,6 +130,7 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
     fstFilename: OpenFAST or HydroDyn driver input file
     tMax: maximum time in time vector (to reduce the simulation length)
     """
+
     if base is None:
         base=fstFilename.replace('.fst','')
 
@@ -136,6 +150,7 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
     # --- Relevant columns from OpenFAST outputs
     time  = dfOF['Time_[s]'].values
     if motionRef=='PRP':
+        # q is HDRefPoint
         RefPoint=(0,0,0)
         if 'PRPSurge_[m]' in dfOF.columns:
             qCol   = ['PRPSurge_[m]'    ,'PRPSway_[m]'    ,'PRPHeave_[m]'   ,'PRPRoll_[rad]'    ,'PRPPitch_[rad]'   ,'PRPYaw_[rad]'     ]
@@ -144,12 +159,17 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
         else:
             raise NotImplementedError()
     else:
+        from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
+        from welib.yams.kinematics import rigidBodyMotion2Points_q6
+        # q is EDRefPoint
         qCol   = ['Q_Sg_[m]'      ,'Q_Sw_[m]'      ,'Q_Hv_[m]'      ,'Q_R_[rad]'      ,'Q_P_[rad]'      ,'Q_Y_[rad]']
         qdCol  = ['QD_Sg_[m/s]'   ,'QD_Sw_[m/s]'   ,'QD_Hv_[m/s]'   ,'QD_R_[rad/s]'   ,'QD_P_[rad/s]'   ,'QD_Y_[rad/s]']
         qddCol = ['QD2_Sg_[m/s^2]','QD2_Sw_[m/s^2]','QD2_Hv_[m/s^2]','QD2_R_[rad/s^2]','QD2_P_[rad/s^2]','QD2_Y_[rad/s^2]']
         if zRef is None:
             raise Exception('When motionRef is not PRP, zRef needs to be provided')
-        RefPoint=(0,0,zRef)
+        RefPoint    = np.array([0,0,zRef])
+        SourcePoint = np.array([0,0,0])
+        s_B0_b =SourcePoint-RefPoint # From RefPoint to "0" in body coordinates
 
     # --- Prepare time stepping
     fh = np.zeros((len(time), 6))
@@ -158,7 +178,7 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
     # --- Time integration
     with Timer('Time integration'):
         for it, t in enumerate(time):
-            # Reference point motion
+            # Reference point motion (ED or HD!)
             q  = dfOF[qCol].iloc[it].values
             qd = dfOF[qdCol].iloc[it].values
             qdd = dfOF[qddCol].iloc[it].values
@@ -172,7 +192,22 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
             # Store mesh
             msy.store(ymesh, it)
             # Compute integral loads (force&moment) at the reference point (translated but not rotated)
-            fh[it, :3], fh[it, 3:] = ymesh.mapLoadsToPoint((q[0],q[1],q[2]))
+            # Note: HydroF*I are translated, but not rotated
+            if motionRef=='PRP':
+                # q is HDRefPoint
+                fh[it, :3], fh[it, 3:] = ymesh.mapLoadsToPoint((q[0],q[1],q[2]))
+            elif motionRef=='EDRP':
+                # q is EDRefPoint
+                # --- Method 1
+                R_b2g  = smallRot_OF(q[3], q[4], q[5]).T
+                r_B0_g = R_b2g.dot(s_B0_b)
+                u0 = (r_B0_g-s_B0_b) # Displacement of PRP from its initial position
+                fh[it, :3], fh[it, 3:] = ymesh.mapLoadsToPoint((q[0]+u0[0],q[1]+u0[1],q[2]+u0[2]))
+                # --- Method 2 (identical)
+                #qS,_,_ = rigidBodyMotion2Points_q6(RefPoint, SourcePoint, q, rot='smallRot_OF')
+                #fh[it, :3], fh[it, 3:] = ymesh.mapLoadsToPoint((qS[0],qS[1],qS[2]))
+            else:
+                raise Exception()
             if verbose:
                 print('f_Hydro {:12.4f} {:16.3f}{:16.3f}{:16.3f}{:16.3f}{:16.3f}{:16.3f}'.format(t, *fh[it,:]))
 

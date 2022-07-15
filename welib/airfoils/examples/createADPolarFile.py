@@ -22,7 +22,7 @@ def main_ReWriteADFile():
     AD_polarFile_out = '_Polar_out.dat.ignore'
 
     # Open an existing AeroDyn polar file
-    polar = Polar(AD_polarFile_in)
+    polar = Polar(AD_polarFile_in, fformat='ADPolar')
     # Rewrite it (unsteady parameters are recomputed)
     # NOTE: you can provide templateFile=AD_polarFile_in to the function below
     #       to ensure that the file will look the same
@@ -43,7 +43,7 @@ def main_WriteADPolar():
     polarFile_AD_out = '_Polar_out.dat.ignore'
 
     # Open a tabulated file with alpha,Cl,Cd,Cm 
-    polar = Polar(polarFile_in)
+    polar = Polar(polarFile_in, fformat='delimited')
     # Write an AeroDyn file from it (unsteady parameters are computed)
     # NOTE: you can provide templateFile='ADTemplate.dat' to the function below
     #       to ensure that the AD file will look the same as the template.

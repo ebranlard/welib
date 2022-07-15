@@ -10,8 +10,12 @@ Reference:
 '''
 
 def skew(x):
+    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
+    [ 0, -z , y]
+    [ z,  0 ,-x]
+    [-y,  x , 0]
+    """
     x=np.asarray(x).ravel()
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
     return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
 def fcumtrapzlr(s_span, p):

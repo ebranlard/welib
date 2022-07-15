@@ -55,12 +55,22 @@ def main():
     ax.plot(xe,ye,'k',lw=3)
     ax.set_ylim([-4*b,4*b])
     ax.set_xlim([-2*a,2*a])
-    ax.set_xlabel('x/a [-]')
-    ax.set_ylabel('r/a [-]')
+    ax.set_xlabel(r'$x/a$ [-]')
+    ax.set_ylabel(r'$r/a$ [-]')
     ax.set_aspect('equal','box')
-    fig.savefig('figs/SourceEllipsoidStreamlines.pdf')
+    ax.tick_params(direction='in')
+    ax.set_title('Vortilib - Flow about an Ellipsoid')
+
+
+if __name__ == '__main__':
+    main()
     plt.show()
-
-
+if __name__=="__test__":
+    main()
+    pass
+if __name__=="__export__":
+    main()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
 
 

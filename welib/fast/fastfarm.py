@@ -2,18 +2,11 @@ import os
 import glob
 import numpy as np
 import pandas as pd
-try:
-    import welib.weio as weio
-    from welib.weio.fast_input_file import FASTInputFile
-    from welib.weio.fast_output_file import FASTOutputFile
-    from welib.weio.turbsim_file import TurbSimFile
-except:
-    try:
-	    from weio.fast_input_file import FASTInputFile
-	    from weio.fast_output_file import FASTOutputFile
-	    from weio.turbsim_file import TurbSimFile
-    except:
-        raise Exception('Python package `weio` not found, please install it from https://github.com/ebranlard/weio ')
+
+import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.fast_output_file import FASTOutputFile
+from welib.weio.turbsim_file import TurbSimFile
 
 from . import fastlib
 

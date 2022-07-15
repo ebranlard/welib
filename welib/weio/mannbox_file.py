@@ -1,19 +1,7 @@
 """ 
-Read/Write Mann Box
+Read/Write Mann Box file
 
 Part of weio library: https://github.com/ebranlard/weio
-
-Mann box: 
-  - z is the fast index, then y, then x
-  - y from from  ly/2 to -ly/2  !<<<<<<< IMPORTANT, we will flip it 
-  - z from from -lz/2 to  lz/2 
-  - ix==1..nx corresponds to it = nt..1
-
-The field stored in this class has the following properties:
-  - shape: nx x ny x nz
-  - y: goes from -ly/2 to ly/2  ! <<<<< IMPORTANT subtlety, it has been flipped
-  - z: goes from -lz/2 to lz/2  
-  - ix==1..nx corresponds to it = nt..1 (it has not been flipped)
 """
 import pandas as pd
 import numpy as np
@@ -29,6 +17,58 @@ except:
     File=dict
 
 class MannBoxFile(File):
+    """
+    Read/Write Mann Box file
+
+    Main keys
+    ---------
+    - 'field': velocity field, shape (nx x ny x nz)
+
+    Main properties
+    ---------
+    - 'y', 'z': space coordinates 
+
+    Main methods
+    ------------
+
+    - read, write, toDataFrame, keys, valuesAt, vertProfile, fromTurbSim
+
+
+    Examples
+    --------
+
+        # Open a box
+        mb = MannBoxFile('Turb.u', N = (1024, 16, 16))
+            OR 
+        mb = MannBoxFile('Turb_1024x16x16.u')
+
+        # Show info
+        print(mb)
+        print(mb['field'].shape)  
+
+        # Use methods to extract relevant values
+        u,v,w = my.valuesAt(y=10.5, z=90)
+        z, means, stds = mb.vertProfile()
+
+        # Write to a new file
+        mb.write('Output_1024x16x16.u')
+
+    Notes
+    --------
+
+    Mann box: 
+      - z is the fast index, then y, then x
+      - y from from  ly/2 to -ly/2  !<<<<<<< IMPORTANT, we will flip it 
+      - z from from -lz/2 to  lz/2 
+      - ix==1..nx corresponds to it = nt..1
+
+    The field stored in this class has the following properties:
+      - shape: nx x ny x nz
+      - y: goes from -ly/2 to ly/2  ! <<<<< IMPORTANT subtlety, it has been flipped
+      - z: goes from -lz/2 to lz/2  
+      - ix==1..nx corresponds to it = nt..1 (it has not been flipped)
+    """
+
 
     @staticmethod
     def defaultExtensions():
@@ -39,14 +79,25 @@ class MannBoxFile(File):
         return 'HAWC2 Turbulence box'
 
     def __init__(self,filename=None,**kwargs):
+        """ Initialize the class, if a filename is provided, the box is read. 
+        See the method `read` for  keywords arguments.
+        """
         self.filename = None
         if filename:
             self.read(filename=filename,**kwargs)
 
     def read(self, filename=None, N=None, dy=1, dz=1, y0=None, z0=0, zMid=None):
         """ read MannBox
-             field (nx x ny x nz)
-             NOTE: y-coord in Mann Box goes from Ly/2 -> -Ly/2 but we flip this to -Ly/2 -> Ly/2
+        INPUTS (all optional):
+        - filename: name of input file to be read
+        - N: tuple (nx x ny x nz) of box dimension. If None, dimensions are inferred from filename
+        - y0: minimum value of the y vector (default is -ly/2 where ly = ny x dy)
+        - z0: minimum value of the z vector (default is 0)
+        - zMid: mid value of the z vector (default it lz/2 where lz= nz x dz )
+
+        SET:
+         - the keys 'field', array of shape (nx x ny x nz)
+        NOTE: y-coord in Mann Box goes from Ly/2 -> -Ly/2 but we flip this to -Ly/2 -> Ly/2
         """
         if filename:
             self.filename = filename
@@ -68,6 +119,7 @@ class MannBoxFile(File):
             else:
                 raise BrokenFormatError('Reading a Mann box requires the knowledge of the dimensions. The dimensions can be inferred from the filename, for instance: `filebase_1024x32x32.u`. Try renaming your file such that the three last digits are the dimensions in x, y and z.')
         nx,ny,nz=N
+
         def _read_buffered():
             data=np.zeros((nx,ny,nz),dtype=np.float32)
             with open(self.filename, mode='rb') as f:            

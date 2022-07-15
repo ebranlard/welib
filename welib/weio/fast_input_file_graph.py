@@ -292,12 +292,12 @@ def subdynSumToGraph(data):
 
 
 if __name__ == '__main__':
-    import welib.weio as weio
+    from .fast_input_file import FASTInputFile
 
     filename='../../_data/Monopile/MT100_SD.dat'
     # filename='../../_data/Monopile/TetraSpar_SubDyn_v3.dat'
 
-    sd = weio.FASTInputFile(filename)
+    sd = FASTInputFile(filename)
 #     sd.write('OutMT.dat')
     Graph = sd.toGraph()
     Graph.divideElements(2)

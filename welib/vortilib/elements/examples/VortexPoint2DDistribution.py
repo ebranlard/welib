@@ -1,7 +1,7 @@
 """ 
 Compute velocity field from a distribution of vorticity in 2D using a set of vortex point
 
-NOTE: see also vorticilib.particles.examples, for methods "vortex particles" method
+NOTE: see also vortilib.particles.examples, for methods "vortex particles" method
 
 """
 import numpy as np
@@ -20,9 +20,9 @@ def main():
     nX=30
     nY=31
     distribution='LambOseen'
-    # distribution='InviscidVortexPatch'
+    distribution='InviscidVortexPatch'
     distribution='VortexPatchGaussian'
-    distribution='VortexPatchGaussianAsym'
+    #distribution='VortexPatchGaussianAsym'
     SmoothModel = 0   # Can be inviscid=0 for this example since we evaluate on Vortex points
     SmoothParam = 0.1 # as function of diagonal length (should be <1 since no projection of omega)
     KernelOrder = 2
@@ -117,7 +117,15 @@ def main():
 
 
 
-
-
+if __name__ == '__main__':
+    main()
     plt.show()
+#if __name__=="__test__":
+#    main()
+#    pass
+#if __name__=="__export__":
+#    main()
+#    from welib.tools.repo import export_figs_callback
+#    export_figs_callback(__file__)
+
 

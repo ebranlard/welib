@@ -118,7 +118,7 @@ def vh_theory_helical_u(r, psih, r0, l, Gamma=1,  nB=3, bWT=True, author='wrench
 
 def vh_u(Xcp,Ycp,Zcp,Gamma,R,h,psih=0,nB=3,bWT=True,method='wrench',bSemi=True,polar_out=True):
     """
-    Induced velocity by nB azimuthally dstributed helices
+    Induced velocity by nB azimuthally distributed helices
 
     INPUTS:
        - psih : reference azimuthal position of the first helix

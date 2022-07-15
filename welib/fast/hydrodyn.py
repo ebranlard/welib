@@ -198,16 +198,95 @@ class HydroDyn:
 
     
     def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None, optsM=None):
+        """ 
+        optsM: Morison options
+        """
+
         yMor = self.morison.calcOutput(t, x=x, xd=xd, xo=xo, u=u['Morison'], y=y['Morison'], opts=optsM)
         y['Morison'] = yMor
 
         return y
 
 
+    def linearize(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, 
+            RefPointMotion=None, RefPointMapping=None,
+            RefPointMappingMotion='translate',
+            optsM=None, saveFile=None,
+            around=None
+            ):
+        """ 
+        """
+        from welib.system.linearization import numerical_jacobian
+        uMesh = self.u['Morison']['Mesh']
+
+        if optsM is None:
+            optsM={}
+
+        FthenM=True
+
+        # --- Define a function that returns outputs
+        def fh(q,p=None):
+            iNode = p['MotionNode']
+            # Set uMesh to operating point values
+            uMesh.restoreValues()
+            # Perturb
+            uMesh.perturbNode(iNode, q)
+            #print('Translation\n',uMesh.TranslationDisp)
+            #print('Rotation\n',uMesh.Orientation)
+            # Calculate hydrodynamic loads at every nodes 
+            self.calcOutput(t=0, u=self.u, y=self.y, optsM=p)
+            # Pack loads
+            fh = self.y['Morison']['Mesh'].packLoads(FthenM=FthenM)
+            return fh
+
+        # --- Operating point and perturbation sizes
+        if q0 is None:
+            q0  = np.zeros(6)
+        if dq is None:
+            dq   = [0.01]*3 + [0.01]*3
+
+        # --- Save operating point value
+        uMesh.rigidBodyMotion(q=q0, qd=qd0, qdd=qdd0, RefPoint=RefPointMotion)
+        uMesh.backupValues()
+
+        # --- Linearization
+        optsM['MotionNode']=0
+        f0 = fh(q0, optsM)
+        K=[]
+        nNodes = uMesh.nNodes 
+
+        su=[]
+        for i in range(1,nNodes+1):
+            su+=['HDMorisonTxN{}_[m]'.format(i), 'HDMorisonTyN{}_[m]'.format(i), 'HDMorisonTzN{}_[m]'.format(i), 'HDMorisonRxN{}_[rad]'.format(i), 'HDMorisonRyN{}_[rad]'.format(i), 'HDMorisonRzN{}_[rad]'.format(i)]
+        sy = []
+        if FthenM:
+            for i in range(1,nNodes+1):
+                sy+=['HDMorisonLoadsFxN{}_[N]'.format(i) , 'HDMorisonLoadsFyN{}_[N]'.format(i), 'HDMorisonLoadsFzN{}_[N]'.format(i)]
+            for i in range(1,nNodes+1):
+                sy+=['HDMorisonLoadsMxN{}_[Nm]'.format(i), 'HDMorisonLoadsMyN{}_[Nm]'.format(i), 'HDMorisonLoadsMzN{}_[Nm]'.format(i)]
+        else:
+            for i in range(1,nNodes+1):
+                sy+=['HDMorisonLoadsFxN{}_[N]'.format(i) , 'HDMorisonLoadsFyN{}_[N]'.format(i), 'HDMorisonLoadsFzN{}_[N]'.format(i)]
+                sy+=['HDMorisonLoadsMxN{}_[Nm]'.format(i), 'HDMorisonLoadsMyN{}_[Nm]'.format(i), 'HDMorisonLoadsMzN{}_[Nm]'.format(i)]
+
+        D=np.zeros((6*nNodes,6*nNodes)) 
+        for iNode in range(uMesh.nNodes):
+            if np.mod(iNode,10)==0:
+                print('{:5d}/{:5d}'.format(iNode,nNodes))
+
+            optsM['MotionNode']=iNode
+            dfNode = numerical_jacobian(fh, (q0,), 0, dq  , optsM)
+            #print('')
+            #print('K for node{}\n'.format(iNode+1),dfNode)
+            D[:,iNode*6:iNode*6+6] = dfNode
+
+        D= pd.DataFrame(columns=su, index=sy, data=D)
+        return D
+
 
     def linearize_RigidMotion2Loads(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, 
             RefPointMotion=None, RefPointMapping=None,
-            moveWithOP=True,
+            RefPointMappingMotion='translate',
             optsM=None, saveFile=None,
             around=None
             ):
@@ -219,7 +298,8 @@ class HydroDyn:
         -q0, qd0, qdd0: 6-array of rigid DOFs positions, velocities and accelerations at platform ref 
         -dq, dqd, dqdd: 6-array of perturbations around q0, qd0 and qdd0
 
-        - RefPoint: point used to defined rigid body motion, important parameter
+        - RefPointMotion: point used to defined rigid body motion, important parameter
+        - RefPointMapping: point used to defined rigid body mapping
 
         -optsM: options for Morison Calculation
 
@@ -235,20 +315,40 @@ class HydroDyn:
             # TODO add options to map to a point in body coordinates (including rotations)
             RefPointMapping=np.array([0,0,0])
         print('- RefPoint for Motion : ',RefPointMotion)
-        print('- RefPoint for Mapping: ',RefPointMapping)
+        if RefPointMappingMotion=='translate':
+            print('- RefPoint for Mapping: ',RefPointMapping, '+ (q0, q1, q2) (followed in translation only)')
+
+        elif RefPointMappingMotion=='none':
+            print('- RefPoint for Mapping: ',RefPointMapping, '(fixed, not translating with q)')
+
+        elif RefPointMappingMotion=='follow_point':
+            from welib.yams.kinematics import rigidBodyMotion2Points_q6
+            print('- RefPoint for Mapping: ',RefPointMapping, '(followed in translation and rotation)')
+
+        else:
+            raise Exception()
 
         # --- Define a function that returns outputs
         def fh(q,qd,qdd,p=None):
             # Rigid body motion of the mesh
-            self.u['Morison']['Mesh'].rigidBodyMotion(q=q, qd=qd, qdd=qdd, RefPoint=RefPointMotion)
+            uMesh.rigidBodyMotion(q=q, qd=qd, qdd=qdd, RefPoint=RefPointMotion)
             # Calculate hydrodynamic loads at every nodes 
             self.calcOutput(t=0, u=self.u, y=self.y, optsM=p)
             # Compute integral loads (force&moment) at the reference point (translated but not rotated)
             fh=np.zeros(6)
-            if moveWithOP:
+            if RefPointMappingMotion=='translate':
                 MappingPoint = RefPointMapping + np.array([q[0],q[1],q[2]])
-            else:
+
+            elif RefPointMappingMotion=='follow_point':
+                qM,_,_ = rigidBodyMotion2Points_q6(RefPointMotion, RefPointMapping, q, rot='smallRot_OF')
+                MappingPoint=(RefPointMapping[0]+qM[0], RefPointMapping[1]+qM[1], RefPointMapping[2]+qM[2])
+
+            elif RefPointMappingMotion=='none':
                 MappingPoint = RefPointMapping
+
+            else:
+                raise Exception()
+            #print('Mapping Point: ', MappingPoint, q)
             fh[:3], fh[3:] = self.y['Morison']['Mesh'].mapLoadsToPoint(MappingPoint)
             return fh
 

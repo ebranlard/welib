@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION='0.0.1'
+VERSION='0.0.2'
 
 
 EXTRAS = {
@@ -26,13 +26,13 @@ Wind energy library: suite of python tools for aero-servo-hydro-elasticity (aero
     packages=find_packages(exclude=["tests"]),
     install_requires=[
         'matplotlib', 
-        'numpy',
-        'scipy', 
-        'future', 
-        'pandas', 
-        'sympy',
         'xlrd',
+        'numpy',
+        'pandas', 
+        'future', 
         'chardet',
+        'scipy', 
+        'sympy'
     ],
     extras_require       = EXTRAS,
     include_package_date = True,

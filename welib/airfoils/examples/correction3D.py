@@ -4,7 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 from welib.airfoils.Polar import Polar
-import welib.weio as weio
 
 MyDir=os.path.dirname(__file__)
 

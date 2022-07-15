@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 from welib.tools.colors import fColrs
 from welib.vortilib.elements.VortexSegment import *
 
@@ -27,11 +26,11 @@ def main():
     # plot
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.2,4.6)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.98, top=0.96, bottom=0.12, hspace=0.20, wspace=0.20)
-    ax.plot(Xcp[1:]/L  ,U0y[1:] / Gamma*np.pi*L, '-', color=fColrs(1), label = 'Singular'       )
-    ax.plot(Xcp/L  ,U1y / Gamma*np.pi*L, '-.', color=fColrs(2), label = 'Rankine'    )
-    ax.plot(Xcp/L  ,U2y / Gamma*np.pi*L, '-', color=fColrs(3), label = 'Lamb-Oseen' )
-    ax.plot(Xcp/L  ,U3y / Gamma*np.pi*L, '--', color=fColrs(4), label = 'Vatistas n=2'   )
-    ax.plot(Xcp/L  ,U4y / Gamma*np.pi*L, ':', color=fColrs(5), label = 'Denominator')
+    ax.plot(Xcp[1:]/L  ,U0y[1:] / Gamma*np.pi*L, '-' , color=fColrs(1), label = 'Singular'       )
+    ax.plot(Xcp/L  ,    U1y     / Gamma*np.pi*L, '-.', color=fColrs(2), label = 'Rankine'    )
+    ax.plot(Xcp/L  ,    U2y     / Gamma*np.pi*L, '-' , color=fColrs(3), label = 'Lamb-Oseen' )
+    ax.plot(Xcp/L  ,    U3y     / Gamma*np.pi*L, '--', color=fColrs(4), label = 'Vatistas n=2'   )
+    ax.plot(Xcp/L  ,    U4y     / Gamma*np.pi*L, ':' , color=fColrs(5), label = 'Denominator')
     # ax.plot(Xcp/L  ,U_th/ Gamma*np.pi*L, '--',color='k', label = 'Theory'       )
     ax.set_xlabel(r'$\rho/L$ [-]')
     ax.set_ylabel(r'$u \pi L / \Gamma$ [-]')
@@ -42,5 +41,18 @@ def main():
     ax.set_ylim([0,1])
     ax.set_xlim([0,2])
     ax.tick_params(direction='in')
-    fig.savefig('figs/VortexFilamentRegularization.pdf')
+    ax.set_title('Vortilib - Vortex segment regularization')
+
+
+if __name__ == '__main__':
+    main()
     plt.show()
+#if __name__=="__test__":
+#    main()
+#    pass
+if __name__=="__export__":
+   main()
+   from welib.tools.repo import export_figs_callback
+   export_figs_callback(__file__)
+
+

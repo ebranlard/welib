@@ -30,7 +30,7 @@ class TestDynamicStall(unittest.TestCase):
         Cl_new,fs_prev_new = P.dynaStallOye_DiscreteStep(alpham,tau,fs_prev,dt)
 
         # Testing that value at t=0 is equal to the steady state cl
-        self.assertEqual(Cl_new,Cl0)
+        np.testing.assert_almost_equal(Cl_new, Cl0, decimal=4)
         self.assertEqual(fs_prev_new,fs_prev)
 
         # An increase of alpha from the steady value should have dCl/dt>0
