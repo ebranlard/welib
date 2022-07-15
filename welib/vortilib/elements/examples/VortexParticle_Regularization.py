@@ -4,10 +4,8 @@ Plot regularization for 3D particles
 """
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 from welib.tools.colors import fColrs
 from welib.vortilib.elements.VortexParticle import *
-
 
 def main():
     # --- Comparison of regularization
@@ -41,6 +39,18 @@ def main():
     ax.set_ylim([0,0.5])
     ax.set_xlim([0,2])
     ax.tick_params(direction='in')
-    fig.savefig('figs/VortexParticleRegularization.pdf')
+    ax.set_title('Vortilib - Vortex particle regularization')
+
+if __name__ == '__main__':
+    main()
     plt.show()
+if __name__=="__test__":
+    import warnings
+    warnings.resetwarnings()
+    main()
+    pass
+if __name__=="__export__":
+    main()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
 
