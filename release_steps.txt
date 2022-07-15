@@ -1,0 +1,16 @@
+
+
+# --- Main Steps (create a package and uploat to pypi): 
+#change VERSION in setup.py 
+python setup.py sdist
+twine upload dist/*
+
+# --- Detailed steps
+# Go to folder
+cd path/to/welib
+# Create a source distribution
+python setup.py sdist
+# Install twine
+pip install twine
+# Run twine to upload to Pypi (will ask for username and password)
+twine upload dist/*

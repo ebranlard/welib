@@ -21,4 +21,5 @@ _*
 *.pdf
 *Copy.py
 tags
+dist
 
