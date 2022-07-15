@@ -25,7 +25,7 @@ class TurbSimFile(File):
     - 'y', 'z', 't': space and time coordinates 
     - 'dt', 'ID', 'info'
     - 'zTwr', 'uTwr': tower coordinates and field if present (3 x nt x nTwr)
-    - 'zHub', 'uHub': height and velocity at a reference point (usually not hub)
+    - 'zRef', 'uRef': height and velocity at a reference point (usually not hub)
 
     Main methods
     ------------
@@ -101,8 +101,8 @@ class TurbSimFile(File):
         self['z']    = np.arange(nz)*dz +zBottom
         self['t']    = np.arange(nt)*dt
         self['zTwr'] =-np.arange(nTwr)*dz + zBottom
-        self['zHub'] = zHub
-        self['uHub'] = uHub
+        self['zRef'] = zHub
+        self['uRef'] = uHub
 
     def write(self, filename=None):
         """ 
@@ -180,7 +180,7 @@ class TurbSimFile(File):
     def t(self): return self['t']
 
     # --------------------------------------------------------------------------------}
-    # --- Extracting relevant data 
+    # --- Extracting relevant "Line" data at one point
     # --------------------------------------------------------------------------------{
     def valuesAt(self, y, z, method='nearest'):
         """ return wind speed time series at a point """
@@ -201,7 +201,7 @@ class TurbSimFile(File):
     def hubValues(self, zHub=None):
         if zHub is None:
             try:
-                zHub=float(self['zHub'])
+                zHub=float(self['zRef'])
                 bHub=True
             except:
                 bHub=False
@@ -210,7 +210,7 @@ class TurbSimFile(File):
         else:
             bHub=True
         try:
-            uHub=float(self['uHub'])
+            uHub=float(self['uRef'])
         except:
             iz = np.argmin(np.abs(self['z']-zHub))
             iy = np.argmin(np.abs(self['y']-(self['y'][0]+self['y'][-1])/2))
@@ -218,13 +218,14 @@ class TurbSimFile(File):
         return zHub, uHub, bHub
 
     def midValues(self):
-        iy,iz = self._iMid()
+        iy,iz = self.iMid
         zMid = self['z'][iz]
         #yMid = self['y'][iy] # always 0
         uMid = np.mean(self['u'][0,:,iy,iz])
         return zMid, uMid
 
-    def _iMid(self):
+    @property
+    def iMid(self):
         iy = np.argmin(np.abs(self['y']-(self['y'][0]+self['y'][-1])/2))
         iz = np.argmin(np.abs(self['z']-(self['z'][0]+self['z'][-1])/2))
         return iy,iz
@@ -234,56 +235,98 @@ class TurbSimFile(File):
         iz = np.argmin(np.abs(self['z']-z))
         return iy,iz
 
-    def _longiline(ts, iy0=None, iz0=None, mean=True):
+    def _longiline(ts, iy0=None, iz0=None, removeMean=False):
         """ return velocity components on a longitudinal line
         If no index is provided, computed at mid box 
         """
         if iy0 is None:
-            iy0,iz0 = ts._iMid()
+            iy0,iz0 = ts.iMid
         u = ts['u'][0,:,iy0,iz0]
         v = ts['u'][1,:,iy0,iz0]
         w = ts['u'][2,:,iy0,iz0]
-        if not mean:
+        if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
             w -= np.mean(w)
         return u, v, w
 
-    def _latline(ts, ix0=None, iz0=None, mean=True):
+    def _latline(ts, ix0=None, iz0=None, removeMean=False):
         """ return velocity components on a lateral line
         If no index is provided, computed at mid box 
         """
         if ix0 is None:
-            iy0,iz0 = ts._iMid()
+            iy0,iz0 = ts.iMid
             ix0=int(len(ts['t'])/2)
         u = ts['u'][0,ix0,:,iz0]
         v = ts['u'][1,ix0,:,iz0]
         w = ts['u'][2,ix0,:,iz0]
-        if not mean:
+        if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
             w -= np.mean(w)
         return u, v, w
 
-    def _vertline(ts, ix0=None, iy0=None, mean=True):
+    def _vertline(ts, ix0=None, iy0=None, removeMean=False):
         """ return velocity components on a vertical line
         If no index is provided, computed at mid box 
         """
         if ix0 is None:
-            iy0,iz0 = ts._iMid()
+            iy0,iz0 = ts.iMid
             ix0=int(len(ts['t'])/2)
         u = ts['u'][0,ix0,iy0,:]
         v = ts['u'][1,ix0,iy0,:]
         w = ts['u'][2,ix0,iy0,:]
-        if not mean:
+        if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
             w -= np.mean(w)
         return u, v, w
 
+    # --------------------------------------------------------------------------------}
+    # --- Extracting plane data at one point
+    # --------------------------------------------------------------------------------{
+    def horizontalPlane(ts, z=None, iz0=None, removeMean=False):
+        """ return velocity components on a horizontal plane
+        If no z value is provided, returned at mid box 
+        """
+        if z is None and iz0 is None:
+            _,iz0 = ts.iMid
+        elif z is not None:
+            _, iz0 = ts.closestPoint(ts.y[0], z) 
+
+        u = ts['u'][0,:,:,iz0]
+        v = ts['u'][1,:,:,iz0]
+        w = ts['u'][2,:,:,iz0]
+        if removeMean:
+            u -= np.mean(u)
+            v -= np.mean(v)
+            w -= np.mean(w)
+        return u, v, w
+
+    def verticalPlane(ts, y=None, iy0=None, removeMean=False):
+        """ return velocity components on a vertical plane
+        If no y value is provided, returned at mid box 
+        """
+        if y is None and iy0 is None:
+            iy0,_ = ts.iMid
+        elif y is not None:
+            iy0, _ = ts.closestPoint(y, ts.z[0]) 
+
+        u = ts['u'][0,:,iy0,:]
+        v = ts['u'][1,:,iy0,:]
+        w = ts['u'][2,:,iy0,:]
+        if removeMean:
+            u -= np.mean(u)
+            v -= np.mean(v)
+            w -= np.mean(w)
+        return u, v, w
+
+    # --------------------------------------------------------------------------------}
+    # --- Extracting average data
+    # --------------------------------------------------------------------------------{
     @property
     def vertProfile(self):
-        iy, iz = self._iMid()
+        iy, iz = self.iMid
         m = np.mean(self['u'][:,:,iy,:], axis=1)
         s = np.std( self['u'][:,:,iy,:], axis=1)
         return self.z, m, s
@@ -298,13 +341,13 @@ class TurbSimFile(File):
         """
         y = ts['y']
         if iy0 is None:
-            iy0,iz0 = ts._iMid()
-        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+            iy0,iz0 = ts.iMid
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)
         rho_uu_y=np.zeros(len(y))
         rho_vv_y=np.zeros(len(y))
         rho_ww_y=np.zeros(len(y))
         for iy,_ in enumerate(y):
-            ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, mean=False)
+            ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, removeMean=True)
             rho_uu_y[iy] = np.mean(u*ud)/(np.std(u)*np.std(ud))
             rho_vv_y[iy] = np.mean(v*vd)/(np.std(v)*np.std(vd))
             rho_ww_y[iy] = np.mean(w*wd)/(np.std(w)*np.std(wd))
@@ -317,13 +360,13 @@ class TurbSimFile(File):
         """
         z = ts['z']
         if iy0 is None:
-            iy0,iz0 = ts._iMid()
-        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+            iy0,iz0 = ts.iMid
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)
         rho_uu_z = np.zeros(len(z))
         rho_vv_z = np.zeros(len(z))
         rho_ww_z = np.zeros(len(z))
         for iz,_ in enumerate(z):
-            ud, vd, wd = ts._longiline(iy0=iy0, iz0=iz, mean=False)
+            ud, vd, wd = ts._longiline(iy0=iy0, iz0=iz, removeMean=True)
             rho_uu_z[iz] = np.mean(u*ud)/(np.std(u)*np.std(ud))
             rho_vv_z[iz] = np.mean(v*vd)/(np.std(v)*np.std(vd))
             rho_ww_z[iz] = np.mean(w*wd)/(np.std(w)*np.std(wd))
@@ -335,7 +378,7 @@ class TurbSimFile(File):
         If no index is provided, computed at mid box 
         """
         import scipy.signal as sig
-        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)
         t       = ts['t']
         dt      = t[1]-t[0]
         fs      = 1/dt
@@ -348,8 +391,11 @@ class TurbSimFile(File):
         """ Compute lateral cross spectral density
         If no index is provided, computed at mid box 
         """
-        import scipy.signal as sig
-        u, v, w = ts._latline(ix0=ix0, iz0=iz0, mean=False)
+        try:
+            import scipy.signal as sig
+        except:
+            import pydatview.tools.spectral as sig
+        u, v, w = ts._latline(ix0=ix0, iz0=iz0, removeMean=True)
         t       = ts['t']
         dt      = t[1]-t[0]
         fs      = 1/dt
@@ -362,11 +408,14 @@ class TurbSimFile(File):
         """ Compute vertical cross spectral density
         If no index is provided, computed at mid box 
         """
-        import scipy.signal as sig
+        try:
+            import scipy.signal as sig
+        except:
+            import pydatview.tools.spectral as sig
         t       = ts['t']
         dt      = t[1]-t[0]
         fs      = 1/dt
-        u, v, w = ts._vertline(ix0=ix0, iy0=iy0, mean=False)
+        u, v, w = ts._vertline(ix0=ix0, iy0=iy0, removeMean=True)
         u= u-np.mean(u)
         v= v-np.mean(v)
         w= w-np.mean(w)
@@ -380,23 +429,26 @@ class TurbSimFile(File):
         """ Coherence on a longitudinal line for different delta y and delta z
         compared to a given point with index iy0,iz0
         """
-        import scipy.signal as sig
+        try:
+            import scipy.signal as sig
+        except:
+            import pydatview.tools.spectral as sig
         if iy0 is None:
-            iy0,iz0 = ts._iMid()
-        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, mean=False)
+            iy0,iz0 = ts.iMid
+        u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)
         y = ts['y']
         z = ts['z']
         diy=1
         dy=y[iy]-y[iy0]
         # TODO
         iy = iy0+diy
-        ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, mean=False)
+        ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, removeMean=True)
         fc, coh_uu_y1 = sig.coherence(u,ud, fs=fs)
         _ , coh_vv_y1 = sig.coherence(v,vd, fs=fs)
         _ , coh_ww_y1 = sig.coherence(w,wd, fs=fs)
 
         iy = iy+diy
-        ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, mean=False)
+        ud, vd, wd = ts._longiline(iy0=iy, iz0=iz0, removeMean=False)
         _ , coh_uu_y2 = sig.coherence(u,ud, fs=fs)
         _ , coh_vv_y2 = sig.coherence(v,vd, fs=fs)
         _ , coh_ww_y2 = sig.coherence(w,wd, fs=fs)
@@ -413,7 +465,7 @@ class TurbSimFile(File):
         old_plane_mean = np.mean(self['u'][component,:,:,:],axis=0)
         old_plane_std  = np.std( self['u'][component,:,:,:],axis=0)
         if reference=='mid':
-            iy,iz = self._iMid()
+            iy,iz = self.iMid
             old_mean = np.mean(self['u'][component,:,iy,iz])
             old_std  = np.std (self['u'][component,:,iy,iz])
         elif reference=='point':
@@ -483,19 +535,18 @@ class TurbSimFile(File):
         s+=' - z: [{} ... {}],  dz: {}, n: {} \n'.format(self['z'][0],self['z'][-1],self['z'][1]-self['z'][0],len(self['z']))
         s+=' - y: [{} ... {}],  dy: {}, n: {} \n'.format(self['y'][0],self['y'][-1],self['y'][1]-self['y'][0],len(self['y']))
         s+=' - t: [{} ... {}],  dt: {}, n: {} \n'.format(self['t'][0],self['t'][-1],self['t'][1]-self['t'][0],len(self['t']))
-        s+=' - u: ({} x {} x {} x {}) \n'.format(*(self['u'].shape))
-        ux,uy,uz=self['u'][0], self['u'][1], self['u'][2]
-        s+='    ux: min: {}, max: {}, mean: {} \n'.format(np.min(ux), np.max(ux), np.mean(ux))
-        s+='    uy: min: {}, max: {}, mean: {} \n'.format(np.min(uy), np.max(uy), np.mean(uy))
-        s+='    uz: min: {}, max: {}, mean: {} \n'.format(np.min(uz), np.max(uz), np.mean(uz))
-
-        # Mid of box, nearest neighbor
-        iy,iz = self._iMid()
-        zMid=self['z'][iz]
-        yMid=self['y'][iy]
-        uMid = np.mean(self['u'][0,:,iy,iz])
-        s+='    yMid: {} - zMid: {} - iy: {} - iz: {} - uMid: {} (nearest neighbor))\n'.format(yMid, zMid, iy, iz, uMid)
-
+        if 'u' in self.keys():
+            s+=' - u: ({} x {} x {} x {}) \n'.format(*(self['u'].shape))
+            ux,uy,uz=self['u'][0], self['u'][1], self['u'][2]
+            s+='    ux: min: {}, max: {}, mean: {} \n'.format(np.min(ux), np.max(ux), np.mean(ux))
+            s+='    uy: min: {}, max: {}, mean: {} \n'.format(np.min(uy), np.max(uy), np.mean(uy))
+            s+='    uz: min: {}, max: {}, mean: {} \n'.format(np.min(uz), np.max(uz), np.mean(uz))
+            # Mid of box, nearest neighbor
+            iy,iz = self.iMid
+            zMid=self['z'][iz]
+            yMid=self['y'][iy]
+            uMid = np.mean(self['u'][0,:,iy,iz])
+            s+='    yMid: {} - zMid: {} - iy: {} - iz: {} - uMid: {} (nearest neighbor))\n'.format(yMid, zMid, iy, iz, uMid)
 #         zMid, uMid, bHub = self.hubValues()
 #         if bHub:
 #             s+='    z"Hub": {} - u"Hub": {} (NOTE: values at TurbSim "hub")\n'.format(zMid, uMid)
@@ -518,7 +569,7 @@ class TurbSimFile(File):
         ny = len(self['y'])
         nz = len(self['y'])
         # Index at mid box
-        iy,iz = self._iMid()
+        iy,iz = self.iMid
 
         # Mean vertical profile
         z, m, s = self.vertProfile
@@ -559,22 +610,27 @@ class TurbSimFile(File):
         dfs['Mid_xcorr_z'] = pd.DataFrame(data = data ,columns = cols)
 
         # Mid csd
-        fc, chi_uu, chi_vv, chi_ww = self.csd_longi()
-        cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
-        data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
-        dfs['Mid_csd_longi'] = pd.DataFrame(data = data ,columns = cols)
+        try:
+            fc, chi_uu, chi_vv, chi_ww = self.csd_longi()
+            cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+            data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+            dfs['Mid_csd_longi'] = pd.DataFrame(data = data ,columns = cols)
 
-        # Mid csd
-        fc, chi_uu, chi_vv, chi_ww = self.csd_lat()
-        cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
-        data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
-        dfs['Mid_csd_lat'] = pd.DataFrame(data = data ,columns = cols)
+            # Mid csd
+            fc, chi_uu, chi_vv, chi_ww = self.csd_lat()
+            cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+            data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+            dfs['Mid_csd_lat'] = pd.DataFrame(data = data ,columns = cols)
 
-        # Mid csd
-        fc, chi_uu, chi_vv, chi_ww = self.csd_vert()
-        cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
-        data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
-        dfs['Mid_csd_vert'] = pd.DataFrame(data = data ,columns = cols)
+            # Mid csd
+            fc, chi_uu, chi_vv, chi_ww = self.csd_vert()
+            cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+            data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+            dfs['Mid_csd_vert'] = pd.DataFrame(data = data ,columns = cols)
+        except ModuleNotFoundError:
+            print('Module scipy.signal not available')
+        except ImportError:
+            print('Likely issue with fftpack')
 
 
         # Hub time series
@@ -631,9 +687,9 @@ class TurbSimFile(File):
         self['info'] = 'Converted from MannBox fields {:s}.'.format(time.strftime('%d-%b-%Y at %H:%M:%S', time.localtime()))
 #         self['zTwr'] = np.array([])
 #         self['uTwr'] = np.array([])
-        self['zHub'] = None
-        self['uHub'] = None
-        self['zHub'], self['uHub'], bHub = self.hubValues()
+        self['zRef'] = None
+        self['uRef'] = None
+        self['zRef'], self['uRef'], bHub = self.hubValues()
 
     def toMannBox(self, base=None, removeUConstant=None, removeAllUMean=False):
         """ 
@@ -683,7 +739,7 @@ class TurbSimFile(File):
             zMid =(ts['z'][0]+ts['z'][-1])/2
             f.write('Middle height of box: {:.3f}\n'.format(zMid))
 
-            iy,_ = ts._iMid()
+            iy,_ = ts.iMid
             u = np.mean(ts['u'][0,:,iy,:], axis=0)
             z=ts['z']
             f.write('\n')

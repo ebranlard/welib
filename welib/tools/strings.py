@@ -72,7 +72,7 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
     else:
         return s.ljust(nchar)
 
-def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True):
+def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True, openChar='[',closeChar=']', sepChar=' '):
     s=''
     if var is not None:
         s=var+':'
@@ -80,7 +80,7 @@ def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', c
             s+='\n'
     s+=sindent
     for iline,line in enumerate(M):
-        s+='['+' '.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0)  for v in line ])+']'
+        s+= openChar+sepChar.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0)  for v in line ])+closeChar
         if iline<M.shape[0]-1:
             s+='\n'+sindent
     return s

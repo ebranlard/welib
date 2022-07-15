@@ -12,18 +12,17 @@ standard_library.install_aliases()
 
 from itertools import takewhile
 
-# try:
-from .csv_file import CSVFile
-from .file import File, WrongFormatError, BrokenReaderError, EmptyFileError
-# except:
-#     # --- Allowing this file to be standalone..
-#     class WrongFormatError(Exception):
-#         pass
-#     class WrongReaderError(Exception):
-#         pass
-#     class EmptyFileError(Exception):
-#         pass
-#     File = dict
+try:
+    from .file import File, WrongFormatError, BrokenReaderError, EmptyFileError
+except:
+    # --- Allowing this file to be standalone..
+    class WrongFormatError(Exception):
+        pass
+    class WrongReaderError(Exception):
+        pass
+    class EmptyFileError(Exception):
+        pass
+    File = dict
 try:
     from .csv_file import CSVFile
 except:
@@ -44,15 +43,18 @@ class FASTOutputFile(File):
 
     Main methods
     ------------
-    - read, toDataFrame
+    - read, write, toDataFrame
 
     Examples
     --------
 
-        # read an output file and convert it to pandas dataframe
-        df = FASTOutputFile('5MW.outb').toDataFrame()
+        # read an output file, convert it to pandas dataframe, modify it, write it back
+        f = FASTOutputFile('5MW.outb')
+        df=f.toDataFrame()
         time  = df['Time_[s]']
-        Omega = df['RotSpeed_[rpm]']
+        Omega = df['RotSpeed_[rpm]'] 
+        df['Time_[s]'] -=100
+        f.writeDataFrame(df, '5MW_TimeShifted.outb')
 
     """
 
@@ -72,8 +74,6 @@ class FASTOutputFile(File):
                         return line.strip()
                     elif i>=iLine:
                         break
-
-
 
         ext = os.path.splitext(self.filename.lower())[1]
         self.info={}

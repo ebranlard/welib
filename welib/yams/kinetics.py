@@ -77,7 +77,7 @@ def translateLoadsJacobian(JS, r0, FS0, method='matrix', sj0=None, j_is_k=False,
             if undisplaced and j_is_k:
                 dMdUD += FS0til
 
-            print('dMdU',dMdU[1,0],(r0til.dot(dFdU))[1,0],dMdUD[1,0])
+            #print('dMdU',dMdU[1,0],(r0til.dot(dFdU))[1,0],dMdUD[1,0])
          
             #dMdTD = dMdT - dMdU.dot(r0til) + r0til.dot(dFdT) - r0til.dot(dFdU).dot(r0til)  + FS0til.dot(r0til)
             C1 = dMdT 

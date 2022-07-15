@@ -10,9 +10,7 @@ import welib.weio as weio
 from welib.weio.fast_input_file import FASTInputFile
 from welib.weio.fast_output_file import FASTOutputFile
 from welib.weio.fast_input_deck import FASTInputDeck
-# from pyFAST.input_output.fast_input_file import FASTInputFile
-# from pyFAST.input_output.fast_output_file import FASTOutputFile
-# from pyFAST.input_output.fast_input_deck import FASTInputDeck
+
 
 # --------------------------------------------------------------------------------}
 # --- Tools for IO 

@@ -89,7 +89,10 @@ class FASTLinearizationFile(File):
 
         def readMat(fid, n, m):
             vals=[f.readline().strip().split() for i in np.arange(n)]
+#             try:
             return np.array(vals).astype(float)
+#             except ValueError:
+#                 import pdb; pdb.set_trace()
 
         # Reading 
         with open(self.filename, 'r', errors="surrogateescape") as f:
@@ -115,7 +118,7 @@ class FASTLinearizationFile(File):
             except:
                 self['WindSpeed'] = None
 
-            KEYS=['Order of','A:','B:','C:','D:','ED M:']
+            KEYS=['Order of','A:','B:','C:','D:','ED M:', 'dUdu','dUdy']
 
             for i, line in enumerate(f):
                 line = line.strip()
@@ -137,6 +140,10 @@ class FASTLinearizationFile(File):
                         self['C'] = readMat(f, ny, nx)
                     elif line.find('D:')>=0:
                         self['D'] = readMat(f, ny, nu)
+                    elif line.find('dUdu:')>=0:
+                        self['dUdu'] = readMat(f, nu, nu)
+                    elif line.find('dUdy:')>=0:
+                        self['dUdy'] = readMat(f, nu, ny)
                     elif line.find('ED M:')>=0:
                         self['EDDOF'] = line[5:].split()
                         self['M']     = readMat(f, 24, 24)
@@ -160,12 +167,17 @@ class FASTLinearizationFile(File):
             s = s.replace('(N-m)'  , '_[Nm]' );
             s = s.replace('(kN)'  , '_[kN]' );
             s = s.replace('(rpm)'   , '_[rpm]'  );
+            s = s.replace('(rad)'   , '_[rad]'  );
+            s = s.replace('(rad/s)' , '_[rad/s]'  );
+            s = s.replace('(rad/s^2)', '_[rad/s^2]'  );
             s = s.replace('(m/s^2)' , '_[m/s^2]');
             s = s.replace('(deg/s^2)','_[deg/s^2]');
             s = s.replace('(m)'     , '_[m]'    );
+            s = s.replace(', m/s/s','_[m/s^2]');
             s = s.replace(', m/s^2','_[m/s^2]');
             s = s.replace(', m/s','_[m/s]');
             s = s.replace(', m','_[m]');
+            s = s.replace(', rad/s/s','_[rad/s^2]');
             s = s.replace(', rad/s^2','_[rad/s^2]');
             s = s.replace(', rad/s','_[rad/s]');
             s = s.replace(', rad','_[rad]');
@@ -179,12 +191,18 @@ class FASTLinearizationFile(File):
             s = s.replace('(3)','3')
             s= re.sub(r'\([^)]*\)','', s) # remove parenthesis
             s = s.replace('ED ','');
+            s = s.replace('BD_','BD_B');
             s = s.replace('IfW ','');
             s = s.replace('Extended input: ','')
             s = s.replace('1st tower ','qt1');
-            if s.find('First time derivative of ')>=0:
+            s = s.replace('2nd tower ','qt2');
+            nd = s.count('First time derivative of ')
+            if nd>=0:
                 s = s.replace('First time derivative of '     ,'');
-                s = 'd_'+s.strip()
+                if nd==1:
+                    s = 'd_'+s.strip()
+                elif nd==2:
+                    s = 'dd_'+s.strip()
             s = s.replace('Variable speed generator DOF ','psi_rot'); # NOTE: internally in FAST this is the azimuth of the rotor
             s = s.replace('fore-aft bending mode DOF '    ,'FA'     );
             s = s.replace('side-to-side bending mode DOF','SS'     );
@@ -200,18 +218,18 @@ class FASTLinearizationFile(File):
             s = s.replace('-component inflow on blade 2, node','Bld2N')
             s = s.replace('-component inflow on blade 3, node','Bld3N')
             s = s.replace('-component inflow velocity at node','N')
-            s = s.replace('X translation displacement, node','XN')
-            s = s.replace('Y translation displacement, node','YN')
-            s = s.replace('Z translation displacement, node','ZN')
-            s = s.replace('X translation velocity, node','VxN')
-            s = s.replace('Y translation velocity, node','VyN')
-            s = s.replace('Z translation velocity, node','VzN')
-            s = s.replace('X translation acceleration, node','AxN')
-            s = s.replace('Y translation acceleration, node','AyN')
-            s = s.replace('Z translation acceleration, node','AzN')
-            s = s.replace('X orientation angle, node'  ,'XorN')
-            s = s.replace('Y orientation angle, node'  ,'YorN')
-            s = s.replace('Z orientation angle, node'  ,'ZorN')
+            s = s.replace('X translation displacement, node','TxN')
+            s = s.replace('Y translation displacement, node','TyN')
+            s = s.replace('Z translation displacement, node','TzN')
+            s = s.replace('X translation velocity, node','TVxN')
+            s = s.replace('Y translation velocity, node','TVyN')
+            s = s.replace('Z translation velocity, node','TVzN')
+            s = s.replace('X translation acceleration, node','TAxN')
+            s = s.replace('Y translation acceleration, node','TAyN')
+            s = s.replace('Z translation acceleration, node','TAzN')
+            s = s.replace('X orientation angle, node'  ,'RxN')
+            s = s.replace('Y orientation angle, node'  ,'RyN')
+            s = s.replace('Z orientation angle, node'  ,'RzN')
             s = s.replace('X rotation velocity, node'  ,'RVxN')
             s = s.replace('Y rotation velocity, node'  ,'RVyN')
             s = s.replace('Z rotation velocity, node'  ,'RVzN')
@@ -278,49 +296,59 @@ class FASTLinearizationFile(File):
         return [shortname(s) for s in slist]
 
     def xdescr(self):
-        return self.short_descr(self['x_info']['Description'])
+        if 'x_info' in self.keys():
+            return self.short_descr(self['x_info']['Description'])
+        else:
+            return []
+
+    def xdotdescr(self):
+        if 'xdot_info' in self.keys():
+            return self.short_descr(self['xdot_info']['Description'])
+        else:
+            return []
+
     def ydescr(self):
-        return self.short_descr(self['y_info']['Description'])
+        if 'y_info' in self.keys():
+            return self.short_descr(self['y_info']['Description'])
+        else:
+            return []
     def udescr(self):
-        return self.short_descr(self['u_info']['Description'])
+        if 'u_info' in self.keys():
+            return self.short_descr(self['u_info']['Description'])
+        else:
+            return []
 
     def _toDataFrame(self):
         dfs={}
-        try:
-            xdescr_short=self.xdescr()
+
+        xdescr_short    = self.xdescr()
+        xdotdescr_short = self.xdotdescr()
+        ydescr_short    = self.ydescr()
+        udescr_short    = self.udescr()
+
+        if 'A' in self.keys():
             dfs['A'] = pd.DataFrame(data = self['A'], index=xdescr_short, columns=xdescr_short)
-        except:
-            pass
-        try:
-            udescr_short=self.udescr()
+        if 'B' in self.keys():
             dfs['B'] = pd.DataFrame(data = self['B'], index=xdescr_short, columns=udescr_short)
-        except:
-            pass
-        try:
-            ydescr_short=self.ydescr()
+        if 'C' in self.keys():
             dfs['C'] = pd.DataFrame(data = self['C'], index=ydescr_short, columns=xdescr_short)
-        except:
-            pass
-        try:
+        if 'D' in self.keys():
             dfs['D'] = pd.DataFrame(data = self['D'], index=ydescr_short, columns=udescr_short)
-        except:
-            pass
-        try:
+        if 'x' in self.keys():
             dfs['x'] = pd.DataFrame(data = np.asarray(self['x']).reshape((1,-1)), columns=xdescr_short)
-        except:
-            pass
-        try:
+        if 'xdot' in self.keys():
+            dfs['xdot'] = pd.DataFrame(data = np.asarray(self['xdot']).reshape((1,-1)), columns=xdotdescr_short)
+        if 'u' in self.keys():
             dfs['u'] = pd.DataFrame(data = np.asarray(self['u']).reshape((1,-1)), columns=udescr_short)
-        except:
-            pass
-        try:
+        if 'y' in self.keys():
             dfs['y'] = pd.DataFrame(data = np.asarray(self['y']).reshape((1,-1)), columns=ydescr_short)
-        except:
-            pass
-        try:
+        if 'M' in self.keys():
             dfs['M'] = pd.DataFrame(data = self['M'], index=self['EDDOF'], columns=self['EDDOF'])
-        except:
-            pass
+        if 'dUdu' in self.keys():
+            dfs['dUdu'] = pd.DataFrame(data = self['dUdu'], index=udescr_short, columns=udescr_short)
+        if 'dUdy' in self.keys():
+            dfs['dUdy'] = pd.DataFrame(data = self['dUdy'], index=udescr_short, columns=ydescr_short)
+
         return dfs
 
 

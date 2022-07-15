@@ -198,11 +198,90 @@ class HydroDyn:
 
     
     def calcOutput(self, t, x=None, xd=None, xo=None, u=None, y=None, optsM=None):
+        """ 
+        optsM: Morison options
+        """
+
         yMor = self.morison.calcOutput(t, x=x, xd=xd, xo=xo, u=u['Morison'], y=y['Morison'], opts=optsM)
         y['Morison'] = yMor
 
         return y
 
+
+    def linearize(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, 
+            RefPointMotion=None, RefPointMapping=None,
+            RefPointMappingMotion='translate',
+            optsM=None, saveFile=None,
+            around=None
+            ):
+        """ 
+        """
+        from welib.system.linearization import numerical_jacobian
+        uMesh = self.u['Morison']['Mesh']
+
+        if optsM is None:
+            optsM={}
+
+        FthenM=True
+
+        # --- Define a function that returns outputs
+        def fh(q,p=None):
+            iNode = p['MotionNode']
+            # Set uMesh to operating point values
+            uMesh.restoreValues()
+            # Perturb
+            uMesh.perturbNode(iNode, q)
+            #print('Translation\n',uMesh.TranslationDisp)
+            #print('Rotation\n',uMesh.Orientation)
+            # Calculate hydrodynamic loads at every nodes 
+            self.calcOutput(t=0, u=self.u, y=self.y, optsM=p)
+            # Pack loads
+            fh = self.y['Morison']['Mesh'].packLoads(FthenM=FthenM)
+            return fh
+
+        # --- Operating point and perturbation sizes
+        if q0 is None:
+            q0  = np.zeros(6)
+        if dq is None:
+            dq   = [0.01]*3 + [0.01]*3
+
+        # --- Save operating point value
+        uMesh.rigidBodyMotion(q=q0, qd=qd0, qdd=qdd0, RefPoint=RefPointMotion)
+        uMesh.backupValues()
+
+        # --- Linearization
+        optsM['MotionNode']=0
+        f0 = fh(q0, optsM)
+        K=[]
+        nNodes = uMesh.nNodes 
+
+        su=[]
+        for i in range(1,nNodes+1):
+            su+=['HDMorisonTxN{}_[m]'.format(i), 'HDMorisonTyN{}_[m]'.format(i), 'HDMorisonTzN{}_[m]'.format(i), 'HDMorisonRxN{}_[rad]'.format(i), 'HDMorisonRyN{}_[rad]'.format(i), 'HDMorisonRzN{}_[rad]'.format(i)]
+        sy = []
+        if FthenM:
+            for i in range(1,nNodes+1):
+                sy+=['HDMorisonLoadsFxN{}_[N]'.format(i) , 'HDMorisonLoadsFyN{}_[N]'.format(i), 'HDMorisonLoadsFzN{}_[N]'.format(i)]
+            for i in range(1,nNodes+1):
+                sy+=['HDMorisonLoadsMxN{}_[Nm]'.format(i), 'HDMorisonLoadsMyN{}_[Nm]'.format(i), 'HDMorisonLoadsMzN{}_[Nm]'.format(i)]
+        else:
+            for i in range(1,nNodes+1):
+                sy+=['HDMorisonLoadsFxN{}_[N]'.format(i) , 'HDMorisonLoadsFyN{}_[N]'.format(i), 'HDMorisonLoadsFzN{}_[N]'.format(i)]
+                sy+=['HDMorisonLoadsMxN{}_[Nm]'.format(i), 'HDMorisonLoadsMyN{}_[Nm]'.format(i), 'HDMorisonLoadsMzN{}_[Nm]'.format(i)]
+
+        D=np.zeros((6*nNodes,6*nNodes)) 
+        for iNode in range(uMesh.nNodes):
+            if np.mod(iNode,10)==0:
+                print('{:5d}/{:5d}'.format(iNode,nNodes))
+
+            optsM['MotionNode']=iNode
+            dfNode = numerical_jacobian(fh, (q0,), 0, dq  , optsM)
+            #print('')
+            #print('K for node{}\n'.format(iNode+1),dfNode)
+            D[:,iNode*6:iNode*6+6] = dfNode
+
+        D= pd.DataFrame(columns=su, index=sy, data=D)
+        return D
 
 
     def linearize_RigidMotion2Loads(self, q0=None, qd0=None, qdd0=None, dq=None, dqd=None, dqdd=None, 
