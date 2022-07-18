@@ -26,15 +26,17 @@ def spring(fixP2=True):
 #     l0 = 4
 
     f = 1
+    zeta = 0
     k = (2*np.pi)**2 *m1
+    c = 0 # TODO, theory not implemented
     T = 1/f
-    t =np.linspace(0,T,100)
+    t =np.arange(0,5*T,T/100)
 
     # --- Numerical solution
     p1 = Part(m1, r0=(0,0,z1), v0=(0, 0 ,0))
     p2 = Part(m2, r0=(0,0,z2), v0=(0, 0, 0))
     sys = PartSystem([p1, p2], activeForces=['spring','gravity'])
-    sys.connect(p1, p2, 'spring', k=k, l0=l0) # Connect particles with a spring
+    sys.connect(p1, p2, 'spring', k=k, l0=l0, c=c) # Connect particles with a spring/damper
     if fixP2:
         sys.fix(p2) # fix second particle so that it doesn't move
     sys.g=g # set gravity

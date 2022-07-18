@@ -167,7 +167,20 @@ def Fdamp3D(r1,r2,r1d,r2d,c):
     r2  = np.asarray(r2).flatten()
     r1d = np.asarray(r1d).flatten()
     r2d = np.asarray(r2d).flatten()
-    l  = np.sqrt(r1.dot(r2))
+    l  = np.sqrt((r2-r1).dot(r2-r1))
+    e  = (r2-r1)/l
+    dv = (r2d-r1d).dot(e) 
+    return -c * dv * e
+
+def FspringDamp3D(r1, r2, r1d, r2d, k, l0, c):
+    """ return linear spring/damper force between two points """
+    r1 = np.asarray(r1).flatten()
+    r2 = np.asarray(r2).flatten()
+    r1d = np.asarray(r1d).flatten()
+    r2d = np.asarray(r2d).flatten()
+    l  = np.sqrt((r2-r1).dot(r2-r1))
+    dl = (l-l0)
     e  = (r2-r1)/l
     dv = (r2d-r1d).dot(e)
-    return -c * dv * e
+    return - (k * dl  + c * dv) * e   
+

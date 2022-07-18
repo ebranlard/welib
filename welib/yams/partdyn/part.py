@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 from scipy.integrate import  solve_ivp #odeint
 
 
-from welib.yams.kinetics import Fspring3D, Espring3D
+from welib.yams.kinetics import Fspring3D, Espring3D, FspringDamp3D
 
 
 GRAVITATIONAL_CONSTANT = 6.6743e-11 # [m3 kg-1 s-2] [Nm^2/kg^2]
@@ -20,6 +20,7 @@ class Part():
         self.r0 = r0
         self.v0 = v0
         self.m  = m
+        self.F  = np.array([0,0,0])
 
     @property
     def r0(self):
@@ -93,15 +94,18 @@ class PartSystem(list):
         list.__init__(self, elements)
 
         # --- Switch for forces
+        # TODO use a list of "ForceCalcObjects", each taking a list of particles 
         self.activeForces=activeForces
 
         # --- Constant for forces
         self._gravityVect       = np.array([0,0,-GRAVITY])
         self.G                  = GRAVITATIONAL_CONSTANT
+        self.kd                 = 0 # drag coefficient
 
         # --- Connectivity
         self._springs=[]
-        self._fixed=[]
+        self._fixed      = [] # Fixed particles
+        self._controlled = [] # Controlled particles
 
     def __repr__(self):
         s='{} object\n'.format(type(self))
@@ -138,7 +142,7 @@ class PartSystem(list):
         return q
 
     def update(self, q):
-        """ Update kinematics """
+        """ Update kinematics/ set particle states """
         n = int(len(q)/2) # Number of degrees of freedom
         x = q[:n]
         v = q[n:]
@@ -148,9 +152,18 @@ class PartSystem(list):
             p.update(x_p,v_p)
 
     def forces(self, t=None):
-        """ Compute """
+        """ Compute force on particles
+        - unary forces: act independelty on each particle (e.g. gravity, drag, user field)
+        - n-ary forces: acts on a fixed set of particles (e.g. springs)
+        - spatial interaction: act on any pair or all pair of particles dependeing on positions (e.g. attraction, repulsion, like gravitation)
+        """
+        # --- Clear force 
+        for ip,pi in enumerate(self):
+            pi.F*=0 
+
+        # --- Compute forces
         F = np.zeros(self.n*3) 
-        # --- Gravitational force contribution
+        # --- Gravitational force contribution (spacial interaction)
         if self._gravitationalForce:
             for ip,pi in enumerate(self):
                 F_i=np.zeros(3)
@@ -158,20 +171,24 @@ class PartSystem(list):
                     if jp!=ip:
                         F_i +=pi.gravitationalForce(pj, G=self.G)
                 F[ip*3:ip*3+3] += F_i
-        # --- Gravity force contribution
+        # --- Gravity force contribution (Unary-force)
         if self._gravityForce:
             for ip,pi in enumerate(self):
                 F[ip*3:ip*3+3] += pi.gravityForce(g=self._gravityVect)
-        # --- User field force contribution
+        # --- Viscous drag force contribution (Unary-force)
+        if self._dragForce:
+            for ip,pi in enumerate(self):
+                F[ip*3:ip*3+3] += -self.kd * pi.v
+        # --- User field force contribution (Unary Force)
         if self._fieldForce:
             for ip,pi in enumerate(self):
                 F[ip*3:ip*3+3] += self._fieldForceFunction(t, pi)
-        # --- Springs
+        # --- Springs (n-ary force)
         if self._springForce:
             for sp in self._springs:
                 ip1 = sp['ip1']
                 ip2 = sp['ip2']
-                Fp = Fspring3D(self[ip1].r, self[ip2].r, sp['k'], sp['l0'])
+                Fp = FspringDamp3D(self[ip1].r, self[ip2].r, self[ip1].v, self[ip2].v, k=sp['k'], l0=sp['l0'], c=sp['c'])
                 F[ip1*3:ip1*3+3] -= Fp
                 F[ip2*3:ip2*3+3] += Fp
 
@@ -229,6 +246,9 @@ class PartSystem(list):
         for ip in self._fixed:
             v[ip*3:ip*3+3] = 0
             a[ip*3:ip*3+3] = 0
+        # Controlled 
+        # Collision
+        # Contact
         return v, a
 
 
@@ -408,15 +428,20 @@ class PartSystem(list):
 
     # --- Connectivity / Constraints / BC
     def connect(self, p1, p2, connType, **kwargs):
-        if connType=='spring':
+        if connType=='spring': # spring/damper
             k = kwargs['k']
             if 'l0' not in kwargs.keys():
                 l0 = np.linalg.norm(p2.r-p1.r)
             else:
                 l0 = kwargs['l0']
+            if 'c' not in kwargs.keys():
+                c=0
+            else:
+                c = kwargs['c']
+
             ip1 = self.index(p1) # NOTE: assume that indices of particle do not change
             ip2 = self.index(p2)
-            d = {'p1':p1, 'p2':p2, 'ip1':ip1, 'ip2':ip2, 'k':k, 'l0':l0}
+            d = {'p1':p1, 'p2':p2, 'ip1':ip1, 'ip2':ip2, 'k':k, 'l0':l0, 'c':c}
             self._springs.append(d)
         else:
             raise NotImplementedError()
@@ -441,8 +466,9 @@ class PartSystem(list):
         self._gravityForce       = 'gravity' in forces
         self._fieldForce         = 'field' in forces
         self._springForce        = 'spring' in forces
+        self._dragForce          = 'drag' in forces
         for f in forces:
-            if f not in ['gravitational','gravity','field','spring']:
+            if f not in ['gravitational','gravity','field','spring','drag']:
                 raise Exception('Unknown force {}'.format(f))
     @property
     def g(self):
