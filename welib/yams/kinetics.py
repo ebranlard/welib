@@ -153,6 +153,14 @@ def Fspring3D(r1,r2,k,l0):
     dl = (l-l0)
     return -k * dl *(r2-r1)/l
 
+def Espring3D(r1,r2,k,l0):
+    """ return linear spring energy between two points """
+    r1 = np.asarray(r1).flatten()
+    r2 = np.asarray(r2).flatten()
+    l  = np.sqrt((r2-r1).dot(r2-r1))
+    dl = (l-l0)
+    return 1/2 * k * dl**2
+
 def Fdamp3D(r1,r2,r1d,r2d,c):
     """ return linear damping force between two points """
     r1  = np.asarray(r1).flatten()
