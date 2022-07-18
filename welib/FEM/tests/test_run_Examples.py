@@ -19,6 +19,7 @@ class TestExamples(unittest.TestCase):
         # Add tests to class
         MyDir=os.path.dirname(__file__)
         files = glob.glob(os.path.join(MyDir,'../examples/[a-zA-Z]*.py'))
+        import matplotlib.pyplot as plt
         for f in files:
             print('\n--------------------------------------------------------------')
             print('Running example script: {}'.format(f))
@@ -27,7 +28,6 @@ class TestExamples(unittest.TestCase):
                     execfile(f, {'__name__': '__test__', 'print': lambda *_:None})
 
         try:
-            import matplotlib.pyplot as plt
             plt.close('all')
         except:
             pass
