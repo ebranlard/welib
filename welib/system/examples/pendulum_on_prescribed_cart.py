@@ -61,7 +61,7 @@ sys=MechSystem(M,C,K)
 #sys.setForceTimeSeries(time,Fx_lin)
 sys.setForceFunction(Fx)
 sys.setInitialConditions([theta_0*np.pi/180],[0])
-res=sys.integrate(time, method='RK45') # **options):
+res,_=sys.integrate(time, method='RK45') # **options):
 
 # --- Post process
 theta = res.y[0,:]

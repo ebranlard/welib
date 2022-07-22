@@ -41,9 +41,24 @@ def numerical_jacobian(f, op, arg_number, deltas, *f_args):
     #if dtype_op!=dtype_op:
     #    raise Exception('Type of op ({}) and deltas ({}) are not the same'.format(dtype_op, dtype_delta))
 
+    # --- Calling at operating point and checking that output is simple, array-like
     # Number of states assumed from call at operating point
-    f_op= f(*(op+f_args))
-    nx=len(f_op)
+    f_op = f(*(op+f_args))
+    if hasattr(f_op, '__len__'):
+        nx   = len(f_op)
+        if isinstance(f_op, np.ndarray):
+            shape=f_op.shape
+            if len(shape)==2:
+                if shape[1]!=1:
+                    print('>>> f_op:',f_op)
+                    raise Exception('Output of function is multidimensional (see above), whereas it should be array-like')
+                f_op = f_op[:,0]
+        for i in range(nx):
+            if isinstance(f_op[i], np.ndarray) or isinstance(f_op[i], list):
+                print('>>> f_op:',f_op)
+                raise Exception('Output of function to linearize is not "clean", it contains arrays/lists (see line above). It should return a scalar, a list, or an array-like')
+    else:
+        nx = 1
     
     # Number of variables obtained from argument number 
     nj = len(op[arg_number])
@@ -60,8 +75,8 @@ def numerical_jacobian(f, op, arg_number, deltas, *f_args):
         op_p[arg_number][j] += deltas[j]
         op_m[arg_number][j] -= deltas[j]
         # Evaluation of the function at these points
-        f_j_p= f(*(op_p+f_args)).flatten()
-        f_j_m= f(*(op_m+f_args)).flatten()
+        f_j_p= np.asarray(f(*(op_p+f_args))).flatten()
+        f_j_m= np.asarray(f(*(op_m+f_args))).flatten()
         # Partial derivative using symmetric difference quotient
         jac[:,j] = (f_j_p-f_j_m) / (2*deltas[j])
 

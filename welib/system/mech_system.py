@@ -290,7 +290,9 @@ class MechSystem():
             res = solve_ivp(fun=odefun, t_span=[t_eval[0], t_eval[-1]], y0=self.q0, t_eval=t_eval, method=method, vectorized=True, **options)   
         # Store
         self.res    = res
-        return res
+
+        df=self.toDataFrame()
+        return res, df
 
 
     def dqdt(self, t, q):

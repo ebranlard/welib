@@ -1,21 +1,49 @@
 import numpy as np
+import pandas as pd
 from numpy.linalg import inv
 from numpy.linalg import solve
 from numpy.linalg import eigvals, matrix_rank
 from scipy.integrate import  solve_ivp #odeint
-from scipy.interpolate import interp1d
 from scipy.optimize import OptimizeResult as OdeResultsClass 
 from scipy.linalg import expm
 # Local
-
+from welib.system.statespace import StateSpace
 # --------------------------------------------------------------------------------}
 # --- Simple statespace functions ltiss (linear time invariant state space)
 # --------------------------------------------------------------------------------{
+def calc_deriv(x, u, A, B):
+    """
+    Calculate outputs for a LTI state space model
+    INPUTS:
+     - x: array-like of shape nx, or, matrix of shape nx x nt
+     - u: array-like of shape nu, or, matrix of shape nu x nt
+     - A: array nx x nx
+     - B: array nx x nu
+    OUTPUT:
+      xdot = A x + B u   (array-like of shape nx, or, matrix of shape nx x nt)
+    """
+    return A.dot(x) + B.dot(u)
+
+def calc_outputs(x, u, C, D):
+    """
+    Calculate outputs for a LTI state space model
+    INPUTS:
+     - x: array-like of shape nx, or, matrix of shape nx x nt
+     - u: array-like of shape nu, or, matrix of shape nu x nt
+     - C: array ny x nx
+     - D: array ny x nu
+    OUTPUT:
+      y = B x + D u   (array-like of shape ny, or, matrix of shape nx x nt)
+    """
+    return C.dot(x) + D.dot(u)
+
 def state_function(t, x, u, p):
-    return p['A'].dot(x) + p['B'].dot(u)
+    """ see calc_deriv """
+    return calc_deriv(x, u, p['A'], p['B'])
 
 def output_function(t, x, u, p):
-    return p['C'].dot(x) + p['D'].dot(u)
+    """ see calc_output """
+    return calc_outputs(x, u, p['C'], p['D'] )
 
 def integrate(t_eval, q0, A, B, fU, method='LSODA', **options):
     """ 
@@ -32,6 +60,7 @@ def integrate(t_eval, q0, A, B, fU, method='LSODA', **options):
      - res: object with attributes `t` and `y`(states for now..) and other attributse from solve_ivp
 
     """
+    # NOTE: here we allow inputs that are function of states, which is not really a LIT anymore!
     hasq=False
     try:
         fU(t_eval[0],q0)
@@ -55,11 +84,12 @@ def integrate(t_eval, q0, A, B, fU, method='LSODA', **options):
     return res
 
 
-def integrate_convolution(time, A, B, fU, C=None):
+def integrate_convolution(time, A, B, fU=None, C=None, U=None):
     """ 
     Perform time integration of a LTI state space system using convolution method
 
     INPUTS:
+     - time: array of time values (nt)
      - A: state matrix (nStates x nStates)
      - B: input matrix (nStates x nInputs)
      - fU: function/interpolants with interface U=fU(t) or U=fU(t,q)
@@ -69,25 +99,36 @@ def integrate_convolution(time, A, B, fU, C=None):
      - x: state vector
 
     """
-    H = impulse_response_matrix(time, A, B)
+    from welib.tools.signal_analysis import convolution_integral
+
+    nU = B.shape[1]
+    if nU>1:
+        print('>>>> TODO weird response observed at low frequencies for multiple inputs')
+
+
+    H = impulse_response_matrix(time, A, B) # nStates x nInputs x nt
 
     x = np.zeros((A.shape[0], len(time)))
 
-    from welib.tools.signal_analysis import convolution_integral
     # TODO inline and optimize
-    try:
-        U = fU(time)
-    except:
-        print('[WARN] Cannot evaluate fU for all time, doing a for loop...')
-        U = np.zeros((B.shape[1], len(time)))
-        for it,t in enumerate(time):
-            U[:,it] = fU(t) # NOTE: cannot do state dependency here
+    if U is not None:
+        raise NotImplementedError()
 
-    for i in np.arange(H.shape[0]):
+        # verify that U is of shape nInputs x nt
+    else:
+        try:
+            U = fU(time)
+        except:
+            print('[WARN] Cannot evaluate fU for all time, doing a for loop...')
+            U = np.zeros((B.shape[1], len(time)))
+            for it,t in enumerate(time):
+                U[:,it] = fU(t) # NOTE: cannot do state dependency here
+
+    for ix in np.arange(H.shape[0]): # loop on states
         x_sum=0
-        for j in np.arange(H.shape[1]):
-            x_sum  += convolution_integral(time, U[j,:], H[i,j,:] )
-        x[i,:] = x_sum
+        for iu in np.arange(H.shape[1]): # loop inputs
+            x_sum  += convolution_integral(time, U[iu,:], H[ix,iu,:] )
+        x[ix,:] = x_sum
     return x
 
     # TODO consider returning y
@@ -95,8 +136,8 @@ def integrate_convolution(time, A, B, fU, C=None):
 def impulse_response_matrix(time, A, B, C=None, outputBoth=False):
     """ 
     Return the impulse response matrix for all time steps defined by `time`
-        H_x(t) =   exp(At) B
-        H_y(t) = C exp(At) B
+        H_x(t) =   exp(At) B   array of shape nx x nu x nt
+        H_y(t) = C exp(At) B   array of shape ny x nu x nt
         see e.g. 
            Friedland p 76
     """
@@ -116,36 +157,58 @@ def impulse_response_matrix(time, A, B, C=None, outputBoth=False):
 # --------------------------------------------------------------------------------}
 # --- Linear State Space system
 # --------------------------------------------------------------------------------{
-class LinearStateSpace():
+class LinearStateSpace(StateSpace):
     """ 
     def setStateInitialConditions(self,q0=None):
     def setInputTimeSeries(self,vTime,vU):
     def setInputFunction(self,fn):
-    def Inputs(self,t,x=None):
+    def Inputs(self,t,q=None):
     def integrate(self, t_eval, method='RK4', y0=None, **options):
     def dqdt(self, t, q):
     def RHS(self,t,q):
     def nStates(self):
     def nInputs(self):
-    def nOuputs(self):
+    def nOutputs(self):
     """
-    def __init__(self,A,B,C=None,D=None,q0=None):
+    def __init__(self, A, B, C=None, D=None, q0=None,
+            sX=None, sU=None, sY=None,
+            verbose=False):
+        """ 
+        INPUTS:
+         - sX: list of names for states
+         - sY: list of names for outputs
+         - sU: list of names for inputs
+        """
         self.A=np.asarray(A)
         self.B=np.asarray(B)
+        # TODO better merge the two
+        # TODO need a signature_output as well!
+        # --- StateSpace
+        StateSpace.__init__(self, dqdt=self.dqdt_tqu, signature='t,q,u', 
+                sX = sX, sU=sU, sY=sY,
+                q0=q0, verbose=verbose)
+        # --- System
+        self.Y = self.Outputs_tqu
+
+        # --- Linear system
+
         if C is None:
             self.C=np.eye(A.shape[0]) # output all states
         else:
             self.C=np.asarray(C)
         if D is None:
-            self.D=np.zeros((self.C.shape[0],0))
+            self.D=np.zeros((self.C.shape[0],self.B.shape[1]))
         else:
             self.D=np.asarray(D)
 
-        # Initial conditions
-        self.setStateInitialConditions(q0)
+        # --- For linear models we can infer the dimensions of states easily
+        #if sX is None:
+        #    self.sX = ['x{}'.format(i+1) for i in range(self.nStates)]
+        #if sY is None:
+        #    self.sY = ['y{:d}'.format(i+1) for i in range(self.nOutputs)]
+        #if sU is None:
+        #    self.sU = ['u{:d}'.format(i+1) for i in range(self.nInputs)]
 
-        # Time integration results
-        self.res=None
 
     @property
     def nStates(self):
@@ -156,14 +219,14 @@ class LinearStateSpace():
         return self.B.shape[1]
 
     @property
-    def nOuputs(self):
+    def nOutputs(self):
         if self.C is not None:
-            return self.C.shape[1]
+            return self.C.shape[0]
         else:
             return 0
 
     # --------------------------------------------------------------------------------}
-    # --- Time domain 
+    # --- Initial conditions
     # --------------------------------------------------------------------------------{
     def setStateInitialConditions(self,q0=None):
         self.q0 = np.zeros(self.nStates)
@@ -171,13 +234,16 @@ class LinearStateSpace():
             if len(q0)!=self.nStates:
                 raise Exception('Wrong dimension for q0 ({} instead of {} )'.format(len(q0),self.nStates))
             self.q0 = q0
-
-    def setInputTimeSeries(self,vTime,vU):
+            
+    # --------------------------------------------------------------------------------}
+    # --- INPUTS
+    # --------------------------------------------------------------------------------{
+    def setInputTimeSeries(self, vTime, vU):
         """ 
         Set the inputs as a time series of time
         INPUTS:
          - vTime: 1d array of time steps (do not need to be regular), of length nt
-         - vF   : nStates x nt array of forces at each time steps, for the nStates states
+         - vU   : nInputs x nt array of inputs at each time steps
         """
         vTime = np.asarray(vTime)
         vU    = np.asarray(vU)
@@ -185,49 +251,56 @@ class LinearStateSpace():
             vU = vU.reshape((1,-1))
         if vU.shape[0]!=self.nInputs:
             raise Exception('Wrong first dimension for Inputs time series ({} instead of {} )'.format(vU.shape[0],self.nInputs))
-        if vU.shape[1]!=len(vTime):
-            raise Exception('Second dimension of Input time series does not match time dimension ({} instead of {} )'.format(vU.shape[1],len(vTime)))
+        # Call parent class (create interpolant)
+        StateSpace.setInputTimeSeries(self, vTime, vU)
 
-        # Store raw data
-        self._inputs_ts = vU
-        self._time_ts  = vTime
-        # Create interpolant for faster evaluation
-        self._inputs_fn_t = interp1d(vTime, vU)
+    # --------------------------------------------------------------------------------}
+    # --- State equation
+    # --------------------------------------------------------------------------------{
+    def dqdt(self, t, q):
+        # NOTE: this can cause issues if q is not flat
+        return np.dot(self.A, q) + np.dot(self.B, self.Inputs(t,q))
 
-    def setInputFunction(self,fn):
-        """ 
-        Set the inputs as a function of time and states
-        The function will be used during the time integration
+    def dqdt_tqu(self, t, q, u):
+        # NOTE: this can cause issues if q is not flat
+        return np.dot(self.A, q) + np.dot(self.B, u)
 
-        INPUTS:
-          fn: handle to a python function. The interface of the function fn is: 
+    def RHS(self,t,q):
+        return self.dqdt(t,q)
 
-               u =  f(t, q) 
+    # --------------------------------------------------------------------------------}
+    # --- Outputs
+    # --------------------------------------------------------------------------------{
+    def dqdt_calcOutput(self):
+        return self.Outputs
 
-              where:
-                 t   : scalar, time
-                 q   : (nStates,) array, states
-                 u   : (nInputs,) array, inputs 
-        
-        """
-        self._inputs_fn = fn
+    def Outputs(self, t, q):
+        # NOTE: could be optimized if inputs are already computed...
+        u = self.Inputs(t,q)
+        return self.C.dot(q) + self.D.dot(u)
 
-    def Inputs(self, t, q=None):
-        if hasattr(self,'_inputs_fn_t'):
-            return self._inputs_fn_t(t) # NOTE: interpolant, works for scalar or arrays
-        elif hasattr(self,'_inputs_fn'):
-            return self._inputs_fn_t(t, q=q) # TODO what if user doesn't care for states..
-        else:
-            raise Exception('Please specify a time series of inputs using `setInputsTimeSeries` or a function using `setInputsFunction` ')
+    def Outputs_tqu(self, t, q, u):
+        return self.C.dot(q) + self.D.dot(u)
 
-
-    def integrate(self, t_eval, method='RK4', y0=None, **options):
+    # --------------------------------------------------------------------------------}
+    # --- Time integration 
+    # --------------------------------------------------------------------------------{
+    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', **options):
         #
         if y0 is not None:
             self.setStateInitialConditions(y0)
+        if u is not None:
+            self.u = u
+        if method is None:
+            method='RK45'
 
+        # Clean values stored after integration
+        self.cleanSimData()
+        # Time integration
+        if self.verbose:
+            print('Time integration...')
         if method.lower()=='impulse':
-            # TODO add check on initial conditions
+            # TODO add check on initial conditions. Only works if initial conditions are 0 if I remember correctly
             x = integrate_convolution(t_eval, self.A, self.B, self.Inputs)
 
             res = OdeResultsClass(t=t_eval, y=x) # To mimic result class of solve_ivp
@@ -235,20 +308,77 @@ class LinearStateSpace():
         else:
             res = integrate(t_eval, self.q0, self.A, self.B, self.Inputs, method=method, **options)
 
-        if self.nOuputs>0:
-            print('>>> TODO: do something to compute outputs after states')
-
         # Store
         self.res    = res
 
-        return res
+        # --- From results to states, inputs, outputs DataFrame
+        df = self.res2DataFrame(res, calc=calc, sStates=None)
+        self.df = df 
 
-    def dqdt(self, t, q):
-        # NOTE: this can cause issues if q is not flat
-        return np.dot(self.A, q) + np.dot(self.B, self.Inputs(t,q))
+        return res, df
 
-    def RHS(self,t,q):
-        return self.dqdt(t,q)
+    # --------------------------------------------------------------------------------}
+    # --- Simulation storage
+    # --------------------------------------------------------------------------------{
+    def _calc_outputs(self, time, q, df):
+        """ low level implementation leaving room for optimization for other subclass."""
+        if self._inputs_ts is not None and len(time)==len(self._time_ts): # TODO more rigorous
+            if self.verbose:
+                print('Calc output using simple matrix manipulation...')
+            MX = q
+            MU = self._inputs_ts
+            MY = calc_outputs(MX, MU, self.C, self.D)
+            df.iloc[:,:] = MY.T
+        else:
+            calcOutput = self.dqdt_calcOutput()
+            if self.verbose:
+                print('Calc output...')
+            for i,t in enumerate(time):
+                df.iloc[i,:] = calcOutput(t, q[:,i])
+
+
+    def _calc_inputs(self, time, q, df):
+        """ low level implementation leaving room for optimization for other subclass."""
+        if self._inputs_ts is not None and len(time)==len(self._time_ts):
+            if self.verbose:
+                print('Calc inputs using simple matrix manipulation...')
+            df.iloc[:,:] = self._inputs_ts.T
+        else:
+            if self.verbose:
+                print('Calc inputs...')
+            for i,t in enumerate(time):
+                df.iloc[i,:] = self.Inputs(t, q[:,i])
+
+
+
+    def calc_impulse_response_matrix(self, time, insertTime=True):
+        """ 
+        Return the impulse response matrix for all time steps defined by `time`
+            H_x(t) =   exp(At) B
+            H_y(t) = C exp(At) B
+            see e.g. 
+               Friedland p 76
+        """
+        nx = self.nStates
+        nu = self.nInputs
+
+        cols = ['H_x{}_u{}'.format(i+1,j+1) for i in range(nx) for j in range(nu)]
+
+        data = np.full((len(time), len(cols)), np.nan)
+
+        # --- Calc impuse response matrix
+        if self.verbose:
+            print('Calc impulse response...')
+        for i,t in enumerate(time):
+            H = expm(self.A*t).dot(self.B) # nx x nu
+            data[i,:] = H.flatten()
+
+        df = pd.DataFrame(data=data, columns=cols)
+
+        if insertTime:
+            df.insert(0,'Time_[s]', time)
+        return df
+
 
     # --------------------------------------------------------------------------------}
     # --- Frequency domain and transfer function
@@ -266,9 +396,10 @@ class LinearStateSpace():
         """
         if hasattr(s, '__len__'):
             nu = self.nInputs
-            ny = self.nOuputs
+            ny = self.nOutputs
             ns = len(s)
             H = np.empty((ny, nu, ns), dtype=np.complex128)
+            # Loop on frequencies
             for k,sk in enumerate(s.ravel()):
                 H[:,:,k] =np.dot(self.C, solve(sk* np.eye(self.nStates) - self.A, self.B)) + self.D
             #H = np.array([np.dot(self.C, solve(sk* np.eye(self.nStates) - self.A, self.B)) + self.D  for sk in s.ravel()])
@@ -279,7 +410,7 @@ class LinearStateSpace():
         return H
 
 
-    def frequency_response(self, omega):
+    def frequency_response(self, omega, deg=False, method='transferFunction', **kwargs):
         """Evaluate the system's transfer function at a list of frequencies
         Reports the frequency response of the system,
 
@@ -314,17 +445,49 @@ class LinearStateSpace():
         #    if max(np.abs(omega)) * dt > math.pi:
         #        warn("freqresp: frequency evaluation above Nyquist frequency")
         #else:
-        s = omega * 1.j
-        H = self.transferFunction(s)
-        return np.abs(H), np.angle(H)
+        if method=='transferFunction':
+            s = omega * 1.j
+            H = self.transferFunction(s)
+            if deg:
+                return np.abs(H), np.angle(H)*180/np.pi
+            else:
+                return np.abs(H), np.angle(H)
+
+        elif method=='numerical':
+            return self.frequency_response_numerical(omega, **kwargs)
+        else:
+            raise NotImplementedError()
+
+    def frequency_response_numerical(self, omega, int_method=None, **kwargs):
+        from welib.system.transferfunction import numerical_frequency_response
+
+        if self.q0 is not None:
+            q0 = self.q0
+        else:
+            q0 = np.zeros(self.nStates) # TODO q0 equilibrium
+
+        # We create a function that returns outputs given inputs
+        def calcOutput(t, MU):
+            """ """
+            self.setInputTimeSeries(t, MU)
+            _, df = self.integrate(t, y0=q0, calc='y', method=int_method)
+            return df[self.sY].values.T
+        #  We call the generic method 
+        G, phi = numerical_frequency_response(omega, calcOutput, self.nInputs, self.nOutputs, **kwargs)
+        return G, phi
+    
+
+
 
     # --------------------------------------------------------------------------------}
-    # ---  IO functions for printing/plotting/saving
+    # ---  IO functions for printing
     # --------------------------------------------------------------------------------{
     def __repr__(self):
         s='<{} object>\n'.format(type(self).__name__)
         s+='|Read-only attributes:\n'
-        s+='| - nState:{} \n'.format(self.nStates)
+        s+='| - nStates:  {} with names:{}\n'.format(self.nStates , self.sX)
+        s+='| - nInputs:  {} with names:{}\n'.format(self.nInputs , self.sU)
+        s+='| - nOutsputs:{} with names:{}\n'.format(self.nOutputs, self.sY)
         if hasattr(self,'_force_ts'):
             if len(self._time_ts)>1:
                 dt=self._time_ts[1]-self._time_ts[0]
@@ -339,76 +502,16 @@ class LinearStateSpace():
         s+=str(self.A)+'\n'
         s+='| - B: State-Input Matrix  \n'
         s+=str(self.B)+'\n'
-        s+='| - q0: Initial conditions (state) \n'
-        s+=str(self.q0)+'\n'
+        if self.C is not None:
+            s+='| - C: State-Ouputs Matrix  \n'
+            s+=str(self.C)+'\n'
+        if self.D is not None:
+            s+='| - D: Input-Ouputs Matrix  \n'
+            s+=str(self.D)+'\n'
+        s+='| - q0: {}\n'.format(self.q0)
         return s
 
-    def plot(self, fig=None, axes=None, label=None, res=None, **kwargs):
-        """ Simple plot of states after time integration"""
-        if res is None:
-            res=self.res
-        if res is None:
-            raise Exception('Call integrate before plotting, or provide a `res` output structure')
 
-        if axes is None:
-            import matplotlib.pyplot as plt
-            fig,axes = plt.subplots( self.nStates,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-            axes_provided=False
-        else:
-            axes_provided=True
-
-        axes = np.atleast_1d(axes)
-        for i,ax in enumerate(axes):
-            lbl=r'$x_{}$'.format(i+1)
-            ax.plot(res.t, res.y[i,:], label=label, **kwargs)
-            if not axes_provided:
-                ax.set_ylabel(lbl)
-            ax.tick_params(direction='in')
-        if not axes_provided:
-            axes[-1].set_xlabel('Time [s]')
-
-        return fig, axes
-
-    def plot_inputs(self, axes=None, label=None, res=None, **kwargs):
-        """ 
-        Simple plot of inputs
-          - if `res` is provided, use time and states from res
-          - if time integration was performed, use time and states from self.res
-          otherwise: 
-          - if a time series was provided, plot that
-          - if a function was provided for the forcing, abort
-        """
-        if res is None:
-            res=self.res
-        if res is None:
-            # Res or self.res not provided
-            if hasattr(self,'_inputs_ts'):
-                time = self._time_ts
-                U    = self._inputs_ts
-            else:
-                raise NotImplementedError()
-        else:
-            # Res provided
-            time =res.t
-            if hasattr(self,'_inputs_ts'):
-                U = self.Inputs(time)
-            else:
-                U = np.zeros((self.nInputs,len(time)))
-                for it, t in enumerate(time):
-                    U[:,it] = self.Inputs(t, q=res.y[:,it])
-        ## Plot
-        if axes is None:
-            import matplotlib.pyplot as plt
-            fig,axes = plt.subplots( self.nInputs, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        axes = np.atleast_1d(axes)
-        for i,ax in enumerate(axes):
-            lbl=r'$u_{}$'.format(i+1)
-            ax.plot(time, U[i,:], label=label, **kwargs)
-            ax.set_ylabel(lbl)
-            ax.tick_params(direction='in')
-        axes[-1].set_xlabel('Time [s]')
-
-        return fig, axes
-
+    # --------------------------------------------------------------------------------}
+    # ---  Plotting functions
+    # --------------------------------------------------------------------------------{

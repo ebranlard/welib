@@ -24,8 +24,6 @@ class Test(unittest.TestCase):
 
         return p, x0, u0
 
-
-
     def test_system_implicit(self):
         # --- test that implicit function returns 0 at a solved operating point from explicit model
         # Create some simple state space 
@@ -57,7 +55,7 @@ class Test(unittest.TestCase):
 
         # --- Test implicit linearization feature of an explicit system
         op=(0,x0,u0)
-        A,B,C,D=sys.linearize(op, dx=delta_x, dxp=delta_xd, du=delta_u, use_implicit=True)
+        A,B,C,D=sys.linearize(op, dx=delta_x, dxd=delta_xd, du=delta_u, use_implicit=True)
         np.testing.assert_almost_equal(A, p['A'])
         np.testing.assert_almost_equal(B, p['B'])
         np.testing.assert_almost_equal(C, p['C'])

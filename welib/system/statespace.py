@@ -1,5 +1,15 @@
 import numpy as np
+import pandas as pd
+import inspect
 from numpy.linalg import inv
+from collections import OrderedDict
+from scipy.integrate import  solve_ivp, odeint
+from scipy.optimize import OptimizeResult as OdeResultsClass 
+from scipy.interpolate import interp1d
+
+
+from welib.system.system import System
+
 # --------------------------------------------------------------------------------}
 # --- Functions for state space model integrations
 # --------------------------------------------------------------------------------{
@@ -54,3 +64,917 @@ def dxdt(q, t, A, M, vTime, vF):
  
 def odefun(t, dq):
     return dxdt(dq, t, A, vTime, vF)
+
+
+
+# --------------------------------------------------------------------------------}
+# ---  
+# --------------------------------------------------------------------------------{
+class StateSpace(System):
+    """ 
+
+    Handles state space system made of a state and output equations:
+
+      dot(q) = dqdt (t, q , [u, p, calcOutput)
+         y   = calcOutput(t, q, [u, p] )
+
+
+    Inputs u: different options:
+      1) dictionary of interpolant:  u[key](t) = scalar
+      2) function/interpolant returning an array fU(t)   = array of size nu
+      3) function/interpolant with signature     fU(t,q) = array of size nu
+
+      Option 1 is set using setInputFunctionDict
+      Option 2 can be set using setInputTimeSeries(vTime, vU)
+      Option 2 can be set using setInputFunction(fU, signature_u='t')
+      Option 3 can be set using setInputFunction(fU, signature_u='t,q')
+
+
+    def setStateInitialConditions(self,q0=None):
+    def setInputTimeSeries(self,vTime,vU):
+    def setInputFunction(self,fn):
+    def Inputs(self,t,q=None):
+    def integrate(self, t_eval, method='RK4', y0=None, **options):
+    def dqdt(self, t, q):
+    def RHS(self,t,q):
+    def nStates(self):
+    def nInputs(self):
+    def nOuputs(self):
+    """
+    def __init__(self, dqdt, signature, q0=None, p=None, u=None, 
+            sX=None, sU=None, sY=None,
+            verbose=False):
+        """ 
+        INPUTS:
+         - dqdt : handle that returns the time derivative of the state equation
+         - signature: signature/interface of `dqdt`
+            - 't,q,u,p'
+            - 't,q,p,u'
+            - 't,q,p'
+            - 't,q,u'
+            - 't,q,'
+         - signature_u: 't', 't,q'
+         - sX: list of names for states
+         - sY: list of names for outputs
+         - sU: list of names for inputs
+        """
+        # TODO Needs signature output!!! and better output function handling
+
+        signature   = signature.replace('x','q') # legacy...
+        signature_x = signature.replace('q','x') # legacy...
+
+        System.__init__(self, dqdt, interface=signature_x.replace(',',''))
+
+        # Data
+        self.verbose      = verbose # Must come first
+        self._signature   = signature
+        self.p            = p
+        self.dqdt         = dqdt
+        self._u           = None
+        self._signature_u = None      # TODO remove
+        # --- Names
+        self.sX = sX
+        self.sY = sY
+        self.sU = sU
+
+        # Data with potential triggers
+        if u is not None:
+            self.u  = u
+
+        # Initial conditions
+        self.setStateInitialConditions(q0)
+
+        # Time integration results
+        self.res=None
+
+        self.dfStates = None
+        self.dfIn     = None
+        self.dfOut    = None
+
+    @property
+    def nStates(self):
+        # NOTE: really bad...
+        if self.sX is None:
+            raise Exception()
+        return len(self.sX) # Should work with dict and array
+
+    @property
+    def nInputs(self):
+        if self._u is None or self.sU is None:
+            raise Exception()
+        return len(self._u) # Should work with dict and array
+# 
+#     @property
+#     def nOutputs(self):
+#         if self.C is not None:
+#             return self.C.shape[1]
+#         else:
+#             return 0
+    @property
+    def nParams(self):
+        if self.p is None:
+            raise Exception()
+        return len(self.p) # Should work with dict and array
+
+    # TODO agree on an interface and stick to it...
+    @property
+    def sStates(self):
+        if self.sX is not None:
+            return self.sX
+        else:
+            return None
+
+    @property
+    def sInputs(self):
+        if self.sU is not None:
+            return self.sU
+        else:
+            return None
+
+    @property
+    def sOutputs(self):
+        if self.sY is not None:
+            return self.sY
+        else:
+            return None
+
+    # --------------------------------------------------------------------------------}
+    # --- Signatures
+    # --------------------------------------------------------------------------------{
+    @property
+    def signature(self):
+        return self._signature
+    @signature.setter
+    def signature(self, sig):
+        sigAllowed=['t,d', 't,q,p', 't,q,u,p', 't,q,u,p', None]
+        if sig not in sigAllowed:
+            raise Exception('Signature needs to be one of the following: {}'.format(sigAllowed))
+        self._signature = sig
+
+    @property
+    def signature_u(self):
+        return self._signature_u
+
+    @signature_u.setter
+    def signature_u(self, sig):
+        sigAllowed=['t', 't,q', None]
+        if isinstance(sig, dict):
+            for k in sig.keys():
+                if sig[k] not in sigAllowed:
+                    raise Exception('Signature_u needs to be one of the following: {}'.format(sigAllowed))
+
+        else:
+            if sig not in sigAllowed:
+                raise Exception('Signature_u needs to be one of the following: {}'.format(sigAllowed))
+        #print('Setting signature_u to',sig)
+        self._signature_u = sig
+
+    def uDependsOnTOnly(self):
+        """ returns true if inputs only depend on time"""
+        if isinstance(self._signature_u, dict):
+            return np.all([sig == 't' for _,sig in self._signature_u.items()])
+        else:
+             return self._signature_u == 't'
+
+
+    @property
+    def u(self):
+        return self._u
+
+    @u.setter
+    def u(self, u):
+        """ Sets input function or dictionary of functions
+        Attempts to finds the correct signature for the input function.
+        """
+        self.__setU(u)
+
+    def __setU(self, u, vTime=None):
+        """
+        Low level function, to merge:
+          - self.u =u
+        and 
+          - self.setInputTimeSeries(vTime, vU)
+        """
+        if isinstance(u, dict):
+            u= OrderedDict(u)
+
+        # --- Remove any previously stored time series inputs
+        self._inputs_ts = None
+        self._time_ts   = None
+
+        # --- Detect signature of inputs 
+        if u is None:
+            self.signature_u = None
+        elif isinstance(u, OrderedDict):
+            # --- Setting signatures for each inputs individually
+            sigDict={}
+            for k in u.keys():
+                sigParams = inspect.signature(u[k]).parameters
+                try:
+                    u0 = u[k](0)
+                    sigDict[k] = 't'
+                    if len(sigParams)==1:
+                        sigDict[k] = 't'
+                    elif len(sigParams)>=1:
+                        print('u[{}](t) works has more than one param'.format(k), sigParams)
+                        sigDict[k] = 't' # TODO
+                except:
+                    if len(sigParams)<=1:
+                        raise # Something might be wrong in the function
+                    elif len(sigParams)==2:
+                        sigDict[k] = 't,q'
+                    elif len(sigParams)==3:
+                        sigDict[k] = 't,q,qd'
+                    elif len(sigParams)>=3:
+                        print('u[{}](*) has more than three params'.format(k), sigParams)
+                        sigDict[k] = 't,q,qd' # TODO
+            self.signature_u=sigDict
+
+        else:
+            if vTime is None:
+                # We assume it's a function
+                sigParams = inspect.signature(u).parameters
+                if len(sigParams)==1:
+                    self.signature_u = 't'
+                elif len(sigParams)==2:
+                    self.signature_u = 't,q'
+                elif len(sigParams)==3:
+                    self.signature_u = 't,q,qd'
+                else:
+                    print('[WARN] u has more than three params', sigParams)
+                    self.signature_u = 't,q,qd'
+            else:
+                # This is set by setInputTimeSeries
+                vTime = np.asarray(vTime)
+                vU    = np.asarray(u)
+                if vU.shape[1]!=len(vTime):
+                    raise Exception('Second dimension of Input time series does not match time dimension ({} instead of {} )'.format(vU.shape[1],len(vTime)))
+                # Store raw data
+                self._inputs_ts = vU
+                self._time_ts   = vTime
+                # Create interpolant for faster evaluation
+                u  = interp1d(vTime, vU)
+                self.signature_u = 't'
+        self._u = u
+        if self.verbose:
+            print('Setting inputs, signature:',self.signature_u)
+
+
+    # --------------------------------------------------------------------------------}
+    # --- Initial conditions
+    # --------------------------------------------------------------------------------{
+    def setStateInitialConditions(self,q0=None):
+        self.q0 = q0
+
+    # --------------------------------------------------------------------------------}
+    # --- INPUTS
+    # --------------------------------------------------------------------------------{
+    def setInputTimeSeries(self, vTime, vU):
+        """ 
+        Set the inputs as a time series of time
+        INPUTS:
+         - vTime: 1d array of time steps (do not need to be regular), of length nt
+         - vU   : nInputs x nt array of inputs at each time steps
+        """
+        self.__setU(vU, vTime)
+
+    def setInputFunction(self, fn, signature_u=None):
+        """ 
+        Set the inputs as a function of time and states
+        The function will be used during the time integration
+
+        INPUTS:
+         - fn: handle to a python function. The signature of the function fn is: 
+         - signature_u:  't' or 't,q'
+
+               u =  f(t)
+               u =  f(t, q) 
+
+              where:
+                 t   : scalar, time
+                 q   : (nStates,) array, states
+                 u   : (nInputs,) array, inputs 
+        
+        """
+        self.u = fn
+        # override signature_u
+        if signature_u is not None:
+            self.signature_u = signature_u
+
+    def setInputFunctionDict(self, u_fn, signature_u=None):
+        """ 
+         u_fn:         dictionary of interpolant:  u[key](t) = scalar
+         signature_u:  dict   signature_u[key] = 't' or 't,q', or 't,q,qd
+        """
+
+        if not isinstance(u_fn, dict):
+            raise Exception("`u_fn` must be a dictionary")
+
+        self.u = u_fn
+        if signature_u is not None:
+            if not isinstance(signature_u, dict):
+                raise Exception("signature_u needs to be a dictionary")
+            # Override
+            self.signature_u = signature_u
+
+
+    def Inputs(self, t, q=None, qd=None):
+        """ return inputs array at t
+
+        t: scalar
+
+        """
+        if self._u is None:
+            return None
+
+        elif isinstance(self.u, OrderedDict):
+            d = np.zeros(len(self._u))
+            #print('>>> Inputs signature',self.signature_u, t)
+            for i,(k,fn) in enumerate(self._u.items()): # TODO use an ordered dict
+                #try:
+                sig = self.signature_u[k]
+                #except:
+                #    import pdb; pdb.set_trace()
+                if sig=='t':
+                    d[i] = self._u[k](t)
+                elif sig=='t,q':
+                    d[i] = self._u[k](t,q)
+                else:
+                    raise NotImplementedError()
+            return d 
+
+        else:
+            if self.signature_u == 't':
+                return self._u(t)
+            elif self.signature_u == 't,q':
+                return self._u(t,q)
+            else:
+                raise NotImplementedError()
+                
+    # --------------------------------------------------------------------------------}
+    # --- State equation
+    # --------------------------------------------------------------------------------{
+    # --- signature related functions
+    def dqdt_ODE(self, p=None, u=None):
+        """ 
+        Return a function handle with signature qdot = dqdt(t,q)
+        irrespectively of user signature
+        """
+        if p is None:
+            p=self.p
+        if u is None:
+            u=self.u
+
+        if self.signature == 't,q':
+            odefun = lambda t, q : self.dqdt(t, q)
+        elif self.signature == 't,q,p':
+            odefun = lambda t, q : self.dqdt(t, q, p)
+        elif self.signature == 't,q,u':
+            odefun = lambda t, q : self.dqdt(t, q, u)
+        elif self.signature == 't,q,u,p':
+            odefun = lambda t, q : self.dqdt(t, q, u, p)
+        elif self.signature == 't,q,p,u':
+            odefun = lambda t, q : self.dqdt(t, q, p, u)
+        else:
+            raise NotImplementedError('Signature not supported',self.signature)
+        return odefun
+
+    # --------------------------------------------------------------------------------}
+    # --- Outputs
+    # --------------------------------------------------------------------------------{
+    def dqdt_calcOutput(self, u=None, p=None, signatureWanted='t,q'):
+        if p is None:
+            p = self.p
+        if u is None:
+            u = self.u
+
+        if signatureWanted=='t,q':
+            if self.signature == 't':
+                odefun = lambda t, q : self.dqdt(t, calcOutput=True)
+            elif self.signature == 't,q,p':
+                odefun = lambda t, q : self.dqdt(t, q, p, calcOutput=True)
+            elif self.signature == 't,q,u':
+                odefun = lambda t, q : self.dqdt(t, q, u, calcOutput=True)
+            elif self.signature == 't,q,u,p':
+                odefun = lambda t, q : self.dqdt(t, q, u, p, calcOutput=True)
+            elif self.signature == 't,q,p,u':
+                odefun = lambda t, q : self.dqdt(t, q, p, u, calcOutput=True)
+            else:
+                raise NotImplementedError(self.signature)
+
+        elif signatureWanted=='t,q,u,p':
+
+            if self.signature == 't':
+                odefun = lambda t, q, u, p : self.dqdt(t, calcOutput=True)
+            elif self.signature == 't,q,p':
+                odefun = lambda t, q, u, p : self.dqdt(t, q, p, calcOutput=True)
+            elif self.signature == 't,q,u':
+                odefun = lambda t, q, u, p : self.dqdt(t, q, u, calcOutput=True)
+            elif self.signature == 't,q,u,p':
+                odefun = lambda t, q, u, p : self.dqdt(t, q, u, p, calcOutput=True)
+            elif self.signature == 't,q,p,u':
+                odefun = lambda t, q, u, p : self.dqdt(t, q, p, u, calcOutput=True)
+            else:
+                raise NotImplementedError(self.signature)
+        else:
+            raise NotImplementedError(self.signatureWanted)
+
+        return odefun
+
+    # --------------------------------------------------------------------------------}
+    # --- Time integration 
+    # --------------------------------------------------------------------------------{
+    def integrate(self, t_eval, method='RK45', y0=None, p=None, u=None, calc='u,y,qd', **options):
+        #
+        if y0 is not None:
+            self.setStateInitialConditions(y0)
+        if p is not None:
+            self.p = p
+        if u is not None:
+            self.u = u
+        if method is None:
+            method = 'RK45'
+        # Clean values stored after integration
+        self.cleanSimData()
+
+        # Getting a function handle with simple signature: dqdt(t,q)
+        dqdt = self.dqdt_ODE()
+        # Time integration
+        if self.verbose:
+            print('Time integration...')
+        if method=='odeint':
+            x = odeint(dqdt, y0, t_eval, tfirst=True)
+            res = OdeResultsClass(t=t_eval, y=x.T) # To mimic result class of solve_ivp
+        else:
+            res = solve_ivp(fun=dqdt, t_span=[t_eval[0], t_eval[-1]], y0=self.q0, t_eval=t_eval, method=method, vectorized=False, **options)   
+
+        # Store
+        self.res  = res
+
+        # --- From results to states, inputs, outputs DataFrame
+        df = self.res2DataFrame(res, calc=calc, sStates=None)
+        self.df = df
+
+        return res, df
+        
+    # --------------------------------------------------------------------------------}
+    # --- Simulation storage
+    # --------------------------------------------------------------------------------{
+    def cleanSimData(self):
+        self.res      = None
+        self.dfIn     = None
+        self.dfOut    = None
+        self.dfStates = None
+        self.df       = None
+
+
+    def res2DataFrame(self, res, calc='u,y,xd', sStates=None):
+        calcVals = calc.split(',')
+
+        dfStates = self.store_states(res, sStates=sStates)
+
+        # --- Try to compute outputs
+        dfOut = None
+        if 'y' in calcVals:
+            dfOut = self.calc_outputs(insertTime=True)
+            if dfOut is None:
+                #TODO
+                dfStatesD = self.calcDeriv()
+
+        # --- Try to compute inputs
+        dfIn = None
+        if 'u' in calcVals:
+            dfIn = self.calc_inputs(res=res, insertTime=True)
+
+        # --- Concatenates everything into one DataFrame
+        df = pd.concat((dfStates, dfIn, dfOut), axis=1)
+        df = df.loc[:,~df.columns.duplicated()].copy()
+
+        return df
+
+    def store_states(self, res, sStates=None):
+        nStates = len(self.q0)
+        if sStates is None and self.sX is None:
+            sStates = ['x{}'.format(i+1) for i in range(nStates)] # TODO
+        else:
+            sStates = self.sX
+            nCols = self.res.y.shape[0]
+            if len(self.sX)!=nCols:
+                raise Exception("Inconsistency in length of states columnNames. Number of columns detected from res: {}. States columNames (sX):".format(nCols, self.sX))
+        self.sX = sStates
+        dfStates = pd.DataFrame(data=self.res.y.T, columns=sStates)
+        dfStates.insert(0, 'Time_[s]', res.t)
+        self.dfStates = dfStates
+        return dfStates
+
+
+    def _prepareOutputDF(self, res):
+        cols    = self._inferOutputCols(res)
+        data    = np.full((len(res.t), len(cols)), np.nan)
+        df      = pd.DataFrame(columns = cols, data = data)
+        self.sY = cols
+        return df
+
+    def _prepareInputDF(self, time=None, q=None):
+        if time is None:
+            time = self.res.t
+            q    = self.res.y
+        cols    = self._inferInputCols(time, q)
+        data    = np.full((len(time), len(cols)), np.nan)
+        df      = pd.DataFrame(columns = cols, data = data)
+        self.sU = cols
+        return df
+
+    def _inferOutputCols(self, res):
+        """ See what the calcOutput returns at t[0] to allocate storage memory """
+        try:
+            out = self.dqdt_calcOutput()(res.t[0], self.q0)
+        except TypeError:
+            print("[FAIL] Error evaluating model outputs. Does the function dqdt has the argument `calcOutput`?")
+            return None
+        if not isinstance(out, pd.core.series.Series):
+            # If array
+            cols = ['y{:d}'.format(i+1) for i in range(len(out))]
+        else:
+            # If pandas series
+            cols     = out.index
+
+        # --- Check consistency with self.sY
+        if self.sY is not None:
+            if len(self.sY)!=len(cols):
+                raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
+            cols = self.sY
+        return cols
+
+    def _inferInputCols(self, time=None, q=None):
+        """ See what Inputs returns at t[0] to allocate storage memory """
+        if time is None:
+            time = self.res.t
+            q    = self.res.y
+        u0    = self.Inputs(time[0], q[:,0])
+        nCols = len(u0)
+        if self.sU is None:
+            if isinstance(self.u, OrderedDict): 
+                cols = self.u.keys()
+            else:
+                # Default column names
+                cols  = ['u{:d}'.format(i+1) for i in range(nCols)]
+        else:
+            cols = self.sU
+            if len(self.sU)!=nCols:
+                raise Exception("Inconsistency in length of input columns. Number of columns detected from `Inputs`: {}. Inputs columns (sU):".format(nCols, self.sU))
+        return cols
+
+    def _calc_outputs(self, time, q, df):
+        """ low level implementation leaving room for optimization for other subclass."""
+        calcOutput = self.dqdt_calcOutput()
+        if self.verbose:
+            print('Calc output...')
+        for i,t in enumerate(time):
+            df.iloc[i,:] = calcOutput(t, q[:,i])
+
+    def calc_outputs(self, res=None, insertTime=True, dataFrame=True):
+        """ 
+        Call use calcOutput function for each time step and store values
+        """
+        # --- Get calcOutput function
+        
+        if res is None:
+            res = self.res
+        if res is None:
+            raise Exception('Provide `res` or call `integrate` before calling calc_outputs')
+
+        # --- Infer column names and allocate
+        df = self._prepareOutputDF(res)
+
+        # --- Calc output based on states
+        self._calc_outputs(res.t, res.y, df)
+
+        if insertTime:
+            df.insert(0,'Time_[s]', res.t)
+        self.dfOut = df
+
+        if dataFrame:
+            return df
+        else:
+            return df.values
+
+    def calcDeriv(self, insertTime=True):
+        if self.res is None:
+            raise Exception("Call `integrate` before calcDeriv.")
+        # TODO
+        return None
+
+
+    def _calc_inputs(self, time, q, df):
+        """ low level implementation leaving room for optimization for other subclass."""
+        if self.verbose:
+            print('Calc inputs...')
+        for i,t in enumerate(time):
+            df.iloc[i,:] = self.Inputs(t, q[:,i])
+
+    def calc_inputs(self, time=None, res=None, insertTime=True, dataFrame=True):
+        """ 
+        Compute inputs at each time step. 
+        provide:
+               time: only works if all inputs have signature 't', not 't,q'
+            or
+               res
+        """
+        if self._u is None:
+            return None
+
+        if time is not None:
+            q = np.zeros((0,len(time))) # Dummy
+            if not self.uDependsOnTOnly():
+                raise Exception('Cannot compute inputs signature of u is not a simple function of time. Call `integrate` first. Signature of u is:'.format(self._signature_u))
+        else:
+            if res is None:
+                res = self.res
+            if res is None:
+                raise Exception("Call `integrate` before calc_inputs.")
+            time = res.t
+            q    = res.y
+
+        # TODO consider calling calcDeriv to obtain state derivatives, might be needed by some inputs
+
+        # --- Infer column names and allocate
+        df = self._prepareInputDF(time, q)
+
+        # --- Calc inputs based on states
+        self._calc_inputs(time, q, df)
+
+        if insertTime:
+            df.insert(0,'Time_[s]', time)
+
+        self.dfIn = df
+
+        if dataFrame:
+            return df
+        else:
+            return df.values
+
+    # --------------------------------------------------------------------------------}
+    # --- linearization
+    # --------------------------------------------------------------------------------{
+    def linearize(self, x0, dx, u0=None, du=None): 
+        """
+        Small change of interface compared to parent class
+
+        OUTPUS:
+
+        """
+        if u0 is None:
+            op=(0,x0)
+        else:
+            op=(0,x0,u0)
+        
+        # TODO handle calcOuput better overall
+        try:
+            calcOutputForLin = self.dqdt_calcOutput(signatureWanted='t,q,u,p')
+            out = calcOutputForLin(0, self.q0, du, self.p)
+            #print('>>>>',out)
+            # Giving this function to parent class for linearization
+            self.Y = calcOutputForLin
+        except TypeError:
+            print("[FAIL] Error evaluating model outputs for linearization. Does the function dqdt has the argument `calcOutput`?")
+
+        # Setting parameters if they are present
+        self.param = self.p
+
+        # Calling parent class
+        lin = System.linearize(self, op, dx, du=du, use_implicit=False)
+
+        A=lin[0]
+        B=lin[1]
+
+        if len(lin)==2:
+            C=None
+            D=None
+        else:
+            C=lin[2]
+            D=lin[3]
+        return A,B,C,D
+
+
+    # --------------------------------------------------------------------------------}
+    # --- Frequency domain and transfer function
+    # --------------------------------------------------------------------------------{
+    def frequency_response_numerical(self, omega, nStates, nInputs, nOutputs, int_method=None, **kwargs):
+        """ 
+        NOTE: if nOutputs is smaller, a subset of outputs is used
+             TODO I_Outputs to select outputs
+        """
+        print('>>>> TODO Frequency response for nonlinear function needs further verification')
+        from welib.system.transferfunction import numerical_frequency_response
+
+        if self.q0 is not None:
+            q0 = self.q0
+        else:
+            q0 = np.zeros(nStates) # TODO q0 equilibrium
+
+        # We create a function that returns outputs given inputs
+        def calcOutput(t, MU):
+            """ """
+            self.setInputTimeSeries(t, MU)
+            _, df = self.integrate(t, y0=q0, calc='y', method=int_method)
+            return df[self.sY].values.T
+        #  We call the generic method 
+        G, phi = numerical_frequency_response(omega, calcOutput, nInputs, nOutputs, **kwargs)
+        return G, phi
+
+
+    # --------------------------------------------------------------------------------}
+    # ---  IO functions for printing
+    # --------------------------------------------------------------------------------{
+    def __repr__(self):
+        s='<{} object>\n'.format(type(self).__name__)
+        s+='|Read-only attributes:\n'
+        s+='| - signature  : {} \n'.format(self.signature)
+        s+='| - signature_u: {} \n'.format(self.signature_u)
+        try:
+            s+='| - u: size: {} \n'.format(self.nInputs)
+            if self._u is not None:
+                if isinstance(self.u, OrderedDict):
+                    s+='|      keys: {} \n'.format(self._u.keys())
+        except:
+            pass
+        try:
+            s+='| - p: size: {} \n'.format(self.nParams)
+            if self.p is not None:
+                if isinstance(self.p, dict):
+                    s+='|      keys: {} \n'.format(self.p.keys())
+        except:
+            pass
+        #s+='|Attributes:\n'
+        s+='| - q0: {}\n'.format(self.q0)
+        return s
+
+
+    # --------------------------------------------------------------------------------}
+    # ---  Plotting functions
+    # --------------------------------------------------------------------------------{
+    # TODO merge those df or res
+    def plot_x_legacy(self, fig=None, axes=None, label=None, res=None, **kwargs):
+        """ Simple plot of states after time integration"""
+        if res is None:
+            res=self.res
+        if res is None:
+            raise Exception('Call integrate before plotting, or provide a `res` output structure')
+
+        if axes is None:
+            import matplotlib.pyplot as plt
+            fig,axes = plt.subplots( self.nStates,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+            axes_provided=False
+        else:
+            axes_provided=True
+
+        axes = np.atleast_1d(axes)
+        for i,ax in enumerate(axes):
+            lbl=r'$x_{}$'.format(i+1)
+            ax.plot(res.t, res.y[i,:], label=label, **kwargs)
+            if not axes_provided:
+                ax.set_ylabel(lbl)
+            ax.tick_params(direction='in')
+        if not axes_provided:
+            axes[-1].set_xlabel('Time [s]')
+
+        return fig, axes
+
+    def plot_u_legacy(self, axes=None, label=None, res=None, **kwargs):
+        """ 
+        Simple plot of inputs
+          - if `res` is provided, use time and states from res
+          - if time integration was performed, use time and states from self.res
+          otherwise: 
+          - if a time series was provided, plot that
+          - if a function was provided for the forcing, abort
+        """
+        if res is None:
+            res=self.res
+        if res is None:
+            # Res or self.res not provided
+            if hasattr(self,'_inputs_ts'):
+                time = self._time_ts
+                U    = self._inputs_ts
+            else:
+                raise NotImplementedError()
+        else:
+            # Res provided
+            time =res.t
+            if hasattr(self,'_inputs_ts'):
+                U = self.Inputs(time)
+            else:
+                U = np.zeros((self.nInputs,len(time)))
+                for it, t in enumerate(time):
+                    U[:,it] = self.Inputs(t, q=res.y[:,it])
+        ## Plot
+        if axes is None:
+            import matplotlib.pyplot as plt
+            fig,axes = plt.subplots( self.nInputs, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        axes = np.atleast_1d(axes)
+        for i,ax in enumerate(axes):
+            lbl=r'$u_{}$'.format(i+1)
+            ax.plot(time, U[i,:], label=label, **kwargs)
+            ax.set_ylabel(lbl)
+            ax.tick_params(direction='in')
+        axes[-1].set_xlabel('Time [s]')
+
+        return fig, axes
+
+
+    def plot(self, df=None, keys=None, label=None, axes=None, **kwargs):
+        """ Simple plot after time integration"""
+        if df is None:
+            df = self.df
+            if df is None:
+                raise Exception("Call `integrate` before plot")
+
+        return _plot(df, keys=keys, label=label, title='', nPlotCols=1, axes=axes, **kwargs)
+
+    def plot_states(self, df=None, axes=None, **kwargs):
+        """ Simple plot of states after time integration"""
+        if df is None:
+            if self.dfStates is None:
+                raise Exception("Call `integrate` before plot_states")
+            df = self.dfStates
+        keys = list(self.sStates)
+
+        return _plot(df, keys=keys, title='', nPlotCols=1, axes=axes, **kwargs)
+
+    def plot_inputs(self, df=None, axes=None, **kwargs):
+        """ 
+        plot inputs. Requires either to call `integrate` or `calc_inputs` before
+        """
+        if df is None:
+            if self.dfIn is None:
+                if self.res is not None:
+                    self.calc_inputs(res=self.res, insertTime=True)
+                else:
+                    raise Exception("Call `calc_inputs` of `integrate` before plot_inputs")
+            df = self.dfIn
+            if df is None:
+                print('[WARN] no inputs to plot')
+                return
+        keys = list(self.sInputs)
+
+        return _plot(df, keys=keys, title='', nPlotCols=1, axes=axes, **kwargs)
+
+    def plot_outputs(self, df=None, keys=None, axes=None, **kwargs):
+        """ 
+        plot outputs. Requires to call `integrate` or `calc_outputs` before
+        """
+        if df is None:
+            if self.dfOut is None:
+                raise Exception("Call calc_outputs or `integrate` before plot_outputs")
+            df = self.dfOut
+            if df is None:
+                print('[WARN] no outputs to plot')
+                return
+        keys = list(self.sOutputs)
+
+        return _plot(df, keys=keys, title='', nPlotCols=1, axes=axes, **kwargs)
+
+
+
+
+def _plot(df, keys=None, label=None, title='', nPlotCols=1, axes=None, **kwargs):
+    import matplotlib
+    import matplotlib.pyplot as plt
+    #if COLRS is None:
+    #    cmap = matplotlib.cm.get_cmap('viridis')
+    #    COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
+
+    time = df['Time_[s]'].values
+    if keys is None:
+        keys = [k for k in df.keys() if k!='Time_[s]']
+
+    I=np.arange(len(keys))
+
+    if axes is None:
+
+        if nPlotCols==2:
+            fig,axes = plt.subplots(int(np.ceil(len(I)/2)), 2, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        else:
+            fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.16, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
+
+        if not hasattr(axes,'__len__'):
+            axes=[axes]
+    axes=(np.asarray(axes).T).ravel()
+    
+    for j,i in enumerate(I):
+        s  = keys[i]
+        ax = axes[j]
+        ax.plot(time, df[s], label=label, **kwargs)
+        ax.set_ylabel(s)
+        ax.tick_params(direction='in')
+    axes[0].set_title(title)
+    axes[-1].set_xlabel('Time [s]')
+    axes[-1].legend()
+    return axes
+
+
