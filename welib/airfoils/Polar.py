@@ -1445,10 +1445,30 @@ def polar_params(alpha, cl, cd, cm):
     return p, Cl_linear, Cl_fully_sep, f_st
 
 
+
+
+def Cl_linear_slope(alpha, Cl, window=None, method="max", nInterp=721):
+    """ 
+    INPUTS:
+      - alpha: angle of attack in radians
+      - Cl   : lift coefficient
+      - window: [alpha_min, alpha_max]: region when linear slope is sought
+      
+    OUTPUTS:
+      - Cl_alpha, alpha0: lift slope (1/rad) and angle of attack (rad) of zero lift
+    """
+
+    if window is None:
+        window = [np.radians(-3), np.radians(10)]
+        window = _alpha_window_in_bounds(alpha, window)
+
+    return _find_slope(alpha, Cl, xi=0, window=window, method=method, nInterp=nInterp)
+
+
 # --------------------------------------------------------------------------------}
 # --- Generic curve handling functions
 # --------------------------------------------------------------------------------{
-def _find_slope(x, y, xi=None, x0=None, window=None, method="max", opts=None):
+def _find_slope(x, y, xi=None, x0=None, window=None, method="max", opts=None, nInterp=721):
     """Find the slope of a curve at x=xi based on a given method.
     INPUTS:
     x: array of x values
@@ -1474,8 +1494,9 @@ def _find_slope(x, y, xi=None, x0=None, window=None, method="max", opts=None):
     if window is not None:
         x_=x
         y_=y
-        x_ = np.linspace(x[0], x[-1], max(721,len(x))) # using 0.5deg resolution at least
-        y_ = np.interp(x_, x, y)
+        if nInterp is not None:
+            x_ = np.linspace(x[0], x[-1], max(nInterp,len(x))) # using 0.5deg resolution at least
+            y_ = np.interp(x_, x, y)
         I = np.where(np.logical_and(x_>=window[0],x_<=window[1]))
         x = x_[I]
         y = y_[I]
@@ -1530,6 +1551,7 @@ def _find_slope(x, y, xi=None, x0=None, window=None, method="max", opts=None):
             raise Exception("For now xi needs to be set to find a slope with the finite diff method")
 
     elif method == "leastsquare":
+
         if x0 is not None:
             try:
                 a = np.linalg.lstsq((x - x0).reshape((-1, 1)), y.reshape((-1, 1)), rcond=None)[0][0][0]
