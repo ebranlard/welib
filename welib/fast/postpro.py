@@ -1,5 +1,4 @@
 # --- For cmd.py
-from __future__ import division, print_function
 import os
 import pandas as pd
 import numpy as np
@@ -173,11 +172,11 @@ def BD_BldStations(BD, BDBld):
     TRAP_QUADRATURE  = 2
     if hasattr(BD,'startswith'): # if string
         BD = FASTInputFile(BD)
-   if hasattr(BDBld,'startswith'): # if string
+    if hasattr(BDBld,'startswith'): # if string
         BDBld = FASTInputFile(BDBld)
         #  BD['BldFile'].replace('"',''))
 
-
+
     # --- Extract relevant info from BD files
     z_kp = BD['MemberGeom'][:,2]
     R    = z_kp[-1]-z_kp[0]
@@ -208,8 +207,8 @@ def BD_BldStations(BD, BDBld):
         dr   = np.diff(rStations)/refine
         rmid = np.concatenate( [rStations[:-1]+dr*(iref+1) for iref in np.arange(refine-1)  ])
         r    = np.concatenate( (rStations, rmid))
-    r    = np.unique(np.sort(r))
-    else:
+        r    = np.unique(np.sort(r))
+    else:
         raise NotImplementedError('BeamDyn with Gaussian quadrature points')
     return r
 
