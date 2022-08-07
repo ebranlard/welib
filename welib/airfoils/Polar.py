@@ -1,13 +1,11 @@
-from __future__ import division, print_function
-
-import os
-
-import numpy as np
 """ This module contains:
   - Polar: class to represent a polar (computes steady/unsteady parameters, corrections etc.)
   - blend: function to blend two polars
   - thicknessinterp_from_one_set: interpolate polars at different thickeness based on one set of polars 
 """
+
+import os
+import numpy as np
 
 
 

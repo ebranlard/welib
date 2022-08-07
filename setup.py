@@ -29,7 +29,6 @@ Wind energy library: suite of python tools for aero-servo-hydro-elasticity (aero
         'xlrd',
         'numpy',
         'pandas', 
-        'future', 
         'chardet',
         'scipy', 
         'sympy'

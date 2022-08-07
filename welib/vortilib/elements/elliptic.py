@@ -1,6 +1,3 @@
-#--- Legacy python 2.7
-from __future__ import division
-from __future__ import print_function
 # --- General
 import numpy as np
 import unittest

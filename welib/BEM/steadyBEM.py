@@ -3,7 +3,6 @@
 Reference:
      E.Branlard: Wind turbine Aerodynamics and Vorticity Based Method - Chapter 10, Springer, 2017
 """
-from __future__ import print_function,division
 import numpy as np
 from numpy import pi, cos, exp, sqrt, sin, arctan2, arccos
 from scipy.interpolate import interp1d

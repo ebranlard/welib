@@ -1,25 +1,13 @@
-from __future__ import division
-from __future__ import unicode_literals
-from __future__ import print_function
-from __future__ import absolute_import
-from io import open
-from builtins import range
-from builtins import str
-from future import standard_library
-standard_library.install_aliases()
+import numpy as np
+import os
+import pandas as pd
+import re
 try:
     from .file import File, WrongFormatError, BrokenFormatError
 except:
-    # --- Allowing this file to be standalone..
-    class WrongFormatError(Exception):
-        pass
-    class BrokenFormatError(Exception):
-        pass
     File = dict
-import os
-import numpy as np
-import re
-import pandas as pd
+    class WrongFormatError(Exception): pass
+    class BrokenFormatError(Exception): pass
 
 __all__  = ['FASTInputFile']
 
@@ -81,15 +69,6 @@ class FASTInputFile(File):
         else:
             return self._fixedfile.module
 
-    # TODO remove
-    @property
-    def data(self):
-        if self._fixedfile is None:
-            return self.basefile.data
-        else:
-            return self._fixedfile.data
-
-    # TODO remove
     @property
     def hasNodal(self):
         if self._fixedfile is None:
@@ -97,8 +76,12 @@ class FASTInputFile(File):
         else:
             return self._fixedfile.hasNodal
 
-    def getID(self, k):
-        return self.fixedfile.getID(k)
+    def getID(self, label):
+        return self.basefile.getID(label)
+
+    @property
+    def data(self):
+        return self.basefile.data
 
     def fixedFormat(self):
         # --- Creating a dedicated Child
@@ -144,7 +127,7 @@ class FASTInputFile(File):
 
     @comment.setter
     def comment(self,comment):
-        self.fixedfile.comment=comment
+        self.fixedfile.comment = comment
 
     def __iter__(self):
         return self.fixedfile.__iter__()
@@ -192,7 +175,6 @@ class FASTInputFileBase(File):
 
     def __init__(self, filename=None, **kwargs):
         self._size=None
-        self._encoding=None
         self.setData() # Init data
         if filename:
             self.filename = filename
@@ -947,26 +929,6 @@ class FASTInputFileBase(File):
 # --- Helper functions 
 # --------------------------------------------------------------------------------{
 def isStr(s):
-    # Python 2 and 3 compatible
-    # Two options below
-    # NOTE: all this avoided since we import str from builtins
-    # --- Version 2
-    #     isString = False;
-    #     if(isinstance(s, str)):
-    #         isString = True;
-    #     try:
-    #         if(isinstance(s, basestring)): # todo unicode as well
-    #             isString = True;
-    #     except NameError:
-    #         pass; 
-    #     return isString
-    # --- Version 1
-    #     try: 
-    #        basestring # python 2
-    #        return isinstance(s, basestring) or isinstance(s,unicode)
-    #     except NameError:
-    #          basestring=str #python 3
-    #     return isinstance(s, str)
    return isinstance(s, str)
 
 def strIsFloat(s):
@@ -1623,17 +1585,28 @@ class ADPolarFile(FASTInputFileBase):
             alpha = df['Alpha_[deg]'].values*np.pi/180.
             Cl    = df['Cl_[-]'].values
             Cd    = df['Cd_[-]'].values
-            Cd0   = self['Cd0'+labOffset]
-            # Cn (with or without Cd0)
-            Cn1 = Cl*np.cos(alpha)+ (Cd-Cd0)*np.sin(alpha) 
+
+            # Cn with Cd0
+            try:
+                Cd0   = self['Cd0'+labOffset]
+                # Cn (with or without Cd0)
+                Cn1 = Cl*np.cos(alpha)+ (Cd-Cd0)*np.sin(alpha) 
+                df['Cn_Cd0off_[-]'] = Cn1
+            except:
+                pass
+
+            # Regular Cn
             Cn  = Cl*np.cos(alpha)+ Cd*np.sin(alpha) 
             df['Cn_[-]'] = Cn
-            df['Cn_Cd0off_[-]'] = Cn1
 
-            CnLin = self['C_nalpha'+labOffset]*(alpha-self['alpha0'+labOffset]*np.pi/180.)
-            CnLin[alpha<-20*np.pi/180]=np.nan
-            CnLin[alpha> 30*np.pi/180]=np.nan
-            df['Cn_pot_[-]'] = CnLin
+            # Linear Cn
+            try:
+                CnLin = self['C_nalpha'+labOffset]*(alpha-self['alpha0'+labOffset]*np.pi/180.)
+                CnLin[alpha<-20*np.pi/180]=np.nan
+                CnLin[alpha> 30*np.pi/180]=np.nan
+                df['Cn_pot_[-]'] = CnLin
+            except:
+                pass
 
             # Highlighting points surrounding 0 1 2 Cn points
             CnPoints = Cn*np.nan
