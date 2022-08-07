@@ -587,6 +587,15 @@ class EquationsOfMotionQ(object):
         self.input_vars=findInputs(EOM, q)     
         #self.mass_forcing_form(self, extraSubs=None) # M and F
         #self.linearize(self, op_point, noAcc, noVel=False, extraSubs=None): # M0,K0,B0
+
+
+    @property
+    def qdot(self):
+        return [diff(c,dynamicsymbols._t) for c in self.q]
+
+    @property
+    def qddot(self):
+        return [diff(diff(c,dynamicsymbols._t),dynamicsymbols._t) for c in self.q]
  
 
     def __repr__(self):
@@ -601,6 +610,12 @@ class EquationsOfMotionQ(object):
         s+='attributes: M0,K0,C0,B0  (call linearize) \n'.format(self.smallAnglesUsed)
         s+='methods that act on EOM in place (not M/F,M0): subs, simplify, trigsimp, expand\n'
         return s
+
+
+    def changeVar(self, newq, subs):
+        EOM_ = self.EOM.subs(subs)
+        EOM_.simplify()
+        return EquationsOfMotionQ(EOM_, newq, self.name, bodyReplaceDict=self.bodyReplaceDict)
 
 
     def subs(self, subs_list, inPlace=True):

@@ -734,7 +734,7 @@ class GroundBody(Body):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class YAMSRigidBody(YAMSBody,SympyRigidBody):
-    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False, J_at_Origin=False,
+    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_form='full', J_at_Origin=False,
              name_for_var = None):
         """
         Define a rigid body and introduce symbols for convenience.
@@ -749,8 +749,10 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             mass : scalar, body mass
             J_G  : 3x3 array or 3-array defining the coordinates of the inertia tensor in the body frame at the COG
             rho_G: array-like of length 3 defining the coordinates of the COG in the body frame
-            J_diag: if true, the inertial tensor J_G is initialized as diagonal
-            J_cross: if true, the inertial tensor J_G is initialized as a "cross"
+            J_form:  form of the inertial tensor
+                   'full': all components are included 
+                   'diag': only diagonal component  
+                   'cross': diagonal and anti-diagonal components
             name_for_var: name to use for variables names. If None, name is used.
         
         
@@ -787,10 +789,14 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             izx = Symbol('J_zx_'+name_for_var)
             ixy = Symbol('J_xy_'+name_for_var)
             iyz = Symbol('J_yz_'+name_for_var)
-        if J_diag:
+        if J_form=='full':
+            pass
+        elif J_form=='diag':
             ixy, iyz, izx =0,0,0
-        if J_cross:
+        elif J_form=='cross':
             ixy, iyz =0,0
+        else:
+            raise NotImplementedError('J_form ',J_form)
             
         #inertia: dyadic : (inertia(frame, *list), point)
         if J_at_Origin:

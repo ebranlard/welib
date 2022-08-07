@@ -17,7 +17,7 @@ _defaultOpts={
     'orderH':2,  #< order of taylor expansion for H term
     'rotOrder':'XYZ',  #< 
     'CG_on_z':False,  #< 
-    'J_cross':True,  #< 
+    'J_form':'cross',  #< 
     'J_at_Origin':False,  #< 
     'NoDOFImpliesNoSpeed':False,  #< if the DOF is not active, then its derivative and accelerations (arising from rotation of COG) are zeroed
 }
@@ -49,7 +49,7 @@ def get_model_one_body(model_name, **opts):
             opts[k]=v
     for k,v in opts.items():
         if k not in _defaultOpts.keys():
-            print('Key {} not supported for model options.'.format(k))
+            raise Exception('Key {} not supported for model options.'.format(k))
     #print(opts)
 
     # Extract info from model name
@@ -72,9 +72,9 @@ def get_model_one_body(model_name, **opts):
     # --- Isolated bodies 
     ref = YAMSInertialBody('E') 
     if opts['CG_on_z']:
-        body = YAMSRigidBody('B', rho_G = [0,0,z_BG], J_diag=True, J_cross=opts['J_cross'], J_at_Origin=opts['J_at_Origin']) 
+        body = YAMSRigidBody('B', rho_G = [0,0,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin']) 
     else:
-        body = YAMSRigidBody('B', rho_G = [x_BG,y_BG,z_BG], J_diag=True, J_cross=opts['J_cross'], J_at_Origin=opts['J_at_Origin'])
+        body = YAMSRigidBody('B', rho_G = [x_BG,y_BG,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin'])
     #print(body)
 
     # --- Body DOFs

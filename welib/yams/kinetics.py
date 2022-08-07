@@ -55,7 +55,6 @@ def translateLoadsJacobian(JS, r0, FS0, method='matrix', sj0=None, j_is_k=False,
                 JD[3:6,0:3] += -FS0til
 
         else:
-            raise Exception('Temporariry disabled')
             T1 = np.block([ [ I3   ,  Z3 ],
                             [ r0til,  I3 ]])
             T2 = np.block([ [ I3   ,-r0til ],

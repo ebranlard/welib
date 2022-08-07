@@ -3,7 +3,6 @@ Signal analysis tools.
 NOTE: naming this module "signal.py" can sometimes create conflict with numpy
 
 """
-from __future__ import division
 import numpy as np
 from numpy.random import rand
 import pandas as pd

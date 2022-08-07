@@ -1,5 +1,5 @@
 ------- ELASTODYN for OpenFAST INPUT FILE -------------------------------------------
-NREL 5.0 MW Baseline Wind Turbine for Use in Offshore Analysis. Properties from Dutch Offshore Wind Energy Converter (DOWEC) 6MW Pre-Design (10046_009.pdf) and REpower 5M 5MW (5m_uk.pdf)
+Spar no RNA ref height 25, all inertias in ElastoDyn
 ---------------------- SIMULATION CONTROL --------------------------------------
 False         Echo        - Echo input data to "<RootName>.ech" (flag)
           3   Method      - Integration method: {1: RK4, 2: AB4, or 3: ABM4} (-)
@@ -154,8 +154,17 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "TwrBsMxt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
 "TwrBsMyt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
 "TwrBsMzt"                - Side-to-side bending, fore-aft bending, and yaw moments at the base of the tower (platform)
-"QD_Sg"
-"QD_Hv"
-"QD_P"
+"Q_Sg"		Displacement of platform horizontal surge translation DOF
+"Q_Sw"		Displacement of platform horizontal sway translation DOF
+"Q_Hv"		Displacement of platform vertical heave translation DOF
+"Q_R"		Displacement of platform roll tilt rotation DOF
+"Q_P"		Displacement of platform pitch tilt rotation DOF
+"Q_Y"		Displacement of platform yaw rotation DOF
+"QD_Sg"		Velocity of platform horizontal surge translation DOF
+"QD_Sw"		Velocity of platform horizontal sway translation DOF
+"QD_Hv"		Velocity of platform vertical heave translation DOF
+"QD_R"		Velocity of platform roll tilt rotation DOF
+"QD_P"		Velocity of platform pitch tilt rotation DOF
+"QD_Y"		Velocity of platform yaw rotation DOF
 END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
 ---------------------------------------------------------------------------------------

@@ -5,7 +5,7 @@ from welib.yams.models.utils import stiffness6DOF
 from welib.yams.models.OneRigidBody_sympy import *  # get_model_one_body, x, phi_x, xd, omega_x, x_BG, Jxx_B, M_B, etc
 
 def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage=True,
-        CG_on_z=False, # <<<, 
+        CG_on_z=False, J_form='diag',# <<<, 
         KMoorKeep=[(0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(0,4),(1,5)], 
         silentTimer=True,
         IMU=True
@@ -69,13 +69,13 @@ def generateOneRigidBodyModel(modelName, packageDir='py', texDir='tex', fullPage
         #opts['twrDOFDir']    = ['x','y','x','y']  # Order in which the flexible DOF of the tower are set
 
         model = get_model_one_body(modelName, linRot=False, orderMM=1, orderH=1, 
-                                   J_cross=False, CG_on_z=CG_on_z, J_at_Origin=True)
+                                   J_form=J_form, CG_on_z=CG_on_z, J_at_Origin=True)
 
     elif 'moor' in modelName or 'hydro' in modelName:
 #     if modelName in  H0Models+HOModels:
         # --- Hydro/Mooring Dynamic Load
         model = get_model_one_body(modelName, linRot=False, orderMM=1, orderH=1, 
-                                   J_cross=False, CG_on_z=CG_on_z, J_at_Origin=True)
+                                   J_form=J_form, CG_on_z=CG_on_z, J_at_Origin=True)
         body = model.body
         ref  = model.ref
         # Points

@@ -7,7 +7,8 @@ import numpy as np
 import os
 
 from welib.airfoils.Polar import Polar
-import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.csv_file import CSVFile
 
 MyDir=os.path.dirname(__file__)
 
@@ -57,11 +58,11 @@ def main_WriteADPolarLowLevel():
     """
     # --- Reading an existing AD file, just as a template, we'll replace things in it
     templateADFile = os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
-    ADpol = weio.read(templateADFile)
+    ADpol = FASTInputFile(templateADFile)
 
     # --- Creating a Polar object from Cl-Cd data
     polarFile = os.path.join(MyDir,'../data/DU21_A17.csv')
-    p=weio.read(polarFile).toDataFrame().values
+    p=CSVFile(polarFile).toDataFrame().values
     polar= Polar(np.nan, p[:,0],p[:,1],p[:,2],p[:,3])
     (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=polar.unsteadyParams()
 

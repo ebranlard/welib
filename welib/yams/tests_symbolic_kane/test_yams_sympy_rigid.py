@@ -44,10 +44,10 @@ class Test(unittest.TestCase):
 
         # --- Bodies
         ref = YAMSInertialBody('E') 
-        twr = YAMSRigidBody('T', rho_G = [0,0,z_G_T]      , J_diag=True) 
-        fnd = YAMSRigidBody('F', rho_G = [0,0,z_G_F]      , J_diag=True) 
-        nac = YAMSRigidBody('N', rho_G = [x_G_N ,0, z_G_N], J_diag=True) 
-        rot = YAMSRigidBody('R', rho_G = [0,0,0]          , J_diag=True)
+        twr = YAMSRigidBody('T', rho_G = [0,0,z_G_T]      , J_form='diag') 
+        fnd = YAMSRigidBody('F', rho_G = [0,0,z_G_F]      , J_form='diag') 
+        nac = YAMSRigidBody('N', rho_G = [x_G_N ,0, z_G_N], J_form='diag') 
+        rot = YAMSRigidBody('R', rho_G = [0,0,0]          , J_form='diag')
         rot.inertia = (inertia(rot.frame, Jxx_R, JO_R, JO_R), rot.origin)  # defining inertia at orign
 
         # --- Bodies connections
