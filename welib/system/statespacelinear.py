@@ -8,6 +8,7 @@ from scipy.optimize import OptimizeResult as OdeResultsClass
 from scipy.linalg import expm
 # Local
 from welib.system.statespace import StateSpace
+from welib.fast.tools.lin import matToSIunits, subMat # TODO
 # --------------------------------------------------------------------------------}
 # --- Simple statespace functions ltiss (linear time invariant state space)
 # --------------------------------------------------------------------------------{
@@ -73,6 +74,8 @@ def integrate(t_eval, q0, A, B, fU, method='LSODA', **options):
             raise
 
     if hasq:
+        #def odefun(t, q):
+        #    return np.dot(A, q) + np.dot(B, fU(t,q))
         odefun = lambda t, q : np.dot(A, q) + np.dot(B, fU(t,q))
     else:
         odefun = lambda t, q : np.dot(A, q) + np.dot(B, fU(t) )
@@ -180,7 +183,9 @@ class LinearStateSpace(StateSpace):
          - sU: list of names for inputs
         """
         self.A=np.asarray(A)
-        self.B=np.asarray(B)
+        if B is None:
+            B = np.zeros((A.shape[0],0))
+        self.B = np.asarray(B)
         # TODO better merge the two
         # TODO need a signature_output as well!
         # --- StateSpace
@@ -193,7 +198,11 @@ class LinearStateSpace(StateSpace):
         # --- Linear system
 
         if C is None:
-            self.C=np.eye(A.shape[0]) # output all states
+            if sY is None:
+                sY = sX
+                self.C=np.eye(A.shape[0]) # output all states
+            else:
+                self.C=np.zeros((len(sY), A.shape[0])) 
         else:
             self.C=np.asarray(C)
         if D is None:
@@ -285,7 +294,8 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------}
     # --- Time integration 
     # --------------------------------------------------------------------------------{
-    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', **options):
+    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', xoffset=None, uoffset=None, **options):
+        #dfLI = sysLI.res2DataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
         #
         if y0 is not None:
             self.setStateInitialConditions(y0)
@@ -293,6 +303,17 @@ class LinearStateSpace(StateSpace):
             self.u = u
         if method is None:
             method='RK45'
+
+        # --- Satity checks
+        if len(self.q0)!=self.nStates:
+            raise Exception('Size of initial condition ({}) different from number of states ({}).'.format(len(self.q0), self.nStates))
+        if self.A.shape[0]!=self.nStates or self.A.shape[1]!=self.nStates:
+            raise Exception('Shape of A ({}) different from number of states ({}).'.format(self.A.shape, self.nStates))
+        if np.any(np.isnan(self.A)): raise Exception('A matrix contains nan')
+        if np.any(np.isnan(self.B)): raise Exception('B matrix contains nan')
+        if np.any(np.isnan(self.C)): raise Exception('C matrix contains nan')
+        if np.any(np.isnan(self.D)): raise Exception('D matrix contains nan')
+        if np.any(np.isnan(self.q0)): raise Exception('Intial condition contains nan')
 
         # Clean values stored after integration
         self.cleanSimData()
@@ -312,7 +333,7 @@ class LinearStateSpace(StateSpace):
         self.res    = res
 
         # --- From results to states, inputs, outputs DataFrame
-        df = self.res2DataFrame(res, calc=calc, sStates=None)
+        df = self.res2DataFrame(res, calc=calc, sStates=None, xoffset=xoffset, uoffset=uoffset)
         self.df = df 
 
         return res, df
@@ -478,6 +499,84 @@ class LinearStateSpace(StateSpace):
     
 
 
+    # --------------------------------------------------------------------------------}
+    # --- Matrix manipulation
+    # --------------------------------------------------------------------------------{
+    def rename(self, colMap, verbose=False):
+        """ Rename labels """
+        sX = list(self.sX)
+        sY = list(self.sY)
+        sU = list(self.sU)
+        keys = list(colMap.keys())
+        def renameList(l, colMap, verbose):
+            for i,s in enumerate(l):
+                if s in keys:
+                    l[i] = colMap[s] 
+                else:
+                    if verbose:
+                        print('Label {} not renamed'.format(s))
+            return l
+
+        self.sX = renameList(self.sX, colMap, verbose)
+        self.sU = renameList(self.sU, colMap, verbose)
+        self.sY = renameList(self.sY, colMap, verbose)
+
+        # Remove duplicate
+        #df = df.loc[:,~df.columns.duplicated()].copy()
+
+
+    def extract(self, sX=None, sU=None, sY=None, verbose=False, check=True):
+        """ """
+        A, B, C, D = self.toDataFrames()
+        if sX is not None:
+            A = subMat(A, rows=sX, cols=sX, check=check, name = 'A')
+            B = subMat(B, rows=sX         , check=check, name = 'B')
+            C = subMat(C,          cols=sX, check=check, name = 'C')
+        if sU is not None:
+            B = subMat(B,          cols=sU, check=check, name = 'B')
+            D = subMat(D,          cols=sU, check=check, name = 'D')
+        if sY is not None:
+            C = subMat(C, rows=sY,          check=check, name = 'C')
+            D = subMat(D, rows=sY,          check=check, name = 'D')
+
+        self.fromDataFrames(A, B, C, D)
+        # --- trigger, make sure q0 has the right size
+        self.setStateInitialConditions(None)
+
+
+    def toSI(self, verbose=False):
+        """ Use labels to ensures that A, B, C, D have SI units"""
+        A, B, C, D = self.toDataFrames()
+
+        A = matToSIunits(A, name='A', verbose=verbose)
+        B = matToSIunits(B, name='B', verbose=verbose)
+        C = matToSIunits(C, name='C', verbose=verbose)
+        D = matToSIunits(D, name='D', verbose=verbose)
+
+        self.fromDataFrames(A, B, C, D)
+
+
+    def fromDataFrames(self, A, B=None, C=None, D=None):
+        self.A  = A.values
+        self.sX = A.columns.values
+        if B is not None:
+            self.B  = B.values
+            self.sU = B.columns.values
+        if C is not None:
+            self.C  = C.values
+            self.sY = C.index.values
+        if D is not None:
+            self.D  = D.values
+
+
+    def toDataFrames(self):
+        """ return dataframes for system matrices using labels"""
+        A = pd.DataFrame(self.A, index=self.sX, columns=self.sX)
+        B = pd.DataFrame(self.B, index=self.sX, columns=self.sU)
+        C = pd.DataFrame(self.C, index=self.sY, columns=self.sX)
+        D = pd.DataFrame(self.D, index=self.sY, columns=self.sU)
+        return A, B, C, D
+
 
     # --------------------------------------------------------------------------------}
     # ---  IO functions for printing
@@ -487,7 +586,7 @@ class LinearStateSpace(StateSpace):
         s+='|Read-only attributes:\n'
         s+='| - nStates:  {} with names:{}\n'.format(self.nStates , self.sX)
         s+='| - nInputs:  {} with names:{}\n'.format(self.nInputs , self.sU)
-        s+='| - nOutsputs:{} with names:{}\n'.format(self.nOutputs, self.sY)
+        s+='| - nOutputs: {} with names:{}\n'.format(self.nOutputs, self.sY)
         if hasattr(self,'_force_ts'):
             if len(self._time_ts)>1:
                 dt=self._time_ts[1]-self._time_ts[0]

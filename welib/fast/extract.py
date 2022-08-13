@@ -12,7 +12,7 @@ import welib.weio.fast_input_deck as fd
 import welib.weio.fast_linearization_file as fl
 import welib.fast.runner as runner
 import welib.fast.postpro as postpro
-from welib.fast.linmodel import matToSIunits, subMat
+from welib.fast.tools.lin import matToSIunits, subMat
 from welib.yams.utils import identifyRigidBodyMM, translateInertiaMatrixFromCOG
 
 
@@ -474,6 +474,10 @@ def extractPtfmInertiaFromLinFile(linFile):
 
 
 def mainLinInputs(all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
+    """ 
+    Returns typical inputs relevant for a simplified OpenFAST model
+
+    """
     if all:
         cols=None
     else:
@@ -510,22 +514,40 @@ def mainLinInputs(all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
 
 
 
-def extractIMUAccFromLinFile(linFile, all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
+def extractIMUAccFromLinFile(linFile, all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0, vel=False):
     """ 
     Extract C and D matrices relevant for IMU
     """
 
     colIMU=['NcIMUTAxs_[m/s^2]', 'NcIMUTAys_[m/s^2]', 'NcIMUTAzs_[m/s^2]']
+    if vel:
+        colIMU+=['NcIMUTVxs_[m/s]', 'NcIMUTVys_[m/s]', 'NcIMUTVzs_[m/s]']
 
     # --- Read the linearization file
-    if not isinstance(linFile, fl.FASTLinearizationFile):
-        lin = fl.FASTLinearizationFile(linFile)
+    if isinstance(linFile, fl.FASTLinearizationFile):
+        lin = linFile
+        linFile = lin.filename
+        dfs = lin.toDataFrame()
+    elif isinstance(linFile, dict):
+        dfs=linFile
+        linFile = 'unknown'
     else:
-        lin=linFile
-    dfs = lin.toDataFrame()
+        lin = fl.FASTLinearizationFile(linFile)
+        dfs = lin.toDataFrame()
     colAugForce = mainLinInputs(all=all, hub=hub, nac=nac, ptfm=ptfm, gen=gen, pitch=pitch)
 
     # --- Extract the relevant 6x6 matrix
+    if 'C' not in dfs:
+        raise Exception('Cannot extract IMUAcc from lin file, lin file has no "C" matrix: ',linFile)
+    missingRows = [l for l in colIMU if l not in dfs['C'].index]
+    if len(missingRows)>0:
+        raise Exception('Cannot extract IMUAcc from lin file, lin file was either not generated with linOuputs=2 or {} are not in the WriteOutput list of ElastoDyn, file: '.format(colIMU),linFile)
+    missingCols = [c for c in colAugForce  if c not in dfs['D'].columns]
+    if len(missingCols)>0:
+        raise Exception('Cannot extract IMUAcc Jacobians from lin file, lin file was not generated with linInputs=1, file:',linFile) 
+    # or {} are not in the WriteOutput list of ElastoDyn!'.format(colAugForce))
+
+
     C = subMat(dfs['C'], rows=colIMU, cols=None       , check=True)
     D = subMat(dfs['D'], rows=colIMU, cols=colAugForce, check=True)
     C=matToSIunits(C, 'C')

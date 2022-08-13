@@ -217,7 +217,7 @@ class StateSpace(System):
 
     @signature_u.setter
     def signature_u(self, sig):
-        sigAllowed=['t', 't,q', None]
+        sigAllowed=['t', 't,q', 't,q,qd',None]
         if isinstance(sig, dict):
             for k in sig.keys():
                 if sig[k] not in sigAllowed:
@@ -271,13 +271,14 @@ class StateSpace(System):
             for k in u.keys():
                 sigParams = inspect.signature(u[k]).parameters
                 try:
+                    # Try to call with just time
                     u0 = u[k](0)
                     sigDict[k] = 't'
                     if len(sigParams)==1:
                         sigDict[k] = 't'
                     elif len(sigParams)>=1:
-                        print('u[{}](t) works has more than one param'.format(k), sigParams)
-                        sigDict[k] = 't' # TODO
+                        #print('u[{}](t) works has more than one param'.format(k), sigParams)
+                        sigDict[k] = ['t','t,q', 't,q,qd'][len(sigParams)-1] # TODO
                 except:
                     if len(sigParams)<=1:
                         raise # Something might be wrong in the function
@@ -292,6 +293,8 @@ class StateSpace(System):
 
         else:
             if vTime is None:
+                if type(u) is np.ndarray:
+                    raise Exception('Cannot call setU without a time vector. use `setInputTimeSeries`')
                 # We assume it's a function
                 sigParams = inspect.signature(u).parameters
                 if len(sigParams)==1:
@@ -318,7 +321,7 @@ class StateSpace(System):
         self._u = u
         if self.verbose:
             print('Setting inputs, signature:',self.signature_u)
-
+# 
 
     # --------------------------------------------------------------------------------}
     # --- Initial conditions
@@ -484,7 +487,7 @@ class StateSpace(System):
     # --------------------------------------------------------------------------------}
     # --- Time integration 
     # --------------------------------------------------------------------------------{
-    def integrate(self, t_eval, method='RK45', y0=None, p=None, u=None, calc='u,y,qd', **options):
+    def integrate(self, t_eval, method='RK45', y0=None, p=None, u=None, calc='u,y,qd', xoffset=None, **options):
         #
         if y0 is not None:
             self.setStateInitialConditions(y0)
@@ -512,7 +515,7 @@ class StateSpace(System):
         self.res  = res
 
         # --- From results to states, inputs, outputs DataFrame
-        df = self.res2DataFrame(res, calc=calc, sStates=None)
+        df = self.res2DataFrame(res, calc=calc, sStates=None, xoffset=xoffset)
         self.df = df
 
         return res, df
@@ -528,15 +531,20 @@ class StateSpace(System):
         self.df       = None
 
 
-    def res2DataFrame(self, res, calc='u,y,xd', sStates=None):
+    def res2DataFrame(self, res=None, calc='u,y,xd', sStates=None, xoffset=None, uoffset=None, yoffset=None):
         calcVals = calc.split(',')
 
-        dfStates = self.store_states(res, sStates=sStates)
+        if res is None:
+            if self.res is None:
+                raise Exception('Call integrate before res2DataFrame')
+            res = self.res
+
+        dfStates = self.store_states(res, sStates=sStates, xoffset=xoffset)
 
         # --- Try to compute outputs
         dfOut = None
         if 'y' in calcVals:
-            dfOut = self.calc_outputs(insertTime=True)
+            dfOut = self.calc_outputs(insertTime=True, yoffset=yoffset)
             if dfOut is None:
                 #TODO
                 dfStatesD = self.calcDeriv()
@@ -544,7 +552,7 @@ class StateSpace(System):
         # --- Try to compute inputs
         dfIn = None
         if 'u' in calcVals:
-            dfIn = self.calc_inputs(res=res, insertTime=True)
+            dfIn = self.calc_inputs(res=res, insertTime=True, uoffset=uoffset)
 
         # --- Concatenates everything into one DataFrame
         df = pd.concat((dfStates, dfIn, dfOut), axis=1)
@@ -552,7 +560,7 @@ class StateSpace(System):
 
         return df
 
-    def store_states(self, res, sStates=None):
+    def store_states(self, res, sStates=None, xoffset=None):
         nStates = len(self.q0)
         if sStates is None and self.sX is None:
             sStates = ['x{}'.format(i+1) for i in range(nStates)] # TODO
@@ -562,7 +570,11 @@ class StateSpace(System):
             if len(self.sX)!=nCols:
                 raise Exception("Inconsistency in length of states columnNames. Number of columns detected from res: {}. States columNames (sX):".format(nCols, self.sX))
         self.sX = sStates
-        dfStates = pd.DataFrame(data=self.res.y.T, columns=sStates)
+        if xoffset is not None:
+            xoffset=np.asarray(xoffset).flatten()
+            dfStates = pd.DataFrame(data=self.res.y.T+xoffset, columns=sStates)
+        else:
+            dfStates = pd.DataFrame(data=self.res.y.T, columns=sStates)
         dfStates.insert(0, 'Time_[s]', res.t)
         self.dfStates = dfStates
         return dfStates
@@ -633,7 +645,7 @@ class StateSpace(System):
         for i,t in enumerate(time):
             df.iloc[i,:] = calcOutput(t, q[:,i])
 
-    def calc_outputs(self, res=None, insertTime=True, dataFrame=True):
+    def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
         """ 
         Call use calcOutput function for each time step and store values
         """
@@ -649,6 +661,8 @@ class StateSpace(System):
 
         # --- Calc output based on states
         self._calc_outputs(res.t, res.y, df)
+        if yoffset is not None:
+            import pdb; pdb.set_trace()
 
         if insertTime:
             df.insert(0,'Time_[s]', res.t)
@@ -673,7 +687,7 @@ class StateSpace(System):
         for i,t in enumerate(time):
             df.iloc[i,:] = self.Inputs(t, q[:,i])
 
-    def calc_inputs(self, time=None, res=None, insertTime=True, dataFrame=True):
+    def calc_inputs(self, time=None, res=None, insertTime=True, dataFrame=True, uoffset=None):
         """ 
         Compute inputs at each time step. 
         provide:
@@ -703,6 +717,8 @@ class StateSpace(System):
 
         # --- Calc inputs based on states
         self._calc_inputs(time, q, df)
+        if uoffset is not None:
+            df.iloc[:,:] +=uoffset
 
         if insertTime:
             df.insert(0,'Time_[s]', time)

@@ -1,16 +1,395 @@
+""" 
+Tools to extract a linear model from OpenFAST
+
+
+"""
+
 ##
 import numpy as np
+import pandas as pd
 import copy
 import os
+import matplotlib.pyplot as plt
+
+# Local
 import welib.weio as weio
 
 from welib.fast.tools.lin import * # backward compatibility
+from welib.fast.tools.lin import matToSIunits
+
+from welib.system.statespacelinear import LinearStateSpace
+from welib.yams.windturbine import FASTWindTurbine
+
+
+DEFAULT_COL_MAP_LIN ={
+  'psi_rot_[rad]'       : 'psi'      ,
+  'Azimuth_[rad]'       : 'psi'      ,
+  'RotSpeed_[rad/s]'    : 'dpsi'     ,
+  'd_psi_rot_[rad/s]'   : 'dpsi'     ,
+  'qt1FA_[m]'           : 'q_FA1'    ,
+  'd_qt1FA_[m/s]'       : 'dq_FA1'   ,
+  'd_PtfmSurge_[m/s]'   : 'dx'       ,
+  'd_PtfmSway_[m/s]'    : 'dy'       ,
+  'd_PtfmHeave_[m/s]'   : 'dz'       ,
+  'd_PtfmRoll_[rad/s]'  : 'dphi_x'   ,
+  'd_PtfmPitch_[rad/s]' : 'dphi_y'   ,
+  'd_PtfmYaw_[rad/s]'   : 'dphi_z'   ,
+  'PtfmSurge_[m]'       : 'x'        ,
+  'PtfmSway_[m]'        : 'y'        ,
+  'PtfmHeave_[m]'       : 'z'        ,
+  'PtfmRoll_[rad]'      : 'phi_x'    ,
+  'PtfmPitch_[rad]'     : 'phi_y'    ,
+  'PtfmYaw_[rad]'       : 'phi_z'    ,
+  'NcIMUTAxs_[m/s^2]'   : 'NcIMUAx'   ,
+  'NcIMUTAys_[m/s^2]'   : 'NcIMUAy'   ,
+  'NcIMUTAzs_[m/s^2]'   : 'NcIMUAz'   ,
+  'NcIMUTVxs_[m/s]'     : 'NcIMUVx'   ,
+  'NcIMUTVys_[m/s]'     : 'NcIMUVy'   ,
+  'NcIMUTVzs_[m/s]'     : 'NcIMUVz'   ,
+  'BPitch1_[rad]'       : 'pitchB1'    , # Also B1Pitch_[rad]
+  'PitchColl_[rad]'     : 'pitch'    , # Also B1Pitch_[rad]
+  'Qgen_[Nm]'           : 'Qgen'     ,
+  'HubFxN1_[N]'         : 'Thrust'   ,
+  'HubFyN1_[N]'         : 'fay'   ,
+  'HubFzN1_[N]'         : 'faz'   ,
+  'HubMxN1_[Nm]'        : 'Qaero'    , 
+  'HubMyN1_[Nm]'        : 'may'      , 
+  'HubMzN1_[Nm]'        : 'maz'      , 
+  'PtfmFxN1_[N]'        : 'fhx'      ,
+  'PtfmFyN1_[N]'        : 'fhy'      ,
+  'PtfmFzN1_[N]'        : 'fhz'      ,
+  'PtfmMxN1_[Nm]'       : 'mhx'      ,
+  'PtfmMyN1_[Nm]'       : 'mhy'      ,
+  'PtfmMzN1_[Nm]'       : 'mhz'      ,
+  'Q_Sg_[m]'        : 'x',
+  'Q_Sw_[m]'        : 'y',
+  'Q_Hv_[m]'        : 'z',
+  'Q_R_[rad]'       : 'phi_x',
+  'Q_P_[rad]'       : 'phi_y',
+  'Q_Y_[rad]'       : 'phi_z',
+  'QD_Sg_[m/s]'     : 'dx',
+  'QD_Sw_[m/s]'     : 'dy',
+  'QD_Hv_[m/s]'     : 'dz',
+  'QD_R_[rad/s]'    : 'dphi_x'   ,
+  'QD_P_[rad/s]'    : 'dphi_y'   ,
+  'QD_Y_[rad/s]'    : 'dphi_z'   ,
+  'QD2_Sg_[m/s^2]'  : 'ddx',
+  'QD2_Sw_[m/s^2]'  : 'ddy',
+  'QD2_Hv_[m/s^2]'  : 'ddz',
+  'QD2_R_[rad/s^2]' : 'ddphi_x'   ,
+  'QD2_P_[rad/s^2]' : 'ddphi_y'   ,
+  'QD2_Y_[rad/s^2]' : 'ddphi_z'   ,
+  'NacYaw_[rad]'    : 'yaw',
+#           'NacFxN1_[N]'       : 'fnx'   ,
+#           'NacMxN1_[N]'       : 'mnx'    , 
+#    Qgen_[Nm]  HubFxN1_[N]  HubFyN1_[N]  HubFzN1_[N] 
+#               NacFxN1_[N]  NacFyN1_[N]  NacFzN1_[N]
+}
+
+
+DEFAULT_COL_MAP_OF ={
+#   'NcIMUTAxs_[m/s^2]'   : 'TTIMUx'   ,
+#   'NcIMUTAys_[m/s^2]'   : 'TTIMUy'   ,
+#   'NcIMUTAzs_[m/s^2]'   : 'TTIMUz'   ,
+#   'BPitch1_[rad]'       : 'pitchB1'    , # Also B1Pitch_[rad]
+#   'PitchColl_[rad]'     : 'pitch'    , # Also B1Pitch_[rad]
+#   'Qgen_[Nm]'           : 'Qgen'     ,
+#   'HubFxN1_[N]'         : 'Thrust'   ,
+#   'HubFyN1_[N]'         : 'fay'   ,
+#   'HubFzN1_[N]'         : 'faz'   ,
+#   'HubMxN1_[Nm]'        : 'Qaero'    , 
+#   'HubMyN1_[Nm]'        : 'may'      , 
+#   'HubMzN1_[Nm]'        : 'maz'      , 
+#   'PtfmFxN1_[N]'        : 'fhx'      ,
+#   'PtfmFyN1_[N]'        : 'fhy'      ,
+#   'PtfmFzN1_[N]'        : 'fhz'      ,
+#   'PtfmMxN1_[Nm]'       : 'mhx'      ,
+#   'PtfmMyN1_[Nm]'       : 'mhy'      ,
+#   'PtfmMzN1_[Nm]'       : 'mhz'      ,
+  'PtfmSurge_[m]'       : 'x'        ,
+  'PtfmSway_[m]'        : 'y'        ,
+  'PtfmHeave_[m]'       : 'z'        ,
+  'PtfmRoll_[rad]'      : 'phi_x'    ,
+  'PtfmPitch_[rad]'     : 'phi_y'    ,
+  'PtfmYaw_[rad]'       : 'phi_z'    ,
+  'Q_Sg_[m]'        : 'x',
+  'Q_Sw_[m]'        : 'y',
+  'Q_Hv_[m]'        : 'z',
+  'Q_R_[rad]'       : 'phi_x',
+  'Q_P_[rad]'       : 'phi_y',
+  'Q_Y_[rad]'       : 'phi_z',
+  'Q_TFA1_[m]'      : 'q_FA1',
+  'Q_TSS1_[m]'      : 'q_FA1',
+  'Q_TFA2_[m]'      : 'q_FA2',
+  'Q_TSS2_[m]'      : 'q_SS2',
+  'Q_Yaw_[m]'       : 'yaw',
+  'NacYaw_[rad]'    : 'yaw',
+  'Azimuth_[rad]'   : 'psi'      ,
+  'Q_DrTr_[rad]'    : 'nu'   ,
+  'QD_Sg_[m/s]'     : 'dx',
+  'QD_Sw_[m/s]'     : 'dy',
+  'QD_Hv_[m/s]'     : 'dz',
+  'QD_R_[rad/s]'    : 'dphi_x'   ,
+  'QD_P_[rad/s]'    : 'dphi_y'   ,
+  'QD_Y_[rad/s]'    : 'dphi_z'   ,
+  'QD_TFA1_[m/s]'   : 'dq_FA1',
+  'QD_TSS1_[m/s]'   : 'dq_FA1',
+  'QD_TFA2_[m/s]'   : 'dq_FA2',
+  'QD_TSS2_[m/s]'   : 'dq_SS2',
+  'QD_Yaw_[rad/s]'  : 'dyaw',
+  'RotSpeed_[rad/s]': 'dpsi',
+  'Q_DrTr_[rad/s]'  : 'dnu'   ,
+  'QD_GeAz_[rad/s]' : 'dpsi',
+  'QD2_Sg_[m/s^2]'  : 'ddx',
+  'QD2_Sw_[m/s^2]'  : 'ddy',
+  'QD2_Hv_[m/s^2]'  : 'ddz',
+  'QD2_R_[rad/s^2]' : 'ddphi_x'   ,
+  'QD2_P_[rad/s^2]' : 'ddphi_y'   ,
+  'QD2_Y_[rad/s^2]' : 'ddphi_z'   ,
+  'QD2_TFA1_[m/s^2]': 'ddq_FA1',
+  'QD2_TSS1_[m/s^2]': 'ddq_FA1',
+  'QD2_TFA2_[m/s^2]': 'ddq_FA2',
+  'QD2_TSS2_[m/s^2]': 'ddq_SS2',
+  'QD2_Yaw_[rad/s^2]': 'ddyaw',
+  'QD2_GeAz_[rad/s^2]': 'ddpsi',
+  'QD2_DrTr_[rad/s^2]': 'ddnu',
+  'Q_B1F1_[m]': 'q_B1Fl1',
+  'Q_B1F2_[m]': 'q_B1Fl2',
+  'Q_B1E1_[m]': 'q_B1Ed1',
+}
+
+
+
+def _loadOFOut(filename, tMax=None):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext=='.fst':
+        if os.path.exists(filename.replace('.fst','.outb')): 
+            outfile=filename.replace('.fst','.outb')
+        elif os.path.exists(filename.replace('.fst','.out')): 
+            outfile=filename.replace('.fst','.out')
+        else:
+            raise Exception('Cannot find an OpenFAST output file near: {}'.format(filename))
+    else:
+        outfile=filename
+    print('Reading', outfile)
+    dfFS = weio.read(outfile).toDataFrame()
+    if tMax is not None:
+        dfFS=dfFS[dfFS['Time_[s]']<tMax]
+    time =dfFS['Time_[s]'].values
+    return dfFS, time
 
 # --------------------------------------------------------------------------------}
-# --- Creating a TNSB model from a FAST model
+# --- Class to handle a linear model from OpenFAST
 # --------------------------------------------------------------------------------{
-class FASTLinModel():
-    def __init__(self,ED_or_FST_file, StateFile=None, nShapes_twr=1, nShapes_bld=0, DEBUG=False):
+class FASTLinModel(LinearStateSpace):
+
+    def __init__(self, fstFilename=None, linFiles=None, pickleFile=None):
+        if pickleFile is not None:
+            # Load pickle File
+            raise NotImplementedError()
+
+        elif linFiles is not None:
+            # Load all the lin File
+            raise NotImplementedError()
+
+        elif fstFilename is not None:
+            # 
+            linFiles = [os.path.splitext(fstFilename)[0]+'.1.lin']
+            A, B, C, D, xop, uop, yop, sX, sU, sY = self.loadLinFiles(linFiles)
+        else:
+            raise Exception('Input some files')
+
+        LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, q0=xop,
+                sX=sX, sU=sU, sY=sY,
+                verbose=False)
+
+        # --- DATA
+        self.WT          = None
+        self.fstFilename = fstFilename
+        self.dfFS          = None
+        self.df            = None
+
+        if fstFilename is not None:
+            self.WT = FASTWindTurbine(fstFilename)
+            self.fstFilename=fstFilename
+
+        # Set A, B, C, D to SI units
+        self.toSI(verbose=False)
+
+
+    def loadLinFiles(self, linFiles):
+        from welib.fast.FASTLin import FASTLin # TODO rename me
+        FL = FASTLin(linfiles=linFiles)
+        A, B, C, D    = FL.average(WS = None)
+        xop, uop, yop = FL.averageOP(WS = None)
+        sX, sU, sY = FL.xdescr, FL.udescr, FL.ydescr
+        return A, B, C, D, xop, uop, yop, sX, sU, sY
+
+    def rename(self, colMap=None, verbose=False):
+        """ Rename labels """
+        if colMap is None:
+            colMap = DEFAULT_COL_MAP_LIN
+        LinearStateSpace.rename(self, colMap=colMap, verbose=verbose)
+
+    def setupSimFromOF(self, outFile=None, fstFilename=None, tMax=None, rename=True, colMap=None, **kwargs):
+
+        # --- Load turbine config
+        if fstFilename is not None:
+            self.WT = FASTWindTurbine(fstFilename)
+            self.fstFilename=fstFilename
+
+        # --- Load Reference simulation
+        if outFile is None:
+            self.dfFS, self.time = _loadOFOut(self.fstFilename, tMax)
+        else:
+            self.dfFS, self.time = _loadOFOut(outFile, tMax)
+
+        # --- Scale to SI
+        self.dfFS = matToSIunits(self.dfFS, 'dfOF', verbose=False, row=False)
+
+        # --- Rename
+        if rename:
+            if colMap is None:
+                colMap = DEFAULT_COL_MAP_OF
+            def renameList(l, colMap, verbose):
+                keys = colMap.keys()
+                for i,s in enumerate(l):
+                    if s in keys:
+                        l[i] = colMap[s] 
+                    else:
+                        if verbose:
+                            print('Label {} not renamed'.format(s))
+                return l
+            self.dfFS.columns = renameList(list(self.dfFS.columns), colMap, False)
+            # Remove duplicate
+            self.dfFS = self.dfFS.loc[:,~self.dfFS.columns.duplicated()].copy()
+
+
+
+        # --- Initial inputs to zero
+        self._zeroInputs()
+
+        # --- Initial parameters
+        #if self.modelName[0]=='B':
+        #    self.p = self.WT.yams_parameters(flavor='onebody',**kwargs)
+        #else:
+        #    self.p = self.WT.yams_parameters(**kwargs)
+
+        return self.time, self.dfFS #, self.p
+
+    def _zeroInputs(self):
+        """ 
+        u:   dictionary of functions of time
+        uop: dictionary
+        du : nu x nt array, time series of time
+        """
+        # Examples of su: T_a, M_y_a M_z_a F_B
+
+        nu = len(self.sU)
+        # --- linear inputs "u" is a "du"
+        #u=dict()
+        #for su in self.sU:
+        #    u[su] = lambda t, q=None: 0  # NOTE: qd not supported yet
+        #    #u[su] = lambda t, q=None, qd=None: 0  # Setting inputs as zero as funciton of time
+
+        #uop=dict() # Inputs at operating points
+        #for su in self.sU:
+        #    uop[su] = 0  # Setting inputs as zero as function of time
+
+        u = np.zeros((nu, len(self.time))) # Zero for all time
+
+        # --- Steady State states
+        #qop  = None
+        qdop  = None
+
+        # --- Store in class
+        # equivalent to: self.setInputTimeSeries(self.time, u)
+        self.setInputTimeSeries(self.time, u)
+
+        #self.du  = du
+        #self.uop = uop
+        #self.qop = qop
+        #self.qdop = qdop
+
+
+    def plotCompare(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
+        """ 
+        NOTE: taken from simulator. TODO harmonization
+        """
+        from welib.tools.colors import python_colors
+        # --- Simple Plot
+        dfLI = self.df
+        dfFS = self.dfFS
+        if dfLI is None and dfFS is None:
+            df = dfFS
+        else:
+            df = dfLI
+
+        if fig is None:
+            fig,axes = plt.subplots(int(np.ceil((len(df.columns)-1)/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
+        else:
+            axes=fig.axes
+            assert(len(axes)>0)
+        if nPlotCols==2:
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        else:
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.33)
+        for i,ax in enumerate((np.asarray(axes).T).ravel()):
+            if i+1>=len(df.columns):
+                continue
+            chan=df.columns[i+1]
+            if dfLI is not None:
+                if chan in dfLI.columns:
+                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear', c=python_colors(1))
+                else:
+                    print('Missing column in Lin: ',chan)
+            if dfFS is not None:
+                if chan in dfFS.columns:
+                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+                else:
+                    print('Missing column in OpenFAST: ',chan)
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel(chan)
+            ax.tick_params(direction='in')
+            if i==0:
+                ax.legend()
+
+        # Scale axes if tiny range
+        for i,ax in enumerate((np.asarray(axes).T).ravel()):
+            mi, mx = ax.get_ylim()
+            mn = (mx+mi)/2
+            if np.abs(mx-mn)<1e-6:
+                ax.set_ylim(mn-1e-5, mn+1e-5)
+        fig.suptitle(title)
+
+        if export:
+            fig.savefig(self.fstFilename.replace('.fst','{}_linmodel.png'.format(prefix)))
+
+        return fig
+
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Class to handle a FTNSB model from OpenFAST
+# --------------------------------------------------------------------------------{
+class FASTLinModelFTNSB(FASTLinModel):
+
+    def __init__(self, fstFilename=None, linFiles=None, pickleFile=None):
+        """ 
+        inputFile: a lin file or a fst file
+        """
+        FASTLinModel.__init__(self, fstFilename, linFiles, pickleFile)
+
+
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Creating a TNSB model from a FAST model. Used to be called FASTLinModel
+# --------------------------------------------------------------------------------{
+class FASTLinModelTNSB():
+    def __init__(self, ED_or_FST_file, StateFile=None, nShapes_twr=1, nShapes_bld=0, DEBUG=False):
 
         # --- Input data from fst and ED file
         ext=os.path.splitext(ED_or_FST_file)[1]
@@ -48,6 +427,7 @@ class FASTLinModel():
         self.q_init = q_init
 
     def __repr__(self):
+        # TODO use printMat from welib.tools.strings
         def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
             s=sindent
             for iline,line in enumerate(M):
@@ -68,6 +448,8 @@ class FASTLinModel():
 
 def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, ):
     """ 
+
+
     Load a pickle file contains A,B,C,D matrices either as sequence or dictionary.
     Specific treatments are possible:
        - ScaleUnits: convert to SI units deg->rad, rpm-> rad/s, kN->N
@@ -76,6 +458,10 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
        - nameMap: rename columns and indices
 
     If a "model" is given specific treatments can be done
+
+    NOTE:  the A, B, C, D matrices and state file were likely created by 
+        FASTLin.average_subset()
+
     
     """
     import pickle

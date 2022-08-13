@@ -2,6 +2,8 @@
 Tools to manipulate linear models from OpenFAST lin files
 """
 import numpy as np
+import pandas as pd
+
 def unit(s):
     iu=s.rfind('[')
     if iu>1:
@@ -16,48 +18,107 @@ def no_unit(s):
     else:
         return s
 
-def matToSIunits(Mat, name='', verbose=False):
+def matToSIunits(Mat, name='', verbose=False, row=True, col=True):
     """ 
     Scale a matrix (pandas dataframe) such that is has standard units
 
+
+        scalings['rpm']    =  (np.pi/30,'rad/s') 
+        scalings['rad' ]   =   (180/np.pi,'deg')
+        scalings['kn']     =   (1e3, 'N')
+        scalings['kw']     =   (1e3, 'W')
+        scalings['knm']    =   (1e3, 'Nm')
+        scalings['kn-m']   =   (1e3, 'Nm')
+        scalings['kn*m']   =   (1e3, 'Nm')
+
     """
-    # TODO columns
-    for irow,row in enumerate(Mat.index.values):
-        # Scaling based on units
-        u  = unit(row).lower()
-        nu = no_unit(row)
+
+    def SIscaling(name):
+        u  = unit(name).lower()
+        nu = no_unit(name)
         if u in['deg','deg/s','deg/s^2']:
-            if verbose:
-                print('Mat {} - scaling deg2rad   for row {}'.format(name,row))
-            Mat.iloc[irow,:] /=180/np.pi # deg 2 rad
-            Mat.index.values[irow]=Mat.index.values[irow].replace('rad','deg')
+            scaling = np.pi/180
+            replace = ('deg', 'rad')
         elif u=='rpm':
+            scaling = 2*np.pi/60
+            replace =  (u, 'rad/s')
+        elif u in ['kn']:
+            scaling = 1/1000 # to N
+            replace =  (u, 'N')
+        elif u in ['kw']:
+            scaling = 1/1000 
+            replace = (u, 'W')
+        elif u in ['knm', 'kn-m', 'kn*m']:
+            scaling = 1/1000 
+            replace = (u, 'Nm')
+        else:
+            return None, None, None
+        newname = nu + '_['+u.replace(replace[0],replace[1])+']'
+        return newname, scaling, replace
+
+
+    if row:
+        newIndex = list(Mat.index.values)
+        for irow,row in enumerate(Mat.index.values):
+            # Scaling based on units
+            newname, scaling, replace = SIscaling(row)
+            if newname is None:
+                continue # We skip
+            Mat.iloc[irow,:] *= scaling
+            newIndex[irow] = newname
             if verbose:
-                print('Mat {} - scaling rpm2rad/s for row {}'.format(name,row))
-            Mat.iloc[irow,:] /=60/(2*np.pi) # rpm 2 rad/s
-            Mat.index.values[irow]=nu+'_[rad/s]'
-        elif u=='knm':
+                print('Mat {} - scaling {} for row {} > {}'.format(name, row, replace, newname))
+        Mat.index = newIndex
+    if col:
+        newCols = list(Mat.columns.values)
+        for icol,col in enumerate(Mat.columns.values):
+            # Scaling based on units
+            newname, scaling, replace = SIscaling(col)
+            if newname is None:
+                continue # We skip
+            Mat.iloc[:,icol] *= scaling
+            newCols[icol] = newname
             if verbose:
-                print('Mat {} - scaling kNm to Nm for row {}'.format(name,row))
-            Mat.iloc[irow,:] /=1000 # to Nm
-            Mat.index.values[irow]=nu+'_[Nm]'
+                print('Mat {} - scaling {} for col {} > {}'.format(name, col, replace, newname))
+        Mat.columns = newCols
     return Mat
 
 
-def subMat(df, rows=None, cols=None, check=True):
+def subMat(df, rows=None, cols=None, check=True, name='matrix', removeDuplicates=True):
     """ Extract relevant part from a dataframe, perform a safety check """
     if rows is None:
         rows=df.index
     if cols is None:
         cols=df.columns
+    missingRows = [l for l in rows if l not in df.index]
+    missingCols = [c for c in cols  if c not in df.columns]
     if check:
-        missingRows = [l for l in rows if l not in df.index]
-        missingCols = [c for c in cols  if c not in df.columns]
         if len(missingRows)>0:
-            raise Exception('The following rows are missing from outputs: {}'.format(missingRows))
+            raise Exception('The following rows are missing from {}: {}'.format(name,missingRows))
         if len(missingCols)>0:
-            raise Exception('The following columns are missing from inputs: {}'.format(missingCols))
-    return df[cols].loc[rows].copy()
+            raise Exception('The following columns are missing from {}: {}'.format(name,missingCols))
+    else:
+        if len(missingRows)>0:
+            print('[WARN] The following rows are missing from {}: {}'.format(name,missingRows))
+        if len(missingCols)>0:
+            print('[WARN] The following columns are missing from {}: {}'.format(name,missingCols))
+
+    # Create an emtpy dataframe with specifications
+    M = np.zeros((len(rows),len(cols)))*np.nan
+    df_out = pd.DataFrame(data=M, index=rows, columns=cols)
+
+    # Col/Row that are indeed present in input 
+    cols_ = [s for s in cols if s in df.columns]
+    rows_ = [s for s in rows if s in df.index]
+
+    # Copy existing 
+    df_out.loc[rows_,cols_] = df.loc[rows_, cols_]
+    #df = df[cols].loc[rows].copy()
+    #if removeDuplicates:
+    #    bColDup = df.columns.duplicated()
+    #    bIndDup = df.index.duplicated()
+    #    df_out = df_out.loc[~bIndDup,~bColDup]
+    return df_out
 
 def matLabelNoUnit(df):
     """ remove unit from index and columns of matrix"""

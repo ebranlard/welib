@@ -70,7 +70,7 @@ def simulate(pkg, time, q0, qd0=None, p=None, u=None, acc=False, forcing=False, 
     # Integrate in time
     resNL = sysNL.integrate(time, method='RK45')
     # Store in a nice dataframe, potentially with acceleration and forcing
-    dfNL = sysNL.toDataFrame(acc=acc, forcing=forcing, **kwargs)
+    dfNL = sysNL.res2DataFrame(resNL, acc=acc, forcing=forcing, **kwargs)
 
     # TODO point accelerations, additional outputs etc.
 

@@ -291,7 +291,7 @@ class MechSystem():
         # Store
         self.res    = res
 
-        df=self.toDataFrame()
+        df=self.res2DataFrame()
         return res, df
 
 
@@ -481,7 +481,7 @@ class MechSystem():
         axes = np.atleast_1d(axes)
         n=self.nDOF
 
-        df=self.toDataFrame(DOFs=None, Factors=None, x0=None, xd0=None, acc=False, sAcc=None, forcing=False, sForcing=None)
+        df=self.res2DataFrame(DOFs=None, Factors=None, x0=None, xd0=None, acc=False, sAcc=None, forcing=False, sForcing=None)
         for i,ax in enumerate(axes):
             if i+1>len(df.columns):
                 continue
@@ -540,10 +540,10 @@ class MechSystem():
         """ Save time integration results to file 
         DOFs: array of string for DOFs names
         """
-        df = self.toDataFrame(DOFs=DOFs, Factors=Factors)
+        df = self.res2DataFrame(DOFs=DOFs, Factors=Factors)
         df.to_csv(filename, sep=',', index=False)
 
-    def toDataFrame(self, DOFs=None, Factors=None, x0=None, xd0=None, 
+    def res2DataFrame(self, res=None, DOFs=None, Factors=None, x0=None, xd0=None, 
             acc=False, sAcc=None, forcing=False, sForcing=None):
         """ Return time integration results as a dataframe
         DOFs:    array of string for DOFs names   (2xnDOF, positions and velocities)
@@ -553,8 +553,10 @@ class MechSystem():
               NOTE: the positions will be increased linearly
         """
         import pandas as pd
-        if self.res is None:
-            raise Exception('Call integrate before save')
+        if res is None:
+            if self.res is None:
+                raise Exception('Call integrate before res2DataFrame')
+            res = self.res
 
         if DOFs is None:
             DOFs  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]

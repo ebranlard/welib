@@ -379,7 +379,7 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8)):
     import matplotlib
     import matplotlib.pyplot as plt
     # --- Compare States
@@ -403,16 +403,16 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
     if fig is None:
 
         if nPlotCols==2:
-            fig,axes = plt.subplots(int(np.ceil(len(I)/2)), 2, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig,axes = plt.subplots(int(np.ceil(len(I)/2)), 2, sharex=True, figsize=figSize) # (6.4,4.8)
             fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
         else:
-            fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=figSize) # (6.4,4.8)
             fig.subplots_adjust(left=0.16, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
-
-
 
         if not hasattr(axes,'__len__'):
             axes=[axes]
+    else:
+        axes = fig.axes
     axes=(np.asarray(axes).T).ravel()
     
     for j,i in enumerate(I):
@@ -427,6 +427,6 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
     axes[0].set_title(title)
     axes[-1].set_xlabel('Time [s]')
     axes[-1].legend()
-    return fig, axes
+    return fig
 
 

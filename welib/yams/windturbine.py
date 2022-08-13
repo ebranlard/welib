@@ -129,6 +129,18 @@ class WindTurbineStructure():
     def acc_channels(self):
         return [dof['qdd_channel'] if dof['qdd_channel'] is not None else 'dd'+dof['name'] for dof in self.DOF if dof['active']]
 
+    @property
+    def mass(self):
+        return self.WT_rigid.mass # useful for hydro Fz
+
+    @property
+    def gravity(self):
+        try:
+            return self.FST['Gravity'] # NEW
+        except:
+            return self.ED['Gravity'] # OLD OpenFAST
+
+
     def yams_parameters(self, flavor='allbodies', 
             J_at_Origin=True,
             MoorAtRef=True,
@@ -400,7 +412,7 @@ class WindTurbineStructure():
         resLI=sysLI.integrate(time, method='RK45') # **options):
 
         # --- Convert to dataframe
-        dfLI = sysLI.toDataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
+        dfLI = sysLI.res2DataFrame(resLI, self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
 
         print('-----------------------------------------------------------------------------')
         return resLI, sysLI, dfLI
@@ -575,7 +587,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     DOFs+=[{'name':'q_FA1'  , 'active':ED['TwFADOF1'] , 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA1_[m]', 'qd_channel':'QD_TFA1_[m/s]', 'qdd_channel':'QD2_TFA1_[m/s^2]'}]
     DOFs+=[{'name':'q_SS1'  , 'active':ED['TwSSDOF1'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]', 'qdd_channel':'QD2_TSS1_[m/s^2]'}]
     DOFs+=[{'name':'q_FA2'  , 'active':ED['TwFADOF2'] , 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA2_[m]', 'qd_channel':'QD_TFA2_[m/s]', 'qdd_channel':'QD2_TFA2_[m/s^2]'}]
-    DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]', 'qdd_channel':'QD2_TSS1_[m/s^2]'}]
+    DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS2_[m]', 'qd_channel':'QD_TSS2_[m/s]', 'qdd_channel':'QD2_TSS2_[m/s^2]'}]
 
     DOFs+=[{'name':'theta_y','active':ED['YawDOF']  , 'q0': ED['NacYaw']*np.pi/180   , 'qd0':0 ,          'q_channel':'NacYaw_[deg]' , 'qd_channel':'QD_Yaw_[rad/s]', 'qdd_channel':'QD2_Yaw_[rad/s^2]'}]
     DOFs+=[{'name':'psi'    ,'active':ED['GenDOF']  , 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]', 'qdd_channel': 'QD2_GeAz_[rad/s^2]'}]

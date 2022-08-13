@@ -103,22 +103,24 @@ class SteadyBEM_Outputs:
         M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.Pn,BEM.Pt,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uia,BEM.uit,BEM.u_turb))
         np.savetxt(filename,M,header=header,fmt='%14.7e',comments='#')
 
-    def StoreIntegratedValues(BEM,df=None):
+    def StoreIntegratedValues(BEM, df=None):
+        S=pd.Series(dtype='float64')
+        S['WS_[m/s]']         = BEM.V0
+        S['RotSpeed_[rpm]']   = BEM.Omega *60/(2*np.pi)
+        S['Pitch_[deg]']      = BEM.Pitch
+        S['AeroThurst_[kN]']  = BEM.Thrust/1000
+        S['AeroTorque_[kNm]'] = BEM.Torque/1000
+        S['AeroPower_[kW]']   = BEM.Power/1000
+        S['AeroFlap_[kNm]']   = BEM.Flap/1000
+        S['AeroEdge_[kNm]']   = BEM.Edge/1000
+        S['AeroCT_[-]']       = BEM.CT
+        S['AeroCP_[-]']       = BEM.CP
+        S['AeroCQ_[-]']       = BEM.CQ
+
         if df is None:
-            df = pd.DataFrame(columns=['WS_[m/s]','RotSpeed_[rpm]','Pitch_[deg]','AeroThurst_[kN]','AeroTorque_[kNm]','AeroPower_[kW]','AeroCP_[-]','AeroCT_[-]','AeroCQ_[-]','AeroFlap_[kNm]', 'AeroEdge_[kNm]'])
-        df = df.append(pd.Series(dtype='float64'), ignore_index=True)
-        i=len(df)-1
-        df.loc[i,'WS_[m/s]']         = BEM.V0
-        df.loc[i,'RotSpeed_[rpm]']   = BEM.Omega *60/(2*np.pi)
-        df.loc[i,'Pitch_[deg]']      = BEM.Pitch
-        df.loc[i,'AeroThurst_[kN]']  = BEM.Thrust/1000
-        df.loc[i,'AeroTorque_[kNm]'] = BEM.Torque/1000
-        df.loc[i,'AeroPower_[kW]']   = BEM.Power/1000
-        df.loc[i,'AeroFlap_[kNm]']   = BEM.Flap/1000
-        df.loc[i,'AeroEdge_[kNm]']   = BEM.Edge/1000
-        df.loc[i,'AeroCT_[-]']       = BEM.CT
-        df.loc[i,'AeroCP_[-]']       = BEM.CP
-        df.loc[i,'AeroCQ_[-]']       = BEM.CQ
+            df = pd.DataFrame([S])
+        else:
+            df = pd.concat((df, pd.DataFrame([S])))
         return df
 
 def SteadyBEM(Omega,pitch,V0,xdot,u_turb,

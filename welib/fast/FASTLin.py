@@ -1,7 +1,13 @@
+""" 
+Tools to handle a set of linearization files
+
+"""
+
 import numpy as np
 import pickle
 import glob
 import os
+import re
 from welib.weio.fast_linearization_file import FASTLinearizationFile
 import pandas as pd
 
@@ -14,28 +20,51 @@ class FASTLinPeriodicOP(object):
        ws05mps.36.lin
 
     """
-    def __init__(self,prefix,nLin=None):
-        if nLin is None:
-            linfiles= glob.glob(prefix + '.*.lin') # TODO we want a more rigorous regexp
-            self.nLinTimes = len(linfiles)
-        else:
-            self.nLinTimes = nLin
-        #print(prefix, self.nLinTimes)
+    def __init__(self, prefix=None, nLin=None, linFiles=None):
 
-        self.prefix   = prefix
-        self.Data     = []
-        self.vAzim    = []
+        # --- Init data
+        self.linFiles  = []
+        self.prefix    = None
+        self.Data      = []     # List of linFile as returned by weio
+        self.vAzim     = []
         self.vWS       = []
         self.vPitch    = []
         self.vRotSpeed = []
-        self.vBu = []
-        for i in np.arange(self.nLinTimes):
-            linfilename= prefix+'.'+str(i+1)+'.lin'
-            print(linfilename)
-            if not os.path.exists(linfilename):
-                print('Linearization file missing: ',linfilename)
-            linfile=FASTLinearizationFile(linfilename)
-            df=linfile.toDataFrame()
+
+        # --- Figure out linFiles
+        def glob_re(pattern_glob, pattern_re):
+            """ 
+            glob_re(r'base.([0-9]*).py', 'base.*.py') 
+            """
+            files = glob.glob(pattern_glob)
+            files = [s.replace('\\','/') for s in files]
+            return list(filter(re.compile(pattern_re).match, files))
+        if linFiles is None:
+            if nLin is None:
+                prefix = prefix.replace('\\','/')
+                linFiles = glob_re(prefix + '.*.lin', prefix + r'.([0-9]*).lin',)
+                self.nLinTimes = len(linFiles)
+            else:
+                self.nLinTimes = nLin
+
+            linFiles = [prefix+'.'+str(i+1)+'.lin' for i in np.arange(self.nLinTimes)]
+        else:
+            self.nLinTimes = len(linFiles)
+            prefix = None # TODO
+
+        self.linFiles  = linFiles
+        self.prefix    = prefix
+        self.Data      = []     # List of linFile as returned by weio
+        self.vAzim     = []
+        self.vWS       = []
+        self.vPitch    = []
+        self.vRotSpeed = []
+        for i, linFilename in enumerate(linFiles):
+            print(linFilename)
+            if not os.path.exists(linFilename):
+                print('Linearization file missing: ',linFilename)
+            linfile = FASTLinearizationFile(linFilename)
+            df      = linfile.toDataFrame()
             self.Data.append(linfile)
             #self.A=lin['A']
             #B=linfile['B']
@@ -52,24 +81,48 @@ class FASTLinPeriodicOP(object):
                     self.vWS.append(0)
             self.vRotSpeed.append(linfile['RotSpeed'])
             self.vAzim.append(linfile['Azimuth'])
-            self.vPitch.append(df['u']['B1pitch_[rad]'][0]*180/np.pi)
+            if 'u' in df.keys():
+                self.vPitch.append(df['u']['B1pitch_[rad]'][0]*180/np.pi)
+            else:
+                self.vPitch.append(np.nan)
 
         self.WS       = np.mean(self.vWS)
         self.Pitch    = np.mean(self.vPitch)
         self.RotSpeed = np.mean(self.vRotSpeed)
 
         self.x = df['x']
-        self.y = df['y']
-        self.u = df['u']
+        self.y = None
+        self.u = None
+        if 'y' in df.keys():
+            self.y = df['y']
+        if 'u' in df.keys():
+            self.u = df['u']
         try:
             self.EDdescr = linfile['EDDOF']
         except:
             self.EDdescr = None
 
 
+    def __repr__(self):
+        s ='<FASTLinPeriodicOP object>\n'
+        s+='Attributes:\n'
+        s+=' - prefix   : {}\n'.format(self.prefix)
+        s+=' - WS       : {}\n'.format(self.WS)
+        s+=' - Pitch    : {}\n'.format(self.Pitch)
+        s+=' - RotSpeed : {}\n'.format(self.RotSpeed)
+        s+=' - vAzim    : {}\n'.format(self.vAzim)
+        s+=' - vWS      : {}\n'.format(self.vWS)
+        s+=' - vPitch   : {}\n'.format(self.vPitch)
+        s+=' - vRotSpeed: {}\n'.format(self.vRotSpeed)
+        s+=' - linFiles : {}\n'.format(self.linFiles)
+        s+=' - Data     : list of lin files, size {}\n'.format(len(self.Data))
+        return s
 
 class FASTLin(object):
-    """ Class for linearization data for different operating points (typically Campbell) """
+    """ Class to handle linearization data at different operating points 
+        Typically Campbell, or average over many conditions.
+        Can be used for one lin file as well.
+    """
     def __init__(self, linfiles=None, folder='./', prefix='', nLin=None):
         """ 
         Init with a list of linfiles, or a folder and prefix
@@ -87,11 +140,13 @@ class FASTLin(object):
             linfiles= list(glob.glob(folder + prefix + '*.*.lin')) # TODO we want a more rigorous regexp
             linfiles.sort()
 
-        Sim_Prefix=np.unique(['.'.join(f.split('.')[:-2]) for f in linfiles])
-        nSim      = len(Sim_Prefix)
+        simPrefix=np.unique(['.'.join(f.split('.')[:-2]) for f in linfiles])
+        nSim      = len(simPrefix)
+        self.simPrefix = simPrefix
         # --- Read period operating points
         print('Reading linearizations for {} operating points'.format(nSim))
-        self.OP_Data=[FASTLinPeriodicOP(pref,nLin=nLin) for pref in Sim_Prefix]
+        self.OP_Data=[FASTLinPeriodicOP(pref, nLin=nLin) for pref in simPrefix]
+
         # --- Sort by wind speed
         Isort = np.argsort(self.WS)
         self.OP_Data  = [self.OP_Data[i] for i in Isort]
@@ -103,6 +158,23 @@ class FASTLin(object):
                 for i in IBad:
                     print(self.OP_Data[i].prefix, self.OP_Data[i].nLinTimes)
             self.OP_Data = [self.OP_Data[i] for i in np.arange(nSim) if i not in IBad]
+
+    def __repr__(self):
+        s ='<FASTLin object>\n'
+        s+='Attributes:\n'
+        s+=' - OP_Data     : list of FASTLinPeriodicOP (size {})\n'.format(len(self.OP_Data))
+        s+=' * nOP         : {}\n'.format(self.nOP)
+        s+=' * MaxNLinTimes: {}\n'.format(self.MaxNLinTimes)
+        s+=' * WS          : {}\n'.format(self.WS)
+        s+=' * nLinTimes   : {}\n'.format(self.nLinTimes)
+        s+=' * xdescr, udescr, ydescr\n'
+        s+=' * xop_mean, uop_mean, yop_mean\n'
+        s+=' - simPrefix   : {}\n'.format(self.simPrefix)
+        s+='Methods:\n'
+        s+=' - stats(matName, WS=None)\n'
+        s+=' - average(WS=None)\n'
+        s+=' - exportState(self, stateFile, stateDict)\n'
+        return s
 
     @property
     def WS(self):
@@ -125,37 +197,61 @@ class FASTLin(object):
         return self.OP_Data[0].x.columns.values
     @property
     def ydescr(self):
-        return self.OP_Data[0].y.columns.values
+        if self.hasY:
+            return self.OP_Data[0].y.columns.values
+        else:
+            return []
     @property
     def EDdescr(self):
         return self.OP_Data[0].EDdescr
     @property
     def udescr(self):
-        return self.OP_Data[0].u.columns.values
+        if self.hasU:
+            return self.OP_Data[0].u.columns.values
+        else:
+            return []
     @property
     def xop_mean(self):
-        return np.mean(np.abs(np.array([op.x.values for op in self.OP_Data])),axis=0)
+        return np.mean(np.array([op.x.values for op in self.OP_Data]),axis=0)
     @property
     def uop_mean(self):
-        return np.mean(np.abs(np.array([op.u.values for op in self.OP_Data])),axis=0)
-    @property
-    def uop_mean(self):
-        return np.mean(np.abs(np.array([op.u.values for op in self.OP_Data])),axis=0)
-
+        if self.hasU:
+            return np.mean(np.array([op.u.values for op in self.OP_Data]),axis=0)
+        else:
+            raise Exception('Linear model has no inputs')
+     
     @property
     def yop_mean(self):
-        return np.mean(np.abs(np.array([op.y.values for op in self.OP_Data])),axis=0)
+        if hasY:
+            return np.mean(np.array([op.y.values for op in self.OP_Data]),axis=0)
+        else:
+            raise Exception('Linear model has no outputs')
 
-    def stats(self,matName,WS=None):
+    @property
+    def hasU(self): return 'u' in self.OP_Data[0].Data[0].keys()
+    @property
+    def hasY(self): return 'y' in self.OP_Data[0].Data[0].keys()
+    @property
+    def hasB(self): return 'B' in self.OP_Data[0].Data[0].keys()
+    @property
+    def hasC(self): return 'C' in self.OP_Data[0].Data[0].keys()
+    @property
+    def hasD(self): return 'D' in self.OP_Data[0].Data[0].keys()
+
+
+    def stats(self, matName, WS=None):
+        """ 
+        Compute statistics (mean and std) on a given matrix (A, B, C, D, M)
+        
+        """
         if WS is None:
             WS = self.WS
             nOP=self.nOP
         else:
             nOP=len(WS)
-        print('Returning stats for WS:',WS)
         M_mean=[]
 
-        shape= self.OP_Data[0].Data[0][matName].shape
+        shape = self.OP_Data[0].Data[0][matName].shape
 
         M_all       = np.zeros( (nOP, self.MaxNLinTimes, shape[0],shape[1]))
         M_mean_perWS= np.zeros( (nOP, shape[0],shape[1]))
@@ -172,7 +268,7 @@ class FASTLin(object):
                     else:
                         M_all[ii,iTimes,:,:]=op.Data[iTimes][matName]
 
-                M_mean_perWS[ii,:,:] = np.mean(M_all[ii,:,:,:],axis=0)
+                M_mean_perWS[ii,:,:] = np.mean(M_all[ii,:,:,:],axis=0) # TODO what if MaxNLinTimes is not the same for all OP
                 M_std_perWS [ii,:,:]  = np.std(M_all[ii,:,:,:],axis=0)
                 ii+=1
 
@@ -183,11 +279,43 @@ class FASTLin(object):
         return M_mean, M_mean_perWS, M_stdAzim, M_stdWS, M_all
 
 
+    def averageOP(self, WS=None):
+        """ return average operating point values for a given wind speed vector"""
+        if WS is None:
+            WS = self.WS
+        xop = np.zeros(len(self.xdescr))
+        uop = np.zeros(len(self.udescr))
+        yop = np.zeros(len(self.ydescr))
+        for iop, op in enumerate(self.OP_Data):
+            if self.WS[iop] in WS:
+                xop+=op.x.values.flatten()
+                if self.hasU:
+                    uop+=op.u.values.flatten()
+                if self.hasY:
+                    yop+=op.y.values.flatten()
+        xop /= len(WS)
+        if self.hasU:
+            uop /= len(WS)
+        else:
+            uop=None
+        if self.hasY:
+            yop /= len(WS)
+        else:
+            yop=None
+        return xop, uop, yop
+
     def average(self, WS=None):
         A_mean = self.stats('A',WS=WS)[0]
-        B_mean = self.stats('B',WS=WS)[0]
-        C_mean = self.stats('C',WS=WS)[0]
-        D_mean = self.stats('D',WS=WS)[0]
+
+        B_mean = None
+        C_mean = None
+        D_mean = None
+        if self.hasB:
+            B_mean = self.stats('B',WS=WS)[0]
+        if self.hasC:
+            C_mean = self.stats('C',WS=WS)[0]
+        if self.hasD:
+            D_mean = self.stats('D',WS=WS)[0]
         #self.M_mean = self.stats('M',WS=WS)[0]
         return A_mean, B_mean, C_mean, D_mean
 
@@ -243,16 +371,24 @@ class FASTLin(object):
             outDict['M']=Mr
 
         if exportFile is not None:
-            import pickle
-            with open(exportFile,'wb') as f:
-                pickle.dump(outDict,f)
+            self.exportState(exportFile, outDict)
 
         if sE_sel is not None:
             return Ar, Br, Cr, Dr, Mr
         else:
             return Ar, Br, Cr, Dr
 
+    def exportState(self, stateFile, stateDict):
+        import pdb; pdb.set_trace()
+        #if any(['A','B','C','D'])
+
+        import pickle
+        with open(exportFile,'wb') as f:
+            pickle.dump(stateDict,f)
+
     def save(self,filename):
         with open(filename,'wb') as f:
             pickle.dump(self,f)
+
+
 
