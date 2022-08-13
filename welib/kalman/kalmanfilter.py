@@ -118,6 +118,13 @@ class KalmanFilter(object):
         self.Yx.iloc[:,:]=Yx
         self.Yu.iloc[:,:]=Yu
 
+        if np.any(np.isnan(Xx)): raise Exception('A matrix contains nan')
+        if np.any(np.isnan(Xu)): raise Exception('B matrix contains nan')
+        if np.any(np.isnan(Yx)): raise Exception('C matrix contains nan')
+        if np.any(np.isnan(Yu)): raise Exception('D matrix contains nan')
+
+
+
     def discretize(self,dt,method='exponential'):
         self.dt=dt
         self.Xxd,self.Xud = KFDiscretize(self.Xx, self.Xu, dt, method=method)
@@ -350,6 +357,10 @@ class KalmanFilter(object):
 
     def plot_X(KF, title='States X', **kwargs):
         return _plot(KF.time, KF.X_clean, KF.X_hat, KF.sX, title=title, **kwargs)
+
+
+    def plot_U(KF, title='Inputs U', **kwargs):
+        print('>>> kalmanfilter: TODO TODO plot U')
 
     def plot_Y(KF, title='Measurements Y', **kwargs):
         return _plot(KF.time, KF.Y_clean, KF.Y_hat, KF.sY, title=title, X_noisy=KF.Y, **kwargs)

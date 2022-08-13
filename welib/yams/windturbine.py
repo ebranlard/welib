@@ -17,6 +17,7 @@ Example:
 
 import os
 import numpy as np
+import pandas as pd
 import copy
 import welib.weio as weio
 from collections import OrderedDict
@@ -76,6 +77,18 @@ class WindTurbineStructure():
     @property
     def qd0(self):
         return np.array([dof['qd0'] for dof in self.DOF if dof['active']])
+
+    @property
+    def z0(self):
+        z0 = np.concatenate((self.q0, self.qd0))
+        return pd.Series(z0, index=self.zname)
+
+    @property
+    def zname(self):
+        qnames = self.DOFname
+        qdnames = ['d' + s for s in qnames]
+        return list(qnames) + list(qdnames)
+
     @property
     def DOFname(self):
         return np.array([dof['name'] for dof in self.DOF if dof['active']])
@@ -492,11 +505,12 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     # --- Blades 
     bldFile = weio.read(bldfile)
     m    = bldFile['BldProp'][:,3]
-    if algo=='OpenFAST':
-        jxxG=0*m
-    else:
-        jxxG = m     # NOTE: unknown
-        print('>>> windturbine.py: TODO: using unknown jxxG')
+    jxxG=0*m
+    #if algo=='OpenFAST':
+    #    jxxG=0*m
+    #else:
+    #    jxxG = 0*m     # NOTE: unknown
+    #    print('>>> windturbine.py: TODO: using unknown jxxG')
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
     bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, nSpan=nSpanBld, gravity=gravity, algo=algo) 
@@ -564,12 +578,17 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     # --- Moorings
     MAP = None
+    K_Moor=np.zeros((6,6))
     if FST['CompMooring']==1:
         from welib.moor.mappp import Map
 #         try:
         MAP = Map(fstFilename)
+        z_OT  = twr.pos_global[2]  
+        K_Moor,_ = MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,z_OT))
+        #K_Moor2,_ = MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,0))
 #         except:
 #             print('YAMS Wind Turbine: problem loading MAP model (only supported on windows)')
+
     elif FST['CompMooring']==2:
         print('YAMS Wind Turbine: TODO MoorDyn')
 
@@ -622,7 +641,8 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     WT.yawBr      = yawBr      # origin at N
     WT.twr        = twr        # origin at T
     WT.fnd        = fnd        # origin at T
-    WT.MAP        = MAP       # typically at (0,0,0) NOTE: not a body
+    WT.MAP        = MAP        # typically at (0,0,0) NOTE: not a body
+    WT.K_Moor     = K_Moor     # HACK..
     WT.RNA        = RNA        # origin at N, rigid body bld+hub+gen+nac
     WT.WT_rigid   = WT_rigid   # rigid wind turbine body, origin at MSL
 

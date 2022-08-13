@@ -395,8 +395,8 @@ class MechSystem():
     def A(self):
         if self.M_is_func:
             raise Exception('A matrix not a property when M is a function')
-        if hasattr(self,'_force_fn') or not hasattr(self,'_force_ts'):
-            print('[WARN] The A matrix is not guaranteed to be the linearized version when force is given as a function')
+        #if hasattr(self,'_force_fn') or not hasattr(self,'_force_ts'):
+        #    print('[WARN] The A matrix is not guaranteed to be the linearized version when force is given as a function')
         return StateMatrix(self._Minv,self.C,self.K)
 
     @property
@@ -408,8 +408,8 @@ class MechSystem():
         """
         if self.M_is_func:
             raise Exception('B matrix not a property when M is a function')
-        if hasattr(self,'_force_fn') or not hasattr(self,'_force_ts'):
-            print('[WARN] The B matrix is not guaranteed to be the linearized version when force is given as a function')
+        #if hasattr(self,'_force_fn') or not hasattr(self,'_force_ts'):
+        #    print('[WARN] The B matrix is not guaranteed to be the linearized version when force is given as a function')
         nDOF = self.nDOF
         B = np.zeros((2*nDOF,nDOF))
         B[nDOF:,:] = self._Minv

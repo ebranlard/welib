@@ -18,6 +18,16 @@ def no_unit(s):
     else:
         return s
 
+def renameList(l, colMap, verbose=False):
+    keys = colMap.keys()
+    for i,s in enumerate(l):
+        if s in keys:
+            l[i] = colMap[s] 
+        else:
+            if verbose:
+                print('Label {} not renamed'.format(s))
+    return l
+
 def matToSIunits(Mat, name='', verbose=False, row=True, col=True):
     """ 
     Scale a matrix (pandas dataframe) such that is has standard units

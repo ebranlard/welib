@@ -173,16 +173,19 @@ class LinearStateSpace(StateSpace):
     def nInputs(self):
     def nOutputs(self):
     """
-    def __init__(self, A, B, C=None, D=None, q0=None,
+    def __init__(self, A=None, B=None, C=None, D=None, q0=None,
             sX=None, sU=None, sY=None,
-            verbose=False):
+            verbose=False,
+            ):
         """ 
         INPUTS:
          - sX: list of names for states
          - sY: list of names for outputs
          - sU: list of names for inputs
         """
-        self.A=np.asarray(A)
+        if A is None:
+            A = np.zeros((0,0))
+        self.A = np.asarray(A)
         if B is None:
             B = np.zeros((A.shape[0],0))
         self.B = np.asarray(B)
@@ -237,7 +240,7 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------}
     # --- Initial conditions
     # --------------------------------------------------------------------------------{
-    def setStateInitialConditions(self,q0=None):
+    def setStateInitialConditions(self, q0=None):
         self.q0 = np.zeros(self.nStates)
         if q0 is not None:
             if len(q0)!=self.nStates:
@@ -313,7 +316,7 @@ class LinearStateSpace(StateSpace):
         if np.any(np.isnan(self.B)): raise Exception('B matrix contains nan')
         if np.any(np.isnan(self.C)): raise Exception('C matrix contains nan')
         if np.any(np.isnan(self.D)): raise Exception('D matrix contains nan')
-        if np.any(np.isnan(self.q0)): raise Exception('Intial condition contains nan')
+        if np.any(np.isnan(self.q0)): raise Exception('Initial condition contains nan')
 
         # Clean values stored after integration
         self.cleanSimData()
@@ -525,7 +528,7 @@ class LinearStateSpace(StateSpace):
         #df = df.loc[:,~df.columns.duplicated()].copy()
 
 
-    def extract(self, sX=None, sU=None, sY=None, verbose=False, check=True):
+    def extract(self, sX=None, sU=None, sY=None, verbose=False, check=True, inPlace=True):
         """ """
         A, B, C, D = self.toDataFrames()
         if sX is not None:
@@ -539,9 +542,11 @@ class LinearStateSpace(StateSpace):
             C = subMat(C, rows=sY,          check=check, name = 'C')
             D = subMat(D, rows=sY,          check=check, name = 'D')
 
-        self.fromDataFrames(A, B, C, D)
-        # --- trigger, make sure q0 has the right size
-        self.setStateInitialConditions(None)
+        if inPlace:
+            self.fromDataFrames(A, B, C, D)
+            # Trigger, make sure q0 has the right size
+            self.setStateInitialConditions(None)
+        return A, B, C, D
 
 
     def toSI(self, verbose=False):
@@ -609,6 +614,23 @@ class LinearStateSpace(StateSpace):
             s+=str(self.D)+'\n'
         s+='| - q0: {}\n'.format(self.q0)
         return s
+
+    def load(self, pickleFile):
+        import pickle
+        d = pickle.load(open(pickleFile,'rb'))
+        self.fromDataFrames(d['A'], d['B'], d['C'], d['D'])
+        self.setStateInitialConditions(d['q0'])
+        return d
+
+    def save(self, pickleFile, extraDict=None):
+        import pickle
+        if extraDict is None:
+            extraDict={}
+        A, B, C, D = self.toDataFrames()
+        q0 = self.q0
+        extraDict.update({'A':A, 'B':B, 'C':C, 'D':D, 'q0':q0})
+        pickle.dump(extraDict, open(pickleFile,'wb'))
+
 
 
     # --------------------------------------------------------------------------------}

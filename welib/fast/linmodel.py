@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import welib.weio as weio
 
 from welib.fast.tools.lin import * # backward compatibility
-from welib.fast.tools.lin import matToSIunits
+from welib.fast.tools.lin import matToSIunits, renameList
 
 from welib.system.statespacelinear import LinearStateSpace
 from welib.yams.windturbine import FASTWindTurbine
@@ -100,12 +100,12 @@ DEFAULT_COL_MAP_OF ={
 #   'HubMxN1_[Nm]'        : 'Qaero'    , 
 #   'HubMyN1_[Nm]'        : 'may'      , 
 #   'HubMzN1_[Nm]'        : 'maz'      , 
-#   'PtfmFxN1_[N]'        : 'fhx'      ,
-#   'PtfmFyN1_[N]'        : 'fhy'      ,
-#   'PtfmFzN1_[N]'        : 'fhz'      ,
-#   'PtfmMxN1_[Nm]'       : 'mhx'      ,
-#   'PtfmMyN1_[Nm]'       : 'mhy'      ,
-#   'PtfmMzN1_[Nm]'       : 'mhz'      ,
+  'FxhO_[N]'        : 'fhx'      ,
+  'FyhO_[N]'        : 'fhy'      ,
+  'FzhO_[N]'        : 'fhz'      ,
+  'MxhO_[Nm]'       : 'mhx'      ,
+  'MyhO_[Nm]'       : 'mhy'      ,
+  'MzhO_[Nm]'       : 'mhz'      ,
   'PtfmSurge_[m]'       : 'x'        ,
   'PtfmSway_[m]'        : 'y'        ,
   'PtfmHeave_[m]'       : 'z'        ,
@@ -160,7 +160,7 @@ DEFAULT_COL_MAP_OF ={
 
 
 
-def _loadOFOut(filename, tMax=None):
+def _loadOFOut(filename, tMax=None, zRef=None):
     ext = os.path.splitext(filename)[1].lower()
     if ext=='.fst':
         if os.path.exists(filename.replace('.fst','.outb')): 
@@ -171,11 +171,41 @@ def _loadOFOut(filename, tMax=None):
             raise Exception('Cannot find an OpenFAST output file near: {}'.format(filename))
     else:
         outfile=filename
-    print('Reading', outfile)
+    print('FASTLinModel: loading OF :', outfile)
     dfFS = weio.read(outfile).toDataFrame()
     if tMax is not None:
         dfFS=dfFS[dfFS['Time_[s]']<tMax]
     time =dfFS['Time_[s]'].values
+
+    # Remove duplicate
+    dfFS = dfFS.loc[:,~dfFS.columns.duplicated()].copy()
+
+    # --- Convert hydro loads to loads at zref
+    #if zRef is not None:
+    #    from welib.FEM.utils import transferRigidLoads
+    #    from welib.yams.utils import transferLoadsZPoint
+    #    P_HDRef = np.array((0,0,0))
+    #    P_EDRef = np.array((0,0,zRef))
+    #    # Input loads are at the body origin (ED ref point)
+    #    cols = ['HydroFxi_[N]', 'HydroFyi_[N]', 'HydroFzi_[N]', 'HydroMxi_[N-m]', 'HydroMyi_[N-m]', 'HydroMzi_[N-m]']
+    #    if 'Q_R_[rad]' in dfFS.columns:
+    #        vphi_x = dfFS['Q_R_[rad]']
+    #    else:
+    #        vphi_x = dfFS['PtfmRoll_[deg]'].values*np.pi/180
+    #    if 'Q_P_[rad]' in dfFS.columns:
+    #        vphi_y = dfFS['Q_P_[rad]']
+    #    else:
+    #        vphi_y = dfFS['PtfmPitch_[deg]'].values*np.pi/180
+    #    if 'Q_Y_[rad]' in dfFS.columns:
+    #        vphi_z = dfFS['Q_Y_[rad]']
+    #    else:
+    #        vphi_z = dfFS['PtfmYaw_[deg]'].values*np.pi/180
+    #    M = dfFS[cols].values
+    #    MT = transferLoadsZPoint(M.T, zRef, vphi_x, vphi_y, vphi_z, rot_type='default').T
+    #    cols = ['FxhO_[N]', 'FyhO_[N]', 'FzhO_[N]', 'MxhO_[Nm]', 'MyhO_[Nm]', 'MzhO_[Nm]']
+    #    dfHydro = pd.DataFrame(data=MT, columns=cols)
+    #    dfFS = pd.concat((dfFS, dfHydro), axis=1)
+
     return dfFS, time
 
 # --------------------------------------------------------------------------------}
@@ -183,35 +213,48 @@ def _loadOFOut(filename, tMax=None):
 # --------------------------------------------------------------------------------{
 class FASTLinModel(LinearStateSpace):
 
-    def __init__(self, fstFilename=None, linFiles=None, pickleFile=None):
+    def __init__(self, fstFilename=None, linFiles=None, pickleFile=None, usePickle=False):
+        # Init parent class
+        LinearStateSpace.__init__(self)
+        # --- DATA
+        self.WT          = None
+        self.fstFilename = fstFilename
+        self.dfFS        = None
+        self.df          = None
+
+        if usePickle:
+            if fstFilename is None:
+                raise Exception('Provide an fstFilename to figure out the pickle file')
+            self.fstFilename = fstFilename
+            if os.path.exists(self.defaultPickleFile):
+                self.load()
+                return
+
         if pickleFile is not None:
             # Load pickle File
-            raise NotImplementedError()
+            self.load(pickleFile)
 
         elif linFiles is not None:
             # Load all the lin File
-            raise NotImplementedError()
+            A, B, C, D, xop, uop, yop, sX, sU, sY = self.loadLinFiles(linFiles)
+            LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, q0=xop,
+                    sX=sX, sU=sU, sY=sY,
+                    verbose=False)
 
         elif fstFilename is not None:
             # 
             linFiles = [os.path.splitext(fstFilename)[0]+'.1.lin']
             A, B, C, D, xop, uop, yop, sX, sU, sY = self.loadLinFiles(linFiles)
+            LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, q0=xop,
+                    sX=sX, sU=sU, sY=sY,
+                    verbose=False)
         else:
             raise Exception('Input some files')
 
-        LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, q0=xop,
-                sX=sX, sU=sU, sY=sY,
-                verbose=False)
-
-        # --- DATA
-        self.WT          = None
-        self.fstFilename = fstFilename
-        self.dfFS          = None
-        self.df            = None
-
         if fstFilename is not None:
+            print('FASTLinModel: loading WT :',fstFilename)
             self.WT = FASTWindTurbine(fstFilename)
-            self.fstFilename=fstFilename
+            self.fstFilename     = fstFilename
 
         # Set A, B, C, D to SI units
         self.toSI(verbose=False)
@@ -235,14 +278,20 @@ class FASTLinModel(LinearStateSpace):
 
         # --- Load turbine config
         if fstFilename is not None:
-            self.WT = FASTWindTurbine(fstFilename)
-            self.fstFilename=fstFilename
+            print('FASTLinModel: loading WT :',fstFilename)
+            self.WT_sim = FASTWindTurbine(fstFilename)
+            self.fstFilename_sim = fstFilename 
+        else:
+            self.WT_sim = self.WT
+            self.fstFilename_sim = self.fstFilename 
 
         # --- Load Reference simulation
+        #zRef =  -self.p['z_OT'] 
+        zRef = - self.WT_sim.twr.pos_global[2]  
         if outFile is None:
-            self.dfFS, self.time = _loadOFOut(self.fstFilename, tMax)
+            self.dfFS, self.time = _loadOFOut(self.fstFilename_sim, tMax, zRef)
         else:
-            self.dfFS, self.time = _loadOFOut(outFile, tMax)
+            self.dfFS, self.time = _loadOFOut(outFile, tMax, zRef)
 
         # --- Scale to SI
         self.dfFS = matToSIunits(self.dfFS, 'dfOF', verbose=False, row=False)
@@ -251,15 +300,6 @@ class FASTLinModel(LinearStateSpace):
         if rename:
             if colMap is None:
                 colMap = DEFAULT_COL_MAP_OF
-            def renameList(l, colMap, verbose):
-                keys = colMap.keys()
-                for i,s in enumerate(l):
-                    if s in keys:
-                        l[i] = colMap[s] 
-                    else:
-                        if verbose:
-                            print('Label {} not renamed'.format(s))
-                return l
             self.dfFS.columns = renameList(list(self.dfFS.columns), colMap, False)
             # Remove duplicate
             self.dfFS = self.dfFS.loc[:,~self.dfFS.columns.duplicated()].copy()
@@ -268,6 +308,11 @@ class FASTLinModel(LinearStateSpace):
 
         # --- Initial inputs to zero
         self._zeroInputs()
+
+
+        # --- Initial conditions (Non-linear)!
+        q0 = self.WT.z0
+        self.q0_NL = q0[self.sX]
 
         # --- Initial parameters
         #if self.modelName[0]=='B':
@@ -308,9 +353,12 @@ class FASTLinModel(LinearStateSpace):
 
         #self.du  = du
         #self.uop = uop
-        #self.qop = qop
+        self.qop = self.qop_default
         #self.qdop = qdop
 
+    @property
+    def qop_default(self):
+        return pd.Series(np.zeros(len(self.sX)), index=self.sX)
 
     def plotCompare(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
         """ 
@@ -363,10 +411,33 @@ class FASTLinModel(LinearStateSpace):
         fig.suptitle(title)
 
         if export:
-            fig.savefig(self.fstFilename.replace('.fst','{}_linmodel.png'.format(prefix)))
+            fig.savefig(self.fstFilename.replace('.fst','{}_linModel.png'.format(prefix)))
 
         return fig
 
+    @property
+    def defaultPickleFile(self):
+        if self.fstFilename is None:
+            raise NotImplementedError('Default pickle with no fstFilename')
+        return self.fstFilename.replace('.fst','_linModel.pkl')
+
+    def save(self, pickleFile=None):
+        if pickleFile is None:
+            pickleFile = self.defaultPickleFile
+        if self.WT.MAP is not None:
+            self.WT.MAP.lib=None
+            self.WT.MAP = None
+        d = {'fstFilename':self.fstFilename, 'WT':self.WT}
+        LinearStateSpace.save(self, pickleFile, d)
+
+    def load(self, pickleFile=None):
+        if pickleFile is None:
+            pickleFile = self.defaultPickleFile
+        print('FASTLinModel: loading PKL:',pickleFile)
+
+        d = LinearStateSpace.load(self, pickleFile)
+        self.WT          = d['WT']
+        self.fstFilename = d['fstFilename']
 
 
 
@@ -375,11 +446,11 @@ class FASTLinModel(LinearStateSpace):
 # --------------------------------------------------------------------------------{
 class FASTLinModelFTNSB(FASTLinModel):
 
-    def __init__(self, fstFilename=None, linFiles=None, pickleFile=None):
+    def __init__(self, fstFilename=None, linFiles=None, pickleFile=None, usePickle=False):
         """ 
         inputFile: a lin file or a fst file
         """
-        FASTLinModel.__init__(self, fstFilename, linFiles, pickleFile)
+        FASTLinModel.__init__(self, fstFilename, linFiles, pickleFile, usePickle=usePickle)
 
 
 
