@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
+from welib.weio.rosco_performance_file import ROSCOPerformanceFile
 import matplotlib.pyplot as plt
 
 MyDir=os.path.dirname(__file__)
@@ -9,6 +10,7 @@ MyDir=os.path.dirname(__file__)
 
 def main(test=False,extra=False):
     """ Run a parametric study on lambda and pitch, save CP and CT """
+    exportFmt='rosco' # Export format, rosco or csv
     # --- Turbine data
     nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
 
@@ -52,29 +54,23 @@ def main(test=False,extra=False):
     CP[CP<0]=0
     CT[CT<0]=0
 
-    if not test:
+    # --- Create a ROSCO performance file
+    rs = ROSCOPerformanceFile(pitch=vpitch, tsr=vlambda, CP=CP, CT=CT)
+
+    # --- Export performances to a given file format
+    if exportFmt.lower()=='csv':
         np.savetxt('_CP.csv'    , CP     , delimiter=',')
         np.savetxt('_CT.csv'    , CT     , delimiter=',')
         np.savetxt('_Lambda.csv', vlambda, delimiter=',')
         np.savetxt('_Pitch.csv' , vpitch , delimiter=',')
+    elif exportFmt.lower()=='rosco':
+        rs.write('_CPCTCQ.txt')
 
-        # --- Plotting matrix of CP values
-        from mpl_toolkits.mplot3d import Axes3D
-        from matplotlib import cm
-        fig = plt.figure()
-        ax = fig.gca(projection='3d')
-        LAMBDA, PITCH = np.meshgrid(vlambda, vpitch)
-        i,j = np.unravel_index(CP.argmax(), CP.shape)
-
-        CP[CP<0]=0
-        surf = ax.plot_surface(LAMBDA, PITCH, np.transpose(CP), cmap=cm.coolwarm, linewidth=0, antialiased=True,alpha=0.8, label='$C_p$')
-        ax.scatter(LAMBDA[j,i],PITCH[j,i],CP[i,j],c='k',marker='o',s=50, label=r'$C_{p,max}$')
-        ax.view_init(elev=20., azim=26)
-        ax.set_xlabel('Lambda [-]')
-        ax.set_ylabel('Pitch [deg]')
-        ax.set_zlabel(r'Power coefficient [-]')
-        ax.set_title('BEM Steady - CP-lambda-pitch ')
-        #fig.colorbar(surf, shrink=0.5, aspect=5)
+    # --- Plotting matrix of CP values
+    fig = rs.plotCP3D()
+    ax = fig.gca()
+    ax.set_title('BEM Steady - CP-lambda-pitch ')
+    #fig.colorbar(surf, shrink=0.5, aspect=15)
 
 
 
@@ -84,6 +80,10 @@ if __name__=="__main__":
     plt.show()
 if __name__=="__test__":
     main(True)
+    try:
+        os.remove('_CPCTCQ.txt')
+    except:
+        pass
 if __name__=="__export__":
     main(extra=True)
     from welib.tools.repo import export_figs_callback

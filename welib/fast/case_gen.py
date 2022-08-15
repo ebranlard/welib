@@ -12,6 +12,8 @@ import welib.weio.fast_input_file as fi
 import welib.fast.runner as runner
 import welib.fast.postpro as postpro
 from welib.weio.fast_wind_file import FASTWndFile
+from welib.weio.rosco_performance_file import ROSCOPerformanceFile
+from welib.weio.csv_file import CSVFile
 
 # --------------------------------------------------------------------------------}
 # --- Template replace 
@@ -74,7 +76,7 @@ def copyTree(src, dst):
                 forceMergeFlatDir(s, d)
 
 
-def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False):
+def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False, dryRun=False):
     """ Generate inputs files by replacing different parameters from a template file.
     The generated files are placed in the output directory `outputDir` 
     The files are read and written using the library `weio`. 
@@ -148,6 +150,10 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
                 ext = os.path.splitext(templatefilename)[-1]
                 newfilename_full = os.path.join(wd,strID+ext)
                 newfilename      = strID+ext
+                if dryRun:
+                    newfilename = os.path.join(workDir, newfilename)
+                    obj=type('DummyClass', (object,), {'filename':newfilename})
+                    return newfilename, {'Root':obj}
             else:
                 newfilename, newfilename_full = rebaseFileName(templatefilename, workDir, strID)
             #print('--------------------------------------------------------------')
@@ -167,7 +173,7 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
             #print('Setting', FileKey, '|',Key, 'to',ParamValue)
             if Key=='OutList':
                 OutList=f[Key]
-                f[Key]=addToOutlist(OutList, ParamValue)
+                f[Key] = addToOutlist(OutList, ParamValue)
             else:
                 f[Key] = ParamValue
         else:
@@ -242,12 +248,15 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
             if k =='__index__' or k=='__name__':
                 continue
             new_mainFile, Files = replaceRecurse(main_file_base, '', k, v, Files, strID, wd, TemplateFiles)
+            if dryRun:
+                break
 
         # --- Writting files
         for k,f in Files.items():
             if k=='Root':
                 files.append(f.filename)
-            f.write()
+            if not dryRun:
+                f.write()
 
     # --- Remove extra files at the end
     if removeRefSubFiles:
@@ -263,8 +272,12 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
                 pass
     return files
 
-def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False):
-    """ Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
+# def templateReplace(PARAMS, *args, **kwargs):
+def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False, dryRun=False):
+    """ 
+    see templateReplaceGeneral
+
+    Replace parameters in a fast folder using a list of dictionaries where the keys are for instance:
         'DT', 'EDFile|GBRatio', 'ServoFile|GenEff'
     """
     # --- For backward compatibility, remove "FAST|" from the keys
@@ -274,8 +287,24 @@ def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeA
             k_new=k_old.replace('FAST|','')
             p[k_new] = p.pop(k_old)
     
+#     return templateReplaceGeneral(PARAMS, *args, **kwargs)
     return templateReplaceGeneral(PARAMS, templateDir, outputDir=outputDir, main_file=main_file, 
-            removeAllowed=removeAllowed, removeRefSubFiles=removeRefSubFiles, oneSimPerDir=oneSimPerDir)
+            removeAllowed=removeAllowed, removeRefSubFiles=removeRefSubFiles, oneSimPerDir=oneSimPerDir, dryRun=dryRun)
+
+def addToOutlist(OutList, Signals):
+    if not isinstance(Signals,list):
+        raise Exception('Signals must be a list')
+    if len(Signals)==0:
+        return
+    for s in Signals:
+        if len(s)>0:
+            ss=s.split()[0].strip().strip('"').strip('\'')
+            AlreadyIn = any([o.find(ss)==1 for o in OutList ])
+            if not AlreadyIn:
+                OutList.append(s)
+    if len(OutList[0])>0:
+        OutList=['']+OutList # ensuring first element has zero length (fast_input_file limitation for now) 
+    return OutList
 
 def removeFASTOuputs(workDir):
     # Cleaning folder
@@ -296,6 +325,7 @@ def paramsSteadyAero(p=None):
     p['AeroFile|AFAeroMod']=1 # remove dynamic effects dynamic
     p['AeroFile|WakeMod']=1 # remove dynamic inflow dynamic
     p['AeroFile|TwrPotent']=0 # remove tower shadow
+    p['AeroFile|TwrAero']=False # remove tower shadow
     return p
 
 def paramsNoGen(p=None):
@@ -344,7 +374,7 @@ def paramsStiff(p=None):
     p['EDFile|PtfmYDOF']  = 'False'
     return p
 
-def paramsWS_RPM_Pitch(WS, RPM, Pitch, baseDict=None, flatInputs=False):
+def paramsWS_RPM_Pitch(WS, RPM, Pitch, baseDict=None, flatInputs=False, tMax_OneRotation=True, nPerRot=60, dtMax=0.2):
     """ 
     Generate OpenFAST "parameters" (list of dictionaries with "address")
     chaing the inputs in ElastoDyn, InflowWind for different wind speed, RPM and Pitch
@@ -378,6 +408,15 @@ def paramsWS_RPM_Pitch(WS, RPM, Pitch, baseDict=None, flatInputs=False):
             p=dict()
         else:
             p = baseDict.copy()
+        if tMax_OneRotation:
+            # Ensure that tMax is large enough to cover one full rotation
+            omega = rpm/60*2*np.pi
+            T = 2*np.pi/omega
+            dt = min(dtMax, T/nPerRot)
+            p['DT']     = dt
+            p['TMax']   = T+3*dt # small buffer
+            p['DT_Out'] = 'default'
+
         p['EDFile|RotSpeed']       = rpm
         p['InflowFile|HWindSpeed'] = ws
         p['InflowFile|WindType']   = 1 # Setting steady wind
@@ -386,7 +425,8 @@ def paramsWS_RPM_Pitch(WS, RPM, Pitch, baseDict=None, flatInputs=False):
         p['EDFile|BlPitch(3)']     = pitch
 
         p['__index__']  = i
-        p['__name__']   = '{:03d}_ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
+        #p['__name__']   = '{:03d}_ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['__index__'],p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
+        p['__name__']   = 'ws{:04.1f}_pt{:04.2f}_om{:04.2f}'.format(p['InflowFile|HWindSpeed'],p['EDFile|BlPitch(1)'],p['EDFile|RotSpeed'])
         i=i+1
         PARAMS.append(p)
     return PARAMS
@@ -476,14 +516,23 @@ def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tm
 # --------------------------------------------------------------------------------}
 # --- Tools for typical wind turbine study 
 # --------------------------------------------------------------------------------{
-def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5),WS=None,Omega=None, # operating conditions
-          TMax=20,bStiff=True,bNoGen=True,bSteadyAero=True, # simulation options
-          reRun=True, 
-          fastExe=None,showOutputs=True,nCores=4): # execution options
+def CPCT_LambdaPitch(refdir, main_fastfile, Lambda=None, Pitch=np.linspace(-10,40,5), WS=None, Omega=None, # operating conditions
+          TMax=20, bStiff=True, bNoGen=True, bSteadyAero=True, # simulation options
+          reRun=True, skipWrite = False, # Set options to False to speed up execution when reruning this function
+          workDir=None,
+          exportBase=None, exportFmt='rosco', plot=False,  # IO
+          fastExe=None, showOutputs=True, nCores=4): # execution options
     """ Computes CP and CT as function of tip speed ratio (lambda) and pitch.
     There are two main ways to define the inputs:
       - Option 1: provide Lambda and Pitch (deg)
       - Option 2: provide WS (m/s), Omega (in rpm) and Pitch (deg), in which case len(WS)==len(Omega)
+    INPUTS:
+      - refdir: reference directory containing all the necessary input files for openFAST, will be copied
+                to workDir
+      - main_fastfile: main .fst file used as a template (with the subfiles referenced from it)
+      - fastEXE : path to fast executable used to run the simulations
+      - exportBase: basename to be used to export data to CSV format (TODO other formats)
+      - plot: plot and return figure
     """
 
     WS_default=5 # If user does not provide a wind speed vector, wind speed used
@@ -507,7 +556,7 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
         else:
             WS = np.ones(Omega.shape)*WS_default
     else:
-        Omega = WS_default * Lambda/R*60/(2*np.pi) # TODO, use more realistic combinations of WS and Omega
+        Omega = WS_default * Lambda/R*60/(2*np.pi) #[rpm] TODO, use more realistic combinations of WS and Omega
         WS    = np.ones(Omega.shape)*WS_default
 
 
@@ -521,7 +570,17 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
             RPM_flat.append(rpm)
             Pitch_flat.append(pitch)
     # --- Setting up default options
-    baseDict={'TMax': TMax, 'DT': 0.01, 'DT_Out': 0.1} # NOTE: Tmax should be at least 2pi/Omega
+    baseDict={'TMax': TMax, 'DT': 0.01, 'DT_Out': 0.1, 'OutFileFmt':2} # NOTE: Tmax should be at least 2pi/Omega
+    baseDict['AeroFile|OutList'] = ['', '"RtAeroCp"', '"RtAeroCt"','"RtVAvgxh"']
+    baseDict['EDFile|OutList']   = ['', '"Azimuth"' ,'"RotSpeed"', '"BldPitch1"']
+    baseDict['InflowFile|PLexp'] = 0   
+    baseDict['InflowFile|RefHt'] = 90  # Arbitrary
+    baseDict['InflowFile|NWindVel']   =1
+    baseDict['InflowFile|WindVxiList']=0
+    baseDict['InflowFile|WindVyiList']=0
+    baseDict['InflowFile|WindVziList']=90 # should be same as RefHt
+    baseDict['InflowFile|OutList']    = ['', '"Wind1VelX"']
+
     baseDict = paramsNoController(baseDict)
     if bStiff:
         baseDict = paramsStiff(baseDict)
@@ -531,14 +590,19 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
         baseDict = paramsSteadyAero(baseDict)
 
     # --- Creating set of parameters to be changed
-    # TODO: verify that RtAeroCp and RtAeroCt are present in AeroDyn outlist
-    PARAMS = paramsWS_RPM_Pitch(WS_flat,RPM_flat,Pitch_flat,baseDict=baseDict, flatInputs=True)
+    PARAMS = paramsWS_RPM_Pitch(WS_flat, RPM_flat, Pitch_flat, baseDict=baseDict, flatInputs=True, tMax_OneRotation=True)
 
     # --- Generating all files in a workDir
-    workDir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
-    print('>>> Generating inputs files in {}'.format(workDir))
+    if workDir is None:
+        workDir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
+    print('>>> Generating {} inputs files in {}'.format(len(PARAMS), workDir))
     RemoveAllowed=reRun # If the user want to rerun, we can remove, otherwise we keep existing simulations
-    fastFiles=templateReplace(PARAMS, refdir, outputDir=workDir,removeRefSubFiles=True,removeAllowed=RemoveAllowed,main_file=main_fastfile)
+    fastFiles=templateReplace(PARAMS, refdir, outputDir=workDir,removeRefSubFiles=True,removeAllowed=RemoveAllowed,main_file=main_fastfile, dryRun=skipWrite)
+
+    # --- Creating a batch script just in case
+    batchFile = os.path.join(workDir,'_RUN_ALL.bat')
+    runner.writeBatch(batchFile, fastFiles, fastExe=fastExe, nBatches=nCores)
+    print('>>> Batch script created (if preferred):', batchFile)
 
     # --- Running fast simulations
     print('>>> Running {} simulations...'.format(len(fastFiles)))
@@ -549,27 +613,47 @@ def CPCT_LambdaPitch(refdir,main_fastfile,Lambda=None,Pitch=np.linspace(-10,40,5
     outFiles = [os.path.splitext(f)[0]+'.outb' for f in fastFiles]
     # outFiles = glob.glob(os.path.join(workDir,'*.outb'))
     ColKeepStats  = ['RotSpeed_[rpm]','BldPitch1_[deg]','RtAeroCp_[-]','RtAeroCt_[-]','Wind1VelX_[m/s]']
-    result = postpro.averagePostPro(outFiles,avgMethod='periods',avgParam=1,ColKeep=ColKeepStats,ColSort='RotSpeed_[rpm]')
-    # print(result)        
+    ColSort='RotSpeed_[rpm]'
+    try:
+        result = postpro.averagePostPro(outFiles, avgMethod='periods', avgParam=1, ColKeep=ColKeepStats, ColSort=ColSort )
+    except:
+        result = postpro.averagePostPro(outFiles, avgMethod='constantwindow', avgParam=None, ColKeep=ColKeepStats, ColSort=ColSort)
 
     # --- Adding lambda, sorting and keeping only few columns
-    result['lambda_[-]'] = result['RotSpeed_[rpm]']*R*2*np.pi/60/result['Wind1VelX_[m/s]']
-    result.sort_values(['lambda_[-]','BldPitch1_[deg]'],ascending=[True,True],inplace=True)
-    ColKeepFinal=['lambda_[-]','BldPitch1_[deg]','RtAeroCp_[-]','RtAeroCt_[-]']
-    result=result[ColKeepFinal]
-    print('>>> Done')
+    result['lambda_[-]'] = result['RotSpeed_[rpm]']* R*2*np.pi/60/result['Wind1VelX_[m/s]']
+    result.sort_values(['lambda_[-]','BldPitch1_[deg]'], ascending=[True,True], inplace=True)
+    ColKeepFinal = ['lambda_[-]','BldPitch1_[deg]','RtAeroCp_[-]','RtAeroCt_[-]']
+    result = result[ColKeepFinal]
 
-    #  --- Converting to a matrices
+    #  --- Converting to matrices
     CP = result['RtAeroCp_[-]'].values
     CT = result['RtAeroCt_[-]'].values
-    MCP =CP.reshape((len(Lambda),len(Pitch)))
-    MCT =CT.reshape((len(Lambda),len(Pitch)))
-    LAMBDA, PITCH = np.meshgrid(Lambda, Pitch)
-    #  --- CP max
-    i,j = np.unravel_index(MCP.argmax(), MCP.shape)
-    MaxVal={'CP_max':MCP[i,j],'lambda_opt':LAMBDA[j,i],'pitch_opt':PITCH[j,i]}
+    MCP = CP.reshape((len(Lambda),len(Pitch)))
+    MCT = CT.reshape((len(Lambda),len(Pitch)))
 
-    return  MCP,MCT,Lambda,Pitch,MaxVal,result
+    # --- Create a ROSCO PerformanceFile for convenience
+    turbname    = os.path.basename(exportBase)
+    rs = ROSCOPerformanceFile(pitch=Pitch, tsr=Lambda, CP=MCP, CT=MCT, name=turbname)
+
+    if exportBase is not None:
+        if exportFmt.lower()=='rosco':
+            # Write a ROSCO performance file
+            aeroMapFile = exportBase+'_CPCTCQ.txt'
+            rs.write(aeroMapFile)
+        elif exportFmt.lower()=='csv':
+            # Write individual CSV files
+            np.savetxt(exportBase+'_Lambda.csv',Lambda,delimiter = ',')
+            np.savetxt(exportBase+'_Pitch.csv' ,Pitch ,delimiter = ',')
+            np.savetxt(exportBase+'_CP.csv'    ,MCP    ,delimiter = ',')
+            np.savetxt(exportBase+'_CT.csv'    ,MCT    ,delimiter = ',')
+        else:
+            raise NotImplementedError(exportFmt)
+
+    fig = None
+    if plot is True:
+        # --- Plotting matrix of CP values
+        fig = rs.plotCP3D()
+    return  rs, result, fig
 
 
 if __name__=='__main__':
