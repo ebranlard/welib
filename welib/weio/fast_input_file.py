@@ -42,7 +42,7 @@ class FASTInputFile(File):
 
     @staticmethod
     def defaultExtensions():
-        return ['.dat','.fst','.txt','.fstf']
+        return ['.dat','.fst','.txt','.fstf','.dvr']
 
     @staticmethod
     def formatName():
@@ -235,9 +235,15 @@ class FASTInputFileBase(File):
             return self.data[self.iCurrent]
 
     # Making it behave like a dictionary
-    def __setitem__(self,key,item):
+    def __setitem__(self, key, item):
         I = self.getIDs(key)
         for i in I: 
+            if self.data[i]['tabType'] != TABTYPE_NOT_A_TAB:
+                # For tables, we automatically update variable that stores the dimension 
+                nRows   = len(item)
+                dimVar  = self.data[i]['tabDimVar']
+                iDimVar = self.getID(dimVar)
+                self.data[iDimVar]['value'] = nRows # Avoiding a recursive call to __setitem__ here
             self.data[i]['value'] = item
 
     def __getitem__(self,key):
@@ -289,11 +295,14 @@ class FASTInputFileBase(File):
         splits = comment.split('\n')
         for i,com in zip(self._IComment, splits):
             self.data[i]['value'] = com
+            self.data[i]['label'] = ''
+            self.data[i]['descr'] = ''
+            self.data[i]['isComment'] = True
 
     @property
     def _IComment(self):
         """ return indices of comment line"""
-        return [] # Typical OpenFAST files have comment on second line [1]
+        return [1] # Typical OpenFAST files have comment on second line [1]
 
 
     def read(self, filename=None):
@@ -312,18 +321,23 @@ class FASTInputFileBase(File):
 
         # --- Tables that can be detected based on the "Value" (first entry on line)
         # TODO members for  BeamDyn with mutliple key point                                                                                                                                                                                                                                                                                                        ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
-        NUMTAB_FROM_VAL_DETECT  = ['HtFract'  , 'TwrElev'   , 'BlFract'  , 'Genspd_TLU' , 'BlSpn'        , 'WndSpeed' , 'HvCoefID' , 'AxCoefID' , 'JointID'  , 'Dpth'      , 'FillNumM'    , 'MGDpth'    , 'SimplCd'  , 'RNodes'       , 'kp_xr'      , 'mu1'           , 'TwrHtFr'   , 'TwrRe'  , 'WT_X']
-        NUMTAB_FROM_VAL_DIM_VAR = ['NTwInpSt' , 'NumTwrNds' , 'NBlInpSt' , 'DLL_NumTrq' , 'NumBlNds'     , 'NumCases' , 'NHvCoef'  , 'NAxCoef'  , 'NJoints'  , 'NCoefDpth' , 'NFillGroups' , 'NMGDepths' , 1          , 'BldNodes'     , 'kp_total'   , 1               , 'NTwrHt'    , 'NTwrRe' , 'NumTurbines']
-        NUMTAB_FROM_VAL_VARNAME = ['TowProp'  , 'TowProp'   , 'BldProp'  , 'DLLProp'    , 'BldAeroNodes' , 'Cases'    , 'HvCoefs'  , 'AxCoefs'  , 'Joints'   , 'DpthProp'  , 'FillGroups'  , 'MGProp'    , 'SmplProp' , 'BldAeroNodes' , 'MemberGeom' , 'DampingCoeffs' , 'TowerProp' , 'TowerRe', 'WindTurbines']
-        NUMTAB_FROM_VAL_NHEADER = [2          , 2           , 2          , 2            , 2              , 2          , 2          , 2          , 2          , 2           , 2             , 2           , 2          , 1              , 2            , 2               , 1           , 1        , 2 ]
-        NUMTAB_FROM_VAL_TYPE    = ['num'      , 'num'       , 'num'      , 'num'        , 'num'          , 'num'      , 'num'      , 'num'      , 'num'      , 'num'       , 'num'         , 'num'       , 'num'      , 'mix'          , 'num'        , 'num'           , 'num'       , 'num'    , 'mix']
+        NUMTAB_FROM_VAL_DETECT  = ['HtFract'  , 'TwrElev'   , 'BlFract'  , 'Genspd_TLU' , 'BlSpn'        , 'HvCoefID' , 'AxCoefID' , 'JointID'  , 'Dpth'      , 'FillNumM'    , 'MGDpth'    , 'SimplCd'  , 'RNodes'       , 'kp_xr'      , 'mu1'           , 'TwrHtFr'   , 'TwrRe'  , 'WT_X']
+        NUMTAB_FROM_VAL_DIM_VAR = ['NTwInpSt' , 'NumTwrNds' , 'NBlInpSt' , 'DLL_NumTrq' , 'NumBlNds'     , 'NHvCoef'  , 'NAxCoef'  , 'NJoints'  , 'NCoefDpth' , 'NFillGroups' , 'NMGDepths' , 1          , 'BldNodes'     , 'kp_total'   , 1               , 'NTwrHt'    , 'NTwrRe' , 'NumTurbines']
+        NUMTAB_FROM_VAL_VARNAME = ['TowProp'  , 'TowProp'   , 'BldProp'  , 'DLLProp'    , 'BldAeroNodes' , 'HvCoefs'  , 'AxCoefs'  , 'Joints'   , 'DpthProp'  , 'FillGroups'  , 'MGProp'    , 'SmplProp' , 'BldAeroNodes' , 'MemberGeom' , 'DampingCoeffs' , 'TowerProp' , 'TowerRe', 'WindTurbines']
+        NUMTAB_FROM_VAL_NHEADER = [2          , 2           , 2          , 2            , 2              , 2          , 2          , 2          , 2           , 2             , 2           , 2          , 1              , 2            , 2               , 1           , 1        , 2 ]
+        NUMTAB_FROM_VAL_TYPE    = ['num'      , 'num'       , 'num'      , 'num'        , 'num'          , 'num'      , 'num'      , 'num'      , 'num'       , 'num'         , 'num'       , 'num'      , 'mix'          , 'num'        , 'num'           , 'num'       , 'num'    , 'mix']
         # SubDyn
         NUMTAB_FROM_VAL_DETECT  += [ 'RJointID'        , 'IJointID'        , 'COSMID'             , 'CMJointID'         ]
         NUMTAB_FROM_VAL_DIM_VAR += [ 'NReact'          , 'NInterf'         , 'NCOSMs'             , 'NCmass'            ]
         NUMTAB_FROM_VAL_VARNAME += [ 'BaseJoints'      , 'InterfaceJoints' , 'MemberCosineMatrix' , 'ConcentratedMasses']
         NUMTAB_FROM_VAL_NHEADER += [ 2                 , 2                 , 2                    , 2                   ]
         NUMTAB_FROM_VAL_TYPE    += [ 'mix'             , 'num'             , 'num'                , 'num'               ]
-
+        # AD Driver old and new
+        NUMTAB_FROM_VAL_DETECT  += [ 'WndSpeed' , 'HWndSpeed' ]
+        NUMTAB_FROM_VAL_DIM_VAR += [ 'NumCases' , 'NumCases'  ]
+        NUMTAB_FROM_VAL_VARNAME += [ 'Cases'    , 'Cases'     ]
+        NUMTAB_FROM_VAL_NHEADER += [ 2          , 2           ]
+        NUMTAB_FROM_VAL_TYPE    += [ 'num'      , 'num'       ]
 
         # --- Tables that can be detected based on the "Label" (second entry on line)
         # NOTE: MJointID1, used by SubDyn and HydroDyn
@@ -402,7 +416,7 @@ class FASTInputFileBase(File):
                 # Parsing outlist, and then we continue at a new "i" (to read END etc.)
                 OutList,i = parseFASTOutList(lines,i+1) 
                 d = getDict()
-                if self.hasNodal:
+                if self.hasNodal and not firstword.endswith('_Nodal'):
                     d['label']   = firstword+'_Nodal'
                 else:
                     d['label']   = firstword
@@ -718,8 +732,11 @@ class FASTInputFileBase(File):
                 s+='\n'.join('\t'.join('{:15.8e}'.format(x) for x in y) for y in d['value'])
             elif d['tabType']==TABTYPE_FIL:
                 #f.write('{} {} {}\n'.format(d['value'][0],d['tabDetect'],d['descr']))
-                s+='{} {} {}\n'.format(d['value'][0],d['label'],d['descr']) # TODO?
-                s+='\n'.join(fil for fil in d['value'][1:])
+                if len(d['value'])==1:
+                    s+='{} {} {}'.format(d['value'][0],d['label'],d['descr']) # TODO?
+                else:
+                    s+='{} {} {}\n'.format(d['value'][0],d['label'],d['descr']) # TODO?
+                    s+='\n'.join(fil for fil in d['value'][1:])
             elif d['tabType']==TABTYPE_NUM_BEAMDYN:
                 # TODO use dedicated sub-class
                 data = d['value']
@@ -741,6 +758,11 @@ class FASTInputFileBase(File):
         if filename:
             self.filename = filename
         if self.filename:
+            dirname = os.path.dirname(self.filename)
+            if not os.path.exists(dirname) and len(dirname)>0:
+                print('[WARN] Creating directory: ',dirname)
+                os.makedirs(dirname)
+
             self._write()
         else:
             raise Exception('No filename provided')
@@ -1601,7 +1623,8 @@ class ADPolarFile(FASTInputFileBase):
 
             # Linear Cn
             try:
-                CnLin = self['C_nalpha'+labOffset]*(alpha-self['alpha0'+labOffset]*np.pi/180.)
+                CnLin_ = self['C_nalpha'+labOffset]*(alpha-self['alpha0'+labOffset]*np.pi/180.)
+                CnLin = CnLin_.copy()
                 CnLin[alpha<-20*np.pi/180]=np.nan
                 CnLin[alpha> 30*np.pi/180]=np.nan
                 df['Cn_pot_[-]'] = CnLin
@@ -1621,13 +1644,19 @@ class ADPolarFile(FASTInputFileBase):
             except:
                 pass
 
+            # Cnf
+            try:
+                df['Cn_f_[-]'] = CnLin_ * ((1 + np.sqrt(0.7)) / 2) ** 2
+            except:
+                pass
+
         if len(dfs)==1:
             dfs=dfs[list(dfs.keys())[0]]
         return dfs
 
     @property
     def comment(self):
-        return FASTInputFileBase.comment
+        return '\n'.join([self.data[i]['value'] for i in self._IComment])
 
     @comment.setter
     def comment(self, comment):
@@ -1812,7 +1841,8 @@ class ExtPtfmFile(FASTInputFileBase):
 
 
 if __name__ == "__main__":
-    f = FASTInputFile()
+    f = FASTInputFile('tests/example_files/FASTIn_HD_SeaState.dat')
+    print(f)
     pass
     #B=FASTIn('Turbine.outb')
 
