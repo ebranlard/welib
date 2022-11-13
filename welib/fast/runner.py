@@ -21,7 +21,7 @@ FAST_EXE='openfast'
 # --- Tools for executing FAST
 # --------------------------------------------------------------------------------{
 # --- START cmd.py
-def run_cmds(inputfiles, exe, parallel=True, showOutputs=True, nCores=None, showCommand=True, verbose=True): 
+def run_cmds(inputfiles, exe, parallel=True, showOutputs=True, nCores=None, showCommand=True, flags=[], verbose=True): 
     """ Run a set of simple commands of the form `exe input_file`
     By default, the commands are run in "parallel" (though the method needs to be improved)
     The stdout and stderr may be displayed on screen (`showOutputs`) or hidden. 
@@ -49,6 +49,8 @@ def run_cmds(inputfiles, exe, parallel=True, showOutputs=True, nCores=None, show
     if nCores<0:
         nCores=len(inputfiles)+1
     for i,f in enumerate(inputfiles):
+        if len(flags)>0:
+            f=flags + [f]
         #print('Process {}/{}: {}'.format(i+1,len(inputfiles),f))
         ps.append(run_cmd(f, exe, wait=(not parallel), showOutputs=showOutputs, showCommand=showCommand))
         iProcess += 1
@@ -81,20 +83,15 @@ def run_cmds(inputfiles, exe, parallel=True, showOutputs=True, nCores=None, show
 def run_cmd(input_file_or_arglist, exe, wait=True, showOutputs=False, showCommand=True):
     """ Run a simple command of the form `exe input_file` or `exe arg1 arg2`  """
     # TODO Better capture STDOUT
-    if isinstance(input_file_or_arglist, list):
-        args= [exe] + input_file_or_arglist
-        input_file     = ' '.join(input_file_or_arglist)
-        input_file_abs = input_file
-    else:
-        input_file=input_file_or_arglist
-    if not os.path.isabs(input_file):
-        input_file_abs=os.path.abspath(input_file)
-    else:
-        input_file_abs=input_file
     if not os.path.exists(exe):
         raise Exception('Executable not found: {}'.format(exe))
-    args= [exe,input_file]
-    #args = 'cd '+workDir+' && '+ exe +' '+basename
+    if isinstance(input_file_or_arglist, list):
+        input_file     = ' '.join(input_file_or_arglist)
+        args= [exe] + input_file_or_arglist
+    else:
+        input_file=input_file_or_arglist
+        args= [exe,input_file]
+    args = [a.strip() for a in args] # No surounding spaces, could cause issue
     shell=False
     if showOutputs:
         STDOut= None
@@ -113,9 +110,66 @@ def run_cmd(input_file_or_arglist, exe, wait=True, showOutputs=False, showComman
     p.cmd            = ' '.join(args)
     p.args           = args
     p.input_file     = input_file
-    p.input_file_abs = input_file_abs
     p.exe            = exe
     return p
+
+def runBatch(batchfiles, showOutputs=True, showCommand=True, verbose=True):
+    """ 
+    Run one or several batch files
+    TODO: error handling, status, parallel
+    """
+
+    if showOutputs:
+        STDOut= None
+    else:
+        STDOut= open(os.devnull, 'w') 
+
+    curDir = os.getcwd()
+    print('Current directory', curDir)
+
+    def runOneBatch(batchfile):
+        batchfile = batchfile.strip()
+        batchfile = batchfile.replace('\\','/')
+        batchDir  = os.path.dirname(batchfile)
+        if showCommand:
+            print('>>>> Running batch file:', batchfile)
+            print('           in directory:', batchDir)
+        try:
+            os.chdir(batchDir)
+            returncode=subprocess.call([batchfile], stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
+        except:
+            os.chdir(curDir)
+            returncode=-10
+        return returncode
+
+    shell=False
+    if isinstance(batchfiles,list):
+        returncodes = []
+        Failed=[]
+        for batchfile in batchfiles:
+            returncode = runOneBatch(batchfile)
+            if returncode!=0:
+                Failed.append(batchfile)
+        if len(Failed)>0:
+            returncode=1
+            print('[FAIL] {}/{} Batch files failed.'.format(len(Failed),len(batchfiles)))
+            print(Failed)
+        else:
+            returncode=0
+            if verbose:
+                print('[ OK ] {} batch filse ran successfully.'.format(len(batchfiles)))
+        # TODO
+    else:
+        returncode = runOneBatch(batchfiles)
+        if returncode==0:
+            if verbose:
+                print('[ OK ] Batch file ran successfully.')
+        else:
+            print('[FAIL] Batch file failed:',batchfiles)
+
+    return returncode
+
+
 # --- END cmd.py
 
 def run_fastfiles(fastfiles, fastExe=None, parallel=True, showOutputs=True, nCores=None, showCommand=True, reRun=True, verbose=True):
@@ -141,7 +195,7 @@ def run_fast(input_file, fastExe=None, wait=True, showOutputs=False, showCommand
     return run_cmd(input_file, fastExe, wait=wait, showOutputs=showOutputs, showCommand=showCommand)
 
 
-def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False):
+def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flags='', flags_after=''):
     """ Write batch file, everything is written relative to the batch file"""
     if fastExe is None:
         fastExe=FAST_EXE
@@ -149,23 +203,32 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False):
     batchfile_abs = os.path.abspath(batchfile)
     batchdir      = os.path.dirname(batchfile_abs)
     fastExe_rel   = os.path.relpath(fastExe_abs, batchdir)
+    if len(flags)>0:
+        flags=' '+flags
+    if len(flags_after)>0:
+        flags_after=' '+flags_after
     def writeb(batchfile, fastfiles):
         with open(batchfile,'w') as f:
             for ff in fastfiles:
                 ff_abs = os.path.abspath(ff)
                 ff_rel = os.path.relpath(ff_abs, batchdir)
-                l = fastExe_rel + ' '+ ff_rel
-                f.write("%s\n" % l)
+                l = fastExe_rel + flags + ' '+ ff_rel + flags_after
+                f.write("{:s}\n".format(l))
             if pause:
                 f.write("pause\n") # windows only..
 
     if nBatches==1:
         writeb(batchfile, fastfiles)
+        return batchfile
     else:
         splits = np.array_split(fastfiles,nBatches)
         base, ext = os.path.splitext(batchfile)
+        batchfiles=[]
         for i in np.arange(nBatches):
-            writeb(base+'_{:d}'.format(i+1) + ext, splits[i])
+            batchfile = base+'_{:d}'.format(i+1) + ext
+            batchfiles.append(batchfile)
+            writeb(batchfile, splits[i])
+        return batchfiles
 
 
 

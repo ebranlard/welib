@@ -86,6 +86,7 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.5,
     # This can be adapted/improved
     myprint('Number of panels from wind speed and distance:{:15d}'.format(nPanels_FromU0))
     myprint('Number of panels from number of rotations    :{:15d}'.format(nPanels_FromRot))
+    myprint('Number of panels from average between two    :{:15d}'.format(int((nPanels_FromRot+nPanels_FromU0)/2)))
     if nPanels_FromRot>nPanels_FromU0:
         # Criteria based on rotation wins: 
         myprint('[INFO] Using number of rotations to setup number of panels')
@@ -130,7 +131,7 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.5,
 
 
 
-def OLAFParamsRPM(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPerRot=None,  verbose=True, dt_glue_code=None):
+def OLAFParamsRPM(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPerRot=None,  verbose=True, dt_glue_code=None, totalRot=None):
     """ 
     Computes recommended time step and wake length based on the rotational speed in RPM
 

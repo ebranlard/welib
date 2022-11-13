@@ -154,7 +154,6 @@ def AD_BldGag(AD,AD_bld,chordOut=False):
         return r_gag
 
 def BD_BldStations(BD, BDBld):
- 
     """ Returns BeamDyn Blade Quadrature Points positions:
         - Defines where BeamDyn outputs are provided.
         - Used by BeamDyn for the Input Mesh  u%DistrLoad
@@ -163,8 +162,9 @@ def BD_BldStations(BD, BDBld):
           This will NOT match the "Initial Nodes" reported  in the summary file.
     INPUTS:
        - BD: either:
-           - a filename of a ElastoDyn input file
+           - a filename of a BeamDyn input file
            - an instance of FileCl, as returned by reading the file, BD = weio.read(BD_filename)
+       - BDBld: same as BD but for the BeamDyn blade file
     OUTPUTS:
         - r_nodes: spanwise position from the balde root of the Blade stations
     """
@@ -209,7 +209,7 @@ def BD_BldStations(BD, BDBld):
         r    = np.concatenate( (rStations, rmid))
         r    = np.unique(np.sort(r))
     else:
-        raise NotImplementedError('BeamDyn with Gaussian quadrature points')
+        raise NotImplementedError('Only Gauss and Trap quadrature implemented')
     return r
 
 def BD_BldGag(BD):
@@ -1418,16 +1418,16 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
             result = pd.DataFrame(np.nan, index=np.arange(len(outFiles)), columns=columns)
         result.iloc[i,:] = MeanValues.copy().values
 
-    if ColSort is not None:
-        # Sorting 
-        result.sort_values([ColSort],inplace=True,ascending=True)
-        result.reset_index(drop=True,inplace=True) 
 
     if len(invalidFiles)==len(outFiles):
         raise Exception('None of the files can be read (or exist)!. For instance, cannot find: {}'.format(invalidFiles[0]))
     elif len(invalidFiles)>0:
         print('[WARN] There were {} missing/invalid files: \n {}'.format(len(invalidFiles),'\n'.join(invalidFiles)))
 
+    if ColSort is not None:
+        # Sorting 
+        result.sort_values([ColSort],inplace=True,ascending=True)
+        result.reset_index(drop=True,inplace=True) 
 
     return result 
 
