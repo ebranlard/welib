@@ -7,6 +7,10 @@
 import os
 import numpy as np
 
+class NoCrossingException(Exception):
+    pass
+class NoStallDetectedException(Exception):
+    pass
 
 
 class Polar(object):
@@ -37,11 +41,13 @@ class Polar(object):
         - toAeroDyn: write AeroDyn file 
     """
 
-    def __init__(self, FileName_or_Re, alpha=None, cl=None, cd=None, cm=None, compute_params=False, radians=None, fformat='auto'):
+    def __init__(self, FileName_or_Re=None, alpha=None, cl=None, cd=None, cm=None, Re=None, compute_params=False, radians=None, fformat='auto'):
         """Constructor
 
         Parameters
         ----------
+        FileName_or_Re: float or string
+            For backward compatibility.. Filename or reynolds number
         Re : float
             Reynolds number
         alpha : ndarray (deg)
@@ -54,13 +60,20 @@ class Polar(object):
             moment coefficient
         """
         self._radians=False 
-        if isinstance(FileName_or_Re,str):
+        if isinstance(FileName_or_Re, str):
             alpha, cl, cd, cm, Re = loadPolarFile(FileName_or_Re, fformat=fformat, to_radians=False)
         else:
-            Re = FileName_or_Re
+            if Re is None:
+                Re = FileName_or_Re
 
         self.Re = Re
         self.alpha = np.array(alpha)
+        if cl is None:
+            cl = np.zeros_like(self.alpha)
+        if cd is None:
+            cd = np.zeros_like(self.alpha)
+        if cm is None:
+            cm = np.zeros_like(self.alpha)
         self.cl = np.array(cl)
         self.cd = np.array(cd)
         self.cm = np.array(cm)
@@ -147,10 +160,10 @@ class Polar(object):
 
 
     @classmethod
-    def fromfile(cls,filename,fformat='auto',compute_params=False, to_radians=False):
+    def fromfile(cls, filename, fformat='auto', compute_params=False, to_radians=False):
         """Constructor based on a filename"""
         alpha, cl, cd, cm, Re = loadPolarFile(filename, fformat=fformat, to_radians=to_radians)
-        return cls(Re,alpha,cl,cd,cm,compute_params,radians=to_radians)
+        return cls(Re=Re, alpha=alpha, cl=cl, cd=cd, cm=cm, compute_params=compute_params, radians=to_radians)
 
     def correction3D(
         self,
@@ -522,7 +535,7 @@ class Polar(object):
                 print("Angle encountered for which there is no CM table value " "(near +/-180 deg). Program will stop.")
         return cm_new
 
-    def unsteadyParams(self, window_offset=None):
+    def unsteadyParams(self, window_offset=None, nMin=720):
         """compute unsteady aero parameters used in AeroDyn input file
 
                 TODO Questions to solve:
@@ -566,6 +579,14 @@ class Polar(object):
         cl[np.abs(cl)<1e-10]=0
         alpha = self.alpha
 
+        if len(alpha)<nMin:
+            #print('[INFO] Polar: unsteady params, interpolating polar data to have sufficient number of points')
+            # we interpolate
+            alpha_lin = np.linspace(np.min(alpha), np.max(alpha), nMin)
+            alpha = np.unique(np.sort(np.concatenate((alpha, alpha_lin))))
+            cl = self.cl_interp(alpha)
+            cd = self.cd_interp(alpha)
+
         if self._radians:
             cn = cl * np.cos(alpha) + cd * np.sin(alpha)
         else:
@@ -581,7 +602,11 @@ class Polar(object):
             window = [np.radians(-20), np.radians(20)]
         else:
             window = [-20, 20]
-        alpha0cn = _find_alpha0(alpha, cn, window)
+        try:
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='up')
+        except NoCrossingException:
+            print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='down')
 
         # checks for inppropriate data (like cylinders)
         if len(np.unique(cl)) == 1:
@@ -591,13 +616,17 @@ class Polar(object):
         # These point are detected from slope changes of cn, positive of negative inflections
         # The upper stall point is the first point after alpha0 with a "hat" inflection
         # The lower stall point is the first point below alpha0 with a "v" inflection
-        a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="inflections")
+        try:
+            a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="inflections")
+        except NoStallDetectedException:
+            print('[WARN] Polar: Cn unsteady, cannot find stall based on inflections, using min and max')
+            a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="minmax")
 
         # --- cn slope
         # Different method may be used. The max method ensures the the curve is always below its tangent
         # Leastsquare fit in the region alpha0cn+window_offset
         cnSlope_poly, a0cn_poly = _find_slope(alpha, cn, window=alpha0cn + dwin, method="leastsquare", x0=alpha0cn)
-        cnSlope_poly, a0cn_poly = _find_slope(alpha, cn, window=alpha0cn + dwin, method="leastsquare")
+        #cnSlope_poly, a0cn_poly = _find_slope(alpha, cn, window=alpha0cn + dwin, method="leastsquare")
         # Max (KEEP ME)
         # cnSlope_max,a0cn_max = _find_slope(alpha, cn, window=[alpha0cn,a_StallUpp], method='max', xi=alpha0cn)
         # Optim
@@ -617,13 +646,21 @@ class Polar(object):
         # --- cn at points where f=0.7
         cn_f = cnSlope * (alpha - alpha0cn) * ((1 + np.sqrt(0.7)) / 2) ** 2
         xInter, _ = _intersections(alpha, cn_f, alpha, cn)
+        #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        #ax.plot(alpha, cn_f    , label='cn_f')
+        #ax.plot(alpha, cn    , label='cn')
+        #ax.set_xlabel('')
+        #ax.set_ylabel('')
+        #ax.legend()
+        #plt.show()
         if len(xInter) == 3:
             a_f07_Upp = xInter[2]
             a_f07_Low = xInter[0]
         else:
-           print('[WARN] Polar, unsteady params: cn_f does not intersect cn 3 times.')
-           a_f07_Upp =  abs(xInter[0]) 
-           a_f07_Low = -abs(xInter[0])
+            print('[WARN] Polar: Cn unsteady, cn_f does not intersect cn 3 times. Intersections:{}.'.format(xInter))
+            a_f07_Upp =  abs(xInter[0]) 
+            a_f07_Low = -abs(xInter[0])
 
         # --- DEBUG plot
         #         import matplotlib.pyplot as plt
@@ -957,7 +994,7 @@ class Polar(object):
         Cl = fs * Clinv + (1 - fs) * Clfs
         return Cl, fs
 
-    def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None):
+    def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None, unsteadyParams=True):
         from welib.weio.fast_input_file import ADPolarFile
         cleanComments=comment is not None
         # Read a template file for AeroDyn polars
@@ -970,26 +1007,30 @@ class Polar(object):
         else:
             ADpol = ADPolarFile(templateFile)
 
-        # Compute unsteady parameters
-        (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=self.unsteadyParams()
+
 
         # --- Updating the AD polar file 
-        # Setting unsteady parameters
         ADpol['Re'] = Re # TODO UNKNOWN
-        if np.isnan(alpha0):
-            ADpol['alpha0'] = 0
-        else:
-            ADpol['alpha0'] = np.around(alpha0, 4)
-        ADpol['alpha1']    = np.around(alpha1, 4) # TODO approximate
-        ADpol['alpha2']    = np.around(alpha2, 4) # TODO approximate
-        ADpol['C_nalpha']  = np.around(cnSlope ,4)
-        ADpol['Cn1']       = np.around(cn1, 4)    # TODO verify
-        ADpol['Cn2']       = np.around(cn2, 4)
-        ADpol['Cd0']       = np.around(cd0, 4)
-        ADpol['Cm0']       = np.around(cm0, 4)
+
+        # Compute unsteady parameters
+        if unsteadyParams:
+            (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=self.unsteadyParams()
+
+            # Setting unsteady parameters
+            if np.isnan(alpha0):
+                ADpol['alpha0'] = 0
+            else:
+                ADpol['alpha0'] = np.around(alpha0, 4)
+            ADpol['alpha1']    = np.around(alpha1, 4) # TODO approximate
+            ADpol['alpha2']    = np.around(alpha2, 4) # TODO approximate
+            ADpol['C_nalpha']  = np.around(cnSlope ,4)
+            ADpol['Cn1']       = np.around(cn1, 4)    # TODO verify
+            ADpol['Cn2']       = np.around(cn2, 4)
+            ADpol['Cd0']       = np.around(cd0, 4)
+            ADpol['Cm0']       = np.around(cm0, 4)
 
         # Setting polar 
-        PolarTable = np.column_stack((self.alpha,self.cl,self.cd,self.cm))
+        PolarTable = np.column_stack((self.alpha, self.cl, self.cd, self.cm))
         ADpol['NumAlf'] = self.cl.shape[0]
         ADpol['AFCoeff'] = np.around(PolarTable, 5)
 
@@ -1195,7 +1236,7 @@ def _alpha_window_in_bounds(alpha, window):
     return window
 
 
-def _find_alpha0(alpha, coeff, window):
+def _find_alpha0(alpha, coeff, window, direction='up'):
     """Finds the point where coeff(alpha)==0 using interpolation.
     The search is narrowed to a window that can be specified by the user. The default window is yet enough for cases that make physical sense.
     The angle alpha0 is found by looking at a zero up crossing in this window, and interpolation is used to find the exact location.
@@ -1213,7 +1254,7 @@ def _find_alpha0(alpha, coeff, window):
     iwindow = np.where((alpha >= window[0]) & (alpha <= window[1]))
     alpha = alpha[iwindow]
     coeff = coeff[iwindow]
-    alpha_zc, i_zc = _zero_crossings(x=alpha, y=coeff, direction="up")
+    alpha_zc, i_zc, s_zc = _zero_crossings(x=alpha, y=coeff, direction=direction)
 
     if len(alpha_zc) > 1:
         print('WARN: Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
@@ -1221,7 +1262,7 @@ def _find_alpha0(alpha, coeff, window):
         alpha_zc=alpha_zc[1:]
         #raise Exception('Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
     elif len(alpha_zc) == 0:
-        raise Exception('Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(window[0],window[1]))
+        raise NoCrossingException('Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(window[0],window[1]))
 
     alpha0 = alpha_zc[0]
     return alpha0
@@ -1262,13 +1303,20 @@ def _find_max_points(alpha, coeff, alpha0, method="inflections"):
         IHatInflections = np.where(np.logical_and.reduce((dC[1:] < 0, dC[0:-1] > 0, alpha[1:-1] > alpha0)))[0]
         IVeeInflections = np.where(np.logical_and.reduce((dC[1:] > 0, dC[0:-1] < 0, alpha[1:-1] < alpha0)))[0]
         if len(IHatInflections) <= 0:
-            raise Exception("Not able to detect upper stall point of curve")
+            raise NoStallDetectedException("Not able to detect upper stall point of curve")
         if len(IVeeInflections) <= 0:
-            raise Exception("Not able to detect lower stall point of curve")
+            raise NoStallDetectedException("Not able to detect lower stall point of curve")
         a_MaxUpp = alpha[IHatInflections[0] + 1]
         c_MaxUpp = coeff[IHatInflections[0] + 1]
         a_MaxLow = alpha[IVeeInflections[-1] + 1]
         c_MaxLow = coeff[IVeeInflections[-1] + 1]
+    elif method == "minmax":
+        iMax = np.argmax(coeff)
+        iMin = np.argmin(coeff)
+        a_MaxUpp = alpha[iMax]
+        c_MaxUpp = coeff[iMax]
+        a_MaxLow = alpha[iMin]
+        c_MaxLow = coeff[iMin]
     else:
         raise NotImplementedError()
     return (a_MaxUpp, c_MaxUpp, a_MaxLow, c_MaxLow)
@@ -1663,22 +1711,23 @@ def _zero_crossings(y, x=None, direction=None):
     sign = np.sign(y[iBef + 1] - y[iBef])
     if direction == "up":
         I = np.where(sign == 1)[0]
-        return xzc[I], iBef[I]
+        return xzc[I], iBef[I], sign[I]
     elif direction == "down":
         I = np.where(sign == -1)[0]
-        return xzc[I], iBef[I]
+        return xzc[I], iBef[I], sign[I]
     elif direction is not None:
         raise Exception("Direction should be either `up` or `down`")
     return xzc, iBef, sign
 
 
-def _intersections(x1, y1, x2, y2):
+def _intersections(x1, y1, x2, y2, plot=False, minDist=1e-6, verbose=False):
     """
     INTERSECTIONS Intersections of curves.
     Computes the (x,y) locations where two curves intersect.  The curves
     can be broken with NaNs or have vertical segments.
 
     Written by: Sukhbinder, https://github.com/sukhbinder/intersection
+    adapted by E.Branlard to allow for minimum distance between points
     License: MIT
     usage:
         x,y=intersection(x1,y1,x2,y2)
@@ -1691,7 +1740,7 @@ def _intersections(x1, y1, x2, y2):
 
      x2=phi
      y2=np.sin(phi)+2
-     x,y=intersection(x1,y1,x2,y2)
+     x,y=intersections(x1,y1,x2,y2)
 
      plt.plot(x1,y1,c='r')
      plt.plot(x2,y2,c='g')
@@ -1751,8 +1800,36 @@ def _intersections(x1, y1, x2, y2):
     in_range = (T[0, :] >= 0) & (T[1, :] >= 0) & (T[0, :] <= 1) & (T[1, :] <= 1)
 
     xy0 = T[2:, in_range]
-    #xy0 = xy0.T
-    return xy0[:, 0], xy0[:, 1]
+    xy0 = xy0.T
+
+    x = xy0[:, 0]
+    y = xy0[:, 1]
+
+    # --- Remove "duplicates"
+    if minDist is not None:
+        pointKept=[(x[0],y[0])]
+        pointSkipped=[]
+        for p in zip(x[1:],y[1:]):
+            distances = np.array([np.sqrt((p[0]-pk[0])**2 + (p[1]-pk[1])**2) for pk in pointKept])
+            if all(distances>minDist):
+                pointKept.append((p[0],p[1]))
+            else:
+                pointSkipped.append((p[0],p[1]))
+        if verbose:
+            if len(pointSkipped)>0:
+                print('Polar:Intersection:Point Kept    :', pointKept)
+                print('Polar:Intersection:Point Skipped:', pointSkipped)
+
+        M = np.array(pointKept)
+        x = M[:,0]
+        y = M[:,1]
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.plot(x1,y1,'.',c='r')
+        plt.plot(x2,y2,'',c='g')
+        plt.plot(x,y,'*k')
+
+    return x, y
 
 
 def smooth_heaviside(x, k=1, rng=(-np.inf, np.inf), method="exp"):
