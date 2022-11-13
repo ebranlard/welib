@@ -16,6 +16,7 @@ TABTYPE_NUM_WITH_HEADER    = 1
 TABTYPE_NUM_WITH_HEADERCOM = 2
 TABTYPE_NUM_NO_HEADER      = 4
 TABTYPE_NUM_BEAMDYN        = 5
+TABTYPE_NUM_SUBDYNOUT      = 7
 TABTYPE_MIX_WITH_HEADER    = 6
 TABTYPE_FIL                = 3
 TABTYPE_FMT                = 9999 # TODO
@@ -346,7 +347,7 @@ class FASTInputFileBase(File):
         NUMTAB_FROM_LAB_VARNAME  = ['AFCoeff' , 'TMDspProp' , 'MemberProp'   , 'Members'   , 'MemberOuts' , 'MemberOuts' , 'SectionProp' ,'LineTypes'  ,'ConnectionProp' ,'LineProp' ]
         NUMTAB_FROM_LAB_NHEADER  = [2         , 2           , 2              , 2           , 2            , 2            , 2             , 2           , 2               , 2         ]
         NUMTAB_FROM_LAB_NOFFSET  = [0         , 0           , 0              , 0           , 0            , 0            , 0             , 0           , 0               , 0         ]
-        NUMTAB_FROM_LAB_TYPE     = ['num'     , 'num'       , 'num'          , 'mix'       , 'num'        , 'num'        , 'num'         ,'mix'        ,'mix'            ,'mix'      ]
+        NUMTAB_FROM_LAB_TYPE     = ['num'     , 'num'       , 'num'          , 'mix'       , 'num'        , 'sdout'      , 'num'         ,'mix'        ,'mix'            ,'mix'      ]
         # SubDyn
         NUMTAB_FROM_LAB_DETECT   += ['GuyanDampSize'     , 'YoungE'   , 'YoungE'    , 'EA'             , 'MatDens'       ]
         NUMTAB_FROM_LAB_DIM_VAR  += [6                   , 'NPropSets', 'NXPropSets', 'NCablePropSets' , 'NRigidPropSets']
@@ -592,6 +593,8 @@ class FASTInputFileBase(File):
                 else:
                     if tab_type=='num':
                         d['tabType']   = TABTYPE_NUM_WITH_HEADER
+                    elif tab_type=='sdout':
+                        d['tabType']   = TABTYPE_NUM_SUBDYNOUT
                     else:
                         d['tabType']   = TABTYPE_MIX_WITH_HEADER
                 if isinstance(d['tabDimVar'],int):
@@ -679,6 +682,16 @@ class FASTInputFileBase(File):
                 lab='{:13s}'.format(lab)
             return val+' '+lab+' - '+descr.strip().strip('-').strip()+'\n'
 
+        def toStringIntFloatStr(x):
+            try:
+                if int(x)==x:
+                    s='{:15.0f}'.format(x)
+                else:
+                    s='{:15.8e}'.format(x)
+            except:
+                s=x
+            return s
+
         def beamdyn_section_mat_tostring(x,K,M):
             def mat_tostring(M,fmt='24.16e'):
                 return '\n'.join(['   '+' '.join(['{:24.16E}'.format(m) for m in M[i,:]]) for i in range(np.size(M,1))])
@@ -725,7 +738,7 @@ class FASTInputFileBase(File):
                     s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
                 if np.size(d['value'],0) > 0 :
                     s+='\n'
-                    s+='\n'.join('\t'.join('{}'.format(x) for x in y) for y in d['value'])
+                    s+='\n'.join('\t'.join(toStringIntFloatStr(x) for x in y) for y in d['value'])
             elif d['tabType']==TABTYPE_NUM_WITH_HEADERCOM:
                 s+='! {}\n'.format(' '.join(['{:15s}'.format(s) for s in d['tabColumnNames']]))
                 s+='! {}\n'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
@@ -748,6 +761,13 @@ class FASTInputFileBase(File):
                     K = data['K'][i]
                     M = data['M'][i]
                     s += beamdyn_section_mat_tostring(x,K,M)
+            elif d['tabType']==TABTYPE_NUM_SUBDYNOUT:
+                data = d['value']
+                s+='{}\n'.format(' '.join(['{:15s}'.format(s) for s in d['tabColumnNames']]))
+                s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
+                if np.size(d['value'],0) > 0 :
+                    s+='\n'
+                    s+='\n'.join('\t'.join('{:15.0f}'.format(x) for x in y) for y in data)
             else:
                 raise Exception('Unknown table type for variable {}'.format(d))
             if i<len(self.data)-1:
@@ -1263,6 +1283,13 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             # If all values are float, we convert to float
             if all([strIsFloat(x) for x in Tab.ravel()]):
                 Tab=Tab.astype(float)
+        elif tableType=='sdout':
+            header = lines[0]
+            units  = lines[1]
+            Tab=[]
+            for i in range(nHeaders+nOffset,n+nHeaders+nOffset):
+                l = cleanAfterChar(lines[i].lower(),'!')
+                Tab.append( np.array(l.split()).astype(int))
         else:
             raise Exception('Unknown table type')
 
@@ -1417,7 +1444,7 @@ class ADBladeFile(FASTInputFileBase):
         # TODO double check this calculation with gradient
         dr = np.gradient(aeroNodes[:,0])
         dx = np.gradient(aeroNodes[:,1])
-        crvAng = np.degrees(np.arctan2(dx,dr))*np.pi/180
+        crvAng = np.degrees(np.arctan2(dx,dr))
         if np.mean(np.abs(crvAng-aeroNodes[:,3]))>0.1:
             print('[WARN] BlCrvAng might not be computed correctly')
 
