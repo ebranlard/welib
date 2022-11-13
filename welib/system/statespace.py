@@ -388,7 +388,7 @@ class StateSpace(System):
 
         """
         if self._u is None:
-            return None
+            return None # Should we reutrn q*0?
 
         elif isinstance(self.u, OrderedDict):
             d = np.zeros(len(self._u))
@@ -443,9 +443,10 @@ class StateSpace(System):
         return odefun
 
     # --------------------------------------------------------------------------------}
-    # --- Outputs
+    # --- OUTPUTS
     # --------------------------------------------------------------------------------{
     def dqdt_calcOutput(self, u=None, p=None, signatureWanted='t,q'):
+        """ Return function handle that computes outputs with a requested signature """
         if p is None:
             p = self.p
         if u is None:

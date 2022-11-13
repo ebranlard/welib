@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from numpy.linalg import inv
 from scipy.integrate import  solve_ivp #odeint
 from scipy.optimize import OptimizeResult as OdeResultsClass 
@@ -32,10 +33,11 @@ class MechSystem():
        NOTE: A~, B~ are not linear state space matrices in the general case
 
     """
-    def __init__(self, M, C=None, K=None, F=None, x0=None, xdot0=None, sX=None, sXd=None):
+    def __init__(self, M, C=None, K=None, F=None, x0=None, xdot0=None, sX=None, sXd=None, sY=None):
         """ 
         sX:  list of variable names for x    (e.g., used for plotting)
         sXd: list of variable names for xdot (e.g., used for plotting)
+        sY: list of variable names for outputs. Can also be set using setOutputFunction
         """
 
         # Functions that return the mass matrix and its inverse
@@ -84,6 +86,9 @@ class MechSystem():
         # Channel names
         self._sX = sX
         self._sXd = sXd
+        self.sY = None
+
+        self.verbose=False
 
 
     def find_nDOF(self):
@@ -113,6 +118,13 @@ class MechSystem():
     @property
     def sQ(self):
         return self.sX+self.sXd
+
+    @property
+    def sOutputs(self):
+        if self.sY is not None:
+            return self.sY
+        else:
+            return None
 
     # --------------------------------------------------------------------------------}
     # --- Time domain
@@ -179,6 +191,21 @@ class MechSystem():
         
         """
         self._force_fn = fn
+
+    def setOutputFunction(self, fn, sY=None):
+        """
+
+        INPUTS:
+         - fn: handle to a python function. The interface of the function fn is: 
+
+               y =  f(t, x, xdot, **kwargs) 
+
+            where y is an array of size n or a pandas series with index corresponding to the output names 
+         - sY : array-like, list of of column names for outputs
+        """
+        self._output_fn = fn
+        if sY is not None:
+            self.sY = sY
 
     def Forces(self, t, x=None, xdot=None, q=None, **kwargs):
         """ 
@@ -250,8 +277,30 @@ class MechSystem():
         else:
             raise Exception('Please specify a time series of force using `setForceTimeSeries` or a function using `setForceFunction` ')
 
+    # --------------------------------------------------------------------------------}
+    # --- OUTPUTS
+    # --------------------------------------------------------------------------------{
+    def Outputs(self, t, q):
+        nDOF = self.nDOF
+        x    = q[0:nDOF]
+        xd   = q[nDOF:]
+        if hasattr(self,'_output_fn'):
+            return self._output_fn(t, x, xd)
+        else:
+            raise NotImplementedError('Calculation of outputs when `setOutputFunction` not called')
 
-    def integrate(self,t_eval, method='RK45', y0=None, **options):
+    def dqdt_calcOutput(self, signatureWanted='t,q', **kwargs):
+        """ Return function handle that computes outputs with a requested signature """
+        if signatureWanted=='t,q':
+            return self.Outputs
+        else:
+            raise NotImplementedError()
+
+
+    # --------------------------------------------------------------------------------}
+    # --- Time integration 
+    # --------------------------------------------------------------------------------{
+    def integrate(self,t_eval, method='RK45', y0=None, calc='', **options):
         """ Perform time integration of system 
             method: 'RK54', 'LSODA'  (see solve_ivp)
         """
@@ -291,7 +340,7 @@ class MechSystem():
         # Store
         self.res    = res
 
-        df=self.res2DataFrame()
+        df=self.res2DataFrame(calc=calc)
         return res, df
 
 
@@ -327,14 +376,200 @@ class MechSystem():
         else:
             return StateMatrix(self._Minv,self.C,self.K)
 
+
+    # --------------------------------------------------------------------------------}
+    # --- Simulation storage
+    # --------------------------------------------------------------------------------{
+    def cleanSimData(self):
+        self.res      = None
+        #self.dfIn     = None
+        self.dfOut    = None
+        #self.dfStates = None
+        self.df       = None
+
+    def save(self, filename, DOFs=None, Factors=None):
+        """ Save time integration results to file 
+        DOFs: array of string for DOFs names
+        """
+        df = self.res2DataFrame(DOFs=DOFs, Factors=Factors)
+        df.to_csv(filename, sep=',', index=False)
+
+    def res2DataFrame(self, res=None, DOFs=None, Factors=None, 
+            x0=None, xd0=None, 
+            calc='xdd,f', # xdd, f, y
+            sAcc=None, sForcing=None
+            ):
+        """ Return time integration results as a dataframe
+        DOFs:    array of string for DOFs names   (2xnDOF, positions and velocities)
+        Factors: array of floats to scale the DOFs (2xnDOF)
+        x0 :  array of floats to add to the DOF (1xnDOF)
+        xd0:  array of floats to add to the velocities (1xnDOF)
+              NOTE: the positions will be increased linearly
+        """
+        import pandas as pd
+
+        calcVals = calc.split(',')
+
+        if res is None:
+            if self.res is None:
+                raise Exception('Call integrate before res2DataFrame')
+            res = self.res
+
+        if DOFs is None:
+            DOFs  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]
+            DOFs += ['xd_{}'.format(i) for i in np.arange(self.nDOF)]
+        if sAcc is None:
+            sAcc = ['xdd_{}'.format(i) for i in np.arange(self.nDOF)]
+        if sForcing is None:
+            sForcing = ['F_{}'.format(i) for i in np.arange(self.nDOF)]
+
+        header = ' Time_[s], '+','.join(DOFs)
+
+        res = self.res
+
+        # Combine time series into a matrix
+        M    = np.column_stack((res.t, res.y.T))
+        time = res.t
+        cols = ['Time_[s]']+DOFs
+
+        # Scaling
+        if Factors is not None:
+            for i, f in enumerate(Factors):
+                M[:,i+1] *= f
+        # Offset Velocity
+        if xd0 is not None:
+            for i, xd0_ in enumerate(xd0):
+                if Factors is not None:
+                    M[:,self.nDOF+i+1] += xd0_*Factors[i+self.nDOF] # Add to velocity
+                    M[:,i+1]           += (xd0_*time)*Factors[i]    # Position increases linearly
+                else:
+                    M[:,self.nDOF+i+1] += xd0_      # Add to velocity
+                    M[:,i+1]           += xd0_*time # Position increases linearly
+        # Offset position
+        if x0 is not None:
+            for i, x0_ in enumerate(x0):
+                if Factors is not None:
+                    M[:,i+1] += x0_*Factors[i]
+                else:
+                    M[:,i+1] += x0_
+
+        for i,d in enumerate(DOFs):
+            if DOFs[i].find('[deg]')>1: 
+                if np.max(M[:,i+1])>180:
+                    M[:,i+1] = np.mod(M[:,i+1], 360)
+        dfStates =  pd.DataFrame(data=M, columns=cols)
+
+        # Accelerations 
+        dfAcc = None
+        if 'xdd' in calcVals:
+            xdd = self.TS_Acceleration
+            dfAcc =  pd.DataFrame(data=xdd.T, columns=sAcc)
+
+        # Forcing
+        dfF = None
+        if 'f' in calcVals:
+            F     = self.TS_Forcing
+            dfF =  pd.DataFrame(data=F.T, columns=sForcing)
+
+        # Outputs
+        dfOut = None
+        if 'y' in calcVals:
+            dfOut = self.calc_outputs(insertTime=True, yoffset=None)
+
+        # --- Concatenates everything into one DataFrame
+        df = pd.concat((dfStates, dfAcc, dfF, dfOut), axis=1)
+        df = df.loc[:,~df.columns.duplicated()].copy()
+
+        return df
+
+
+    def _prepareOutputDF(self, res):
+        cols    = self._inferOutputCols(res)
+        data    = np.full((len(res.t), len(cols)), np.nan)
+        df      = pd.DataFrame(columns = cols, data = data)
+        self.sY = cols
+        return df
+
+    def _inferOutputCols(self, res):
+        """ See what the calcOutput returns at t[0] to allocate storage memory """
+        try:
+            out = self.dqdt_calcOutput()(res.t[0], self.q0)
+        except TypeError:
+            print("[FAIL] Error evaluating model outputs. Does the function dqdt has the argument `calcOutput`?")
+            return None
+        if not isinstance(out, pd.core.series.Series):
+            # If array
+            cols = ['y{:d}'.format(i+1) for i in range(len(out))]
+        else:
+            # If pandas series
+            cols     = out.index
+
+        # --- Check consistency with self.sY
+        if self.sY is not None:
+            if len(self.sY)!=len(cols):
+                raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
+            cols = self.sY
+        return cols
+
+    def _calc_outputs(self, time, q, df):
+        """ low level implementation leaving room for optimization for other subclass."""
+        calcOutput = self.dqdt_calcOutput()
+        if self.verbose:
+            print('Calc output...')
+        for i,t in enumerate(time):
+            df.iloc[i,:] = calcOutput(t, q[:,i])
+
+    def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
+        """ 
+        Call use calcOutput function for each time step and store values
+        """
+        # --- Get calcOutput function
+        
+        if res is None:
+            res = self.res
+        if res is None:
+            raise Exception('Provide `res` or call `integrate` before calling calc_outputs')
+
+        # --- Infer column names and allocate
+        df = self._prepareOutputDF(res)
+
+        # --- Calc output based on states
+        self._calc_outputs(res.t, res.y, df)
+        if yoffset is not None:
+            import pdb; pdb.set_trace()
+
+        if insertTime:
+            df.insert(0,'Time_[s]', res.t)
+        self.dfOut = df
+
+        if dataFrame:
+            return df
+        else:
+            return df.values
+
+
     # --------------------------------------------------------------------------------}
     # --- Time series after time integration
     # --------------------------------------------------------------------------------{
+    @property
+    def time(self):
+        if self.res is None:
+            # Res or self.res not provided, return time series provided by user
+            if hasattr(self,'_force_ts'):
+                return self._time_ts
+            else:
+                raise Exception('Cannot return time when a function is used and no time integration was performed. Call `integrate`.')
+        else:
+            # Res provided
+            return self.res.t
+
+
     @property
     def TS_Forcing_CK(self):
         """ Return time series of forcing from Stiffness and Damping matrix """
         if self.res is None:
             raise Exception('Run `integrate` before calling CKforcing')
+        time = self.time
         nDOF = self.nDOF
         FK = np.zeros((self.nDOF,len(time)))
         FC = np.zeros((self.nDOF,len(time)))
@@ -364,6 +599,7 @@ class MechSystem():
         else:
             # Res provided
             time =self.res.t
+            res =self.res
             if hasattr(self,'_force_ts'):
                 F = self.Forces(time)
             else:
@@ -463,7 +699,7 @@ class MechSystem():
         return s
 
 
-    def plot(self, fig=None, axes=None, label=None, res=None, **kwargs):
+    def plot(self, fig=None, axes=None, label=None, res=None, calc='', qFactors=None, **kwargs):
         """ Simple plot of states after time integration"""
         if res is None:
             res=self.res
@@ -481,7 +717,7 @@ class MechSystem():
         axes = np.atleast_1d(axes)
         n=self.nDOF
 
-        df=self.res2DataFrame(DOFs=None, Factors=None, x0=None, xd0=None, acc=False, sAcc=None, forcing=False, sForcing=None)
+        df=self.res2DataFrame(DOFs=None, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
         for i,ax in enumerate(axes):
             if i+1>len(df.columns):
                 continue
@@ -494,9 +730,25 @@ class MechSystem():
         if not axes_provided:
             axes[-1].set_xlabel('Time [s]')
 
-        return fig, axes
+        return axes
 
-    def plot_forcing(self, fig=None, axes=None, label=None, res=None, includeCK=False, plotCK0=False, **kwargs):
+    def plot_outputs(self, df=None, keys=None, axes=None, **kwargs):
+        """ 
+        plot outputs. Requires to call `integrate` or `calc_outputs` before
+        """
+        if df is None:
+            if self.dfOut is None:
+                raise Exception("Call calc_outputs or `integrate` before plot_outputs")
+            df = self.dfOut
+            if df is None:
+                print('[WARN] no outputs to plot')
+                return
+        keys = list(self.sOutputs)
+
+        return _plot(df, keys=keys, title='', nPlotCols=1, axes=axes, **kwargs)
+
+
+    def plot_forcing(self, axes=None, label=None, res=None, includeCK=False, plotCK0=False, **kwargs):
         """ 
         Simple plot of forcing
           - if `res` is provided, use time and states from res
@@ -505,9 +757,8 @@ class MechSystem():
           - if a time series was provided, plot that
           - if a function was provided for the forcing, abort
         """
-        if res is None:
-            res=self.res
-
+        # 
+        time = self.time
         # Compute Forcing 
         F = self.TS_Forcing
         # Compute Forcing  contributions from Damping and Stiffness
@@ -533,87 +784,45 @@ class MechSystem():
             ax.tick_params(direction='in')
         axes[-1].set_xlabel('Time [s]')
 
-        return fig, axes
+        return axes
 
 
-    def save(self, filename, DOFs=None, Factors=None):
-        """ Save time integration results to file 
-        DOFs: array of string for DOFs names
-        """
-        df = self.res2DataFrame(DOFs=DOFs, Factors=Factors)
-        df.to_csv(filename, sep=',', index=False)
 
-    def res2DataFrame(self, res=None, DOFs=None, Factors=None, x0=None, xd0=None, 
-            acc=False, sAcc=None, forcing=False, sForcing=None):
-        """ Return time integration results as a dataframe
-        DOFs:    array of string for DOFs names   (2xnDOF, positions and velocities)
-        Factors: array of floats to scale the DOFs (2xnDOF)
-        x0 :  array of floats to add to the DOF (1xnDOF)
-        xd0:  array of floats to add to the velocities (1xnDOF)
-              NOTE: the positions will be increased linearly
-        """
-        import pandas as pd
-        if res is None:
-            if self.res is None:
-                raise Exception('Call integrate before res2DataFrame')
-            res = self.res
+def _plot(df, keys=None, label=None, title='', nPlotCols=1, axes=None, **kwargs):
+    import matplotlib
+    import matplotlib.pyplot as plt
+    #if COLRS is None:
+    #    cmap = matplotlib.cm.get_cmap('viridis')
+    #    COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
 
-        if DOFs is None:
-            DOFs  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]
-            DOFs += ['xd_{}'.format(i) for i in np.arange(self.nDOF)]
-        if sAcc is None:
-            sAcc = ['xdd_{}'.format(i) for i in np.arange(self.nDOF)]
-        if sForcing is None:
-            sForcing = ['F_{}'.format(i) for i in np.arange(self.nDOF)]
+    time = df['Time_[s]'].values
+    if keys is None:
+        keys = [k for k in df.keys() if k!='Time_[s]']
 
-        header = ' Time_[s], '+','.join(DOFs)
+    I=np.arange(len(keys))
 
-        res = self.res
+    if axes is None:
 
-        # Combine time series into a matrix
-        M    = np.column_stack((res.t, res.y.T))
-        time = res.t
-        cols = ['Time_[s]']+DOFs
+        if nPlotCols==2:
+            fig,axes = plt.subplots(int(np.ceil(len(I)/2)), 2, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.20)
+        else:
+            fig,axes = plt.subplots(len(I), 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.16, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
 
-        # Scaling
-        if Factors is not None:
-            for i, f in enumerate(Factors):
-                M[:,i+1] *= f
-        # Offset Velocity
-        if xd0 is not None:
-            for i, xd0_ in enumerate(xd0):
-                if Factors is not None:
-                    M[:,self.nDOF+i+1] += xd0_*Factors[i+self.nDOF] # Add to velocity
-                    M[:,i+1]           += (xd0_*time)*Factors[i]    # Position increases linearly
-                else:
-                    M[:,self.nDOF+i+1] += xd0_      # Add to velocity
-                    M[:,i+1]           += xd0_*time # Position increases linearly
-        # Offset position
-        if x0 is not None:
-            for i, x0_ in enumerate(x0):
-                if Factors is not None:
-                    M[:,i+1] += x0_*Factors[i]
-                else:
-                    M[:,i+1] += x0_
-
-        for i,d in enumerate(DOFs):
-            if DOFs[i].find('[deg]')>1: 
-                if np.max(M[:,i+1])>180:
-                    M[:,i+1] = np.mod(M[:,i+1], 360)
-
-        # Accelerations 
-        if acc:
-            xdd = self.TS_Acceleration
-            M     = np.column_stack((M,xdd.T))
-            cols += sAcc
-        # Forcing
-        if forcing:
-            F     = self.TS_Forcing
-            M     = np.column_stack((M,F.T))
-            cols += sForcing
-
-
-        return pd.DataFrame(data=M, columns=cols)
-
+        if not hasattr(axes,'__len__'):
+            axes=[axes]
+    axes=(np.asarray(axes).T).ravel()
+    
+    for j,i in enumerate(I):
+        s  = keys[i]
+        ax = axes[j]
+        ax.plot(time, df[s], label=label, **kwargs)
+        ax.set_ylabel(s)
+        ax.tick_params(direction='in')
+    axes[0].set_title(title)
+    axes[-1].set_xlabel('Time [s]')
+    axes[-1].legend()
+    return axes
 
 

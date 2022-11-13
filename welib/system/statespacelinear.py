@@ -64,14 +64,16 @@ def integrate(t_eval, q0, A, B, fU, method='LSODA', **options):
     # NOTE: here we allow inputs that are function of states, which is not really a LIT anymore!
     hasq=False
     try:
-        fU(t_eval[0],q0)
+        y=fU(t_eval[0],q0)
         hasq=True
     except:
         try:
-            fU(t_eval[0])
+            y = fU(t_eval[0])
             hasq=False
         except:
             raise
+    if y is None:
+        raise Exception('Function fU evaluate to None')
 
     if hasq:
         #def odefun(t, q):
@@ -186,9 +188,6 @@ class LinearStateSpace(StateSpace):
         if A is None:
             A = np.zeros((0,0))
         self.A = np.asarray(A)
-        if B is None:
-            B = np.zeros((A.shape[0],0))
-        self.B = np.asarray(B)
         # TODO better merge the two
         # TODO need a signature_output as well!
         # --- StateSpace
@@ -199,6 +198,12 @@ class LinearStateSpace(StateSpace):
         self.Y = self.Outputs_tqu
 
         # --- Linear system
+        if B is None:
+            nq = A.shape[0]
+            B = np.zeros((nq,0))
+            # No Inputs
+            self.setInputFunction(lambda t,q: np.zeros(0), signature_u='t,q')
+        self.B = np.asarray(B)
 
         if C is None:
             if sY is None:
@@ -265,6 +270,9 @@ class LinearStateSpace(StateSpace):
             raise Exception('Wrong first dimension for Inputs time series ({} instead of {} )'.format(vU.shape[0],self.nInputs))
         # Call parent class (create interpolant)
         StateSpace.setInputTimeSeries(self, vTime, vU)
+
+    # See statespace.py
+    #def Inputs(self, t, q=None, qd=None):
 
     # --------------------------------------------------------------------------------}
     # --- State equation
@@ -636,3 +644,10 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------}
     # ---  Plotting functions
     # --------------------------------------------------------------------------------{
+    # See StateSpace:
+    # def plot_x_legacy(self, fig=None, axes=None, label=None, res=None, **kwargs):
+    # def plot_u_legacy(self, axes=None, label=None, res=None, **kwargs):
+    # def plot(self, df=None, keys=None, label=None, axes=None, **kwargs):
+    # def plot_states(self, df=None, axes=None, **kwargs):
+    # def plot_inputs(self, df=None, axes=None, **kwargs):
+    # def plot_outputs(self, df=None, keys=None, axes=None, **kwargs):
