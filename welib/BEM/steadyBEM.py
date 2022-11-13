@@ -4,11 +4,265 @@ Reference:
      E.Branlard: Wind turbine Aerodynamics and Vorticity Based Method - Chapter 10, Springer, 2017
 """
 import numpy as np
+import os
 from numpy import pi, cos, exp, sqrt, sin, arctan2, arccos
 from scipy.interpolate import interp1d
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# --------------------------------------------------------------------------------}
+# --- Main Class SteadyBEM 
+# --------------------------------------------------------------------------------{
+class SteadyBEM():
+    def __init__(self, FASTFileName=None):
+        # Aero Data
+        self.chord  = None
+        self.polars = None
+        # Environment
+        self.rho     = None
+        self.kinVisc = None # Kinmematic viscosity [kg/m^3]
+
+        # Structural "Inputs"
+        self.twist  = None # [deg]
+        self.nB     = None # Number of blades
+        self.cone0  = None # cone angle [deg]
+        self.r      = None # radial stations
+        # Algorithm
+        self.setDefaultOptions()
+
+        # Data from runs
+        self.lastRun = None
+
+        # Init from a FAST input file 
+        if FASTFileName is not None:
+            self.init_from_FAST(FASTFileName)
+
+    def setDefaultOptions(self):
+        self.nbIt = 200  # maximum number of iterations in BEM
+        self.aTol = 10 ** -6 # tolerance for axial induction factor convergence
+        self.relaxation = 0.5  # relaxation factor in axial induction factor
+#         self.CTcorrection = 'AeroDyn'  #  type of CT correction more model implementated in the future like 'spera'
+#         self.swirlMethod  = 'AeroDyn' # type of swirl model
+#         self.Ngrid = 1.0
+        self.bSwirl = True  # swirl flow model enabled / disabled
+        self.bTipLoss = True # enable / disable tip loss model
+        self.bHubLoss = False # enable / disable hub loss model
+#         self.bTipLossCl = False # enable / disable Cl loss model
+#         self.TipLossMethod = 'Glauert'  # type of tip loss model
+        self.bAIDrag = True # influence on drag coefficient on normal force coefficient
+        self.bTIDrag = True # influence on drag coefficient on tangential force coefficient
+#         self.bReInterp = False # interpolate the input tabulated airfoil data for Reynolds variation
+#         self.bThicknessInterp = True # interpolate the input tabulated airfoil data for thickness variation
+        self.WakeMod=1 # 0: no inductions, 1: BEM inductions
+#         self.bRoughProfiles = False # use rough profiles for input airfoil data
+
+    def init_from_FAST(self, FASTFileName):
+        # TODO unify with FASTFile2SteadyBEM(FASTFileName)
+        from welib.weio.fast_input_deck import FASTInputDeck
+        F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
+        if F.AD is None:
+            raise Exception('Cannot open AD file referenced in:'.format(FASTFileName))
+        if F.ED is None:
+            raise Exception('Cannot open ED file referenced in:'.format(FASTFileName))
+
+        # Environment
+        try:
+            self.rho     = float(F.fst['AirDens'])  # New OF > 3.0
+        except:
+            self.rho     = float(F.AD['AirDens'])   # Old OF <=3.0
+        try:
+            self.kinVisc = float(F.fst['KinVisc'])  # New OF > 3.0
+        except:
+            self.kinVisc = float(F.AD['KinVisc'])   # Old OF <= 3.0
+
+        # Aerodynamics
+        self.nB    = F.ED['NumBl']
+        self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
+        chord = F.AD.Bld1['BldAeroNodes'][:,-2] 
+        self.chord = chord
+        chord      = F.AD.Bld1['BldAeroNodes'][:,-2]
+        self.chord = chord # np.stack([chord]*self.nB)
+        self.twist = F.AD.Bld1['BldAeroNodes'][:,-3] # TODO unsteady is in rad! *np.pi/180
+        polars=[]
+        ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
+        for ipolar in  ProfileID:
+            polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
+        self.polars = polars
+
+        # Input geometry (may be overriden by motion/simulations)
+        self.cone0     =-F.ED['PreCone(1)'] # TODO decide on sine convention. Unsteady use opposite TODO rad or deg
+        #self.tilt0     = F.ED['ShftTilt']   # TODO rad or deg
+        #self.TowerHt   = F.ED['TowerHt']
+        #self.OverHang  = F.ED['OverHang']
+        #self.Twr2Shft  = F.ED['Twr2Shft']
+        # TODO hub height maybe?
+
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+
+        # Aero Data
+        s+='Aerodynamic data:\n'
+        s+=' - r         : size: {}, min: {}, max: {}\n'.format(len(self.r), np.min(self.r), np.max(self.r))
+        s+=' - chord     : size: {}, min: {}, max: {}\n'.format(len(self.chord), np.min(self.chord), np.max(self.chord))
+        s+=' - twist     : size: {}, min: {}, max: {} [deg]\n'.format(len(self.twist), np.min(self.twist), np.max(self.twist))
+        s+=' - polars    : size: {}\n'.format(len(self.polars))
+        s+=' - nB        : {}\n'.format(self.nB)
+        s+=' - cone0     : {} [deg]\n'.format(self.cone0 )
+        # Environment
+        s+='Environmental conditions:\n'
+        s+=' - rho       : {} [kg/m^3]\n'.format(self.rho    )
+        s+=' - kinVisc   : {} [kg/m^3]\n'.format(self.kinVisc)
+        s+='Algorithm options:\n'
+        s+=' - nbIt      : {}\n'.format(self.nbIt      )
+        s+=' - aTol      : {}\n'.format(self.aTol      )
+        s+=' - relaxation: {}\n'.format(self.relaxation)
+        s+=' - bSwirl    : {}\n'.format(self.bSwirl    )
+        s+=' - bTipLoss  : {}\n'.format(self.bTipLoss  )
+        s+=' - bHubLoss  : {}\n'.format(self.bHubLoss  )
+        s+=' - bAIDrag   : {}\n'.format(self.bAIDrag   )
+        s+=' - bTIDrag   : {}\n'.format(self.bTIDrag  )
+        s+=' - WakeMod   : {}\n'.format(self.WakeMod  )
+        return s
+
+
+    def calcOutput(self, Omega, pitch, V0, 
+            xdot=0, u_turb=0,
+            a_init=None, ap_init=None):
+        out = calcSteadyBEM(Omega, pitch, V0, xdot, u_turb,
+            nB=self.nB, cone=self.cone0, r=self.r, chord=self.chord, twist=self.twist, polars=self.polars, # Rotor
+            rho=self.rho, KinVisc=self.kinVisc,    # Environment
+            nItMax=self.nbIt, aTol=self.aTol, bTipLoss=self.bTipLoss, bHubLoss=self.bHubLoss, 
+            bAIDrag=self.bAIDrag, bTIDrag=self.bTIDrag, bSwirl=self.bSwirl, relaxation=self.relaxation, 
+            a_init=a_init, ap_init=ap_init)
+        return out
+
+    def parametric(self, rotSpeed, pitch, windSpeed, outputFilename=None, radialBasename=None, plot=False, **kwargs):
+        """ Run the BEM on multiple operating conditions
+            Inputs:
+            -------
+            rotSpeed   [rpm]: rotational speed, array-like, size n
+            pitch      [deg]: pitch angle, array-like, size n
+            windSpeed  [m/s]: wind speed, array-like, size n
+        """
+        # --- Sanity
+        createParentDir(outputFilename)
+        createParentDir(radialBasename)
+        nSim = len(rotSpeed)
+
+        # --- Running BEM simulations for each operating conditions
+        a0 , ap0 = None,None # Initial guess for inductions, to speed up BEM
+        dfOut=None
+        for i,(u0,rpm,theta), in enumerate(zip(windSpeed,rotSpeed,pitch)):
+            xdot   = 0        # structrual velocity [m/s] 
+            u_turb = 0        # turbulence fluctuation [m/s] 
+            BEM = self.calcOutput(rpm, theta, u0, xdot, u_turb, a_init=a0, ap_init=ap0)
+            # Store previous values to speed up convergence
+            a0, ap0 = BEM.a, BEM.aprime
+            # Export radial data to file
+            if radialBasename:
+                #filenameRadial = radialBasename+'_i{:04d}_ws{:02.0f}_radial.csv'.format(i,u0)
+                filenameRadial = radialBasename+'ws{:02.0f}_radial.csv'.format(u0)
+                BEM.WriteRadialFile(filenameRadial)
+            # Cumulative storage of integrated values
+            dfOut = BEM.StoreIntegratedValues(dfOut)
+
+            self.lastRun=BEM
+
+        if outputFilename:
+            dfOut.to_csv(outputFilename, index=False, sep='\t')
+
+        if plot:
+            label = kwargs['label'] if 'label' in kwargs.keys() else None
+            import matplotlib.pyplot as plt
+            fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+            ax.plot(dfOut['WS_[m/s]'].values, dfOut['AeroPower_[kW]'].values, label=label)
+            ax.set_xlabel('Wind speed [m/s]')
+            ax.set_ylabel('[-]')
+            ax.legend()
+            ax.set_title('BEM Steady - Performance curve')
+            ax.tick_params(direction='in')
+            return dfOut, fig
+
+        return dfOut, None
+
+    def findPitchForPowerCurve(self, windSpeed,  omega, powerRated=None, powerTarget=None, pitch0=0):
+        """ 
+        INPUTS:
+         - windSpeed: wind speed (WS), array-like, size n    [m/s]
+         - omega    :  rotor speed as function of WS, array like of size n [rpm]
+         - powerRated: rated power, scalar   [W]
+                  if provided, pitch is optimized only above rated power
+             OR
+           powerTarget: target power as function of WS, array like of size n [W]
+                  if provided, pitch is optimized over all range of power
+
+         - pitch0: initial pitch/pitch to apply in Region 2
+        """
+        import scipy.optimize as sco
+        # See fWTFindPitch.m
+        # --- Sanity
+        if (powerTarget is None and powerRated is None) or (powerTarget is not None and powerRated is not None):
+            raise Exception('Provide either powerTarget or powerRated')
+        
+        optimPitchForAllWS= powerRated is None
+
+        pitch = np.zeros_like(windSpeed)
+        power = np.zeros_like(windSpeed)
+        # --- SubFunction to optimize pitch
+        def _findPitch(Ptarget, lastPitch):
+            def dP(pitch):
+                return self.calcOutput(rpm, pitch, ws, a_init=a0, ap_init=ap0).Power-Ptarget
+            fun = dP
+            lastPitch = sco.fsolve(fun,lastPitch)
+            # Call again for verif
+            out = self.calcOutput(rpm, lastPitch, ws)
+            dp = out.Power-Ptarget
+            return lastPitch, out, dp
+
+        # --- Find pitch 
+        a0, ap0 = None, None
+        lastPitch = pitch0
+        if optimPitchForAllWS:
+            for i,(ws, rpm, pTarget) in enumerate(zip(windSpeed, omega, powerTarget)):
+                lastPitch+=1
+                lastPitch, out, dp = _findPitch(pTarget, lastPitch)
+                a0, ap0 = out.a, out.aprime
+                pitch[i] = lastPitch
+                power[i] = out.Power
+                print('U={:5.1f}, P={:7.1f}kW, pitch={:5.2f}deg, RPM={:4.1f} (DP={:7.1f}kW)'.format(ws, power[i]/1000, pitch[i], rpm, dp/1000))
+        else:
+            for i,(ws,rpm) in enumerate(zip(windSpeed, omega)):
+                # First run to check whether optimization is needed
+                out = self.calcOutput(rpm, lastPitch, ws)
+                if out.Power<powerRated:
+                    lastPitch = pitch0
+                    dp = 0
+                else:
+                    lastPitch = lastPitch+1
+                    lastPitch, out, dp = _findPitch(powerRated, lastPitch)
+                pitch[i] = lastPitch
+                power[i] = out.Power
+                print('U={:5.1f}, P={:7.1f}kW, pitch={:5.2f}deg, RPM={:4.1f} (DP={:7.1f}kW)'.format(ws, power[i]/1000, pitch[i], rpm, dp/1000))
+
+        return pitch, power
+
+    # --------------------------------------------------------------------------------}
+    # --- IO 
+    # --------------------------------------------------------------------------------{
+    def radialDataFrame(self):
+        return self.lastRun.radialDataFrame() # not very pretty
+
+
+# --------------------------------------------------------------------------------}
+# --- Utils 
+# --------------------------------------------------------------------------------{
+def createParentDir(basename):
+    if basename is None:
+        return
+    parentDir = os.path.dirname(basename)
+    if not os.path.exists(parentDir):
+        os.makedirs(parentDir)
 
 def _fAeroCoeffWrap(fPolars, alpha, phi, bAIDrag=True, bTIDrag=True):
     """Tabulated airfoil data interpolation
@@ -96,12 +350,22 @@ def _fInductionCoefficients(a_last, Vrel_norm, V0, F, cnForAI, ctForTI,
     return a, aprime, Ct
 
 
+# --------------------------------------------------------------------------------}
+# --- Class to store BEM outputs 
+# --------------------------------------------------------------------------------{
 class SteadyBEM_Outputs:
-    def WriteRadialFile(BEM,filename):
+
+    def radialDataFrame(BEM):
         header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] Pn_[N/m] Pt_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uia_[m/s] uit_[m/s] u_turb_[m/s]'
-        header=' '.join(['{:14s}'.format(s) for s in header.split()])
+        header=header.split()
+        #header=' '.join(['{:14s}'.format(s) for s in header.split()])
         M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.Pn,BEM.Pt,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uia,BEM.uit,BEM.u_turb))
-        np.savetxt(filename,M,header=header,fmt='%14.7e',comments='#')
+        return pd.DataFrame(data=M, columns=header)
+
+    def WriteRadialFile(BEM, filename):
+        df = BEM.radialDataFrame()
+        np.savetxt(filename, df.values, header=' '.join(['{:14s}'.format(s) for s in df.columns]), fmt='%14.7e',comments='#')
+        #df.to_csv(filename, index=False, sep='\t')
 
     def StoreIntegratedValues(BEM, df=None):
         S=pd.Series(dtype='float64')
@@ -123,7 +387,10 @@ class SteadyBEM_Outputs:
             df = pd.concat((df, pd.DataFrame([S])))
         return df
 
-def SteadyBEM(Omega,pitch,V0,xdot,u_turb,
+# --------------------------------------------------------------------------------}
+# --- Low level function  
+# --------------------------------------------------------------------------------{
+def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         nB, cone, r, chord, twist, polars, # Rotor
         rho=1.225,KinVisc=15.68*10**-6,    # Environment
         nItMax=100, aTol=10**-6, bTipLoss=True, bHubLoss=False, bAIDrag=True, bTIDrag=True, bSwirl=True, relaxation=0.4, a_init=None, ap_init=None):
@@ -264,6 +531,9 @@ def SteadyBEM(Omega,pitch,V0,xdot,u_turb,
     return BEM
 
 
+# --------------------------------------------------------------------------------}
+# --- Tools to extract necessary inputs for a BEM simulation
+# --------------------------------------------------------------------------------{
 def FASTFile2SteadyBEM(FASTFileName):
     from welib.weio.fast_input_deck import FASTInputDeck
     F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
@@ -330,6 +600,8 @@ def FLEX2SteadyBEM(BladeFile,ProfileFile, cone, tilt, r_hub, rho=1.225, nB=3):
     return nB,cone,r,chord,twist,polars,rho
 
 
+
+
 if __name__=="__main__":
     """ See examples/ for more examples """
 
@@ -346,7 +618,7 @@ if __name__=="__main__":
         pitch=2     #[deg]
         xdot=0      #[m/s]
         u_turb=0    #[m/s]
-        BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
+        BEM=calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
                     a_init =a0,

@@ -2,7 +2,7 @@
 Performs simple BEM simulations of the NREL 5MW turbine for two operating conditions.
 """
 # --- Common libraries 
-from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
+from welib.BEM.steadyBEM import calcSteadyBEM, FASTFile2SteadyBEM
 import os
 import glob
 import matplotlib.pyplot as plt
@@ -30,7 +30,7 @@ def main(test=False):
         pitch  = PITCH[i] # [deg]
         xdot   = 0        # [m/s]
         u_turb = 0        # [m/s]
-        BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
+        BEM=calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
                     a_init =a0,

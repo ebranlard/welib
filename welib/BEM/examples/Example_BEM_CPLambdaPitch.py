@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
+from welib.BEM.steadyBEM import calcSteadyBEM, FASTFile2SteadyBEM
 from welib.weio.rosco_performance_file import ROSCOPerformanceFile
 import matplotlib.pyplot as plt
 
@@ -42,7 +42,7 @@ def main(test=False,extra=False):
             xdot=0      #[m/s]
             u_turb=0    #[m/s]
             a0,ap0 = None, None
-            BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
+            BEM=calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                         nB,cone,r,chord,twist,polars,
                         rho=rho,bTIDrag=True,bAIDrag=True,
                         a_init =a0, ap_init=ap0

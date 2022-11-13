@@ -24,7 +24,7 @@ class Test(unittest.TestCase):
         pitch=2     #[deg]
         xdot=0      #[m/s]
         u_turb=0    #[m/s]
-        BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
+        BEM=calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True)
 
