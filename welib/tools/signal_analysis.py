@@ -10,9 +10,9 @@ import pandas as pd
 
 # --- List of available filters
 FILTERS=[
-    {'name':'Moving average','param':100,'paramName':'Window Size','paramRange':[0,100000],'increment':1},
-    {'name':'Low pass 1st order','param':1.0,'paramName':'Cutoff Freq.','paramRange':[0.0001,100000],'increment':0.1},
-    {'name':'High pass 1st order','param':1.0,'paramName':'Cutoff Freq.','paramRange':[0.0001,100000],'increment':0.1},
+    {'name':'Moving average'      , 'param':100 , 'paramName':'Window Size'  , 'paramRange':[1      , 100000] , 'increment':1  , 'digits':0} , 
+    {'name':'Low pass 1st order'  , 'param':1.0, 'paramName':'Cutoff Freq.' , 'paramRange':[0.0001 , 100000] , 'increment':0.1, 'digits':4} , 
+    {'name':'High pass 1st order' , 'param':0.1 , 'paramName':'Cutoff Freq.' , 'paramRange':[0.0001 , 100000] , 'increment':0.1, 'digits':4} , 
 ]
 
 SAMPLERS=[
@@ -21,7 +21,7 @@ SAMPLERS=[
     {'name':'Remove',  'param':[], 'paramName':'Remove list'},
     {'name':'Every n', 'param':2  , 'paramName':'n'},
     {'name':'Time-based', 'param':0.01  , 'paramName':'Sample time (s)'},
-    {'name':'Delta x', 'param':0.1, 'paramName':'dx'},
+    {'name':'Delta x', 'param':[0.1,np.nan,np.nan], 'paramName':'dx, xmin, xmax'},
 ]
 
 
@@ -69,26 +69,28 @@ def multiInterp(x, xp, fp, extrap='bounded'):
     xp  = np.asarray(xp)
     assert fp.shape[1]==len(xp), 'Second dimension of fp should have the same length as xp'
 
-    j   = np.searchsorted(xp, x) - 1
-    dd  = np.zeros(len(x))
+    j = np.searchsorted(xp, x, 'left') - 1
+    dd  = np.zeros(len(x)) #*np.nan
     bOK = np.logical_and(j>=0, j< len(xp)-1)
-    bLower =j<0
-    bUpper =j>=len(xp)-1
     jOK = j[bOK]
     dd[bOK] = (x[bOK] - xp[jOK]) / (xp[jOK + 1] - xp[jOK])
     jBef=j 
     jAft=j+1
     # 
+    bLower =j<0
+    bUpper =j>=len(xp)-1
     # Use first and last values for anything beyond xp
     jAft[bUpper] = len(xp)-1
     jBef[bUpper] = len(xp)-1
     jAft[bLower] = 0
     jBef[bLower] = 0
     if extrap=='bounded':
+        #OK
         pass
-        # OK
     elif extrap=='nan':
-        dd[~bOK] = np.nan
+        # Set values to nan if out of bounds
+        bBeyond= np.logical_or(x<np.min(xp), x>np.max(xp))
+        dd[bBeyond] = np.nan
     else:
         raise NotImplementedError()
 
@@ -133,6 +135,23 @@ def interpArray(x, xp, fp, extrap='bounded'):
         return (1 - dd) * fp[:,j] + fp[:,j+1] * dd
 
 
+def interpDF(x_new, xLabel, df, extrap='bounded'):
+    """ Resample a dataframe using linear interpolation"""
+    x_old = df[xLabel].values
+    #x_new=np.sort(x_new)
+    # --- Method 1 (pandas)
+    #df_new = df_old.copy()
+    #df_new = df_new.set_index(x_old)
+    #df_new = df_new.reindex(df_new.index | x_new)
+    #df_new = df_new.interpolate().loc[x_new]
+    #df_new = df_new.reset_index()
+    # --- Method 2 interp storing dx
+    data_new=multiInterp(x_new, x_old, df.values.T, extrap=extrap)
+    df_new = pd.DataFrame(data=data_new.T, columns=df.columns.values)
+    df_new[xLabel] = x_new # Just in case this value was replaced by nan..
+    return df_new
+
+
 def resample_interp(x_old, x_new, y_old=None, df_old=None):
     #x_new=np.sort(x_new)
     if df_old is not None:
@@ -145,10 +164,10 @@ def resample_interp(x_old, x_new, y_old=None, df_old=None):
         # --- Method 2 interp storing dx
         data_new=multiInterp(x_new, x_old, df_old.values.T)
         df_new = pd.DataFrame(data=data_new.T, columns=df_old.columns.values)
-        return x_new, df_new
+        return df_new
 
     if y_old is not None:
-        return x_new, np.interp(x_new, x_old, y_old)
+        return np.interp(x_new, x_old, y_old)
 
 
 def applySamplerDF(df_old, x_col, sampDict):
@@ -166,13 +185,13 @@ def applySampler(x_old, y_old, sampDict, df_old=None):
         if len(param)==0:
             raise Exception('Error: At least one value is required to resample the x values with')
         x_new = param
-        return resample_interp(x_old, x_new, y_old, df_old)
+        return x_new, resample_interp(x_old, x_new, y_old, df_old)
 
     elif sampDict['name']=='Insert':
         if len(param)==0:
             raise Exception('Error: provide a list of values to insert')
         x_new = np.sort(np.concatenate((x_old.ravel(),param)))
-        return resample_interp(x_old, x_new, y_old, df_old)
+        return x_new, resample_interp(x_old, x_new, y_old, df_old)
 
     elif sampDict['name']=='Remove':
         I=[]
@@ -183,14 +202,33 @@ def applySampler(x_old, y_old, sampDict, df_old=None):
             if len(Ifound)>0:
                 I+=list(Ifound.ravel())
         x_new=np.delete(x_old,I)
-        return resample_interp(x_old, x_new, y_old, df_old)
+        return x_new, resample_interp(x_old, x_new, y_old, df_old)
 
     elif sampDict['name']=='Delta x':
         if len(param)==0:
             raise Exception('Error: provide value for dx')
         dx    = param[0]
-        x_new = np.arange(x_old[0], x_old[-1]+dx/2, dx)
-        return resample_interp(x_old, x_new, y_old, df_old)
+        if dx==0:
+            raise Exception('Error: `dx` cannot be 0')
+        if len(param)==1:
+            # NOTE: not using min/max if data loops (like airfoil)
+            xmin =  np.min(x_old) 
+            xmax =  np.max(x_old) + dx/2
+        elif len(param)==3:
+            xmin  = param[1]
+            xmax  = param[2]
+            if xmin is np.nan:
+                xmin =  np.min(x_old) 
+            if xmax is np.nan:
+                xmax =  np.max(x_old) + dx/2
+        else:
+            raise Exception('Error: the sampling parameters should be a list of three values `dx, xmin, xmax`')
+        x_new = np.arange(xmin, xmax, dx)
+        if len(x_new)==0:
+            xmax = xmin+dx*1.1 # NOTE: we do it like this to account for negative dx
+            x_new = np.arange(xmin, xmax, dx)
+        param = [dx, xmin, xmax]
+        return x_new, resample_interp(x_old, x_new, y_old, df_old)
 
     elif sampDict['name']=='Every n':
         if len(param)==0:
