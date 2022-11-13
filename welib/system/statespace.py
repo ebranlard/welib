@@ -832,7 +832,7 @@ class StateSpace(System):
     # ---  Plotting functions
     # --------------------------------------------------------------------------------{
     # TODO merge those df or res
-    def plot_x_legacy(self, fig=None, axes=None, label=None, res=None, **kwargs):
+    def plot_x_legacy(self, axes=None, label=None, res=None, **kwargs):
         """ Simple plot of states after time integration"""
         if res is None:
             res=self.res
@@ -857,7 +857,7 @@ class StateSpace(System):
         if not axes_provided:
             axes[-1].set_xlabel('Time [s]')
 
-        return fig, axes
+        return axes
 
     def plot_u_legacy(self, axes=None, label=None, res=None, **kwargs):
         """ 

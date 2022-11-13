@@ -425,7 +425,12 @@ class WindTurbineStructure():
         resLI=sysLI.integrate(time, method='RK45') # **options):
 
         # --- Convert to dataframe
-        dfLI = sysLI.res2DataFrame(resLI, self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
+        calc=''
+        if acc:
+            calc+='xdd,'
+        if forcing:
+            calc+='f,'
+        dfLI = sysLI.res2DataFrame(resLI, self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, calc=calc, sAcc=self.acc_channels)
 
         print('-----------------------------------------------------------------------------')
         return resLI, sysLI, dfLI

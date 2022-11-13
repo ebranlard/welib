@@ -50,10 +50,11 @@ resld, _ = sysl.integrate(time, method='impulse')
 
 
 # --- Plot
-fig, axes = sys.plot(res  = resn , label = 'MechSys Numerical int.')
-fig, axes = sys.plot(res  = resd , label = 'MechSys convolution (Duhamel)' ,  fig=fig, axes=axes, ls = '--')
-fig, axes = sysl.plot_x_legacy(res = resln, label = 'Lin sys Numerical int.'        ,  fig=fig, axes=axes, ls = ':')
-fig, axes = sysl.plot_x_legacy(res = resld, label = 'Lin sys convolution'           ,  fig=fig, axes=axes, ls = '-.', c = 'k')
+axes = sys.plot(res  = resn , label = 'MechSys Numerical int.')
+axes = sys.plot(res  = resd , label = 'MechSys convolution (Duhamel)' ,  axes=axes, ls = '--')
+axes = sysl.plot_x_legacy(res = resln, label = 'Lin sys Numerical int.', axes=axes, ls = ':')
+axes = sysl.plot_x_legacy(res = resld, label = 'Lin sys convolution'   , axes=axes, ls = '-.', c = 'k')
+fig=axes[0].get_figure()
 fig.subplots_adjust(left=0.14, right=0.99, top=0.98, bottom=0.10, hspace=0.20, wspace=0.20)
 axes[0].legend()
 axes[0].set_title('System - 2nd order - Duhamel or numerical')
