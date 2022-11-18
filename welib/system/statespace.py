@@ -663,6 +663,7 @@ class StateSpace(System):
         # --- Calc output based on states
         self._calc_outputs(res.t, res.y, df)
         if yoffset is not None:
+            print('>>> STOPED IN STATESPACE.py')
             import pdb; pdb.set_trace()
 
         if insertTime:
