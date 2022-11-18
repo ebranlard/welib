@@ -151,7 +151,7 @@ def dynstall_mhh_param_from_polar(P, chord, Tf0=6.0, Tp0=1.5, A1=A1_Jones, A2=A2
     p['Cla']        = P._linear_slope
     p['chord']      = chord
     # Polar functions
-    p['F_st']  = P.f_st_interp
+    p['F_st']  = P.fs_interp
     p['Cl_fs'] = P.cl_fs_interp
     p['Cl']    = P.cl_interp
     p['Cd']    = P.cd_interp
@@ -455,7 +455,7 @@ def dynstall_oye_param_from_polar(P,tau=None,tau_chord=None):
         raise Exception('Provide `tau` or provide `tau_chord`')
     p=dict()
     p['tau']   = 3*tau_chord if tau is None else tau
-    p['F_st']  = P.f_st_interp
+    p['F_st']  = P.fs_interp
     p['Clinv'] = P.cl_inv_interp
     p['Clfs']  = P.cl_fs_interp
     return p

@@ -6,6 +6,7 @@
 
 import os
 import numpy as np
+from .polar_file import loadPolarFile # For IO
 
 class NoCrossingException(Exception):
     pass
@@ -24,10 +25,9 @@ class Polar(object):
         - cd_interp         : cd at given alpha values
         - cm_interp         : cm at given alpha values
         - cn_interp         : cn at given alpha values
-        - f_st_interp       : separation function (compared to fully separated polar)
+        - fs_interp       : separation function (compared to fully separated polar)
         - cl_fs_interp      : cl fully separated at given alpha values
         - cl_inv_interp     : cl inviscid at given alpha values
-        - fromfile          : reads of polar from csv of FAST AD15 file
         - correction3D      : apply 3D rotatational correction
         - extrapolate       : extend polar data set using Viterna's method
         - unsteadyParams    : computes unsteady params e.g. needed by AeroDyn15
@@ -47,7 +47,7 @@ class Polar(object):
         Parameters
         ----------
         FileName_or_Re: float or string
-            For backward compatibility.. Filename or reynolds number
+            For backward compatibility.. Filename or reynolds number TODO remove Re
         Re : float
             Reynolds number
         alpha : ndarray (deg)
@@ -61,7 +61,23 @@ class Polar(object):
         """
         self._radians=False 
         if isinstance(FileName_or_Re, str):
-            alpha, cl, cd, cm, Re = loadPolarFile(FileName_or_Re, fformat=fformat, to_radians=False)
+            df, Re = loadPolarFile(FileName_or_Re, fformat=fformat, to_radians=radians)
+            alpha = df['Alpha'].values
+            cl    = df['Cl'].values
+            cd    = df['Cd'].values
+            cm    = df['Cm'].values
+#             if 'fs' in df.keys():
+#                 print('[INFO] Using separating function from input file.')
+#                 self.fs = df['fs'].values
+#                 self.fs_lock = True
+#             if 'Cl_fs' in df.keys():
+#                 print('[INFO] Using Cl fully separated from input file.')
+#                 self.cl_fs =df['Cl_fs'].values
+#                 self.cl_fs_lock = True
+#             if 'Cl_inv' in df.keys():
+#                 print('[INFO] Using Cl fully separated from input file.')
+#                 self.cl_inv = df['Cl_inv'].values
+#                 self.cl_inv_lock = True
         else:
             if Re is None:
                 Re = FileName_or_Re
@@ -77,7 +93,7 @@ class Polar(object):
         self.cl = np.array(cl)
         self.cd = np.array(cd)
         self.cm = np.array(cm)
-        self.f_st = None  # separation function
+        self.fs = None  # steady separation function
         self.cl_fs = None  # cl_fully separated
         self._linear_slope = None
         self._alpha0 = None
@@ -107,8 +123,10 @@ class Polar(object):
         s+=' * cl_linear_slope :   {} \n'.format(self.cl_linear_slope())
         s+=' * cl_max :            {} \n'.format(self.cl_max())
         s+=' * unsteadyParams :    {} \n'.format(self.unsteadyParams())
-        s+='Useful functions:   cl_interp, cd_interp, cm_interp, f_st_interp \n'
-        s+='                      plot, extrapolate\n'
+        s+='Useful functions:   cl_interp, cd_interp, cm_interp, fs_interp \n'
+        s+='                    cl_fs_interp, cl_inv_interp,                 \n'
+        s+='                    interpolant \n'
+        s+='                    plot, extrapolate\n'
         return s
 
 
@@ -124,20 +142,29 @@ class Polar(object):
     def cn_interp(self, alpha):
         return np.interp(alpha, self.alpha, self.cn)
 
-    def f_st_interp(self, alpha):
-        if self.f_st is None:
-            self.cl_fully_separated()
-        return np.interp(alpha, self.alpha, self.f_st)
+    def fs_interp(self, alpha):
+        if self.fs is None:
+            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
+        return np.interp(alpha, self.alpha, self.fs)
 
     def cl_fs_interp(self, alpha):
         if self.cl_fs is None:
-            self.cl_fully_separated()
+            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
         return np.interp(alpha, self.alpha, self.cl_fs)
 
     def cl_inv_interp(self, alpha):
         if (self._linear_slope is None) and (self._alpha0 is None):
             self._linear_slope, self._alpha0 = self.cl_linear_slope()
         return self._linear_slope * (alpha - self._alpha0)
+        #if self.cl_inv is None:
+        #    self.cl_fully_separated() # computes cl_fs, cl_inv and fs
+        #return np.interp(alpha, self.alpha, self.cl_inv)
+
+    #def interpolant(self, columns=['cl', 'cd', 'cm']):
+
+
+    #@property
+    #def cn(self):
 
     @property
     def cn(self):
@@ -155,15 +182,13 @@ class Polar(object):
             self._linear_slope,self._alpha0=self.cl_linear_slope()
         return self._linear_slope*(self.alpha-self._alpha0)
 
-
-
-
-
     @classmethod
     def fromfile(cls, filename, fformat='auto', compute_params=False, to_radians=False):
-        """Constructor based on a filename"""
-        alpha, cl, cd, cm, Re = loadPolarFile(filename, fformat=fformat, to_radians=to_radians)
-        return cls(Re=Re, alpha=alpha, cl=cl, cd=cd, cm=cm, compute_params=compute_params, radians=to_radians)
+        """Constructor based on a filename
+        # NOTE: this is legacy
+        """
+        print('[WARN] "from file" is depreciated and will be removed in a future release')
+        return cls(filename, fformat=fformat, compute_params=compute_params, radians=to_radians)
 
     def correction3D(
         self,
@@ -956,43 +981,44 @@ class Polar(object):
         alpha0 = self.alpha0()
         cla,_, = self.cl_linear_slope(method='max')
         if cla == 0:
-            cl_fs = self.cl  # when f_st ==1
-            f_st = self.cl * 0
+            cl_fs = self.cl  # when fs ==1
+            fs = self.cl * 0
         else:
             cl_ratio = self.cl / (cla * (self.alpha - alpha0))
             cl_ratio[np.where(cl_ratio < 0)] = 0
-            f_st = (2 * np.sqrt(cl_ratio) - 1) ** 2
-            f_st[np.where(f_st < 1e-15)] = 0
-            # Initialize to linear region (in fact only at singularity, where f_st=1)
-            cl_fs = self.cl / 2.0  # when f_st ==1
-            # Region where f_st<1, merge
-            I = np.where(f_st < 1)
-            cl_fs[I] = (self.cl[I] - cla * (self.alpha[I] - alpha0) * f_st[I]) / (1.0 - f_st[I])
+            fs = (2 * np.sqrt(cl_ratio) - 1) ** 2
+            fs[np.where(fs < 1e-15)] = 0
+            # Initialize to linear region (in fact only at singularity, where fs=1)
+            cl_fs = self.cl / 2.0  # when fs ==1
+            # Region where fs<1, merge
+            I = np.where(fs < 1)
+            cl_fs[I] = (self.cl[I] - cla * (self.alpha[I] - alpha0) * fs[I]) / (1.0 - fs[I])
             # Outside region, use steady data
-            iHig = np.ma.argmin(np.ma.MaskedArray(f_st, self.alpha < alpha0))
-            iLow = np.ma.argmin(np.ma.MaskedArray(f_st, self.alpha > alpha0))
+            iHig = np.ma.argmin(np.ma.MaskedArray(fs, self.alpha < alpha0))
+            iLow = np.ma.argmin(np.ma.MaskedArray(fs, self.alpha > alpha0))
             cl_fs[0 : iLow + 1] = self.cl[0 : iLow + 1]
             cl_fs[iHig + 1 : -1] = self.cl[iHig + 1 : -1]
 
-        # Ensuring everything is in harmony
+        # Ensuring everything is consistent
         cl_inv = cla * (self.alpha - alpha0)
-        f_st = (self.cl - cl_fs) / (cl_inv - cl_fs + 1e-10)
-        f_st[np.where(f_st < 1e-15)] = 0
+        fs = (self.cl - cl_fs) / (cl_inv - cl_fs + 1e-10)
+        fs[np.where(fs < 1e-15)] = 0
         # Storing
-        self.f_st = f_st
+        self.fs = fs
         self.cl_fs = cl_fs
-        return cl_fs, f_st
+        self.cl_inv = cl_inv
+        return cl_fs, fs
 
     def dynaStallOye_DiscreteStep(self, alpha_t, tau, fs_prev, dt):
         # compute aerodynamical force from aerodynamic data
         # interpolation from data
-        f_st = self.f_st_interp(alpha_t)
+        fs = self.fs_interp(alpha_t)
         Clinv = self.cl_inv_interp(alpha_t)
         Clfs = self.cl_fs_interp(alpha_t)
         # dynamic stall model
-        fs = f_st + (fs_prev - f_st) * np.exp(-dt / tau)
-        Cl = fs * Clinv + (1 - fs) * Clfs
-        return Cl, fs
+        fs_dyn = fs + (fs_prev - fs) * np.exp(-dt / tau)
+        Cl = fs_dyn * Clinv + (1 - fs_dyn) * Clfs
+        return Cl, fs_dyn
 
     def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None, unsteadyParams=True):
         from welib.weio.fast_input_file import ADPolarFile
@@ -1045,60 +1071,6 @@ class Polar(object):
         return ADpol
 
 
-
-def loadPolarFile(filename, fformat='auto', to_radians=False):
-    if not os.path.exists(filename):
-        raise Exception('File not found:',filename)
-
-    from welib.weio.fast_input_file import FASTInputFile
-    from welib.weio.csv_file import CSVFile
-
-    if fformat=='ADPolar':
-        M = FASTInputFile(filename).toDataFrame().values
-
-    elif fformat=='delimited':
-        try:
-            M=np.loadtxt(filename,comments=['#','!'])
-        except:
-            # use CSV file instead?
-            import pandas as pd
-            M=pd.read_csv(filename, skiprows = 53, header=None, delim_whitespace=True, names=['Alpha','Cl','Cd','Cm']).values
-        Re    = np.nan
-    elif fformat=='auto':
-        M=None
-        if M is None:
-            try:
-                M = CSVFile(filename).toDataFrame().values
-            except:
-                pass
-        if M is None:
-            try:
-                M = FASTInputFile(filename).toDataFrame().values
-            except:
-                pass
-        if M is None:
-            try: 
-                import welib.weio as weio # TODO
-            except:
-                raise Exception('[WARN] Module `weio` not present, only delimited or ADPolar file formats supported ')
-            df = weio.read(filename).toDataFrame()
-            if type(df) is dict:
-                M=df[list(df.keys())[0]].values
-            else:
-                M=df.values
-    else:
-        raise NotImplementedError('Format not implemented: {}'.format(fformat))
-
-    if M.shape[1]<4:
-        raise Exception('Only supporting polars with 4 columns: alpha cl cd cm')
-    if to_radians:
-        M[:,0]=M[:,0]*np.pi/180
-    alpha = M[:,0]
-    cl    = M[:,1]
-    cd    = M[:,2]
-    cm    = M[:,3]
-    Re    = np.nan
-    return alpha, cl, cd, cm, Re
 
 
 def blend(pol1, pol2, weight):
@@ -1471,11 +1443,11 @@ def polar_params(alpha, cl, cd, cm):
 
         # --- Compute values at all angle of attack
         Cl_fully_sep = np.zeros(alpha.shape)
-        f_st         = np.zeros(alpha.shape)
+        fs           = np.zeros(alpha.shape)
         Cl_linear    = np.zeros(alpha.shape)
         for i,al in enumerate(alpha):
             Cl_fully_sep[i] = cl_fullsep(al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl, alpha_fs_l, alpha_fs_u)
-            f_st        [i] = f_point   (al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl, alpha_fs_l, alpha_fs_u)
+            fs          [i] = f_point   (al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl, alpha_fs_l, alpha_fs_u)
             Cl_linear   [i] = cl_lin    (al, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, alpha, cl)
 
     p=dict()
@@ -1488,7 +1460,7 @@ def polar_params(alpha, cl, cd, cm):
     p['alpha_sl_neg'] = alpha_sl_neg
     p['alpha_sl_pos'] = alpha_sl_pos
 
-    return p, Cl_linear, Cl_fully_sep, f_st
+    return p, Cl_linear, Cl_fully_sep, fs
 
 
 

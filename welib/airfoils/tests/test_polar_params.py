@@ -9,9 +9,9 @@ from welib.airfoils.Polar import *
 # --------------------------------------------------------------------------------{
 class TestPolarParams(unittest.TestCase):
     def setUp(self):
-        self.P235 = Polar.fromfile(os.path.join(MyDir,'../data/63-235.csv'))
-        self.PFFA = Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
-        self.PCyl = Polar.fromfile(os.path.join(MyDir,'../data/Cylinder.csv'))
+        self.P235 = Polar(os.path.join(MyDir,'../data/63-235.csv'))
+        self.PFFA = Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
+        self.PCyl = Polar(os.path.join(MyDir,'../data/Cylinder.csv'))
 
     def assertNaN(self,x):
         self.assertTrue(np.isnan(x))
@@ -196,7 +196,7 @@ class TestPolarParams(unittest.TestCase):
         np.testing.assert_almost_equal(cl_fs[62],P.cl[62]/2*0.998,decimal=4)
     
         # TODO TODO TODO Ensure harmony between f_st if computed with slope that is not max
-        #P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True)
+        #P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True)
         #cl_fs,f_st0=P.cl_fully_separated()
         #f_st=(P.cl-cl_fs)/(P.cl_inv-cl_fs);
 
@@ -219,17 +219,17 @@ class TestPolarParams(unittest.TestCase):
         #plt.show()
         #print(f_st)
 # 
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/Cylinder.dat'))
+#         P=Polar(os.path.join(MyDir,'../data/Cylinder.dat'))
 #         sl,offset=P.cl_linear_slope()
 # 
 #         plt.show()
 
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/63-235.csv'))
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/Cylinder.csv'))
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/AD_3-63-224_mod.csv'))
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/AD_4-63-218_mod.csv'))
-#         P=Polar.fromfile(os.path.join(MyDir,'../data/AD_5_63-214_mod.csv'))
+#         P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
+#         P=Polar(os.path.join(MyDir,'../data/63-235.csv'))
+#         P=Polar(os.path.join(MyDir,'../data/Cylinder.csv'))
+#         P=Polar(os.path.join(MyDir,'../data/AD_3-63-224_mod.csv'))
+#         P=Polar(os.path.join(MyDir,'../data/AD_4-63-218_mod.csv'))
+#         P=Polar(os.path.join(MyDir,'../data/AD_5_63-214_mod.csv'))
 
 
 if __name__ == '__main__':

@@ -173,6 +173,13 @@ class FASTInputFileBase(File):
         f.write('AeroDyn_Changed.dat')
 
     """
+    @staticmethod
+    def defaultExtensions():
+        return ['.dat','.fst','.txt','.fstf','.dvr']
+
+    @staticmethod
+    def formatName():
+        return 'FAST input file Base'
 
     def __init__(self, filename=None, **kwargs):
         self._size=None
@@ -1513,6 +1520,10 @@ class ADBladeFile(FASTInputFileBase):
 # --- AeroDyn Polar 
 # --------------------------------------------------------------------------------{
 class ADPolarFile(FASTInputFileBase):
+    @staticmethod
+    def formatName():
+        return 'FAST AeroDyn polar file'
+
     @classmethod
     def from_fast_input_file(cls, parent):
         self = cls()

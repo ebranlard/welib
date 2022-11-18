@@ -19,7 +19,7 @@ def prescribed_oscillations_ris_r_1792():
     """
     radians=True
     #FFA-W3-241 airfoil Dyna Stall
-    P=Polar.fromfile(os.path.join(MyDir,'../data/DU21_A17.csv'),compute_params=True,to_radians=radians)
+    P=Polar(os.path.join(MyDir,'../data/DU21_A17.csv'), compute_params=True, radians=radians)
 
     if radians:
         deg_scale=np.pi/180
@@ -55,7 +55,7 @@ def prescribed_oscillations_ris_r_1792():
     for ia,alpham in enumerate(valpha_mean):
         valpha_t[ia,:]   = (alpham+DeltaAlpha*np.sin(omega*vt))*deg_scale
         valpha_dot_t     = (2*omega*np.cos(omega*vt) )*deg_scale 
-        fs_prev = P.f_st_interp(alpham*deg_scale)# init with steady value
+        fs_prev = P.fs_interp(alpham*deg_scale)# init with steady value
 
         # Oye's Parameters and Inputs
         p_oye = dynstall_oye_param_from_polar(P, tau=tau_oye)

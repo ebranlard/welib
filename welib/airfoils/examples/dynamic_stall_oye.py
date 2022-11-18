@@ -13,7 +13,7 @@ from welib.airfoils.Polar import *
 # --------------------------------------------------------------------------------{
 def prescribed_oscillations():
     #FFA-W3-241 airfoil Dyna Stall
-    P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True)
+    P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'), compute_params=True)
 
     # Parameters
     omega       = 12.57
@@ -33,12 +33,12 @@ def prescribed_oscillations():
     # Loop on alpham and time 
     for ia,alpham in enumerate(valpha_mean):
         valpha_t[ia,:]=alpham+2*np.sin(omega*vt)
-        fs_prev = P.f_st_interp(alpham)# init with steady value
+        fs_prev = P.fs_interp(alpham)# init with steady value
 
         def dyna_stall_oye(t,fs):
             """ d(fs)/dt = 1/tau (fs_st - fs) """
             alpha_t = np.interp(t, vt, valpha_t[ia,:])
-            f_st    = P.f_st_interp  (alpha_t)
+            f_st    = P.fs_interp  (alpha_t)
             return 1/tau *( f_st - fs)
 
         # Integration using solve_ivp
