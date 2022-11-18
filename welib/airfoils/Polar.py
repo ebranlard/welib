@@ -41,13 +41,13 @@ class Polar(object):
         - toAeroDyn: write AeroDyn file 
     """
 
-    def __init__(self, FileName_or_Re=None, alpha=None, cl=None, cd=None, cm=None, Re=None, compute_params=False, radians=None, fformat='auto'):
+    def __init__(self, filename=None, alpha=None, cl=None, cd=None, cm=None, Re=None, compute_params=False, radians=None, fformat='auto'):
         """Constructor
 
         Parameters
         ----------
-        FileName_or_Re: float or string
-            For backward compatibility.. Filename or reynolds number TODO remove Re
+        filename: string
+            If provided, the polar will be read from filename using fformat
         Re : float
             Reynolds number
         alpha : ndarray (deg)
@@ -58,10 +58,21 @@ class Polar(object):
             drag coefficient
         cm : ndarray
             moment coefficient
+        fformat: string
+            file format to be used when filename is provided
+
         """
         self._radians=False 
-        if isinstance(FileName_or_Re, str):
-            df, Re = loadPolarFile(FileName_or_Re, fformat=fformat, to_radians=radians)
+
+        # Introducing locks so that some properties become readonly if prescribed by user
+        self._fs_lock     = False
+        self._cl_fs_lock  = False
+        self._cl_inv_lock = False
+        # TODO lock _alpha0 and cl_alpha
+
+        # Read polar according to fileformat, if filename provided
+        if filename is not None:
+            df, Re = loadPolarFile(filename, fformat=fformat, to_radians=radians)
             alpha = df['Alpha'].values
             cl    = df['Cl'].values
             cd    = df['Cd'].values
@@ -78,10 +89,6 @@ class Polar(object):
 #                 print('[INFO] Using Cl fully separated from input file.')
 #                 self.cl_inv = df['Cl_inv'].values
 #                 self.cl_inv_lock = True
-        else:
-            if Re is None:
-                Re = FileName_or_Re
-
         self.Re = Re
         self.alpha = np.array(alpha)
         if cl is None:
@@ -95,6 +102,7 @@ class Polar(object):
         self.cm = np.array(cm)
         self.fs = None  # steady separation function
         self.cl_fs = None  # cl_fully separated
+        self.cl_inv = None  # cl inviscid/linear/potential flow
         self._linear_slope = None
         self._alpha0 = None
         if radians is None:
@@ -118,7 +126,7 @@ class Polar(object):
         s+=' - _alpha0:            {} \n'.format(self._alpha0)
         s+=' - _linear_slope:      {} \n'.format(self._linear_slope)
         s+='Derived parameters:\n'
-        s+=' * cl_lin             : array of size {} \n'.format(len(self.alpha))
+        s+=' * cl_lin (UNSURE)    : array of size {} \n'.format(len(self.alpha))
         s+=' * alpha0 :            {} \n'.format(self.alpha0())
         s+=' * cl_linear_slope :   {} \n'.format(self.cl_linear_slope())
         s+=' * cl_max :            {} \n'.format(self.cl_max())
@@ -129,6 +137,19 @@ class Polar(object):
         s+='                    plot, extrapolate\n'
         return s
 
+
+    # --- Potential read only properties
+#     @property
+#     def cl_inv(self):
+#         return self._cl_inv
+#     @cl_inv.setter
+#     def cl_inv(self, cl_inv):
+#         if self._cl_inv_lock:
+#             raise Exception('Cl_inv was set by user, cannot modify it')
+#         else:
+#             self._cl_inv = cl_inv
+    
+    # --- Interpolants
 
     def cl_interp(self, alpha):
         return np.interp(alpha, self.alpha, self.cl)
@@ -153,18 +174,15 @@ class Polar(object):
         return np.interp(alpha, self.alpha, self.cl_fs)
 
     def cl_inv_interp(self, alpha):
-        if (self._linear_slope is None) and (self._alpha0 is None):
-            self._linear_slope, self._alpha0 = self.cl_linear_slope()
-        return self._linear_slope * (alpha - self._alpha0)
-        #if self.cl_inv is None:
-        #    self.cl_fully_separated() # computes cl_fs, cl_inv and fs
-        #return np.interp(alpha, self.alpha, self.cl_inv)
+        #if (self._linear_slope is None) and (self._alpha0 is None):
+        #    self._linear_slope, self._alpha0 = self.cl_linear_slope()
+        #return self._linear_slope * (alpha - self._alpha0)
+        if self.cl_inv is None:
+            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
+        return np.interp(alpha, self.alpha, self.cl_inv)
 
-    #def interpolant(self, columns=['cl', 'cd', 'cm']):
-
-
-    #@property
-    #def cn(self):
+    def interpolant(self, columns=['cl', 'cd', 'cm']):
+        pass
 
     @property
     def cn(self):
@@ -177,17 +195,21 @@ class Polar(object):
             return self.cl * np.cos(self.alpha * np.pi / 180) + self.cd * np.sin(self.alpha * np.pi / 180)
 
     @property
-    def cl_lin(self):
-        if (self._linear_slope is None) and (self._alpha0 is None):
-            self._linear_slope,self._alpha0=self.cl_linear_slope()
-        return self._linear_slope*(self.alpha-self._alpha0)
+    def cl_lin(self): # TODO consider removing
+        print('[WARN] Polar: cl_lin is a bit of a weird property. Not sure if it will be kept')
+        if self.cl_inv is None:
+            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
+        return self.cl_inv
+        #if (self._linear_slope is None) and (self._alpha0 is None):
+        #    self._linear_slope,self._alpha0=self.cl_linear_slope()
+        #return self._linear_slope*(self.alpha-self._alpha0)
 
     @classmethod
     def fromfile(cls, filename, fformat='auto', compute_params=False, to_radians=False):
         """Constructor based on a filename
         # NOTE: this is legacy
         """
-        print('[WARN] "from file" is depreciated and will be removed in a future release')
+        print('[WARN] Polar: "fromfile" is depreciated and will be removed in a future release')
         return cls(filename, fformat=fformat, compute_params=compute_params, radians=to_radians)
 
     def correction3D(
@@ -331,7 +353,7 @@ class Polar(object):
 
         cd_3d = cd_2d + delta_cd
 
-        return type(self)(self.Re, np.degrees(alpha), cl=cl_3d, cd=cd_3d, cm=self.cm, radians=False)
+        return type(self)(Re=self.Re, alpha=np.degrees(alpha), cl=cl_3d, cd=cd_3d, cm=self.cm, radians=False)
 
     def extrapolate(self, cdmax, AR=None, cdmin=0.001, nalpha=15):
         """Extrapolates force coefficients up to +/- 180 degrees using Viterna's method
@@ -1131,7 +1153,7 @@ def blend(pol1, pol2, weight):
         Re = np.nan
 
     if bReturnObject:
-        return type(pol1)(Re, M[:, 0], M[:, 1], M[:, 2], M[:, 3])
+        return type(pol1)(Re=Re, alpha=M[:, 0], cl=M[:, 1], cd=M[:, 2], cm=M[:, 3])
     else:
         return M
 
@@ -1323,7 +1345,9 @@ def cl_fullsep(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl, al
     return cl
 
 def f_point(alpha, dclda, alpha0, alpha_sl_neg, alpha_sl_pos, valpha, vCl, alpha_fs_l, alpha_fs_u):
-    """ sepration funciton """
+    """ separation function
+    # TODO harmonize with cl_fully_separated maybe?
+    """
     if dclda==0:
         return 0
     if alpha < alpha_fs_l or alpha > alpha_fs_u:

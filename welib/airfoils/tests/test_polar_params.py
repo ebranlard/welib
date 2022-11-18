@@ -19,12 +19,12 @@ class TestPolarParams(unittest.TestCase):
     def test_alpha0(self):
         # --- Polar with one Cl value
         # non zero cl, alpha0 is nan
-        self.assertNaN  (Polar([],[100],[0.1],[],[]).alpha0())
+        self.assertNaN  (Polar(None,[100],[0.1],[],[]).alpha0())
         # cl value is 0, alpha0 is arbitrarily 0
-        self.assertEqual(Polar([],[100],[0.0],[],[]).alpha0(), 0)
+        self.assertEqual(Polar(None,[100],[0.0],[],[]).alpha0(), 0)
 
         # --- Polar with one zero crossing
-        P=Polar([],[-10,10],[-0.1,0.1],[],[])
+        P=Polar(None,[-10,10],[-0.1,0.1],[],[])
         # Alpha0 is found as long as the window holds it
         self.assertEqual(P.alpha0(window=[-50,50]),0.0)
         self.assertEqual(P.alpha0(window=[-10,10]),0.0)
@@ -33,7 +33,7 @@ class TestPolarParams(unittest.TestCase):
         self.assertRaises(Exception,P.alpha0, window=[-100,-50])
 
         # --- Polar with many zero crossing
-        P=Polar([],[-10,-5,0,5,10],[-0.1,0.1,-0.1,0.1,0.2],[],[])
+        P=Polar(None,[-10,-5,0,5,10],[-0.1,0.1,-0.1,0.1,0.2],[],[])
         self.assertEqual(P.alpha0(window=[-10,-5]), -7.5)
         # Error when several zero crossing are found
         #self.assertRaises(Exception,P.alpha0, window=[-10,10])
@@ -41,9 +41,9 @@ class TestPolarParams(unittest.TestCase):
 
         # --- Polar with constant values 
         # non zero cl, alpha0 is nan
-        self.assertNaN  (Polar([],[-10,10],[0.1,0.1],[],[]).alpha0())
+        self.assertNaN  (Polar(None,[-10,10],[0.1,0.1],[],[]).alpha0())
         # cl is 0, alpha0 is arbitrarily 0
-        self.assertEqual(Polar([],[-10,10],[0.0,0.0],[],[]).alpha0(), 0)
+        self.assertEqual(Polar(None,[-10,10],[0.0,0.0],[],[]).alpha0(), 0)
 
         # --- Real Polars
         np.testing.assert_almost_equal(self.P235.alpha0(),-1.26, decimal=2)
@@ -53,46 +53,46 @@ class TestPolarParams(unittest.TestCase):
 
     def test_slope(self):
         # --- Polar with two points
-        P=Polar([],[-1,1],[-1,1],[],[])
+        P=Polar(None,[-1,1],[-1,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar three points lin
-        P=Polar([],[-1,0,1],[-1,0,1],[],[])
+        P=Polar(None,[-1,0,1],[-1,0,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar three points cst
-        P=Polar([],[-1,0,1],[1,1,1],[],[])
+        P=Polar(None,[-1,0,1],[1,1,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,0.0)
         # --- Polar with sine shape
-        P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-1,0,1,0,0],[],[])
+        P=Polar(None,[-3,-2,-1,0,1,2,3],[-1,-2,-1,0,1,0,0],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar sine with plateaux 
-        P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-2,-1,0,1,1],[],[],radians=False)
+        P=Polar(None,[-3,-2,-1,0,1,2,3],[-1,-2,-2,-1,0,1,1],[],[],radians=False)
         P.alpha0()
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
         # --- Polar sine-line  -  Difficult to evaluate
-        P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2.1,-2,-1.1,0,1.1,1.2],[],[])
+        P=Polar(None,[-3,-2,-1,0,1,2,3],[-1,-2.1,-2,-1.1,0,1.1,1.2],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0,decimal=1)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0,decimal=1)
         # --- Polar with a kink - Difficult
-        P=Polar([],[-3,-2,-1,0,1,2,3],[-1,-2,-2,-2,0,1,1],[],[])
+        P=Polar(None,[-3,-2,-1,0,1,2,3],[-1,-2,-2,-2,0,1,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.5,decimal=1)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,2.0)
         # --- Polar step function
-        P=Polar([],[-3,-2,-1,0,1,2,3],[-.5,-.5,-.5,-.5,.5,.5,.5],[],[])
+        P=Polar(None,[-3,-2,-1,0,1,2,3],[-.5,-.5,-.5,-.5,.5,.5,.5],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0=P.cl_linear_slope(method='max')
@@ -100,7 +100,7 @@ class TestPolarParams(unittest.TestCase):
         # --- Sine
         alpha = np.linspace(-50,50,100) 
         Cl = np.sin(alpha*np.pi/180.)*180/np.pi
-        P=Polar([],alpha,Cl,[],[])
+        P=Polar(None,alpha,Cl,[],[])
         sl,a0=P.cl_linear_slope(window=[-10,10])
         np.testing.assert_almost_equal(sl,1.0, decimal=2)
         sl,a0=P.cl_linear_slope(window=[-10,10],method='max')
