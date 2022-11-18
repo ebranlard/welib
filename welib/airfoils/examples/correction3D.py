@@ -15,7 +15,7 @@ def main_correction3D(test=False):
     chord_over_r = 3./5.
     tsr          = 10
 
-    polar = Polar(polarFile_in, compute_params=True)
+    polar = Polar(polarFile_in, compute_params=True, verbose=False)
     #ADpol = polar.toAeroDyn(polarFile_AD)
     polar3D= polar.correction3D(r_over_R, chord_over_r, tsr)
 

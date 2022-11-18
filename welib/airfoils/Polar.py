@@ -41,7 +41,8 @@ class Polar(object):
         - toAeroDyn: write AeroDyn file 
     """
 
-    def __init__(self, filename=None, alpha=None, cl=None, cd=None, cm=None, Re=None, compute_params=False, radians=None, fformat='auto'):
+    def __init__(self, filename=None, alpha=None, cl=None, cd=None, cm=None, Re=None, 
+            compute_params=False, radians=None, fformat='auto', verbose=False):
         """Constructor
 
         Parameters
@@ -64,31 +65,41 @@ class Polar(object):
         """
         self._radians=False 
 
+        # --- Potentially-locked properties
         # Introducing locks so that some properties become readonly if prescribed by user
         self._fs_lock     = False
         self._cl_fs_lock  = False
         self._cl_inv_lock = False
         # TODO lock _alpha0 and cl_alpha
+        self.fs = None  # steady separation function
+        self.cl_fs = None  # cl_fully separated
+        self.cl_inv = None  # cl inviscid/linear/potential flow
+        self._alpha0 = None
+        self._linear_slope = None
 
         # Read polar according to fileformat, if filename provided
         if filename is not None:
-            df, Re = loadPolarFile(filename, fformat=fformat, to_radians=radians)
+            df, Re = loadPolarFile(filename, fformat=fformat, to_radians=radians, verbose=verbose)
             alpha = df['Alpha'].values
             cl    = df['Cl'].values
             cd    = df['Cd'].values
             cm    = df['Cm'].values
-#             if 'fs' in df.keys():
-#                 print('[INFO] Using separating function from input file.')
-#                 self.fs = df['fs'].values
-#                 self.fs_lock = True
-#             if 'Cl_fs' in df.keys():
-#                 print('[INFO] Using Cl fully separated from input file.')
-#                 self.cl_fs =df['Cl_fs'].values
-#                 self.cl_fs_lock = True
-#             if 'Cl_inv' in df.keys():
-#                 print('[INFO] Using Cl fully separated from input file.')
-#                 self.cl_inv = df['Cl_inv'].values
-#                 self.cl_inv_lock = True
+            if 'fs' in df.keys():
+                print('[INFO] Using separating function from input file.')
+                self.fs = df['fs'].values
+                self._fs_lock = True
+            if 'Cl_fs' in df.keys():
+                print('[INFO] Using Cl fully separated from input file.')
+                self.cl_fs =df['Cl_fs'].values
+                self._cl_fs_lock = True
+            if 'Cl_inv' in df.keys():
+                print('[INFO] Using Cl inviscid from input file.')
+                self.cl_inv = df['Cl_inv'].values
+                self._cl_inv_lock = True
+                # TODO we need a trigger if cl_inv provided, we should get alpha0 and slope from it
+            if not all([self._fs_lock, self._cl_fs_lock, self._cl_inv_lock]):
+                raise Exception("For now, input files are assumed to have all or none of the columns: (fs, cl_fs, and cl_inv). Otherwise, we\'ll have to ensure consitency, and so far we dont...")
+
         self.Re = Re
         self.alpha = np.array(alpha)
         if cl is None:
@@ -100,11 +111,6 @@ class Polar(object):
         self.cl = np.array(cl)
         self.cd = np.array(cd)
         self.cm = np.array(cm)
-        self.fs = None  # steady separation function
-        self.cl_fs = None  # cl_fully separated
-        self.cl_inv = None  # cl inviscid/linear/potential flow
-        self._linear_slope = None
-        self._alpha0 = None
         if radians is None:
             # If the max alpha is above pi, most likely we are in degrees
             self._radians = np.mean(np.abs(self.alpha)) <= np.pi / 2
@@ -114,8 +120,10 @@ class Polar(object):
         # NOTE: method needs to be in harmony for linear_slope and the one used in cl_fully_separated
         if compute_params:
             self._linear_slope, self._alpha0 = self.cl_linear_slope(method="max")
-            self.cl_fully_separated()
-            self.cl_inv = self._linear_slope * (self.alpha - self._alpha0)
+            if not self._cl_fs_lock:
+                self.cl_fully_separated()
+            if not self._cl_inv_lock:
+                self.cl_inv = self._linear_slope * (self.alpha - self._alpha0)
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
@@ -139,15 +147,15 @@ class Polar(object):
 
 
     # --- Potential read only properties
-#     @property
-#     def cl_inv(self):
-#         return self._cl_inv
-#     @cl_inv.setter
-#     def cl_inv(self, cl_inv):
-#         if self._cl_inv_lock:
-#             raise Exception('Cl_inv was set by user, cannot modify it')
-#         else:
-#             self._cl_inv = cl_inv
+    @property
+    def cl_inv(self):
+        return self._cl_inv
+    @cl_inv.setter
+    def cl_inv(self, cl_inv):
+        if self._cl_inv_lock:
+            raise Exception('Cl_inv was set by user, cannot modify it')
+        else:
+            self._cl_inv = cl_inv
     
     # --- Interpolants
 
@@ -999,17 +1007,20 @@ class Polar(object):
 
         return myret(slope, off)
 
-    def cl_fully_separated(self):
+    def cl_fully_separated(self, method='max'):
         alpha0 = self.alpha0()
-        cla,_, = self.cl_linear_slope(method='max')
+        cla,_, = self.cl_linear_slope(method=method)
         if cla == 0:
             cl_fs = self.cl  # when fs ==1
             fs = self.cl * 0
         else:
             cl_ratio = self.cl / (cla * (self.alpha - alpha0))
             cl_ratio[np.where(cl_ratio < 0)] = 0
-            fs = (2 * np.sqrt(cl_ratio) - 1) ** 2
-            fs[np.where(fs < 1e-15)] = 0
+            if self._fs_lock:
+                fs = self.fs
+            else:
+                fs = (2 * np.sqrt(cl_ratio) - 1) ** 2
+                fs[np.where(fs < 1e-15)] = 0
             # Initialize to linear region (in fact only at singularity, where fs=1)
             cl_fs = self.cl / 2.0  # when fs ==1
             # Region where fs<1, merge
@@ -1021,14 +1032,16 @@ class Polar(object):
             cl_fs[0 : iLow + 1] = self.cl[0 : iLow + 1]
             cl_fs[iHig + 1 : -1] = self.cl[iHig + 1 : -1]
 
-        # Ensuring everything is consistent
+        # Ensuring everything is consistent (but we cant with user provided values..)
         cl_inv = cla * (self.alpha - alpha0)
-        fs = (self.cl - cl_fs) / (cl_inv - cl_fs + 1e-10)
-        fs[np.where(fs < 1e-15)] = 0
-        # Storing
-        self.fs = fs
+        if not self._fs_lock:
+            fs = (self.cl - cl_fs) / (cl_inv - cl_fs + 1e-10)
+            fs[np.where(fs < 1e-15)] = 0
+            # Storing
+            self.fs = fs
         self.cl_fs = cl_fs
-        self.cl_inv = cl_inv
+        if not self._cl_inv_lock:
+            self.cl_inv = cl_inv
         return cl_fs, fs
 
     def dynaStallOye_DiscreteStep(self, alpha_t, tau, fs_prev, dt):
