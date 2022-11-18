@@ -12,6 +12,7 @@ class TestPolarParams(unittest.TestCase):
         self.P235 = Polar(os.path.join(MyDir,'../data/63-235.csv'))
         self.PFFA = Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
         self.PCyl = Polar(os.path.join(MyDir,'../data/Cylinder.csv'))
+        self.PFFA_rad = Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'), radians=True)
 
     def assertNaN(self,x):
         self.assertTrue(np.isnan(x))
@@ -52,26 +53,33 @@ class TestPolarParams(unittest.TestCase):
  
 
     def test_slope(self):
+        alpha0 = 10
         # --- Polar with two points
-        P=Polar(None,[-1,1],[-1,1],[],[])
+        P=Polar(None,np.array([-1,1])+alpha0,[-1,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
+        np.testing.assert_almost_equal(a0, alpha0)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
+        np.testing.assert_almost_equal(a0,alpha0)
         # --- Polar three points lin
-        P=Polar(None,[-1,0,1],[-1,0,1],[],[])
+        P=Polar(None,np.array([-1,0,1])+alpha0,[-1,0,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
+        np.testing.assert_almost_equal(a0,alpha0)
         # --- Polar three points cst
-        P=Polar(None,[-1,0,1],[1,1,1],[],[])
+        P=Polar(None,np.array([-1,0,2])+alpha0,[1,1,1],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,0.0)
+        np.testing.assert_almost_equal(a0,np.nan) # for constant Cl/=0, we return nan
         # --- Polar with sine shape
         P=Polar(None,[-3,-2,-1,0,1,2,3],[-1,-2,-1,0,1,0,0],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,1.0)
+        np.testing.assert_almost_equal(a0,0.0)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
+        np.testing.assert_almost_equal(a0,0.0)
         # --- Polar sine with plateaux 
         P=Polar(None,[-3,-2,-1,0,1,2,3],[-1,-2,-2,-1,0,1,1],[],[],radians=False)
         P.alpha0()
@@ -92,11 +100,13 @@ class TestPolarParams(unittest.TestCase):
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,2.0)
         # --- Polar step function
-        P=Polar(None,[-3,-2,-1,0,1,2,3],[-.5,-.5,-.5,-.5,.5,.5,.5],[],[])
+        P=Polar(None,np.array([-3,-2,-1,0,1,2,3])+alpha0,[-.5,-.5,-.5,-.5,.5,.5,.5],[],[])
         sl,a0=P.cl_linear_slope(method='optim')
+        np.testing.assert_almost_equal(a0,10.5)
         np.testing.assert_almost_equal(sl,1.0)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,1.0)
+        np.testing.assert_almost_equal(a0,10.5)
         # --- Sine
         alpha = np.linspace(-50,50,100) 
         Cl = np.sin(alpha*np.pi/180.)*180/np.pi
@@ -107,12 +117,22 @@ class TestPolarParams(unittest.TestCase):
         np.testing.assert_almost_equal(sl,1.0, decimal=2)
         # --- Real Polars
         P=self.PFFA
-        sl,a0=P.cl_linear_slope(radians=True, method='optim')
+        sl,a0=P.cl_linear_slope(method='optim', radians=True) # Requesting radians outputs
         np.testing.assert_almost_equal(sl,7.091, decimal=3)
+        np.testing.assert_almost_equal(a0,-0.04682, decimal=3)
         sl,a0=P.cl_linear_slope(method='optim')
         np.testing.assert_almost_equal(sl,0.123, decimal=3)
+        np.testing.assert_almost_equal(a0,-2.683, decimal=3)
         sl,a0=P.cl_linear_slope(method='max')
         np.testing.assert_almost_equal(sl,0.13, decimal=3)
+        # --- Real Polars, with alpha already in radians
+        P=self.PFFA_rad
+        sl,a0=P.cl_linear_slope(method='optim')
+        np.testing.assert_almost_equal(sl,7.091, decimal=3) # This polar is already in radians
+        np.testing.assert_almost_equal(a0,-0.04682, decimal=3)
+        sl,a0=P.cl_linear_slope(method='optim', radians=True)
+        np.testing.assert_almost_equal(sl,7.091, decimal=3) # This polar is already in radians
+        np.testing.assert_almost_equal(a0,-0.04682, decimal=3)
         # --- Cylinder
         P=self.PCyl
         sl,a0=P.cl_linear_slope(method='optim')

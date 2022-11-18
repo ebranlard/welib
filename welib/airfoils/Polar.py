@@ -63,8 +63,6 @@ class Polar(object):
             file format to be used when filename is provided
 
         """
-        self._radians=False 
-
         # --- Potentially-locked properties
         # Introducing locks so that some properties become readonly if prescribed by user
         self._fs_lock     = False
@@ -97,7 +95,8 @@ class Polar(object):
                 self.cl_inv = df['Cl_inv'].values
                 self._cl_inv_lock = True
                 # TODO we need a trigger if cl_inv provided, we should get alpha0 and slope from it
-            if not all([self._fs_lock, self._cl_fs_lock, self._cl_inv_lock]):
+            nLocks = sum([self._fs_lock, self._cl_fs_lock, self._cl_inv_lock])
+            if nLocks>0 and nLocks<3:
                 raise Exception("For now, input files are assumed to have all or none of the columns: (fs, cl_fs, and cl_inv). Otherwise, we\'ll have to ensure consitency, and so far we dont...")
 
         self.Re = Re
@@ -127,16 +126,20 @@ class Polar(object):
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
+        sunit = 'deg'
+        if self._radians:
+            sunit = 'rad'
         s+='Parameters:\n'
         s+=' - alpha, cl, cd, cm  : arrays of size {}\n'.format(len(self.alpha))
         s+=' - Re     :            {} \n'.format(self.Re)
         s+=' - _radians:           {} (True if alpha in radians)\n'.format(self._radians)
-        s+=' - _alpha0:            {} \n'.format(self._alpha0)
-        s+=' - _linear_slope:      {} \n'.format(self._linear_slope)
+        s+=' - _alpha0:            {} [{}]\n'.format(self._alpha0, sunit)
+        s+=' - _linear_slope:      {} [1/{}]\n'.format(self._linear_slope, sunit)
         s+='Derived parameters:\n'
         s+=' * cl_lin (UNSURE)    : array of size {} \n'.format(len(self.alpha))
-        s+=' * alpha0 :            {} \n'.format(self.alpha0())
-        s+=' * cl_linear_slope :   {} \n'.format(self.cl_linear_slope())
+        s+='Functional parameters:\n'
+        s+=' * alpha0 :            {} [{}]\n'.format(self.alpha0(),sunit)
+        s+=' * cl_linear_slope :   {} [1/{}]\n'.format(self.cl_linear_slope()[0],sunit)
         s+=' * cl_max :            {} \n'.format(self.cl_max())
         s+=' * unsteadyParams :    {} \n'.format(self.unsteadyParams())
         s+='Useful functions:   cl_interp, cd_interp, cm_interp, fs_interp \n'
@@ -149,6 +152,8 @@ class Polar(object):
     # --- Potential read only properties
     @property
     def cl_inv(self):
+        if self._cl_inv is None:
+            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
         return self._cl_inv
     @cl_inv.setter
     def cl_inv(self, cl_inv):
@@ -156,9 +161,33 @@ class Polar(object):
             raise Exception('Cl_inv was set by user, cannot modify it')
         else:
             self._cl_inv = cl_inv
+
+    @property
+    def cl_fs(self):
+        if self._cl_fs is None:
+            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
+        return self._cl_fs
+    @cl_fs.setter
+    def cl_fs(self, cl_fs):
+        if self._cl_fs_lock:
+            raise Exception('cl_fs was set by user, cannot modify it')
+        else:
+            self._cl_fs = cl_fs
+
+    @property
+    def fs(self):
+        if self._fs is None:
+            self.cl_fully_separated() # computes fs, cl_inv and fs
+        return self._fs
+    @fs.setter
+    def fs(self, fs):
+        if self._fs_lock:
+            raise Exception('fs was set by user, cannot modify it')
+        else:
+            self._fs = fs
+
     
     # --- Interpolants
-
     def cl_interp(self, alpha):
         return np.interp(alpha, self.alpha, self.cl)
 
@@ -172,25 +201,64 @@ class Polar(object):
         return np.interp(alpha, self.alpha, self.cn)
 
     def fs_interp(self, alpha):
-        if self.fs is None:
-            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
         return np.interp(alpha, self.alpha, self.fs)
 
     def cl_fs_interp(self, alpha):
-        if self.cl_fs is None:
-            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
         return np.interp(alpha, self.alpha, self.cl_fs)
 
     def cl_inv_interp(self, alpha):
-        #if (self._linear_slope is None) and (self._alpha0 is None):
-        #    self._linear_slope, self._alpha0 = self.cl_linear_slope()
-        #return self._linear_slope * (alpha - self._alpha0)
-        if self.cl_inv is None:
-            self.cl_fully_separated() # computes cl_fs, cl_inv and fs
         return np.interp(alpha, self.alpha, self.cl_inv)
 
-    def interpolant(self, columns=['cl', 'cd', 'cm']):
-        pass
+    def interpolant(self, variables=['cl', 'cd', 'cm'], radians=None):
+        """ 
+        Create an interpolant `f` for a set of requested variables with alpha as input variable:
+            var_array = f(alpha)
+
+        This is convenient to quickly interpolate multiple polar variables at once.
+        The interpolant returns an array corresponding to the interpolated values of the
+        requested `variables`, in the same order as they are requested.
+
+        When alpha is a scalar, f(alpha) is of length nVar = len(variables)
+        When alpha is an array of length n, f(alpha) is of shape (nVar x n)
+
+        INPUTS:
+          - variables: list of variables that will be returned by the interpolant
+                    Allowed values: ['alpha', 'cl', 'cd', 'cm', 'fs', 'cl_inv', 'cl_fs']
+          - radians: enforce whether `alpha` is in radians or degrees
+
+        OUTPUTS:
+         - f: interpolant
+
+        """
+        from scipy.interpolate import interp1d
+
+        MAP = {'alpha':self.alpha, 'cl':self.cl, 'cd':self.cd, 'cm':self.cm,
+                'cl_inv':self.cl_inv, 'cl_fs':self.cl_fs, 'fs':self.fs}
+
+        if radians is None:
+            radians = self._radians
+
+        # Create a Matrix with columns requested by user
+        #polCols = polar.columns.values[1:]
+        M = self.alpha # we start by alpha for convenience
+        for v in variables:
+            v = v.lower().strip()
+            if v not in MAP.keys():
+                raise Exception('Polar: cannot create an interpolant for variable `{}`, allowed variables: {}'.format(v, MAP.keys()))
+            M = np.column_stack( (M, MAP[v]) )
+        # We remove alpha
+        M = M[:,1:]
+        # Determine the "x" value for the interpolant (alpha in rad or deg)
+        if radians == self._radians:
+            alpha = self.alpha # the user requested the same as what we have
+        else:
+            if radians:
+                alpha = np.radians(self.alpha)
+            else:
+                alpha = np.degrees(self.alpha)
+        # Create the interpolant for requested variables with alpha as "x" axis
+        f = interp1d(alpha, M.T)
+        return f
 
     @property
     def cn(self):
@@ -511,9 +579,6 @@ class Polar(object):
                     cm_ext[i] = cm_new
         cm = np.interp(np.degrees(alpha), alpha_cm, cm_ext)
         return type(self)(self.Re, np.degrees(alpha), cl, cd, cm)
-
-
-
 
     def __Viterna(self, alpha, cl_adj):
         """private method to perform Viterna extrapolation"""
@@ -947,65 +1012,7 @@ class Polar(object):
            slope (in inverse units of alpha, or in radians-1 if radians=True)
            alpha_0 in the same unit as alpha, or in radians if radians=True
         """
-        # --- Return function
-        def myret(sl, a0):
-            # wrapper function to return degrees or radians
-            if radians:
-                return np.rad2deg(sl), np.deg2rad(a0)
-            else:
-                return sl, a0
-
-        # finding our alpha0
-        alpha0 = self.alpha0()
-
-        # Constant case or only one value
-        if np.all(self.cl == self.cl[0]) or len(self.cl) == 1:
-            return myret(0, alpha0)
-
-        if window is None:
-            if np.nanmin(self.cl) > 0 or np.nanmax(self.cl) < 0:
-                window = [self.alpha[0], self.alpha[-1]]
-            else:
-                # define a window around alpha0
-                if self._radians:
-                    window = alpha0 + np.radians(np.array([-5, +20]))
-                else:
-                    window = alpha0 +            np.array([-5, +20])
-
-        # Ensuring window is within our alpha values
-        window = _alpha_window_in_bounds(self.alpha, window)
-
-        if method == "max":
-            slope, off = _find_slope(self.alpha, self.cl, xi=alpha0, window=window, method="max")
-        elif method == "leastsquare":
-            slope, off = _find_slope(self.alpha, self.cl, xi=alpha0, window=window, method="leastsquare")
-        elif method == "leastsquare_constraint":
-            slope, off = _find_slope(self.alpha, self.cl, x0=alpha0, window=window, method="leastsquare")
-        elif method == "optim":
-            # Selecting range of values within window
-            idx = np.where((self.alpha >= window[0]) & (self.alpha <= window[1]) & ~np.isnan(self.cl))[0]
-            cl, alpha = self.cl[idx], self.alpha[idx]
-            # Selecting within the min and max of this window to improve accuracy
-            imin = np.where(cl == np.min(cl))[0][-1]
-            idx = np.arange(imin, np.argmax(cl) + 1)
-            window = [alpha[imin], alpha[np.argmax(cl)]]
-            cl, alpha = cl[idx], alpha[idx]
-            # Performing minimization of slope
-            slope, off = _find_slope(alpha, cl, x0=alpha0, window=None, method="optim")
-
-        else:
-            raise Exception("Method unknown for lift slope determination: {}".format(method))
-
-        # --- Safety checks
-        if len(self.cl) > 10:
-            # Looking at slope around alpha 0 to see if we are too far off
-            slope_FD, off_FD = _find_slope(self.alpha, self.cl, xi=alpha0, window=window, method="finitediff_1c")
-            if abs(slope - slope_FD) / slope_FD * 100 > 50:
-                #raise Exception('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
-                print('[WARN] More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
-#         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
-
-        return myret(slope, off)
+        return cl_linear_slope(self.alpha, self.cl, window=window, method=method, inputInRadians=self._radians, radians=radians)
 
     def cl_fully_separated(self, method='max'):
         alpha0 = self.alpha0()
@@ -1501,9 +1508,14 @@ def polar_params(alpha, cl, cd, cm):
 
 
 
-
-def Cl_linear_slope(alpha, Cl, window=None, method="max", nInterp=721):
+def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRadians=False, radians=False):
     """ 
+    Find slope of linear region
+    Outputs: a 2-tuplet of:
+       slope (in inverse units of alpha, or in radians-1 if radians=True)
+       alpha_0 in the same unit as alpha, or in radians if radians=True
+
+
     INPUTS:
       - alpha: angle of attack in radians
       - Cl   : lift coefficient
@@ -1512,13 +1524,72 @@ def Cl_linear_slope(alpha, Cl, window=None, method="max", nInterp=721):
     OUTPUTS:
       - Cl_alpha, alpha0: lift slope (1/rad) and angle of attack (rad) of zero lift
     """
+    # --- Return function
+    def myret(sl, a0):
+        # wrapper function to return degrees or radians # TODO this should be a function of self._radians
+        if radians:
+            if inputInRadians:
+                return sl, a0
+            else:
+                return np.rad2deg(sl), np.deg2rad(a0) # NOTE: slope needs rad2deg, alpha needs deg2rad
+        else:
+            return sl, a0
+
+    # finding alpha0 # TODO TODO TODO THIS IS NOT NECESSARY
+    if inputInRadians:
+        windowAlpha0 = [np.radians(-30), np.radians(30)]
+    else:
+        windowAlpha0 = [-30, 30]
+    windowAlpha0 = _alpha_window_in_bounds(alpha, windowAlpha0)
+    alpha0 = _find_alpha0(alpha, cl, windowAlpha0)
+
+    # Constant case or only one value
+    if np.all(cl == cl[0]) or len(cl) == 1:
+        return myret(0, alpha0)
 
     if window is None:
-        window = [np.radians(-3), np.radians(10)]
-        window = _alpha_window_in_bounds(alpha, window)
+        if np.nanmin(cl) > 0 or np.nanmax(cl) < 0:
+            window = [alpha[0], alpha[-1]]
+        else:
+            # define a window around alpha0
+            if inputInRadians:
+                window = alpha0 + np.radians(np.array([-5, +20]))
+            else:
+                window = alpha0 +            np.array([-5, +20])
 
-    return _find_slope(alpha, Cl, xi=0, window=window, method=method, nInterp=nInterp)
+    # Ensuring window is within our alpha values
+    window = _alpha_window_in_bounds(alpha, window)
 
+    if method in ["max", "leastsquare"]:
+        slope, off = _find_slope(alpha, cl, xi=alpha0, window=window, method=method)
+
+    elif method == "leastsquare_constraint":
+        slope, off = _find_slope(alpha, cl, x0=alpha0, window=window, method="leastsquare")
+
+    elif method == "optim":
+        # Selecting range of values within window
+        idx = np.where((alpha >= window[0]) & (alpha <= window[1]) & ~np.isnan(cl))[0]
+        cl, alpha = cl[idx], alpha[idx]
+        # Selecting within the min and max of this window to improve accuracy
+        imin = np.where(cl == np.min(cl))[0][-1]
+        idx = np.arange(imin, np.argmax(cl) + 1)
+        window = [alpha[imin], alpha[np.argmax(cl)]]
+        cl, alpha = cl[idx], alpha[idx]
+        # Performing minimization of slope
+        slope, off = _find_slope(alpha, cl, x0=alpha0, window=None, method="optim")
+
+    else:
+        raise Exception("Method unknown for lift slope determination: {}".format(method))
+
+    # --- Safety checks
+    if len(cl) > 10:
+        # Looking at slope around alpha 0 to see if we are too far off
+        slope_FD, off_FD = _find_slope(alpha, cl, xi=alpha0, window=window, method="finitediff_1c")
+        if abs(slope - slope_FD) / slope_FD * 100 > 50:
+            #raise Exception('Warning: More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
+            print('[WARN] More than 20% error between estimated slope ({:.4f}) and the slope around alpha0 ({:.4f}). The window for the slope search ([{} {}]) is likely wrong.'.format(slope,slope_FD,window[0],window[-1]))
+#         print('slope ',slope,' Alpha range: {:.3f} {:.3f} - nLin {}  nMin {}  nMax {}'.format(alpha[iStart],alpha[iEnd],len(alpha[iStart:iEnd+1]),nMin,len(alpha)))
+    return myret(slope, off)
 
 # --------------------------------------------------------------------------------}
 # --- Generic curve handling functions

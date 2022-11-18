@@ -270,6 +270,10 @@ def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=Tr
         cAlpha = df.columns.values[0]
 
     if to_radians:
+        # First, check the data, if the max alpha is above pi, most likely we are in degrees
+        _radians = np.mean(np.abs(df[cAlpha])) <= np.pi / 2
+        if _radians:
+            raise Exception('PolarFile: Asked to convert input to radian, but the data is likely already in radians.')
         df[cAlpha]*=np.pi/180
 
     Re  = np.nan
