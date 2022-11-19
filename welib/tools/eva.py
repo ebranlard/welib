@@ -196,13 +196,19 @@ def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None):
 
 
 
-def eigMK(M, K, sort=True, normQ=None, discardIm=False):
+def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True):
     """ 
     Eigenvalue analysis of a mechanical system
     M, K: mass, and stiffness matrices respectively
+
+    Should be equivalent to calling eig(K, M) in Matlab (NOTE: argument swap)
+    except that frequencies are returned instead of "Lambda"
+
+    OUTPUTS:
+      Q, freq_0 if freq_out
+      Q, Lambda otherwise
     """
-    Q, freq_0 = eig(K, M, freq_out=True, sort=sort, normQ=normQ, discardIm=discardIm)
-    return Q, freq_0
+    return eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out)
 
 def eigMCK(M, C, K, method='full_matrix', sort=True): 
     """

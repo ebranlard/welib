@@ -249,9 +249,12 @@ class FASTInputFileBase(File):
             if self.data[i]['tabType'] != TABTYPE_NOT_A_TAB:
                 # For tables, we automatically update variable that stores the dimension 
                 nRows   = len(item)
-                dimVar  = self.data[i]['tabDimVar']
-                iDimVar = self.getID(dimVar)
-                self.data[iDimVar]['value'] = nRows # Avoiding a recursive call to __setitem__ here
+                if 'tabDimVar' in self.data[i].keys():
+                    dimVar  = self.data[i]['tabDimVar']
+                    iDimVar = self.getID(dimVar)
+                    self.data[iDimVar]['value'] = nRows # Avoiding a recursive call to __setitem__ here
+                else:
+                    pass
             self.data[i]['value'] = item
 
     def __getitem__(self,key):

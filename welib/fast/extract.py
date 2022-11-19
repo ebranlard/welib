@@ -8,6 +8,7 @@ import tempfile
 from numpy.linalg import inv
 # Local
 import welib.weio.fast_input_file as fi
+import welib.weio.fast_output_file as fo
 import welib.weio.fast_input_deck as fd
 import welib.weio.fast_linearization_file as fl
 import welib.fast.runner as runner
@@ -429,7 +430,6 @@ def extractPtfmInertiaFromLinFile(linFile):
 
     # --- Read the linearization file
     lin = fl.FASTLinearizationFile(linFile)
-    #ED  = weio.read(EDFile)
     #TwrHeight = ED['TowerHt']-ED['TowerBsHt']
 
     # --- Read lin file and extract relevant part of the D matrix (Minv)
@@ -685,6 +685,107 @@ def extractMAPStiffnessFromLinFile(linFile):
 
 
 
+
+def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None, 
+        showOutputs=False, verbose=False):
+    """ 
+
+    INPUTS:
+      - fstFile: fast file for as template. Must point to existing elastodyn files
+      - fastExe: path to an OpenFAST executable  compatible with the fstFile provided.
+                 The executable is used to extract the RNA information
+    OPTIONAL INPUTS:
+      - workdir
+      - showOutputs: show Outputs when running the fast executable, useful to debug
+      - verbose: display some status on commands being run
+
+    OUTPUT: dictionary with keys:
+      - K33
+    """
+
+    # 
+    if workDir is None:
+        wd=tempfile.TemporaryDirectory()
+        workDir = wd.name
+    else:
+        wd = None
+        os.makedirs(workDir, exist_ok=True) 
+
+    if verbose:
+        print('ExtractBDTipStiffness directory:',workDir)
+
+    # --- Read deck
+    deck = fd.FASTInputDeck(dvrFile, readlist=['BD','BDbld'])
+    dvr = deck.fst
+    BD    = deck.fst_vt['BeamDyn']
+    BDBld = deck.fst_vt['BeamDynBlade']
+
+    # -- Prepare the deck with basic params
+    dvr['DynamicSolve'] = False
+    dvr['t_initial']    = 0
+    dvr['t_final']      = 10
+    dvr['dt']           = 1
+    dvr['Gx'] = 0
+    dvr['Gy'] = 0
+    dvr['Gz'] = 0
+    dvr['RootVel(4)'] = 0
+    dvr['RootVel(5)'] = 0
+    dvr['RootVel(6)'] = 0
+    # TODO DCM not well read by weio
+    # dvr['RotBladeT0'] = np.eye(3) 
+    # Set loads to zero
+    for i in range(6):
+        dvr['DistrLoad({})'.format(i+1)]= 0
+        dvr['TipLoad({})'.format(i+1)]= 0
+    dvr['NumPointLoads']= 0
+
+    # TODO table of point loads not well read at the moment by weio
+    BD['SumPrint'] = True
+    BD['OutList'] = ['','"TipTDxr"','"TipTDyr"', '"TipTDzr"', '"TipRDxr"', '"TipRDyr"', '"TipRDzr"']
+
+    # --- Run 3 simulations for 3x3 stiffness matrix
+    dvrFiles = []
+    # -- Fx
+    dvr['DistrLoad(1)']= Fmag
+    dvr['DistrLoad(2)']= 0
+    dvr['DistrLoad(6)']= 0
+    dvrFiles.append(deck.write(filename='PerturbFx.dvr', prefix='', suffix='', directory=workDir))
+    # -- Fy
+    dvr['DistrLoad(1)']= 0
+    dvr['DistrLoad(2)']= Fmag
+    dvr['DistrLoad(6)']= 0
+    dvrFiles.append(deck.write(filename='PerturbFy.dvr', prefix='', suffix='', directory=workDir))
+    # -- Mz
+    dvr['DistrLoad(1)']= 0
+    dvr['DistrLoad(2)']= 0
+    dvr['DistrLoad(6)']= Mmag
+    dvrFiles.append(deck.write(filename='PerturbMz.dvr', prefix='', suffix='', directory=workDir))
+
+    # --- Run BD driver
+    success, fail = runner.run_fastfiles(dvrFiles, fastExe=dvrExe, parallel=True, showOutputs=showOutputs, nCores=None, showCommand=verbose, reRun=True, verbose=verbose)
+    if not success:
+        raise Exception('Some simulation failed. Run with `showOutputs=True` to debug.')
+
+    # --- Extract Displacements
+    F = np.array([
+        [Fmag,0    ,0],
+        [0   ,Fmag ,0],
+        [0   ,0    , Mmag]])
+    u = np.zeros((3,3))
+    for isim, f in enumerate(dvrFiles):
+        outFile = os.path.splitext(f)[0]+'.out'
+        df = fo.FASTOutputFile(outFile).toDataFrame()
+        # Taking the last value
+        u[:,isim] = df[['TipTDxr_[m]', 'TipTDyr_[m]', 'TipRDzr_[-]'] ].values[-1]
+
+    # --- Extract Stiffness
+    K = F.dot(np.linalg.inv(u))
+    # Sanity check
+    F2 = K.dot(u)
+    if np.mean(np.abs(F-F2)/Fmag*100)>0.01:
+        raise Exception('Error in solving for K')
+
+    return K, u, F
 
 
 
