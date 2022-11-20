@@ -2,6 +2,8 @@
 
 Yams numerical and recursive formulation.
 
+NOTE: this file is intended to be comparable with yams_sympy.py
+
 Reference:
      [1]: Branlard, Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex, Wind Energy, 2019
 """
@@ -814,7 +816,7 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
     else:
         raise Exception('Bi needs to be empty or a 2d array')
 
-    r_pi=r_pi.reshape(3,1)
+    r_pi=colvec(r_pi)
 
     # TODO use Translate here
     Bi = Matrix(np.zeros((6,ni+n_p)))

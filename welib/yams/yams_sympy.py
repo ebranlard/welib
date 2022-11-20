@@ -1,4 +1,10 @@
 """
+
+Yams recursive formulation with sympy.
+For Kane's formalism (similar), see yams_kane.py
+
+NOTE: this file is intended to be comparable with yams.py
+
 Reference:
      [1]: Branlard, Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex, Wind Energy, 2019
 """
@@ -194,7 +200,7 @@ class Taylor(object):
 # --- Connections 
 # --------------------------------------------------------------------------------{
 class Connection():
-    def __init__(self,Type,RelPoint=None,RelOrientation=None,JointRotations=None):
+    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None):
         if RelOrientation is None:
             RelOrientation=eye(3)
         if RelPoint is None:
@@ -1422,7 +1428,9 @@ class YAMSFlexibleBody(YAMSBody):
         return rd
     
 
-
+# --------------------------------------------------------------------------------}
+# --- Beam Body 
+# --------------------------------------------------------------------------------{
 class BeamBody(Body):
     def __init__(B,Name,nf,main_axis='z',nD=2):
         super(BeamBody,B).__init__(Name)

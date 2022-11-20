@@ -63,6 +63,7 @@ def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
       - J: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix at COG
       - COG: (3-vector) x,y,z position of center of mass
     """
+    print('[WARN] the interface of this function does not make much sense and show not be used')
     S=Mass*skew(COG)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);

@@ -687,7 +687,7 @@ def extractMAPStiffnessFromLinFile(linFile):
 
 
 def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None, 
-        showOutputs=False, verbose=False):
+        showOutputs=False, verbose=False, prefix=None):
     """ 
 
     INPUTS:
@@ -714,6 +714,9 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
     if verbose:
         print('ExtractBDTipStiffness directory:',workDir)
 
+    if prefix is None:
+        prefix = os.path.splitext(os.path.basename(dvrFile))[0]
+
     # --- Read deck
     deck = fd.FASTInputDeck(dvrFile, readlist=['BD','BDbld'])
     dvr = deck.fst
@@ -723,8 +726,8 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
     # -- Prepare the deck with basic params
     dvr['DynamicSolve'] = False
     dvr['t_initial']    = 0
-    dvr['t_final']      = 10
-    dvr['dt']           = 1
+    dvr['t_final']      = 0.01
+    dvr['dt']           = 0.01
     dvr['Gx'] = 0
     dvr['Gy'] = 0
     dvr['Gz'] = 0
@@ -749,17 +752,17 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
     dvr['DistrLoad(1)']= Fmag
     dvr['DistrLoad(2)']= 0
     dvr['DistrLoad(6)']= 0
-    dvrFiles.append(deck.write(filename='PerturbFx.dvr', prefix='', suffix='', directory=workDir))
+    dvrFiles.append(deck.write(filename=prefix+'PerturbFx.dvr', prefix=prefix, suffix='', directory=workDir))
     # -- Fy
     dvr['DistrLoad(1)']= 0
     dvr['DistrLoad(2)']= Fmag
     dvr['DistrLoad(6)']= 0
-    dvrFiles.append(deck.write(filename='PerturbFy.dvr', prefix='', suffix='', directory=workDir))
+    dvrFiles.append(deck.write(filename=prefix+'PerturbFy.dvr', prefix=prefix, suffix='', directory=workDir))
     # -- Mz
     dvr['DistrLoad(1)']= 0
     dvr['DistrLoad(2)']= 0
     dvr['DistrLoad(6)']= Mmag
-    dvrFiles.append(deck.write(filename='PerturbMz.dvr', prefix='', suffix='', directory=workDir))
+    dvrFiles.append(deck.write(filename=prefix+'PerturbMz.dvr', prefix=prefix, suffix='', directory=workDir))
 
     # --- Run BD driver
     success, fail = runner.run_fastfiles(dvrFiles, fastExe=dvrExe, parallel=True, showOutputs=showOutputs, nCores=None, showCommand=verbose, reRun=True, verbose=verbose)
