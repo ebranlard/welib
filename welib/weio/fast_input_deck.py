@@ -366,8 +366,8 @@ class FASTInputDeck(dict):
 
         elif self.version=='BD_driver':
             # --- BD driver
-            filename_BD     = os.path.join(directory,prefix+'BD'+suffix+'.dat')
-            filename_BD_bld = os.path.join(directory,prefix+'BD_bld'+suffix+'.dat')
+            filename_BD     = os.path.join(directory, prefix+'BD'+suffix+'.dat')
+            filename_BD_bld = os.path.join(directory, prefix+'BD_bld'+suffix+'.dat')
             fst['InputFile'] = '"' + os.path.basename(filename_BD) + '"'
             fst.write(filename)
             BD = self.fst_vt['BeamDyn'] 
