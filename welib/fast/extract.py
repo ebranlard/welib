@@ -686,7 +686,7 @@ def extractMAPStiffnessFromLinFile(linFile):
 
 
 
-def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None, 
+def extractBDTipStiffness(dvrFile, Fmagx, Fmagy, Mmag, dvrExe, workDir=None, 
         showOutputs=False, verbose=False, prefix=None):
     """ 
 
@@ -701,6 +701,10 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
 
     OUTPUT: dictionary with keys:
       - K33
+
+
+    TODO: Use an iterative procedure which finds the right load level progressively 
+         until sufficient displacements compared to length of beam
     """
 
     # 
@@ -749,19 +753,19 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
     # --- Run 3 simulations for 3x3 stiffness matrix
     dvrFiles = []
     # -- Fx
-    dvr['DistrLoad(1)']= Fmag
-    dvr['DistrLoad(2)']= 0
-    dvr['DistrLoad(6)']= 0
+    dvr['TipLoad(1)']= Fmagx
+    dvr['TipLoad(2)']= 0
+    dvr['TipLoad(6)']= 0
     dvrFiles.append(deck.write(filename=prefix+'PerturbFx.dvr', prefix=prefix, suffix='', directory=workDir))
     # -- Fy
-    dvr['DistrLoad(1)']= 0
-    dvr['DistrLoad(2)']= Fmag
-    dvr['DistrLoad(6)']= 0
+    dvr['TipLoad(1)']= 0
+    dvr['TipLoad(2)']= Fmagy
+    dvr['TipLoad(6)']= 0
     dvrFiles.append(deck.write(filename=prefix+'PerturbFy.dvr', prefix=prefix, suffix='', directory=workDir))
     # -- Mz
-    dvr['DistrLoad(1)']= 0
-    dvr['DistrLoad(2)']= 0
-    dvr['DistrLoad(6)']= Mmag
+    dvr['TipLoad(1)']= 0
+    dvr['TipLoad(2)']= 0
+    dvr['TipLoad(6)']= Mmag
     dvrFiles.append(deck.write(filename=prefix+'PerturbMz.dvr', prefix=prefix, suffix='', directory=workDir))
 
     # --- Run BD driver
@@ -771,8 +775,8 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
 
     # --- Extract Displacements
     F = np.array([
-        [Fmag,0    ,0],
-        [0   ,Fmag ,0],
+        [Fmagx,0    ,0],
+        [0   ,Fmagy ,0],
         [0   ,0    , Mmag]])
     u = np.zeros((3,3))
     for isim, f in enumerate(dvrFiles):
@@ -782,10 +786,14 @@ def extractBDTipStiffness(dvrFile, Fmag, Mmag, dvrExe, workDir=None,
         u[:,isim] = df[['TipTDxr_[m]', 'TipTDyr_[m]', 'TipRDzr_[-]'] ].values[-1]
 
     # --- Extract Stiffness
+    #uDiag = True
+    #if uDiag:
+    #    u = np.diag(np.diag(u))
+    #u=u.T
     K = F.dot(np.linalg.inv(u))
     # Sanity check
     F2 = K.dot(u)
-    if np.mean(np.abs(F-F2)/Fmag*100)>0.01:
+    if np.mean(np.abs(F-F2)/np.array([Fmagx,Fmagy,Mmag])*100)>0.01:
         raise Exception('Error in solving for K')
 
     return K, u, F
