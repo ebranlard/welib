@@ -6,7 +6,7 @@ import numpy as np
 import sympy
 from sympy import latex, python, symarray, diff
 from sympy import Symbol, Matrix, collect
-from sympy import Function, DeferredVector
+from sympy import Function, DeferredVector, Derivative
 import sympy.physics.mechanics as me
 from sympy.physics.vector import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
@@ -45,7 +45,7 @@ def exprHasFunction(expr):
 
 def subs_no_diff(expr, subslist):
     """ 
-    Perform sustitution in an expression, but not in the time derivatives
+    Perform substitution in an expression, but not in the time derivatives
     Only works if Subslist is a simple lists of ( var, value) 
 
 
@@ -147,7 +147,7 @@ def myjacobian(expr, var_list, value_list=None):
         jac = jac.subs(sub_list)
     return jac
 
-def linearize(expr, x0, order=1, sym=False):
+def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True):
     """ 
     Return a Taylor expansion of the expression at the operating point x0
     INPUTS:
@@ -158,37 +158,96 @@ def linearize(expr, x0, order=1, sym=False):
     OUTPUTS:
        linearized expression
 
+    Basically computes:
+      f(x,y) = f(x0,y0) + df/dx_0 (x-x0) + df/dy_0 (y-y0)
+
+    if y=dx/dt, y is considered to be an independent variable (dxdt is substituted for a dummy variable y)
+
+
+    Examples: 
+        linearize(Function('f')(x,y), [(x, x0),(y, y0)], order=1)
+
+
+
+
     """
-    # --- First protect expression from derivatives
     time=dynamicsymbols._t
+    x0_bkp = x0
+    # --- First protect variables that are derivatives
+    # TODO We really need to do something cleaner for that. Consider using:
+    #    qd.is_Derivative
+    #    qd.variables
+    #    qd.variable_count
+    #    qd.free_symbols
+    #    qd._vwr_variables
+    #    qd.expr
+    DummysXD=symarray('DUMQD', len(x0))
+    xd_2_dum=[]
+    x0_new=[]
+    for i,(q,q0) in enumerate(x0):
+        if q.is_Derivative:
+            xd_dum = DummysXD[i]
+            x0_new.append((xd_dum, q0))
+            xd_2_dum=[(q, xd_dum)]
+        else:
+            x0_new.append((q,q0))
+    x0 = x0_new
+    dum_2_xd = [(b,a) for a,b in xd_2_dum]
+
+    # --- Then protect expression from derivatives
     # Mapping derivative -> Dummy
     Dummys=symarray('DUM', len(x0))
-    DT2Dummy=[(diff(v,time),Dummys[i]) for i,(v,x) in enumerate(x0)]
+    DT2Dummy=[]
+    for i,(v,x) in enumerate(x0):
+        dv = diff(v,time)
+        if dv.is_Derivative:
+            DT2Dummy.append( (dv, Dummys[i])  )
     Dummy2DT=[(b,a) for a,b in DT2Dummy]
+
+    # --- Remove Dummys
+    RemoveDummy = dum_2_xd + Dummy2DT
+    #print('RemoveDummy',RemoveDummy)
+    #print('x0',x0)
 
     # Helper function, linearizes one expression (for matrices and lists..)
     def __linearize_one_expr(myexpr):
-        # Remove derivatives
+        # backup myexpr
+        myexpr0=myexpr
+        # Make operating point derivatives "dummy"
+        myexpr = myexpr.subs(xd_2_dum)
+        # Make other derivatives of states "dummy"
         myexpr = myexpr.subs(DT2Dummy)
+
+        if myexpr.has(Derivative) and doSimplifyIfDeriv:
+            print('[WARN] Yams sympy linearize: Expression still contains derivative. Behavior might not be the right one. To be safe, we are running simplify on the expression.')
+            #NOTE: if expressions contains diff(-x,t) it won't work (for instance after a substitution). We need it simplified to -diff(x,t)
+            # We simplify expression
+            myexpr0=myexpr0.simplify()
+            # Make operating point derivatives "dummy"
+            myexpr = myexpr0.subs(xd_2_dum)
+            # Make other derivatives of states "dummy"
+            myexpr = myexpr.subs(DT2Dummy)
+        # --- Order 0
         flin=myexpr.subs(x0)  # Order 0
-        if order==0:
-            return flin.subs(Dummy2DT)
-        
-        df = [(myexpr.diff(v1).subs(x0))*(v1-v10) for v1,v10 in x0]
-        flin+=sum(df)
-        if order==1:
-            return flin.subs(Dummy2DT)
-        
-        df2 = [ (myexpr.diff(v1)).diff(v2).subs(x0)*(v1-v10)*(v2-v20) for v1,v10 in x0 for v2,v20 in x0]
-        flin+=sum(df2)/2
-        if order==2:
-            return flin.subs(Dummy2DT)
-        
-        df3 = [ (myexpr.diff(v1)).diff(v2).diff(v3).subs(x0)*(v1-v10)*(v2-v20)*(v3-v30) for v1,v10 in x0 for v2,v20 in x0 for v3,v30 in x0]
-        flin+=sum(df3)/6
-        if order==3:
-            return flin.subs(Dummy2DT)
-        raise NotImplementedError('Higher order')
+        # --- Order 1
+        if order>=1:
+            df = [(myexpr.diff(v1).subs(x0))*(v1-v10) for v1,v10 in x0]
+            df = sum(df)
+            flin += df
+        # --- Order 2
+        if order>=2:
+            df2 = [ (myexpr.diff(v1)).diff(v2).subs(x0)*(v1-v10)*(v2-v20) for v1,v10 in x0 for v2,v20 in x0]
+            df2 = sum(df2)/2
+            flin+=df2
+        # --- Order 3
+        if order>=3:
+            df3 = [ (myexpr.diff(v1)).diff(v2).diff(v3).subs(x0)*(v1-v10)*(v2-v20)*(v3-v30) for v1,v10 in x0 for v2,v20 in x0 for v3,v30 in x0]
+            df3 = sum(df3)/6
+            flin+=df3
+
+        if order>3:
+            raise NotImplementedError('Higher order')
+        return flin.subs(RemoveDummy)
     
     # --- Hanlde inputs of multiple dimension, scalar, vectors, matrices
     try:
@@ -224,7 +283,7 @@ def linearize(expr, x0, order=1, sym=False):
 
 def smallAngleApprox(expr, angle_list, order=1, sym=True):
     """ 
-    Perform small angle approximation of an expresion by linearizaing about the "0" operating point of each angle
+    Perform small angle approximation of an expression by linearizing about the "0" operating point of each angle
 
     INPUTS:
         expr: expression to be linearized
@@ -236,7 +295,7 @@ def smallAngleApprox(expr, angle_list, order=1, sym=True):
     """
     # operating point
     x0=[(angle,0) for angle in angle_list]
-    return linearize(expr, x0, order=order, sym=sym)
+    return linearize(expr, x0, order=order, sym=sym, doSimplifyIfDeriv=False)
 
 
 

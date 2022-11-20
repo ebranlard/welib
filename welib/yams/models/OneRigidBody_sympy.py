@@ -28,9 +28,9 @@ phi_x, phi_y, phi_z       = dynamicsymbols('phi_x, phi_y, phi_z')
 x, y, z                   = dynamicsymbols('x, y, z')
 xd, yd, zd                = dynamicsymbols('xd, yd, zd')                # dynamicsymbols('x, y, z',1)
 omega_x, omega_y, omega_z = dynamicsymbols('omega_x, omega_y, omega_z')
-M_B                       = symbols('M_B')                              # Masses: Foundation/Tower/Nacelle/Rotor
-Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')              # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
-x_BG, y_BG, z_BG          = symbols('x_BG, y_BG, z_BG')                # Position of Foundation COG in F, measured from point T
+# M_B                       = symbols('M_B')                              # Masses: Foundation/Tower/Nacelle/Rotor
+# Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')              # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
+# x_BG, y_BG, z_BG          = symbols('x_BG, y_BG, z_BG')                # Position of Foundation COG in F, measured from point T
 
 J_O, J_zz        = symbols('J_O, J_zz')    # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
 
@@ -53,7 +53,8 @@ def get_model_one_body(model_name, **opts):
     #print(opts)
 
     # Extract info from model name
-    s= model_name[1:]
+    sB = model_name[0].upper()
+    s  = model_name[1:]
     if len(s)==1:
         nDOF_body   = int(s[0])
         bDOFs   = [False]*6
@@ -69,12 +70,14 @@ def get_model_one_body(model_name, **opts):
 
     print('body',','.join(['1' if b else '0' for b in bDOFs]))
 
+    x_BG, y_BG, z_BG  = symbols('x_{}G, y_{}G, z_{}G'.format(sB,sB,sB))                # Position of Foundation COG in F, measured from point T
+
     # --- Isolated bodies 
     ref = YAMSInertialBody('E') 
     if opts['CG_on_z']:
-        body = YAMSRigidBody('B', rho_G = [0,0,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin']) 
+        body = YAMSRigidBody(sB, rho_G = [0,0,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin']) 
     else:
-        body = YAMSRigidBody('B', rho_G = [x_BG,y_BG,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin'])
+        body = YAMSRigidBody(sB, rho_G = [x_BG,y_BG,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin'])
     #print(body)
 
     # --- Body DOFs
