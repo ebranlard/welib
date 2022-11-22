@@ -137,13 +137,25 @@ def translateRigidBodyMassMatrix(M, r_P1P2):
     # First identify main properties (mass, inertia, location of center of mass from previous ref point)
     mass, J_G, Ref2COG = identifyRigidBodyMM(M)
     # New COG location from new (x,y) ref point
-    print(Ref2COG)
-    print(r_P1P2)
     Ref2COG -= np.asarray(r_P1P2)
-    print('>>>',Ref2COG)
     # Compute mass matrix 
     M_new =  rigidBodyMassMatrixAtP(mass, J_G, Ref2COG)
     return M_new
+
+
+def rotateRigidBodyMassMatrix(M_ss, R_s2d):
+    """ 
+    Rotate a 6x6 rigid body mass matrix from a source (s) coordinate to destination (d) coordinate system
+
+    INPUTS:
+     - M_ss: mass matrix in source coordinate, 6x6 array
+     - R_s2d: transformation matrix source two destination
+    """
+    R66_s2d = np.block(R_s2d)
+    M_dd = R66_s2d.dot(M_ss).dot(R66_s2d.T)
+    return M_dd
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Inertia functions 
