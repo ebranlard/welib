@@ -83,14 +83,34 @@ def skew(x):
 def rotToDCM(rot_type, rot_amounts, rot_order=None):
     """
     return matrix from a ref_frame to another frame rotated by specified amounts
+
+    INPUTS (see sympy.physics.vector.ReferenceFrame.orient):
+     - rot_type    : The method used to generate the direction cosine matrix. Supported methods are
+              'SmallRot': small angle rotations (ADDED in YAMS)
+              'Axis': simple rotations about a single common axis
+              'DCM': for setting the direction cosine matrix directly
+              'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
+              'Space': three successive rotations about the parent frames’ unit vectors
+              'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
+     - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
+                The input types are:
+                'Axis': 2-tuple (expr/sym/func, Vector)
+                'DCM': Matrix, shape(3,3)
+                'Body': 3-tuple of expressions, symbols, or functions
+                'Space': 3-tuple of expressions, symbols, or functions
+                'Quaternion': 4-tuple of expressions, symbols, or functions
+
+     - rot_order: string or int. If applicable, the order of the successive of rotations. 
+                  The string '123', 'XYZ' and integer 123 are equivalent.
+                  Required for 'Body' and 'Space'.
     
     New type added: SmallRot
     
     see sympy.orientnew
-        rotToDCM(frame, 'Axis', (3, N.x)       )
-        rotToDCM(frame, 'Body', (x,y,z), 'XYZ' )
-        rotToDCM(frame, 'DCM' , M )
-        rotToDCM(frame, 'SmallRot' , (x,y,z) )
+        rotToDCM('Axis', (3, N.x)       )
+        rotToDCM('Body', (x,y,z), 'XYZ' )
+        rotToDCM('DCM' , M )
+        rotToDCM('SmallRot' , (x,y,z) )
     """
     ref_frame = ReferenceFrame('dummyref')
     if rot_type =='SmallRot':
@@ -425,7 +445,44 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------}
     # --- Connection between bodies
     # --------------------------------------------------------------------------------{
-    def connectTo(parent, child, type='Rigid', rel_pos=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False):
+    def connectTo(parent, child, type='Rigid', rel_pos=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False, ref_frame=None):
+        """ 
+        Define a connection between parent and child bodies
+
+        INPUTS:
+         - type: 
+             'Rigid': the two bodies are rigidly connected
+             'Free' : the two bodies have free motions (e.g. a floating platform, or two bodies with spring)
+             'Joint': the two bodies have a rotational joint between them, rot_amounts needs to be provided
+
+         - rel_pos: array like of shape 1, 2 or 3, for x, y, z component of relative position between 
+                    parent and child. Examples:
+                        rel_pos = (x_PC(t), y_PC, 0)   where x_PC is a dynamic symbol
+
+        ROTATION/ORIENTATION INPUTS: (see sympy.physics.vector.ReferenceFrame.orient):
+         - rot_type    : The method used to generate the direction cosine matrix. Supported methods are
+                  'SmallRot': small angle rotations (ADDED in YAMS)
+                  'Axis': simple rotations about a single common axis
+                  'DCM': for setting the direction cosine matrix directly
+                  'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
+                  'Space': three successive rotations about the parent frames’ unit vectors
+                  'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
+         - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
+                    The input types are:
+                    'Axis': 2-tuple (expr/sym/func, Vector)
+                    'DCM': Matrix, shape(3,3)
+                    'Body': 3-tuple of expressions, symbols, or functions
+                    'Space': 3-tuple of expressions, symbols, or functions
+                    'Quaternion': 4-tuple of expressions, symbols, or functions
+    
+         - rot_order: string or int. If applicable, the order of the successive of rotations. 
+                      The string '123', 'XYZ' and integer 123 are equivalent.
+                      Required for 'Body' and 'Space'.
+
+         - frame_ref: when provided, the rotations are actually about the ref_frame
+                      otherwise, rotations are about the parent frame
+
+        """
         # register parent/child relationship
         child.parent = parent
         parent.children.append(child)
@@ -490,14 +547,16 @@ class YAMSBody(object):
             raise Exception('Unsupported joint type: {}'.format(type))
 
         # Orientation (creating a path connecting frames together)
+        if ref_frame is None:
+            ref_frame = parent.frame
         if rot_amounts is None:
-            child.frame.orient(parent.frame, 'Axis', (0, parent.frame.x) ) 
+            child.frame.orient(ref_frame, 'Axis', (0, ref_frame.x) ) 
         else:
             if rot_type in ['Body','Space']:
-                child.frame.orient(parent.frame, rot_type, rot_amounts, rot_order) # <<< 
+                child.frame.orient(ref_frame, rot_type, rot_amounts, rot_order) # <<< 
             else: 
                 # rot_type is DCM
-                child.frame.orient(parent.frame, rot_type, rot_amounts) # <<< 
+                child.frame.orient(ref_frame, rot_type, rot_amounts) # <<< 
 
         # Position of child origin wrt parent origin
         child.origin.set_pos(parent.origin, pos)
