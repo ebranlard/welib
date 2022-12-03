@@ -1144,13 +1144,10 @@ def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
 def parseFASTOutList(lines,iStart):
     OutList=[]
     i = iStart
-    MAX=200
-    while i<len(lines) and lines[i].upper().find('END')!=0:
+    while i<len(lines) and lines[i].upper().find('END')!=0 and lines[i].upper().find('---')!=0 and lines[i].upper().find('===')!=0:
         OutList.append(lines[i]) #TODO better parsing
         #print('OutList',lines[i])
         i += 1
-        if i-iStart>MAX :
-            raise Exception('More that 200 lines found in outlist')
         if i>=len(lines):
             print('[WARN] End of file reached while reading Outlist')
     #i=min(i+1,len(lines))
