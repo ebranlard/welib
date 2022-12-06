@@ -5,6 +5,7 @@ A FEM Model is a special kind of Graph
 """
 import numpy as np
 import pandas as pd
+import copy
 
 
 from welib.FEM.utils import DCM, rigidTransformationMatrix
@@ -28,7 +29,6 @@ class FEMModel(GraphModel):
         Returns FEM model from graph
         DOFs number are attributed to graph
         """
-        import copy
         # Copying graph to avoid any access of memory by reference
         g = copy.deepcopy(graph)
         # Creating "FEM" Nodes without DOFs
@@ -55,10 +55,6 @@ class FEMModel(GraphModel):
                     raise NotImplementedError()
             else:
                 raise NotImplementedError()
-        #print('----------------------- GRAPH')
-        #print(graph)
-        #print('----------------------- G')
-        #print(g)
         # Update connectivity
         g.connecticityHasChanged()
         g.updateConnectivity()
@@ -69,6 +65,56 @@ class FEMModel(GraphModel):
                 ElemPropertySets=g.ElemPropertySets, MiscPropertySets=g.MiscPropertySets, refPoint=refPoint, gravity=gravity)
         #print(self)
         return self
+
+    @classmethod
+    def from_cbeam(cls, FEM, CB=None):
+        """ 
+        Convert a simple fem_beam representation as returned by cbeam
+        into a more advanced FEM Model
+
+        - FEM: dictionary, output from cbeam
+        - CB: dictionary, output from CB_topNode
+        """
+        #         FEM={'xNodes':xNodes, 'MM':MM, 'KK':KK, 'MM_full':MM_,'KK_full':KK_,'Tr':Tr,
+        #             'IFull2BC':IFull2BC, 'IBC2Full':IBC2Full,
+        #             'Elem2Nodes':Elem2Nodes, 'Nodes2DOF':Nodes2DOF, 'Elem2DOF':Elem2DOF,
+        #             'Q':Q,'freq':freq, 'modeNames':modeNames}
+        Nodes2DOF = FEM['Nodes2DOF']
+        Elem2Nodes = FEM['Elem2Nodes']
+        # --- Create nodes and elements
+        Nodes=[]
+        for i,n in enumerate(FEM['xNodes'].T):
+            Nodes.append(FEMNode(i, n[0], n[1], n[2], DOFs=Nodes2DOF[i]))
+        nNodes = len(Nodes)
+        Elements = []
+        for ie in range(nNodes-1):
+            nodes = [Nodes[Elem2Nodes[ie,0]] , Nodes[Elem2Nodes[ie,1]]]
+            Elements.append(FEMElement(ie, nodeIDs=Elem2Nodes[ie], nodes=nodes))
+        # --- Creating FEM Model
+        self = cls(Elements=Elements, Nodes=Nodes) #refPoint=refPoint, gravity=gravity)
+        # Providing data directly
+        self.MM       = FEM['MM_full'] # Mass matrix   without boundary conditions
+        self.KK       = FEM['KK_full'] # Stiff matrix  without boundary conditions
+        self.CC       = None # Damping matrix ..
+        self.FF       = None # 
+        self.freq     = FEM['freq'] # Frequency of the Full FEM system after Boundary conditions and internal constraints
+        self.Q        = FEM['Q']   # Modes of the full FEM system after Boundary conditions and internal constraints
+        #self.T_c = FEM['Tr']
+        self.T_c = np.eye(self.MM.shape[0]) # NOTE: Q is full already
+        # Set CB data directly
+        if CB is not None:
+            self.MM_CB  = CB['MM']
+            self.KK_CB  = CB['KK']
+            self.Phi_G  = CB['Phi_G']
+            self.Phi_CB = CB['Phi_CB']
+            self.f_G    = CB['f_G']
+            self.f_CB   = CB['f_CB']
+            self.Q_G    = CB['Q_G']
+            self.Q_CB   = CB['Q_CB']
+        self.setModes()
+        return self
+
+
 
     def __init__(self, Elements=None, Nodes=None, NodePropertySets=None, ElemPropertySets=None, MiscPropertySets=None,
             mainElementType='frame3d', gravity=9.81, main_axis='z', refPoint=None): # FEM specific
@@ -95,6 +141,15 @@ class FEMModel(GraphModel):
         self.freq     = None # Frequency of the Full FEM system after Boundary conditions and internal constraints
         self.Q        = None # Modes of the full FEM system after Boundary conditions and internal constraints
                              # NOTE: augmented to include the boundary condition in them
+         # CB reduction data
+        self.MM_CB  = None
+        self.KK_CB  = None
+        self.Phi_G  = None
+        self.Phi_CB = None
+        self.f_G    = None
+        self.f_CB   = None
+        self.Q_G    = None
+        self.Q_CB   = None
 
         # internal data
         self._nDOF    = None
@@ -519,7 +574,7 @@ class FEMModel(GraphModel):
 
         INPUTS:
           - UDOF: nDOF_c x nModes: array of DOF "displacements" for each mode
-                  in the system wher internal constraints have been eliminated
+                  in the system where internal constraints have been eliminated
           - IDOF: Optional array of subset/reordered DOF. 1:nDOF_c if not provided
           - scale: if True, modes are shapes according based on `maxAmplitude`
           - maxAmplitude: if provided, scale used for the mode scaling. If not provided,
@@ -614,21 +669,28 @@ class FEMModel(GraphModel):
 
 
     def setModes(self, nModesFEM=30, nModesCB=None):
-        if nModesCB is None:
-            nModesCB = len(self.f_CB)
 
         # FEM Modes
-        dispFEM, posFEM, INodesFEM = self.nodesDisp(self.Q)
-        for iMode in range(min(dispFEM.shape[2], nModesFEM)):
-            self.addMode(displ=dispFEM[:,:,iMode], name='FEM{:d}'.format(iMode+1), freq=self.freq[iMode], group='FEM')
+        if self.Q is not None:
+            dispFEM, posFEM, INodesFEM = self.nodesDisp(self.Q)
+            for iMode in range(min(dispFEM.shape[2], nModesFEM)):
+                self.addMode(displ=dispFEM[:,:,iMode], name='FEM{:d}'.format(iMode+1), freq=self.freq[iMode], group='FEM')
 
         # GY CB Modes
-        dispGy, posGy, InodesGy, dispCB, posCB, InodesCB = self.getModes(sortDim=None) 
-        for iMode in range(dispGy.shape[2]):
-            self.addMode(displ=dispGy[:,:,iMode], name='GY{:d}'.format(iMode+1), freq=self.f_G[iMode], group='GY')
+        if self.f_CB is not None:
+            if nModesCB is None:
+                nModesCB = len(self.f_CB)
 
-        for iMode in range(min(len(self.f_CB), nModesCB)):
-            self.addMode(displ=dispCB[:,:,iMode], name='CB{:d}'.format(iMode+1), freq=self.f_CB[iMode], group='CB') 
+            if self.Q_G is not None and self.Q_CB is not None:
+                dispGy, posGy, INodesGy = self.nodesDisp(self.Q_G)
+                dispCB, posCB, INodesCB = self.nodesDisp(self.Q_CB)
+            else:
+                dispGy, posGy, InodesGy, dispCB, posCB, InodesCB = self.getModes(sortDim=None) 
+            for iMode in range(dispGy.shape[2]):
+                self.addMode(displ=dispGy[:,:,iMode], name='GY{:d}'.format(iMode+1), freq=self.f_G[iMode], group='GY')
+
+            for iMode in range(min(len(self.f_CB), nModesCB)):
+                self.addMode(displ=dispCB[:,:,iMode], name='CB{:d}'.format(iMode+1), freq=self.f_CB[iMode], group='CB') 
 
 
 

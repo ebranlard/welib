@@ -133,6 +133,13 @@ class Element(dict):
         n2=self.nodes[1]
         return np.sqrt((n1.x-n2.x)**2+(n1.y-n2.y)**2+(n1.z-n2.z)**2)
 
+    #@property
+    #def nodes(self):
+    #    if self._nodes is None:
+    #        if self.nodeIDs is not None:
+    #            self._nodes=[self.getNode(i) for i in elem.nodeIDs]
+    #    return self._nodes
+
     def swapNodes(self):
         self.nodeIDs   = self.nodeIDs[-1::-1]
         self.nodes     = self.nodes  [-1::-1]

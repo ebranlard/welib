@@ -11,6 +11,7 @@ Tools for SubDyn
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import copy
 # Local 
 from welib.weio.fast_input_file import FASTInputFile
 from welib.tools.clean_exceptions import *
@@ -152,7 +153,6 @@ class SubDyn:
 
     @property
     def graph(self):
-        import copy
         if self._graph is None:
             print('>>> NDIV is ', self.File['NDiv'])
             self._graph = self.File.toGraph().divideElements(self.File['NDiv'],
@@ -190,8 +190,13 @@ class SubDyn:
         UseSubDynModel=True
         TopMass = False
 
+
         # Convert to "welib.fem.Graph" class to easily handle the model (overkill for a monopile)
-        df = self.graph.sortNodesBy('z').nodalDataFrame()
+        locgraph = self.graph.sortNodesBy('z')
+        # Add nodal properties from propsets (NOTE: Not done anymore by SubDyn because a same node can have different diameters...)
+        for e in locgraph.Elements:
+            locgraph.setElementNodalProp(e, propset=e.propset, propIDs=e.propIDs)
+        df = locgraph.nodalDataFrame()
 
         if equispacing:
             from welib.tools.pandalib import pd_interp1

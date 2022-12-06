@@ -115,8 +115,8 @@ class FASTInputFile(File):
     def keys(self):
         return self.fixedfile.keys()
 
-    def toGraph(self):
-        return self.fixedfile.toGraph()
+    def toGraph(self, **kwargs):
+        return self.fixedfile.toGraph(**kwargs)
 
     @property
     def filename(self):
@@ -882,9 +882,9 @@ class FASTInputFileBase(File):
             dfs=dfs[list(dfs.keys())[0]]
         return dfs
 
-    def toGraph(self):
+    def toGraph(self, **kwargs):
         from .fast_input_file_graph import fastToGraph
-        return fastToGraph(self)
+        return fastToGraph(self, **kwargs)
         
 
 

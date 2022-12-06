@@ -18,7 +18,7 @@ class TestExamples(unittest.TestCase):
         exclude_list=[]
         # Add tests to class
         MyDir=os.path.dirname(__file__)
-        files = glob.glob(os.path.join(MyDir,'../examples/[a-zA-Z]*.py'))
+        files = glob.glob(os.path.join(MyDir,'../examples/[a-zA-Z_-]*.py'))
         import matplotlib.pyplot as plt
         for f in files:
             print('\n--------------------------------------------------------------')

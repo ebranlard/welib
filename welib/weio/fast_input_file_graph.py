@@ -12,24 +12,27 @@ from welib.FEM.graph import *
 # --------------------------------------------------------------------------------}
 # --- Wrapper to convert a "fast" input file dictionary into a graph
 # --------------------------------------------------------------------------------{
-def fastToGraph(data):
+def fastToGraph(data, **kwargs):
     if 'BeamProp' in data.keys():
-        return subdynToGraph(data)
+        return subdynToGraph(data, **kwargs)
     
     if 'SmplProp' in data.keys():
-        return hydrodynToGraph(data)
+        return hydrodynToGraph(data, **kwargs)
 
     if 'DOF2Nodes' in data.keys():
-        return subdynSumToGraph(data)
+        return subdynSumToGraph(data, **kwargs)
 
     raise NotImplementedError('Graph for object with keys: {}'.format(data.keys()))
 
 # --------------------------------------------------------------------------------}
 # --- SubDyn
 # --------------------------------------------------------------------------------{
-def subdynToGraph(sd):
+def subdynToGraph(sd, propToNodes=False):
     """
     sd: dict-like object as returned by weio
+
+    -propToNodes: if True, the element properties are also transferred to the nodes for convenience.
+                 NOTE: this is not the default because a same node can have two different diameters in SubDyn (it's by element)
     """
     type2Color=[
             (0.1,0.1,0.1), # Watchout based on background
@@ -81,7 +84,9 @@ def subdynToGraph(sd):
         elem.data['color'] = type2Color[Type]
         Graph.addElement(elem)
         # Nodal prop data
-        #Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
+        if propToNodes:
+            # NOTE: this is disallowed by default because a same node can have two different diameters in SubDyn (it's by element)
+            Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
 
     # --- Concentrated Masses (in global coordinates), node data
     for iC, CM in enumerate(sd['ConcentratedMasses']):

@@ -133,6 +133,10 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
     # --- Craig-Bampton reduction
     MMr, KKr, Phi_G, Phi_CB, f_G, f_CB,_,_ = CraigBampton(MM, KK, Ileader, nModesCB=nCB, Ifollow=None, F=None, DD=None, fullModesOut=True)
 
+    # Insert Boundary conditions back in mode
+    Q_G  = insertFixedBCinModes(Phi_G, FEM['Tr'])
+    Q_CB = insertFixedBCinModes(Phi_CB, FEM['Tr'])
+
     CB=dict()
     CB['MM']     = MMr
     CB['KK']     = KKr
@@ -140,11 +144,9 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
     CB['Phi_CB'] = Phi_CB
     CB['f_G']    = f_G
     CB['f_CB']   = f_CB
+    CB['Q_G']    = Q_G
+    CB['Q_CB']   = Q_CB
 
-
-    # Insert Boundary conditions back in mode
-    Q_G  = insertBCinModes(Phi_G, FEM['Tr'])
-    Q_CB = insertBCinModes(Phi_CB, FEM['Tr'])
 
     # Identify modes for convenience
     _, names_G= identifyAndNormalizeModes(Q_G, element=element, normalize=False)
@@ -154,7 +156,7 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
         # Perform permutations
         raise NotImplementedError()
 
-    if element =='frame3d':
+    if element in ['frame3d', 'frame3dlin']:
         DN = ['ux','uy','uz','tx','ty','tz']
     else:
         raise NotImplementedError()
@@ -408,8 +410,8 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
 
     INPUTS
       xNodes: (3x n+1) Nodes positions x,y,z along the beam for 3d beam [m]
-      G   : (scalar or n) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
       E   : (scalar or n) Elastic (Young) modulus
+      G   : (scalar or n) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
       me   : (n) Mass per length of elements [kg/m]
       A    : (n) Beam cross section area along the beam, for elements [m^2]
       EIy  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
@@ -537,8 +539,16 @@ def cbeam_assembly_frame3dlin(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=None, G
         Iy2 = Iy[iNode2]
         Iz1 = Iz[iNode1]
         Iz2 = Iz[iNode2]
-        ke,me = frame3dlin_KeMe(E,G,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,le,me1,me2, R=None)
-        #ke,me= frame3dlin_KeMe(me1, me2, le)
+        # TODO
+        if hasattr(E,'__len__'):
+            E1=E[iNode1]
+        else:
+            E1=E
+        if hasattr(G,'__len__'):
+            G1=G[iNode1]
+        else:
+            G1=G
+        ke,me = frame3dlin_KeMe(E1,G1,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,le,me1,me2, R=None)
         Me[:,:,ie]=me
         Ke[:,:,ie]=ke
 
