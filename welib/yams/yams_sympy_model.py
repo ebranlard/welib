@@ -148,6 +148,116 @@ class YAMSModel(object):
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
 
+    @property
+    def q_full(self):
+        return self.coordinates+self.speeds
+
+    def integrate(self, time, x0=None, p=None, u=None, M=None, F=None):
+        """ 
+        Perform time integration for a set of numerical values
+        Using Kane's equations of motions
+
+        x0: dictionary of initial states, keys are sympy variable, values are numerical
+        p: dictionary of parameters, keys are sympy variable, values are numerical
+        u: dictionary of inputs, keys are sympy variable, values are numerical
+        M: Optional mass matrix
+        D: Optional forcing vector
+        """
+        # --- Simulation
+        from scipy.integrate import odeint
+        from pydy.codegen.ode_function_generators import generate_ode_function
+        from collections import OrderedDict
+
+        # Get important matrices
+        if M is None:
+            M = self.kane.mass_matrix_full
+            #mass_matrix.simplify() #<<< Might change solution
+        if F is None:
+            F = self.kane.forcing_full
+            #forcing_vector.simplify()
+
+        # From dictionaries to list
+        if p is not None:
+            p_var = [k for k,v in p.items()]
+            p_num = np.array([v for k,v in p.items()])
+        else:
+            p_var = []
+            p_num = []
+        if u is not None:
+            u_var = [k for k,v in u.items()]
+            u_num = np.array([v for k,v in u.items()])
+        else:
+            u_var = []
+            u_num = []
+        x0DictFull = OrderedDict({k: 0.0 for k in self.q_full})
+        x0DictFull.update(x0)
+        x0 = np.array([v for k,v in x0DictFull.items()])
+
+        print('p_var',p_var)
+        print('p_num',p_num)
+        print('u_var',u_var)
+        print('u_num',u_num)
+        print('x0',x0)
+
+        # --- Generate code
+        RHS = generate_ode_function(F, self.coordinates, self.speeds, p_var, mass_matrix=M, specifieds=u_var)
+        self._RHS = RHS
+
+        if len(x0)!=len(self.q_full):
+            raise Exception('x0 should be twice the length of numerical coordinates')
+
+        # --- Simulate
+        y = odeint(RHS, x0, time, args=(u_num, p_num))
+
+        # TODO create dataframe
+
+        # --- Store for vizualisation
+        self._u = u
+        self._p = p
+        self._y=y
+        self._t=time
+        return y
+
+
+    def getScene(self, y=None, rp=0.1, al=1, axes=True, origins=True):
+        from pydy.viz.shapes import Cylinder, Sphere
+        from pydy.viz.visualization_frame import VisualizationFrame
+        from welib.yams.yams_sympy_tools import body_viz, frame_viz, MyScene
+        # --- Axes for each body
+        axes_viz=[]
+        if axes:
+            xax,yax,zax = frame_viz(self.ref.origin, self.ref.frame, l=al, r=0.05*al, name='inertial')
+            axes_viz += [xax,yax,zax]
+            for b in self.bodies:
+                 xax,yax,zax = frame_viz(b.origin, b.frame, l=al, r=0.05*al, name=b.name)
+                 axes_viz += [xax,yax,zax]
+        # --- Origins for each body
+        orgs_viz = []
+        if origins:
+            PointSphere = Sphere(color='black', radius=rp) 
+            for b in self.bodies:
+                 O_viz = VisualizationFrame(b.name+'_origin',b.frame, b.origin, PointSphere)
+                 orgs_viz+= [O_viz]
+
+        # --- Bodies representation
+        bods_viz=[]
+        for b in self.bodies:
+            # TODO function
+            bods_viz+=body_viz(b, b.viz_opts)
+
+        scene = MyScene(self.ref.frame, self.ref.origin,
+            *orgs_viz,
+            *axes_viz,
+            *bods_viz,
+             )
+        scene.constants = self._p
+        scene.states_symbols = self.coordinates + self.speeds
+        scene.states_trajectories = self._y
+        scene.times = self._t
+        return scene
+
+
+
     def smallAngleApprox(self, angle_list, extraSubs=None, order=1):
         """ 
         Apply small angle approximation to forcing and mass matrix

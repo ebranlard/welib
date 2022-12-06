@@ -3,6 +3,7 @@ Tools for yams_sympy
 """
 
 import numpy as np
+import os
 import sympy
 from sympy import latex, python, symarray, diff
 from sympy import Symbol, Matrix, collect
@@ -12,8 +13,46 @@ from sympy.physics.vector import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
 from sympy import sin, cos, exp, sqrt
 
-def frame_viz(Origin, frame, l=1, r=0.08):
-    """ """
+
+
+# --------------------------------------------------------------------------------}
+# --- PYDY VIZ related...
+# --------------------------------------------------------------------------------{
+try:
+    import pydy.viz.scene 
+    from pydy.viz.scene import Scene
+    from pydy.viz.shapes import Shape
+    MyScene=Scene
+except:
+    Scene=object
+class MyScene(Scene):
+    def __init__(self, reference_frame, origin, *visualization_frames,
+                 **kwargs):
+        Scene.__init__(self, reference_frame, origin, *visualization_frames,
+                 **kwargs)
+        self.pydy_directory = "yams-viz-resources"
+    def create_static_html(self, overwrite=False, silent=False, prefix=None):
+        import distutils
+        import os
+        cur_dir=os.getcwd()
+        base = os.path.basename(cur_dir)
+        while base== self.pydy_directory:
+            parent = os.path.dirname(cur_dir)
+            os.chdir(parent)
+            print('>>>> CHANGING DIRECTORY')
+            cur_dir=os.getcwd()
+            base = os.path.basename(cur_dir)
+        Scene.create_static_html(self, overwrite=overwrite, silent=silent, prefix=prefix)
+
+
+def frame_viz(Origin, frame, l=1, r=0.08, name=''):
+    """
+    Generate visualization objects for a frame, i.e. three axes, represented by cylinders 
+      x: red
+      y: green
+      z: blue
+
+    """
     from pydy.viz.shapes import Cylinder
     from pydy.viz.visualization_frame import VisualizationFrame
     from sympy.physics.mechanics import Point
@@ -29,12 +68,69 @@ def frame_viz(Origin, frame, l=1, r=0.08):
     X_center=Point('X'); X_center.set_pos(Origin, l/2 * X_frame.y)
     Y_center=Point('Y'); Y_center.set_pos(Origin, l/2 *   frame.y)
     Z_center=Point('Z'); Z_center.set_pos(Origin, l/2 * Z_frame.y)
-    X_viz_frame = VisualizationFrame(X_frame, X_center, X_shape)
-    Y_viz_frame = VisualizationFrame(  frame, Y_center, Y_shape)
-    Z_viz_frame = VisualizationFrame(Z_frame, Z_center, Z_shape)
+    X_viz_frame = VisualizationFrame(name+'_xaxis',X_frame, X_center, X_shape)
+    Y_viz_frame = VisualizationFrame(name+'_yaxis',  frame, Y_center, Y_shape)
+    Z_viz_frame = VisualizationFrame(name+'_zaxis',Z_frame, Z_center, Z_shape)
     return X_viz_frame, Y_viz_frame, Z_viz_frame
 
+def body_viz(b, vo):
+    """ 
+    Return a "vizualization" of a body, based on options 
+    For "pydy" viz for now
+    
+    - b: YAMSBody
+    - vo: dictionary of options
+    """
+    from pydy.viz.shapes import Cylinder, Sphere, Cube, Box
+    from pydy.viz.visualization_frame import VisualizationFrame
+    from sympy.physics.mechanics import Point
+    # NOTE: rememeber that cylinders are along "y" by default and about their center
+    X_frame  = b.frame.orientnew('ffx', 'Axis', (-np.pi/2, b.frame.z) ) # Make y be x
+    Z_frame  = b.frame.orientnew('ffz', 'Axis', (+np.pi/2, b.frame.x) ) # Make y be z
+    vo = b.viz_opts
+    if 'type' in vo:
+        if vo['type']=='cylinder':
+            l = vo['length']
+            cyl = Cylinder(radius=vo['radius'], length=l, color=vo['color'])
+            C_center=Point('C'); 
+            if vo['normal'] == 'y':
+                C_center.set_pos(b.origin, l/2 * b.frame.y)
+                bod_viz = VisualizationFrame(b.name+'_body',b.frame, C_center, cyl)
+            elif vo['normal'] == 'z':
+                C_center.set_pos(b.origin, l/2 * Z_frame.y)
+                bod_viz = VisualizationFrame(b.name+'_body',Z_frame, C_center, cyl)
+            elif vo['normal'] == 'x':
+                C_center.set_pos(b.origin, l/2 * X_frame.y)
+                bod_viz = VisualizationFrame(b.name+'_body',X_frame, C_center, cyl)
+            return [bod_viz]
+        elif vo['type']=='three-blades':
+            l = vo['radius']
+            blade_shape = Cylinder(radius=0.03*vo['radius'] , length=l, color=vo['color'])
+            # TODO might need to be thought again
+            if vo['normal'] == 'z':
+                B1_frame  = b.frame.orientnew('b1', 'Axis', (np.pi/2+0 ,        b.frame.z) ) # Y pointing along blade-Z
+                B2_frame  = b.frame.orientnew('b2', 'Axis', (np.pi/2+2*np.pi/3, b.frame.z) )
+                B3_frame  = b.frame.orientnew('b3', 'Axis', (np.pi/2+4*np.pi/3, b.frame.z) )
+                B1_center=Point('B1'); B1_center.set_pos(b.origin, l/2 * B1_frame.y)
+                B2_center=Point('B2'); B2_center.set_pos(b.origin, l/2 * B2_frame.y)
+                B3_center=Point('B3'); B3_center.set_pos(b.origin, l/2 * B3_frame.y)
+            B1_viz = VisualizationFrame(b.name+'_body_blade1',B1_frame, B1_center, blade_shape)
+            B2_viz = VisualizationFrame(b.name+'_body_blade2',B2_frame, B2_center, blade_shape)
+            B3_viz = VisualizationFrame(b.name+'_body_blade3',B3_frame, B3_center, blade_shape)
+            return [B1_viz, B2_viz, B3_viz]
+        elif vo['type']=='cube':
+            cube = Cube(length=vo['length'], color=vo['color'], name=b.name+'_body')
+            return [VisualizationFrame(b.name+'_body', b.frame, b.origin, cube)]
+        elif vo['type']=='box':
+            box = Box(width=vo['width'], height=vo['height'], depth=vo['depth'], color=vo['color'], name=b.name+'_body')
+            return [VisualizationFrame(b.name+'_body', b.frame, b.origin, box)]
+        else:
+            raise NotImplementedError('Type, ',vo['type'])
 
+
+# --------------------------------------------------------------------------------}
+# --- Tools
+# --------------------------------------------------------------------------------{
 def exprHasFunction(expr):
     """ return True if a sympy expression contains a function"""
     if hasattr(expr, 'atoms'): 
