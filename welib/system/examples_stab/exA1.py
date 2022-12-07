@@ -6,7 +6,7 @@ from .model15DOFs import *
 
 from welib.system.statespace import StateMatrix
 from welib.system.eva import eig, eigA
-from pyFAST.linearization.campbell import campbellModeStyles
+from welib.fast.campbell import campbellModeStyles
 
 
 
@@ -21,10 +21,10 @@ lambda1 = 1.8751 # NOTE: constant for analytical bending mode 1
 c1      = 0.7341 # NOTE: constant for analytical bending mode 1, see bendingMode!
 
 df=pd.DataFrame()
-df['Omega_[rad/s]']  = vOmega
-df['f_flap_[Hz]']    = vOmega*0
-df['f_edge_[Hz]']     = vOmega*0
-df['f_tors_[Hz]'] = vOmega*0
+df['Omega_[rad/s]'] = vOmega
+df['f_flap_[Hz]']   = vOmega*0
+df['f_edge_[Hz]']   = vOmega*0
+df['f_tors_[Hz]']   = vOmega*0
 
 for i,Omega in enumerate(vOmega):
     Mb,Kb,Gb,Mt,Gt,Kt = diagonalStructuralMatrices(p,Omega,lambda1,c1)
@@ -115,7 +115,6 @@ for j in np.arange(nDOF):
     ax.set_ylabel('Mode content')
     ax.set_title('Mode {}'.format(j+1))
     ax.legend()
-plt.show()
 
 
 
@@ -147,4 +146,5 @@ plt.show()
 # ax.set_xlabel('')
 # ax.set_ylabel('')
 # ax.legend()
-# plt.show()
+if __name__ == '__main__':
+    plt.show()

@@ -2,11 +2,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from .model15DOFs import *
+from welib.system.examples_stab.model15DOFs import *
 
 from welib.system.statespace import StateMatrix
 from welib.system.eva import eig, eigA, eigMCK
-from pyFAST.linearization.campbell import campbellModeStyles
+from welib.fast.campbell import campbellModeStyles
 
 #       % 1  , 2   , 3   , 4   , 5   , 6   , 7 , 8 , 9 , 10 , 11
 LIM_TOP=[0.6 , 0.4 , 2.4 , 0.3 , 0.3 , 0.2 , 3 , 3 , 3,  3,  3]
@@ -180,4 +180,5 @@ for iMode in np.arange(0):
     fig.suptitle('Mode {}'.format(iMode+1))
 
 # ax.legend()
-plt.show()
+if __name__ == '__main__':
+    plt.show()

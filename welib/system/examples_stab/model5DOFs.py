@@ -6,7 +6,7 @@ import weio
 
 
 
-def systemMatrices(M, mb, l, kb, k1, k2, Omega, psi1, psi2, psi3, g=0, symb=False, plane='YZ'):
+def systemMatrices(M, mb, l, kb, k1, k2, Omega, psi1, psi2=None, psi3=None, g=0, symb=False, plane='YZ', ordering='increasing'):
     """ 
 
     kb in Nm/rad    kb =  mb l^2 omega_0^2
@@ -15,18 +15,27 @@ def systemMatrices(M, mb, l, kb, k1, k2, Omega, psi1, psi2, psi3, g=0, symb=Fals
     mb in kg (N/m.s^2)
 
     """
-    MM = np.zeros((5,5))
-    DD = np.zeros((5,5))
-    KK = np.zeros((5,5))
     if symb:
-        from sympy import Matrix, sin, cos
-        MM = Matrix(MM)
-        DD = Matrix(DD)
-        KK = Matrix(KK)
+        import sympy as sp
+        from sympy import Matrix, sin, cos, pi
+        zeros = lambda tup: sp.zeros(tup[0],tup[1])
     else:
-        from np import sin, cos
+        from np import sin, cos, pi
+        zeros = np.zeros
 
+    if psi2 is None and psi3 is None:
+        if ordering=='increasing':
+            psi2 = psi1 + (2 * pi / 3)
+            psi3 = psi2 + (2 * pi / 3)
+        else:
+            psi2 = psi1 - (2 * pi / 3)
+            psi3 = psi2 - (2 * pi / 3)
+    if psi2 is None or psi3 is None:
+        raise Exception('Provide both psi2 and psi3, or use ordering')
 
+    MM = zeros((5,5))
+    DD = zeros((5,5))
+    KK = zeros((5,5))
     MM[0,0] = mb*l**2
     MM[1,1] = mb*l**2
     MM[2,2] = mb*l**2
