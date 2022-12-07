@@ -14,7 +14,10 @@ import numpy as np
 try:
     import pyFAST.linearization.mbc.mbc3 as mbc
 except ImportError:
-    import weis.control.mbc.mbc3 as mbc
+    try:
+        import weis.control.mbc.mbc3 as mbc
+    except:
+        pass
 
 
 def postproCampbell(out_or_fstfiles, BladeLen=None, TowerLen=None, verbose=True):

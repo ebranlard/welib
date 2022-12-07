@@ -153,15 +153,26 @@ def MBC3_MCK(MM, CC, KK, B, Binv, Bdot, Bddot, simplify=False):
     """
     # Compute transformed matrices
     MB = Binv @ MM @ B
-    DB = Binv @ DD @ B
+    DB = Binv @ CC @ B
     KB = Binv @ KK @ B
     DBB = 2 * Binv @ MM @ Bdot +  DB
-    KBB = Binv @ MM @ Bddot  + Binv @ DD @ Bdot  +  KB
+    KBB = Binv @ MM @ Bddot  + Binv @ CC @ Bdot  +  KB
     if simplify: # only for sympy
         MB.simplify()
         DBB.simplify()
         KBB.simplify()
     return MB, DBB, KBB
+
+
+def Coleman2Comp(a0, a1, b1):
+    """ """
+    A0    = 0.5 * np.sqrt( np.real(a0) ** 2 + np.imag(a0) ** 2)
+    ABW   = 0.5 * np.sqrt((np.real(b1) - np.imag(a1)) ** 2 + (np.imag(b1) + np.real(a1)) ** 2)
+    AFW   = 0.5 * np.sqrt((np.real(b1) + np.imag(a1)) ** 2 + (np.real(a1) - np.imag(b1)) ** 2)
+    phi0  = np.arctan2( np.imag(a0),  np.real(a0))
+    phiBW = np.arctan2(np.imag(a1) - np.real(b1),np.imag(b1) + np.real(a1))
+    phiFW = np.arctan2(np.real(b1) + np.imag(a1),np.real(a1) - np.imag(b1))
+    return A0,ABW,AFW,phi0,phiBW,phiFW
 
 
 def MBC3_Rot2Fixed_TS(Omega, time, q, nqb, nf):
