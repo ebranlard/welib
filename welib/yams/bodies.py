@@ -350,6 +350,18 @@ class BeamBody(FlexibleBody):
         self.DD = np.zeros((6+self.nf,6+self.nf))
         if damp_zeta is None:
             return
+        if self.int_method=='OpenFAST':
+            pass
+            # TODO TODO TODO
+            # Using KK0 and MM without top mass
+            #omegas = np.sqrt(np.diag(self.MM[6:,6:])/np.diag(self.KK0[6:,6:]))
+            #facts = 2*zeta/(omegas)
+            #print('TODO ')
+            #p['CTFA'][I,L] = ( 0.01*p['TwrFADmp'][L] )*p['KTFA'][I,L]/( np.pi*p['FreqTFA'][L,0] );
+            #p['CTSS'][I,L] = ( 0.01*p['TwrSSDmp'][L] )*p['KTSS'][I,L]/( np.pi*p['FreqTSS'][L,0] );
+            #xi = zeta*2*np.pi
+            #c  = xi * gm * om / np.pi
+            #self.DD[6+j,6+j] = c
         for j,zeta in enumerate(damp_zeta):
             gm = self.MM[6+j,6+j]
             gk = self.KK[6+j,6+j]
@@ -642,7 +654,10 @@ class FASTBeamBody(BeamBody):
                 coeff[2, iishape] = inp[base+'Sh(4)']
                 coeff[3, iishape] = inp[base+'Sh(5)']
                 coeff[4, iishape] = inp[base+'Sh(6)']
-            damp_zeta = np.array([ inp['BldFlDmp(1)'], inp['BldFlDmp(2)'], inp['BldEdDmp(1)']])/100
+            try:
+                damp_zeta = np.array([ inp['BldFlDmp(1)'], inp['BldFlDmp(2)'], inp['BldEdDmp(1)']])/100
+            except:
+                damp_zeta = np.array([ inp['BldFlDmp1'], inp['BldFlDmp2'], inp['BldEdDmp1']])/100
             damp_zeta=damp_zeta[shapes]
             mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
             prop      = inp['BldProp']  

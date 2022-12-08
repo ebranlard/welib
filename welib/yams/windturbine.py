@@ -460,7 +460,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     """
     # TODO TODO TODO  Harmonize with TNSB.py
-
+    # TODO TODO TODO  Harmonize with fast.elastodyn when algo is OpenFAST
     # --- Reading main OpenFAST files
     ext     = os.path.splitext(fstFilename)[1]
     FST     = weio.read(fstFilename)
@@ -468,7 +468,10 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     EDfile  = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
     ED      = weio.read(EDfile)
     rootdir = os.path.dirname(EDfile)
-    bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
+    try:
+        bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
+    except:
+        bldfile = os.path.join(rootdir,ED['BldFile1'].strip('"')).replace('\\','/')
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     # TODO SubDyn, MoorDyn, BeamDyn 
     try:
@@ -493,6 +496,16 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     r_RGhub_inS = - r_SR_inS + r_SGhub_inS
     if main_axis=='x':
         raise NotImplementedError()
+
+    # --- OpenFAST compatibility
+    if algo.lower()=='openfast':
+        from welib.fast.elastodyn import rotorParameters, bladeParameters, towerParameters, bladeDerivedParameters, towerDerivedParameters
+        pBld = bladeParameters(EDfile)
+        pBld = bladeDerivedParameters(pBld, inertiaAtBladeRoot=False)
+        pRot, pbld, phub = rotorParameters(EDfile, identicalBlades=False)
+        RotMass = pRot['RotMass']
+        pTwr = towerParameters(EDfile, RotMass=RotMass, gravity=gravity)
+        pTwr = towerDerivedParameters(pTwr)
 
     # --- Hub  (defined using point N and nacelle coord as ref)
     M_hub  = ED['HubMass']
@@ -519,6 +532,15 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
     bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, nSpan=nSpanBld, gravity=gravity, algo=algo) 
+    if algo.lower()=='openfast':
+        # Overwrite blade props until full compatibility implemented
+        bld[0].MM[0,0]   = pBld['BldMass']
+        bld[0].MM[1,1]   = pBld['BldMass']
+        bld[0].MM[2,2]   = pBld['BldMass']
+        bld[0].MM[6:,6:] = pBld['Me']
+        bld[0].KK0[6:,6:] = pBld['Ke0'] # NOTE: Ke has no stiffening
+        bld[0].DD[6:,6:] = pBld['De']
+
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
         #bld[iB+1].R_b2g
@@ -572,7 +594,16 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=algo, gravity=gravity) # TODO options
     twr_rigid  = twr.toRigidBody()
     twr_rigid.pos_global = r_ET_inE
-
+    if algo=='OpenFAST':
+        twr.MM[0,0]   = pTwr['TwrMass']
+        twr.MM[1,1]   = pTwr['TwrMass']
+        twr.MM[2,2]   = pTwr['TwrMass']
+        twr.MM[6:,6:] = pTwr['Me']
+        twr.KK[6:,6:] = pTwr['Ke']
+        twr.KK0[6:,6:] = pTwr['Ke0'] 
+        twr.KKg_self[6:,6:] = pTwr['Kg_SW']
+        twr.KKg_Mtop[6:,6:] = pTwr['Kg_TM']
+        twr.DD[6:,6:] = pTwr['De']
 
     # --- Full WT rigid body equivalent, with point T as ref
     RNAb = copy.deepcopy(RNA)

@@ -218,7 +218,7 @@ class TestED(unittest.TestCase):
         EDfilename=os.path.join(MyDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         RotMass = 107107.00927723547
         Gravity = 9.80665
-        p = towerParameters(EDfilename, RotMass=RotMass, gravity=Gravity)
+        p = towerParameters(EDfilename, RotMass=RotMass, gravity=Gravity, noInertialCouplings=False)
 
         # Physical quantities / Inertias
         np.testing.assert_almost_equal(p['TwrMass'], 347460.2316000000)
@@ -229,17 +229,17 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(p['TwrSSSF'][1,:4, 1], [0, -0.065390448129370,-0.175841634092733,-0.263419614469624])
 
         # Generalized quantities
-        np.testing.assert_almost_equal(np.diag(p['MTFA'])/1e6,np.array([4.010392552595473e+05, 2.755960009968935e+07])/1e6-p['TwrTpMass']/1e6)
-        np.testing.assert_almost_equal(np.diag(p['MTSS'])/1e6,np.array([4.008128638209492e+05, 3.558329856444363e+07])/1e6-p['TwrTpMass']/1e6)
+        np.testing.assert_almost_equal(np.diag(p['MTFA_e'])/1e6,np.array([4.010392552595473e+05, 2.755960009968935e+07])/1e6-p['TwrTpMass']/1e6)
+        np.testing.assert_almost_equal(np.diag(p['MTSS_e'])/1e6,np.array([4.008128638209492e+05, 3.558329856444363e+07])/1e6-p['TwrTpMass']/1e6)
         np.testing.assert_almost_equal(       (p['KTFA'])/1e6, np.array([[1.910902930730452e+06   ,2.908366961340314e+06],[2.908366961340315e+06   ,1.024457413318486e+10]])/1e6)
         np.testing.assert_almost_equal(       (p['KTSS'])/1e6, np.array([[1.838181636362126e+06  , 5.692201925965283e+06],[  5.692201925965278e+06 ,  1.319779713916086e+10]])/1e6)
-        np.testing.assert_almost_equal(np.diag(p['KTFAGrav']),[ 1.066694734234754e+03 , 1.169976720444022e+06])
-        np.testing.assert_almost_equal(np.diag(p['KTSSGravTT']), [1.491565303636175e-02 , 1.838391204221678e+01])
+        np.testing.assert_almost_equal(np.diag(p['KTFAGrav_nd']), [   6288.5228627, 6140617.0264287])
+        np.testing.assert_almost_equal(np.diag(p['KTSSGravTT_nd']), [1.491565303636175e-02 , 1.838391204221678e+01])
 
         np.testing.assert_almost_equal(p['AxRedTFA'][0,0,-3:],[1.158577163756421e-02,1.332102574930896e-02,1.417295499349627e-02])
 
         # Frequencies
-        np.testing.assert_almost_equal(p['FreqTSS'], np.array([[0.931115438458394 , 0.346445103037537], [3.080181973131150 , 3.074014122773748]]))
+        np.testing.assert_almost_equal(p['FreqTSS'][:2,:2], [[0.9311154, 0.3351299], [3.080182 , 3.0562038]])
         np.testing.assert_almost_equal(p['CTFA'], np.array([[6.420569660348690e+03  , 2.997894941172623e+03],[9.772015298550068e+03,1.055993187124818e+07]]))
 
         # --------------------------------------------------------------------------------}
