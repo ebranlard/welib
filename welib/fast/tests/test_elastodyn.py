@@ -290,7 +290,7 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(MM[0:3,6:],         p['Ct'].T)
         np.testing.assert_almost_equal(MM[3:6,6:],         p['Cr'].T)
 
-        np.testing.assert_almost_equal(KK[6:,6:]/1e6,         p['Ke']/1e6)
+        np.testing.assert_almost_equal(KK[6:,6:]/1e6,       p['Ke0']/1e6) # NOTE: Ke0 not Ke (which has Kg now)
 
 
 
