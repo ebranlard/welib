@@ -20,6 +20,7 @@ SAMPLERS=[
     {'name':'Insert',  'param':[], 'paramName':'Insert list'},
     {'name':'Remove',  'param':[], 'paramName':'Remove list'},
     {'name':'Every n', 'param':2  , 'paramName':'n'},
+    {'name':'Linspace', 'param':[0,1,100]  , 'paramName':'xmin, xmax, n'},
     {'name':'Time-based', 'param':0.01  , 'paramName':'Sample time (s)'},
     {'name':'Delta x', 'param':[0.1,np.nan,np.nan], 'paramName':'dx, xmin, xmax'},
 ]
@@ -212,15 +213,15 @@ def applySampler(x_old, y_old, sampDict, df_old=None):
             raise Exception('Error: `dx` cannot be 0')
         if len(param)==1:
             # NOTE: not using min/max if data loops (like airfoil)
-            xmin =  np.min(x_old) 
-            xmax =  np.max(x_old) + dx/2
+            xmin =  np.nanmin(x_old) 
+            xmax =  np.nanmax(x_old) + dx/2
         elif len(param)==3:
             xmin  = param[1]
             xmax  = param[2]
-            if xmin is np.nan:
-                xmin =  np.min(x_old) 
-            if xmax is np.nan:
-                xmax =  np.max(x_old) + dx/2
+            if np.isnan(xmin):
+                xmin =  np.nanmin(x_old) 
+            if np.isnan(xmax):
+                xmax =  np.nanmax(x_old) + dx/2
         else:
             raise Exception('Error: the sampling parameters should be a list of three values `dx, xmin, xmax`')
         x_new = np.arange(xmin, xmax, dx)
@@ -228,6 +229,15 @@ def applySampler(x_old, y_old, sampDict, df_old=None):
             xmax = xmin+dx*1.1 # NOTE: we do it like this to account for negative dx
             x_new = np.arange(xmin, xmax, dx)
         param = [dx, xmin, xmax]
+        return x_new, resample_interp(x_old, x_new, y_old, df_old)
+
+    elif sampDict['name']=='Linspace':
+        if len(param)!=3:
+            raise Exception('Error: Provide three parameters for linspace: xmin, xmax, n')
+        xmin  = float(param[0])
+        xmax  = float(param[1])
+        n     = int(param[2])
+        x_new = np.linspace(xmin, xmax, n)
         return x_new, resample_interp(x_old, x_new, y_old, df_old)
 
     elif sampDict['name']=='Every n':

@@ -302,3 +302,7 @@ def transferRigidLoads(l6, Ps, Pd, verbose=False):
     return T.dot(l6)
 
 
+def deleteRowsCols(M, IDOF):
+    M = np.delete(M, IDOF, axis=1) # removing columns
+    M = np.delete(M, IDOF, axis=0) # removing lines
+    return M

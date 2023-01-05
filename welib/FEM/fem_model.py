@@ -155,9 +155,10 @@ class FEMModel(GraphModel):
         self._nDOF    = None
 
         # 
-        if 'DOFs' not in self.Nodes[0].data.keys():
-            print('>>> Attributing DOFs to Nodes and Elements')
-            g = distributeDOF(self, mainElementType=mainElementType)
+        if Nodes is not None:
+            if 'DOFs' not in self.Nodes[0].data.keys():
+                print('>>> Attributing DOFs to Nodes and Elements')
+                g = distributeDOF(self, mainElementType=mainElementType)
 
     # --------------------------------------------------------------------------------}
     # --- Handling of DOFs nodes elements 
@@ -613,7 +614,7 @@ class FEMModel(GraphModel):
         #        pos[iiNode, 2]= node.z
         #        for iShape in np.arange(nShapes):
         #            disp[iiNode, nodeDOF-1, iShape] = UDOF[i, iShape]
-        # --- METHOD 2 - Loop through DOFs
+        # --- METHOD 2 - Loop through Nodes
         Ix=[]; Iy=[]; Iz=[]
         for i,n in enumerate(self.Nodes):
             Ix.append(n.data['DOFs'][0])
