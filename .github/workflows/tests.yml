@@ -12,11 +12,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-18.04
+          - os: ubuntu-22.04
             python-version: 3.7
             python: xvfb-run python3
             pip_arg: ""
-          - os: ubuntu-18.04
+          - os: ubuntu-22.04
             python-version: 3.8
             python: xvfb-run python3
             pip_arg: ""
