@@ -85,6 +85,8 @@ def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
     p['RotMass'] += phub['HubMass']
     p['RotIner'] += phub['HubIner']
 
+    p['TwrTpMass'] = p['RotMass'] + ED['NacMass'] + ED['YawBrMass'];
+
     return p, pbld, phub
 
 
@@ -98,7 +100,10 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
     from welib.yams.flexibility import GMBeam, GKBeam
     # --- Read inputs
     ED      = FASTInputFile(EDfilename)
-    EDbld   = os.path.join(os.path.dirname(EDfilename), ED['BldFile({})'.format(ibld)].replace('"',''))
+    try:
+        EDbld   = os.path.join(os.path.dirname(EDfilename), ED['BldFile({})'.format(ibld)].replace('"',''))
+    except:
+        EDbld   = os.path.join(os.path.dirname(EDfilename), ED['BldFile{}'.format(ibld)].replace('"',''))
     bld     = FASTInputFile(EDbld)
     bldProp = bld.toDataFrame()
 
@@ -135,9 +140,14 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
     p['EI_E_full'] = np.interp(p['s_span_norm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
     p['ThetaS']  = np.concatenate( ([StrcTwst[0]], p['ThetaS'] , [StrcTwst[-1]]) )
     # Set the blade damping and stiffness tuner
-    p['BldFDamp'] = [bld['BldFlDmp(1)'], bld['BldFlDmp(2)'] ]
-    p['BldEDamp'] = [bld['BldEdDmp(1)']]
-    p['FStTunr']  = [bld['FlStTunr(1)'], bld['FlStTunr(2)'] ]
+    try:
+        p['BldFDamp'] = [bld['BldFlDmp(1)'], bld['BldFlDmp(2)'] ]
+        p['BldEDamp'] = [bld['BldEdDmp(1)']]
+        p['FStTunr']  = [bld['FlStTunr(1)'], bld['FlStTunr(2)'] ]
+    except:
+        p['BldFDamp'] = [bld['BldFlDmp1'], bld['BldFlDmp2'] ]
+        p['BldEDamp'] = [bld['BldEdDmp1']]
+        p['FStTunr']  = [bld['FlStTunr1'], bld['FlStTunr2'] ]
     # Set the mode shape coefficients 
     p['BldFl1Sh'] = [bld[c] for c in ['BldFl1Sh(2)', 'BldFl1Sh(3)', 'BldFl1Sh(4)', 'BldFl1Sh(5)', 'BldFl1Sh(6)']]
     p['BldFl2Sh'] = [bld[c] for c in ['BldFl2Sh(2)', 'BldFl2Sh(3)', 'BldFl2Sh(4)', 'BldFl2Sh(5)', 'BldFl2Sh(6)']]
@@ -365,6 +375,7 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
     p['J'][1,1] = sum(p['BElmntMass'][:]*(p['RNodes']+rh)**2)
     # --- Elastic matrices
     p['Ke'] = np.zeros((nq,nq))
+    p['Ke0'] = np.zeros((nq,nq)) # Without any stiffening
     p['De'] = np.zeros((nq,nq))
     p['Me'] = np.zeros((nq,nq))
     # Me
@@ -374,11 +385,12 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
     p['Me'][1,1]= p['MBF'][1, 1]
     p['Me'][2,2]= p['MBE'][0, 0]
     # Ke
-    p['Ke'][0,0]= p['KBF'][0, 0]
-    p['Ke'][0,1]= p['KBF'][0, 1]
-    p['Ke'][1,0]= p['KBF'][1, 0]
-    p['Ke'][1,1]= p['KBF'][1, 1]
-    p['Ke'][2,2]= p['KBE'][0, 0]
+    p['Ke0'][0,0]= p['KBF'][0, 0]
+    p['Ke0'][0,1]= p['KBF'][0, 1]
+    p['Ke0'][1,0]= p['KBF'][1, 0]
+    p['Ke0'][1,1]= p['KBF'][1, 1]
+    p['Ke0'][2,2]= p['KBE'][0, 0]
+    p['Ke'] = p['Ke0'] # OpenFAST does not put the stiffening in this
     # De
     p['De'][0,0]= p['CBF'][0, 0]
     p['De'][0,1]= p['CBF'][0, 1]
@@ -454,7 +466,7 @@ def bladeDerivedParameters(p, inertiaAtBladeRoot=True):
     return p
 
 
-def towerParameters(EDfilename, gravity, RotMass=None):
+def towerParameters(EDfilename, gravity, RotMass=None, noInertialCouplings=True):
     """
     Compute tower parameters exactly like OpenFAST
     See Routine Coeff from ElastoDyn.f90
@@ -479,7 +491,7 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     # --- Spanwise nodes
     twr_fract     = np.arange(1./n/2., 1, 1./n)
     p['DHNodes'] = np.ones(n)*p['TwrFlexL']/n
-    p['HNodes']     = twr_fract*(ED['TowerHt']-ED['TowerBsHt']) + ED['TowerBsHt'] # Nodes (mid points)
+    p['HNodes']     = twr_fract * p['TwrFlexL']  # NOTE: we don't add the TowerBsHt!
     p['HNodesNorm'] = p['HNodes']/p['TwrFlexL']
     p['s_span'] = np.concatenate(([0], p['HNodesNorm'], [1]))*p['TwrFlexL']; # Midpoints + 0 and L
     p['s_span_norm'] = p['s_span']/p['TwrFlexL']
@@ -510,7 +522,7 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         p['TMssAbvNd'][J] = 0.5*p['TElmntMass'][J];
         if J == n-1:   # Uppermost tower element
             # Add the TwrTpMass effects:
-            p['TMssAbvNd'][J] = p['TMssAbvNd'][J];
+            p['TMssAbvNd'][J] = p['TMssAbvNd'][J] + p['TwrTpMass']
         else:         # All other tower elements
             # Add to TMssAbvNd'][J] the effects from the (not yet used) portion of element J+1
             p['TMssAbvNd'][J] = 0.5*p['TElmntMass'][J+1] + p['TMssAbvNd'][J] + p['TMssAbvNd'][J+1];
@@ -533,6 +545,12 @@ def towerParameters(EDfilename, gravity, RotMass=None):
         for L in [0,1]:  # Loop through all tower DOFs in one direction
             p['MTFA'][I,L] += sum(p['TElmntMass']*p['TwrFASF'][I,1:-1,0]*p['TwrFASF'][L,1:-1,0])
             p['MTSS'][I,L] += sum(p['TElmntMass']*p['TwrSSSF'][I,1:-1,0]*p['TwrSSSF'][L,1:-1,0])
+    if noInertialCouplings:
+        p['MTFA'][0,1]=0
+        p['MTFA'][1,0]=0
+        p['MTSS'][0,1]=0
+        p['MTSS'][1,0]=0
+
     # --- Generalized stiffness
     p['KTFA'] = np.zeros((nModesPerDir, nModesPerDir))
     p['KTSS'] = np.zeros((nModesPerDir, nModesPerDir))
@@ -544,14 +562,15 @@ def towerParameters(EDfilename, gravity, RotMass=None):
     p['KTFAGrav'] = np.zeros((nModesPerDir, nModesPerDir))
     p['KTSSGrav'] = np.zeros((nModesPerDir, nModesPerDir))
     for I in [0,1]:    # Loop through all tower DOFs in one direction
-        p['KTFAGrav'][I,I] = sum(p['TMssAbvNd']*p['DHNodes']*p['TwrFASF'][I,1:-1,1]**2)
-        p['KTSSGrav'][I,I] = sum(p['TMssAbvNd']*p['DHNodes']*p['TwrSSSF'][I,1:-1,1]**2)
+        p['KTFAGrav'][I,I] = sum( - p['TMssAbvNd']*p['DHNodes']*p['TwrFASF'][I,1:-1,1]**2)*gravity
+        p['KTSSGrav'][I,I] = sum( - p['TMssAbvNd']*p['DHNodes']*p['TwrSSSF'][I,1:-1,1]**2)*gravity
     # --- Tower top geometric stiffness
     p['KTFAGravTT'] = np.zeros((nModesPerDir, nModesPerDir))
     p['KTSSGravTT'] = np.zeros((nModesPerDir, nModesPerDir))
     for I in [0,1]:    # Loop through all tower DOFs in one direction
-        p['KTFAGravTT'][I,I] = sum( p['DHNodes']*p['TwrFASF'][I,1:-1,1]**2)
-        p['KTSSGravTT'][I,I] = sum( p['DHNodes']*p['TwrSSSF'][I,1:-1,1]**2)
+        # TODO CHECK SIGN
+        p['KTFAGravTT'][I,I] = sum(- p['TwrTpMass']* p['DHNodes']*p['TwrFASF'][I,1:-1,1]**2)*gravity
+        p['KTSSGravTT'][I,I] = sum(- p['TwrTpMass']* p['DHNodes']*p['TwrSSSF'][I,1:-1,1]**2)*gravity
     # --- Integrate to find the tower axial reduction shape functions:
     p['AxRedTFA']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
     p['AxRedTSS']= np.zeros((nModesPerDir, nModesPerDir, n+2)) # NOTE: full (+2)
@@ -584,26 +603,24 @@ def towerParameters(EDfilename, gravity, RotMass=None):
             p['KTFA'][I,L] = np.sqrt( p['FAStTunr'][I]*p['FAStTunr'][L] )*p['KTFA'][I,L]
             p['KTSS'][I,L] = np.sqrt( p['SSStTunr'][I]*p['SSStTunr'][L] )*p['KTSS'][I,L]
     # Calculate the tower natural frequencies:
-    p['FreqTFA'] = np.zeros((nModesPerDir, 2))
-    p['FreqTSS'] = np.zeros((nModesPerDir, 2))
+    p['FreqTFA'] = np.zeros((nModesPerDir, 3)) # NOTE: third frequency not computed by OpenFAST
+    p['FreqTSS'] = np.zeros((nModesPerDir, 3))
     p['CTFA']    = np.zeros((nModesPerDir, 2))
     p['CTSS']    = np.zeros((nModesPerDir, 2))
     for I in [0,1]:     # Loop through all tower DOFs in one direction
-        allKTFAGrav= (p['KTFAGrav'][I,I] + p['TwrTpMass']*p['KTFAGravTT'][I,I])*gravity
-        allKTSSGrav= (p['KTSSGrav'][I,I] + p['TwrTpMass']*p['KTSSGravTT'][I,I])*gravity
-        p['FreqTFA'][I,0] = (1/2/np.pi)*np.sqrt(   p['KTFA'][I,I]                /( p['MTFA'][I,I] - p['TwrTpMass'] ) ) # Natural tower I-fore-aft frequency w/o gravitational destiffening nor tower-top mass effects
-        p['FreqTFA'][I,1] = (1/2/np.pi)*np.sqrt( ( p['KTFA'][I,I] + allKTFAGrav )/  p['MTFA'][I,I]                    ) # Natural tower I-fore-aft frequency w/  gravitational destiffening and tower-top mass effects
-        p['FreqTSS'][I,0] = (1/2/np.pi)*np.sqrt(   p['KTSS'][I,I]                /( p['MTSS'][I,I] - p['TwrTpMass'] ) ) # Natural tower I-side-to-side frequency w/o gravitational destiffening nor tower-top mass effects
-        p['FreqTSS'][I,1] = (1/2/np.pi)*np.sqrt( ( p['KTSS'][I,I] + allKTSSGrav )/  p['MTSS'][I,I]                    ) # Natural tower I-side-to-side frequency w/  gravitational destiffening and tower-top mass effects
+        allKTFAGrav= p['KTFAGrav'][I,I] + p['KTFAGravTT'][I,I]
+        allKTSSGrav= p['KTSSGrav'][I,I] + p['KTSSGravTT'][I,I]
+        p['FreqTFA'][I,0] = (1/2/np.pi)*np.sqrt(   p['KTFA'][I,I]                       /( p['MTFA'][I,I] - p['TwrTpMass'] ) ) # Natural tower I-fore-aft frequency w/o gravitational destiffening nor tower-top mass effects
+        p['FreqTFA'][I,1] = (1/2/np.pi)*np.sqrt( ( p['KTFA'][I,I] + p['KTFAGrav'][I,I] )/  p['MTFA'][I,I]                    ) # Natural tower I-fore-aft frequency w/  gravitational destiffening and tower-top mass effects
+        p['FreqTFA'][I,2] = (1/2/np.pi)*np.sqrt( ( p['KTFA'][I,I] + allKTFAGrav         )/ p['MTFA'][I,I]                    ) # Natural tower I-fore-aft frequency w/  gravitational destiffening and tower-top mass effects
+        p['FreqTSS'][I,0] = (1/2/np.pi)*np.sqrt(   p['KTSS'][I,I]                       /( p['MTSS'][I,I] - p['TwrTpMass'] ) ) # Natural tower I-side-to-side frequency w/o gravitational destiffening nor tower-top mass effects
+        p['FreqTSS'][I,1] = (1/2/np.pi)*np.sqrt( ( p['KTSS'][I,I] + p['KTSSGrav'][I,I]  )/ p['MTSS'][I,I]                    ) # Natural tower I-side-to-side frequency w/  gravitational destiffening and tower-top mass effects
+        p['FreqTSS'][I,2] = (1/2/np.pi)*np.sqrt( ( p['KTSS'][I,I] + allKTSSGrav         )/ p['MTSS'][I,I]                    ) # Natural tower I-side-to-side frequency w/  gravitational destiffening and tower-top mass effects
     # Calculate the generalized damping of the tower:
     for I in [0,1]:     # Loop through all tower DOFs in one direction
         for L in [0,1]:  # Loop through all tower DOFs in one direction
             p['CTFA'][I,L] = ( 0.01*p['TwrFADmp'][L] )*p['KTFA'][I,L]/( np.pi*p['FreqTFA'][L,0] );
             p['CTSS'][I,L] = ( 0.01*p['TwrSSDmp'][L] )*p['KTSS'][I,L]/( np.pi*p['FreqTSS'][L,0] );
-    # Remove tower top mass to be consistent with "purely" elastic mass
-    for I in [0,1]: #Loop through all tower modes in a single direction
-        p['MTFA'][I,I] = p['MTFA'][I,I] - p['TwrTpMass']
-        p['MTSS'][I,I] = p['MTSS'][I,I] - p['TwrTpMass']
 
 
     # ---  Shape functions (FA1 FA2 SS1 SS2)
@@ -639,6 +656,22 @@ def towerParameters(EDfilename, gravity, RotMass=None):
 #                 print('{:15s}:{} ({})'.format(k,v,n))
 #         else:
 #             print('{:15s}:{}'.format(k,v))
+
+
+    # --- "purely" elastic mass
+    p['MTFA_e'] = p['MTFA']
+    p['MTSS_e'] = p['MTSS']
+    for I in [0,1]: #Loop through all tower modes in a single direction
+        p['MTFA_e'][I,I] = p['MTFA'][I,I] - p['TwrTpMass']
+        p['MTSS_e'][I,I] = p['MTSS'][I,I] - p['TwrTpMass']
+
+    # TODO TODO TODO Check signs
+    p['KTFAGrav_nd']   = -p['KTFAGrav']/gravity                  # reverting to a dimensionless factor
+    p['KTSSGrav_nd']   = -p['KTSSGrav']/gravity                  # reverting to a dimensionless factor
+    p['KTFAGravTT_nd'] = -p['KTFAGravTT']/gravity/p['TwrTpMass'] # reverting to a dimensionless factor
+    p['KTSSGravTT_nd'] = -p['KTSSGravTT']/gravity/p['TwrTpMass'] # reverting to a dimensionless factor
+
+
     return p
 
 def towerDerivedParameters(p):
@@ -670,15 +703,15 @@ def towerDerivedParameters(p):
     p['J'][0,0] = sum(p['TElmntMass'][:]*(p['HNodes'])**2)
     p['J'][1,1] = sum(p['TElmntMass'][:]*(p['HNodes'])**2)
     # --- Elastic matrices
-    p['Ke'] = np.zeros((nq,nq))
+    p['Ke0'] = np.zeros((nq,nq)) # Without stiffening
     p['De'] = np.zeros((nq,nq))
     p['Me'] = np.zeros((nq,nq))
     for I in [0,1]:     # Loop through all tower DOFs in one direction
         for L in [0,1]:  # Loop through all tower DOFs in one direction
-            p['Me'][I  ,L]   = p['MTFA'][I, L]
-            p['Me'][I+2,L+2] = p['MTSS'][I, L]
-            p['Ke'][I  ,L]   = p['KTFA'][I, L]
-            p['Ke'][I+2,L+2] = p['KTSS'][I, L]
+            p['Me'][I  ,L]   = p['MTFA_e'][I, L]
+            p['Me'][I+2,L+2] = p['MTSS_e'][I, L]
+            p['Ke0'][I  ,L]   = p['KTFA'][I, L]
+            p['Ke0'][I+2,L+2] = p['KTSS'][I, L]
             p['De'][I  ,L]   = p['CTFA'][I, L]
             p['De'][I+2,L+2] = p['CTSS'][I, L]
 
@@ -686,8 +719,13 @@ def towerDerivedParameters(p):
     p['Kg_SW'] = np.zeros((nq,nq))
     p['Kg_TM'] = np.zeros((nq,nq))
     for I in [0,1]: 
-        p['Kg_SW'][I,   L]   = p['KTFAGravTT'][I,L]
-        p['Kg_SW'][I+2, L+2] = p['KTSSGravTT'][I,L]
+        for L in [0,1]:  # Loop through all tower DOFs in one direction
+            p['Kg_SW'][I,   L]   = p['KTFAGrav'][I,L]
+            p['Kg_SW'][I+2, L+2] = p['KTSSGrav'][I,L]
+            p['Kg_TM'][I,   L]   = p['KTFAGravTT'][I,L]
+            p['Kg_TM'][I+2, L+2] = p['KTSSGravTT'][I,L]
+
+    p['Ke'] = p['Ke0'] + p['Kg_SW'] # + p['Kg_TM'] # NOTE: TM  not included, needs further validation
     # --- Elastic mass matrix terms
     # Ct
     p['Ct'] = np.zeros((nq,3))

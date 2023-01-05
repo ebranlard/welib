@@ -1510,6 +1510,10 @@ class ADBladeFile(FASTInputFileBase):
         df['c2_Crv_Approx_[m]'] = prebend
         df['c2_Swp_Approx_[m]'] = sweep
         df['AC_Approx_[-]'] = ACloc
+        # --- Calc CvrAng
+        dr = np.gradient(aeroNodes[:,0])
+        dx = np.gradient(aeroNodes[:,1])
+        df['CrvAng_Calc_[-]'] =  np.degrees(np.arctan2(dx,dr))
         return df
 
     @property
