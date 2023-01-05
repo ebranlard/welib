@@ -835,6 +835,13 @@ class Polar(object):
             cnSlope = cnSlope
         else:
             cnSlope = cnSlope * 180 / np.pi
+        # --- Sanity checks performed by OpenFAST
+        deltaAlpha = 5
+        if alpha0<alpha2:
+            print('[WARN] Polar: alpha0<alpha2, changing alpha2..')
+            alpha2 = alpha0 - deltaAlpha
+            #raise Exception('alpha0 must be greater than alpha2')
+
         return (alpha0, alpha1, alpha2, cnSlope, cn1, cn2, cd0, cm0)
 
     def unsteadyparam(self, alpha_linear_min=-5, alpha_linear_max=5):
