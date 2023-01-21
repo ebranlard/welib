@@ -355,11 +355,12 @@ def applyFilterDF(df_old, x_col, options):
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
-def zero_crossings(y,x=None,direction=None):
+def zero_crossings(y, x=None, direction=None, bouncingZero=False):
     """
       Find zero-crossing points in a discrete vector, using linear interpolation.
 
       direction: 'up' or 'down', to select only up-crossings or down-crossings
+      bouncingZero: also returns zeros that are exactly zero and do not change sign
 
       returns: 
           x values xzc such that y(yzc)==0
@@ -386,7 +387,8 @@ def zero_crossings(y,x=None,direction=None):
     # Selecting points that are exactly 0 and where neighbor change sign
     iZero = np.where(y == 0.0)[0]
     iZero = iZero[np.where((iZero > 0) & (iZero < x.size-1))]
-    iZero = iZero[np.where(y[iZero-1]*y[iZero+1] < 0.0)]
+    if not bouncingZero:
+        iZero = iZero[np.where(y[iZero-1]*y[iZero+1] < 0.0)] # we only accept zeros that change signs
 
     # Concatenate 
     xzc  = np.concatenate((xzc, x[iZero]))
@@ -405,7 +407,7 @@ def zero_crossings(y,x=None,direction=None):
         I= np.where(sign==-1)[0]
         return xzc[I],iBef[I]
     elif direction is not None:
-        raise Exception('Direction should be either `up` or `down`')
+        raise Exception('Direction should be either `up` or `down` or `None`')
     return xzc, iBef, sign
 
 
