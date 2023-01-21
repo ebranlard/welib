@@ -424,11 +424,13 @@ class FASTLinModel(LinearStateSpace):
     def save(self, pickleFile=None):
         if pickleFile is None:
             pickleFile = self.defaultPickleFile
+        # Remove MAP dll (problematic in pickle file)
         if self.WT.MAP is not None:
             self.WT.MAP.lib=None
             self.WT.MAP = None
         d = {'fstFilename':self.fstFilename, 'WT':self.WT}
         LinearStateSpace.save(self, pickleFile, d)
+        print('FASTLinModel: writing PKL: ', pickleFile)
 
     def load(self, pickleFile=None):
         if pickleFile is None:
