@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import scipy.interpolate as si
 from scipy.optimize import minimize_scalar
 
+from welib.weio.fast_input_deck import FASTInputDeck
 from welib.tools.signal_analysis import zero_crossings
 
 # ---
@@ -33,22 +34,22 @@ def interp2d_pairs(*args,**kwargs):
 
 def Paero(WS, Pitch, Omega, R, rho, fCP):
     """ Taero returns the aerodynamic power
-         -lambda (tip speed ratio)
-         - pitch 
-         - R : the blade radius
+         - Pitch  [deg]
+         - Omega [rad/s]
+         - R : the blade radius [m]
          - fCP : an interpolant for CP(Pitch,lambda) as returned by interp2d_paris
-         - rho : the air density
+         - rho : the air density [kg/m^3]
     """
     Lambda = Omega * R / WS
-    CP     = fCP(Pitch,Lambda)
+    CP     = fCP(Pitch, Lambda)
     P      = 1/2*rho*np.pi*R**2*WS**3*CP
     return P
 
 
 def Qaero(WS, Pitch, Omega, R, rho, fCP):
     """ Qaero returns the aerodynamic torque
+         - Pitch [deg]
          - Omega [rad/s]
-         - pitch [deg]
          - R : the blade radius
          - fCP : an interpolant for CP(Pitch,lambda)
          - rho : the air density
@@ -57,14 +58,14 @@ def Qaero(WS, Pitch, Omega, R, rho, fCP):
     WS    = np.asarray(WS)
     Omega = np.asarray(Omega)
     Lambda = Omega * R / WS
-    CP = fCP(Pitch,Lambda)
+    CP = fCP(Pitch, Lambda)
     Q = 1/2*rho*np.pi*R**2*WS**3/Omega*CP
     return Q
 
 def Taero(WS, Pitch, Omega, R, rho, fCT):
     """ Taero returns the aerodynamic thrust of a given turbine
-         -lambda (tip speed ratio)
-         - pitch 
+         - Pitch [deg]
+         - Omega [rad/s]
          - R : the blade radius
          - fCP : an interpolant for CP(Pitch,lambda)
          - rho : the air density
@@ -75,8 +76,77 @@ def Taero(WS, Pitch, Omega, R, rho, fCT):
     return T
 
 
+class TabulatedWSEstimatorBase():
 
-class TabulatedWSEstimator():
+
+    def __init__(self, R=None, rho=1.225, fstFile=None):
+        """ 
+        INPUTS:
+          either:
+          - fstFile: FAST Input file, used to obtain rotor radius and airdensity
+          or
+          - rho : air density [kg/m^3]
+          - R       : rotor radius [m]
+        """
+        # --- Data
+        self.WSmax = 35
+        self.CP    = None
+        self.CT    = None
+
+        # ---
+        if fstFile:
+            fst = FASTInputDeck(fstFile)
+            R       = fst.ED['TipRad']
+            if fst.AD is None:
+                raise Exception('AeroDyn file not read but needed for wind speed estimator, while reading {}'.format(fst_file))
+            rho_AD = fst.AD['AirDens']
+            try:
+                rho_main = fst.fst['AirDens']
+            except:
+                rho_main = rho_AD
+            if isinstance(rho_AD, str):
+                rho_AD = rho_main
+
+        self.fstFile  = fstFile
+        self.R       = R
+        self.rho = rho
+
+    def _sanitizeOP(self, OP, expectedCols=None, onlyExpected=True):
+        if expectedCols is None:
+            expectedCols = ['WS_[m/s]', 'Pitch_[deg]', 'RotSpeed_[rpm]']
+
+        # --- Trying to be nice about column names
+        OP.columns = [c.lower().replace(' ','_').replace('(','[').replace(')',']') for c in OP.columns]
+
+        d =dict([(k, 'WS_[m/s]') for k in ['ws_[m/s]', 'ws']])
+        OP.rename(columns = d, inplace=True)
+
+        d =dict([(k, 'Pitch_[deg]') for k in ['bldpitch1_[deg]', 'bldpitch_[deg]','pitch_[deg]', 'pitch']])
+        OP.rename(columns = d, inplace=True)
+
+        d =dict([(k, 'RotSpeed_[rpm]') for k in ['rotspeed_[rpm]', 'rpm', 'rpm_[rpm]', 'omega_[rpm]']])
+        OP.rename(columns = d, inplace=True)
+
+        if 'rtaeromxh_[kn-m]' in OP.keys(): # TODO standardize Units WE
+            OP['rtaeromxh_[n-m]'] =  OP['rtaeromxh_[kn-m]'].values*1000
+        d =dict([(k, 'Qaero_[Nm]') for k in ['rtaeromxh_[n-m]']])
+        OP.rename(columns = d, inplace=True)
+
+        d =dict([(k, 'PhiY_[deg]') for k in ['phiy_[deg]']])
+        OP.rename(columns = d, inplace=True)
+
+        for c in expectedCols:
+            if c not in OP:
+                print('>>> Columns', OP.keys())
+                raise Exception('OP is missing: {}'.format(c))
+
+        if onlyExpected:
+            OP = OP[expectedCols]
+
+        return OP
+
+
+class TabulatedWSEstimator(TabulatedWSEstimatorBase):
 
     def __init__(self, R=None, rho=1.225, fstFile=None, basename=None, operFile=None, aeroMapFile=None, OmegaLow=0, OmegaRated=10):
         """ 
@@ -87,6 +157,9 @@ class TabulatedWSEstimator():
           - rho : air density [kg/m^3]
           - R       : rotor radius [m]
         """
+        # Initialize parent class
+        TabulatedWSEstimatorBase.__init__(self, R, rho, fstFile)
+
         if basename is not None:
             aeroMapFile = basename+'_CPCTCQ.txt'
             operFile    = basename+'_Oper.csv'
@@ -94,33 +167,13 @@ class TabulatedWSEstimator():
         # --- DATA
         self.Pitch    = None
         self.Lambda   = None
-        self.CP    = None
-        self.CT    = None
-        self.WSmax = 35
         # Operating condition
         self.OmegaLow   = OmegaLow
         self.OmegaRated = OmegaRated
         self.OP     = None
         # Files
-        self.fstFile  = fstFile
         self.operFile = operFile
         self.aeroMapFile = aeroMapFile
-
-        # ---
-        if fstFile is not None:
-            from welib.weio.fast_input_deck import FASTInputDeck
-            fst = FASTInputDeck(fstFile)
-            R       = fst.ED['TipRad']
-            if fst.AD is None:
-                raise Exception('AeroDyn file not read but needed for wind speed estimator, while reading {}'.format(fst_file))
-
-            rho_AD = fst.AD['AirDens']
-            try:
-                rho_main = fst.fst['AirDens']
-            except:
-                rho_main = rho_AD
-            if isinstance(rho_AD, str):
-                rho_AD = rho_main
 
         if operFile is not None:
             self.loadOper(operFile)
@@ -128,35 +181,16 @@ class TabulatedWSEstimator():
         if aeroMapFile is not None:
             self.loadAeroMap(aeroMapFile)
 
-        self.R       = R
-        self.rho = rho
-
-
 
     def loadOper(self, operFile):
         if not os.path.exists(operFile):
             print('[WARN] Operating point file not found: ',operFile)
         else:
             #print('>>> Loading oper file: ',operFile)
-
-
-
             import welib.weio as weio
             OP = weio.read(operFile).toDataFrame()
-            #from welib.fast.tools.lin import matToSIunits
-            #OP = matToSIunits(OP, name='OP', verbose=False, row=False, col=True)
-            # --- Trying to be nice about column names
-            OP.columns = [c.lower().replace(' ','_').replace('(','[').replace(')',']') for c in OP.columns]
-            if 'rtaeromxh_[kn-m]' in OP.keys():
-                OP['rtaeromxh_[n-m]'] =  OP['rtaeromxh_[kn-m]'].values*1000
-            d =dict([(k, 'Pitch_[deg]') for k in ['bldpitch1_[deg]', 'bldpitch_[deg]','pitch_[deg]']])
-            OP.rename(columns = d, inplace=True)
-            d =dict([(k, 'RotSpeed_[rpm]') for k in ['rotspeed_[rpm]']])
-            OP.rename(columns = d, inplace=True)
-            d =dict([(k, 'Qaero_[Nm]') for k in ['rtaeromxh_[n-m]']])
-            OP.rename(columns = d, inplace=True)
-            d =dict([(k, 'WS_[m/s]') for k in ['ws_[m/s]']])
-            OP.rename(columns = d, inplace=True)
+
+            OP = self._sanitizeOP(OP, ['WS_[m/s]', 'Pitch_[deg]', 'RotSpeed_[rpm]', 'Qaero_[Nm]'], onlyExpected=False)
 
             self.WS   =OP['WS_[m/s]'].values
             self.Omega=OP['RotSpeed_[rpm]'].values*2*np.pi/60
