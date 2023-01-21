@@ -172,8 +172,12 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
             Key    = NewFileKey_or_Key
             #print('Setting', FileKey, '|',Key, 'to',ParamValue)
             if Key=='OutList':
-                OutList=f[Key]
-                f[Key] = addToOutlist(OutList, ParamValue)
+                if len(ParamValue)>0:
+                    if len(ParamValue[0])==0:
+                        f[Key] = ParamValue # We replace
+                    else:
+                        OutList=f[Key]
+                        f[Key] = addToOutlist(OutList, ParamValue) # we insert
             else:
                 f[Key] = ParamValue
         else:
@@ -290,6 +294,7 @@ def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeA
 #     return templateReplaceGeneral(PARAMS, *args, **kwargs)
     return templateReplaceGeneral(PARAMS, templateDir, outputDir=outputDir, main_file=main_file, 
             removeAllowed=removeAllowed, removeRefSubFiles=removeRefSubFiles, oneSimPerDir=oneSimPerDir, dryRun=dryRun)
+
 
 def addToOutlist(OutList, Signals):
     if not isinstance(Signals,list):

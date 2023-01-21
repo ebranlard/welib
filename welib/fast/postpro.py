@@ -1416,7 +1416,10 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
             # We create a dataframe here, now that we know the colums
             columns = MeanValues.columns
             result = pd.DataFrame(np.nan, index=np.arange(len(outFiles)), columns=columns)
-        result.iloc[i,:] = MeanValues.copy().values
+        if MeanValues.shape[1]!=result.shape[1]:
+            print('[WARN] The number of columns for file {} is {} and not {}. Skipping.'.format(f, MeanValues.shape[1], result.shape[1]))
+        else:
+            result.iloc[i,:] = MeanValues.copy().values
 
 
     if len(invalidFiles)==len(outFiles):
@@ -1425,6 +1428,9 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
         print('[WARN] There were {} missing/invalid files: \n {}'.format(len(invalidFiles),'\n'.join(invalidFiles)))
 
     if ColSort is not None:
+        if not ColSort in result.keys():
+            print('[INFO] Columns present: ', result.keys())
+            raise Exception('[FAIL] Cannot sort results with column `{}`, column not present in dataframe (see above)'.format(ColSort)) 
         # Sorting 
         result.sort_values([ColSort],inplace=True,ascending=True)
         result.reset_index(drop=True,inplace=True) 
