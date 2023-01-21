@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
-import weio
+import numpy as np
 
 
 
@@ -14,13 +14,17 @@ def systemMatrices(M, mb, l, kb, k1, k2, Omega, psi1, psi2=None, psi3=None, g=0,
 
     mb in kg (N/m.s^2)
 
+    order='decreasing', plane='YZ'    : "OpenFAST"
+    order='decreasing', plane='XYneg' : "Ronnie"
+    order='increasing', plane='XYpos' : "Morten"
+
     """
     if symb:
         import sympy as sp
         from sympy import Matrix, sin, cos, pi
         zeros = lambda tup: sp.zeros(tup[0],tup[1])
     else:
-        from np import sin, cos, pi
+        from numpy import sin, cos, pi
         zeros = np.zeros
 
     if psi2 is None and psi3 is None:
@@ -129,6 +133,42 @@ def systemMatrices(M, mb, l, kb, k1, k2, Omega, psi1, psi2=None, psi3=None, g=0,
 
     return MM, DD, KK
 
+def systemMatricesNR(M, mb, l, kb, k1, k2, Omega, symb=False, plane='YZ', ordering='increasing', method='numerical'):
+    """ Return matrices in non rotating frame"""
+
+    if method=='numerical':
+        # --- Option 1, perform the MBC on the fly instead of using known analytical expressions
+        psi1=0 # doesn't matter since these are transfered to nonrotating frame
+        from welib.system.mbc import MBC3_Bmat, MBC3_MCK
+        MM,DD,KK = systemMatrices(M, mb, l, kb, k1, k2, Omega, psi1, g=0, symb=symb, plane=plane, ordering=ordering)
+        B, Binv, Bdot, Bddot, _, _ = MBC3_Bmat(1, 2, psi1=psi1, Omega=Omega, ordering=ordering, symb=symb)
+        MBB, DBB, KBB = MBC3_MCK(MM, DD, KK, B, Binv, Bdot, Bddot)
+    elif method=='analytical':
+        if plane=='XYneg' and ordering=='decreasing':
+            ml = mb*l
+            ml2 = mb*l**2
+            omega0 = np.sqrt( (kb/l**2)/mb ) # = 1/l sqrt(kb/mb)
+            # system matrices
+            MBB = np.array([
+                [ml2 , 0      , 0       , 0     , 0]       , 
+                [0   , ml2    , 0       , ml    , 0]       , 
+                [0   , 0      , ml2     , 0     , -ml]     , 
+                [0   , 3*ml/2 , 0       , M+3*mb , 0]       , 
+                [0   , 0      , -3*ml/2 , 0     , M+3*mb]])
+            DBB = np.array([
+                [0 , 0            , 0           , 0 , 0]   , 
+                [0 , 0            , 2*ml2*Omega , 0 , 0]   , 
+                [0 , -2*ml2*Omega , 0           , 0 , 0]   , 
+                [0 , 0            , 0           , 0 , 0]   , 
+                [0 , 0            , 0           , 0 , 0]])
+            KBB = np.diag([ml2*omega0**2, ml2*(omega0**2 - Omega**2), ml2*(omega0**2 - Omega**2), k1, k2])
+        else:
+            raise NotImplementedError()
+    else:
+        raise NotImplementedError()
+
+    return MBB, DBB, KBB
+    
 
 if __name__ == '__main__':
     pass
