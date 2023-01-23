@@ -102,7 +102,7 @@ class SubDynModel(FEMModel):
             try:
                 self.addMode(displ=dispGY[:,:,iMode], name='GY{:d}'.format(iMode+1), freq=self.f_G[iMode], group='GY')
             except:
-                import pdb; pdb.set_trace()
+                raise 
         for iMode in range(len(self.f_CB)):
             self.addMode(displ=dispCB[:,:,iMode], name='CB{:d}'.format(iMode+1), freq=self.f_CB[iMode], group='CB') 
 

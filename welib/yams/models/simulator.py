@@ -17,7 +17,7 @@ from welib.yams.models.packman import loadPackage
 # --------------------------------------------------------------------------------{
 
 
-def _loadOFOut(filename, tMax=None):
+def _loadOFOut(filename, tMax=None, tRange=None):
     ext = os.path.splitext(filename)[1].lower()
     if ext=='.fst':
         if os.path.exists(filename.replace('.fst','.outb')): 
@@ -30,6 +30,9 @@ def _loadOFOut(filename, tMax=None):
         dfFS = weio.read(filename).toDataFrame()
     if tMax is not None:
         dfFS=dfFS[dfFS['Time_[s]']<tMax]
+    if tRange is not None:
+        dfFS = dfFS[np.logical_and(dfFS['Time_[s]']>=tRange[0],dfFS['Time_[s]']<=tRange[1])]
+
     time =dfFS['Time_[s]'].values
     return dfFS, time
 

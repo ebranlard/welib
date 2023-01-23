@@ -379,7 +379,6 @@ class FASTLin(object):
             return Ar, Br, Cr, Dr
 
     def exportState(self, stateFile, stateDict):
-        import pdb; pdb.set_trace()
         #if any(['A','B','C','D'])
 
         import pickle

@@ -168,7 +168,6 @@ def rigidTransformationMatrix(DOF, refPoint, DOF2Nodes, Nodes) :
         nDOFPerNode = DOF2Nodes[iDOF,2] # number of DOF per node
         iiDOF       = DOF2Nodes[iDOF,3] # dof index for this joint (1-6 for cantilever)
         if iiDOF<1 or iiDOF>6:
-            import pdb; pdb.set_trace()
             raise Exception('Node DOF number is not valid. DOF: {} Node: {}'.format(iDOF, iNode))
         if nDOFPerNode!=6:
             raise Exception('Node doesnt have 6 DOFs. DOF: {} Node: {}'.format(iDOF, iNode))

@@ -302,7 +302,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             try:
                 fQ = si.interp1d(vWS, vQ, kind='cubic')
             except:
-                import pdb; pdb.set_trace()
+                raise Exception()
 
             #fun = lambda WS : abs(Qa - fQ(WS))
             def fun(WS):
@@ -438,7 +438,6 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
                     WS_guess = WS0
                 if abs(WS_est - WS_guess) > deltaWSMax:
                     #print('>>>', WS_est)
-                    p0 = (WS0, Qa) # Previous point, at current torque
                     dist = np.sqrt( ((vWS-WS_guess)/WS_guess)**2 + ((vQ-Qa)/Qa)**2 )
                     i = np.argmin(dist)
                     WS_est = vWS[i]
@@ -537,7 +536,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         time       = df['Time_[s]'].values
         WS_ref     = df['RtVAvgxh_[m/s]'].values # Rotor avg
         Pitch      = df['BldPitch1_[deg]'].values
-        Qaero_ref  = df['RtAeroMxh_[N-m]'].values
+        Qaero_ref  = df['RtFldMxh_[N-m]'].values
         Omega      = df['RotSpeed_[rpm]'].values*2*np.pi/60 # rad/s
         lambda_ref = Omega*self.R/WS_ref
         # Estimating wind speed on time series
@@ -673,8 +672,8 @@ if __name__=='__main__':
     windspeed = df['Wind1VelX']
     pitch     = df['BldPitch3']
     rottorq   = df['RotTorq']*1000
-    rottorq2  = df['RtAeroMxh']
-    thrust2   = df['RtAeroFxh']
+    rottorq2  = df['RtFldMxh']
+    thrust2   = df['RtFldFxh']
 
 
 

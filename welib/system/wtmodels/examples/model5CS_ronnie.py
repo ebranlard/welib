@@ -115,7 +115,6 @@ ax.set_xlabel(f'Rotational frequency [RPM]')
 ax.set_ylabel('Frequencies [Hz]')
 fig.tight_layout()
 
-plt.show()
 
 
 if __name__ == '__main__':
@@ -171,3 +170,4 @@ if __name__ == '__main__':
     x = P[3, :]  # center mass displacement
     # print('a0',a0)
 
+    plt.show()

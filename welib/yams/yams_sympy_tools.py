@@ -630,7 +630,7 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=Fal
                             symbols_s.pop(i)
                         else:
                             print('yams: cleanPy, TODO replace dict: {} {}'.format(k,v) )
-                            import pdb; pdb.set_trace()
+                            raise Exception()
             # Parameters
             for symb in symbols:
                 ssymb=repr(symb)

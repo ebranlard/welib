@@ -1165,7 +1165,7 @@ def beamSectionLoads(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m,
         p_inertia        = m_tot    * a_struct # TODO is it really m_tot
         F_inertia_lumped = M_lumped * a_struct
     except:
-        import pdb; pdb.set_trace()
+        raise Exception()
 
     # --- Total loads from external forces and inertia (inline and lumped)
     p_all        = p_ext        - p_inertia 

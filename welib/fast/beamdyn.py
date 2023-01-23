@@ -591,7 +591,6 @@ def beamDyn2Hawc2FPM_raw(r_bar, kp_x, kp_y, kp_z, twist,
     """
     import scipy.linalg
     # --- BeamDyn to Hawc2 Structural data
-#     import pdb; pdb.set_trace()
     # Hawc2 = BeamDyn
     x_cg    = -y_G
     y_cg    = x_G
@@ -701,7 +700,6 @@ def beamDyn2Hawc2_raw(r_bar, kp_x, kp_y, kp_z, twist,
     if A is None: A = np.ones(x_G.shape)
     if E is None: E = EA/A
     if G is None: G = E/2/(1+0.3) # Young modulus
-#     import pdb; pdb.set_trace()
     # Hawc2 = BeamDyn
     x_cg    = -y_G
     y_cg    = x_G

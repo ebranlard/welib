@@ -28,8 +28,8 @@ def renameDict(d, keyMap, full_map=False, keys_exist=False):
     if keys_exist and len(diff2)>0:
         raise DictLibError('Keys of keyMap dictionary are not all in input dictionary but `keys_exist` is True.\nKeys present in map but absent in input: {}'.format(diff1, diff2))
 
-    # Create new dictionary (preserves "order")
-    d_out = {}
+    # Create new "dictionary" (trying to preserve "order" and "class" if object is dict-like)
+    d_out = type(d)()
     for k,v in d.items():
         if k in keyMap.keys():
             k_new = keyMap[k]
@@ -63,7 +63,7 @@ def renameDictKey(d, old_key_pattern, new_key, regexp=False, key_exist=False, ca
         old_key_pattern=list(set([k.lower() for k in old_key_pattern]))
 
     # Create new dictionary (preserves "order")
-    d_out = {}
+    d_out = type(d)()
     replaced = False
     for k,v in d.items():
         if not case_sensitive:

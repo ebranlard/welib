@@ -155,7 +155,7 @@ class RigidBody(Body):
         try:
             return self._r_O + self.R_b2g.dot(self._s_OG)
         except:
-            import pdb; pdb.set_trace()
+            raise Exception()
 
     @property    
     def inertia(self):
@@ -767,7 +767,6 @@ class FASTBeamBody(BeamBody):
 #             from welib.fast.elastodyn import bladeParameters
 #             pGM=p
 #             pED = bladeParameters(ED.filename)
-#             import pdb; pdb.set_trace()
 
 
         elif name in ['fnd']:

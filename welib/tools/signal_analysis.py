@@ -523,7 +523,6 @@ def amplitude(x, t=None, T = None, mask=None, debug=False):
         return A
 
         # split signals into  subsets
-        import pdb; pdb.set_trace()
     else:
         return (np.max(x)-np.min(x))/2
 

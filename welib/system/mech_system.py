@@ -536,7 +536,7 @@ class MechSystem():
         # --- Calc output based on states
         self._calc_outputs(res.t, res.y, df)
         if yoffset is not None:
-            import pdb; pdb.set_trace()
+            raise Exception()
 
         if insertTime:
             df.insert(0,'Time_[s]', res.t)

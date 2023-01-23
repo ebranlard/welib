@@ -601,10 +601,6 @@ def mutGaussianBounded(individual, mu, sigma, low, up, indpb):
             elif x<xl:
                 x=xl+math.fmod(abs(dx),xu-xl)
             #individual[i] = min(max(x,low),up)
-            #if x>up:
-            #   pdb.set_trace(); 
-            #if x<low:
-            #   pdb.set_trace(); 
             individual[i] = x
 
     return individual,
@@ -828,8 +824,7 @@ def selSPEA2Diverse(individuals, k):
     #print(SelU)
     if len(SelU)<k:
         print('>>>>>> NEED FOR MORE')
-        #import pdb
-        #pdb.set_trace()
+        raise Exception()
 
     return  Sel
 

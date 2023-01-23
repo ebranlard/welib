@@ -397,7 +397,6 @@ class StateSpace(System):
                 #try:
                 sig = self.signature_u[k]
                 #except:
-                #    import pdb; pdb.set_trace()
                 if sig=='t':
                     d[i] = self._u[k](t)
                 elif sig=='t,q':
@@ -664,7 +663,7 @@ class StateSpace(System):
         self._calc_outputs(res.t, res.y, df)
         if yoffset is not None:
             print('>>> STOPED IN STATESPACE.py')
-            import pdb; pdb.set_trace()
+            raise Exception()
 
         if insertTime:
             df.insert(0,'Time_[s]', res.t)
