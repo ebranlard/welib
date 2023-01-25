@@ -59,6 +59,7 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     from .pickle_file             import PickleFile        
     from .cactus_file             import CactusFile
     from .raawmat_file            import RAAWMatFile
+    from .rosco_discon_file       import ROSCODISCONFile
     from .rosco_performance_file  import ROSCOPerformanceFile
     priorities = []
     formats = []
@@ -91,6 +92,7 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     addFormat(40, FileFormat(FLEXWaveKinFile))
     addFormat(40, FileFormat(FLEXDocFile))
     addFormat(50, FileFormat(BModesOutFile))
+    addFormat(50, FileFormat(ROSCODISCONFile))
     addFormat(50, FileFormat(ROSCOPerformanceFile))
     addFormat(60, FileFormat(NetCDFFile))
     addFormat(60, FileFormat(VTKFile))
