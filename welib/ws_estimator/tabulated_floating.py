@@ -416,6 +416,38 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
                         return WS_est, ts_info
         return WS_est, ts_info
 
+
+    def validValues(self, windspeed, omega, pitch, phiy):
+        """ Return boolean array of valid values"""
+        def findSurroundingIndices(x,v):
+            i=np.argmin(np.abs(v-x)) 
+            if v[i]>x and i!=0: 
+                i=i-1
+            if v[i]==x and i==len(v): 
+                j=i
+                i=i-1
+            if i+1<len(v):
+                j = i+1
+            else:
+                j=i
+            return i,j
+        bValidMat = self.pkl['bValid']
+        bValid = np.array([True]*len(windspeed))
+        for i, (ws, om, pi, ph) in enumerate(zip(windspeed, omega, pitch,phiy)):
+            # Find closest surrounding indices
+            IWS = findSurroundingIndices(ws, self.WS)
+            IOM = findSurroundingIndices(om, self.omega)
+            IPI = findSurroundingIndices(pi, self.pitch)
+            IPH = findSurroundingIndices(ph, self.phiy)
+            b=True
+            for iws in IWS:
+                for iom in IOM:
+                    for ipi in IPI:
+                        for iph in IPH:
+                            b=b and bValidMat[iws, iom, ipi, iph]
+            bValid[i] = b
+        return bValid
+
     def estimateTimeSeriesFromOF(self, fstFilename, tRange=None, **kwargs):
         """" 
          - tRange: tuple (tmin, tmax) to limit the time used
@@ -653,6 +685,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         s+=' - WS     : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.WS),np.max(self.WS),self.WS[1]-self.WS[0], len(self.WS))
         s+=' - omega  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.omega),np.max(self.omega),self.omega[1]-self.omega[0], len(self.omega))
         s+=' - pitch  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.pitch) ,np.max(self.pitch) ,self.pitch[1]-self.pitch[0]  , len(self.pitch))
+        s+=' - phiy   : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.phiy) ,np.max(self.phiy) ,self.phiy[1]-self.phiy[0]  , len(self.phiy))
         s+=' - CP     : [min={:8.3f}, max={:8.3f}, n={}x{}]  \n'.format(np.min(self.CP),np.max(self.CP),self.CP.shape[0],self.CP.shape[1])
         if self.CT is not None:
             s+=' - CT     : [min={:8.3f}, max={:8.3f}, n={}x{}]  \n'.format(np.min(self.CT),np.max(self.CT),self.CT.shape[0],self.CT.shape[1])

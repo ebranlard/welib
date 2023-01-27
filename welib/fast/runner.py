@@ -242,7 +242,10 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
                 if run_if_ext_missing is not None:
                     # TODO might be windows only
                     ff_out = os.path.splitext(ff_rel)[0] + run_if_ext_missing
-                    cmd = 'if not exist {} ({}) else (echo Skipping {})'.format(ff_out, cmd, ff_rel)
+                    if os.name == 'nt':
+                        cmd = 'if not exist {} ({}) else (echo Skipping {})'.format(ff_out, cmd, ff_rel)
+                    else:
+                        cmd = 'if [[ -f {} ]] ; then {}; else echo Skipping {} ; fi'.format(ff_out, cmd, ff_rel)
                 f.write("{:s}\n".format(cmd))
             if pause:
                 f.write("pause\n") # might be windows only..

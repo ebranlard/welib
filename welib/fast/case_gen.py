@@ -240,7 +240,10 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
 
     TemplateFiles=[]
     files=[]
+    nTot=len(PARAMS)
     for ip,(wd,p) in enumerate(zip(workDirS,PARAMS)):
+        if np.mod(ip+1,1000)==0:
+            print('File {:d}/{:d}'.format(ip,nTot))
         if '__index__' not in p.keys():
             p['__index__']=ip
 

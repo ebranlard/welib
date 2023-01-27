@@ -11,7 +11,46 @@ import pandas as pd
 # --------------------------------------------------------------------------------}
 # --- Stats measures 
 # --------------------------------------------------------------------------------{
-def rsquare(y,f, c = True): 
+def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2'):
+    """
+    y1: ref
+    y2: other
+
+    """
+
+    sp=stats.split(',')
+
+    stats = {}
+    sStats=[]
+
+    # Loop on statistics requested
+    for s in sp:
+        s= s.strip().lower()
+        if s=='sigratio':
+            # Ratio of standard deviation:
+            sig_ref = float(np.nanstd(y1))
+            sig_est = float(np.nanstd(y2))
+            r_sig = sig_est/sig_ref
+            stats = {'sigRatio':r_sig}
+            sStats+= [r'$\sigma_\mathrm{est}/\sigma_\mathrm{ref} = $'+r'{:.3f}'.format(r_sig)]
+        elif s=='eps':
+            # Mean relative error
+            eps     = float(mean_rel_err(t1, y1, t2, y2, method='mean'))
+            stats['eps'] = eps
+            sStats+=['$\epsilon=$'+r'{:.1f}%'.format(eps)]
+        elif s=='r2':
+            # Rsquare
+            R2 = float(rsquare(y2, y1)[0])
+            stats['R2'] = R2
+            sStats+=[r'$R^2=$'+r'{:.3}'.format(R2)]
+        else:
+            raise NotImplementedError(s)
+    sStats=' - '.join(sStats)
+    return stats, sStats
+
+
+
+def rsquare(y, f, c = True): 
     """ Compute coefficient of determination of data fit model and RMSE
     [r2 rmse] = rsquare(y,f)
     [r2 rmse] = rsquare(y,f,c)
@@ -71,27 +110,27 @@ def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='mean', verbose=Fals
             y2=np.interp(t1,t2,y2)
     if method=='mean':
         # Method 1 relative to mean
-        ref_val = np.mean(y1)
-        meanrelerr = np.mean(np.abs(y2-y1)/ref_val)*100 
+        ref_val = np.nanmean(y1)
+        meanrelerr = np.nanmean(np.abs(y2-y1)/ref_val)*100 
     elif method=='meanabs':
-        ref_val = np.mean(np.abs(y1))
-        meanrelerr = np.mean(np.abs(y2-y1)/ref_val)*100 
+        ref_val = np.nanmean(np.abs(y1))
+        meanrelerr = np.nanmean(np.abs(y2-y1)/ref_val)*100 
     elif method=='loc':
-        meanrelerr = np.mean(np.abs(y2-y1)/abs(y1))*100 
+        meanrelerr = np.nanmean(np.abs(y2-y1)/abs(y1))*100 
     elif method=='minmax':
         # Method 2 scaling signals
-        Min=min(np.min(y1), np.min(y2))
-        Max=max(np.max(y1), np.max(y2))
+        Min=min(np.nanmin(y1), np.nanmin(y2))
+        Max=max(np.nanmax(y1), np.nanmax(y2))
         y1=(y1-Min)/(Max-Min)+0.5
         y2=(y2-Min)/(Max-Min)+0.5
-        meanrelerr = np.mean(np.abs(y2-y1)/np.abs(y1))*100 
+        meanrelerr = np.nanmean(np.abs(y2-y1)/np.abs(y1))*100 
     elif method=='1-2':
         # transform values from 1 to 2
-        Min=min(np.min(y1), np.min(y2))
-        Max=max(np.max(y1), np.max(y2))
+        Min=min(np.nanmin(y1), np.nanmin(y2))
+        Max=max(np.nanmax(y1), np.nanmax(y2))
         y1 = (y1-Min)/(Max-Min)+1
         y2 = (y2-Min)/(Max-Min)+1
-        meanrelerr = np.mean(np.abs(y2-y1)/np.abs(y1))*100
+        meanrelerr = np.nanmean(np.abs(y2-y1)/np.abs(y1))*100
     else:
         raise Exception('Unknown method',method)
 
