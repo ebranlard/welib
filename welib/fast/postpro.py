@@ -689,13 +689,15 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     """
     # --- Opens Fast output  and performs averaging
     if df is None:
-        df = FASTOutputFile(FST_In.replace('.fst',out_ext).replace('.dvr',out_ext)).toDataFrame()
+        filename =FST_In.replace('.fst',out_ext).replace('.dvr',out_ext)
+        df = FASTOutputFile(filename).toDataFrame()
         returnDF=True
     else:
+        filename=''
         returnDF=False
     # NOTE: spanwise script doest not support duplicate columns
     df = df.loc[:,~df.columns.duplicated()]
-    dfAvg = averageDF(df,avgMethod=avgMethod ,avgParam=avgParam) # NOTE: average 5 last seconds
+    dfAvg = averageDF(df,avgMethod=avgMethod ,avgParam=avgParam, filename=filename) # NOTE: average 5 last seconds
 
     # --- Extract info (e.g. radial positions) from Fast input file
     # We don't have a .fst input file, so we'll rely on some default values for "r"
@@ -1277,7 +1279,7 @@ def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, c
     return dfPsi
 
 
-def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
+def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean'], filename=''):
     """
     See average PostPro for documentation, same interface, just does it for one dataframe
     """
@@ -1286,6 +1288,9 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
             if x==v:
                 return k
         return x
+    # Sanity 
+    if len(filename)>0:
+        filename=' (File: {})'.format(filename)
     # Before doing the colomn map we store the time
     time = df['Time_[s]'].values
     timenoNA = time[~np.isnan(time)]
@@ -1305,14 +1310,14 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
     elif avgMethod.lower()=='periods':
         # --- Using azimuth to find periods
         if 'Azimuth_[deg]' not in df.columns:
-            raise Exception('The sensor `Azimuth_[deg]` does not appear to be in the output file. You cannot use the averaging method by `periods`, use `constantwindow` instead.')
+            raise Exception('The sensor `Azimuth_[deg]` does not appear to be in the dataframe{}. You cannot use the averaging method by `periods`, use `constantwindow` instead.'.format(filename))
         # NOTE: potentially we could average over each period and then average
         psi=df['Azimuth_[deg]'].values
         _,iBef = _zero_crossings(psi-psi[-2],direction='up')
         if len(iBef)==0:
             _,iBef = _zero_crossings(psi-180,direction='up')
         if len(iBef)==0:
-            print('[WARN] Not able to find a zero crossing!')
+            print('[WARN] Not able to find a zero crossing!{}'.format(filename))
             tEnd = time[-1]
             iBef=[0]
         else:
@@ -1323,7 +1328,7 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
         else:
             avgParam=int(avgParam) 
             if len(iBef)-1<avgParam:
-                print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!'.format(len(iBef)-1,avgParam))
+                print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!{}'.format(len(iBef)-1,avgParam, filename))
                 avgParam=len(iBef)-1
             if avgParam==0:
                 tStart = time[0]
@@ -1333,7 +1338,7 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
     elif avgMethod.lower()=='periods_omega':
         # --- Using average omega to find periods
         if 'RotSpeed_[rpm]' not in df.columns:
-            raise Exception('The sensor `RotSpeed_[rpm]` does not appear to be in the output file. You cannot use the averaging method by `periods_omega`, use `periods` or `constantwindow` instead.')
+            raise Exception('The sensor `RotSpeed_[rpm]` does not appear to be in the dataframe{}. You cannot use the averaging method by `periods_omega`, use `periods` or `constantwindow` instead.'.format(filename))
         Omega=df['RotSpeed_[rpm]'].mean()/60*2*np.pi
         Period = 2*np.pi/Omega 
         if avgParam is None:
@@ -1351,7 +1356,7 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
             print('[WARN] Signals missing and omitted for ColKeep:\n       '+'\n       '.join(ColKeepMiss))
         df=df[ColKeepSafe]
     if tStart<time[0]:
-        print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!'.format(tEnd-time[0],tStart-tEnd))
+        print('[WARN] Simulation time ({}) too short compared to required averaging window ({})!{}'.format(tEnd-time[0],tStart-tEnd,filename))
     IWindow    = np.where((time>=tStart) & (time<=tEnd) & (~np.isnan(time)))[0]
     iEnd   = IWindow[-1]
     iStart = IWindow[0]
@@ -1410,7 +1415,7 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
         except:
             invalidFiles.append(f)
             continue
-        postpro=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats)
+        postpro=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats, filename=f)
         MeanValues=postpro # todo
         if result is None:
             # We create a dataframe here, now that we know the colums

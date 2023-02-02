@@ -159,10 +159,10 @@ class Structure():
         if s.main_axis=='x':
             raise NotImplementedError('Main axis along x')
 
-        rhoN_x = s.r_NGrna_inN[0,0]
-        rhoN_z = s.r_NGrna_inN[2,0]
-        rNR_x  = s.r_NR_inN[0,0]
-        rNR_z  = s.r_NR_inN[2,0]
+        rhoN_x = s.r_NGrna_inN.flatten()[0]
+        rhoN_z = s.r_NGrna_inN.flatten()[2]
+        rNR_x  = s.r_NR_inN.flatten()[0]
+        rNR_z  = s.r_NR_inN.flatten()[2]
         g      = s.gravity
         ux1c   = s.Twr.Bhat_x_bc[1,0]
         vy1c   = s.Twr.Bhat_t_bc[1,0]  # Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]

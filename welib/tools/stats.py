@@ -11,7 +11,7 @@ import pandas as pd
 # --------------------------------------------------------------------------------}
 # --- Stats measures 
 # --------------------------------------------------------------------------------{
-def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2'):
+def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean'):
     """
     y1: ref
     y2: other
@@ -30,7 +30,10 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2'):
             # Ratio of standard deviation:
             sig_ref = float(np.nanstd(y1))
             sig_est = float(np.nanstd(y2))
-            r_sig = sig_est/sig_ref
+            try:
+                r_sig = sig_est/sig_ref
+            except:
+                r_sig = np.nan
             stats = {'sigRatio':r_sig}
             sStats+= [r'$\sigma_\mathrm{est}/\sigma_\mathrm{ref} = $'+r'{:.3f}'.format(r_sig)]
         elif s=='eps':
@@ -92,7 +95,7 @@ def rsquare(y, f, c = True):
     rmse = np.sqrt(np.mean((y - f) ** 2))
     return r2,rmse
 
-def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='mean', verbose=False, varname=''):
+def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='meanabs', verbose=False, varname=''):
     """ 
     return mean relative error in % 
 

@@ -240,8 +240,12 @@ class WindTurbineStructure():
             p['Ge_T']     = WT.twr.Ge
             p['MM_T']     = WT.twr.MM
             p['u_xT1c']   = 1 # TODO remove in equations
+            # TODO TODO TODO THIS IS NOT GENERIC
             p['v_yT1c']   = WT.twr.Bhat_t_bc[1,0]  # Mode 1  3 x nShapes
-            p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
+            try:
+                p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
+            except:
+                print('[FAIL] YAMS: WindTurbine, TODO which mode shape is which for tower top rotations factors')
             p['DD_T']     = WT.twr.DD
             p['KK_T']     = WT.twr.KK
             # Rotor (blades + hub)
@@ -499,6 +503,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     # --- OpenFAST compatibility
     if algo.lower()=='openfast':
+        print('[INFO] YAMS Wind Turbine - Using Algo OpenFAST')
         from welib.fast.elastodyn import rotorParameters, bladeParameters, towerParameters, bladeDerivedParameters, towerDerivedParameters
         pBld = bladeParameters(EDfile)
         pBld = bladeDerivedParameters(pBld, inertiaAtBladeRoot=False)
@@ -534,12 +539,13 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, nSpan=nSpanBld, gravity=gravity, algo=algo) 
     if algo.lower()=='openfast':
         # Overwrite blade props until full compatibility implemented
-        bld[0].MM[0,0]   = pBld['BldMass']
-        bld[0].MM[1,1]   = pBld['BldMass']
-        bld[0].MM[2,2]   = pBld['BldMass']
-        bld[0].MM[6:,6:] = pBld['Me']
+        bld[0].MM[0,0]    = pBld['BldMass']
+        bld[0].MM[1,1]    = pBld['BldMass']
+        bld[0].MM[2,2]    = pBld['BldMass']
+        # TODO TODO bldShapes
+        bld[0].MM [6:,6:] = pBld['Me']
         bld[0].KK0[6:,6:] = pBld['Ke0'] # NOTE: Ke has no stiffening
-        bld[0].DD[6:,6:] = pBld['De']
+        bld[0].DD [6:,6:] = pBld['De']
 
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
@@ -598,12 +604,15 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
         twr.MM[0,0]   = pTwr['TwrMass']
         twr.MM[1,1]   = pTwr['TwrMass']
         twr.MM[2,2]   = pTwr['TwrMass']
-        twr.MM[6:,6:] = pTwr['Me']
-        twr.KK[6:,6:] = pTwr['Ke']
-        twr.KK0[6:,6:] = pTwr['Ke0'] 
-        twr.KKg_self[6:,6:] = pTwr['Kg_SW']
-        twr.KKg_Mtop[6:,6:] = pTwr['Kg_TM']
-        twr.DD[6:,6:] = pTwr['De']
+        if twrShapes is None:
+            twrShapes=[0,1,2,3]
+        twr.MM      [6:,6:] = pTwr['Me']   [np.ix_(twrShapes,twrShapes)]
+        twr.KK      [6:,6:] = pTwr['Ke']   [np.ix_(twrShapes,twrShapes)]
+        twr.KK0     [6:,6:] = pTwr['Ke0']  [np.ix_(twrShapes,twrShapes)]
+        twr.KKg_self[6:,6:] = pTwr['Kg_SW'][np.ix_(twrShapes,twrShapes)]
+        twr.KKg_Mtop[6:,6:] = pTwr['Kg_TM'][np.ix_(twrShapes,twrShapes)]
+        twr.DD      [6:,6:] = pTwr['De']   [np.ix_(twrShapes,twrShapes)]
+
 
     # --- Full WT rigid body equivalent, with point T as ref
     RNAb = copy.deepcopy(RNA)

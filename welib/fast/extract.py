@@ -473,7 +473,7 @@ def extractPtfmInertiaFromLinFile(linFile):
 
 
 
-def mainLinInputs(all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
+def mainLinInputs(all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0, aero=0):
     """ 
     Returns typical inputs relevant for a simplified OpenFAST model
 
@@ -482,6 +482,14 @@ def mainLinInputs(all=False, hub=1, nac=1, ptfm=1, gen=1, pitch=0):
         cols=None
     else:
         cols=[]
+        if aero>=1:
+            cols+=['Thrust']
+            cols+=['fay']
+            cols+=['faz']
+        if aero>=2:
+            cols+=['Qero']
+            cols+=['may']
+            cols+=['maz']
         if pitch==1:
             cols+=['PitchColl_[rad]']
         if gen==1:

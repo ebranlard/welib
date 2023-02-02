@@ -584,8 +584,9 @@ class LinearStateSpace(StateSpace):
 
     def toDataFrames(self):
         """ return dataframes for system matrices using labels"""
-        A = pd.DataFrame(self.A, index=self.sX, columns=self.sX)
-        B = pd.DataFrame(self.B, index=self.sX, columns=self.sU)
+        sXd = ['d'+s for s in self.sX]
+        A = pd.DataFrame(self.A, index=sXd    , columns=self.sX)
+        B = pd.DataFrame(self.B, index=sXd    , columns=self.sU)
         C = pd.DataFrame(self.C, index=self.sY, columns=self.sX)
         D = pd.DataFrame(self.D, index=self.sY, columns=self.sU)
         return A, B, C, D
@@ -610,15 +611,15 @@ class LinearStateSpace(StateSpace):
             s+='| - Force t0  : {} \n'.format(self._force_ts[:,0])
             s+='| - Force tend: {} \n'.format(self._force_ts[:,-1])
         s+='|Attributes:\n'
-        s+='| - A: State-State Matrix  \n'
+        s+='| - A: State-State Matrix ({} x {})\n'.format(self.nStates, self.nStates)
         s+=str(self.A)+'\n'
-        s+='| - B: State-Input Matrix  \n'
+        s+='| - B: State-Input Matrix ({} x {})\n'.format(self.nStates, self.nInputs)
         s+=str(self.B)+'\n'
         if self.C is not None:
-            s+='| - C: State-Ouputs Matrix  \n'
+            s+='| - C: Outputs-States Matrix ({} x {})\n'.format(self.nOutputs, self.nStates)
             s+=str(self.C)+'\n'
         if self.D is not None:
-            s+='| - D: Input-Ouputs Matrix  \n'
+            s+='| - D: Outputs-Inputs Matrix ({} x {})\n'.format(self.nOutputs, self.nInputs)
             s+=str(self.D)+'\n'
         s+='| - q0: {}\n'.format(self.q0)
         return s

@@ -300,6 +300,10 @@ class HydroDyn:
 
         - RefPointMotion: point used to defined rigid body motion, important parameter
         - RefPointMapping: point used to defined rigid body mapping
+        - RefPointMappingMotion: how does the reference point move with q
+              'translate': the reference point for mapping translate with q
+              'none':      the reference point for mapping does not move
+              'follow_point': the reference point for mapping follow the whole motion (translation and rotation)
 
         -optsM: options for Morison Calculation
 

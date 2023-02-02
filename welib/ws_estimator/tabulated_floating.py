@@ -275,6 +275,8 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
             if debug:
                 info['WS_oper'] = WSoper
                 info['WS_crossOP'] = WScrossOP
+        else:
+            WSoper=WS0
 
         # --- Find torque for given pitch and omega
         if method.find('crossing')>=0:

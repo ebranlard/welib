@@ -245,7 +245,7 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
                     if os.name == 'nt':
                         cmd = 'if not exist {} ({}) else (echo Skipping {})'.format(ff_out, cmd, ff_rel)
                     else:
-                        cmd = 'if [[ -f {} ]] ; then {}; else echo Skipping {} ; fi'.format(ff_out, cmd, ff_rel)
+                        cmd = 'if [[ ! -f {} ]] ; then {}; else echo Skipping {} ; fi'.format(ff_out, cmd, ff_rel)
                 f.write("{:s}\n".format(cmd))
             if pause:
                 f.write("pause\n") # might be windows only..

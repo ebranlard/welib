@@ -49,8 +49,8 @@ DEFAULT_COL_MAP_LIN ={
   'BPitch1_[rad]'       : 'pitchB1'    , # Also B1Pitch_[rad]
   'PitchColl_[rad]'     : 'pitch'    , # Also B1Pitch_[rad]
   'Qgen_[Nm]'           : 'Qgen'     ,
-  'HubFxN1_[N]'         : 'Thrust'   ,
-  'HubFyN1_[N]'         : 'fay'   ,
+  'HubFxN1_[N]'         : 'Thrust'   ,  # A bit controversial to call those "Aero", they come from ED
+  'HubFyN1_[N]'         : 'fay'   ,   
   'HubFzN1_[N]'         : 'faz'   ,
   'HubMxN1_[Nm]'        : 'Qaero'    , 
   'HubMyN1_[Nm]'        : 'may'      , 
@@ -221,6 +221,7 @@ class FASTLinModel(LinearStateSpace):
         self.fstFilename = fstFilename
         self.dfFS        = None
         self.df          = None
+        self.pickleFile  = None
 
         if usePickle:
             if fstFilename is None:
@@ -253,7 +254,7 @@ class FASTLinModel(LinearStateSpace):
 
         if fstFilename is not None:
             print('FASTLinModel: loading WT :',fstFilename)
-            self.WT = FASTWindTurbine(fstFilename)
+            self.WT = FASTWindTurbine(fstFilename, algo='OpenFAST')
             self.fstFilename     = fstFilename
 
         # Set A, B, C, D to SI units
@@ -279,7 +280,7 @@ class FASTLinModel(LinearStateSpace):
         # --- Load turbine config
         if fstFilename is not None:
             print('FASTLinModel: loading WT :',fstFilename)
-            self.WT_sim = FASTWindTurbine(fstFilename)
+            self.WT_sim = FASTWindTurbine(fstFilename, algo='OpenFAST')
             self.fstFilename_sim = fstFilename 
         else:
             self.WT_sim = self.WT
@@ -431,6 +432,7 @@ class FASTLinModel(LinearStateSpace):
         d = {'fstFilename':self.fstFilename, 'WT':self.WT}
         LinearStateSpace.save(self, pickleFile, d)
         print('FASTLinModel: writing PKL: ', pickleFile)
+        self.pickleFile = pickleFile
 
     def load(self, pickleFile=None):
         if pickleFile is None:
@@ -440,6 +442,7 @@ class FASTLinModel(LinearStateSpace):
         d = LinearStateSpace.load(self, pickleFile)
         self.WT          = d['WT']
         self.fstFilename = d['fstFilename']
+        self.pickleFile = pickleFile
 
 
 

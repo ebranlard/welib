@@ -390,7 +390,8 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8)):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2'):
+    from welib.tools.stats import comparison_stats
     import matplotlib
     import matplotlib.pyplot as plt
     # --- Compare States
@@ -433,11 +434,22 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
         if X_noisy is not None:
             ax.plot(time,X_noisy[s],'-.',  color=COLRS[2] ,label='Noisy')
         ax.plot(time,X_hat[s],'--', color=COLRS[1],label='Estimate')
+
+        if stats:
+            _, sStats = comparison_stats(time, X_clean[s], time, X_hat[s], stats=stats)
+            Ylim = ax.get_ylim()
+            Xlim = ax.get_xlim()
+            ax.text(Xlim[0]*1.01 ,Ylim[0]+(Ylim[1]-Ylim[0])*0.82, sStats, fontsize=10)
+
         ax.set_ylabel(s)
         ax.tick_params(direction='in')
     axes[0].set_title(title)
     axes[-1].set_xlabel('Time [s]')
-    axes[-1].legend()
+    axes[len(I)-1].legend()
+    # Remove unnecessary axes
+    if len(axes)>len(I):
+        for j in range(len(I), len(axes)):
+            axes[j].axis('off')
     return fig
 
 

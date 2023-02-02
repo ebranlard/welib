@@ -190,11 +190,12 @@ def EmptyStateMat(nX,nU,nY):
 
 def EmptyStateDF(nX,nU,nY,sX,sU,sY):
     """ Returns state matrices with proper dimensions, filled with 0 """
+    sXd=['d'+s for s in sX]
     Xx,Xu,Yx,Yu = EmptyStateMat(nX,nU,nY)
-    Xx = pd.DataFrame(data=Xx, index=sX, columns=sX)
-    Xu = pd.DataFrame(data=Xu, index=sX, columns=sU)
-    Yx = pd.DataFrame(data=Yx, index=sY, columns=sX)
-    Yu = pd.DataFrame(data=Yu, index=sY, columns=sU)
+    Xx = pd.DataFrame(data=Xx, index=sXd, columns=sX)
+    Xu = pd.DataFrame(data=Xu, index=sXd, columns=sU)
+    Yx = pd.DataFrame(data=Yx, index=sY , columns=sX)
+    Yu = pd.DataFrame(data=Yu, index=sY , columns=sU)
     return Xx,Xu,Yx,Yu
 
 

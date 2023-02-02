@@ -25,14 +25,16 @@ def cylindervert_hydrostat(R, z1, z2, rho, g,
         raise Exception('z1 should be above z2')
     if z1<0:
         # Fully submerged
+        ztop = z1
         A0=0
-        h=z1-z2 # submerged height
     else:
-        h  = -z2        # submerged height
+        # Partially submerged
+        ztop = 0 
         A0 = np.pi*R**2 # undisplaced waterplane area of platform (m^2)
 
-    V0 = np.pi*R**2*h         # undisplaced volume of platform (m^3)
-    z_b = h/2         # coordinates of the center of buoyancy of the undisplaced platform (m)
+    h   = ztop-z2      # submerged height
+    z_b = (ztop+z2)/2  # coordinates of the center of buoyancy of the undisplaced platform (m)
+    V0  = np.pi*R**2*h # undisplaced volume of platform (m^3)
 
     K=np.zeros((6,6))
     K[2,2] = rho * g * A0
