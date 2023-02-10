@@ -26,10 +26,11 @@ def main():
     # Averaging here is done over 1 period (avgParam=1, avgMethod='periods')
     # To get the output radial stations, a .fst file is needed
     fstFile = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst')
-    dfRad_ED, dfRad_AD, dfRad_BD = postpro.spanwisePostPro(FST_In=fstFile, avgMethod='periods', avgParam=1, df=df)
+    out = postpro.spanwisePostPro(FST_In=fstFile, avgMethod='periods', avgParam=1, df=df)
+    dfRad_ED=out['ED']; dfRad_AD = out['AD']; dfRad_BD = out['BD']
 
     # --- Step1&2 at once (when .outb and .fst are next to each other in same folder, with same name)
-    # dfRad_ED, dfRad_AD, dfRad_BD, df = postpro.spanwisePostPro(FST_In=fstFile, avgMethod='periods', avgParam=1, out_ext='.outb')
+    # out = postpro.spanwisePostPro(FST_In=fstFile, avgMethod='periods', avgParam=1, out_ext='.outb')
 
     # --- (Optional, compute time series average)
     # Averaging here is done over the last 100s (avgParam=100, avgMethod='constantwindow')

@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import copy
 # Local 
 from welib.weio.fast_input_file import FASTInputFile
-from welib.tools.clean_exceptions import *
 from welib.tools.tictoc import Timer
 
 idGuyanDamp_None     = 0
@@ -23,28 +22,38 @@ idGuyanDamp_66       = 2
 
 class SubDyn:
 
-    def __init__(self, sdFilename=None, sdData=None):
+    def __init__(self, sdFilename_or_data=None):
+        """ 
+        Initialize a SubDyn object either with:
+          - sdFilename: a subdyn input file name
+          - sdData: an instance of FASTInputFile
+        """
 
         self._graph=None
         self.File=None
 
         # Read SubDyn file
-        if sdFilename is not None:
-            self.File = FASTInputFile(sdFilename)
-        if sdData is not None:
-            self.File = sdData
+        if sdFilename_or_data is not None:
+            if hasattr(sdFilename_or_data,'startswith'): # if string
+                self.File = FASTInputFile(sdFilename_or_data)
+            else:
+                self.File = sdFilename_or_data
 
         self.M_tip=None
 
         # Internal
         self._graph=None
+        self._mgraph=None # Member graph
         self._FEM=None
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
         s+='|properties:\n'
         s+='|- File: (input file data)\n'
+        s+='|* graph: (Nodes/Elements/Members)\n'
+        s+='|* pointsMJ, pointsMN, pointsMNout\n'
         s+='|methods:\n'
+        s+='|- memberPostPro\n'
         s+='|- setTopMass\n'
         s+='|- beamDataFrame, beamFEM, beamModes\n'
         s+='|- toYAMS\n'
@@ -74,7 +83,6 @@ class SubDyn:
             mainElementType='timoshenko'
         else:
             raise NotImplementedError()
-        print('>>> Main Element', FEMMod)
         # Get graph
         graph = self.graph
         #print('>>> graph\n',graph)
@@ -151,35 +159,195 @@ class SubDyn:
         else:
             M_tip=None
 
+
+    def getGraph(self, nDiv=1):
+        # See welib.weio.fast_input_file_graph.py to see how SubDyn files are converted to graph 
+        # See welib.fem.graph.py for Graph interface
+        _graph = self.File.toGraph().divideElements(nDiv,
+                    excludeDataKey='Type', excludeDataList=['Cable','Rigid'], method='insert',
+                    keysNotToCopy=['IBC','RBC','addedMassMatrix'] # Very important
+                    )
+
+        if len(_graph.Members)==0:
+            raise Exception('Problem in graph subdivisions, no members found.')
+        # Sanitization
+        #idBC_Fixed    =  0 # Fixed BC
+        #idBC_Internal = 10 # Free/Internal BC
+        #idBC_Leader   = 20 # Leader DOF
+        MapIBC={0:0, 1:20} # 1 in the input file is leader
+        MapRBC={0:10, 1:0} # 1 in the input file is fixed
+        for n in _graph.Nodes:
+            #print(n)
+            if 'IBC' in n.data.keys():
+                IBC = n.data['IBC'].copy()
+                n.data['IBC'] = [MapIBC[i] for i in IBC[:6]]
+            if 'RBC' in n.data.keys():
+                RBC = n.data['RBC'].copy()
+                n.data['RBC'] = [MapRBC[i] for i in RBC[:6]]
+                if any(RBC[:6])==0:
+                    print('RBC        ',RBC)
+                    print('n.data[RBC]',n.data['RBC'] )
+                    print('n          ',n )
+                    raise NotImplementedError('SSI')
+
+        return _graph
+
     @property
     def graph(self):
         if self._graph is None:
-            print('>>> NDIV is ', self.File['NDiv'])
-            self._graph = self.File.toGraph().divideElements(self.File['NDiv'],
-                        excludeDataKey='Type', excludeDataList=['Cable','Rigid'], method='insert',
-                        keysNotToCopy=['IBC','RBC','addedMassMatrix'] # Very important
-                        )
-            # Sanitization
-            #idBC_Fixed    =  0 # Fixed BC
-            #idBC_Internal = 10 # Free/Internal BC
-            #idBC_Leader   = 20 # Leader DOF
-            MapIBC={0:0, 1:20} # 1 in the input file is leader
-            MapRBC={0:10, 1:0} # 1 in the input file is fixed
-            for n in self._graph.Nodes:
-                #print(n)
-                if 'IBC' in n.data.keys():
-                    IBC = n.data['IBC'].copy()
-                    n.data['IBC'] = [MapIBC[i] for i in IBC[:6]]
-                if 'RBC' in n.data.keys():
-                    RBC = n.data['RBC'].copy()
-                    n.data['RBC'] = [MapRBC[i] for i in RBC[:6]]
-                    if any(RBC[:6])==0:
-                        print('RBC        ',RBC)
-                        print('n.data[RBC]',n.data['RBC'] )
-                        print('n          ',n )
-                        raise NotImplementedError('SSI')
-
+            self._graph = self.getGraph(nDiv = self.File['NDiv'])
         return copy.deepcopy(self._graph)
+
+
+    @property
+    def pointsMJ(self):
+        """ return a dataframe with the coordinates of all members and joints
+        The index corresponds to the SubDyn outputs "M_J_XXX"
+        """
+        Joints=[]
+        labels =[]
+        graph = self.graph
+        for ie,M in enumerate(graph.Members): # loop on members
+            Nodes = M.getNodes(graph)
+            for iN,N in enumerate([Nodes[0], Nodes[-1]]):
+                s='M{}J{}'.format(ie+1, iN+1)
+                Joints.append([N.x,N.y,N.z])
+                labels.append(s)
+        df =pd.DataFrame(data=np.asarray(Joints), index=labels, columns=['x','y','z'])
+        return df
+
+    @property
+    def pointsMN(self):
+        """ return a dataframe with the coordinates of all members and nodes
+        The index would correspond to the SubDyn outputs "M_N_XXX *prior* to the user selection"
+        """
+        Nodes=[]
+        labels =[]
+        graph = self.graph
+        for im,M in enumerate(graph.Members): # loop on members
+            nodes = M.getNodes(graph)
+            for iN,N in enumerate(nodes): # Loop on member nodes
+                s='M{}N{}'.format(im+1, iN+1)
+                Nodes.append([N.x,N.y,N.z])
+                labels.append(s)
+        df =pd.DataFrame(data=np.asarray(Nodes), index=labels, columns=['x','y','z'])
+        return df
+
+    @property
+    def pointsMNout(self):
+        """ return a dataframe with the coordinates of members and nodes requested by user
+        The index corresponds to the SubDyn outputs "M_N_XXX selected by the user"
+        """
+        Nodes=[]
+        labels =[]
+        graph = self.graph
+        for im, out in enumerate(self.File['MemberOuts']):
+            mID = out[0] # Member ID
+            iNodes = np.array(out[2:])-1 # Node positions within member (-1 for python indexing)
+            nodes = graph.getMemberNodes(mID)
+            nodes = np.array(nodes)[iNodes]
+            for iN,N in enumerate(nodes): # Loop on selected nodes
+                s='M{}N{}'.format(im+1, iN+1)
+                Nodes.append([N.x,N.y,N.z])
+                labels.append(s)
+        df =pd.DataFrame(data=np.asarray(Nodes), index=labels, columns=['x','y','z'])
+        return df
+
+
+    def memberPostPro(self, dfAvg):
+        """
+        Convert a dataframe of SubDyn/OpenFAST outputs (time-averaged)
+        with columns such as: M_N_* and M_J_* 
+        into a dataframe that is organized by main channel name and nodal coordinates.
+        The scripts taken into account with member ID and node the user requested as outputs channels.
+        Discretization (nDIV) is also taken into account.
+
+        For instance:
+            dfAvg with columns = ['M1N1MKye_[N*m]', 'M1N2MKye_[N*m]', 'M1N1TDxss_[m]']
+        returns:
+            MNout with columns ['x', 'y', 'z', 'MKye_[Nm]', 'TDxss_[m]']
+               and index    ['M1N1', 'M1N2']
+               with x,y,z the undisplaced nodal positions (accounting for discretization)
+
+        INPUTS: 
+          -  dfAvg: a dataframe of time-averaged SubDyn/OpenFAST outputs, for instance obtained as:
+              df    = FASTInputFile(filename).toDataFrame()
+              dfAvg = postpro.averageDF(df, avgMethod=avgMethod ,avgParam=avgParam)
+        OUTPUTS
+          - MNout: dataframe of members outputs (requested by the user)
+          - MJout: dataframe of joints outputs
+        """
+        import welib.fast.postpro as postpro # Import done here to avoid circular dependency
+
+        # --- Get Points where output are requested
+        MJ = self.pointsMJ
+        MNo= self.pointsMNout
+        MJ.columns = ['x_[m]','y_[m]', 'z_[m]']
+        MNo.columns = ['x_[m]','y_[m]', 'z_[m]']
+
+        # --- Requested Member Outputs
+        Map={}
+        Map['^'+r'M(\d*)N(\d*)TDxss_\[m\]']   = 'TDxss_[m]'
+        Map['^'+r'M(\d*)N(\d*)TDyss_\[m\]']   = 'TDyss_[m]'
+        Map['^'+r'M(\d*)N(\d*)TDzss_\[m\]']   = 'TDzss_[m]'
+        Map['^'+r'M(\d*)N(\d*)RDxss_\[deg\]'] = 'RDxss_[deg]'
+        Map['^'+r'M(\d*)N(\d*)RDyss_\[deg\]'] = 'RDxss_[deg]'
+        Map['^'+r'M(\d*)N(\d*)RDzss_\[deg\]'] = 'RDxss_[deg]'
+        Map['^'+r'M(\d*)N(\d*)FKxe_\[N\*m\]'] = 'FKxe_[Nm]'
+        Map['^'+r'M(\d*)N(\d*)FKye_\[N\*m\]'] = 'FKye_[Nm]'
+        Map['^'+r'M(\d*)N(\d*)FKze_\[N\*m\]'] = 'FKze_[Nm]'
+        Map['^'+r'M(\d*)N(\d*)MKxe_\[N\*m\]'] = 'MKxe_[Nm]'
+        Map['^'+r'M(\d*)N(\d*)MKye_\[N\*m\]'] = 'MKye_[Nm]'
+        Map['^'+r'M(\d*)N(\d*)MKze_\[N\*m\]'] = 'MKze_[Nm]'
+        ColsInfo, _ = postpro.find_matching_columns(dfAvg.columns, Map)
+        nCols = len(ColsInfo)
+        if nCols>0:
+            newCols=[c['name'] for c in ColsInfo ]
+            ValuesM = pd.DataFrame(index=MNo.index, columns=newCols)
+            for ic,c in enumerate(ColsInfo):
+                Idx, cols, colname = c['Idx'], c['cols'], c['name']
+                labels = [s[:4] for s in cols]
+                ValuesM.loc[labels,colname] = dfAvg[cols].values.flatten()
+            # We remove lines that are all NaN
+            Values = ValuesM.dropna(axis = 0, how = 'all')
+            MNo2 = MNo.loc[Values.index]
+            MNout = pd.concat((MNo2, Values), axis=1)
+        else:
+            MNout = None
+
+        # --- Joint Outputs
+        Map={}
+        Map['^'+r'M(\d*)J(\d*)FKxe_\[N\]']   ='FKxe_[N]'
+        Map['^'+r'M(\d*)J(\d*)FKye_\[N\]']   ='FKye_[N]'
+        Map['^'+r'M(\d*)J(\d*)FKze_\[N\]']   ='FKze_[N]'
+        Map['^'+r'M(\d*)J(\d*)MKxe_\[N\*m\]']='MKxe_[Nm]'
+        Map['^'+r'M(\d*)J(\d*)MKye_\[N\*m\]']='MKye_[Nm]'
+        Map['^'+r'M(\d*)J(\d*)MKze_\[N\*m\]']='MKze_[Nm]'
+        Map['^'+r'M(\d*)J(\d*)FMxe_\[N\]']   ='FMxe_[N]'
+        Map['^'+r'M(\d*)J(\d*)FMye_\[N\]']   ='FMye_[N]'
+        Map['^'+r'M(\d*)J(\d*)FMze_\[N\]']   ='FMze_[N]'
+        Map['^'+r'M(\d*)J(\d*)MMxe_\[N\*m\]']='MMxe_[Nm]'
+        Map['^'+r'M(\d*)J(\d*)MMye_\[N\*m\]']='MMye_[Nm]'
+        Map['^'+r'M(\d*)J(\d*)MMze_\[N\*m\]']='MMze_[Nm]'
+        ColsInfo, _ = postpro.find_matching_columns(dfAvg.columns, Map)
+        nCols = len(ColsInfo)
+        if nCols>0:
+            newCols=[c['name'] for c in ColsInfo ]
+            ValuesJ = pd.DataFrame(index=MJ.index, columns=newCols)
+            for ic,c in enumerate(ColsInfo):
+                Idx, cols, colname = c['Idx'], c['cols'], c['name']
+                labels = [s[:4] for s in cols]
+                ValuesJ.loc[labels,colname] = dfAvg[cols].values.flatten()
+            # We remove lines that are all NaN
+            Values = ValuesJ.dropna(axis = 0, how = 'all')
+            MJ2 = MJ.loc[Values.index]
+            MJout = pd.concat((MJ2, Values), axis=1)
+        else:
+            MJout = None
+        return MNout, MJout
+
+
+
 
     # --------------------------------------------------------------------------------}
     # --- Functions for beam-like structure (Spar, Monopile)

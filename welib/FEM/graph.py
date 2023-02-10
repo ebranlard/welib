@@ -114,7 +114,7 @@ class Element(dict):
         self.propset = propset  # String representing the key in the graph.NodePropertySets dict
         self.propIDs = propIDs
         self.data    = kwargs     # Nodal data
-        self.nodes   = nodes      # Typically a trigger based on nodeIDs
+        self.nodes   = nodes      # Typically a trigger based on nodeIDs # NOTE: Uppercase 
         self.nodeProps= properties # Typically a trigger based on propIDs. Otherwise list of dictionaries
         if (self.propIDs is not None) and (self.propset is None):
             raise Exception('`propset` should be provided if `propIDs` are provided')
@@ -156,6 +156,35 @@ class Element(dict):
             s+=' l={:.2f}'.format(self.length)
         return s
 
+# --------------------------------------------------------------------------------}
+# --- Member
+# --------------------------------------------------------------------------------{
+class Member(dict):
+    """ Members are used when a graph is divided, to keep track of parent elements"""
+    def __init__(self, ID, elemIDs):
+        """ 
+
+        """
+        self.ID      = int(ID)
+        self.elemIDs = elemIDs
+
+    def nodeIDs(self, graph):
+        nodeIDs=[]
+        for eID in self.elemIDs:
+            E = graph.getElement(eID)
+            nodeIDs.append(E.nodeIDs[0])
+        nodeIDs.append(E.nodeIDs[1])
+        return nodeIDs
+
+    def getNodes(self, graph):
+        return [graph.getNode(nID) for nID in self.nodeIDs(graph)]
+
+    def getElements(self, graph):
+        return [graph.getElement(eID) for eID in self.elemIDs]
+
+    def __repr__(self):
+        s='<Memb{:4d}> ElemIDs{}'.format(self.ID, self.elemIDs)
+        return s
 
 # --------------------------------------------------------------------------------}
 # --- Mode 
@@ -469,6 +498,8 @@ class GraphModel(object):
         self.NodePropertySets = NodePropertySets if NodePropertySets is not None else dict()
         self.ElemPropertySets = ElemPropertySets if ElemPropertySets is not None else dict()
         self.MiscPropertySets = MiscPropertySets if MiscPropertySets is not None else dict()
+        # Optional if division happens 
+        self.Members = []
         # Dynamics
         self.Modes   = []
         self.TimeSeries = []
@@ -502,6 +533,20 @@ class GraphModel(object):
             if e.ID==elemID:
                 return e
         raise KeyError('ElemID {} not found in Elements'.format(elemID))
+
+    def getMember(self, membID):
+        for m in self.Members:
+            if m.ID==membID:
+                return m
+        raise KeyError('MemberID {} not found in Members'.format(membID))
+
+    def getMemberElements(self, membID):
+        m = self.getMember(membID)
+        return m.getElements(graph=self)
+
+    def getMemberNodes(self, membID):
+        m = self.getMember(membID)
+        return m.getNodes(graph=self)
 
     def getNodeProperty(self, setname, propID):
         for p in self.NodePropertySets[setname]:
@@ -635,6 +680,8 @@ class GraphModel(object):
         s+='\n'.join(str(n) for n in self.Nodes)
         s+='\n- Elements ({}):\n'.format(len(self.Elements))
         s+='\n'.join(str(n) for n in self.Elements)
+        s+='\n- Members ({}):\n'.format(len(self.Members))
+        s+='\n'.join(str(n) for n in self.Members)
         s+='\n- NodePropertySets ({}):'.format(len(self.NodePropertySets))
         for k,v in self.NodePropertySets.items():
             s+='\n> {} ({}):\n'.format(k, len(v))
@@ -732,6 +779,35 @@ class GraphModel(object):
         for e in self.Elements:
             e.nodeIDs=[n.ID for n in e.nodes]
 
+    def sortNodesBy(self,key):
+        """ Sort nodes, will affect the connectivity, but node IDs remain the same"""
+
+        # TODO, that's quite doable
+        if len(self.Modes)>0:
+            raise Exception('Cannot sort nodes when mode data is present')
+        if len(self.TimeSeries)>0:
+            raise Exception('Cannot sort nodes when timeseries are present')
+
+        nNodes = len(self.Nodes)
+        if key=='x':
+            values=[n.x for n in self.Nodes]
+        elif key=='y':
+            values=[n.y for n in self.Nodes]
+        elif key=='z':
+            values=[n.z for n in self.Nodes]
+        elif key=='ID':
+            values=[n.ID for n in self.Nodes]
+        else:
+            values=[n[key] for n in self.Nodes]
+        I= np.argsort(values)
+        self.Nodes=[self.Nodes[i] for i in I]
+
+        # Trigger, remove precomputed values related to connectivity:
+        self.connecticityHasChanged()
+
+        return self
+
+
     def _divideElement(self, elemID, nPerElement, maxElemId, keysNotToCopy=None):
         """ divide a given element by nPerElement (add nodes and elements to graph) """ 
         if len(self.Modes)>0:
@@ -787,34 +863,6 @@ class GraphModel(object):
         return newElems
 
 
-    def sortNodesBy(self,key):
-        """ Sort nodes, will affect the connectivity, but node IDs remain the same"""
-
-        # TODO, that's quite doable
-        if len(self.Modes)>0:
-            raise Exception('Cannot sort nodes when mode data is present')
-        if len(self.TimeSeries)>0:
-            raise Exception('Cannot sort nodes when timeseries are present')
-
-        nNodes = len(self.Nodes)
-        if key=='x':
-            values=[n.x for n in self.Nodes]
-        elif key=='y':
-            values=[n.y for n in self.Nodes]
-        elif key=='z':
-            values=[n.z for n in self.Nodes]
-        elif key=='ID':
-            values=[n.ID for n in self.Nodes]
-        else:
-            values=[n[key] for n in self.Nodes]
-        I= np.argsort(values)
-        self.Nodes=[self.Nodes[i] for i in I]
-
-        # Trigger, remove precomputed values related to connectivity:
-        self.connecticityHasChanged()
-
-        return self
-
     def divideElements(self, nPerElement, excludeDataKey='', excludeDataList=None, method='append', keysNotToCopy=None):
         """ divide all elements by nPerElement (add nodes and elements to graph)
 
@@ -842,16 +890,27 @@ class GraphModel(object):
             raise Exception('nPerElement should be more than 0')
 
         newElements=[]
+        self.Members=[] 
         for ie in np.arange(len(self.Elements)): # cannot enumerate since length increases
-            elemID = self.Elements[ie].ID
+            E = self.Elements[ie]
+            # Store member as the element might get changed
+            memberElemIDs=[E.ID]
+            memberNodeIDs=E.nodeIDs
+            elemID = E.ID
             if method=='insert':
                 newElements+=[self.getElement(elemID)] # newElements contains
-            if (len(excludeDataKey)>0 and self.Elements[ie].data[excludeDataKey] not in excludeDataList) or len(excludeDataKey)==0:
+            if (len(excludeDataKey)>0 and E.data[excludeDataKey] not in excludeDataList) or len(excludeDataKey)==0:
                 elems = self._divideElement(elemID, nPerElement, maxElemId, keysNotToCopy)
                 maxElemId+=len(elems)
                 newElements+=elems
+                memberElemIDs+= [e.ID for e in elems]
             else:
-                print('Not dividing element with ID {}, based on key `{}` with value `{}`'.format(elemID, excludeDataKey,self.Elements[ie].data[excludeDataKey]))
+                print('Not dividing element with ID {}, based on key `{}` with value `{}`'.format(elemID, excludeDataKey, E.data[excludeDataKey]))
+            # We create a member
+            m = Member(ID=elemID, elemIDs=memberElemIDs)
+            self.Members.append(m)
+
+
         # Adding elements at the end
         if method=='append':
             pass

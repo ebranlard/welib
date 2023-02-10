@@ -10,6 +10,8 @@ from welib.weio.fast_input_file import FASTInputFile
 from welib.weio.fast_output_file import FASTOutputFile
 from welib.weio.fast_input_deck import FASTInputDeck
 
+from welib.fast.subdyn import SubDyn
+
 
 # --------------------------------------------------------------------------------}
 # --- Tools for IO 
@@ -237,6 +239,18 @@ def BD_BldGag(BD):
     return r_gag, Inodes, r_nodes
 
 # 
+def SD_MembersNodes(SD):
+    sd = SubDyn(SD)
+    return sd.pointsMN
+
+def SD_MembersJoints(SD):
+    sd = SubDyn(SD)
+    return sd.pointsMJ
+
+def SD_MembersGages(SD):
+    sd = SubDyn(SD)
+    return sd.pointsMNout
+
 # 
 # 1, 7, 14, 21, 30, 36, 43, 52, 58 BldGagNd List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
 
@@ -724,29 +738,41 @@ def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.
     #print('I_AD:', IR_AD)
     #print('I_ED:', IR_ED)
     #print('I_BD:', IR_BD)
+    out = {}
+    if returnDF:
+        out['df']    = df
+        out['dfAvg'] = dfAvg
     # --- Extract radial data and export to csv if needed
-    dfRad_AD    = None
-    dfRad_ED    = None
-    dfRad_BD    = None
     Cols=dfAvg.columns.values
     # --- AD
     ColsInfoAD, nrMaxAD = spanwiseColAD(Cols)
     dfRad_AD            = extract_spanwise_data(ColsInfoAD, nrMaxAD, df=None, ts=dfAvg.iloc[0])
     dfRad_AD            = insert_extra_columns_AD(dfRad_AD, dfAvg.iloc[0], vr=r_AD, rho=rho, R=R, nB=3, chord=chord)
     dfRad_AD            = insert_radial_columns(dfRad_AD, r_AD, R=R, IR=IR_AD)
+    out['AD'] = dfRad_AD
     # --- ED
     ColsInfoED, nrMaxED = spanwiseColED(Cols)
     dfRad_ED            = extract_spanwise_data(ColsInfoED, nrMaxED, df=None, ts=dfAvg.iloc[0])
     dfRad_ED            = insert_radial_columns(dfRad_ED, r_ED, R=R, IR=IR_ED)
+    out['ED'] = dfRad_ED
     # --- BD
     ColsInfoBD, nrMaxBD = spanwiseColBD(Cols)
     dfRad_BD            = extract_spanwise_data(ColsInfoBD, nrMaxBD, df=None, ts=dfAvg.iloc[0])
     dfRad_BD            = insert_radial_columns(dfRad_BD, r_BD, R=R, IR=IR_BD)
-    if returnDF:
-        return dfRad_ED , dfRad_AD, dfRad_BD, df
+    out['BD'] = dfRad_BD
+    # --- SubDyn
+    if fst.SD is not None:
+        sd = SubDyn(fst.SD)
+        MN = sd.pointsMN
+        MNout, MJout = sd.memberPostPro(dfAvg)
+        out['SD_MembersOut'] = MNout
+        out['SD_JointsOut'] = MJout
     else:
-        return dfRad_ED , dfRad_AD, dfRad_BD
+        out['SD_MembersOut'] = None
+        out['SD_JointsOut'] = None
 
+    # Combine all into a dictionary
+    return out
 
 
 def spanwisePostProRows(df, FST_In=None):
@@ -838,7 +864,7 @@ def FASTRadialOutputs(FST_In, OutputCols=None):
     IR_BD       = None
     fst=None
     if FST_In is not None:
-        fst = FASTInputDeck(FST_In, readlist=['AD','ADbld','ED','BD','BDbld'])
+        fst = FASTInputDeck(FST_In, readlist=['AD','ADbld','ED','BD','BDbld','SD'])
         # NOTE: all this below should be in FASTInputDeck
         if fst.version == 'F7':
             # --- FAST7
@@ -1065,9 +1091,9 @@ def _zero_crossings(y,x=None,direction=None):
         raise Exception('Direction should be either `up` or `down`')
     return xzc, iBef, sign
 
-def find_matching_pattern(List, pattern, sort=False, integers=True):
+def find_matching_pattern(List, pattern, sort=False, integers=True, n=1):
     r""" Return elements of a list of strings that match a pattern
-        and return the first matching group
+        and return the n first matching group
 
     Example:
 

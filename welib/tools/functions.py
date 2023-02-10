@@ -299,7 +299,7 @@ if __name__=='__main__':
     for n in nSamples:
         x2 = np.linspace(-1, 1, n)
         D2 = smooth_delta(x2, e=epsilon, rng=rng, method=method )
-        print('n {}: values: {}'.format(method, D2/vmax))
+        print('n {}: values: {}'.format(n, D2/vmax))
         ax.plot(x2, D2/vmax, '-o', label= f'n={n}')
     ax.set_xlabel('x ')
     ax.set_ylabel('')
