@@ -967,6 +967,7 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
           'WS_[m/s]'         : '{Wind1VelX_[m/s]}'             , # create a new column from existing one
           'RtTSR_[-]'        : '{RtTSR_[-]} * 2  +  {RtAeroCt_[-]}'    , # change value of column
           'RotSpeed_[rad/s]' : '{RotSpeed_[rpm]} * 2*np.pi/60 ', # new column [rpm] -> [rad/s]
+          'q_p' :  ['Q_P_[rad]', '{PtfmSurge_[deg]}*np.pi/180']  # List of possible matches
         }
         # Read
         df = weio.read('FASTOutBin.outb').toDataFrame()
@@ -988,33 +989,38 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
     # Loop for expressions
     for k0,v in ColMap.items():
         k=k0.strip()
-        v=v.strip()
-        if v.find('{')>=0:
-            search_results = re.finditer(r'\{.*?\}', v)
-            expr=v
-            if verbose:
-                print('Attempt to insert column {:15s} with expr {}'.format(k,v))
-            # For more advanced operations, we use an eval
-            bFail=False
-            for item in search_results:
-                col=item.group(0)[1:-1]
-                if col not in df.columns:
-                    ColMapMiss.append(col)
-                    bFail=True
-                expr=expr.replace(item.group(0),'df[\''+col+'\']')
-            #print(k0, '=', expr)
-            if not bFail:
-                df[k]=eval(expr)
-                ColNew.append(k)
-            else:
-                print('[WARN] Column not present in dataframe, cannot evaluate: ',expr)
+        if type(v) is not list:
+            values = [v]
         else:
-            #print(k0,'=',v)
-            if v not in df.columns:
-                ColMapMiss.append(v)
-                print('[WARN] Column not present in dataframe: ',v)
+            values = v
+        for v in values:
+            v=v.strip()
+            if v.find('{')>=0:
+                search_results = re.finditer(r'\{.*?\}', v)
+                expr=v
+                if verbose:
+                    print('Attempt to insert column {:15s} with expr {}'.format(k,v))
+                # For more advanced operations, we use an eval
+                bFail=False
+                for item in search_results:
+                    col=item.group(0)[1:-1]
+                    if col not in df.columns:
+                        ColMapMiss.append(col)
+                        bFail=True
+                    expr=expr.replace(item.group(0),'df[\''+col+'\']')
+                #print(k0, '=', expr)
+                if not bFail:
+                    df[k]=eval(expr)
+                    ColNew.append(k)
+                else:
+                    print('[WARN] Column not present in dataframe, cannot evaluate: ',expr)
             else:
-                RenameMap[k]=v
+                #print(k0,'=',v)
+                if v not in df.columns:
+                    ColMapMiss.append(v)
+                    print('[WARN] Column not present in dataframe: ',v)
+                else:
+                    RenameMap[k]=v
 
     # Applying renaming only now so that expressions may be applied in any order
     for k,v in RenameMap.items():

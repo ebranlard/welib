@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from numpy.linalg import inv
@@ -540,8 +541,9 @@ class LinearStateSpace(StateSpace):
         """ """
         A, B, C, D = self.toDataFrames()
         if sX is not None:
-            A = subMat(A, rows=sX, cols=sX, check=check, name = 'A')
-            B = subMat(B, rows=sX         , check=check, name = 'B')
+            sXd = ['d'+s for s in self.sX]
+            A = subMat(A, rows=sXd, cols=sX, check=check, name = 'A')
+            B = subMat(B, rows=sXd         , check=check, name = 'B')
             C = subMat(C,          cols=sX, check=check, name = 'C')
         if sU is not None:
             B = subMat(B,          cols=sU, check=check, name = 'B')
@@ -626,6 +628,8 @@ class LinearStateSpace(StateSpace):
 
     def load(self, pickleFile):
         import pickle
+        if not os.path.exists(pickleFile):
+            raise Exception('File does not exist: {}'.format(pickleFile))
         d = pickle.load(open(pickleFile,'rb'))
         self.fromDataFrames(d['A'], d['B'], d['C'], d['D'])
         self.setStateInitialConditions(d['q0'])

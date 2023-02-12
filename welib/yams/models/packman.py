@@ -216,16 +216,16 @@ def IMUjacobian(pkg, q0, qd0, p, method='finiteDifferences', uop=None, u=None, d
     if qd0 is None:
         qd0=np.asarray(q0)*0
 
-    fh = AccelerationP_IMU
-    f0 = fh(q0, qd0, p, u, pkg)
+    fh = lambda q,qd : AccelerationP_IMU(q,qd,p,u,pkg)
+    f0 = fh(q0, qd0) #, p, u, pkg)
     if method=='finiteDifferences':
         # --- Method 1 Finite differences
         from welib.system.linearization import numerical_jacobian
         qdd0 = q0*0
         if dq is None or dqd is None:
             raise Exception('dq and dqd need to be provided when using finite differences')
-        Kacc = numerical_jacobian(fh, (q0,qd0), 0, dq  , p, pkg)
-        Cacc = numerical_jacobian(fh, (q0,qd0), 1, dqd , p, pkg)
+        Kacc = numerical_jacobian(fh, (q0,qd0), 0, dq )
+        Cacc = numerical_jacobian(fh, (q0,qd0), 1, dqd)
     elif method=='packageJacobians':
         # --- Method 2 pkg
         Ma,Ca,Ka = pkg.AccLinP_IMU(q=q0, qd=qd0, p=p)

@@ -745,7 +745,7 @@ class FASTBeamBody(BeamBody):
             # --- Substructure / fnd
             from welib.fast.subdyn import SubDyn   
             name = 'fnd'
-            sd = SubDyn(sdData = inp)
+            sd = SubDyn(inp)
             p, damp_zeta, RayleighCoeff, DampMat = sd.toYAMSData(shapes)
             r_O   = p['r_O']
             R_b2g = p['R_b2g']
@@ -776,7 +776,6 @@ class FASTBeamBody(BeamBody):
             raise NotImplementedError()
 
         # TODO TODO sort out span for Blades and HubRad 
-
         BeamBody.__init__(self, name, p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
                 s_min=p['s_min'], s_max=p['s_max'],
                 r_O = r_O, R_b2g=R_b2g,  # NOTE: this is lost in YAMS

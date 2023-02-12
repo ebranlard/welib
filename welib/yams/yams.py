@@ -109,7 +109,7 @@ class Connection():
 # --------------------------------------------------------------------------------}
 # --- Bodies 
 # --------------------------------------------------------------------------------{
-class Body(GenericBody):
+class Body(GenericBody): # TODO rename YAMSRecBody
     def __init__(B,name=''):
         GenericBody.__init__(B, name=name)
         B.Children    = []
@@ -532,7 +532,7 @@ class GroundBody(Body, GenericInertialBody):
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
-class RigidBody(Body,GenericRigidBody):
+class RigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
     def __init__(B, name, mass, J_G, rho_G):
         """
         Creates a rigid body 
@@ -551,21 +551,26 @@ class RigidBody(Body,GenericRigidBody):
 # --------------------------------------------------------------------------------}
 # --- Beam Body 
 # --------------------------------------------------------------------------------{
-class BeamBody(GenericBeamBody, Body):
+class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
     def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
-            name='dummy'
+            name='dummy',
+            algo=''
             ):
         """ 
           Points P0 - Undeformed mean line of the body
         """
-        # --- nherit from BeamBody and Body 
+        int_method    = 'Flex'
+        if algo=='OpenFAST': 
+            int_method='OpenFAST'
+        # --- Inherit from BeamBody and Body 
         Body.__init__(B)
         GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
-                 massExpected=massExpected
+                 massExpected=massExpected,
+                 int_method=int_method
                 )
 
         B.gzf   = np.zeros((B.nf,1))
@@ -732,7 +737,8 @@ class UniformBeamBody(BeamBody):
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
-            spanFrom0=False, massExpected=None, gravity=None
+            spanFrom0=False, massExpected=None, gravity=None,
+            algo='' # TODO OpenFAST
             ):
         """ 
         """
@@ -748,14 +754,17 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
         GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
                 spanFrom0=spanFrom0,
                 massExpected=massExpected,
-                gravity=gravity
+                gravity=gravity,
+                algo=algo
                 )
         # We need to inherit from "YAMS" Beam not just generic Beam
+        # NOTE: TODO TODO TODO: This will result in "YAMSBeamBody to be called twice...)
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
                 # NOTE: r_O, r_b2g is lost here
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
-                massExpected=massExpected
+                massExpected=massExpected,
+                algo=algo
                 )
 
 # --------------------------------------------------------------------------------}

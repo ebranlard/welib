@@ -356,16 +356,20 @@ class KalmanFilter(object):
     # --------------------------------------------------------------------------------{
 
     def plot_X(KF, title='States X', **kwargs):
+        """ plot states, return fig """
         return _plot(KF.time, KF.X_clean, KF.X_hat, KF.sX, title=title, **kwargs)
 
 
     def plot_U(KF, title='Inputs U', **kwargs):
+        """ plot inputs, return fig """
         print('>>> kalmanfilter: TODO TODO plot U')
 
     def plot_Y(KF, title='Measurements Y', **kwargs):
+        """ plot measurements, return fig """
         return _plot(KF.time, KF.Y_clean, KF.Y_hat, KF.sY, title=title, X_noisy=KF.Y, **kwargs)
 
     def plot_S(KF, title='Stored Values S',**kwargs):
+        """ plot stored values, return fig """
         if KF.nS==0:
             return
         return _plot(KF.time, KF.S_clean, KF.S_hat, KF.sS, title=title, **kwargs)

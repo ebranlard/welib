@@ -96,6 +96,22 @@ def moorMatToSysMat(M, sq=None):
 class SimulatorFromOF():
     def __init__(self, WT=None, fstFilename=None, modelName=None, packageDir=''):
 
+        # --- Main Data
+        self.u           = None
+        self.du          = None
+        self.uop         = None
+        self.qop         = None
+        self.qdop        = None
+        self.WT          = None
+        self.fstFilename = None
+        self.modeName    = None
+        self.packageDir  = None
+        self.sysLI       = None
+        self.sysNL       = None
+        self.dfNL = None
+        self.dfLI = None
+
+
         # --- Load the wind turbine model, NOTE relevant parameters "p" are in WT.yams_parameters()
         if WT is not None:
             self.WT = WT
@@ -104,13 +120,38 @@ class SimulatorFromOF():
             self.WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)  # TODO
             self.fstFilename = fstFilename
 
-        self.dfNL = None
-        self.dfLI = None
         # --- Import the python module that was generated
         self.modelName=modelName
         if modelName is not None:
             self.loadPackage(modelName, packageDir)
             self.WT.checkPackage(self.pkg)
+
+
+    def __repr__(self):
+        s='<YAMS {} object>:\n'.format(type(self).__name__)
+        s+=' - fstFilename: {} \n'.format(self.fstFilename)
+        s+=' - modelName: {} \n'.format(self.modelName)
+        s+=' - packageDir: {} \n'.format(self.packageDir)
+        s+=' - u:    {} \n'.format(self.u) # TODO
+        s+=' - du:   {} \n'.format(self.du) # TODO
+        s+=' - uop:  {} \n'.format(self.uop)
+        s+=' - qop:  {} \n'.format(self.qop)
+        s+=' - qdop: {} \n'.format(self.qdop)
+        s+=' object attributes: \n'
+        s+=' - WT, sysLI, sysNL, qdop \n'
+        if self.sysLI is not None:
+            s+=' * M_lin, K_lin, C_lin, B_lin, forcing0_lin\n'
+            s+=' * q0_lin:   {} \n'.format(self.q0_lin)
+        if self.sysNL is not None:
+            s+=' * M0, forcing0 \n'
+            s+=' * q0    :   {} \n'.format(self.q0)
+        s+=' useful functions:  \n'
+        s+='  - setupSim: setup a simulation based on a fst/out file\n'
+        s+='  - loadPackage: load a YAMS package\n'
+        s+='  - unloadPackage: unload a YAMS package\n'
+        return s
+
+
 
     def loadPackage(self, modelName=None, packageDir='', packagePath=None):
         pkg, packagePath=loadPackage(modelName=modelName, packageDir=packageDir, packagePath=packagePath)

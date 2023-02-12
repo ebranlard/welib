@@ -194,10 +194,10 @@ class Structure():
     def print_RNA(s):
         print('----------------- RNA ---------------------------------------')
         print('M_RNA      ', s.M_RNA)
-        print('r_NGrna_inN',s.r_NGrna_inN.T)
-        print('     r_NGnac_inN ',s.r_NGnac_inN.T , 'M_nac',s.Nac.mass)
-        print('     r_NGhub_inN ',s.r_NGhub_inN.T , 'M_hub',s.Sft.mass)
-        print('     r_NGrot_inN ',s.r_NGrot_inN.T , 'M_rot',s.M_rot)
+        print('r_NGrna_inN', np.asarray(s.r_NGrna_inN).flatten())
+        print('     r_NGnac_inN ',np.asarray(s.r_NGnac_inN).flatten(), 'M_nac',s.Nac.mass)
+        print('     r_NGhub_inN ',np.asarray(s.r_NGhub_inN).flatten(), 'M_hub',s.Sft.mass)
+        print('     r_NGrot_inN ',np.asarray(s.r_NGrot_inN).flatten(), 'M_rot',s.M_rot)
 
     def print_couplings(s):
         print('---------------Couplings ---------------------------------------')

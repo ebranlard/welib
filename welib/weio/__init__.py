@@ -249,6 +249,8 @@ def detectFormat(filename, **kwargs):
 
 def read(filename, fileformat=None, **kwargs):
     F = None
+    if not os.path.exists(filename):
+        raise FileNotFoundError('weio cannot read the following file because it does not exist:\n   Inp. path: {}\n   Abs. path: {}'.format(filename, os.path.abspath(filename)))
     # Detecting format if necessary
     if fileformat is None:
         fileformat,F = detectFormat(filename, **kwargs)
