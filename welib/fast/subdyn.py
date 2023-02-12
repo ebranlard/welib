@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import copy
+import re
 # Local 
 from welib.weio.fast_input_file import FASTInputFile
 from welib.tools.tictoc import Timer
@@ -56,7 +57,7 @@ class SubDyn:
         s+='|- memberPostPro\n'
         s+='|- setTopMass\n'
         s+='|- beamDataFrame, beamFEM, beamModes\n'
-        s+='|- toYAMS\n'
+        s+='|- toYAMSData\n'
         return s
 
     # --------------------------------------------------------------------------------}
@@ -290,9 +291,9 @@ class SubDyn:
         Map['^'+r'M(\d*)N(\d*)TDxss_\[m\]']   = 'TDxss_[m]'
         Map['^'+r'M(\d*)N(\d*)TDyss_\[m\]']   = 'TDyss_[m]'
         Map['^'+r'M(\d*)N(\d*)TDzss_\[m\]']   = 'TDzss_[m]'
-        Map['^'+r'M(\d*)N(\d*)RDxss_\[deg\]'] = 'RDxss_[deg]'
-        Map['^'+r'M(\d*)N(\d*)RDyss_\[deg\]'] = 'RDxss_[deg]'
-        Map['^'+r'M(\d*)N(\d*)RDzss_\[deg\]'] = 'RDxss_[deg]'
+        Map['^'+r'M(\d*)N(\d*)RDxe_\[rad\]']  = 'RDxe_[deg]' # NOTE rescale needed
+        Map['^'+r'M(\d*)N(\d*)RDye_\[rad\]']  = 'RDye_[deg]' # NOTE rescale needed
+        Map['^'+r'M(\d*)N(\d*)RDze_\[rad\]']  = 'RDze_[deg]' # NOTE rescale needed
         Map['^'+r'M(\d*)N(\d*)FKxe_\[N\*m\]'] = 'FKxe_[Nm]'
         Map['^'+r'M(\d*)N(\d*)FKye_\[N\*m\]'] = 'FKye_[Nm]'
         Map['^'+r'M(\d*)N(\d*)FKze_\[N\*m\]'] = 'FKze_[Nm]'
@@ -306,8 +307,10 @@ class SubDyn:
             ValuesM = pd.DataFrame(index=MNo.index, columns=newCols)
             for ic,c in enumerate(ColsInfo):
                 Idx, cols, colname = c['Idx'], c['cols'], c['name']
-                labels = [s[:4] for s in cols]
+                labels = [re.match(r'(^M\d*N\d*)', s)[0] for s in cols] 
                 ValuesM.loc[labels,colname] = dfAvg[cols].values.flatten()
+                if 'deg' in colname and 'rad' in cols[0]:
+                    ValuesM[colname] *= 180/np.pi
             # We remove lines that are all NaN
             Values = ValuesM.dropna(axis = 0, how = 'all')
             MNo2 = MNo.loc[Values.index]
@@ -336,7 +339,7 @@ class SubDyn:
             ValuesJ = pd.DataFrame(index=MJ.index, columns=newCols)
             for ic,c in enumerate(ColsInfo):
                 Idx, cols, colname = c['Idx'], c['cols'], c['name']
-                labels = [s[:4] for s in cols]
+                labels = [re.match(r'(^M\d*J\d*)', s)[0] for s in cols] 
                 ValuesJ.loc[labels,colname] = dfAvg[cols].values.flatten()
             # We remove lines that are all NaN
             Values = ValuesJ.dropna(axis = 0, how = 'all')
