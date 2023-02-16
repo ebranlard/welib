@@ -12,7 +12,7 @@ from welib.beams.theory import *
 
 MyDir=os.path.dirname(__file__)
 
-def UniformBeam(TopMass=False):
+def UniformBeam(TopMass=False): # TODO add this to FEM
     # --- Parameters
     nel      = 10             # Number of elements along the beam
     BC       = 'clamped-free' # Boundary condition: free-free or clamped-free

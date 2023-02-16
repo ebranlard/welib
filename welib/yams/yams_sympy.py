@@ -28,7 +28,7 @@ from sympy.physics.mechanics.functions import msubs
 from sympy.physics.vector import init_vprinting, vlatex
 
 # Local
-from welib.yams.yams_sympy_tools import exprHasFunction
+from welib.yams.yams_sympy_tools import exprHasFunction, skew, colvec, cross #,ete
 from collections import OrderedDict 
 
 #init_vprinting(use_latex='mathjax', pretty_print=False)
@@ -43,13 +43,6 @@ __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
 # --------------------------------------------------------------------------------}
 # --- Helper functions 
 # --------------------------------------------------------------------------------{
-def colvec(v): 
-    return Matrix([[v[0]],[v[1]],[v[2]]])
-def cross(V1,V2):
-    return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
-def eye(n): 
-    return Matrix( np.eye(n).astype(int) )
-
 def ensureMat(x, nr, nc):
     """ Ensures that the input is a matrix of shape nr, nc"""
     if not isinstance(x,Matrix):
@@ -68,17 +61,6 @@ def coord2vec(M31, e):
     M31 = ensureList(M31, 3)
     return M31[0] * e.x + M31[1] * e.y + M31[2] * e.z
 
-            
-def skew(x):
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
-    #S = Matrix(np.zeros((3,3)).astype(int))
-    if hasattr(x,'shape') and len(x.shape)==2:
-        if x.shape[0]==3:
-            return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
-        else:
-            raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
-    else:
-        return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 def rotToDCM(rot_type, rot_amounts, rot_order=None):
     """

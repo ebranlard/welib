@@ -1,7 +1,65 @@
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 from welib.weio.fast_input_file import FASTInputFile
 from welib.system.eva import eigMCK
+
+def fitShapeFunction(x_bar, phi, exp=None, scale=True, plot=None):
+    """ 
+    Return polynomial fit for a given shapefunction
+    The fit is such that phi_fit = a_i x_bar^e_i
+
+    See also: from welib.yams.flexibility.polyshape
+    INPUTS: 
+      - x : dimensionless spanwise coordinate, from 0 to 1
+            The points 0 and 1 need not be present.
+      - exp: exponents of the polynomial. Should be length of coeff. 
+            If None, exp = [2,3,4,5,6] as used in OpenFAST
+      - scale: if True, scale the coefficients such that the sum is 1
+    OUTPUTS:
+      - pfit: fitted coefficients: [a_i] such that phi_fit = a_i x_bar^e_i
+      - y_fit: fitted values phi_fit(x_bar)
+      - fig: figure handle
+      - fitter: object with dictionary fields 'coeffs', 'formula', 'fitted_function'
+    """
+    if exp is None:
+        exp = np.arange(2,7)
+    if  np.any(x_bar)<0 or np.any(x_bar)>1:
+        raise Exception('`x_bar` should be between 0 and 1')
+
+    from welib.tools.curve_fitting import model_fit
+    phi_fit, pfit, fitter = model_fit('fitter: polynomial_discrete', x_bar, phi, exponents=exp)
+
+    # --- Manipulation of the fitted model...
+    pfit = np.around(pfit, 8) # sticking to 8 significant digits
+
+    if scale:
+        scale = np.sum(pfit)
+        if np.abs(scale)<1e-8:
+            print('[WARN] ElastoDyn: fitShapeFunction: Problem, sum of coefficient is close to 0')
+        else:
+            pfit = np.array(pfit)/scale
+            pfit = np.around(pfit, 8) # sticking to 8 significant digits. NOTE: this might mess up the scale again..
+    def fitted_function(xx):
+        y=np.zeros(xx.shape)
+        for i,(e,c) in enumerate(zip(exp, pfit)):
+            y += c * xx**e
+        return y
+    phi_fit = fitted_function(x_bar)
+
+    if plot:
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(x_bar, phi          , label='Input Shape')
+        ax.plot(x_bar, phi_fit, '--', label='Fitted Shape')
+        ax.set_xlabel('x/L [-]')
+        ax.set_ylabel('Shape function [-]')
+        ax.legend(loc='upper left')
+    else:
+        fig=None
+
+
+    return pfit, phi_fit, fig
 
 
 def DTfreq(InFile):
@@ -33,7 +91,9 @@ def DTfreq(InFile):
 
 def SHP(Fract, FlexL, ModShpAry, Deriv):
     """ SHP calculates the Derive-derivative of the shape function ModShpAry at Fract.
-    #  NOTE: This function only works for Deriv = 0, 1, or 2. """
+    NOTES: This function only works for Deriv = 0, 1, or 2. 
+           Taken from ElastoDyn.f90
+    """
     Swtch        = np.zeros((3, 1)); # Initialize Swtch(:) to 0
     Swtch[Deriv] = 1;
     shp          = 0.0;

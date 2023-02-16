@@ -1019,7 +1019,7 @@ class DiscretePolynomialFitter(ModelFitter):
         def fitted_function(xx):
             y=np.zeros(xx.shape)
             for i,(e,c) in enumerate(zip(self.exponents,pfit)):
-                y += c*x**e
+                y += c*xx**e
             return y
         self.model['fitted_function']=fitted_function
 

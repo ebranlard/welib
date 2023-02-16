@@ -5,18 +5,27 @@ import scipy
 # --------------------------------------------------------------------------------}
 # --- Shape functions, displacement field, energy
 # --------------------------------------------------------------------------------{
-def b1(s) :
+def b1(s):  #Na
     return 1-s 
-def b4(s) :
+def b4(s):  #N2a
     return s 
-def b2(s) :
+def b2(s):    # N1
     return 1 -3*s**2 + 2*s**3
-def b3(s,L) :
+def b3(s,L):  # N2
     return L*s*(1-s)**2       
-def b5(s) :
+def b5(s):    # N3
     return 3*s**2 - 2*s**3     
-def b6(s,L) :
+def b6(s,L):  # N4
     return  L*s**2*(s-1)       
+
+def N1(x,L):
+    return b2(x/L)
+def N2(x,L):
+    return b3(x/L,L)
+def N3(x,L):
+    return b5(x/L,L)
+def N4(x,L):
+    return b6(x/L,L)
 
 def frame3d_N(x,L):
     """  Interpolation matrix from nodal DOF to deflections for a 3d frame
