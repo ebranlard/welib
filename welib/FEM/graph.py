@@ -110,6 +110,11 @@ class Element(dict):
 
         """
         self.ID      = int(ID)
+        if nodeIDs is None:
+            if nodes is not None:
+                nodeIDs = [n.ID for n in nodes]
+            else:
+                raise Exception('If `nodeIDs` are not provided, provide `nodes`')
         self.nodeIDs = nodeIDs
         self.propset = propset  # String representing the key in the graph.NodePropertySets dict
         self.propIDs = propIDs

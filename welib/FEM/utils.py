@@ -23,6 +23,7 @@ def DCM_T(P1, P2, main_axis='z'):
     Transforms from element to global coordinates:  xg = DC_T.xe,  Kg = DC_T.Ke.DC_T^t
     NOTE that this is the transpose of what is normally considered the Direction Cosine Matrix  
     """
+
     Dx = P2[0]-P1[0]
     Dy = P2[1]-P1[1]
     Dz = P2[2]-P1[2]
@@ -32,27 +33,35 @@ def DCM_T(P1, P2, main_axis='z'):
         raise Exception('Length is zero')
 
     R = np.zeros((3,3))
-
-    if main_axis=='z':
-        if Dxy == 0.0: # TODO tolerance?
-            if Dz < 0:   #x is kept along global x
-                R[0, 0] =  1.0
-                R[1, 1] = -1.0
-                R[2, 2] = -1.0
-            else:
-                R[0, 0] = 1.0
-                R[1, 1] = 1.0
-                R[2, 2] = 1.0
+    if Dxy == 0.0: # TODO tolerance?
+        if Dz < 0:   #x is kept along global x
+            R[0, 0] =  1.0
+            R[1, 1] = -1.0
+            R[2, 2] = -1.0
         else:
-            R[0, 0] =  Dy/Dxy
-            R[0, 1] = +Dx*Dz/(L*Dxy)
-            R[0, 2] =  Dx/L
-            R[1, 0] = -Dx/Dxy
-            R[1, 1] = +Dz*Dy/(L*Dxy)
-            R[1, 2] =  Dy/L
-            R[2, 0] = 0.0
-            R[2, 1] = -Dxy/L
-            R[2, 2] = +Dz/L
+            R[0, 0] = 1.0
+            R[1, 1] = 1.0
+            R[2, 2] = 1.0
+    else:
+        R[0, 0] =  Dy/Dxy
+        R[0, 1] = +Dx*Dz/(L*Dxy)
+        R[0, 2] =  Dx/L
+        R[1, 0] = -Dx/Dxy
+        R[1, 1] = +Dz*Dy/(L*Dxy)
+        R[1, 2] =  Dy/L
+        R[2, 0] = 0.0
+        R[2, 1] = -Dxy/L
+        R[2, 2] = +Dz/L
+    if main_axis=='z':
+        pass
+    elif main_axis=='x':
+        # Transform from element axis "z" to element axis "x"
+        Rez2ex = np.array([
+            [0,0,1],
+            [1,0,0],
+            [0,1,0],
+            ])
+        R = Rez2ex.dot(R)
     else:
         raise NotImplementedError()
     return R

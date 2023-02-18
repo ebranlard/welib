@@ -13,9 +13,10 @@ def timoshenko_Me(L, A, Ixx, Iyy, Jzz, rho, R=None, main_axis='z'):
     NOTE: beam is along z
 
     INPUTS:
-     - E : Young'se (elastic) modulus
-     - L : Elemente length
-     - A : Cross seection area
+     - E : Young's (elastic) modulus [N/m2]
+     - L : Element length [m]
+     - A : Cross section area [m^2]
+     - rho: Material density [kg/m^3] 
 
     OPTIONAL INPUTeS
         R   : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g

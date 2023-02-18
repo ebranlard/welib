@@ -1,3 +1,18 @@
+""" 
+Low level functions for frame3D finite element models
+
+See folder derivation for sympy derivations.
+
+Euler-Bernoulli beam model. The torsion is de-coupled to the rest, not like Timoshenko.
+The beam coordinate system is such that the cross section is assumed to be in the y-z plane
+    
+(ux uy uz thetax thetay thetaz)
+(ux1 uy1 uz1 tx1 ty1 tz1 ux2 uy2 yz2 tx2 ty2 tz2)
+    
+The torsional equation is fully decoupled and as follows:
+  Ipx/3A Mass txddot  + G Kv /L tx = Torsional Moment
+
+"""
 import numpy as np
 import sympy
 import scipy
@@ -82,20 +97,12 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'):
     """ 
     Stiffness and mass matrices for Hermitian beam element with 6DOF per node
     Beam directed along x
-    See folder derivation for sympy derivations.
 
-    Euler-Bernoulli beam model. The torsion is de-coupled to the rest, not like Timoshenko.
-    The beam coordinate system is such that the cross section is assumed to be in the y-z plane
-        
-    (ux uy uz thetax thetay thetaz)
-    (ux1 uy1 uz1 tx1 ty1 tz1 ux2 uy2 yz2 tx2 ty2 tz2)
-        
-    The torsional equation is fully decoupled and as follows:
-      Ipx/3A Mass txddot  + G Kv /L tx = Torsional Moment
+    See element description at top of script.
         
     INPUTS
-        E : Young's (elastic) modulus
-        Gs: Shear modulus. For an isotropic material G = E/2(nu+1) with nu the Poission's ratio
+        E : Young's (elastic) modulus [N/m2]
+        G : Shear modulus. For an isotropic material G = E/2(nu+1) with nu the Poission's ratio [N/m^2]
         Kv: Saint-Venant's torsion constant, Polar moment of i
         L :    Element length
         A :    Cross section area
@@ -174,6 +181,9 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'):
         [0 , 0         , -1./10    , 0 , -L/30  , 0      , 0 , 0         , 1./10     , 0 , 2*L/15 , 0]      , 
         [0 , 1./10     , 0         , 0 , 0      , -L/30  , 0 , -1./10    , 0         , 0 , 0      , 2*L/15]
        ])
+
+    if main_axis!='x':
+        raise NotImplementedError()
 
 
 

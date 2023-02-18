@@ -414,12 +414,12 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
       G   : (scalar or n) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
       me   : (n) Mass per length of elements [kg/m]
       A    : (n) Beam cross section area along the beam, for elements [m^2]
-      EIy  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
-      EIz  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
-      EIz  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
+      EIx  : (n) Elastic Modulus times Polar  second moment of area,local x-axis. Ix=\iint(y^2+z^2) dy dz [m4], EIx,[Nm2]
+      EIy  : (n) Elastic Modulus times Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4],      EIy,[Nm2]
+      EIz  : (n) Elastic Modulus times Planar second moment of area,local z-axis. Iz=\iint y^2 dy dz [m4],      EIz,[Nm2]
+
       Kt   : (n) Torsion constant [m^4]
       phi : (n) rotation of principal axes wrt mean line (tangent) of the beam [rad]
-
 
       nel  : Number of elements. If provided Structural propeties and nodes will be interpolated to match nel. 
              Otherwise, the length of xNodes determines the discretization
