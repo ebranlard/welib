@@ -156,7 +156,11 @@ class FEMModel(GraphModel):
 
         # 
         if Nodes is not None:
+            print('>>>', self.Nodes[0].data)
             if 'DOFs' not in self.Nodes[0].data.keys():
+                print('>>> Attributing DOFs to Nodes and Elements')
+                g = distributeDOF(self, mainElementType=mainElementType)
+            elif len(self.Nodes[0].data['DOFs'])==0:
                 print('>>> Attributing DOFs to Nodes and Elements')
                 g = distributeDOF(self, mainElementType=mainElementType)
 
@@ -397,6 +401,7 @@ class FEMModel(GraphModel):
     def applyFixedBC(self, IFixed=None):
         """ 
         Apply boundary conditions. (Fixed boundary conditions only)
+        IFixed: Index of fixed DOF
         """
         # NOTE: we use the matrices where internal constraints have been eliminated 
         MM = self.MM

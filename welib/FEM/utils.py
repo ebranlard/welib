@@ -314,3 +314,61 @@ def deleteRowsCols(M, IDOF):
     M = np.delete(M, IDOF, axis=1) # removing columns
     M = np.delete(M, IDOF, axis=0) # removing lines
     return M
+
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Nodes 
+# --------------------------------------------------------------------------------{
+def xNodesInputToArray(xNodes, main_axis='x', nel=None):
+    """ 
+    Accepts multiple definitions of xNodes. Return a 3D array of shape (3xn)
+    - xNodes: define beam length, beam spanwise positions or beam nodes, either:
+          -  (scalar) Beam length, for uniform beam [m]
+          -  (1xn) Span vector of the beam (for straight beams) [m]
+          -  (2xn) Nodes positions x,z along the beam for 2d beam [m]
+          -  (3xn) Nodes positions x,y,z along the beam for 3d beam [m]
+    """
+    # --- First deal win user inputs (scalar, array, or matrix)
+    if not hasattr(xNodes,'__len__'):
+        xNodes=[xNodes]
+    xNodes = np.asarray(xNodes)
+    if len(xNodes)==1:
+        xNodes0=xNodes
+        # Constant beam properties
+        xNodes=np.zeros((3,2)) # We return only two nodes
+        if main_axis=='x':
+            xNodes[0,:] =[0, xNodes0[0]] # Beam directed about x
+        elif main_axis=='z':
+            xNodes[2,:] =[0, xNodes0[0]] # Beam directed about z
+        else:
+            raise NotImplementedError()
+    elif len(xNodes.shape)==1:
+        xNodes0=xNodes
+        xNodes=np.zeros((3,len(xNodes)))
+        if main_axis=='x':
+            xNodes[0,:]=xNodes0
+        elif main_axis=='z':
+            xNodes[2,:]=xNodes0
+        else:
+            raise NotImplementedError()
+
+    xNodes0 = xNodes
+    le0     = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
+    s_span0 = np.concatenate(([0],np.cumsum(le0)))
+    # --- Create node locations if user specified nElem
+    if nel is None:
+        # we will use xNodes provided by the user
+        interp_needed=False
+    else:
+        # We create elements with linear spacing along the curvilinear span
+        xNodes=np.zeros((3,nel+1))
+        s_span     = np.linspace(0,s_span0[-1],nel+1)
+        xNodes[0,:] = np.interp(s_span, s_span0, xNodes0[0,:])
+        xNodes[1,:] = np.interp(s_span, s_span0, xNodes0[1,:])
+        xNodes[2,:] = np.interp(s_span, s_span0, xNodes0[2,:])
+        interp_needed=True
+
+    return xNodes, xNodes0, s_span0, interp_needed
+

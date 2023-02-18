@@ -12,10 +12,28 @@ The beam coordinate system is such that the cross section is assumed to be in th
 The torsional equation is fully decoupled and as follows:
   Ipx/3A Mass txddot  + G Kv /L tx = Torsional Moment
 
+
+main_axis='x' (assumed by default here)
+ ^x
+ |
+ |
+ |
+ | 
+ ------> y
+
+main_axis='z'
+ ^z
+ |
+ | 
+ | 
+ | 
+ ------> x
+
+
 """
 import numpy as np
 import sympy
-import scipy
+from scipy.linalg import block_diag
     
 # --------------------------------------------------------------------------------}
 # --- Shape functions, displacement field, energy
@@ -92,7 +110,6 @@ def h(x, u_2, u_3, u_5, u_6, L):
 # --------------------------------------------------------------------------------}
 # --- Element formulation 
 # --------------------------------------------------------------------------------{
-
 def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'): 
     """ 
     Stiffness and mass matrices for Hermitian beam element with 6DOF per node
@@ -101,28 +118,38 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'):
     See element description at top of script.
         
     INPUTS
-        E : Young's (elastic) modulus [N/m2]
-        G : Shear modulus. For an isotropic material G = E/2(nu+1) with nu the Poission's ratio [N/m^2]
-        Kv: Saint-Venant's torsion constant, Polar moment of i
-        L :    Element length
-        A :    Cross section area
-        Mass :    Element mass = rho * A * L [kg]
-        EA  : Young Modulus times Cross section.
-        EIx : Young Modulus times Polar  second moment of area,local x-axis. Ix=\iint(y^2+z^2) dy dz [m4]
-        EIy : Young Modulus times Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4]
-        EIz : Young Modulus times Planar second moment of area,local z-axis. Iz=\iint y^2 dy dz [m4]
+      - E : Young's (elastic) modulus [N/m2]
+      - G : Shear modulus. For an isotropic material G = E/2(nu+1) with nu the Poission's ratio [N/m^2]
+      - Kv: Saint-Venant's torsion constant. For circular sections Kv = Polar moment of area (Ixx or Izz)
+      - L :    Element length
+      - A :    Cross section area
+      - Mass :    Element mass = rho * A * L [kg]
+      - EA  : Young Modulus times Cross section.
+      IF: main-axis='x'
+      - EIx : Young Modulus times Polar  second moment of area,local x-axis. Ixx=\iint(y^2+z^2) dy dz [m4]
+      - EIy : Young Modulus times Planar second moment of area,local y-axis. Iyy=\iint z^2 dy dz [m4]
+      - EIz : Young Modulus times Planar second moment of area,local z-axis. Izz=\iint y^2 dy dz [m4]
+      IF: main-axis='z'
+      - EIx : Young Modulus times Planar second moment of area
+      - EIy : Young Modulus times Planar second moment of area
+      - EIz : Young Modulus times Polar  second moment of area 
     OPTIONAL INPUTS
-        T   : Axial loads (along x) to use for the geometric stiffness matrix Kg
-        R   : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g
+      - T   : Axial loads (along x) to use for the geometric stiffness matrix Kg
+      - R   : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g
              if provided, element matrix is provided in global coord
     OUTPUTS
-        ke: Element stiffness matrix (12x12)
-        me: Element mass matrix (12x12)
-        Kg: Element geometrical stiffness matrix (12x12)
+      - ke: Element stiffness matrix (12x12)
+      - me: Element mass matrix (12x12)
+      - Kg: Element geometrical stiffness matrix (12x12)
 
         
     AUTHOR: E. Branlard
     """
+    if main_axis=='z':
+        # TODO might need double checking
+        EIx, EIy, EIz = EIz, EIx, EIy # Transfer from main_axis z to main_axis=x
+
+    # NOTE: Equations below are for an element along x
     
     # --- Stiffness matrix
     a = EA / L
@@ -130,7 +157,7 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'):
     c = 6 * EIz / L ** 2
     d = 12 * EIy / L ** 3
     e = 6 * EIy / L ** 2
-    f = G * Kv / L
+    f = G * Kv / L     # torsion torque = Kv * G / L *  torsion_angle
     g = 2 * EIy / L
     h = 2 * EIz / L
     Ke = np.array([
@@ -148,6 +175,7 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'):
         [0  , c  , 0  , 0  , 0     , h     , 0  , -c , 0  , 0  , 0     , 2 * h]
         ])
     # ---  Mass matrix
+    # NOTE: this mass matrix does not consider Iyy and Izz (see Timoshenko crossterms instead)
     a = L / 2
     a2 = a ** 2
     r2 = EIx / E / A
@@ -182,14 +210,21 @@ def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'):
         [0 , 1./10     , 0         , 0 , 0      , -L/30  , 0 , -1./10    , 0         , 0 , 0      , 2*L/15]
        ])
 
-    if main_axis!='x':
-        raise NotImplementedError()
-
-
+    # Put element formulation such that main axis is "z"
+    if main_axis=='z':
+        Rx2z = np.array([
+            [0,1,0],
+            [0,0,1],
+            [1,0,0],
+            ])
+        RRx2z = block_diag(Rx2z,Rx2z,Rx2z,Rx2z)
+        Me = RRx2z.dot(Me).dot(RRx2z.T)
+        Ke = RRx2z.dot(Ke).dot(RRx2z.T)
+        Kg = RRx2z.dot(Kg).dot(RRx2z.T)
 
     ## Element in global coord
     if (R is not None):
-        RR = scipy.linalg.block_diag(R,R,R,R)
+        RR = block_diag(R,R,R,R)
         Me = np.transpose(RR).dot(Me).dot(RR)
         Ke = np.transpose(RR).dot(Ke).dot(RR)
         Kg = np.transpose(RR).dot(Kg).dot(RR)

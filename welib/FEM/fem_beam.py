@@ -24,7 +24,7 @@ References:
 import pandas as pd
 import numpy as np
 import scipy
-from welib.FEM.utils    import skew, elementDCMfromBeamNodes, rigidBodyMassMatrixAtP
+from welib.FEM.utils    import skew, elementDCMfromBeamNodes, rigidBodyMassMatrixAtP, xNodesInputToArray
 from welib.FEM.fem_core import insertFixedBCinModes
 from welib.system.eva import eig
 
@@ -324,44 +324,15 @@ def cbeam_assembly(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=
     if EA is None: EA=E*A
     if Kt is None: Kt= m*0+100     # Saint Venant torsion, TODO
 
-    if not hasattr(xNodes,'__len__'):
-        xNodes=[xNodes]
-    xNodes = np.asarray(xNodes)
-    if len(xNodes)==1:
-        xNodes0=xNodes
-        # Constant beam properties
-        xNodes=np.zeros((3,2))
-        xNodes[0,:] =[0, xNodes0[0]]     # Beam directed about x
-        EIx    = np.array([1, 1])*EIx
-        EIy    = np.array([1, 1])*EIy
-        EIz    = np.array([1, 1])*EIz
-        EA     = np.array([1, 1])*EA 
-        Kt     = np.array([1, 1])*Kt
-        A      = np.array([1, 1])*A  
-        m      = np.array([1, 1])*m  
-    elif len(xNodes.shape)==1:
-        xNodes0=xNodes
-        xNodes=np.zeros((3,len(xNodes)))
-        xNodes[0,:]=xNodes0
-
-
-    # --- Create node locations if user specified nElem
-    le0 = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
-    s_span0 = np.concatenate(([0],np.cumsum(le0)))
-
-    if nel is None:
-        # we will use xNodes provided by the user
-        nel=xNodes.shape[0]-1
-        interp_needed=False
-    else:
-        # We create elements with linear spacing along the curvilinear span
-        xNodes0=xNodes
-        xNodes=np.zeros((3,nel+1))
-        s_span     = np.linspace(0,s_span0[-1],nel+1)
-        xNodes[0,:] = np.interp(s_span, s_span0, xNodes0[0,:])
-        xNodes[1,:] = np.interp(s_span, s_span0, xNodes0[1,:])
-        xNodes[2,:] = np.interp(s_span, s_span0, xNodes0[2,:])
-        interp_needed=True
+    xNodes, xNodes0, s_span0, interp_needed = xNodesInputToArray(xNodes, main_axis='x', nel=nel)
+    if not hasattr(EIx,'__len__'):
+        EIx    = np.ones(xNodes0.shape[1])*EIx
+        EIy    = np.ones(xNodes0.shape[1])*EIy
+        EIz    = np.ones(xNodes0.shape[1])*EIz
+        EA     = np.ones(xNodes0.shape[1])*EA 
+        Kt     = np.ones(xNodes0.shape[1])*Kt
+        A      = np.ones(xNodes0.shape[1])*A  
+        m      = np.ones(xNodes0.shape[1])*m  
 
     # Recompute spanwise
     le = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)

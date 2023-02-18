@@ -63,6 +63,31 @@ class FEMNode(GraphNode):
         s='<FNode{:4d}> x:{:7.2f} y:{:7.2f} z:{:7.2f}, {:}'.format(self.ID, self.x, self.y, self.z, self.data)
         return s
 
+    def setInterfaceBC(self, I):
+        """ 
+        I is an array of the size DOFs of values idDOF_Fixed, idDOF_Internal, idDOF_Leader
+        """
+        self.data['IBC'] = I
+        if 'DOFs' in self.data:
+            if len(I)!=len(self.data['DOFs']):
+                raise Exception('Interface BC should be of the same length as DOFs')
+
+    def setReactionBC(self, I):
+        """ 
+        I is an array of the size DOFs of values idDOF_Fixed, idDOF_Internal, idDOF_Leader
+        """
+        self.data['RBC'] = I
+        if 'DOFs' in self.data:
+            if len(I)!=len(self.data['DOFs']):
+                raise Exception('Interface BC should be of the same length as DOFs')
+
+    def setFixed(self):
+        if 'DOFs' in self.data:
+            self.data['RBC'] = [idDOF_Fixed]*len(self.data['DOFs']) # TODO
+        else:
+            self.data['RBC'] = idDOF_Fixed # TODO
+
+
 # --------------------------------------------------------------------------------}
 # --- Generic FEM Elements
 # --------------------------------------------------------------------------------{
@@ -90,9 +115,10 @@ class FEM2NodesElement(FEMElement):
     """ 
     Generic FEM element with two nodes. 
     """
-    def __init__(self, ID, nodeIDs=None, nodes=None, **kwargs):
+    def __init__(self, ID, main_axis, nodeIDs=None, nodes=None, **kwargs):
         super(FEM2NodesElement, self).__init__(ID, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'Generic2NodesElement'
+        self.data['axis'] = main_axis
 
     @property
     def DCM(self):
@@ -103,14 +129,14 @@ class FEMIsotropic2NodesElement(FEM2NodesElement):
     """ 
     Generic FEM element with two nodes and isotropic material properties E, G, rho
     """
-    def __init__(self, ID, E, rho, G=None, nodeIDs=None, nodes=None, **kwargs):
+    def __init__(self, ID, E, rho, main_axis, G=None, nodeIDs=None, nodes=None, **kwargs):
         """ 
         INPUTS:
          - E : Young's (elastic) modulus [N/m2]
          - G : Shear modulus. For an isotropic material G = E/2(nu+1) with nu the Poission's ratio [N/m^2]
          - rho: Material density [kg/m^3] 
          """
-        super(FEMIsotropic2NodesElement, self).__init__(ID, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
+        super(FEMIsotropic2NodesElement, self).__init__(ID, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'GenericIsotropic2NodesElement'
         self.data['E']   = E
         self.data['G']   = G
@@ -138,7 +164,7 @@ class Frame2dElement(FEMIsotropic2NodesElement):
                If main_axis='x':   Iy=\iint z^2 dy dz [m4] 
                If main_axis='z':   Iy=\iint x^2 dx dy [m4] 
         """
-        super(Frame2dElement,self).__init__(ID, E=E, rho=rho, G=None, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
+        super(Frame2dElement,self).__init__(ID, E=E, rho=rho, G=None, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'Frame2dElement'
         self.data['I'] = I
         self.data['A'] = A
@@ -179,7 +205,7 @@ class Beam2dElement(FEMIsotropic2NodesElement):
                If main_axis='x':   Iy=\iint z^2 dy dz [m4] 
                If main_axis='z':   Iy=\iint x^2 dx dy [m4] 
         """
-        super(Frame2dElement,self).__init__(ID, E=E, rho=rho, G=None, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
+        super(Frame2dElement,self).__init__(ID, E=E, rho=rho, G=None, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'Beam2dElement'
         self.data['I'] = I
         self.data['A'] = A
@@ -208,6 +234,61 @@ class Beam2dElement(FEMIsotropic2NodesElement):
 # --------------------------------------------------------------------------------}
 # --- 3D Beam-like elements
 # --------------------------------------------------------------------------------{
+class UniformFrame3dElement(FEMIsotropic2NodesElement):
+    def __init__(self, ID, E, G, rho, A, EIx, EIy, EIz, Kv, nodeIDs=None, nodes=None, main_axis='z', **kwargs):
+        super(UniformFrame3dElement,self).__init__(ID, E=E, rho=rho, G=G, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
+        self.data['Type'] = 'UniformFrame3dElement'
+        self.data['A']    = A
+        self.data['EA']   = E*A
+        self.data['EIx']  = EIx
+        self.data['EIy']  = EIy
+        self.data['EIz']  = EIz
+        self.data['Kv']   = Kv
+
+    @property
+    def mass(self): return self.data['rho'] * self.data['A'] * self.length # [kg]
+
+    def Fe_g(e, g,local=False):
+        """ Element force due to gravity """
+        from .timoshenko import timoshenko_Fe_g
+        R = np.eye(3) if local else e.DCM
+        return timoshenko_Fe_g(e.length, e.data['A'], e.rho, g, R=R, main_axis=e.data['axis'])
+
+    def Fe_o(e, main_axis='z', local=False):
+        """ Element force due to other sources (e.g. pretension cable) """
+        return np.zeros(12)
+
+    def Ke(e, local=False, T=0):
+        from .frame3d import frame3d_KeMe
+        R = None if local else e.DCM
+        main_axis = e.data['axis']
+        EIx = e.data['EIx']
+        EIy = e.data['EIy']
+        EIz = e.data['EIz']
+        E   = e.data['E']
+        A   = e.data['A']
+        G   = e.data['G']
+        Kv  = e.data['Kv']
+        return frame3d_KeMe(E, G, Kv, E*A, EIx, EIy, EIz, e.length, A, e.mass, T=T, R=R, main_axis=main_axis) [0]
+
+    def Me(e, local=False, T=0):
+        from .frame3d import frame3d_KeMe
+        R = None if local else e.DCM
+        main_axis = e.data['axis']
+        EIx = e.data['EIx']
+        EIy = e.data['EIy']
+        EIz = e.data['EIz']
+        E   = e.data['E']
+        A   = e.data['A']
+        G   = e.data['G']
+        Kv  = e.data['Kv']
+        return frame3d_KeMe(E, G, Kv, E*A, EIx, EIy, EIz, e.length, A, e.mass, T=T, R=R, main_axis=main_axis) [1]
+
+# TODO
+# def frame3dlin_KeMe(E,G,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,L,me1,me2,R=None):
+# def timoshenko_KeMe(L, A, Ixx, Iyy, Jzz, kappa, E, G, rho, R=None, main_axis='z') # <<< NOTE: for cylinder only for now
+
+
 class CylinderBeam3dElement(FEMIsotropic2NodesElement):
     def __init__(self, ID, E, G, rho, D, t=None, nodeIDs=None, nodes=None, main_axis='z', **kwargs):
         """ 
@@ -217,7 +298,7 @@ class CylinderBeam3dElement(FEMIsotropic2NodesElement):
          - D: outer diameter
          - t: wall thickness
         """
-        super(CylinderBeam3dElement,self).__init__(ID, E=E, rho=rho, G=G, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
+        super(CylinderBeam3dElement,self).__init__(ID, E=E, rho=rho, G=G, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'CylinderBeam3dElement'
         self.data['TypeID'] = idMemberBeam
         self.data['shape'] = 'cylinder'
@@ -226,6 +307,7 @@ class CylinderBeam3dElement(FEMIsotropic2NodesElement):
             t = D/2
         self.data['t'] = t
         self.data['axis'] = main_axis
+        self.shear=True
     @property
     def r1(self): return self.data['D']/2 # Outer diameter
     @property
@@ -265,7 +347,7 @@ class CylinderBeam3dElement(FEMIsotropic2NodesElement):
         I = e.inertias
         R = None if local else e.DCM
         main_axis = e.data['axis']
-        return timoshenko_Ke(e.length, e.area, I[0], I[1], I[2], e.kappa,  e.E, e.G, shear=False, R=R, main_axis=main_axis) # NOTE: shear False for 
+        return timoshenko_Ke(e.length, e.area, I[0], I[1], I[2], e.kappa,  e.E, e.G, shear=e.shear, R=R, main_axis=main_axis) # NOTE: shear False for 
 
     def Me(e, local=False):
         from .timoshenko import timoshenko_Me
@@ -281,6 +363,7 @@ class CylinderFrame3dElement(CylinderBeam3dElement):
         """
         super(CylinderFrame3dElement,self).__init__(ID, E=E, G=G, rho=rho, D=D, t=t, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'CylinderFrame3dElement'
+        self.shear=False
 
     @property
     def kappa(self): return 0  # shear coefficients are zero for Euler-Bernoulli
@@ -292,6 +375,7 @@ class CylinderTimoshenko3dElement(CylinderBeam3dElement):
         """
         super(CylinderFrame3dElement,self).__init__(ID, E, G, rho, D, t=None, nodeIDs=None, nodes=None, main_axis='z', propset=None, propIDs=None, properties=None, **kwargs)
         self.data['Type'] = 'CylinderTimoshenko3dElement'
+        self.shear=True
 
     @property
     def kappa(self): 
