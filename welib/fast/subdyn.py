@@ -294,9 +294,9 @@ class SubDyn:
         Map['^'+r'M(\d*)N(\d*)RDxe_\[rad\]']  = 'RDxe_[deg]' # NOTE rescale needed
         Map['^'+r'M(\d*)N(\d*)RDye_\[rad\]']  = 'RDye_[deg]' # NOTE rescale needed
         Map['^'+r'M(\d*)N(\d*)RDze_\[rad\]']  = 'RDze_[deg]' # NOTE rescale needed
-        Map['^'+r'M(\d*)N(\d*)FKxe_\[N\*m\]'] = 'FKxe_[Nm]'
-        Map['^'+r'M(\d*)N(\d*)FKye_\[N\*m\]'] = 'FKye_[Nm]'
-        Map['^'+r'M(\d*)N(\d*)FKze_\[N\*m\]'] = 'FKze_[Nm]'
+        Map['^'+r'M(\d*)N(\d*)FKxe_\[N\]'] = 'FKxe_[N]'
+        Map['^'+r'M(\d*)N(\d*)FKye_\[N\]'] = 'FKye_[N]'
+        Map['^'+r'M(\d*)N(\d*)FKze_\[N\]'] = 'FKze_[N]'
         Map['^'+r'M(\d*)N(\d*)MKxe_\[N\*m\]'] = 'MKxe_[Nm]'
         Map['^'+r'M(\d*)N(\d*)MKye_\[N\*m\]'] = 'MKye_[Nm]'
         Map['^'+r'M(\d*)N(\d*)MKze_\[N\*m\]'] = 'MKze_[Nm]'
