@@ -235,18 +235,20 @@ class Beam2dElement(FEMIsotropic2NodesElement):
 # --- 3D Beam-like elements
 # --------------------------------------------------------------------------------{
 class UniformFrame3dElement(FEMIsotropic2NodesElement):
-    def __init__(self, ID, E, G, rho, A, EIx, EIy, EIz, Kv, nodeIDs=None, nodes=None, main_axis='z', **kwargs):
+    def __init__(self, ID, E, G, rho, A, Ixx, Iyy, Izz, Kv, nodeIDs=None, nodes=None, main_axis='z', **kwargs):
         super(UniformFrame3dElement,self).__init__(ID, E=E, rho=rho, G=G, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'UniformFrame3dElement'
         self.data['A']    = A
         self.data['EA']   = E*A
-        self.data['EIx']  = EIx
-        self.data['EIy']  = EIy
-        self.data['EIz']  = EIz
+        self.data['Ixx']  = Ixx
+        self.data['Iyy']  = Iyy
+        self.data['Izz']  = Izz
         self.data['Kv']   = Kv
 
     @property
     def mass(self): return self.data['rho'] * self.data['A'] * self.length # [kg]
+    @property
+    def inertias(self): return (self.data['Ixx'], self.data['Iyy'], self.data['Izz'])
 
     def Fe_g(e, g,local=False):
         """ Element force due to gravity """
@@ -262,10 +264,10 @@ class UniformFrame3dElement(FEMIsotropic2NodesElement):
         from .frame3d import frame3d_KeMe
         R = None if local else e.DCM
         main_axis = e.data['axis']
-        EIx = e.data['EIx']
-        EIy = e.data['EIy']
-        EIz = e.data['EIz']
         E   = e.data['E']
+        EIx = E * e.data['Ixx']
+        EIy = E * e.data['Iyy']
+        EIz = E * e.data['Izz']
         A   = e.data['A']
         G   = e.data['G']
         Kv  = e.data['Kv']
@@ -275,10 +277,10 @@ class UniformFrame3dElement(FEMIsotropic2NodesElement):
         from .frame3d import frame3d_KeMe
         R = None if local else e.DCM
         main_axis = e.data['axis']
-        EIx = e.data['EIx']
-        EIy = e.data['EIy']
-        EIz = e.data['EIz']
         E   = e.data['E']
+        EIx = E * e.data['Ixx']
+        EIy = E * e.data['Iyy']
+        EIz = E * e.data['Izz']
         A   = e.data['A']
         G   = e.data['G']
         Kv  = e.data['Kv']
@@ -369,13 +371,13 @@ class CylinderFrame3dElement(CylinderBeam3dElement):
     def kappa(self): return 0  # shear coefficients are zero for Euler-Bernoulli
 
 class CylinderTimoshenko3dElement(CylinderBeam3dElement):
-    def __init__(self, ID, E, G, rho, D, t=None, nodeIDs=None, nodes=None, main_axis='z', propset=None, propIDs=None, properties=None, **kwargs):
+    def __init__(self, ID, E, G, rho, D, t=None, shear=True, nodeIDs=None, nodes=None, main_axis='z', propset=None, propIDs=None, properties=None, **kwargs):
         """ 
         Untapered cylinder, constant properties. Timoshenko3d
         """
-        super(CylinderFrame3dElement,self).__init__(ID, E, G, rho, D, t=None, nodeIDs=None, nodes=None, main_axis='z', propset=None, propIDs=None, properties=None, **kwargs)
+        super(CylinderTimoshenko3dElement,self).__init__(ID, E=E, G=G, rho=rho, D=D, t=t, main_axis=main_axis, nodeIDs=nodeIDs, nodes=nodes, **kwargs)
         self.data['Type'] = 'CylinderTimoshenko3dElement'
-        self.shear=True
+        self.shear=shear
 
     @property
     def kappa(self): 

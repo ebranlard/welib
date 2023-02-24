@@ -223,12 +223,12 @@ def timoshenko_Fe_g(L, A, rho, g, R=np.eye(3), main_axis='z'):
     """
     F = np.zeros(12)
     w = rho*A*g       # weight per unit length
+    TempCoeff = L*L*w/12
     if main_axis=='z':
         # lumped forces on both nodes (z component only):
         F[2] = -0.5*L*w 
         F[8] = F[2]
         # lumped moments on node 1 (x and y components only):
-        TempCoeff = L*L*w/12
         F[3] = -TempCoeff * R[2,1] # = -L*w*Dy/12
         F[4] =  TempCoeff * R[2,0] # =  L*w*Dx/12
         # lumped moments on node 2: (note the opposite sign of node 1 moment)
@@ -236,8 +236,18 @@ def timoshenko_Fe_g(L, A, rho, g, R=np.eye(3), main_axis='z'):
         F[10] = -F[4]
         #F(12) is 0 for g along z alone
     else:
+        # lumped forces on both nodes (z component only):
+        F[0] = -0.5*L*w  # gravity along x? waht to do?
+        F[6] = F[2]
+
         raise NotImplementedError()
     return F
+
+# TODO implement general function for distributed loads px, py, pz
+# For instance, 
+#  eq = [qx qy qz qw];    distributed loads
+#      qx=eq(1); qy=eq(2); qz=eq(3); qw=eq(4);
+#    fle=L/2*[qx qy qz qw -1/6*qz*L 1/6*qy*L qx qy qz qw 1/6*qz*L -1/6*qy*L]';
 
 # SUBROUTINE ElemG(A, L, rho, DirCos, F, g)
 #    REAL(ReKi), INTENT( IN ) :: A     !< area
