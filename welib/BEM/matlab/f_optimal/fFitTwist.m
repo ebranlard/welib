@@ -1,4 +1,4 @@
-function [sse Fitted_Curve]=fFitChord(params,x,y)
+function [sse Fitted_Curve]=fFitTwist(params,x,y)
 a=params(1);
 b=params(2);
 c=params(3);

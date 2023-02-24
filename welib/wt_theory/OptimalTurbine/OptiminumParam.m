@@ -1,8 +1,15 @@
-%% Question 1
-InitClear
-InitDefault
-path(path,'f_optimal')
+%% Documentation   
+% Contact: E. Branlard 
 
+%% Initialization
+clear all; close all; clc; 
+restoredefaultpath;
+% addpath(genpath('wtta1'));
+addpath('../../BEM/matlab/f_optimal/');
+
+%% Parameters
+global Rotor
+global Algo
 Algo.ClOverCd=100;
 Algo.Cl2piAlpha=1;
 

@@ -1,8 +1,21 @@
-%%
-InitClear
+%% Documentation   
+% Contact: E. Branlard 
+% 
+% Used to generate figures 9.8 of [1]
+
+% Reference:
+%  [1]  Branlard 2017 Wind turbine aerodynamics and vorticity-based methods
+% 
+%% Initialization
+clear all; close all; clc; % addpath()
+restoredefaultpath;
+addpath(genpath('C:/Config/path/MatlabPath/libs/')) % http://github.com/ebranlard/matlab-path.git
+
+%% Parameters
+
 % setFigurePath('/work/publications/book/figsdump/')
-setFigurePath('/home/manu/Dropbox/springer-book/figs_ad/')
-setFigureFont('14')
+% setFigurePath('/home/manu/Dropbox/springer-book/figs_ad/')
+% setFigureFont('14')
 % I explain this a bit in my book section Maximum Power extraction 1D momentum+rotation
 
 
@@ -91,7 +104,7 @@ plot(vlambda2,CP2 ,'k-')
 % plot(vlambda,CP,'b+')
 % plot(vlambda3,CP3,'r--')
 % plot(vlambdaRef,CPRef,'ko')
-legend('Betz limit','Ideal rotor with wake rotation',0)
+legend('Betz limit','Ideal rotor with wake rotation')
 % ,'Same but different way of thinking it','Same but deterministic','Wilson Lissaman',0)
 xlim([0 10])
 ylim([0 0.62])
@@ -107,7 +120,7 @@ plot(vlambda,vlambda*0+8/9 ,'k--')
 plot(vlambda2,CT2 ,'k-')
 % plot(vlambda,CT,'b+')
 % plot(vlambda3,CT3,'r--')
-legend('Betz limit','Ideal rotor with wake rotation',0)
+legend('Betz limit','Ideal rotor with wake rotation')
 % ,'Same but different way of thinking it','Same but deterministic',0)
 xlim([0 10])
 xlabel('Tip speed ratio \lambda [-]')
@@ -119,7 +132,7 @@ figure,hold on,grid,box
 plot(vlambda,vlambda*0+1/3 ,'k--')
 plot(vlambda2,a2 ,'k-')
 % plot(vlambda3,a3,'r--')
-legend('Betz limit','Ideal rotor with wake rotation',0)
+legend('Betz limit','Ideal rotor with wake rotation')
 % ,'Same but deterministic',0)
 xlim([0 10])
 ylim([0 0.35])
@@ -132,7 +145,7 @@ figure,hold on,grid,box
 plot(vlambda2,aprime2 ,'k-')
 % plot(vlambda3,aprime3,'r--')
 ylim([0 0.1])
-legend('Ideal rotor with wake rotation',0)
+legend('Ideal rotor with wake rotation')
 % ,'Same but deterministic',0)
 xlim([0 10])
 title('MomentumTheoryActuatorDiskOptimalaprime')
@@ -141,7 +154,7 @@ ylabel('Tangential induction factor a'' [-]')
 
 
 %% 
-I=whichvalue(vlambda2,vlambdaRef);
+I =whichvalue(vlambda2,vlambdaRef);
 I2=whichvalue(vlambda,vlambdaRef);
 I3=whichvalue(vlambda3,vlambdaRef);
 
@@ -158,6 +171,9 @@ vCTAD=interp1(vlambda3(1:end-2),CT3(1:end-2),vlambdaAD);
 vCPAD(1)=0;
 vCTAD(1)=0;
 vaAD(1)=0.25;
-save([PATH.DATA_OUT '/WTTheory/MomentumTheoryActuatorDisk.mat'],'vlambdaAD','vCPAD','vCTAD','vaAD','vaprimeAD');
+
+
+
+% save([./MomentumTheoryActuatorDisk.mat'],'vlambdaAD','vCPAD','vCTAD','vaAD','vaprimeAD');
 
 %%
