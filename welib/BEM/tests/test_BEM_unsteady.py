@@ -79,11 +79,15 @@ class Test(unittest.TestCase):
         dt       = 0.1
         RPM=10
         # Read a FAST model to get Aerodynamic parameters to initialze unstady BEM code
-        BEM = AeroBEM()
-        BEM.init_from_FAST(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
+        BEM = UnsteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
         BEM.CTcorrection = 'AeroDyn' 
         BEM.swirlMethod  = 'AeroDyn' 
+        BEM.bUseCm = True  # Use Moment 
         BEM.bSwirl = True 
+        BEM.bTipLoss = True # enable / disable tip loss model
+        BEM.bHubLoss = False # enable / disable hub loss model
+        BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
+        BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
 
         # --- Simulation 1, no dynamic inflow, starting at equilibrium 
         time=np.arange(0,5*dt,dt)

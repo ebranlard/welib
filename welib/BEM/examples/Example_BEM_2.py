@@ -34,7 +34,7 @@ def main(test=False):
     radialBasename = os.path.join(OutDir,'_BEM_') if not test else None
 
     # --- Option 1: using wrapper class
-    BEM = SteadyBEM(FASTFileName=MainFASTFile) # Initialize based on OpenFAST parameters
+    BEM = SteadyBEM(filename=MainFASTFile) # Initialize based on OpenFAST parameters
     # Change algo options
     BEM.bSwirl     = True  # swirl flow model enabled / disabled
     BEM.bTipLoss   = True  # enable / disable tip loss model

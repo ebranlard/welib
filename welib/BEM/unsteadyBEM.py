@@ -1,18 +1,17 @@
 """ 
-Python implemenation of an unsteady BEM code
-
-Default models are provided in this file so it can be shipped as "standalone".
-More models are provided based on other "welib" packages.
+Python implementation of an unsteady BEM code
 
 Reference:
-   [1]: Branlard, 2017, Wind Turbines Aerodynamics and Vorticity Based Methods: Fundamentals and recent applications, Springer
+   [1]:  E. Branlard (2017) "Wind Turbine Aerodynamics and Vorticity Based Method", Chapter 10, Springer
 
 """
 import numpy as np
+import os
 from numpy import cos, sin, arctan2, pi, arccos, exp, abs, min, sqrt
 from scipy.interpolate import interp1d
 import copy
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Load more models
 # try:
@@ -20,87 +19,6 @@ from welib.BEM.highthrust import a_Ct
 # except: 
 #     pass
 
-
-def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
-        lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, CTcorrection='AeroDyn', swirlMethod='AeroDyn'):
-    """Compute the induction coefficients
-
-        Inputs
-        ----------
-        a_last    : last iteration axial induction factor
-        Vrel_norm : normed relative velocity
-        V0        : free stream velocity
-        F         : total loss
-        cnForAI   : normal force coefficient
-        ctForTI   : tangential force coefficient
-        lambda_r  : speed ratio distribution
-        sigma     : blade solidity
-        phi       : flow angle [deg]
-        relaxation: relaxation factor in axial induction factor
-        bSwirl    : swirl flow model enabled / disabled
-
-        Outputs
-        ----------
-        a: axial induction factor
-        aprime: tangential induction factor
-        Ct: local thrust coefficient
-    """
-    # --- Default a and CT
-    a = 1. / ((4.*F*sin(phi)**2)/(sigma*(cnForAI+10**-8))+1) # NOTE singularity avoided
-    # CT=(1-a_last).^2.*sigma.*CnForAI./((sind(phi)).^2)
-    Ct = Vrel_norm**2 * sigma * cnForAI/(V0**2)  # that's a CT loc
-    # AeroDyn
-    #k = sigma*cn/4.0_ReKi/F/sphi/sphi
-    #if (k <= 2/3) then  ! momentum state for a < 0.4
-    # a = k/(1+k)
-
-    # --- Hight thrust correction
-    if CTcorrection=='GlauertCT':
-        # Glauert correction as default
-        #>>> NOTE this is:  a = a_Ct(Ct, a, method='Glauert') from highthrust
-        ac = 0.3 
-        bHigh = a > ac
-        fg = 0.25*(5.-3.*a[bHigh])
-        a[bHigh] = Ct[bHigh]/(4.*F[bHigh]*(1.-fg*a[bHigh]))
-    else:
-        a = a_Ct(Ct, a, F, method=CTcorrection)
-
-    a[F<0.01]=1 # HACK to match aerodyn # TODO make that an option
-
-    # --- Relaxation for high Ct
-    if a_last is not None:
-        bHigh = a>0.3
-        a[bHigh] = a[bHigh]*relaxation + (1.-relaxation)*a_last[bHigh]
-
-    # --- Swirl
-    if bSwirl is True:
-        if swirlMethod=='AeroDynOld':
-            aprime=0.5*(sqrt(1+4*a*F*(1-a)/lambda_r**2)-1);
-
-        elif swirlMethod=='AeroDyn':
-            # NOTE: AeroDyn has more tests (e.g. if cos(phi)=0)
-            aprime=np.zeros(a.shape)
-            b0 = np.logical_or(np.abs(a-1)<1e-5, np.abs(phi)<1e-5)
-            b1 = np.logical_not(b0)
-            aprime[b0] = 0 
-            kp         = sigma[b1]*ctForTI[b1]/(4*F[b1]*sin(phi[b1])*cos(phi[b1]))
-            aprime[b1] = kp/(1-kp)
-        elif swirlMethod=='HAWC2':
-            aprime = (Vrel_norm**2*ctForTI*sigma)/(4.*(1.-a)*V0**2*lambda_r)
-        elif swirlMethod=='Default': # Need a better name
-            aprime=1/((4*F*sin(phi)*cos(phi)) /(sigma*ctForTI)  -1 );
-        else:
-            raise NotImplementedError()
-    else:
-        aprime = a * 0.
-
-    # Bounding values for safety
-    a     [np.isnan(a)]      = 0
-    aprime[np.isnan(aprime)] = 0
-    aprime = np.clip(aprime,-1,1.0) 
-    a      = np.clip(a     ,-1,1.5)
-    Ct     = np.clip(Ct    ,-1,3)
-    return a, aprime, Ct
 
 
 class BEMStates:
@@ -127,18 +45,24 @@ class BEMDiscreteStates:
         # Dynamic stall
         self.fs = np.zeros((nB,nr)) # Separation 
 
-class AeroBEM:
+# --------------------------------------------------------------------------------}
+# --- Main Class UnsteadyBEM 
+# --------------------------------------------------------------------------------{
+class UnsteadyBEM():
     """ 
     Perform unsteady BEM calculations
     """
-    def __init__(self):
-
+    def __init__(self, filename=None):
+        """ 
+        filename: an OpenFAST (.fst) or AeroDyn driver (.dvr) input file.
+                  will be used to initialize the parameters and operating conditions
+        """
         # Aero Data
         self.chord  = None
         self.polars = None
         # Environment
         self.rho     = None
-        self.kinVisc = None
+        self.kinVisc = None # Kinematic viscosity [kg/m^3]
 
         # Structural "Inputs"
         # position, velocity, and orientation of all blade station
@@ -147,16 +71,22 @@ class AeroBEM:
         self.nB     = None
         self.r      = None # radial stations
 
+        # Algorithm
         self.setDefaultOptions()
 
+        # Init from given input file
+        if filename is not None:
+            self.init_from_FAST(filename) # Init from a FAST input file 
+
     def setDefaultOptions(self):
-        self.algorithm = 'AeroDyn' # Main switch for algorithm
+        self.algorithm = 'legacy' # Main switch for algorithm
         self.nIt = 200  # maximum number of iterations in BEM
         self.aTol = 10 ** -6 # tolerance for axial induction factor convergence
         self.relaxation = 0.5  # relaxation factor in axial induction factor
         self.CTcorrection = 'AeroDyn'  #  type of CT correction more model implementated in the future like 'spera'
         self.swirlMethod  = 'AeroDyn' # type of swirl model
         self.Ngrid = 1.0
+        self.bUseCm = True  # Use Moment 
         self.bSwirl = True  # swirl flow model enabled / disabled
         self.bTipLoss = True # enable / disable tip loss model
         self.bHubLoss = False # enable / disable hub loss model
@@ -177,39 +107,113 @@ class AeroBEM:
 
     def init_from_FAST(self, FASTFileName):
         from welib.weio.fast_input_deck import FASTInputDeck
-        F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF'])
+        F = FASTInputDeck(FASTFileName,readlist=['AD','ED','ADbld','AF','IW'])
+        driver =  F.version=='AD_driver'
+        # --- Safety checkes
+        if F.AD is None:
+            raise Exception('steadyBEM: Cannot open AD file referenced in:'.format(FASTFileName))
+        if driver:
+            dvr = F.fst
+            if dvr['NumTurbines']>1:
+                raise NotImplementedError('steadyBEM: Number of turbines should be 1')
+            if not dvr['BasicHAWTFormat(1)']:
+                raise NotImplementedError('steadyBEM: BasicHAWTFormat should be true for now')
+        if not driver:
+            if F.ED is None:
+                raise Exception('steadyBEM: Cannot open ED file referenced in:'.format(FASTFileName))
 
-        # Environment
+        # --- Environment
         try:
-            self.rho     = float(F.fst['AirDens'])  # New OF > 3.0
+            self.rho     = float(F.fst['FldDens'])  # New OF > 3.0
         except:
-            self.rho     = float(F.AD['AirDens'])   # Old OF <=3.0
+            try:
+                self.rho     = float(F.fst['AirDens'])  # New OF > 3.0
+            except:
+                self.rho     = float(F.AD['AirDens'])   # Old OF <=3.0
         try:
             self.kinVisc = float(F.fst['KinVisc'])  # New OF > 3.0
         except:
             self.kinVisc = float(F.AD['KinVisc'])   # Old OF <= 3.0
 
+        # --- Geometry
+        if driver:
+            self.nB       = dvr['NumBlades(1)']
+            r_hub         = dvr['HubRad(1)']
+            # Input geometry (may be overriden by motion/simulations)
+            self.cone0    = dvr['PreCone(1)']
+            self.tilt0    = dvr['ShftTilt(1)']
+            self.OverHang = dvr['OverHang(1)']
+            self.Twr2Shft  = dvr['Twr2Shft(1)']
 
-        # Aerodynamics
-        self.nB    = F.ED['NumBl']
-        self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
-        chord      = F.AD.Bld1['BldAeroNodes'][:,-2]
+            HubHt = dvr['HubHt(1)']
+            self.TowerHt  = HubHt + self.OverHang*sin(self.tilt0*np.pi/180) # TODO double check
+
+        else:
+            self.nB    = F.ED['NumBl']
+            r_hub      = F.ED['HubRad']
+            # Input geometry (may be overriden by motion/simulations)
+            self.cone0     = F.ED['PreCone(1)']
+            self.tilt0     = F.ED['ShftTilt']
+            self.TowerHt   = F.ED['TowerHt']
+            self.OverHang  = F.ED['OverHang']
+            self.Twr2Shft  = F.ED['Twr2Shft']
+
+
+        # --- Aerodynamics
+        self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + r_hub
+        chord      = F.AD.Bld1['BldAeroNodes'][:,5]
         self.chord = np.stack([chord]*self.nB)
-        self.twist = F.AD.Bld1['BldAeroNodes'][:,-3]*np.pi/180
+        self.twist = F.AD.Bld1['BldAeroNodes'][:,4]*np.pi/180
         polars=[]
         ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
         for ipolar in  ProfileID:
             polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
         self.polars = polars
+        self.bAIDrag  = F.AD['AIDrag']
+        self.bTIDrag  = F.AD['TIDrag']
+        self.bHubLoss = F.AD['HubLoss']
+        self.bTipLoss = F.AD['TipLoss']
+        self.bSwirl   = F.AD['TanInd']
+        self.bUseCm   = F.AD['UseBlCm']
 
-        # Input geometry (may be overriden by motion/simulations)
-        self.cone0     = F.ED['PreCone(1)']
-        self.tilt0     = F.ED['ShftTilt']
-        self.TowerHt   = F.ED['TowerHt']
-        self.OverHang  = F.ED['OverHang']
-        self.Twr2Shft  = F.ED['Twr2Shft']
+        # --- Operating conditions
+        # Maybe...
 
+	# trigger once data is set
         self._init()
+     
+     
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+        # Aero Data
+        s+='Aerodynamic data:\n'
+        s+=' - r         : size: {}, min: {}, max: {}\n'.format(len(self.r), np.min(self.r), np.max(self.r))
+        s+=' - chord     : size: {}, min: {}, max: {}\n'.format(len(self.chord), np.min(self.chord), np.max(self.chord))
+        s+=' - twist     : size: {}, min: {}, max: {} [deg]\n'.format(len(self.twist), np.min(self.twist), np.max(self.twist))
+        s+=' - polars    : size: {}\n'.format(len(self.polars))
+        s+=' - nB        : {}\n'.format(self.nB)
+        s+=' - cone0     : {} [deg]\n'.format(self.cone0 )
+        # Environment
+        s+='Environmental conditions:\n'
+        s+=' - rho       : {} [kg/m^3]\n'.format(self.rho    )
+        s+=' - kinVisc   : {} [kg/m^3]\n'.format(self.kinVisc)
+        # Latest operating conditions
+        #s+='Latest operating conditions:\n'
+        #s+=' - Omega0    : {} [rpm]\n'.format(self.Omega0)
+        #s+=' - pitch0    : {} [deg]\n'.format(self.pitch0)
+        #s+=' - V0        : {} [m/s]\n'.format(self.V0)
+        s+='Algorithm options:\n'
+        s+=' - algorithm : {}\n'.format(self.algorithm )
+        s+=' - nIt       : {}\n'.format(self.nIt      )
+        s+=' - aTol      : {}\n'.format(self.aTol      )
+        s+=' - relaxation: {}\n'.format(self.relaxation)
+        s+=' - bSwirl    : {}\n'.format(self.bSwirl    )
+        s+=' - bTipLoss  : {}\n'.format(self.bTipLoss  )
+        s+=' - bHubLoss  : {}\n'.format(self.bHubLoss  )
+        s+=' - bAIDrag   : {}\n'.format(self.bAIDrag   )
+        s+=' - bTIDrag   : {}\n'.format(self.bTIDrag  )
+        s+=' - WakeMod   : {}\n'.format(self.WakeMod  )
+        return s
 
     def _init(self):
         # Creating interpolation functions for each polar, now in rad!
@@ -286,6 +290,9 @@ class AeroBEM:
 
 
     def calcOutput(self):
+        """ 
+        Compute output for current state variables and inputs.
+        """
         R = np.sqrt(self.RtArea/pi)
         q = 0.5*self.rho*self.RtArea*self.RtVAvg[:,0]**2
         self.CT=self.Thrust/(q)
@@ -293,6 +300,9 @@ class AeroBEM:
         self.CP=self.Power /(q*self.RtVAvg[:,0])
 
 
+    # --------------------------------------------------------------------------------}
+    # --- IO 
+    # --------------------------------------------------------------------------------{
     def toDataFrame(self, BldNd_BladesOut=None, BldNd_BlOutNd=None, BldNd_OutList=None):
         """ Export time series to a pandas dataframe
         Column names are set to match OpenFAST outputs
@@ -432,7 +442,8 @@ class AeroBEM:
             R_ntr2g, R_bld2r, # "polar grid to global" for each blade
             pos_gl, Vstr_gl, R_s2g, R_a2g,            # Kinematics of nodes
             Vwnd_gl, # Wind at each positions in global
-            firstCallEquilibrium=False
+            firstCallEquilibrium=False,
+            kappa = None # cant angle, TODO TODO TODO get rid of me, temporary. User EulerExtract of R_ntr2g
             ):
         """ 
         xBEM0: BEM states at t-1
@@ -468,11 +479,19 @@ class AeroBEM:
         omega_r = R_r2g.T.dot(omega_gl) # rotational speed in rotor coordinate system
         Omega = omega_r[0] # rotation speed of shaft (along x)
 
-        if firstCallEquilibrium:
-            nit=50
+        if kappa is None:
+            kappa = 0 # TODO TODO
+
+        if self.algorithm=='polarProj':
+            drdz = cos(kappa*np.pi/180)
         else:
-            nit=1
-        for iterations in np.arange(nit):
+            drdz = 1
+
+        if firstCallEquilibrium:
+            nItMax=50
+        else:
+            nItMax=1
+        for iterations in np.arange(nItMax):
             # --------------------------------------------------------------------------------
             # --- Step 1: velocity components
             # --------------------------------------------------------------------------------
@@ -480,6 +499,7 @@ class AeroBEM:
             Vrel_p  = np.zeros((nB,nr,3))
             Vstr_p  = np.zeros((nB,nr,3))
             Vwnd_p  = np.zeros((nB,nr,3))
+            Vrel_k  = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
                 R_p2g = R_ntr2g[iB]
                 for ie in np.arange(nr):
@@ -490,12 +510,15 @@ class AeroBEM:
                     Vind_g = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
                     Vstr_g = Vstr_gl[iB,ie]
                     Vrel_g = Vwnd_g+Vind_g-Vstr_g
-                    # Airfoil coordinates
-                    Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g)
                     # Polar coordinates
                     Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_g) # Structural velocity in polar coordinates
                     Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
                     Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_g) # Wind Velocity in polar coordinates
+                    # Kappa coordinates
+                    Vrel_k[iB,ie,0] = Vrel_p[iB,ie,0]*np.cos(kappa*np.pi/180) # n  # TODO TODO use cant
+                    Vrel_k[iB,ie,1] = Vrel_p[iB,ie,1] # t
+                    # Airfoil coordinates
+                    Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g)
             Vflw_p  = Vwnd_p-Vstr_p # Relative flow velocity, including wind and structural motion
             Vflw_g  = Vwnd_gl-Vstr_gl # Relative flow velocity, including wind and structural motion
 
@@ -505,17 +528,24 @@ class AeroBEM:
             # --------------------------------------------------------------------------------
             # --- Step 2: Flow Angle and tip loss
             # --------------------------------------------------------------------------------
+            phi_k = np.arctan2(Vrel_k[:,:,0],-Vrel_k[:,:,1]) # flow angle [rad] in kappa system
             phi_p = np.arctan2(Vrel_p[:,:,0],-Vrel_p[:,:,1])  # NOTE: using polar grid for phi
-            # --- Tip loss
+            if self.algorithm=='polarProj':
+                phi_tl = phi_k
+                phi    = phi_k
+            else:
+                phi_tl = phi_p
+                phi    = phi_p
+            # --- Tip and hub losses
             F = np.ones((nB,nr))
             if (p.bTipLoss): #Glauert tip correction
-                b=sin(phi_p)>0.01
-                F[b] = 2./pi*arccos(exp(-(nB *(R-r[b]))/(2*r[b]*sin(phi_p[b]))))
+                b=sin(phi_tl)>0.01
+                F[b] = 2./pi*arccos(exp(-(nB *(R-r[b]))/(2*r[b]*sin(phi_tl[b]))))
                 b2=abs(r-R)<1e-3
                 F[b2]=0.001
             # --- Hub loss
             if (p.bHubLoss): #Glauert hub loss correction
-                F = F* 2./pi*arccos(exp(-nB/2. *(r-rhub)/ (rhub*np.sin(phi_p))))
+                F = F* 2./pi*arccos(exp(-nB/2. *(r-rhub)/ (rhub*np.sin(phi_tl))))
             #F[F<=1e-3]=0.5
             # --------------------------------------------------------------------------------
             # --- Step 3: Angle of attack
@@ -567,9 +597,10 @@ class AeroBEM:
                 a      = V0*0
                 aprime = V0*0
             else:
-                a,aprime,CT = _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi_p, 
+                a,aprime,CT = _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi, 
                         bSwirl=p.bSwirl, CTcorrection=p.CTcorrection, swirlMethod=p.swirlMethod,
-                        relaxation=p.relaxation, a_last=xd0.a
+                        relaxation=p.relaxation, a_last=xd0.a,
+                        algorithm=self.algorithm, drdz=drdz
                 )
 
             if np.any(np.isnan(a)):
@@ -729,7 +760,7 @@ class AeroBEM:
         self.Vrel_za[it] = Vrel_a[:,:,2]
         # --- Misc
         self.alpha[it] = alpha*180./pi
-        self.phi[it]   = phi_p*180./pi
+        self.phi[it]   = phi*180./pi
         self.Gamma[it]  = 0.5*Re*Cl*p.kinVisc*10**6 # Circulation [m^2/s]
         self.psi[it]  = psi*180/pi
         self.RtArea[it]  = pi*R**2
@@ -757,7 +788,7 @@ class AeroBEM:
                 self.F_s[it,iB,ie] = (R_s2g[iB,ie].T).dot(F_g)
 
 
-        # Blade integrated loads
+        # --- Integral quantities for rotor
         self.BladeThrust[it,:] = np.trapz(self.Fn[it,:]  , r) # Normal to rotor plane
         self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r, r) # About shaft 
         self.Thrust[it] = np.sum(self.BladeThrust[it,:])    # Normal to rotor plane
@@ -786,7 +817,7 @@ class AeroBEM:
         """ 
         wrapper function to perform a simple simulation at constant RPM
        
-        IINPUTS:
+        INPUTS:
         Different ways to specify wind:
           - windSpeed: scalar, wind speed (at hub height) along x
           - windExponent power law exponent speed for wind speed (None=uniform wind)
@@ -830,12 +861,112 @@ class AeroBEM:
                     motion.R_ntr2g, motion.R_bld2b,
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                     Vwnd_g,
-                    firstCallEquilibrium= it==0 and firstCallEquilibrium
+                    firstCallEquilibrium= it==0 and firstCallEquilibrium,
+                    kappa=cone # TODO TODO TODO get rid of me!
                     )
             #if np.mod(t,1)<dt/2:
             #    print(t)
         df = self.toDataFrame()
         return df
+
+# --------------------------------------------------------------------------------}
+# --- Utils common between steady and unsteady BEM
+# --------------------------------------------------------------------------------{
+def rotPolar2Airfoil(tau, kappa, beta):
+    return np.array([
+        [ cos(kappa)*cos(beta),   -cos(tau)*sin(beta)+sin(tau)*sin(kappa)*cos(beta),  -sin(tau)*sin(beta) - cos(tau)*sin(kappa)*cos(beta)],
+        [  cos(kappa)*sin(beta),    cos(tau)*cos(beta)+sin(tau)*sin(kappa)*sin(beta),   sin(tau)*cos(beta) - cos(tau)*sin(kappa)*sin(beta)],
+        [  sin(kappa)          ,   -sin(tau)*cos(kappa)                             ,        cos(tau)*cos(kappa)                        ]]
+        , dtype='object'
+        )
+
+def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
+        lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, 
+        drdz=1, algorithm='legacy', 
+        CTcorrection='AeroDyn', swirlMethod='AeroDyn'):
+    """Compute the induction coefficients
+
+        Inputs
+        ----------
+        a_last    : last iteration axial induction factor
+        Vrel_norm : normed relative velocity
+        V0        : free stream velocity
+        F         : total loss
+        cnForAI   : normal force coefficient
+        ctForTI   : tangential force coefficient
+        lambda_r  : speed ratio distribution
+        sigma     : blade solidity
+        phi       : flow angle [deg]
+        relaxation: relaxation factor in axial induction factor
+        bSwirl    : swirl flow model enabled / disabled
+
+        Outputs
+        ----------
+        a: axial induction factor
+        aprime: tangential induction factor
+        Ct: local thrust coefficient
+    """
+    # --- Default a and CT
+    if algorithm=='legacy':
+        a = 1. / ((4.*F*sin(phi)**2)/(sigma*(cnForAI+10**-8))+1) # NOTE singularity avoided
+    elif algorithm=='polarProj':
+        a = 1. / ((4.*F*sin(phi)**2)/(drdz*sigma*(cnForAI+10**-8))+1) # NOTE simgularity avoided
+    else:
+        raise NotImplementedError()
+    # CT=(1-a_last).^2.*sigma.*CnForAI./((sind(phi)).^2)
+    Ct = Vrel_norm**2 * sigma * cnForAI/(V0**2)  # that's a CT loc
+    # AeroDyn
+    #k = sigma*cn/4.0_ReKi/F/sphi/sphi
+    #if (k <= 2/3) then  ! momentum state for a < 0.4
+    # a = k/(1+k)
+
+    # --- Hight thrust correction
+    if CTcorrection=='GlauertCT':
+        # Glauert correction as default
+        #>>> NOTE this is:  a = a_Ct(Ct, a, method='Glauert') from highthrust
+        ac = 0.3 
+        bHigh = a > ac
+        fg = 0.25*(5.-3.*a[bHigh])
+        a[bHigh] = Ct[bHigh]/(4.*F[bHigh]*(1.-fg*a[bHigh]))
+    else:
+        a = a_Ct(Ct, a, F, method=CTcorrection)
+
+    a[F<0.01]=1 # HACK to match aerodyn # TODO make that an option
+
+    # --- Relaxation for high Ct
+    if a_last is not None:
+        bHigh = a>0.3
+        a[bHigh] = a[bHigh]*relaxation + (1.-relaxation)*a_last[bHigh]
+
+    # --- Swirl
+    if bSwirl is True:
+        if swirlMethod=='AeroDynOld':
+            aprime=0.5*(sqrt(1+4*a*F*(1-a)/lambda_r**2)-1);
+
+        elif swirlMethod=='AeroDyn':
+            # NOTE: AeroDyn has more tests (e.g. if cos(phi)=0)
+            aprime=np.zeros(a.shape)
+            b0 = np.logical_or(np.abs(a-1)<1e-5, np.abs(phi)<1e-5)
+            b1 = np.logical_not(b0)
+            aprime[b0] = 0 
+            kp         = sigma[b1]*ctForTI[b1]/(4*F[b1]*sin(phi[b1])*cos(phi[b1]))
+            aprime[b1] = kp/(1-kp)
+        elif swirlMethod=='HAWC2':
+            aprime = (Vrel_norm**2*ctForTI*sigma)/(4.*(1.-a)*V0**2*lambda_r)
+        elif swirlMethod=='Default': # Need a better name
+            aprime=1/((4*F*sin(phi)*cos(phi)) /(sigma*ctForTI)  -1 );
+        else:
+            raise NotImplementedError()
+    else:
+        aprime = a * 0.
+
+    # Bounding values for safety
+    a     [np.isnan(a)]      = 0
+    aprime[np.isnan(aprime)] = 0
+    aprime = np.clip(aprime,-1,1.0) 
+    a      = np.clip(a     ,-1,1.5)
+    Ct     = np.clip(Ct    ,-1,3)
+    return a, aprime, Ct
 
 # --------------------------------------------------------------------------------}
 # --- Helper class to prescribe a motion
