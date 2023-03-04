@@ -79,13 +79,15 @@ class UnsteadyBEM():
             self.init_from_FAST(filename) # Init from a FAST input file 
 
     def setDefaultOptions(self):
+        #self.projMod = 'noSweepPitchTwist' # 
+        #self.projMod = 'liftingLine' # 
+        self.projMod = 'polar' # 
         self.algorithm = 'legacy' # Main switch for algorithm
         self.nIt = 200  # maximum number of iterations in BEM
         self.aTol = 10 ** -6 # tolerance for axial induction factor convergence
         self.relaxation = 0.5  # relaxation factor in axial induction factor
         self.CTcorrection = 'AeroDyn'  #  type of CT correction more model implementated in the future like 'spera'
         self.swirlMethod  = 'AeroDyn' # type of swirl model
-        self.Ngrid = 1.0
         self.bUseCm = True  # Use Moment 
         self.bSwirl = True  # swirl flow model enabled / disabled
         self.bTipLoss = True # enable / disable tip loss model
@@ -100,10 +102,7 @@ class UnsteadyBEM():
         self.bYawModel = True # Yaw correction
         self.bAIDrag = True # influence on drag coefficient on normal force coefficient
         self.bTIDrag = True # influence on drag coefficient on tangential force coefficient
-        self.bReInterp = False # interpolate the input tabulated airfoil data for Reynolds variation
-        self.bThicknessInterp = True # interpolate the input tabulated airfoil data for thickness variation
         self.WakeMod=1 # 0: no inductions, 1: BEM inductions
-        self.bRoughProfiles = False # use rough profiles for input airfoil data
 
     def init_from_FAST(self, FASTFileName):
         from welib.weio.fast_input_deck import FASTInputDeck
@@ -146,7 +145,7 @@ class UnsteadyBEM():
             self.Twr2Shft  = dvr['Twr2Shft(1)']
 
             HubHt = dvr['HubHt(1)']
-            self.TowerHt  = HubHt + self.OverHang*sin(self.tilt0*np.pi/180) # TODO double check
+            self.TowerHt  = HubHt - self.Twr2Shft + self.OverHang*sin(self.tilt0*np.pi/180) # TODO double check
 
         else:
             self.nB    = F.ED['NumBl']
@@ -203,6 +202,7 @@ class UnsteadyBEM():
         #s+=' - pitch0    : {} [deg]\n'.format(self.pitch0)
         #s+=' - V0        : {} [m/s]\n'.format(self.V0)
         s+='Algorithm options:\n'
+        s+=' - projMod   : {}\n'.format(self.projMod )
         s+=' - algorithm : {}\n'.format(self.algorithm )
         s+=' - nIt       : {}\n'.format(self.nIt      )
         s+=' - aTol      : {}\n'.format(self.aTol      )
@@ -234,6 +234,7 @@ class UnsteadyBEM():
         self.Cd_qs  = np.zeros((nt,nB,nr))
         self.Cl     = np.zeros((nt,nB,nr))
         self.Cd     = np.zeros((nt,nB,nr))
+        self.Cm     = np.zeros((nt,nB,nr))
         self.cn     = np.zeros((nt,nB,nr))
         self.ct     = np.zeros((nt,nB,nr))
         self.Cx_a   = np.zeros((nt,nB,nr))
@@ -249,7 +250,6 @@ class UnsteadyBEM():
         self.Vind_s = np.zeros((nt,nB,nr,3))
         self.Vind_qs_p = np.zeros((nt,nB,nr,3))
         self.Vflw_p = np.zeros((nt,nB,nr,3)) # Vwnd-Vstr
-        self.Vflw_s = np.zeros((nt,nB,nr,3)) # Vwnd-Vstr
         self.Vwnd_p = np.zeros((nt,nB,nr,3))
         self.Vwnd_s = np.zeros((nt,nB,nr,3))
         self.Vwnd_a = np.zeros((nt,nB,nr,3))
@@ -263,6 +263,7 @@ class UnsteadyBEM():
         # Loads per span
         self.L      = np.zeros((nt,nB,nr))
         self.D      = np.zeros((nt,nB,nr))
+        self.Mm     = np.zeros((nt,nB,nr))
         self.Fn     = np.zeros((nt,nB,nr))
         self.Ft     = np.zeros((nt,nB,nr))
         self.F_a   = np.zeros((nt,nB,nr,3))
@@ -328,6 +329,13 @@ class UnsteadyBEM():
         df['RtAeroCt_[-]']    = self.CT
         df['RtAeroCq_[-]']    = self.CQ
         df['RtAeroCp_[-]']    = self.CP
+        # Temporary
+        df['RtFldFxh_[N]']   = self.Thrust
+        df['RtFldMxh_[N-m]'] = self.Torque
+        df['RtFldPwr_[W]']   = self.Power
+        df['RtFldCt_[-]']    = self.CT
+        df['RtFldCq_[-]']    = self.CQ
+        df['RtFldCp_[-]']    = self.CP
 
         df['RtVAvgxh_[m/s]']  = self.RtVAvg[:,0]
         df['RtVAvgyh_[m/s]']  = self.RtVAvg[:,1]
@@ -340,8 +348,15 @@ class UnsteadyBEM():
         for iB in np.arange(self.nB):
             df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.SkewAzimuth[:,iB],360)
 
-        Vflw_s = self.Vwnd_s-self.Vstr_s
-
+        print('>>> {} outputs'.format(self.projMod))
+        if self.projMod=='polar': # TODO replace with "outProj"
+            Vflw_o = self.Vwnd_p-self.Vstr_p
+            Vwnd_o = self.Vwnd_p
+        elif self.projMod=='noSweepPitchTwist':
+            Vflw_o = self.Vwnd_s-self.Vstr_s
+            Vwnd_o = self.Vwnd_s
+        else:
+            raise NotImplementedError()
 
         # --- Creating all the possible column names for all blades and radial position, matching OpenFAST convention
         if BldNd_BladesOut is None: 
@@ -363,24 +378,26 @@ class UnsteadyBEM():
         # AeroDyn n-t is "airfoil coord" a
         # AeroDyn doesn't have polar coord..
         for iB in np.arange(self.nB):
+            # TODO TODO TODO Might need rethinking with polarProj
             if 'Fx_[N/m]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
                     df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.F_s[:,iB,ir,0]
             if 'Fy_[N/m]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
                     df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] =-self.F_s[:,iB,ir,1] # NOTE: weird sign
+            # TODO TODO TODO Might need rethinking with polarProj
             if 'Vx_[m/s]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] =      Vflw_s[:,iB,ir,0]
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] =      Vflw_o[:,iB,ir,0]
             if 'Vy_[m/s]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =      Vflw_s[:,iB,ir,1]
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =      Vflw_o[:,iB,ir,1]
             if 'VDisx_[m/s]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] = self.Vwnd_s[:,iB,ir,0]
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] =      Vwnd_o[:,iB,ir,0]
             if 'VDisy_[m/s]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] = self.Vwnd_s[:,iB,ir,1]
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] =      Vwnd_o[:,iB,ir,1]
             if 'STVx_[m/s]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
                     df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_s[:,iB,ir,0]
@@ -412,6 +429,7 @@ class UnsteadyBEM():
                 for ir in np.arange(len(self.r)):
                     df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Alpha_[deg]'] = self.alpha[:,iB,ir]
             #AeroDyn "n-t", is almost like xa but y is switched
+            # TODO TODO TODO Might need rethinking with polarProj
             if 'Fn_[N/m]' in BldNd_OutList:
                 for ir in np.arange(len(self.r)):
                     df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.F_a[:,iB,ir,0]
@@ -439,7 +457,7 @@ class UnsteadyBEM():
 
     def timeStep(self, t, dt, xd0, psi, psiB0,
             origin_pos_gl, omega_gl, R_r2g,  # Kinematics of rotor origin
-            R_ntr2g, R_bld2r, # "polar grid to global" for each blade
+            R_ntr2g, R_bld2r, # for each blade
             pos_gl, Vstr_gl, R_s2g, R_a2g,            # Kinematics of nodes
             Vwnd_gl, # Wind at each positions in global
             firstCallEquilibrium=False,
@@ -447,6 +465,18 @@ class UnsteadyBEM():
             ):
         """ 
         xBEM0: BEM states at t-1
+
+        INPUTS:
+         - origin_pos_gl: position of rotor origin in global coordinates
+         - omega_gl:  rotational speed of rotor in global coordinates
+         - R_r2g   :  transformation from rotor coordinates to global
+         - R_ntr2g :  transformation from polar grid to global" (for each blade) (nB x 3 x 3)
+         - R_bld2r :  transformation from blade to rotor (for each blade)        (nB x 3 x 3)
+                      typically consist of azimuth, cone and pitch
+         - pos_gl: positions of all blade nodes in global              (nB x nr x 3)
+         - Vstr_gl: structural velocity of a llblade nodes in global   (nB x nr x 3)
+         - R_s2g  : transformation matrix from "section" to global     (nB x nr x 3 x 3)
+         - R_a2g  : transformation matrix from airfoil to global       (nB x nr x 3 x 3)
         """
         xd1   = copy.deepcopy(xd0)
         xd1.t = t
@@ -464,23 +494,32 @@ class UnsteadyBEM():
         # --- Step 0: geometry 
         # --------------------------------------------------------------------------------
         # --- Compute rotor radius, hub radius, and section radii
-        r = np.zeros((nB,nr))
-        Rs=[0]*nB
+        r_p = np.zeros((nB,nr)) # radius in polar grid
+        r_b = np.zeros((nB,nr)) # radius in blade coordinates
+        Rs_p=[0]*nB
+        R_bld2g = np.zeros((nB,3,3)) # from blade to global
         for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB]
+            R_p2g = R_ntr2g[iB] # TODO make it a function of element
+            R_bld2g[iB] =  R_r2g.dot(R_bld2r[iB])
             # radial position (in polar grid) of first and last node taken
-            Rs[iB] = (R_p2g.T).dot(pos_gl[iB,-1,:]-origin_pos_gl)[2]
-            rhub   = (R_p2g.T).dot(pos_gl[iB,0,:] -origin_pos_gl)[2]
+            Rs_p[iB] = (R_p2g.T).dot(pos_gl[iB,-1,:]-origin_pos_gl)[2]
+            rhub_p   = (R_p2g.T).dot(pos_gl[iB, 0,:]-origin_pos_gl)[2]
             # loop on elements
             for ie in np.arange(nr):
-                r[iB,ie] = (R_p2g.T).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
-        R = np.max(Rs)
+                r_p[iB,ie] = (R_p2g.T)  .dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
+                r_b[iB,ie] = (R_bld2g[iB].T).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in blade coordinate (from rotor center) 
+            #print('r_b',r_b[iB])
+            #print('r_p',r_p[iB])
+            #dr = np.diff(r_p[iB])
+            #dz = np.diff(r_b[iB])
+            #print('k', kappa, np.arccos(dr/dz)*180/np.pi) # NOTE: not accurate, need sign as well
+        R_p = np.max(Rs_p) # Rotor radius projected onto polar grid
         # --- Rotor speed for power
         omega_r = R_r2g.T.dot(omega_gl) # rotational speed in rotor coordinate system
         Omega = omega_r[0] # rotation speed of shaft (along x)
 
         if kappa is None:
-            kappa = 0 # TODO TODO
+            kappa = 0 # TODO TODO could compute it based on r_p and r_b
 
         if self.algorithm=='polarProj':
             drdz = cos(kappa*np.pi/180)
@@ -518,34 +557,37 @@ class UnsteadyBEM():
                     Vrel_k[iB,ie,0] = Vrel_p[iB,ie,0]*np.cos(kappa*np.pi/180) # n  # TODO TODO use cant
                     Vrel_k[iB,ie,1] = Vrel_p[iB,ie,1] # t
                     # Airfoil coordinates
-                    Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g)
+                    Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g) # TODO use R_p2a instead, and remove zp component
             Vflw_p  = Vwnd_p-Vstr_p # Relative flow velocity, including wind and structural motion
             Vflw_g  = Vwnd_gl-Vstr_gl # Relative flow velocity, including wind and structural motion
 
             # Velocity norm and Reynolds
-            Vrel_norm = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
-            Re        = Vrel_norm*p.chord/p.kinVisc/10**6 # Reynolds in million
+            Vrel_norm_k = sqrt(Vrel_k[:,:,0]**2 + Vrel_k[:,:,1]**2)
+            Vrel_norm_a = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
+            Re        = Vrel_norm_a*p.chord/p.kinVisc/10**6 # Reynolds in million
             # --------------------------------------------------------------------------------
             # --- Step 2: Flow Angle and tip loss
             # --------------------------------------------------------------------------------
             phi_k = np.arctan2(Vrel_k[:,:,0],-Vrel_k[:,:,1]) # flow angle [rad] in kappa system
             phi_p = np.arctan2(Vrel_p[:,:,0],-Vrel_p[:,:,1])  # NOTE: using polar grid for phi
-            if self.algorithm=='polarProj':
+            if self.algorithm=='legacy':
+                phi_tl = phi_p
+                phi    = phi_p
+            elif self.algorithm=='polarProj':
                 phi_tl = phi_k
                 phi    = phi_k
             else:
-                phi_tl = phi_p
-                phi    = phi_p
+                raise Exception()
             # --- Tip and hub losses
             F = np.ones((nB,nr))
             if (p.bTipLoss): #Glauert tip correction
                 b=sin(phi_tl)>0.01
-                F[b] = 2./pi*arccos(exp(-(nB *(R-r[b]))/(2*r[b]*sin(phi_tl[b]))))
-                b2=abs(r-R)<1e-3
+                F[b] = 2./pi*arccos(exp(-(nB *(R_p-r_p[b]))/(2*r_p[b]*sin(phi_tl[b]))))
+                b2=abs(r_p-R_p)<1e-3
                 F[b2]=0.001
             # --- Hub loss
             if (p.bHubLoss): #Glauert hub loss correction
-                F = F* 2./pi*arccos(exp(-nB/2. *(r-rhub)/ (rhub*np.sin(phi_tl))))
+                F = F* 2./pi*arccos(exp(-nB/2. *(r_p-rhub_p)/ (rhub_p*np.sin(phi_tl))))
             #F[F<=1e-3]=0.5
             # --------------------------------------------------------------------------------
             # --- Step 3: Angle of attack
@@ -557,6 +599,7 @@ class UnsteadyBEM():
             ClCdCm = np.array([p.fPolars[ie](alpha[iB,ie]) for iB in np.arange(nB) for ie in np.arange(nr)]).reshape((nB,nr,3))
             Cl=ClCdCm[:,:,0]
             Cd=ClCdCm[:,:,1]
+            Cm=ClCdCm[:,:,2]
             # Project to airfoil coordinates
             C_xa       ,C_ya        = Cl*cos(alpha)+ Cd*sin(alpha  )   ,  -Cl*sin(alpha)+ Cd*cos(alpha)
             C_xa_noDrag,C_ya_noDrag = Cl*cos(alpha)                    ,  -Cl*sin(alpha)
@@ -591,13 +634,13 @@ class UnsteadyBEM():
             #lambda_r = Vflw_p[:,:,1]/Vflw_p[:,:,0] # "omega r/ U0n" defined in polar grid # TODO TODO TODO
             #V0       = np.sqrt(Vwnd_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that # TODO TODO TOD
             V0       = np.sqrt(Vflw_p[:,:,0]**2 + Vwnd_p[:,:,1]**2) # TODO think about that
-            sigma    = p.chord*p.nB/(2*pi*r)
+            sigma    = p.chord*p.nB/(2*pi*r_p) # NOTE: using radius in polar grid
             #a,aprime,CT = fInductionCoefficients(a_last,Vrel_in4,Un,Ut,V0_in3,V0_in4,nnW_in4,omega,chord(e),F,Ftip,CnForAI,CtForTI,lambda_r,sigma(e),phi,Algo)
             if p.WakeMod==0:
                 a      = V0*0
                 aprime = V0*0
             else:
-                a,aprime,CT = _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi, 
+                a,aprime,CT = _fInductionCoefficients(Vrel_norm_k, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi, 
                         bSwirl=p.bSwirl, CTcorrection=p.CTcorrection, swirlMethod=p.swirlMethod,
                         relaxation=p.relaxation, a_last=xd0.a,
                         algorithm=self.algorithm, drdz=drdz
@@ -634,8 +677,8 @@ class UnsteadyBEM():
         if (p.bDynaWake):
             a_avg = min([np.mean(a),0.5])
             V_avg = max([np.mean(V0),0.001])
-            tau1 = 1.1 / (1 - 1.3 *a_avg)*R/V_avg
-            tau2 = (0.39 - 0.26 * (r/R)**2) * tau1
+            tau1 = 1.1 / (1 - 1.3 *a_avg)*R_p/V_avg
+            tau2 = (0.39 - 0.26 * (r_p/R_p)**2) * tau1
             tau2 = np.tile(tau2[:,:,None],3)
             # Oye's dynamic inflow model, discrete time integration
             H              = xd1.Vind_qs_p + 0.6 * tau1 * (xd1.Vind_qs_p - xd0.Vind_qs_p) /dt
@@ -693,9 +736,9 @@ class UnsteadyBEM():
            #xd1.Vind_p = xd1.Vind_dyn_p.copy()
            #psi0 = np.arctan( Vwnd_avg_g[2]/Vwnd_avg_r[1])  # TODO
            # Sections that are about 0.7%R
-           Ir= np.logical_and(r[0]>=0.5*R, r[0] <=0.8*R)
+           Ir= np.logical_and(r_p[0]>=0.5*R_p, r_p[0] <=0.8*R_p)
            if len(Ir)==0:
-               Ir=r[0]>0
+               Ir=r_p[0]>0
            Vind_avg_g = np.mean(np.mean(xd1.Vind_dyn_g[:,Ir,:],axis=0),axis=0)
            Vind_avg_r = (R_r2g.T).dot(Vind_avg_g)
            # Skew angle with induction
@@ -711,7 +754,7 @@ class UnsteadyBEM():
                R_p2g = R_ntr2g[iB]
                for ie in np.arange(nr):
                    xd1.Vind_p[iB,ie] = xd1.Vind_dyn_p[iB,ie]
-                   xd1.Vind_p[iB,ie,0] = xd1.Vind_dyn_p[iB,ie,0] * (1 + yawCorrFactor*r[iB,ie]/R * np.tan(chi/2)*np.sin(SkewAzimuth[iB])) #* np.cos(psiB0[iB]+psi - psi0))
+                   xd1.Vind_p[iB,ie,0] = xd1.Vind_dyn_p[iB,ie,0] * (1 + yawCorrFactor*r_p[iB,ie]/R_p * np.tan(chi/2)*np.sin(SkewAzimuth[iB])) #* np.cos(psiB0[iB]+psi - psi0))
                    xd1.Vind_g[iB,ie] = R_p2g.dot(xd1.Vind_p[iB,ie]) # global
                    # AeroDyn:
                    #chi = (0.6_ReKi*a + 1.0_ReKi)*chi0
@@ -728,13 +771,15 @@ class UnsteadyBEM():
         # --- Coefficients
         self.Cl[it]   = Cl
         self.Cd[it]   = Cd
+        self.Cm[it]   = Cm
         self.cn[it]   = C_p[:,:,0]
         self.ct[it]   = C_p[:,:,1]
         # C_g also available
         # --- Loads
-        q_dyn = 0.5 * p.rho * Vrel_norm**2 * p.chord # dynamic pressure
+        q_dyn = 0.5 * p.rho * Vrel_norm_a**2 * p.chord # dynamic pressure
         self.L[it]    = q_dyn * Cl
         self.D[it]    = q_dyn * Cd
+        self.Mm[it]   = q_dyn * Cm * p.chord
         self.Fn[it]   = q_dyn * C_p[:,:,0]
         self.Ft[it]   = q_dyn * C_p[:,:,1]
         self.F_a[it,:,:,0] = q_dyn * C_xa
@@ -744,7 +789,7 @@ class UnsteadyBEM():
         aprime_dyn = xd1.Vind_p[:,:,1]/Vflw_p[:,:,1]
         self.AxInd[it] = a_dyn      
         self.TnInd[it] = aprime_dyn 
-        self.Vrel[it]  = Vrel_norm
+        self.Vrel[it]  = Vrel_norm_a
         # polar system (missing Vind)
         self.Vrel_p[it]  = Vrel_p[:,:,:] # NOTE: Vrel is using previous inductions..
         self.Vstr_p[it]  = Vstr_p[:,:,:]
@@ -763,7 +808,7 @@ class UnsteadyBEM():
         self.phi[it]   = phi*180./pi
         self.Gamma[it]  = 0.5*Re*Cl*p.kinVisc*10**6 # Circulation [m^2/s]
         self.psi[it]  = psi*180/pi
-        self.RtArea[it]  = pi*R**2
+        self.RtArea[it]  = pi*R_p**2
 
         for iB in np.arange(nB):
             R_p2g = R_ntr2g[iB]
@@ -787,11 +832,18 @@ class UnsteadyBEM():
                 F_g = q_dyn[iB,ie] * C_g[iB,ie]
                 self.F_s[it,iB,ie] = (R_s2g[iB,ie].T).dot(F_g)
 
+        # --- Integral quantities for rotor
+        if self.bUseCm:
+            Mz  = np.trapz(self.Mm[it,0], r_p) # TODO TODO TODO first blade
+            QMz = Mz * np.sin(kappa*np.pi/180) # Contribution for one blade TODO TODO TODO
+        else:
+            QMz = 0
 
         # --- Integral quantities for rotor
-        self.BladeThrust[it,:] = np.trapz(self.Fn[it,:]  , r) # Normal to rotor plane
-        self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r, r) # About shaft 
-        self.Thrust[it] = np.sum(self.BladeThrust[it,:])    # Normal to rotor plane
+        # TODO integration should be with r_b and using forces on airfoil
+        self.BladeThrust[it,:] = np.trapz(self.Fn[it,:]    , r_p)       # Normal to rotor plane
+        self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r_p, r_p) +QMz  # About shaft 
+        self.Thrust[it] = np.sum(self.BladeThrust[it,:])            # Normal to rotor plane
         self.Torque[it] = np.sum(self.BladeTorque[it,:])
         self.Power[it]  = Omega*self.Torque[it]
             # TODO TODO
@@ -858,7 +910,8 @@ class UnsteadyBEM():
             Vwnd_g = np.moveaxis(np.array([u,v,w]),0,-1) # nB x nr x 3
             xdBEM = self.timeStep(t, dt, xdBEM, motion.psi, motion.psi_B0,
                     motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_ntr2g, motion.R_bld2b,
+                    motion.R_ntr2g,
+                    motion.R_bld2b, # From blades 2 rotor/shaft
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                     Vwnd_g,
                     firstCallEquilibrium= it==0 and firstCallEquilibrium,
@@ -978,26 +1031,27 @@ class PrescribedRotorMotion():
         position, velocity, and orientation of all blade station
 
      - R_a2g : from airfoil to global (this is well defined, also called "n-t" system in AeroDyn)
-     - R_s2g : from section to blobal (this is ill-defined), this coordinate is used to define the "axial" and "tangential" inductions
+     - R_s2g : from section to global (this is ill-defined), this coordinate is used to define the "axial" and "tangential" inductions
 
     """
     def __init__(self):
-        # body kinematics
+        # body kinematics, Body is "rotor"
         self.R_b2g = np.eye(3) # orientation from body to global
-        self.R_b2g0 = np.eye(3) # orientation from body to global at t=0
-        self.origin_pos_gl0 = np.array([0,0,0]) # body origin at t=0
-        self.origin_pos_gl = np.array([0,0,0]) # body origin
+        self.R_b2g0 = np.eye(3) # orientation from body to global at t=0 (typically: tilt)
+        self.origin_pos_gl0 = np.array([0,0,0]) # body origin at t=0 (position of rotor center)
+        self.origin_pos_gl = np.array([0,0,0]) # body origin   (position of rotor center)
         self.origin_vel_gl = np.array([0,0,0])
         self.omega_gl      = np.array([0,0,0])
 
         # Blades 
-        self.R_bld2b=None # rotation matrix from blade to body
+        self.R_bld2b=None # rotation matrices from blades to body (i.e. rotor), contains azimuth and cone
 
     def init_from_inputs(self,  nB, r, twist, rotorOrigin, tilt, cone, psi0=0):
+        # TODO TODO Pitch!
         self.nB   =  nB
         self.cone = cone*np.pi/180
         self.tilt = -tilt*np.pi/180 
-        self.r     = r
+        self.r     = r               # spanwise position, from hub center (typically r= HubRad->TipRad)
         self.twist = twist
         self.allocate()
         self.origin_pos_gl0 = rotorOrigin
@@ -1012,14 +1066,14 @@ class PrescribedRotorMotion():
         for iB in np.arange(self.nB):
             self.psi_B0[iB]= psi0 + iB*2*np.pi/self.nB
             R_SB = R_x(self.psi_B0[iB]) 
-            self.R_bld2b[iB] = R_SB.dot(R_y(self.cone)) # blade2shaft
+            self.R_bld2b[iB] = R_SB.dot(R_y(self.cone)) # blade2shaft / blade2rotor
             self.R_ntr2b[iB] = R_SB.dot(np.array([[1,0,0],[0,-1,0],[0,0,1]])) # "n-t-r" to shaft
 
         # Set initial positions and orientations in body coordinates
         nr=len(self.r)
         meanLine=np.zeros((nr,3))
-        meanLine[:,0]=0 # TODO
-        meanLine[:,1]=0 # TODO
+        meanLine[:,0]=0 # TODO prebend
+        meanLine[:,1]=0 # TODO presweep
         meanLine[:,2]=self.r
         for iB in np.arange(self.nB):
             for ir in np.arange(nr):
@@ -1170,9 +1224,7 @@ if __name__=="__main__":
     from matplotlib.animation import FuncAnimation
 
     # --- Read a FAST model to get Aerodynamic parameters
-    BEM = AeroBEM()
-    #BEM.init_from_FAST('../../data/NREL5MW/Main_Onshore.fst')
-    BEM.init_from_FAST('./Main_Onshore.fst')
+    BEM = UnsteadyBEM('./Main_Onshore.fst')
     BEM.CTcorrection='AeroDyn' # High Thrust correction
     BEM.swirlMethod ='AeroDyn' # type of swirl model
 #    BEM.swirlMethod ='HAWC2' # type of swirl model

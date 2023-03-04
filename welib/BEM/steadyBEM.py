@@ -436,8 +436,8 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         R_ap = None
     else:
         drdz = cCone
-        R_ap = rotPolar2Airfoil(tau=0, kappa=cone*pi/180, beta=fulltwist) # NOTE: sweep and prebend
-    sigma    = chord * nB / (2.0 * pi * rPolar)
+        R_ap = rotPolar2Airfoil(tau=0, kappa=cone*pi/180, beta=fulltwist) # NOTE: sweep and prebend 
+    sigma    = chord * nB / (2.0 * pi * rPolar) # NOTE: based on polar radial coordinate
     lambda_r = Omega * rPolar/ V0
     # Creating interpolation functions for each polar, now in rad!
     fPolars = [interp1d(p[:,0]*pi/180,p[:,1:],axis=0) for p in polars]
@@ -584,6 +584,7 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         QMz = nB * BEM.Mz * np.sin(cone*np.pi/180)
 
         # --- Integral quantities for rotor
+        # TODO integration variable might need to be rPolar
         BEM.Torque = nB * np.trapz(rPolar * BEM.Pt, r) + QMz # Rotor shaft torque [N]
         BEM.Thrust = nB * np.trapz(         BEM.Pn, r) # Rotor shaft thrust [N]
         BEM.Flap   = np.trapz( BEM.Pn * (r - rhub), r) # Flap moment at blade root [Nm]
@@ -627,7 +628,7 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         cnForAI   : normal force coefficient
         ctForTI   : tangential force coefficient
         lambda_r  : speed ratio distribution
-        sigma     : blade solidity
+        sigma     : blade solidity, based on polar radial coordinate!
         phi       : flow angle [deg]
         relaxation: relaxation factor in axial induction factor
         bSwirl    : swirl flow model enabled / disabled
