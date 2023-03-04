@@ -26,7 +26,7 @@ class Test(unittest.TestCase):
         u_turb=0    #[m/s]
         BEM=calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
-                    rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True)
+                    rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True, bUseCm=False)
 
         np.testing.assert_almost_equal(BEM.Power ,445183.13,1)
         np.testing.assert_almost_equal(BEM.Thrust,140978.66,1)

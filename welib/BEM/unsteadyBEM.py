@@ -150,7 +150,8 @@ class AeroBEM:
         self.setDefaultOptions()
 
     def setDefaultOptions(self):
-        self.nbIt = 200  # maximum number of iterations in BEM
+        self.algorithm = 'AeroDyn' # Main switch for algorithm
+        self.nIt = 200  # maximum number of iterations in BEM
         self.aTol = 10 ** -6 # tolerance for axial induction factor convergence
         self.relaxation = 0.5  # relaxation factor in axial induction factor
         self.CTcorrection = 'AeroDyn'  #  type of CT correction more model implementated in the future like 'spera'
