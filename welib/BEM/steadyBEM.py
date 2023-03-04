@@ -580,8 +580,7 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         # --- Step 1: Wind Components in polar grid
         # --------------------------------------------------------------------------------
         # Axial inductions are typically defined in polar grid
-        #Ut_p = Omega * rPolar * (1. + aprime) # <<<<< TODO TODO TOD
-        Ut_p = Omega * r * (1. + aprime)
+        Ut_p = Omega * rPolar * (1. + aprime)
         Un_p = V0 * (1. - a) - xdot + u_turb
         Ut_k = Ut_p
         Un_k = V0 * (1. - a) * drdz - xdot + u_turb # NOTE: dzdz=1 for some algorithm
@@ -591,12 +590,6 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         # --- Step 2: Flow Angle
         # --------------------------------------------------------------------------------
         phi_k = arctan2(Un_k, Ut_k) # flow angle [rad] in kappa system
-
-        Ut = Omega * r * (1. + aprime)
-        Un = V0 * (1. - a) - xdot + u_turb
-        Vrel_norm_k = np.sqrt(Un** 2 + Ut** 2)
-        phi_k = arctan2(Un, Ut) # flow angle [rad]
-
         # --------------------------------------------------------------------------------
         # --- Tip loss
         # --------------------------------------------------------------------------------

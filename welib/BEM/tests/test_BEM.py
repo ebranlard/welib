@@ -28,8 +28,8 @@ class Test(unittest.TestCase):
                     nB,cone,r,chord,twist,polars,
                     rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True, bUseCm=False)
 
-        np.testing.assert_almost_equal(BEM.Power ,445183.13,1)
-        np.testing.assert_almost_equal(BEM.Thrust,140978.66,1)
+        np.testing.assert_almost_equal(BEM.Power ,445680.62,1)
+        np.testing.assert_almost_equal(BEM.Thrust,140930.43,1)
 
 
         np.seterr(**old_settings)
