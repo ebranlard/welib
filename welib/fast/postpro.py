@@ -1501,10 +1501,13 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
 
 
 
-def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
+def averagePostPro(outFiles_or_DFs,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
     """ Opens a list of FAST output files, perform average of its signals and return a panda dataframe
     For now, the scripts only computes the mean within a time window which may be a constant or a time that is a function of the rotational speed (see `avgMethod`).
     The script only computes the mean for now. Other stats will be added
+    INPUTS:
+
+     outFiles_or_DFs: list of fst filenames or dataframes
 
     `ColMap` :  dictionary where the key is the new column name, and v the old column name.
                 Default: None, output is not sorted
@@ -1525,31 +1528,34 @@ def averagePostPro(outFiles,avgMethod='periods',avgParam=None,ColMap=None,ColKee
                    Default: None, full simulation length is used
     """
     result=None
-    if len(outFiles)==0:
-        raise Exception('No outFiles provided')
+    if len(outFiles_or_DFs)==0:
+        raise Exception('No outFiles or DFs provided')
 
     invalidFiles =[]
     # Loop trough files and populate result
-    for i,f in enumerate(outFiles):
-        try:
-            df=weio.read(f).toDataFrame()
-            #df=FASTOutputFile(f).toDataFrame()A # For pyFAST
-        except:
-            invalidFiles.append(f)
-            continue
+    for i,f in enumerate(outFiles_or_DFs):
+        if isinstance(f, pd.DataFrame):
+            df = f
+        else:
+            try:
+                df=weio.read(f).toDataFrame()
+                #df=FASTOutputFile(f).toDataFrame()A # For pyFAST
+            except:
+                invalidFiles.append(f)
+                continue
         postpro=averageDF(df, avgMethod=avgMethod, avgParam=avgParam, ColMap=ColMap, ColKeep=ColKeep,ColSort=ColSort,stats=stats, filename=f)
         MeanValues=postpro # todo
         if result is None:
             # We create a dataframe here, now that we know the colums
             columns = MeanValues.columns
-            result = pd.DataFrame(np.nan, index=np.arange(len(outFiles)), columns=columns)
+            result = pd.DataFrame(np.nan, index=np.arange(len(outFiles_or_DFs)), columns=columns)
         if MeanValues.shape[1]!=result.shape[1]:
             print('[WARN] The number of columns for file {} is {} and not {}. Skipping.'.format(f, MeanValues.shape[1], result.shape[1]))
         else:
             result.iloc[i,:] = MeanValues.copy().values
 
 
-    if len(invalidFiles)==len(outFiles):
+    if len(invalidFiles)==len(outFiles_or_DFs):
         raise Exception('None of the files can be read (or exist)!. For instance, cannot find: {}'.format(invalidFiles[0]))
     elif len(invalidFiles)>0:
         print('[WARN] There were {} missing/invalid files: \n {}'.format(len(invalidFiles),'\n'.join(invalidFiles)))
