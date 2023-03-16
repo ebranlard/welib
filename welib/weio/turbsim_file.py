@@ -592,7 +592,11 @@ class TurbSimFile(File):
             s+='    ux: min: {}, max: {}, mean: {} \n'.format(np.min(ux), np.max(ux), np.mean(ux))
             s+='    uy: min: {}, max: {}, mean: {} \n'.format(np.min(uy), np.max(uy), np.mean(uy))
             s+='    uz: min: {}, max: {}, mean: {} \n'.format(np.min(uz), np.max(uz), np.mean(uz))
-            
+        s += ' Useful methods:\n'
+        s += ' - read, write, toDataFrame, keys\n'
+        s += ' - valuesAt, vertProfile, horizontalPlane, verticalPlane, closestPoint\n'
+        s += ' - fitPowerLaw\n'
+        s += ' - makePeriodic, checkPeriodic\n'
         return s
 
     def toDataFrame(self):
