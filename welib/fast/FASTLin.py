@@ -48,6 +48,8 @@ class FASTLinPeriodicOP(object):
                 self.nLinTimes = nLin
 
             linFiles = [prefix+'.'+str(i+1)+'.lin' for i in np.arange(self.nLinTimes)]
+            if len(linFiles)==0:
+                raise Exception('No Lin Files found with prefix: {}'.format(prefix))
         else:
             self.nLinTimes = len(linFiles)
             prefix = None # TODO

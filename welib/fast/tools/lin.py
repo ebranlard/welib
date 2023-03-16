@@ -130,6 +130,29 @@ def subMat(df, rows=None, cols=None, check=True, name='matrix', removeDuplicates
     #    df_out = df_out.loc[~bIndDup,~bColDup]
     return df_out
 
+def subSeries(df, rows=None, check=True, name='series', removeDuplicates=True):
+    """ Extract relevant part from a dataframe, perform a safety check """
+    if rows is None:
+        rows=df.index
+    missingRows = [l for l in rows if l not in df.index]
+    if check:
+        if len(missingRows)>0:
+            raise Exception('The following rows are missing from {}: {}'.format(name,missingRows))
+    else:
+        if len(missingRows)>0:
+            print('[WARN] The following rows are missing from {}: {}'.format(name,missingRows))
+    # Create an emtpy dataframe with specifications
+    M = np.zeros(len(rows))*np.nan
+    df_out = pd.Series(data=M, index=rows)
+
+    # Col/Row that are indeed present in input 
+    rows_ = [s for s in rows if s in df.index]
+
+    # Copy existing 
+    df_out.loc[rows_] = df.loc[rows_]
+    return df_out
+
+
 def matLabelNoUnit(df):
     """ remove unit from index and columns of matrix"""
     rows = [no_unit(row) for row in df.index.values]

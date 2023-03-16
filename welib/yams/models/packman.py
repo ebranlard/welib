@@ -68,7 +68,7 @@ def simulate(pkg, time, q0, qd0=None, p=None, u=None, acc=False, forcing=False, 
     # Create a Mechanical System
     sysNL = MechSystem(fM, F=fF, x0=q0, xdot0=qd0 )
     # Integrate in time
-    resNL = sysNL.integrate(time, method='RK45')
+    resNL, _ = sysNL.integrate(time, method='RK45')
     # Store in a nice dataframe, potentially with acceleration and forcing
     calc=''
     if acc:
@@ -111,7 +111,7 @@ def linearModel(pkg, p, dq0=None, dqd0=None, time=None, uop=None, qop=None, qdop
 
     # --- Initial conditions (with op)
     q0  = dq0 + qop
-    qd0 = dq0 + qdop
+    qd0 = dqd0 + qdop
 #     dq0  = self.q0  - qop
 #     dqd0 = self.qd0 - qdop
     print('q0  :',q0)

@@ -209,6 +209,7 @@ class WindTurbineStructure():
                 p['J_zx_B']   = p2['J_zx_BG']
                 p['J_zy_B']   = p2['J_zy_BG']
             p['z_OT']     = WT.twr.pos_global[2]         # distance from "Origin" (MSL) to tower base
+            p['z_EF']     = WT.fnd.pos_global[2]         # distance from "Origin" (MSL) to PtfmRefz
 
             # IMU
             p['x_BI'] = WT.ED['NcIMUxn']
@@ -232,6 +233,7 @@ class WindTurbineStructure():
             p['J_zx_RNA'] = WT.RNA.masscenter_inertia[0,2]           # Inertia of RNA at RNA_G in nac-coord
             p['L_T']      = WT.twr.length
             p['z_OT']     = WT.twr.pos_global[2]         # distance from "Origin" (MSL) to tower base
+            p['z_EF']     = WT.fnd.pos_global[2]         # distance from "Origin" (MSL) to PtfmRefz
             p['M_T']      = WT.twr.MM[0,0]
             p['z_TG']     = WT.twr.masscenter[2]
             p['J_xx_T']   = WT.twr.masscenter_inertia[0,0]
@@ -343,7 +345,8 @@ class WindTurbineStructure():
         if WT.MAP is not None:
             if WT.MAP._K_lin is None:
                 if MoorAtRef:
-                    K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,p['z_OT']))
+                    #K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,p['z_OT']))
+                    K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,p['z_EF']))
                 else:
                     K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,0))
             else:
@@ -360,6 +363,7 @@ class WindTurbineStructure():
 
 
         p['z_T0'] = -p['z_OT'] # TODO get rid of it
+        #p['z_T0'] = -p['z_OT'] # TODO get rid of it
 
         ## Buoyancy
         #if flavor=='onebody':
@@ -389,7 +393,7 @@ class WindTurbineStructure():
         q0  = np.asarray(self.q0)
         qd0 = np.asarray(self.qd0)
         resNL, sysNL, dfNL = simulate(pkg, time, q0, qd0=qd0, p=p, u=u, acc=acc, forcing=forcing, 
-                DOFs=self.channels, Factors=self.FASTDOFScales, sAcc=self.acc_channels)
+                sStates=self.channels, Factors=self.FASTDOFScales, sAcc=self.acc_channels)
         print('-----------------------------------------------------------------------------')
 
         return resNL, sysNL, dfNL
@@ -429,7 +433,7 @@ class WindTurbineStructure():
         sysLI = self.py_lin(pkg, p, time, uop=uop, qop=qop, qdop=qdop, du=du, MCKextra=MCKextra, MCKu=MCKu, noBlin=noBlin)
 
         # --- Setup Mech system (for time integration)
-        resLI=sysLI.integrate(time, method='RK45') # **options):
+        resLI, _ = sysLI.integrate(time, method='RK45') # **options):
 
         # --- Convert to dataframe
         calc=''
@@ -437,7 +441,7 @@ class WindTurbineStructure():
             calc+='xdd,'
         if forcing:
             calc+='f,'
-        dfLI = sysLI.res2DataFrame(resLI, self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, calc=calc, sAcc=self.acc_channels)
+        dfLI = sysLI.res2DataFrame(resLI, sStates = self.channels, Factors=self.FASTDOFScales, x0=qop, xd0=qdop, calc=calc, sAcc=self.acc_channels)
 
         print('-----------------------------------------------------------------------------')
         return resLI, sysLI, dfLI
@@ -593,10 +597,10 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     # --- Fnd (defined wrt ground/MSL "E")
 #     print(FST.keys())
     M_fnd = ED['PtfmMass']
-    r_OGfnd_inF = np.array([ED['PtfmCMxt'],ED['PtfmCMyt'],ED['PtfmCMzt']])
-    r_OT_inF    = np.array([0             ,0             ,ED['PtfmRefzt']])
-    r_TGfnd_inF = -r_OT_inF + r_OGfnd_inF
-    fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_TGfnd_inF, r_O=r_OT_inF) 
+    r_EGfnd_inF = np.array([ED['PtfmCMxt'],ED['PtfmCMyt'],ED['PtfmCMzt']])
+    r_EPtfm_inF    = np.array([0             ,0             ,ED['PtfmRefzt']]) # TODO, this is wrong
+    r_PtfmGfnd_inF = -r_EPtfm_inF + r_EGfnd_inF
+    fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
 
     # --- Twr
     twrFile = weio.read(twrfile)
@@ -621,7 +625,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     RNAb = copy.deepcopy(RNA)
     RNAb.pos_global = r_TN_inT+r_ET_inE
     RNAb.R_b2g      = np.eye(3)
-    WT_rigid = RNAb.combine(twr_rigid, r_O=r_ET_inE).combine(fnd, r_O=r_ET_inE) # TODO T or Ptfm
+    WT_rigid = RNAb.combine(twr_rigid, r_O=r_ET_inE).combine(fnd, r_O=r_ET_inE) # TODO TODO TODO T or Ptfm
     #WT_rigid = RNAb.combine(twr_rigid, r_O=r_EPtfm_inE).combine(fnd, r_O=r_EPtfm_inE) # TODO T or Ptfm
 
     # --- Moorings
@@ -631,8 +635,9 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
         from welib.moor.mappp import Map
 #         try:
         MAP = Map(fstFilename)
-        z_OT  = twr.pos_global[2]  
-        K_Moor,_ = MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,z_OT))
+        #zRef  = twr.pos_global[2]  
+        zRef  = fnd.pos_global[2]  
+        K_Moor,_ = MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,zRef))
         #K_Moor2,_ = MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,0))
 #         except:
 #             print('YAMS Wind Turbine: problem loading MAP model (only supported on windows)')

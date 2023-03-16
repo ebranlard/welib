@@ -198,6 +198,10 @@ class StateSpace(System):
         else:
             return None
 
+    @property
+    def q0_pd(self):
+        return pd.Series(self.q0, index=self.sStates)
+
     # --------------------------------------------------------------------------------}
     # --- Signatures
     # --------------------------------------------------------------------------------{
@@ -531,7 +535,10 @@ class StateSpace(System):
         self.df       = None
 
 
-    def res2DataFrame(self, res=None, calc='u,y,xd', sStates=None, xoffset=None, uoffset=None, yoffset=None):
+    def res2DataFrame(self, res=None, calc='u,y,xd', Factors=None, sStates=None, xoffset=None, uoffset=None, yoffset=None):
+        """ Return time integration results as a dataframe
+        """
+        # TODO harmonize with mech_system.res2DataFrame
         calcVals = calc.split(',')
 
         if res is None:
@@ -539,7 +546,10 @@ class StateSpace(System):
                 raise Exception('Call integrate before res2DataFrame')
             res = self.res
 
-        dfStates = self.store_states(res, sStates=sStates, xoffset=xoffset)
+        # --- Time and states
+        dfStates = self.store_states(res, sStates=sStates, xoffset=xoffset, Factors=Factors)
+        # --- Accelerations 
+        # --- Forcing
 
         # --- Try to compute outputs
         dfOut = None
@@ -560,21 +570,47 @@ class StateSpace(System):
 
         return df
 
-    def store_states(self, res, sStates=None, xoffset=None):
+    def store_states(self, res, sStates=None, xoffset=None, Factors=None):
         nStates = len(self.q0)
         if sStates is None and self.sX is None:
             sStates = ['x{}'.format(i+1) for i in range(nStates)] # TODO
         else:
-            sStates = self.sX
+            if sStates is None:
+                sStates = self.sX
             nCols = self.res.y.shape[0]
             if len(self.sX)!=nCols:
                 raise Exception("Inconsistency in length of states columnNames. Number of columns detected from res: {}. States columNames (sX):".format(nCols, self.sX))
         self.sX = sStates
+
+        # Store as a matrix
+        M = res.y.T.copy()
+
+        # Scaling
+        if Factors is not None:
+            for i, f in enumerate(Factors):
+                M[:,i] *= f
+
+        # Scaling offsets
+        if Factors is not None and xoffset is not None:
+            xoffset *= np.asarray(Factors)
+
         if xoffset is not None:
             xoffset=np.asarray(xoffset).flatten()
-            dfStates = pd.DataFrame(data=self.res.y.T+xoffset, columns=sStates)
-        else:
-            dfStates = pd.DataFrame(data=self.res.y.T, columns=sStates)
+            M = M + xoffset
+
+        # Offset Velocity TODO
+        #if xd0 is not None: 
+        #    for i, xd0_ in enumerate(xd0):
+        #        M[:,i]           += xd0_*res.t # Position increases linearly (e.g. azimuth)
+        # Degrees
+        for i,d in enumerate(sStates):
+            if sStates[i].find('[deg]')>1: 
+                if np.max(M[:,i])>180:
+                    M[:,i] = np.mod(M[:,i], 360)
+
+
+        dfStates = pd.DataFrame(data=M, columns=sStates)
+        # Insert time
         dfStates.insert(0, 'Time_[s]', res.t)
         self.dfStates = dfStates
         return dfStates

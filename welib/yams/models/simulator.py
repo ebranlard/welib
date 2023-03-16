@@ -110,6 +110,8 @@ class SimulatorFromOF():
         self.sysNL       = None
         self.dfNL = None
         self.dfLI = None
+        self.dfFS = None
+        self.time = None
 
 
         # --- Load the wind turbine model, NOTE relevant parameters "p" are in WT.yams_parameters()
@@ -168,6 +170,7 @@ class SimulatorFromOF():
         self.loadPackage(packagePath=self._packagePath)
 
     def setupSim(self, outFile=None, tMax=None, **kwargs):
+        # TODO: Harmonize with fast.linmodel
         # --- Load Reference simulation
         if outFile is None:
             self.dfFS, self.time = _loadOFOut(self.fstFilename, tMax)
@@ -186,6 +189,12 @@ class SimulatorFromOF():
 
         return self.time, self.dfFS, self.p
 
+    # --------------------------------------------------------------------------------}
+    # --- INPUTS
+    # --------------------------------------------------------------------------------{
+    # From welib.system.statespace.py
+    #def setInputTimeSeries(self, vTime, vU):
+    #def setInputFunction(self, fn, signature_u=None):
 
     def _zeroInputs(self):
         """ 
@@ -313,7 +322,7 @@ class SimulatorFromOF():
     def q0(self): return self.sysNL.q0
 
 
-    def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
+    def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title='', dfFSlin=None):
         from welib.tools.colors import python_colors
         # --- Simple Plot
         dfNL = self.dfNL
@@ -341,19 +350,24 @@ class SimulatorFromOF():
             chan=df.columns[i+1]
             if dfNL is not None:
                 if chan in dfNL.columns:
-                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear', c=python_colors(0))
+                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='WELIB non-linear', c=python_colors(0))
                 else:
-                    print('Missing column in NL: ',chan)
+                    print('simulator: plot: Missing column in NL          : ',chan)
             if dfLI is not None:
                 if chan in dfLI.columns:
-                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear', c=python_colors(1))
+                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='WELIB linear', c=python_colors(1))
                 else:
-                    print('Missing column in Lin: ',chan)
+                    print('simulator: plot: Missing column in Lin         : ',chan)
+            if dfFSlin is not None:
+                if chan in dfFSlin.columns:
+                    ax.plot(dfFSlin['Time_[s]'], dfFSlin[chan], '-.' , label='OpenFAST lin', c=python_colors(2))
+                else:
+                    print('simulator: plot: Missing column in Lin OpenFAST: ',chan)
             if dfFS is not None:
                 if chan in dfFS.columns:
-                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST non-linear')
                 else:
-                    print('Missing column in OpenFAST: ',chan)
+                    print('simulator: plot: Missing column in OpenFAST    : ',chan)
             ax.set_xlabel('Time [s]')
             ax.set_ylabel(chan)
             ax.tick_params(direction='in')
@@ -373,12 +387,14 @@ class SimulatorFromOF():
 
         return fig
 
-    def save(self, filename=None, prefix=''):
+    def save(self, filename=None, prefix='', dfFSlin=None):
         if filename is None:
             filename = self.fstFilename.replace('.fst','{}_yamsSim.pkl'.format(prefix))
 
         import pickle
         D={'dfNL':self.dfNL, 'dfLI':self.dfLI, 'dfFS':self.dfFS, 'p':self.p}
+        if dfFSlin is not None:
+            D['dfFSlin'] = dfFSlin
         print('>>> Export to:',filename)
         pickle.dump(D,  open(filename,'wb'))
 
