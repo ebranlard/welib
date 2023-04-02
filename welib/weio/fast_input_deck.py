@@ -76,6 +76,19 @@ class FASTInputDeck(dict):
         if len(fullFstPath)>0:
             self.read()
 
+    @property
+    def ED(self):
+        ED = self.fst_vt['ElastoDyn']
+        if ED is None:
+            if 'ED' not in self.readlist:
+                self.readlist.append('ED')
+            if self.verbose:
+                print('>>> Reading ED', self.ED_path)
+            self.fst_vt['ElastoDyn'] = self._read(self.fst_vt['Fst']['EDFile'],'ED')
+            return self.fst_vt['ElastoDyn']
+        else:
+            return ED
+
 
     def readAD(self, filename=None, readlist=None, verbose=False, key='AeroDyn15'):
         """ 
@@ -284,7 +297,7 @@ class FASTInputDeck(dict):
 
         # --- Backward compatibility
         self.fst = self.fst_vt['Fst']
-        self.ED  = self.fst_vt['ElastoDyn']
+        self._ED  = self.fst_vt['ElastoDyn']
         if not hasattr(self,'AD'):
             self.AD = None
         if self.AD is not None:

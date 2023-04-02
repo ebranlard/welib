@@ -1,6 +1,7 @@
 import os
 import numpy as np
-
+import pandas as pd
+import sympy as sp
 from sympy.physics.mechanics import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
 from sympy import diff, Matrix, trigsimp
@@ -210,6 +211,11 @@ class YAMSModel(object):
         y = odeint(RHS, x0, time, args=(u_num, p_num))
 
         # TODO create dataframe
+        cols=['Time_[s]']+['{}'.format(sp.latex(c)) for c in self.q_full]
+        dat = np.column_stack((time, y))
+        df = pd.DataFrame(data=dat, columns=cols)
+        self.df = df
+
 
         # --- Store for vizualisation
         self._u = u
