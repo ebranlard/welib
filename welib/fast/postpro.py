@@ -16,6 +16,24 @@ from welib.fast.subdyn import SubDyn
 # --------------------------------------------------------------------------------}
 # --- Tools for IO 
 # --------------------------------------------------------------------------------{
+def getEDClass(class_or_filename):
+    """
+    Return ElastoDyn instance of FileCl
+    INPUT: either
+       - an instance of FileCl, as returned by reading the file, ED = weio.read(ED_filename)
+       - a filepath to a ElastoDyn input file
+       - a filepath to a main OpenFAST input file
+    """
+    if hasattr(class_or_filename,'startswith'): # if string
+        ED = FASTInputFile(class_or_filename)
+        if 'EDFile' in ED.keys(): # User provided a .fst file...
+            parentDir=os.path.dirname(class_or_filename)
+            EDfilename = os.path.join(parentDir, ED['EDFile'].replace('"',''))
+            ED = FASTInputFile(EDfilename)
+    else:
+        ED = class_or_filename
+    return ED
+
 def ED_BldStations(ED):
     """ Returns ElastoDyn Blade Station positions, useful to know where the outputs are.
     INPUTS:
@@ -27,15 +45,14 @@ def ED_BldStations(ED):
         - bld_fract: fraction of the blade length were stations are defined
         - r_nodes: spanwise position from the rotor apex of the Blade stations
     """
-    if hasattr(ED,'startswith'): # if string
-        ED = FASTInputFile(ED)
+    ED = getEDClass(ED)
 
     nBldNodes    = ED['BldNodes']
     bld_fract    = np.arange(1./nBldNodes/2., 1, 1./nBldNodes)
     r_nodes      = bld_fract*(ED['TipRad']-ED['HubRad']) + ED['HubRad']
     return bld_fract, r_nodes
 
-def ED_TwrStations(ED):
+def ED_TwrStations(ED, addBase=True):
     """ Returns ElastoDyn Tower Station positions, useful to know where the outputs are.
     INPUTS:
        - ED: either:
@@ -46,12 +63,13 @@ def ED_TwrStations(ED):
         - r_fract: fraction of the towet length were stations are defined
         - h_nodes: height from the *ground* of the stations  (not from the Tower base)
     """
-    if hasattr(ED,'startswith'): # if string
-        ED = FASTInputFile(ED)
+    ED = getEDClass(ED)
 
     nTwrNodes = ED['TwrNodes']
     twr_fract    = np.arange(1./nTwrNodes/2., 1, 1./nTwrNodes)
-    h_nodes      = twr_fract*(ED['TowerHt']-ED['TowerBsHt']) + ED['TowerBsHt']
+    h_nodes      = twr_fract*(ED['TowerHt']-ED['TowerBsHt'])
+    if addBase:
+        h_nodes      += ED['TowerBsHt']
     return twr_fract, h_nodes
 
 def ED_BldGag(ED):
@@ -63,8 +81,7 @@ def ED_BldGag(ED):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the rotor apex
     """
-    if hasattr(ED,'startswith'): # if string
-        ED = FASTInputFile(ED)
+    ED = getEDClass(ED)
     _,r_nodes= ED_BldStations(ED)
     
     #     if ED.hasNodal:
@@ -79,18 +96,19 @@ def ED_BldGag(ED):
     r_gag = r_nodes[ Inodes[:nOuts] -1]
     return r_gag, Inodes
 
-def ED_TwrGag(ED):
+def ED_TwrGag(ED, addBase=True):
     """ Returns the heights of ElastoDyn blade gages 
     INPUTS:
        - ED: either:
            - a filename of a ElastoDyn input file
            - an instance of FileCl, as returned by reading the file, ED = weio.read(ED_filename)
+       - addBase: if True, TowerBsHt is added to h_gag
     OUTPUTS:
        - h_gag: The heights of the gages, given from the ground height (tower base + TowerBsHt)
     """
-    if hasattr(ED,'startswith'): # if string
-        ED = FASTInputFile(ED)
-    _,h_nodes= ED_TwrStations(ED)
+    ED = getEDClass(ED)
+
+    _,h_nodes= ED_TwrStations(ED, addBase=addBase)
     nOuts = ED['NTwGages']
     if nOuts<=0:
         return np.array([]), None
@@ -111,7 +129,7 @@ def AD14_BldGag(AD):
     OUTPUTS:
        - r_gag: The radial positions of the gages, given from the blade root
     """
-    if hasattr(ED,'startswith'): # if string
+    if hasattr(AD,'startswith'): # if string
         AD = FASTInputFile(AD)
 
     Nodes=AD['BldAeroNodes']  

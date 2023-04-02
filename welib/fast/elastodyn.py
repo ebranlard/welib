@@ -1,8 +1,103 @@
+""" 
+
+COORDINATE SYSTEMS:
+     NOTE:  xIEC, yIEC, zIEC =  xED, -zED, yED
+
+     | ElastoDyn | IEC | 
+     |   z*      |  i  | inertial
+     |   a*      |  t  | tower
+     |   t*      |  te | tower elements
+     |   b*      |     | tower top
+     |   d*      |  n  | nacelle (including yaw)
+     |   c*      |     | non rotating shaft
+     |   e*      |  a  | rotating shaft
+     |   f*      |     | teetered
+     |   g*      |  h  | hub (including delta 3 for 2-bladed
+     |   g*'     |     | hub coordinate aligned with a given blade (rotated with azimuth between blade)
+     |   i*      |  cK | coned for blade K    (rotatged with cone angle)
+     |   j*      |  bK | pitched for blade K  (rotated with pitch angle)
+     |   Lj*     |     |                      (rotated with structural twist)
+
+
+BODIES:
+     | ElastoDyn | IEC | 
+     |    E      |  E  | : earth/inertial frame
+     |    X      |  F  | : platform body
+     |    N      |  N  | : nacelle body
+     |    A      |     | : tail-furl body
+
+POINTS:
+     | ElastoDyn | IEC  | 
+     |    Z      |  F   | : platform reference 
+     |    Y      |  Gf  | : platform COG
+     |    T0     |  T   | : tower-bottom
+     |    O      |  N   | : tower-top / base-plate 
+     |    U      |  Gn  | : Nacelle COG
+     |    V      |      | : Rotor furl axis
+     |    D      |      | : COG of structure that furls (excluding the rotor)
+     |   IMU     |      | : Nacelle IMU
+     |    P      |      | : Teeter pin
+     |    Q      |      | : Apex of rotation, rotor center
+     |    C      |  Gh  | : Hub COG
+     |    W      |      | : specified point on the tail-furl axis
+     |    I      |      | : tail boom COG
+     |    J      |      | : tail fin COG
+
+
+"""
+
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 from welib.weio.fast_input_file import FASTInputFile
 from welib.system.eva import eigMCK
+
+# --------------------------------------------------------------------------------}
+# --- GLOBAL CONSTANTS 
+# --------------------------------------------------------------------------------{
+#    INTEGER(IntKi), PARAMETER        :: MaxBl    =  3                                   ! Maximum number of blades allowed in simulation
+#    INTEGER(IntKi), PARAMETER        :: NumBE    =  1                                   ! Number of blade-edge modes
+#    INTEGER(IntKi), PARAMETER        :: NumBF    =  2                                   ! Number of blade-flap modes
+DOF_Sg   =  0 # DOF index for platform surge
+DOF_Sw   =  1 # DOF index for platform sway
+DOF_Hv   =  2 # DOF index for platform heave
+DOF_R    =  3 # DOF index for platform roll
+DOF_P    =  4 # DOF index for platform pitch
+DOF_Y    =  5 # DOF index for platform yaw
+DOF_TFA1 =  6 # DOF index for 1st tower fore-aft mode
+DOF_TSS1 =  7 # DOF index for 1st tower side-to-side mode
+DOF_TFA2 =  8 # DOF index for 2nd tower fore-aft mode
+DOF_TSS2 =  9 # DOF index for 2nd tower side-to-side mode
+DOF_Yaw  = 10 # DOF index for nacelle-yaw
+DOF_RFrl = 11 # DOF index for rotor-furl
+DOF_GeAz = 12 # DOF index for the generator azimuth
+DOF_DrTr = 13 # DOF index for drivetrain rotational-flexibility
+DOF_TFrl = 14 # DOF index for tail-furl
+#    INTEGER(IntKi), PARAMETER        :: DOF_BE (MaxBl,NumBE) = RESHAPE(  &              ! DOF indices for blade edge:
+#                                                (/ 17, 20, 23 /),   (/MaxBl,NumBE/) )   !    1st blade edge mode for blades 1,2, and 3, respectively 17 + 3*(K-1)
+#    INTEGER(IntKi), PARAMETER        :: DOF_BF (MaxBl,NumBF) = RESHAPE(  &              ! DOF indices for blade flap:
+#                                                (/ 16, 19, 22,           &              !    1st blade flap mode for blades 1,2, and 3, respectively 16 + 3*(K-1)
+#                                                   18, 21, 24 /),   (/MaxBl,NumBF/) )   !    2nd blade flap mode for blades 1,2, and 3, respectively 18 + 3*(K-1)
+#    INTEGER(IntKi), PARAMETER        :: DOF_Teet = 22 !DOF_TFrl + 2*(NumBE+NumBF)+ 1    ! DOF index for rotor-teeter
+ED_MaxDOFs  = 24
+#    INTEGER(IntKi), PARAMETER        :: NPA      =  9                                   ! Number of DOFs that contribute to the angular velocity of the tail (body A) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: NPB      =  7                                   ! Number of DOFs that contribute to the angular velocity of the tower top / baseplate (body B) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: NPF      =  7                                   ! Number of DOFs that contribute to the angular velocity of the tower elements (body F) in the inertia frame                                           (body F) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: NPG      = 10                                   ! Number of DOFs that contribute to the angular velocity of the generator (body G) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: NPL      = 11                                   ! Number of DOFs that contribute to the angular velocity of the low-speed shaft (body L) in the inertia frame.
+NPN      =  8                      # Number of DOFs that contribute to the angular velocity of the nacelle (body N) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: NPR      =  9                                   ! Number of DOFs that contribute to the angular velocity of the structure that furls with the rotor (not including rotor) (body R) in the inertia frame.
+NPX      =  3                      # Number of DOFs that contribute to the angular velocity of the platform (body X) in the inertia frame.
+PX  = [ DOF_R, DOF_P, DOF_Y ] # Array of DOF indices (pointers) that contribute to the angular velocity of the platform                                                  (body X) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: PF(NPF)  = (/ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2 /)                                                  ! Array of DOF indices (pointers) that contribute to the angular velocity of the tower elements                                            (body F) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: PB(NPB)  = (/ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2 /)                                                  ! Array of DOF indices (pointers) that contribute to the angular velocity of the tower top / baseplate                                     (body B) in the inertia frame.
+PN  = [ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2, DOF_Yaw ]  # Array of DOF indices (pointers) that contribute to the angular velocity of the nacelle                                                   (body N) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: PR(NPR)  = (/ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2, DOF_Yaw, DOF_RFrl /)                               ! Array of DOF indices (pointers) that contribute to the angular velocity of the structure that furls with the rotor (not including rotor) (body R) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: PL(NPL)  = (/ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2, DOF_Yaw, DOF_RFrl, DOF_GeAz, DOF_DrTr /)           ! Array of DOF indices (pointers) that contribute to the angular velocity of the low-speed shaft                                           (body L) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: PG(NPG)  = (/ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2, DOF_Yaw, DOF_RFrl, DOF_GeAz /)                     ! Array of DOF indices (pointers) that contribute to the angular velocity of the generator                                                 (body G) in the inertia frame.
+#    INTEGER(IntKi), PARAMETER        :: PA(NPA)  = (/ DOF_R, DOF_P, DOF_Y, DOF_TFA1, DOF_TSS1, DOF_TFA2, DOF_TSS2, DOF_Yaw, DOF_TFrl /)                               ! Array of DOF indices (pointers) that contribute to the angular velocity of the tail                                                      (body A) in the inertia frame.
+
+
 
 def fitShapeFunction(x_bar, phi, exp=None, scale=True, plot=None):
     """ 
@@ -112,13 +207,103 @@ def SHP(Fract, FlexL, ModShpAry, Deriv):
     return shp
 
 
+def getEDClass(class_or_filename):
+    """
+    Return ElastoDyn instance of FileCl
+    INPUT: either
+       - an instance of FileCl, as returned by reading the file, ED = weio.read(ED_filename)
+       - a filepath to a ElastoDyn input file
+       - a filepath to a main OpenFAST input file
+    """
+    if hasattr(class_or_filename,'startswith'): # if string
+        ED = FASTInputFile(class_or_filename)
+        if 'EDFile' in ED.keys(): # User provided a .fst file...
+            parentDir=os.path.dirname(class_or_filename)
+            EDfilename = os.path.join(parentDir, ED['EDFile'].replace('"',''))
+            ED = FASTInputFile(EDfilename)
+    else:
+        ED = class_or_filename
+    return ED
+
+
+
+def ED_Parameters(fstFilename, split=False):
+
+    fst = FASTInputFile(fstFilename)
+    if 'EDFile' in fst.keys(): # User provided a .fst file...
+        parentDir=os.path.dirname(fstFilename)
+        EDfilename = os.path.join(parentDir, fst['EDFile'].replace('"',''))
+        ED = getEDClass(EDfilename)
+    else:
+        raise NotImplementedError()
+
+    prot, pbld, phub = rotorParameters(ED)
+    ptwr = towerParameters(ED, gravity=fst['Gravity'], RotMass=prot['RotMass'])
+
+    #pbld[0] = bladeDerivedParameters(pbld[0], inertiaAtBladeRoot=True)
+    #ptwr = towerDerivedParameters(ptwr)
+
+    # --- Platform
+    pptfm={}
+    pptfm['PtfmRefzt'] = ED['PtfmRefzt']
+    pptfm['PtfmCMxt'] = ED['PtfmCMxt']
+    pptfm['PtfmCMyt'] = ED['PtfmCMyt']
+
+
+    pmisc = {}
+    pmisc['rZT0zt']    = ED['TowerBsHt'] - ED['PtfmRefzt'] # zt-component of position vector rZT0.
+    pmisc['RefTwrHt']  = ED['TowerHt']   - ED['PtfmRefzt'] # Vertical distance between ElastoDyn's undisplaced tower height (variable TowerHt) and ElastoDyn's inertia frame reference point (variable PtfmRef).
+    pmisc['rZYzt']     = ED['PtfmCMzt'] - ED['PtfmRefzt']
+
+
+    # --- Nacelle
+    pnac = {}
+    pnac['NacCMxn'] = ED['NacCMxn']
+    pnac['NacCMyn'] = ED['NacCMyn']
+    pnac['NacCMzn'] = ED['NacCMzn']
+
+    # --- Generator
+    pgen={}
+
+    # --- Shaft
+    psft={}
+
+    # Calculate the turbine mass:
+    #ptwr['TurbMass']  = ptwr['TwrTpMass'] + ptwr['TwrMass'];
+    p=dict()
+    if not split:
+        p.update(pmisc)
+        p.update(pptfm)
+        p.update(ptwr)
+        p.update(pnac)
+        p.update(pgen)
+        p.update(psft)
+        p.update(phub)
+        p.update(prot)
+        p.update(pbld[0])
+        return p
+    else:
+        p['misc'] = pmisc
+        p['ptfm'] = pptfm
+        p['twr']  = ptwr
+        p['nac']  = pnac
+        p['gen']  = pgen
+        p['sft']  = psft
+        p['hub']  = phub
+        p['rot']  = prot
+        p['bld']  = pbld
+        return p
+
+
+
+
 def rotorParameters(EDfilename, identicalBlades=True, pbld1=None):
     """ 
     Return rotor parameters computed like ElastoDyn
     p: rotor parametesr
     pbld: list of parameters for each blades.
     """
-    ED = FASTInputFile(EDfilename)
+    ED = getEDClass(EDfilename)
 
     if pbld1 is None:
         if identicalBlades:
@@ -159,11 +344,11 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
     from welib.yams.flexibility import polyshape
     from welib.yams.flexibility import GMBeam, GKBeam
     # --- Read inputs
-    ED      = FASTInputFile(EDfilename)
+    ED = getEDClass(EDfilename)
     try:
-        EDbld   = os.path.join(os.path.dirname(EDfilename), ED['BldFile({})'.format(ibld)].replace('"',''))
+        EDbld   = os.path.join(os.path.dirname(ED.filename), ED['BldFile({})'.format(ibld)].replace('"',''))
     except:
-        EDbld   = os.path.join(os.path.dirname(EDfilename), ED['BldFile{}'.format(ibld)].replace('"',''))
+        EDbld   = os.path.join(os.path.dirname(ED.filename), ED['BldFile{}'.format(ibld)].replace('"',''))
     bld     = FASTInputFile(EDbld)
     bldProp = bld.toDataFrame()
 
@@ -187,17 +372,17 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
 
     # --- Interpolate the blade properties to this discretization:
     p['RNodesNorm'] = p['RNodes']/p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
-    p['s_span'] = np.concatenate(([0], p['RNodesNorm'], [1]))*p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
-    p['s_span_norm'] = p['s_span']/p['BldFlexL']
+    p['Bl_s_span'] = np.concatenate(([0], p['RNodesNorm'], [1]))*p['BldFlexL'];  # Normalized radius to analysis nodes relative to hub ( -1 < RNodesNorm(:) < 1 )
+    p['Bl_s_span_norm'] = p['Bl_s_span']/p['BldFlexL']
     p['BlFract']= bldProp['BlFract_[-]'].values
     StrcTwst    = bldProp['StrcTwst_[deg]'].values
     p['ThetaS']  = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['StrcTwst_[deg]']) 
     p['MassB']   = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
     p['StiffBF'] = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
     p['StiffBE'] = np.interp(p['RNodesNorm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
-    p['m_full']    = np.interp(p['s_span_norm'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
-    p['EI_F_full'] = np.interp(p['s_span_norm'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
-    p['EI_E_full'] = np.interp(p['s_span_norm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
+    p['m_full']    = np.interp(p['Bl_s_span_norm'], p['BlFract'], bldProp['BMassDen_[kg/m]'])                     ;
+    p['EI_F_full'] = np.interp(p['Bl_s_span_norm'], p['BlFract'], bldProp['FlpStff_[Nm^2]'])
+    p['EI_E_full'] = np.interp(p['Bl_s_span_norm'], p['BlFract'], bldProp['EdgStff_[Nm^2]'])
     p['ThetaS']  = np.concatenate( ([StrcTwst[0]], p['ThetaS'] , [StrcTwst[-1]]) )
     # Set the blade damping and stiffness tuner
     try:
@@ -248,9 +433,9 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
 
     # Shape functions and derivatives at all nodes and tip&root (2 additional points)
     exp = np.arange(2,7)
-    p['ShapeF1_full'], p['dShapeF1_full'],p['ddShapeF1_full'] = polyshape(p['s_span'], coeff=p['BldFl1Sh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
-    p['ShapeF2_full'], p['dShapeF2_full'],p['ddShapeF2_full'] = polyshape(p['s_span'], coeff=p['BldFl2Sh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
-    p['ShapeE1_full'], p['dShapeE1_full'],p['ddShapeE1_full'] = polyshape(p['s_span'], coeff=p['BldEdgSh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
+    p['ShapeF1_full'], p['dShapeF1_full'],p['ddShapeF1_full'] = polyshape(p['Bl_s_span'], coeff=p['BldFl1Sh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
+    p['ShapeF2_full'], p['dShapeF2_full'],p['ddShapeF2_full'] = polyshape(p['Bl_s_span'], coeff=p['BldFl2Sh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
+    p['ShapeE1_full'], p['dShapeE1_full'],p['ddShapeE1_full'] = polyshape(p['Bl_s_span'], coeff=p['BldEdgSh'], exp=exp, x_max=p['BldFlexL'], doscale=False)
 
     # Integrate to find the generalized mass of the blade (including tip mass effects).
     #   Ignore the cross-correlation terms of MBF (i.e. MBF(i,j) where i ~= j) since these terms will never be used.
@@ -387,12 +572,13 @@ def bladeParameters(EDfilename, ibld=1, RotSpeed=1, AdjBlMs=None):
         p['K'][j][idir,:]  = p['ddShape'+name+'_full']
 
     # --- Parameters consistent with "YAMS" flexibility module
+    p['s_span'] = p['Bl_s_span']
     p['m'] = p['m_full']
     p['EI'] = np.zeros((3,nNodes))
     p['EI'][0,:] = p['EI_F_full']
     p['EI'][1,:] = p['EI_E_full']
 
-    p['s_G0'] = np.zeros((3, len(p['s_span'])))
+    p['s_G0'] = np.zeros((3, len(p['Bl_s_span'])))
     p['s_G0'][2,:] = p['s_span']  # TODO add hub radius
 
     #KK0 = GKBeam(s_span, EI, PhiK, bOrth=False)
@@ -533,8 +719,8 @@ def towerParameters(EDfilename, gravity, RotMass=None, noInertialCouplings=True)
     """
     from welib.yams.flexibility import polyshape
     # --- Read inputs
-    ED      = FASTInputFile(EDfilename)
-    EDtwr   = os.path.join(os.path.dirname(EDfilename), ED['TwrFile'].replace('"',''))
+    ED = getEDClass(EDfilename)
+    EDtwr   = os.path.join(os.path.dirname(ED.filename), ED['TwrFile'].replace('"',''))
     twr     = FASTInputFile(EDtwr)
     twrProp = twr.toDataFrame()
     n = ED['TwrNodes']
@@ -553,16 +739,16 @@ def towerParameters(EDfilename, gravity, RotMass=None, noInertialCouplings=True)
     p['DHNodes'] = np.ones(n)*p['TwrFlexL']/n
     p['HNodes']     = twr_fract * p['TwrFlexL']  # NOTE: we don't add the TowerBsHt!
     p['HNodesNorm'] = p['HNodes']/p['TwrFlexL']
-    p['s_span'] = np.concatenate(([0], p['HNodesNorm'], [1]))*p['TwrFlexL']; # Midpoints + 0 and L
-    p['s_span_norm'] = p['s_span']/p['TwrFlexL']
+    p['Twr_s_span'] = np.concatenate(([0], p['HNodesNorm'], [1]))*p['TwrFlexL']; # Midpoints + 0 and L
+    p['Twr_s_span_norm'] = p['Twr_s_span']/p['TwrFlexL']
     # --- Interpolate properties to new nodal positions
     HtFract= twrProp['HtFract_[-]'].values
     p['MassT']     = np.interp(p['HNodesNorm'], HtFract, twrProp['TMassDen_[kg/m]'])     ;
     p['StiffTFA']  = np.interp(p['HNodesNorm'], HtFract, twrProp['TwFAStif_[Nm^2]'])     ;
     p['StiffTSS']  = np.interp(p['HNodesNorm'], HtFract, twrProp['TwSSStif_[Nm^2]'])     ;
-    p['m_full']    = np.interp(p['s_span_norm'],HtFract, twrProp['TMassDen_[kg/m]'])     ;
-    p['EI_FA_full'] = np.interp(p['s_span_norm'], HtFract, twrProp['TwFAStif_[Nm^2]'])
-    p['EI_SS_full'] = np.interp(p['s_span_norm'], HtFract, twrProp['TwSSStif_[Nm^2]'])
+    p['m_full']    = np.interp(p['Twr_s_span_norm'],HtFract, twrProp['TMassDen_[kg/m]'])     ;
+    p['EI_FA_full'] = np.interp(p['Twr_s_span_norm'], HtFract, twrProp['TwFAStif_[Nm^2]'])
+    p['EI_SS_full'] = np.interp(p['Twr_s_span_norm'], HtFract, twrProp['TwSSStif_[Nm^2]'])
     # Shape coefficients
     p['TwFAM1Sh'] = [twr[c] for c in ['TwFAM1Sh(2)', 'TwFAM1Sh(3)', 'TwFAM1Sh(4)', 'TwFAM1Sh(5)', 'TwFAM1Sh(6)']]
     p['TwFAM2Sh'] = [twr[c] for c in ['TwFAM2Sh(2)', 'TwFAM2Sh(3)', 'TwFAM2Sh(4)', 'TwFAM2Sh(5)', 'TwFAM2Sh(6)']]
@@ -590,10 +776,10 @@ def towerParameters(EDfilename, gravity, RotMass=None, noInertialCouplings=True)
     # --- Tower shape functions (all derivatives) for mode 1&2 FA and SS
     p['TwrFASF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
     p['TwrSSSF'] = np.zeros((nModesPerDir, n+2, nDeriv)) # NOTE: full (+2)
-    p['TwrFASF'][0,:,0],p['TwrFASF'][0,:,1],p['TwrFASF'][0,:,2] = polyshape(p['s_span'], coeff=p['TwFAM1Sh'], x_max=p['TwrFlexL'], doscale=False)
-    p['TwrFASF'][1,:,0],p['TwrFASF'][1,:,1],p['TwrFASF'][1,:,2] = polyshape(p['s_span'], coeff=p['TwFAM2Sh'], x_max=p['TwrFlexL'], doscale=False)
-    p['TwrSSSF'][0,:,0],p['TwrSSSF'][0,:,1],p['TwrSSSF'][0,:,2] = polyshape(p['s_span'], coeff=p['TwSSM1Sh'], x_max=p['TwrFlexL'], doscale=False)
-    p['TwrSSSF'][1,:,0],p['TwrSSSF'][1,:,1],p['TwrSSSF'][1,:,2] = polyshape(p['s_span'], coeff=p['TwSSM2Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrFASF'][0,:,0],p['TwrFASF'][0,:,1],p['TwrFASF'][0,:,2] = polyshape(p['Twr_s_span'], coeff=p['TwFAM1Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrFASF'][1,:,0],p['TwrFASF'][1,:,1],p['TwrFASF'][1,:,2] = polyshape(p['Twr_s_span'], coeff=p['TwFAM2Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrSSSF'][0,:,0],p['TwrSSSF'][0,:,1],p['TwrSSSF'][0,:,2] = polyshape(p['Twr_s_span'], coeff=p['TwSSM1Sh'], x_max=p['TwrFlexL'], doscale=False)
+    p['TwrSSSF'][1,:,0],p['TwrSSSF'][1,:,1],p['TwrSSSF'][1,:,2] = polyshape(p['Twr_s_span'], coeff=p['TwSSM2Sh'], x_max=p['TwrFlexL'], doscale=False)
     
     # --- Generalized mass
     p['MTFA'] = np.zeros((2, 2))
@@ -697,13 +883,14 @@ def towerParameters(EDfilename, gravity, RotMass=None, noInertialCouplings=True)
             p['K'][j][idir,:] = p['Twr{}SF'.format(name)][jm, :, 2]
             j+=1
     # --- Parameters consistent with "YAMS" flexibility module
+    p['s_span'] = p['Twr_s_span']
     p['m'] = p['m_full']
     p['EI'] = np.zeros((3,n+2))
     p['EI'][0,:] = p['EI_FA_full']
     p['EI'][1,:] = p['EI_SS_full']
 
-    p['s_G0'] = np.zeros((3, len(p['s_span'])))
-    p['s_G0'][2,:] = p['s_span']  # TODO add hub radius
+    p['s_G0'] = np.zeros((3, len(p['Twr_s_span'])))
+    p['s_G0'][2,:] = p['Twr_s_span']  # TODO add hub radius
 #     for k,v in p.items():
 #         if hasattr(v, '__len__'):
 #             v = np.asarray(v)
@@ -800,6 +987,1011 @@ def towerDerivedParameters(p):
     p['Cr'][2,0]= -sum((p['HNodes'])*np.squeeze(p['TwrSSSF'][0, 1:-1, 0])*p['TElmntMass'][:])
     p['Cr'][3,0]= -sum((p['HNodes'])*np.squeeze(p['TwrSSSF'][1, 1:-1, 0])*p['TElmntMass'][:])
     return p
+
+
+
+def ED_qDict2q(qDict):
+    """ 
+    From a dictionary of values, return the flat array of degrees of freedom ordered liked ElastoDyn.
+    The dictionary is a convenient way to just specify few DOFs
+    Example:
+       qDict={'Hv':0}
+    """
+    q = np.zeros(ED_MaxDOFs)
+
+    qMAP = {'Sg':DOF_Sg,'Sw':DOF_Sw,'Hv':DOF_Hv, 'R':DOF_R, 'P':DOF_P, 'Y':DOF_Y}
+    qMAP.update({'TFA1':DOF_TFA1, 'TSS1':DOF_TSS1, 'TFA2':DOF_TFA2, 'TSS2':DOF_TSS2})
+    qMAP.update({'Yaw':DOF_Yaw, 'RFrl':DOF_RFrl, 'GeAz':DOF_GeAz, 'DrTr':DOF_DrTr})
+
+    for k,v in qDict.items():
+        if k not in qMAP.keys():
+            raise Exception('Key {} not supported by qMAP'.format(k))
+        q[qMAP[k]] = v
+    return q
+
+
+def EDVec2IEC(v, offset=None):
+    """ Convert a vector/array of coordinates from ElastoDyn coordinate system to IEC"""
+    if offset is None:
+        offset = np.array([0,0,0])
+    v = np.asarray(v)
+    if len(v.shape)==1:
+        vIEC = np.array([ v[0]+offset[0], -v[2]+offset[1],  v[1]+offset[2]])
+    elif len(v.shape)==2 and v.shape[1]==3:
+        vIEC = np.column_stack( [ v[:,0]+offset[0], -v[:,2]+offset[1],  v[:,1]+offset[2]] )
+    else:
+        raise NotImplementedError()
+    return vIEC
+
+def EDSysVectoIECDCM(a1, a2, a3):
+    """ Return DCM from ElastoDyn coordsys vectors (in a different coordinate system)"""
+    R_g2t = np.zeros((3,3))
+    R_g2t[:,0] = [ a1[0], -a3[0],  a2[0]]
+    R_g2t[:,1] = [-a1[2],  a3[2], -a2[2]]
+    R_g2t[:,2] = [ a1[1], -a3[1],  a2[1]]
+    return R_g2t
+
+def EDSysVecRot(R,z1,z2,z3):
+    """ 
+    Apply transformation matrix to vectors to obtain other vectors
+    """
+    a1 = R[0,0]*z1 + R[0,1]*z2 + R[0,2]*z3
+    a2 = R[1,0]*z1 + R[1,1]*z2 + R[1,2]*z3
+    a3 = R[2,0]*z1 + R[2,1]*z2 + R[2,2]*z3
+    return a1, a2 ,a3
+
+
+
+
+def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None):
+    """ 
+    Return ElastoDyn coordinate systems in ElastoDyn and IEC convention:
+
+    See ElastoDyn line 5978 
+    See ElastoDyn line 1678
+
+    INPUTS:
+     - q 
+       OR
+     - qDict
+    """
+    # 
+    if qDict is not None:
+        q = ED_qDict2q(qDict)
+
+
+    from welib.yams.rotations import smallRot_OF
+    # --- Inertial frame coordinate system:
+    z1 = np.array([ 1, 0, 0]) # Vector / direction z1 (=  xi from the IEC coord. system).
+    z2 = np.array([ 0, 1, 0]) # Vector / direction z2 (=  zi from the IEC coord. system).
+    z3 = np.array([ 0, 0, 1]) # Vector / direction z3 (= -yi from the IEC coord. system).
+    R_g2g = np.eye(3)
+    # --- Tower base / platform coordinate system:
+    # Vector / direction a1 (=  xt from the IEC coord. system)
+    # Vector / direction a2 (=  zt from the IEC coord. system)
+    # Vector / direction a3 (= -yt from the IEC coord. system)
+    R = smallRot_OF(q[DOF_R], q[DOF_Y], -q[DOF_P])
+    a1, a2, a3 = EDSysVecRot(R, z1, z2, z3)
+    # IEC Coordinate system
+    R_g2t = EDSysVectoIECDCM(a1, a2, a3)
+
+    # --- Tower element-fixed coordinate system:
+    # Vector / direction t1 for tower node J (=  Lxt from the IEC coord. system).
+    # Vector / direction t2 for tower node J (=  Lzt from the IEC coord. system).
+    # Vector / direction t3 for tower node J (= -Lyt from the IEC coord. system).
+    if TwrFASF is not None:
+        TwrNodes = TwrFASF.shape[1] - 2
+        t1 = np.zeros((TwrNodes,3))
+        t2 = np.zeros((TwrNodes,3))
+        t3 = np.zeros((TwrNodes,3))
+        R_g2te = [] # List of transformations from global to tower elements
+        for j in range(TwrNodes):
+            # Slope V:    Mode 1   V             Mode 2   V 
+            ThetaFA = -TwrFASF[0,j,1]*q[DOF_TFA1] - TwrFASF[1,j,1]*q[DOF_TFA2]
+            ThetaSS =  TwrSSSF[0,j,1]*q[DOF_TSS1] + TwrSSSF[1,j,1]*q[DOF_TSS2]
+            R = smallRot_OF(ThetaSS, 0, ThetaFA)
+            t1[j,:], t2[j,:], t3[j,:] = EDSysVecRot(R, a1, a2, a3)
+            R_g2te.append(EDSysVectoIECDCM(t1[j,:], t2[j,:], t3[j,:])) 
+
+        # --- Tower-top / base plate coordinate system:
+        # Slope V:    Mode 1   V             Mode 2   V 
+        print('>>> Coupling coeffs FA', -TwrFASF[0,-1,1], -TwrFASF[0,-1,1])
+        print('>>> Coupling coeffs SS',  TwrSSSF[0,-1,1],  TwrSSSF[0,-1,1])
+        ThetaFA = -TwrFASF[0,-1,1]*q[DOF_TFA1] - TwrFASF[1,-1,1]*q[DOF_TFA2]
+        ThetaSS =  TwrSSSF[0,-1,1]*q[DOF_TSS1] + TwrSSSF[1,-1,1]*q[DOF_TSS2]
+        R = smallRot_OF(ThetaSS, 0, ThetaFA)
+        b1, b2, b3 = EDSysVecRot(R, a1, a2, a3)
+        R_g2b = EDSysVectoIECDCM(b1, b2, b3)
+    else:
+        t1, t2, t3 = None, None, None
+        R_g2te = None
+
+        b1, b2, b3  = a1, a2, a3
+        R_g2b = R_g2t
+
+    # --- Nacelle / yaw coordinate system:
+    CNacYaw  = np.cos(q[DOF_Yaw])
+    SNacYaw  = np.sin(q[DOF_Yaw])
+    d1 = CNacYaw*b1 - SNacYaw*b3     # Vector / direction d1 (=  xn from the IEC coord. system).
+    d2 = b2                          # Vector / direction d2 (=  zn from the IEC coord. system).
+    d3 = SNacYaw*b1 + CNacYaw*b3     # Vector / direction d3 (= -yn from the IEC coord. system).
+    R_g2n = EDSysVectoIECDCM(d1, d2, d3)
+
+    # --- To be continued
+    # ...
+    #     ! Rotor-furl coordinate system:
+    # 
+    #    CRotFurl = COS( x%QT(DOF_RFrl) )
+    #    SRotFurl = SIN( x%QT(DOF_RFrl) )
+    # 
+    #    CoordSys%rf1 = ( (   1.0 - p%CRFrlSkw2*p%CRFrlTlt2 )*CRotFurl   + p%CRFrlSkw2*p%CRFrlTlt2          )*CoordSys%d1 &
+    #                 + ( p%CRFrlSkew*p%CSRFrlTlt*( 1.0 -     CRotFurl ) - p%SRFrlSkew*p%CRFrlTilt*SRotFurl )*CoordSys%d2 &
+    #                 + ( p%CSRFrlSkw*p%CRFrlTlt2*( CRotFurl - 1.0     ) -             p%SRFrlTilt*SRotFurl )*CoordSys%d3
+    #    CoordSys%rf2 = ( p%CRFrlSkew*p%CSRFrlTlt*( 1.0 -     CRotFurl ) + p%SRFrlSkew*p%CRFrlTilt*SRotFurl )*CoordSys%d1 &
+    #                 + (             p%CRFrlTlt2*            CRotFurl   +             p%SRFrlTlt2          )*CoordSys%d2 &
+    #                 + ( p%SRFrlSkew*p%CSRFrlTlt*( CRotFurl - 1.0     ) + p%CRFrlSkew*p%CRFrlTilt*SRotFurl )*CoordSys%d3
+    #    CoordSys%rf3 = ( p%CSRFrlSkw*p%CRFrlTlt2*( CRotFurl - 1.0     ) +             p%SRFrlTilt*SRotFurl )*CoordSys%d1 &
+    #                 + ( p%SRFrlSkew*p%CSRFrlTlt*( CRotFurl - 1.0     ) - p%CRFrlSkew*p%CRFrlTilt*SRotFurl )*CoordSys%d2 &
+    #                 + ( (   1.0 - p%SRFrlSkw2*p%CRFrlTlt2 )*CRotFurl   + p%SRFrlSkw2*p%CRFrlTlt2          )*CoordSys%d3
+    #    CoordSys%rfa = p%CRFrlSkew*p%CRFrlTilt*CoordSys%d1 + p%SRFrlTilt*CoordSys%d2 - p%SRFrlSkew*p%CRFrlTilt*CoordSys%d3
+    # 
+    # 
+    #       ! Shaft coordinate system:
+    #    CoordSys%c1 =  p%CShftSkew*p%CShftTilt*CoordSys%rf1 + p%SShftTilt*CoordSys%rf2 - p%SShftSkew*p%CShftTilt*CoordSys%rf3  ! Vector / direction c1 (=  xs from the IEC coord. system).
+    #    CoordSys%c2 = -p%CShftSkew*p%SShftTilt*CoordSys%rf1 + p%CShftTilt*CoordSys%rf2 + p%SShftSkew*p%SShftTilt*CoordSys%rf3  ! Vector / direction c2 (=  zs from the IEC coord. system).
+    #    CoordSys%c3 =  p%SShftSkew*            CoordSys%rf1                            + p%CShftSkew*            CoordSys%rf3  ! Vector / direction c3 (= -ys from the IEC coord. system).
+    #       ! Azimuth coordinate system:
+    #    CAzimuth = COS( x%QT(DOF_DrTr) + x%QT(DOF_GeAz) )
+    #    SAzimuth = SIN( x%QT(DOF_DrTr) + x%QT(DOF_GeAz) )
+    #    CoordSys%e1 =  CoordSys%c1                                  ! Vector / direction e1 (=  xa from the IEC coord. system).
+    #    CoordSys%e2 =  CAzimuth*CoordSys%c2 + SAzimuth*CoordSys%c3  ! Vector / direction e2 (=  ya from the IEC coord. system).
+    #    CoordSys%e3 = -SAzimuth*CoordSys%c2 + CAzimuth*CoordSys%c3  ! Vector / direction e3 (=  za from the IEC coord. system).
+    #       ! Teeter coordinate system:
+    #       ! Lets define TeetAng, which is the current teeter angle (= QT(DOF_Teet) for
+    #       !   2-blader or 0 for 3-blader) and is used in place of QT(DOF_Teet)
+    #       !   throughout SUBROUTINE RtHS().  Doing it this way, we can run the same
+    #       !   equations of motion for both the 2 and 3-blader configurations even
+    #       !   though a 3-blader does not have a teetering DOF.
+    #    IF ( p%NumBl == 2 )  THEN ! 2-blader
+    #       dat%TeetAng    = x%QT (DOF_Teet)
+    #       dat%TeetAngVel = x%QDT(DOF_Teet)
+    #    ELSE                    ! 3-blader
+    #       dat%TeetAng    = 0.0  ! Teeter is not an available DOF for a 3-blader
+    #       dat%TeetAngVel = 0.0  ! Teeter is not an available DOF for a 3-blader
+    #    ENDIF
+    #    CTeetAng = COS( dat%TeetAng )
+    #    STeetAng = SIN( dat%TeetAng )
+    #    CoordSys%f1 = CTeetAng*CoordSys%e1 - STeetAng*CoordSys%e3       ! Vector / direction f1.
+    #    CoordSys%f2 = CoordSys%e2                                       ! Vector / direction f2.
+    #    CoordSys%f3 = STeetAng*CoordSys%e1 + CTeetAng*CoordSys%e3       ! Vector / direction f3.
+    #       ! Hub / delta-3 coordinate system:
+    #    CoordSys%g1 =  CoordSys%f1                                      ! Vector / direction g1 (=  xh from the IEC coord. system).
+    #    CoordSys%g2 =  p%CosDel3*CoordSys%f2 + p%SinDel3*CoordSys%f3    ! Vector / direction g2 (=  yh from the IEC coord. system).
+    #    CoordSys%g3 = -p%SinDel3*CoordSys%f2 + p%CosDel3*CoordSys%f3    ! Vector / direction g3 (=  zh from the IEC coord. system).
+    #    DO K = 1,p%NumBl ! Loop through all blades
+    #       ! Hub (Prime) coordinate system rotated to match blade K.
+    #        gRotAng = p%TwoPiNB*(K-1)
+    #       CgRotAng = COS( gRotAng )
+    #       SgRotAng = SIN( gRotAng )
+    #       g1Prime =  CoordSys%g1
+    #       g2Prime =  CgRotAng*CoordSys%g2 + SgRotAng*CoordSys%g3
+    #       g3Prime = -SgRotAng*CoordSys%g2 + CgRotAng*CoordSys%g3
+    #       ! Coned coordinate system:
+    #       CoordSys%i1(K,:) = p%CosPreC(K)*g1Prime - p%SinPreC(K)*g3Prime  ! i1(K,:) = vector / direction i1 for blade K (=  xcK from the IEC coord. system).
+    #       CoordSys%i2(K,:) = g2Prime                                      ! i2(K,:) = vector / direction i2 for blade K (=  ycK from the IEC coord. system).
+    #       CoordSys%i3(K,:) = p%SinPreC(K)*g1Prime + p%CosPreC(K)*g3Prime  ! i3(K,:) = vector / direction i3 for blade K (=  zcK from the IEC coord. system).
+    #       ! Blade / pitched coordinate system:
+    #       CosPitch = COS( REAL(BlPitch(K),R8Ki) )
+    #       SinPitch = SIN( REAL(BlPitch(K),R8Ki) )
+    #       CoordSys%j1(K,:) = CosPitch*CoordSys%i1(K,:) - SinPitch*CoordSys%i2(K,:)      ! j1(K,:) = vector / direction j1 for blade K (=  xbK from the IEC coord. system).
+    #       CoordSys%j2(K,:) = SinPitch*CoordSys%i1(K,:) + CosPitch*CoordSys%i2(K,:)      ! j2(K,:) = vector / direction j2 for blade K (=  ybK from the IEC coord. system).
+    #       CoordSys%j3(K,:) = CoordSys%i3(K,:)                                           ! j3(K,:) = vector / direction j3 for blade K (=  zbK from the IEC coord. system).
+    #       DO J = 0,p%TipNode ! Loop through the blade nodes / elements
+    #       ! Blade coordinate system aligned with local structural axes (not element fixed):
+    #          Lj1 = p%CThetaS(K,J)*CoordSys%j1(K,:) - p%SThetaS(K,J)*CoordSys%j2(K,:)  ! vector / direction Lj1 at node J for blade K
+    #          Lj2 = p%SThetaS(K,J)*CoordSys%j1(K,:) + p%CThetaS(K,J)*CoordSys%j2(K,:)  ! vector / direction Lj2 at node J for blade K
+    #          Lj3 = CoordSys%j3(K,:)                                                   ! vector / direction Lj3 at node J for blade K
+    #       ! Blade element-fixed coordinate system aligned with local structural axes:
+    #          ThetaOoP =   p%TwistedSF(K,1,1,J,1)*x%QT( DOF_BF(K,1) ) &
+    #                     + p%TwistedSF(K,1,2,J,1)*x%QT( DOF_BF(K,2) ) &
+    #                     + p%TwistedSF(K,1,3,J,1)*x%QT( DOF_BE(K,1) )
+    #          ThetaIP  = - p%TwistedSF(K,2,1,J,1)*x%QT( DOF_BF(K,1) ) &
+    #                     - p%TwistedSF(K,2,2,J,1)*x%QT( DOF_BF(K,2) ) &
+    #                     - p%TwistedSF(K,2,3,J,1)*x%QT( DOF_BE(K,1) )
+    #          ThetaLxb = p%CThetaS(K,J)*ThetaIP - p%SThetaS(K,J)*ThetaOoP
+    #          ThetaLyb = p%SThetaS(K,J)*ThetaIP + p%CThetaS(K,J)*ThetaOoP
+    #          CALL SmllRotTrans( 'blade deflection (ElastoDyn SetCoordSy)', ThetaLxb, ThetaLyb, 0.0_R8Ki, TransMat, TRIM(Num2LStr(t))//' s', ErrStat2, ErrMsg2 ) ! Get the transformation matrix, TransMat, from blade coordinate system aligned with local structural axes (not element fixed) to blade element-fixed coordinate system aligned with local structural axes.
+    #          CoordSys%n1(K,J,:) = TransMat(1,1)*Lj1 + TransMat(1,2)*Lj2 + TransMat(1,3)*Lj3   ! Vector / direction n1 for node J of blade K (= LxbK from the IEC coord. system).
+    #          CoordSys%n2(K,J,:) = TransMat(2,1)*Lj1 + TransMat(2,2)*Lj2 + TransMat(2,3)*Lj3   ! Vector / direction n2 for node J of blade K (= LybK from the IEC coord. system).
+    #          CoordSys%n3(K,J,:) = TransMat(3,1)*Lj1 + TransMat(3,2)*Lj2 + TransMat(3,3)*Lj3   ! Vector / direction n3 for node J of blade K (= LzbK from the IEC coord. system).
+    #       ! skip these next CoordSys variables at the root and the tip; they are required only for AD14:
+    #          if (j == 0 .or. j==p%TipNode) cycle  
+    #       ! Blade element-fixed coordinate system used for calculating and returning
+    #       !    aerodynamics loads:
+    #       ! This coordinate system is rotated about positive n3 by the angle
+    #       !    BlPitch(K) + ThetaS(K,J) and is coincident with the i-vector triad
+    #       !    when the blade is undeflected.
+    #          CPitPTwstS = CosPitch*p%CThetaS(K,J) - SinPitch*p%SThetaS(K,J)  ! = COS( BlPitch(K) + ThetaS(K,J) ) found using the sum of angles formulae of cosine.
+    #          SPitPTwstS = CosPitch*p%SThetaS(K,J) + SinPitch*p%CThetaS(K,J)  ! = SIN( BlPitch(K) + ThetaS(K,J) ) found using the sum of angles formulae of   sine.
+    #          CoordSys%m1(K,J,:)  =  CPitPTwstS*CoordSys%n1(K,J,:) + SPitPTwstS*CoordSys%n2(K,J,:)   ! m1(K,J,:) = vector / direction m1 for node J of blade K (used to calc. and return aerodynamic loads from AeroDyn).
+    #          CoordSys%m2(K,J,:)  = -SPitPTwstS*CoordSys%n1(K,J,:) + CPitPTwstS*CoordSys%n2(K,J,:)   ! m2(K,J,:) = vector / direction m2 for node J of blade K (used to calc. and return aerodynamic loads from AeroDyn).
+    #          CoordSys%m3(K,J,:)  =  CoordSys%n3(K,J,:)                                              ! m3(K,J,:) = vector / direction m3 for node J of blade K (used to calc. and return aerodynamic loads from AeroDyn).
+    #       ! Calculate the trailing edge coordinate system used in noise calculations.
+    #       ! This coordinate system is blade element-fixed and oriented with the local
+    #       !   aerodynamic axes (te2 points toward trailing edge, te1 points toward
+    #       !   suction surface):
+    #          CPitPTwstA = CosPitch*p%CAeroTwst(J) - SinPitch*p%SAeroTwst(J)  ! = COS( BlPitch(K) + AeroTwst(J) ) found using the sum of angles formulae of cosine.
+    #          SPitPTwstA = CosPitch*p%SAeroTwst(J) + SinPitch*p%CAeroTwst(J)  ! = SIN( BlPitch(K) + AeroTwst(J) ) found using the sum of angles formulae of   sine.
+    #          CoordSys%te1(K,J,:) =  CPitPTwstA*CoordSys%m1(K,J,:) - SPitPTwstA*CoordSys%m2(K,J,:)   ! te1(K,J,:) = vector / direction te1 for node J of blade K (used to calc. noise and to calc. and return aerodynamic loads from AeroDyn).
+    #          CoordSys%te2(K,J,:) =  SPitPTwstA*CoordSys%m1(K,J,:) + CPitPTwstA*CoordSys%m2(K,J,:)   ! te2(K,J,:) = vector / direction te2 for node J of blade K (used to calc. noise and to calc. and return aerodynamic loads from AeroDyn).
+    #          CoordSys%te3(K,J,:) =  CoordSys%m3(K,J,:)                                              ! te3(K,J,:) = vector / direction te3 for node J of blade K (used to calc. noise and to calc. and return aerodynamic loads from AeroDyn).
+    #       ENDDO ! J - Blade nodes / elements
+    #    ENDDO ! K - Blades
+    #       ! Tail-furl coordinate system:
+    #    CTailFurl = COS( x%QT(DOF_TFrl) )
+    #    STailFurl = SIN( x%QT(DOF_TFrl) )
+    #    CoordSys%tf1 = ( ( 1.0 - p%CTFrlSkw2*p%CTFrlTlt2 )*CTailFurl  + p%CTFrlSkw2*p%CTFrlTlt2           )*CoordSys%d1 &
+    #                 + ( p%CTFrlSkew*p%CSTFrlTlt*(  1.0 - CTailFurl ) - p%STFrlSkew*p%CTFrlTilt*STailFurl )*CoordSys%d2 &
+    #                 + ( p%CSTFrlSkw*p%CTFrlTlt2*( CTailFurl - 1.0  ) -             p%STFrlTilt*STailFurl )*CoordSys%d3
+    #    CoordSys%tf2 = ( p%CTFrlSkew*p%CSTFrlTlt*(  1.0 - CTailFurl ) + p%STFrlSkew*p%CTFrlTilt*STailFurl )*CoordSys%d1 &
+    #                 + (             p%CTFrlTlt2*         CTailFurl +               p%STFrlTlt2           )*CoordSys%d2 &
+    #                 + ( p%STFrlSkew*p%CSTFrlTlt*( CTailFurl - 1.0  ) + p%CTFrlSkew*p%CTFrlTilt*STailFurl )*CoordSys%d3
+    #    CoordSys%tf3 = ( p%CSTFrlSkw*p%CTFrlTlt2*( CTailFurl - 1.0  ) +             p%STFrlTilt*STailFurl )*CoordSys%d1 &
+    #                 + ( p%STFrlSkew*p%CSTFrlTlt*( CTailFurl - 1.0  ) - p%CTFrlSkew*p%CTFrlTilt*STailFurl )*CoordSys%d2 &
+    #                 + ( ( 1.0 - p%STFrlSkw2*p%CTFrlTlt2 )*CTailFurl  + p%STFrlSkw2*p%CTFrlTlt2           )*CoordSys%d3
+    #    CoordSys%tfa = p%CTFrlSkew*p%CTFrlTilt*CoordSys%d1 + p%STFrlTilt*CoordSys%d2 - p%STFrlSkew*p%CTFrlTilt*CoordSys%d3
+    #     R_
+
+    CoordSys = dict()
+    # ED
+    CoordSys['z1'] = z1
+    CoordSys['z2'] = z2
+    CoordSys['z3'] = z3
+    CoordSys['a1'] = a1
+    CoordSys['a2'] = a2
+    CoordSys['a3'] = a3
+    CoordSys['t1'] = t1
+    CoordSys['t2'] = t2
+    CoordSys['t3'] = t3
+    CoordSys['d1'] = d1
+    CoordSys['d2'] = d2
+    CoordSys['d3'] = d3
+    # IEC
+    CoordSys['R_g2t']  = R_g2t
+    CoordSys['R_g2te'] = R_g2te # To tower elements
+    CoordSys['R_g2n']  = R_g2n  # To nacelle (including nacelle yaw)
+    # TODO
+    return CoordSys
+
+
+def ED_Positions(q=None, qDict=None, CoordSys=None, p=None, dat=None, IEC=None):
+    """ 
+    See ElastoDyn.f90 CalculatePositions
+    # !> This routine is used to calculate the positions stored in other states that are used in both the
+    # !! CalcOutput and CalcContStateDeriv routines.
+    # SUBROUTINE CalculatePositions( p, x, CoordSys, dat )
+    """
+    if qDict is not None:
+        QT = ED_qDict2q(qDict)
+    else:
+        QT = q
+
+    if dat is None:
+        dat = dict()
+    TTopNode=-1
+    # Define the position vectors between the various points on the wind turbine
+    #   that are not dependent on the distributed tower or blade parameters:
+    dat['rZ']    = QT[DOF_Sg]* CoordSys['z1'] + QT[DOF_Hv] * CoordSys['z2'] - QT[DOF_Sw]* CoordSys['z3']    # Position vector from inertia frame origin to platform reference (point Z).
+    dat['rZY']   = p['rZYzt']*  CoordSys['a2'] + p['PtfmCMxt']*CoordSys['a1'] - p['PtfmCMyt']*CoordSys['a3'] # Position vector from platform reference (point Z) to platform mass center (point Y).      
+    dat['rZT0']  = p['rZT0zt']* CoordSys['a2']                                                               # Position vector from platform reference (point Z) to tower base (point T(0))
+    dat['rZO']   = ( QT[DOF_TFA1] + QT[DOF_TFA2] )*CoordSys['a1'] # Position vector from platform reference (point Z) to tower-top / base plate (point O).
+    dat['rZO']   +=  ( p['RefTwrHt'] - 0.5*(      p['AxRedTFA'][0,0,TTopNode]*QT[DOF_TFA1]*QT[DOF_TFA1] \
+                                            +     p['AxRedTFA'][1,1,TTopNode]*QT[DOF_TFA2]*QT[DOF_TFA2] \
+                                            + 2.0*p['AxRedTFA'][0,1,TTopNode]*QT[DOF_TFA1]*QT[DOF_TFA2] \
+                                            +     p['AxRedTSS'][0,0,TTopNode]*QT[DOF_TSS1]*QT[DOF_TSS1] \
+                                            +     p['AxRedTSS'][1,1,TTopNode]*QT[DOF_TSS2]*QT[DOF_TSS2] \
+                                            + 2.0*p['AxRedTSS'][0,1,TTopNode]*QT[DOF_TSS1]*QT[DOF_TSS2] ))*CoordSys['a2'] 
+    dat['rZO']   +=  ( QT[DOF_TSS1] + QT[DOF_TSS2])*CoordSys['a3']
+    dat['rOU']   =   p['NacCMxn']*CoordSys['d1']  +  p['NacCMzn']  *CoordSys['d2']  -  p['NacCMyn']  *CoordSys['d3']  # Position vector from tower-top / base plate (point O) to nacelle center of mass (point U).
+#     dat['rOV']   = p['RFrlPnt_n(1)*CoordSys['d1  +  p['RFrlPnt_n(3)*CoordSys['d2  -  p['RFrlPnt_n(2)*CoordSys['d3                            ! Position vector from tower-top / base plate (point O) to specified point on rotor-furl axis (point V).
+#     dat['rVIMU'] =   p['rVIMUxn*CoordSys['rf1 +  p['rVIMUzn  *CoordSys['rf2 -   p['rVIMUyn *CoordSys['rf3                           ! Position vector from specified point on rotor-furl axis (point V) to nacelle IMU (point IMU).
+#     dat['rVD']   =     p['rVDxn*CoordSys['rf1 +    p['rVDzn  *CoordSys['rf2 -     p['rVDyn *CoordSys['rf3                           ! Position vector from specified point on rotor-furl axis (point V) to center of mass of structure that furls with the rotor (not including rotor) (point D).
+#     dat['rVP']   =     p['rVPxn*CoordSys['rf1 +    p['rVPzn  *CoordSys['rf2 -     p['rVPyn *CoordSys['rf3 + p['OverHang*CoordSys['c1  ! Position vector from specified point on rotor-furl axis (point V) to teeter pin (point P).
+#     dat['rPQ']   = -p['UndSling*CoordSys['g1                                                                                    ! Position vector from teeter pin (point P) to apex of rotation (point Q).
+#     dat['rQC']   =     p['HubCM*CoordSys['g1                                                                                    ! Position vector from apex of rotation (point Q) to hub center of mass (point C).
+#     dat['rOW']   = p['TFrlPnt_n(1)*CoordSys['d1  + p['TFrlPnt_n(3) *CoordSys['d2 -  p['TFrlPnt_n(2)*CoordSys['d3                             ! Position vector from tower-top / base plate (point O) to specified point on  tail-furl axis (point W).
+#     dat['rWI']   =     p['rWIxn*CoordSys['tf1 +      p['rWIzn*CoordSys['tf2 -     p['rWIyn*CoordSys['tf3                            ! Position vector from specified point on  tail-furl axis (point W) to tail boom center of mass     (point I).
+#     dat['rWJ']   =     p['rWJxn*CoordSys['tf1 +      p['rWJzn*CoordSys['tf2 -     p['rWJyn*CoordSys['tf3                            ! Position vector from specified point on  tail-furl axis (point W) to tail fin  center of mass     (point J).
+#     dat['rPC']   = dat['rPQ'] + dat['rQC']                                                                                # Position vector from teeter pin (point P) to hub center of mass (point C).
+    dat['rT0O']  = dat['rZO'] - dat['rZT0']   # Position vector from the tower base (point T(0)) to tower-top / base plate (point O).
+    dat['rO']    = dat['rZ']  + dat['rZO']    # Position vector from inertial frame origin to tower-top / base plate (point O).
+#     dat['rV']    = dat['rO']  + dat['rOV']                                                                                # Position vector from inertial frame origin to specified point on rotor-furl axis (point V)
+#     !dat['rP']   = dat['rO']  + dat['rOV'] + dat['rVP']                                                                   # Position vector from inertial frame origin to teeter pin (point P).
+#     dat['rP']    = dat['rV']  + dat['rVP']                                                                                # Position vector from inertial frame origin to teeter pin (point P).
+#     dat['rQ']    = dat['rP']  + dat['rPQ']                                                                                # Position vector from inertial frame origin to apex of rotation (point Q).
+#     dat['rJ']    = dat['rO']  + dat['rOW']+ dat['rWJ']                                                                    # Position vector from inertial frame origin to tail fin center of mass (point J).'
+# 
+# 
+#     DO K = 1,p['NumBl ! Loop through all blades
+#        ! Calculate the position vector of the tip:
+#        dat['rS0S(:,K,p['TipNode) = ( p['TwistedSF(K,1,1,p['TipNode,0)*QT( DOF_BF(K,1) ) &                                       ! Position vector from the blade root (point S(0)) to the blade tip (point S(p['BldFlexL)).
+#                                      + p['TwistedSF(K,1,2,p['TipNode,0)*QT( DOF_BF(K,2) ) &
+#                                      + p['TwistedSF(K,1,3,p['TipNode,0)*QT( DOF_BE(K,1) )                     )*CoordSys['j1(K,:) &
+#                                    + ( p['TwistedSF(K,2,1,p['TipNode,0)*QT( DOF_BF(K,1) ) &
+#                                      + p['TwistedSF(K,2,2,p['TipNode,0)*QT( DOF_BF(K,2) ) &
+#                                      + p['TwistedSF(K,2,3,p['TipNode,0)*QT( DOF_BE(K,1) )                     )*CoordSys['j2(K,:) &
+#                                    + ( p['BldFlexL - 0.5* &
+#                                    (      p['AxRedBld(K,1,1,p['TipNode)*QT( DOF_BF(K,1) )*QT( DOF_BF(K,1) ) &
+#                                      +    p['AxRedBld(K,2,2,p['TipNode)*QT( DOF_BF(K,2) )*QT( DOF_BF(K,2) ) &
+#                                      +    p['AxRedBld(K,3,3,p['TipNode)*QT( DOF_BE(K,1) )*QT( DOF_BE(K,1) ) &
+#                                      + 2.*p['AxRedBld(K,1,2,p['TipNode)*QT( DOF_BF(K,1) )*QT( DOF_BF(K,2) ) &
+#                                      + 2.*p['AxRedBld(K,2,3,p['TipNode)*QT( DOF_BF(K,2) )*QT( DOF_BE(K,1) ) &
+#                                      + 2.*p['AxRedBld(K,1,3,p['TipNode)*QT( DOF_BF(K,1) )*QT( DOF_BE(K,1) ) ) )*CoordSys['j3(K,:)
+#        dat['rQS (:,K,p['TipNode) = dat['rS0S(:,K,p['TipNode) + p['HubRad*CoordSys['j3(K,:)                                      ! Position vector from apex of rotation (point Q) to the blade tip (point S(p['BldFlexL)).
+#        dat['rS  (:,K,p['TipNode) = dat['rQS (:,K,p['TipNode) + dat['rQ                                                     ! Position vector from inertial frame origin      to the blade tip (point S(p['BldFlexL)).
+#        
+#        ! position vectors for blade root node:
+#        dat['rQS (:,K,0) = p['HubRad*CoordSys['j3(K,:)    
+#        dat['rS  (:,K,0) = p['HubRad*CoordSys['j3(K,:) + dat['rQ
+#           ! Calculate the position vector from the teeter pin to the blade root:
+#        dat['rPS0(:,K) = dat['rPQ + p['HubRad*CoordSys['j3(K,:)   ! Position vector from teeter pin (point P) to blade root (point S(0)).
+#        DO J = 1,p['BldNodes ! Loop through the blade nodes / elements
+#        ! Calculate the position vector of the current node:
+#           dat['rS0S(:,K,J) = (  p['TwistedSF(K,1,1,J,0)*QT( DOF_BF(K,1) ) &                                                   ! Position vector from the blade root (point S(0)) to the current node (point S(RNodes(J)).
+#                                  + p['TwistedSF(K,1,2,J,0)*QT( DOF_BF(K,2) ) &
+#                                  + p['TwistedSF(K,1,3,J,0)*QT( DOF_BE(K,1) )                          )*CoordSys['j1(K,:) &
+#                              + (   p['TwistedSF(K,2,1,J,0)*QT( DOF_BF(K,1) ) &
+#                                  + p['TwistedSF(K,2,2,J,0)*QT( DOF_BF(K,2) ) &
+#                                  + p['TwistedSF(K,2,3,J,0)*QT( DOF_BE(K,1) )                          )*CoordSys['j2(K,:) &
+#                              + (  p['RNodes(J) - 0.5* &
+#                                (      p['AxRedBld(K,1,1,J)*QT( DOF_BF(K,1) )*QT( DOF_BF(K,1) ) &
+#                                 +     p['AxRedBld(K,2,2,J)*QT( DOF_BF(K,2) )*QT( DOF_BF(K,2) ) &
+#                                 +     p['AxRedBld(K,3,3,J)*QT( DOF_BE(K,1) )*QT( DOF_BE(K,1) ) &
+#                                 + 2.0*p['AxRedBld(K,1,2,J)*QT( DOF_BF(K,1) )*QT( DOF_BF(K,2) ) &
+#                                 + 2.0*p['AxRedBld(K,2,3,J)*QT( DOF_BF(K,2) )*QT( DOF_BE(K,1) ) &
+#                                 + 2.0*p['AxRedBld(K,1,3,J)*QT( DOF_BF(K,1) )*QT( DOF_BE(K,1) )    ) )*CoordSys['j3(K,:)
+#           dat['rQS (:,K,J) = dat['rS0S(:,K,J) + p['HubRad*CoordSys['j3(K,:)                                                ! Position vector from apex of rotation (point Q) to the current node (point S(RNodes(J)).
+#           dat['rS  (:,K,J) = dat['rQS (:,K,J) + dat['rQ                                                               ! Position vector from inertial frame origin      to the current node (point S(RNodes(J)).
+#        END DO !J = 1,p['BldNodes ! Loop through the blade nodes / elements
+#     END DO !K = 1,p['NumBl
+    # --- Tower element positions
+    TwrNodes = p['TwrFASF'].shape[1] - 2
+    dat['rZT'] = np.zeros((TwrNodes+1,3))
+    dat['rT0T'] = np.zeros((TwrNodes,3))
+    dat['rT'] = np.zeros((TwrNodes,3))
+    dat['rZT'][0,:] = dat['rZT0']
+    # TODO vectorize
+    # TODO TODO TODO check that this is correct due to messy ED indexing (some starting at 0 some at 1)
+    for j in range(TwrNodes):
+        jj=j+1
+        # Calculate the position vector of the current node:
+        dat['rT0T'][j,:] = ( p['TwrFASF'][0,jj,0]*QT[DOF_TFA1] + p['TwrFASF'][1,jj,0]*QT[DOF_TFA2] )*CoordSys['a1']# Position vector from base of flexible portion of tower (point T(0)) to current node (point T(j)).
+        dat['rT0T'][j,:] +=                     + ( p['HNodes'][j] - 0.5*(     p['AxRedTFA'][0,0,j]*QT[DOF_TFA1]*QT[DOF_TFA1] \
+                                               +     p['AxRedTFA'][1,1,jj]*QT[DOF_TFA2]*QT[DOF_TFA2] \
+                                               + 2.0*p['AxRedTFA'][0,1,jj]*QT[DOF_TFA1]*QT[DOF_TFA2] \
+                                               +     p['AxRedTSS'][0,0,jj]*QT[DOF_TSS1]*QT[DOF_TSS1] \
+                                               +     p['AxRedTSS'][1,1,jj]*QT[DOF_TSS2]*QT[DOF_TSS2] \
+                                               + 2.0*p['AxRedTSS'][0,1,jj]*QT[DOF_TSS1]*QT[DOF_TSS2]  ) )*CoordSys['a2']
+        dat['rT0T'][j,:] += ( p['TwrSSSF'][0,jj,0]*QT[DOF_TSS1] + p['TwrSSSF'][1,jj,0]*QT[DOF_TSS2] )*CoordSys['a3']
+        dat['rZT'][jj,:] = dat['rZT0'] + dat['rT0T'][j,:]  # Position vector from platform reference (point Z) to the current node (point T(HNodes(j)).
+        dat['rT'][j,:]  = dat['rZ']   + dat['rZT'][jj,:]   # Position vector from inertial frame origin        to the current node (point T(HNodes(j)).
+
+
+    # --- IEC
+    if IEC is None:
+        IEC = dict()
+    IEC['rF0'] = np.array([0,0,p['PtfmRefzt']])
+    IEC['rF']  = EDVec2IEC(dat['rZ']) + IEC['rF0']    # ED ReftPtfm point
+    IEC['rFT'] = EDVec2IEC(dat['rZT0'])  # Tower base from Floater
+    IEC['rT']  = IEC['rF'] + IEC['rFT']
+    IEC['rTN'] = EDVec2IEC(dat['rT0O'])  # Tower top / base plate/ nacelle origin from tower base
+    IEC['rN']  = EDVec2IEC(dat['rO'])+ IEC['rF0']    # Tower top / base plate/ nacelle origin
+    IEC['rNGnac'] = EDVec2IEC(dat['rOU'])   # From Tower top to nacelle COG
+    IEC['rGnac'] = IEC['rN'] + IEC['rNGnac'] # Nacelle COG
+    IEC['rTn'] = EDVec2IEC(dat['rT'], IEC['rF0']  )
+
+    return dat, IEC
+
+
+def ED_AngPosVelPAcc(q=None, qd=None, qDict=None, qdDict=None, CoordSys=None, p=None, dat=None, IEC=None):
+    """ 
+    See ElastoDyn.f90 CalculateAngularPosVelPAcc
+    This routine is used to calculate the angular positions, velocities, and partial accelerations stored in other states that are used in
+    both the CalcOutput and CalcContStateDeriv routines.
+    SUBROUTINE CalculateAngularPosVelPAcc( p, x, CoordSys, dat )
+
+    """
+    if qDict is not None:
+        QT = ED_qDict2q(qDict)
+    else:
+        QT = q
+    if qdDict is not None:
+        QDT = ED_qDict2q(qdDict)
+    else:
+        QDT = qd
+
+    if dat is None:
+        dat = dict()
+#    REAL(ReKi)                   :: AngVelHM  (3)                                   ! Angular velocity of eleMent J of blade K (body M) in the hub (body H).
+#    REAL(ReKi)                   :: AngAccELt (3)                                   ! Portion of the angular acceleration of the low-speed shaft (body L) in the inertia frame (body E for earth) associated with everything but the QD2T()'s.
+    #NDOF=ED_MaxDOFs
+    NDOF=11 # TODO
+    TwrNodes = p['TwrFASF'].shape[1] - 2
+    NumBl=3
+    # These angular velocities are allocated to start numbering a dimension with 0 instead of 1:
+    dat['PAngVelEB']=np.zeros((NDOF,2,3))
+    dat['PAngVelER']=np.zeros((NDOF,2,3))
+    dat['PAngVelEX']=np.zeros((NDOF,2,3))
+    dat['PAngVelEA']=np.zeros((NDOF,2,3))
+    dat['PAngVelEN']=np.zeros((NDOF,2,3))
+    #dat['PAngVelEG']=np.zeros((NDOF,2,3))
+    #dat['PAngVelEH']=np.zeros((NDOF,2,3))
+    #dat['PAngVelEL']=np.zeros((NDOF,2,3))
+    dat['PAngVelEF']=np.zeros((TwrNodes+1, NDOF,2,3))
+    #dat['PAngVelEM']=np.zeros((NumBl,0:p%TipNode,NDOF,2,3))
+
+    dat['AngPosXF']=np.zeros((TwrNodes+1,3))
+    dat['AngPosEF']=np.zeros((TwrNodes+1,3))
+    dat['AngVelEF']=np.zeros((TwrNodes+1,3))
+
+
+
+    # --------------------------------------------------------------------------------}
+    # --- Angular and partial angular velocities
+    # --------------------------------------------------------------------------------{
+    #   Define the angular and partial angular velocities of all of the rigid bodies in the inertia frame:
+    #   NOTE: PAngVelEN(I,D,:) = the Dth-derivative of the partial angular velocity of DOF I for body N in body E.
+    # --- Platform "X"
+    dat['PAngVelEX'][       :,0,:] = 0.0
+    dat['PAngVelEX'][DOF_R   ,0,:] =  CoordSys['z1']
+    dat['PAngVelEX'][DOF_P   ,0,:] = -CoordSys['z3']
+    dat['PAngVelEX'][DOF_Y   ,0,:] =  CoordSys['z2']
+    dat['AngVelEX'] = QDT[DOF_R   ]*dat['PAngVelEX'][DOF_R,0,:] + QDT[DOF_P]*dat['PAngVelEX'][DOF_P,0,:]  + QDT[DOF_Y]*dat['PAngVelEX'][DOF_Y,0,:]
+    dat['AngPosEX'] = QT [DOF_R   ]*dat['PAngVelEX'][DOF_R,0,:] + QT [DOF_P]*dat['PAngVelEX'][DOF_P,0,:]  + QT [DOF_Y]*dat['PAngVelEX'][DOF_Y,0,:]
+    # --- Tower top "B"
+    dat['PAngVelEB'][       :,0,:] = dat['PAngVelEX'][:,0,:]
+    dat['PAngVelEB'][DOF_TFA1,0,:] = -p['TwrFASF'][0,-1,1]*CoordSys['a3']
+    dat['PAngVelEB'][DOF_TSS1,0,:] =  p['TwrSSSF'][0,-1,1]*CoordSys['a1']
+    dat['PAngVelEB'][DOF_TFA2,0,:] = -p['TwrFASF'][1,-1,1]*CoordSys['a3']
+    dat['PAngVelEB'][DOF_TSS2,0,:] =  p['TwrSSSF'][1,-1,1]*CoordSys['a1']
+    dat['AngVelEB']                =  dat['AngVelEX'].copy()
+    dat['AngVelEB']                += QDT[DOF_TFA1]*dat['PAngVelEB'][DOF_TFA1,0,:]
+    dat['AngVelEB']                += QDT[DOF_TSS1]*dat['PAngVelEB'][DOF_TSS1,0,:]
+    dat['AngVelEB']                += QDT[DOF_TFA2]*dat['PAngVelEB'][DOF_TFA2,0,:]
+    dat['AngVelEB']                += QDT[DOF_TSS2]*dat['PAngVelEB'][DOF_TSS2,0,:]
+    dat['AngPosXB']                 = QT [DOF_TFA1]*dat['PAngVelEB'][DOF_TFA1,0,:]
+    dat['AngPosXB']                += QT [DOF_TSS1]*dat['PAngVelEB'][DOF_TSS1,0,:]
+    dat['AngPosXB']                += QT [DOF_TFA2]*dat['PAngVelEB'][DOF_TFA2,0,:]
+    dat['AngPosXB']                += QT [DOF_TSS2]*dat['PAngVelEB'][DOF_TSS2,0,:]
+    # --- Nacelle "N" (yawed tower top)
+    dat['PAngVelEN'][       :,0,:]= dat['PAngVelEB'][:,0,:]
+    dat['PAngVelEN'][DOF_Yaw ,0,:]= CoordSys['d2']
+    dat['AngVelEN']               = dat['AngVelEB'] + QDT[DOF_Yaw ]*dat['PAngVelEN'][DOF_Yaw ,0,:]
+# 
+#     dat['PAngVelER(       :,0,:)= dat['PAngVelEN(:,0,:)
+#     dat['PAngVelER(DOF_RFrl,0,:)= CoordSys['rfa
+#     dat['AngVelER               = dat['AngVelEN + QDT(DOF_RFrl)*dat['PAngVelER(DOF_RFrl,0,:)
+# 
+#     dat['PAngVelEL(       :,0,:)= dat['PAngVelER(:,0,:)
+#     dat['PAngVelEL(DOF_GeAz,0,:)= CoordSys['c1
+#     dat['PAngVelEL(DOF_DrTr,0,:)= CoordSys['c1
+#     dat['AngVelEL               = dat['AngVelER + QDT(DOF_GeAz)*dat['PAngVelEL(DOF_GeAz,0,:) &
+#                                                             + QDT(DOF_DrTr)*dat['PAngVelEL(DOF_DrTr,0,:)
+# 
+#     dat['PAngVelEH(       :,0,:)= dat['PAngVelEL(:,0,:)
+#     dat['AngVelEH               = dat['AngVelEL
+# IF ( p['NumBl == 2 )  THEN ! 2-blader
+#    dat['PAngVelEH(DOF_Teet,0,:)= CoordSys['f2
+#    dat['AngVelEH               = dat['AngVelEH + QDT(DOF_Teet)*dat['PAngVelEH(DOF_Teet,0,:)
+# ENDIF
+#  
+#     dat['PAngVelEG(       :,0,:) = dat['PAngVelER(:,0,:)
+#     dat['PAngVelEG(DOF_GeAz,0,:) = p['GBRatio*CoordSys['c1
+#     dat['AngVelEG                = dat['AngVelER + QDT(DOF_GeAz)*dat['PAngVelEG(DOF_GeAz,0,:)
+#  
+#     dat['PAngVelEA(       :,0,:) = dat['PAngVelEN(:,0,:)
+#     dat['PAngVelEA(DOF_TFrl,0,:) = CoordSys['tfa
+#     dat['AngVelEA                = dat['AngVelEN + QDT(DOF_TFrl)*dat['PAngVelEA(DOF_TFrl,0,:)
+#  
+#  
+#  
+#     ! Define the 1st derivatives of the partial angular velocities of all
+#     !   of the rigid bodies in the inertia frame and the portion of the angular
+#     !   acceleration of the rigid bodies in the inertia frame associated with
+#     !   everything but the QD2T()'s:
+#     dat['PAngVelEX(       :,1,:) = 0.0
+#     dat['AngAccEXt               = 0.0
+#     dat['PAngVelEB(       :,1,:) =                  dat['PAngVelEX(:,1,:)
+#     dat['PAngVelEB(DOF_TFA1,1,:) = CROSS_PRODUCT(   dat['AngVelEX,                   dat['PAngVelEB(DOF_TFA1,0,:) )
+#     dat['PAngVelEB(DOF_TSS1,1,:) = CROSS_PRODUCT(   dat['AngVelEX,                   dat['PAngVelEB(DOF_TSS1,0,:) )
+#     dat['PAngVelEB(DOF_TFA2,1,:) = CROSS_PRODUCT(   dat['AngVelEX,                   dat['PAngVelEB(DOF_TFA2,0,:) )
+#     dat['PAngVelEB(DOF_TSS2,1,:) = CROSS_PRODUCT(   dat['AngVelEX,                   dat['PAngVelEB(DOF_TSS2,0,:) )
+#     dat['AngAccEBt               =                  dat['AngAccEXt + QDT(DOF_TFA1)*dat['PAngVelEB(DOF_TFA1,1,:) &
+#                                                                          + QDT(DOF_TSS1)*dat['PAngVelEB(DOF_TSS1,1,:) &
+#                                                                          + QDT(DOF_TFA2)*dat['PAngVelEB(DOF_TFA2,1,:) &
+#                                                                          + QDT(DOF_TSS2)*dat['PAngVelEB(DOF_TSS2,1,:)
+#     dat['PAngVelEN(       :,1,:) =                 dat['PAngVelEB(:,1,:)
+#     dat['PAngVelEN(DOF_Yaw ,1,:) = CROSS_PRODUCT(  dat['AngVelEB,                    dat['PAngVelEN(DOF_Yaw ,0,:) )
+#     dat['AngAccENt               =                 dat['AngAccEBt  + QDT(DOF_Yaw )*dat['PAngVelEN(DOF_Yaw ,1,:)
+#  
+#     dat['PAngVelER(       :,1,:) =                 dat['PAngVelEN(:,1,:)
+#     dat['PAngVelER(DOF_RFrl,1,:) = CROSS_PRODUCT(  dat['AngVelEN,                    dat['PAngVelER(DOF_RFrl,0,:) )
+#     dat['AngAccERt               =                 dat['AngAccENt  + QDT(DOF_RFrl)*dat['PAngVelER(DOF_RFrl,1,:)
+#  
+#     dat['PAngVelEL(       :,1,:) =                 dat['PAngVelER(:,1,:)
+#     dat['PAngVelEL(DOF_GeAz,1,:) = CROSS_PRODUCT(  dat['AngVelER,                    dat['PAngVelEL(DOF_GeAz,0,:) )
+#     dat['PAngVelEL(DOF_DrTr,1,:) = CROSS_PRODUCT(  dat['AngVelER,                    dat['PAngVelEL(DOF_DrTr,0,:) )
+#             AngAccELt               =                 dat['AngAccERt  + QDT(DOF_GeAz)*dat['PAngVelEL(DOF_GeAz,1,:) &
+#                                                                          + QDT(DOF_DrTr)*dat['PAngVelEL(DOF_DrTr,1,:)
+#  
+#     dat['PAngVelEH(       :,1,:) = dat['PAngVelEL(:,1,:)
+#     dat['AngAccEHt               =                  AngAccELt
+#  IF ( p['NumBl == 2 )  THEN ! 2-blader
+#     dat['PAngVelEH(DOF_Teet,1,:) = CROSS_PRODUCT(  dat['AngVelEH,                    dat['PAngVelEH(DOF_Teet,0,:) )
+#     dat['AngAccEHt               =                 dat['AngAccEHt   + QDT(DOF_Teet)*dat['PAngVelEH(DOF_Teet,1,:)
+#  ENDIF
+#  
+#     dat['PAngVelEG(       :,1,:) = dat['PAngVelER(:,1,:)
+#     dat['PAngVelEG(DOF_GeAz,1,:) = CROSS_PRODUCT(  dat['AngVelER,                    dat['PAngVelEG(DOF_GeAz,0,:) )
+#     dat['AngAccEGt               =                 dat['AngAccERt  + QDT(DOF_GeAz)*dat['PAngVelEG(DOF_GeAz,1,:)
+#  
+#     dat['PAngVelEA(       :,1,:) = dat['PAngVelEN(:,1,:)
+#     dat['PAngVelEA(DOF_TFrl,1,:) = CROSS_PRODUCT(  dat['AngVelEN,                    dat['PAngVelEA(DOF_TFrl,0,:) )
+#     dat['AngAccEAt               =                 dat['AngAccENt  + QDT(DOF_TFrl)*dat['PAngVelEA(DOF_TFrl,1,:)
+
+#     DO K = 1,p['NumBl ! Loop through all blades
+#        DO J = 0,p['TipNode ! Loop through the blade nodes / elements
+#        ! Define the partial angular velocities of the current node (body M(RNodes(J))) in the inertia frame:
+#        ! NOTE: PAngVelEM(K,J,I,D,:) = the Dth-derivative of the partial angular velocity
+#        !   of DOF I for body M of blade K, element J in body E.
+#  
+#           dat['PAngVelEM(K,J,          :,0,:) = dat['PAngVelEH(:,0,:)
+#           dat['PAngVelEM(K,J,DOF_BF(K,1),0,:) = - p['TwistedSF(K,2,1,J,1)*CoordSys['j1(K,:) &
+#                                                    + p['TwistedSF(K,1,1,J,1)*CoordSys['j2(K,:)
+#           dat['PAngVelEM(K,J,DOF_BF(K,2),0,:) = - p['TwistedSF(K,2,2,J,1)*CoordSys['j1(K,:) &
+#                                                    + p['TwistedSF(K,1,2,J,1)*CoordSys['j2(K,:)
+#           dat['PAngVelEM(K,J,DOF_BE(K,1),0,:) = - p['TwistedSF(K,2,3,J,1)*CoordSys['j1(K,:) &
+#                                                    + p['TwistedSF(K,1,3,J,1)*CoordSys['j2(K,:)
+#                                        AngVelHM  =     QDT(DOF_BF(K,1))*dat['PAngVelEM(K,J,DOF_BF(K,1),0,:) &
+#                                                      + QDT(DOF_BF(K,2))*dat['PAngVelEM(K,J,DOF_BF(K,2),0,:) &
+#                                                      + QDT(DOF_BE(K,1))*dat['PAngVelEM(K,J,DOF_BE(K,1),0,:)
+#            dat['AngVelEM(:,J,K              ) =  dat['AngVelEH + AngVelHM
+#            dat['AngPosHM(:,K,J              ) =     QT (DOF_BF(K,1))*dat['PAngVelEM(K,J,DOF_BF(K,1),0,:) &
+#                                                      + QT (DOF_BF(K,2))*dat['PAngVelEM(K,J,DOF_BF(K,2),0,:) &
+#                                                      + QT (DOF_BE(K,1))*dat['PAngVelEM(K,J,DOF_BE(K,1),0,:)
+#           dat['AngAccEKt(:,J              ,K) =  dat['AngAccEHt + QDT(DOF_BF(K,1))*dat['PAngVelEM(K,J,DOF_BF(K,1),1,:) & 
+#                                                                       + QDT(DOF_BF(K,2))*dat['PAngVelEM(K,J,DOF_BF(K,2),1,:) & 
+#                                                                       + QDT(DOF_BE(K,1))*dat['PAngVelEM(K,J,DOF_BE(K,1),1,:)   
+#        ! Define the 1st derivatives of the partial angular velocities of the current node (body M(RNodes(J))) in the inertia frame:
+#     ! NOTE: These are currently unused by the code, therefore, they need not
+#     !       be calculated.  Thus, they are currently commented out.  If it
+#     !       turns out that they are ever needed (i.e., if inertias of the
+#     !       blade elements are ever added, etc...) simply uncomment out these computations:
+#     !      dat['PAngVelEM(K,J,          :,1,:) = dat['PAngVelEH(:,1,:)
+#     !      dat['PAngVelEM(K,J,DOF_BF(K,1),1,:) = CROSS_PRODUCT(   dat['AngVelEH, PAngVelEM(K,J,DOF_BF(K,1),0,:) )
+#     !      dat['PAngVelEM(K,J,DOF_BF(K,2),1,:) = CROSS_PRODUCT(   dat['AngVelEH, PAngVelEM(K,J,DOF_BF(K,2),0,:) )
+#     !      dat['PAngVelEM(K,J,DOF_BE(K,1),1,:) = CROSS_PRODUCT(   dat['AngVelEH, PAngVelEM(K,J,DOF_BE(K,1),0,:) )
+#        END DO !J = 1,p['BldNodes ! Loop through the blade nodes / elements
+#     END DO !K = 1,p['NumBl
+    # --- Tower values:
+    for J in range(TwrNodes+1):
+#        ! Define the partial angular velocities (and their 1st derivatives) of the
+#        !   current node (body F(HNodes(J))  in the inertia frame.
+#        ! Also define the overall angular velocity of the current node in the inertia frame.
+#        !   Also, define the portion of the angular acceleration of the current node
+#        !   in the inertia frame associated with everything but the QD2T()'s:
+#        ! NOTE: PAngVelEF(J,I,D,:) = the Dth-derivative of the partial angular velocity
+#        !   of DOF I for body F of element J in body E.
+       dat['PAngVelEF'] [J,       :,0,:] = dat['PAngVelEX'][:,0,:]
+       dat['PAngVelEF'] [J,DOF_TFA1,0,:] = -p['TwrFASF'][0,J,1]*CoordSys['a3'] # Local slope
+       dat['PAngVelEF'] [J,DOF_TSS1,0,:] =  p['TwrSSSF'][0,J,1]*CoordSys['a1']
+       dat['PAngVelEF'] [J,DOF_TFA2,0,:] = -p['TwrFASF'][1,J,1]*CoordSys['a3']
+       dat['PAngVelEF'] [J,DOF_TSS2,0,:] =  p['TwrSSSF'][1,J,1]*CoordSys['a1']
+       dat['PAngVelEF'] [J,       :,1,:] = dat['PAngVelEX'][:,1,:]
+       dat['PAngVelEF'] [J,DOF_TFA1,1,:] = np.cross(  dat['AngVelEX']  ,  dat['PAngVelEF'][J,DOF_TFA1,0,:] )
+       dat['PAngVelEF'] [J,DOF_TSS1,1,:] = np.cross(  dat['AngVelEX']  ,  dat['PAngVelEF'][J,DOF_TSS1,0,:] )
+       dat['PAngVelEF'] [J,DOF_TFA2,1,:] = np.cross(  dat['AngVelEX']  ,  dat['PAngVelEF'][J,DOF_TFA2,0,:] )
+       dat['PAngVelEF'] [J,DOF_TSS2,1,:] = np.cross(  dat['AngVelEX']  ,  dat['PAngVelEF'][J,DOF_TSS2,0,:] )
+       dat['AngVelEF']  [J,:]            =  dat['AngVelEX'].copy()
+       dat['AngVelEF']  [J,:]           += QDT[DOF_TFA1]*dat['PAngVelEF'][J,DOF_TFA1,0,:]
+       dat['AngVelEF']  [J,:]           += QDT[DOF_TSS1]*dat['PAngVelEF'][J,DOF_TSS1,0,:]
+       dat['AngVelEF']  [J,:]           += QDT[DOF_TFA2]*dat['PAngVelEF'][J,DOF_TFA2,0,:]
+       dat['AngVelEF']  [J,:]           += QDT[DOF_TSS2]*dat['PAngVelEF'][J,DOF_TSS2,0,:]
+       dat['AngPosXF']  [J,:]           =  QT [DOF_TFA1]*dat['PAngVelEF'][J,DOF_TFA1,0,:]
+       dat['AngPosXF']  [J,:]           += QT [DOF_TSS1]*dat['PAngVelEF'][J,DOF_TSS1,0,:]
+       dat['AngPosXF']  [J,:]           += QT [DOF_TFA2]*dat['PAngVelEF'][J,DOF_TFA2,0,:]
+       dat['AngPosXF']  [J,:]           += QT [DOF_TSS2]*dat['PAngVelEF'][J,DOF_TSS2,0,:]
+       dat['AngPosEF']  [J,:]           =  dat['AngPosEX']  + dat['AngPosXF'][J,:]
+#        dat['AngAccEFt'][J,:]          =  dat['AngAccEXt']
+#        dat['AngAccEFt'][J,:]         += QDT[DOF_TFA1]*dat['PAngVelEF'][J,DOF_TFA1,1,:]
+#        dat['AngAccEFt'][J,:]         += QDT[DOF_TSS1]*dat['PAngVelEF'][J,DOF_TSS1,1,:]
+#        dat['AngAccEFt'][J,:]         += QDT[DOF_TFA2]*dat['PAngVelEF'][J,DOF_TFA2,1,:]
+#        dat['AngAccEFt'][J,:]         += QDT[DOF_TSS2]*dat['PAngVelEF'][J,DOF_TSS2,1,:]
+    # ---
+    if IEC is None:
+        IEC = dict()
+    IEC['ThetaEF'] = EDVec2IEC(dat['AngPosEX'])
+    IEC['OmegaEF'] = EDVec2IEC(dat['AngVelEX'])
+    IEC['ThetaFN'] = EDVec2IEC(dat['AngPosXB']) # TODO TODO ADD YAW
+    IEC['ThetaEN'] = IEC['ThetaEF'] + IEC['ThetaFN']
+    IEC['OmegaEN'] = EDVec2IEC(dat['AngVelEN'])
+
+    IEC['OmegaETn'] = EDVec2IEC(dat['AngVelEF']) # Tower nodes ang vel
+    IEC['ThetaFTn'] = EDVec2IEC(dat['AngPosXF']) # Tower nodes ang pos from platform
+    IEC['ThetaETn'] = EDVec2IEC(dat['AngPosEF']) # Tower nodes ang pos from platform
+
+    return dat, IEC
+
+
+def ED_LinVelPAcc(q=None, qd=None, qDict=None, qdDict=None, CoordSys=None, p=None, dat=None, IEC=None):
+    """ 
+    See ElastoDyn.f90 CalculateLinearVelPAcc
+    !> This routine is used to calculate the linear velocities and accelerations stored in other states that are used in
+    !! both the CalcOutput and CalcContStateDeriv routines.
+    SUBROUTINE CalculateLinearVelPAcc( p, x, CoordSys, dat )
+
+    BODIES:
+        E: the earth/inertial frame
+        X: the platform body
+        N: the nacelle body
+        A: the tail-furl body
+
+    """
+    if qDict is not None:
+        QT = ED_qDict2q(qDict)
+    else:
+        QT = q
+    if qdDict is not None:
+        QDT = ED_qDict2q(qdDict)
+    else:
+        QDT = qd
+
+    if dat is None:
+        dat = dict()
+#    ALLOCATE( RtHS%LinVelES( Dims, 0:p%TipNode, p%NumBl ), &
+#              RtHS%AngVelEM( Dims, 0:p%TipNode, p%NumBl ), STAT=ErrStat )
+#    ! These linear velocities are allocated to start numbering a dimension with 0 instead of 1:
+#    ALLOCATE ( RtHS%PLinVelEIMU(p%NDOF,0:1,Dims) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelEO(p%NDOF,0:1,Dims) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelES(p%NumBl,0:p%TipNode,p%NDOF,0:1,Dims) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelET(0:p%TwrNodes,p%NDOF,0:1,Dims) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelEC(p%NDOF,0:1,3) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelED(p%NDOF,0:1,3) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelEI(p%NDOF,0:1,3) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelEJ(p%NDOF,0:1,3) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelEP(p%NDOF,0:1,3) , STAT=ErrStat )
+#    ALLOCATE ( RtHS%PLinVelEQ(p%NDOF,0:1,3) , STAT=ErrStat )
+#               RtHS%PLinVelEW(p%NDOF,0:1,3) , &
+#               RtHS%PLinVelEY(p%NDOF,0:1,3) , STAT=ErrStat )
+    NDOF=11 # TODO
+    TwrNodes = p['TwrFASF'].shape[1] - 2
+    NumBl=3
+
+    dat['PLinVelEZ'] = np.zeros((NDOF,2, 3))
+    dat['PLinVelEO'] = np.zeros((NDOF,2, 3))
+    dat['PLinVelEU'] = np.zeros((NDOF,2, 3))
+    dat['PLinVelET'] = np.zeros((TwrNodes+1,NDOF,2, 3))
+#    !-------------------------------------------------------------------------------------------------
+#    ! Partial linear velocities and accelerations
+#    !-------------------------------------------------------------------------------------------------
+#       ! Define the partial linear velocities (and their 1st derivatives) of all of
+#       !   the points on the wind turbine in the inertia frame that are not
+#       !   dependent on the distributed tower or blade parameters.  Also, define
+#       !   the portion of the linear acceleration of the points in the inertia
+#       !   frame associated with everything but the QD2T()'s:
+#       ! NOTE: PLinVelEX(I,D,:) = the Dth-derivative of the partial linear velocity
+#       !   of DOF I for point X in body E.
+#     EwXXrZY   = CROSS_PRODUCT( dat['AngVelEX, dat['rZY   ) !
+#     EwRXrVD   = np.cross( dat['AngVelER'], dat['rVD']   ) # Cross products
+#     EwRXrVP   = np.cross( dat['AngVelER'], dat['rVP']   ) # in the following
+#     EwHXrPQ   = np.cross( dat['AngVelEH'], dat['rPQ']   ) # DO...LOOPs
+#     EwHXrQC   = np.cross( dat['AngVelEH'], dat['rQC']   ) #
+#     EwNXrOW   = np.cross( dat['AngVelEN'], dat['rOW']   ) #
+#     EwAXrWI   = np.cross( dat['AngVelEA'], dat['rWI']   ) #
+#     EwAXrWJ   = np.cross( dat['AngVelEA'], dat['rWJ']   ) #
+
+    # --- Platform reference point "Z"
+    dat['PLinVelEZ'][       :,:,:] = 0.0
+    dat['PLinVelEZ'][DOF_Sg  ,0,:] =  CoordSys['z1']
+    dat['PLinVelEZ'][DOF_Sw  ,0,:] = -CoordSys['z3']
+    dat['PLinVelEZ'][DOF_Hv  ,0,:] =  CoordSys['z2']
+    dat['LinVelEZ']                =   QDT[DOF_Sg]*dat['PLinVelEZ'][DOF_Sg,0,:]+ QDT[DOF_Sw]*dat['PLinVelEZ'][DOF_Sw,0,:]+ QDT[DOF_Hv]*dat['PLinVelEZ'][DOF_Hv,0,:]
+
+    # --- Platform COG "Y"
+#    dat['PLinVelEY(       :,:,:) = dat['PLinVelEZ(:,:,:)
+#    DO I = 1,NPX   ! Loop through all DOFs associated with the angular motion of the platform (body X)
+#       TmpVec0 = CROSS_PRODUCT( dat['PAngVelEX(PX(I)   ,0,:), dat['rZY  )
+#       TmpVec1 = CROSS_PRODUCT( dat['PAngVelEX(PX(I)   ,0,:),     EwXXrZY  )
+#       dat['PLinVelEY(PX(I),0,:) = TmpVec0   +                       dat['PLinVelEY(PX(I)   ,0,:)
+#       dat['PLinVelEY(PX(I),1,:) = TmpVec1   +                       dat['PLinVelEY(PX(I)   ,1,:)
+#       dat['LinAccEYt           = dat['LinAccEYt + x%QDT(PX(I) )*dat['PLinVelEY(PX(I)   ,1,:)
+
+    # --- Tower Top "O"
+    dat['PLinVelEO']               = dat['PLinVelEZ'][:,:,:].copy()
+    dat['PLinVelEO'][DOF_TFA1,0,:] = CoordSys['a1'] - (p['AxRedTFA'][0,0,-1]* QT[DOF_TFA1] + p['AxRedTFA'][0,1,-1]* QT[DOF_TFA2])*CoordSys['a2']
+    dat['PLinVelEO'][DOF_TSS1,0,:] = CoordSys['a3'] - (p['AxRedTSS'][0,0,-1]* QT[DOF_TSS1] + p['AxRedTSS'][0,1,-1]* QT[DOF_TSS2])*CoordSys['a2']
+    dat['PLinVelEO'][DOF_TFA2,0,:] = CoordSys['a1'] - (p['AxRedTFA'][1,1,-1]* QT[DOF_TFA2] + p['AxRedTFA'][0,1,-1]* QT[DOF_TFA1])*CoordSys['a2']
+    dat['PLinVelEO'][DOF_TSS2,0,:] = CoordSys['a3'] - (p['AxRedTSS'][1,1,-1]* QT[DOF_TSS2] + p['AxRedTSS'][0,1,-1]* QT[DOF_TSS1])*CoordSys['a2']
+    TmpVec1 = np.cross(   dat['AngVelEX']   , dat['PLinVelEO'][DOF_TFA1,0,:] )
+    TmpVec2 = np.cross(   dat['AngVelEX']   , dat['PLinVelEO'][DOF_TSS1,0,:] )
+    TmpVec3 = np.cross(   dat['AngVelEX']   , dat['PLinVelEO'][DOF_TFA2,0,:] )
+    TmpVec4 = np.cross(   dat['AngVelEX']   , dat['PLinVelEO'][DOF_TSS2,0,:] )
+    dat['PLinVelEO'][DOF_TFA1,1,:] = TmpVec1 - ( p['AxRedTFA'][0,0,-1]*QDT[DOF_TFA1] + p['AxRedTFA'][0,1,-1]*QDT[DOF_TFA2] )*CoordSys['a2']
+    dat['PLinVelEO'][DOF_TSS1,1,:] = TmpVec2 - ( p['AxRedTSS'][0,0,-1]*QDT[DOF_TSS1] + p['AxRedTSS'][0,1,-1]*QDT[DOF_TSS2] )*CoordSys['a2']
+    dat['PLinVelEO'][DOF_TFA2,1,:] = TmpVec3 - ( p['AxRedTFA'][1,1,-1]*QDT[DOF_TFA2] + p['AxRedTFA'][0,1,-1]*QDT[DOF_TFA1] )*CoordSys['a2']
+    dat['PLinVelEO'][DOF_TSS2,1,:] = TmpVec4 - ( p['AxRedTSS'][1,1,-1]*QDT[DOF_TSS2] + p['AxRedTSS'][0,1,-1]*QDT[DOF_TSS1] )*CoordSys['a2']
+    LinVelXO               =              QDT[DOF_TFA1]*dat['PLinVelEO'][DOF_TFA1,0,:] \
+                                        + QDT[DOF_TSS1]*dat['PLinVelEO'][DOF_TSS1,0,:] \
+                                        + QDT[DOF_TFA2]*dat['PLinVelEO'][DOF_TFA2,0,:] \
+                                        + QDT[DOF_TSS2]*dat['PLinVelEO'][DOF_TSS2,0,:]
+    dat['LinAccEOt']       =              QDT[DOF_TFA1]*dat['PLinVelEO'][DOF_TFA1,1,:] \
+                                        + QDT[DOF_TSS1]*dat['PLinVelEO'][DOF_TSS1,1,:] \
+                                        + QDT[DOF_TFA2]*dat['PLinVelEO'][DOF_TFA2,1,:] \
+                                        + QDT[DOF_TSS2]*dat['PLinVelEO'][DOF_TSS2,1,:]
+
+    dat['LinVelEO'] = LinVelXO + dat['LinVelEZ'].copy()
+    EwXXrZO   = np.cross( dat['AngVelEX'], dat['rZO']   ) #
+    for I in range(NPX): # Loop through all DOFs associated with the angular motion of the platform (body X)
+        TmpVec0 = np.cross( dat['PAngVelEX'][PX[I]   ,0,:], dat['rZO']              )
+        TmpVec1 = np.cross( dat['PAngVelEX'][PX[I]   ,0,:], EwXXrZO + LinVelXO      )
+        dat['PLinVelEO'][PX[I],0,:] = TmpVec0    +                       dat['PLinVelEO'][PX[I]   ,0,:]
+        dat['PLinVelEO'][PX[I],1,:] = TmpVec1    +                       dat['PLinVelEO'][PX[I]   ,1,:]
+        dat['LinVelEO']           +=  QDT[PX[I] ]*dat['PLinVelEO'][PX[I],0,:]
+        dat['LinAccEOt']          +=  QDT[PX[I] ]*dat['PLinVelEO'][PX[I],1,:]
+
+    # --- Nacelle COG "U"
+    dat['PLinVelEU'] = dat['PLinVelEO'].copy()
+    dat['LinVelEU']  = dat['LinVelEZ'].copy()        # NOTE: MANU
+    dat['LinAccEUt']  = 0
+    EwNXrOU   = np.cross( dat['AngVelEN'], dat['rOU']   ) #
+    for I in range(NPN): # Loop through all DOFs associated with the angular motion of the nacelle (body N)
+       TmpVec0 = np.cross( dat['PAngVelEN'][PN[I]   ,0,:], dat['rOU']               )
+       TmpVec1 = np.cross( dat['PAngVelEN'][PN[I]   ,0,:],  EwNXrOU                 )
+       TmpVec2 = np.cross( dat['PAngVelEN'][PN[I]   ,1,:], dat['rOU']               )
+       dat['PLinVelEU'][PN[I],0,:] = TmpVec0    +               dat['PLinVelEU'][PN[I]   ,0,:]
+       dat['PLinVelEU'][PN[I],1,:] = TmpVec1    + TmpVec2 +     dat['PLinVelEU'][PN[I]   ,1,:]
+       dat['LinVelEU']             +=  QDT[PN[I] ]*dat['PLinVelEU'][PN[I],0,:]  # NOTE: TODO TODO THIS IS MANU TRIAL
+       dat['LinAccEUt']            +=  QDT[PN[I] ]*dat['PLinVelEU'][PN[I],1,:]
+
+    # --- Rotor Furl "V"
+#     dat['PLinVelEV'] = dat['PLinVelEO'].copy()
+#     EwNXrOV   = np.cross( dat['AngVelEN'], dat['rOV']   ) #
+#     for I in range(NPN): # Loop through all DOFs associated with the angular motion of the nacelle (body N)
+#        TmpVec0 = np.cross( dat['PAngVelEN(PN[I]   ,0,:), dat['rOV                 )
+#        TmpVec1 = np.cross( dat['PAngVelEN(PN[I]   ,0,:),     EwNXrOV                 )
+#        TmpVec2 = np.cross( dat['PAngVelEN(PN[I]   ,1,:), dat['rOV                 )
+#        dat['PLinVelEV'][PN[I],0,:] = TmpVec0    +               dat['PLinVelEV[PN[I],0,:]
+#        dat['PLinVelEV'][PN[I],1,:] = TmpVec1    + TmpVec2 +     dat['PLinVelEV[PN[I],1,:]
+#        LinAccEVt                   += QDT(PN[I] )*dat['PLinVelEV'][PN[I]   ,1,:]
+#  
+#     dat['PLinVelED(       :,:,:) = dat['PLinVelEV'].copy()
+#     for I in range(NPR): # Loop through all DOFs associated with the angular motion of the structure that furls with the rotor (not including rotor) (body R)
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelER(PR[I]   ,0,:), dat['rVD                 )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelER(PR[I]   ,0,:),     EwRXrVD                 )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelER(PR[I]   ,1,:), dat['rVD                 )
+#        dat['PLinVelED(PR[I],0,:) = TmpVec0    +                       dat['PLinVelED'][PR[I]   ,0,:]
+#        dat['PLinVelED(PR[I],1,:) = TmpVec1    + TmpVec2 +             dat['PLinVelED'][PR[I]   ,1,:]
+#        dat['LinAccEDt            += QDT(PR[I] )*dat['PLinVelED'][PR[I]   ,1,:]
+#  
+    # --- Nacelle IMU
+#     dat['PLinVelEIMU'] = dat['PLinVelEV'].copy()
+#     dat['LinVelEIMU']  =  dat['LinVelEZ'].copy()
+#     EwRXrVIMU = np.cross( dat['AngVelER'], dat['rVIMU'] ) # that are used
+#     for I in range(NPR): # Loop through all DOFs associated with the angular motion of the structure that furls with the rotor (not including rotor) (body R)
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelER(PR[I]   ,0,:), dat['rVIMU               )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelER(PR[I]   ,0,:),     EwRXrVIMU               )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelER(PR[I]   ,1,:), dat['rVIMU               )
+#        dat['PLinVelEIMU(PR[I],0,:) = TmpVec0    +                         dat['PLinVelEIMU(PR[I] ,0,:)
+#        dat['PLinVelEIMU(PR[I],1,:) = TmpVec1    + TmpVec2 +               dat['PLinVelEIMU(PR[I] ,1,:)
+#        dat['LinVelEIMU']           +=  QDT(PR[I] )*dat['PLinVelEIMU(PR[I] ,0,:)
+#        dat['LinAccEIMUt']          +=  QDT(PR[I] )*dat['PLinVelEIMU(PR[I] ,1,:)
+#  
+#     dat['PLinVelEP(       :,:,:) = dat['PLinVelEV(:,:,:)
+#     for I in range(NPR): # Loop through all DOFs associated with the angular motion of the structure that furls with the rotor (not including rotor) (body R)
+#        TmpVec0 = CROSS_PRODUCT(             dat['PAngVelER(PR[I]   ,0,:),     dat['rVP                 )
+#        TmpVec1 = CROSS_PRODUCT(             dat['PAngVelER(PR[I]   ,0,:), EwRXrVP                 )
+#        TmpVec2 = CROSS_PRODUCT(             dat['PAngVelER(PR[I]   ,1,:),     dat['rVP                 )
+#        dat['PLinVelEP(PR[I],0,:) = TmpVec0    +               dat['PLinVelEP(PR[I]   ,0,:)
+#        dat['PLinVelEP(PR[I],1,:) = TmpVec1    + TmpVec2 +     dat['PLinVelEP(PR[I]   ,1,:)
+#         LinAccEPt           =  LinAccEPt + QDT(PR[I] )*dat['PLinVelEP(PR[I]   ,1,:)
+#  
+    # --- Rotor center "Q"
+#     dat['PLinVelEQ'] = dat['PLinVelEP'].copy()
+#     dat['LinVelEQ']  =  dat['LinVelEZ'].copy()
+#     DO I = 1,p['NPH   ! Loop through all DOFs associated with the angular motion of the hub (body H)
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelEH(p['PH(I)   ,0,:),   dat['rPQ  )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelEH(p['PH(I)   ,0,:),       EwHXrPQ  )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelEH(p['PH(I)   ,1,:),   dat['rPQ  )
+#        dat['PLinVelEQ(p['PH(I),0,:) = TmpVec0    +                 dat['PLinVelEQ(p['PH(I)   ,0,:)
+#        dat['PLinVelEQ(p['PH(I),1,:) = TmpVec1    + TmpVec2 +       dat['PLinVelEQ(p['PH(I)   ,1,:)
+#        dat['LinVelEQ               +=  QDT(p['PH(I) )*dat['PLinVelEQ(p['PH(I)   ,0,:)
+#        LinAccEQt                   +=  QDT(p['PH(I) )*dat['PLinVelEQ(p['PH(I)   ,1,:)
+#  
+    # --- Hub COG "C"
+#     dat['PLinVelEC(       :,:,:) = dat['PLinVelEQ(:,:,:)
+#     DO I = 1,p['NPH   ! Loop through all DOFs associated with the angular motion of the hub (body H)
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelEH(p['PH(I)   ,0,:), dat['rQC )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelEH(p['PH(I)   ,0,:),     EwHXrQC )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelEH(p['PH(I)   ,1,:), dat['rQC )
+#        dat['PLinVelEC(p['PH(I),0,:) = TmpVec0    +                         dat['PLinVelEC(p['PH(I)   ,0,:)
+#        dat['PLinVelEC(p['PH(I),1,:) = TmpVec1    + TmpVec2 +               dat['PLinVelEC(p['PH(I)   ,1,:)
+#        dat['LinAccECt              =  dat['LinAccECt + QDT(p['PH(I) )*dat['PLinVelEC(p['PH(I)   ,1,:)
+#  
+#  
+#     DO K = 1,p['NumBl ! Loop through all blades
+#        DO J = 0,p['TipNode ! Loop through the blade nodes / elements
+#        ! Define the partial linear velocities (and their 1st derivatives) of the
+#        !   current node (point S(RNodes(J))) in the inertia frame.  Also define
+#        !   the overall linear velocity of the current node in the inertia frame.
+#        !   Also, define the portion of the linear acceleration of the current node
+#        !   in the inertia frame associated with everything but the QD2T()'s:
+#  
+#           EwHXrQS = CROSS_PRODUCT(  dat['AngVelEH, dat['rQS(:,K,J) )
+#  
+#           dat['PLinVelES(K,J,          :,:,:) = dat['PLinVelEQ(:,:,:)
+#           dat['PLinVelES(K,J,DOF_BF(K,1),0,:) = p['TwistedSF(K,1,1,J,0)                          *CoordSys['j1(K,:) &  !bjj: this line can be optimized
+#                                                  + p['TwistedSF(K,2,1,J,0)                          *CoordSys['j2(K,:) &
+#                                                  - (   p['AxRedBld(K,1,1,J)*QT ( DOF_BF(K,1) ) &
+#                                                      + p['AxRedBld(K,1,2,J)*QT ( DOF_BF(K,2) ) &
+#                                                      + p['AxRedBld(K,1,3,J)*QT ( DOF_BE(K,1) )   )*CoordSys['j3(K,:)
+#           dat['PLinVelES(K,J,DOF_BE(K,1),0,:) = p['TwistedSF(K,1,3,J,0)                          *CoordSys['j1(K,:) &
+#                                                  + p['TwistedSF(K,2,3,J,0)                          *CoordSys['j2(K,:) &
+#                                                  - (   p['AxRedBld(K,3,3,J)*QT ( DOF_BE(K,1) ) &
+#                                                      + p['AxRedBld(K,2,3,J)*QT ( DOF_BF(K,2) ) &
+#                                                      + p['AxRedBld(K,1,3,J)*QT ( DOF_BF(K,1) )   )*CoordSys['j3(K,:)
+#           dat['PLinVelES(K,J,DOF_BF(K,2),0,:) = p['TwistedSF(K,1,2,J,0)                          *CoordSys['j1(K,:) &
+#                                                  + p['TwistedSF(K,2,2,J,0)                          *CoordSys['j2(K,:) &
+#                                                  - (   p['AxRedBld(K,2,2,J)*QT ( DOF_BF(K,2) ) &
+#                                                      + p['AxRedBld(K,1,2,J)*QT ( DOF_BF(K,1) ) &
+#                                                      + p['AxRedBld(K,2,3,J)*QT ( DOF_BE(K,1) )   )*CoordSys['j3(K,:)
+#  
+#           TmpVec1 = CROSS_PRODUCT( dat['AngVelEH, dat['PLinVelES(K,J,DOF_BF(K,1),0,:) )
+#           TmpVec2 = CROSS_PRODUCT( dat['AngVelEH, dat['PLinVelES(K,J,DOF_BE(K,1),0,:) )
+#           TmpVec3 = CROSS_PRODUCT( dat['AngVelEH, dat['PLinVelES(K,J,DOF_BF(K,2),0,:) )
+#  
+#           dat['PLinVelES(K,J,DOF_BF(K,1),1,:) = TmpVec1 &
+#                                                  - (   p['AxRedBld(K,1,1,J)*QDT( DOF_BF(K,1) ) &
+#                                                      + p['AxRedBld(K,1,2,J)*QDT( DOF_BF(K,2) ) &
+#                                                      + p['AxRedBld(K,1,3,J)*QDT( DOF_BE(K,1) )   )*CoordSys['j3(K,:)
+#           dat['PLinVelES(K,J,DOF_BE(K,1),1,:) = TmpVec2 &
+#                                                  - (   p['AxRedBld(K,3,3,J)*QDT( DOF_BE(K,1) ) &
+#                                                      + p['AxRedBld(K,2,3,J)*QDT( DOF_BF(K,2) ) &
+#                                                      + p['AxRedBld(K,1,3,J)*QDT( DOF_BF(K,1) )   )*CoordSys['j3(K,:)
+#           dat['PLinVelES(K,J,DOF_BF(K,2),1,:) = TmpVec3 &
+#                                                  - (   p['AxRedBld(K,2,2,J)*QDT( DOF_BF(K,2) ) &
+#                                                      + p['AxRedBld(K,1,2,J)*QDT( DOF_BF(K,1) ) &
+#                                                      + p['AxRedBld(K,2,3,J)*QDT( DOF_BE(K,1) )   )*CoordSys['j3(K,:)
+#  
+#           LinVelHS                 = QDT( DOF_BF(K,1) )*dat['PLinVelES(K,J,DOF_BF(K,1),0,:) &
+#                                    + QDT( DOF_BE(K,1) )*dat['PLinVelES(K,J,DOF_BE(K,1),0,:) &
+#                                    + QDT( DOF_BF(K,2) )*dat['PLinVelES(K,J,DOF_BF(K,2),0,:)
+#           dat['LinAccESt(:,K,J) = QDT( DOF_BF(K,1) )*dat['PLinVelES(K,J,DOF_BF(K,1),1,:) &
+#                                    + QDT( DOF_BE(K,1) )*dat['PLinVelES(K,J,DOF_BE(K,1),1,:) &
+#                                    + QDT( DOF_BF(K,2) )*dat['PLinVelES(K,J,DOF_BF(K,2),1,:)
+#  
+#           dat['LinVelES(:,J,K)  = LinVelHS + dat['LinVelEZ
+#           DO I = 1,p['NPH   ! Loop through all DOFs associated with the angular motion of the hub (body H)
+#  
+#              TmpVec0 = CROSS_PRODUCT(   dat['PAngVelEH(p['PH(I),0,:), dat['rQS(:,K,J)            )  !bjj: this line can be optimized
+#              TmpVec1 = CROSS_PRODUCT(   dat['PAngVelEH(p['PH(I),0,:),     EwHXrQS        + LinVelHS )  !bjj: this line can be optimized
+#              TmpVec2 = CROSS_PRODUCT(   dat['PAngVelEH(p['PH(I),1,:), dat['rQS(:,K,J)            )  !bjj: this line can be optimized
+#  
+#              dat['PLinVelES(K,J,p['PH(I),0,:) = dat['PLinVelES(K,J,p['PH(I),0,:) + TmpVec0            !bjj: this line can be optimized
+#              dat['PLinVelES(K,J,p['PH(I),1,:) = dat['PLinVelES(K,J,p['PH(I),1,:) + TmpVec1 + TmpVec2  !bjj: this line can be optimized
+#  
+#              dat['LinVelES(:,J,K)          = dat['LinVelES(:,J,K)   + QDT(p['PH(I))*dat['PLinVelES(K,J,p['PH(I),0,:)  !bjj: this line can be optimized
+#              dat['LinAccESt(:,K,J)         = dat['LinAccESt(:,K,J)  + QDT(p['PH(I))*dat['PLinVelES(K,J,p['PH(I),1,:)  !bjj: this line can be optimized
+#  
+#           END DO ! I - all DOFs associated with the angular motion of the hub (body H)
+#  
+#        END DO !J = 0,p['TipNodes ! Loop through the blade nodes / elements
+#        
+#        
+#     !JASON: USE TipNode HERE INSTEAD OF BldNodes IF YOU ALLOCATE AND DEFINE n1, n2, n3, m1, m2, AND m3 TO USE TipNode.  THIS WILL REQUIRE THAT THE AERODYNAMIC AND STRUCTURAL TWISTS, AeroTwst() AND ThetaS(), BE KNOWN AT THE TIP!!!
+#        !IF (.NOT. p['BD4Blades) THEN
+#        !   dat['LinVelESm2(K) = DOT_PRODUCT( dat['LinVelES(:,p['TipNode,K), CoordSys['m2(K,p['BldNodes,:) )
+#        !END IF
+#              
+#     END DO !K = 1,p['NumBl
+#  
+#  
+#     dat['PLinVelEW(       :,:,:) = dat['PLinVelEO(:,:,:)
+#     DO I = 1,NPN   ! Loop through all DOFs associated with the angular motion of the nacelle (body N)
+#  
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelEN(PN(I)   ,0,:), dat['rOW                 )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelEN(PN(I)   ,0,:),     EwNXrOW                 )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelEN(PN(I)   ,1,:), dat['rOW                 )
+#  
+#        dat['PLinVelEW(PN(I),0,:) = TmpVec0    +               dat['PLinVelEW(PN(I)   ,0,:)
+#        dat['PLinVelEW(PN(I),1,:) = TmpVec1    + TmpVec2 +     dat['PLinVelEW(PN(I)   ,1,:)
+#  
+#         LinAccEWt                   =  LinAccEWt + QDT(PN(I) )*dat['PLinVelEW(PN(I)   ,1,:)
+#  
+#     ENDDO          ! I - all DOFs associated with the angular motion of the nacelle (body N)
+#  
+#  
+#     ! Velocities of point I (tail boom center of mass)
+#     dat['PLinVelEI(       :,:,:) = dat['PLinVelEW(:,:,:)
+#     DO I = 1,NPA   ! Loop through all DOFs associated with the angular motion of the tail (body A)
+#  
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelEA(PA(I)   ,0,:), dat['rWI                 )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelEA(PA(I)   ,0,:),     EwAXrWI                 )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelEA(PA(I)   ,1,:), dat['rWI                 )
+#  
+#        dat['PLinVelEI(PA(I),0,:) = TmpVec0    +                       dat['PLinVelEI(PA(I)   ,0,:)
+#        dat['PLinVelEI(PA(I),1,:) = TmpVec1    + TmpVec2 +             dat['PLinVelEI(PA(I)   ,1,:)
+#  
+#        dat['LinAccEIt            =  dat['LinAccEIt + QDT(PA(I) )*dat['PLinVelEI(PA(I)   ,1,:)
+#  
+#     ENDDO          ! I - all DOFs associated with the angular motion of the tail (body A)
+#  
+#  
+#     ! Velocities of point J (tail fin center of mass)
+#     dat['PLinVelEJ(       :,:,:) = dat['PLinVelEW(:,:,:)
+#     dat['LinVelEJ                = dat['LinVelEZ
+#     DO I = 1,NPA   ! Loop through all DOFs associated with the angular motion of the tail (body A)
+#  
+#        TmpVec0 = CROSS_PRODUCT( dat['PAngVelEA(PA(I)   ,0,:), dat['rWJ                 )
+#        TmpVec1 = CROSS_PRODUCT( dat['PAngVelEA(PA(I)   ,0,:),     EwAXrWJ                 )
+#        TmpVec2 = CROSS_PRODUCT( dat['PAngVelEA(PA(I)   ,1,:), dat['rWJ                 )
+#  
+#        dat['PLinVelEJ(PA(I),0,:) = TmpVec0    +               dat['PLinVelEJ(PA(I)   ,0,:)
+#        dat['PLinVelEJ(PA(I),1,:) = TmpVec1    + TmpVec2 +     dat['PLinVelEJ(PA(I)   ,1,:)
+#  
+#         dat['LinVelEJ            =  dat['LinVelEJ  + QDT(PA(I) )*dat['PLinVelEJ(PA(I)   ,0,:)
+#         dat['LinAccEJt           =  dat['LinAccEJt + QDT(PA(I) )*dat['PLinVelEJ(PA(I)   ,1,:)
+#  
+#     ENDDO          ! I - all DOFs associated with the angular motion of the tail (body A)
+#  
+#  
+    # --- Tower nodes
+    dat['LinAccETt'] = np.zeros((TwrNodes+1,3))
+    dat['LinVelET'] = np.zeros((TwrNodes+1,3))
+    for J in range(TwrNodes+1): #Loop through the tower nodes / elements
+       # Define the partial linear velocities (and their 1st derivatives) of the current node (point T(HNodes(J))) in the inertia frame.
+       #  Also define the overall linear velocity of the current node in the inertia frame.
+       #  Also, define the portion of the linear acceleration of the current node in the inertia frame associated with
+       #    everything but the QD2T()'s:
+       EwXXrZT                   = np.cross(  dat['AngVelEX'], dat['rZT'][J,:] )
+       dat['PLinVelET'][J,       :,:,:] = dat['PLinVelEZ'].copy()
+       dat['PLinVelET'][J,DOF_TFA1,0,:] = p['TwrFASF'][0,J,0]*CoordSys['a1'] - (   p['AxRedTFA'][0,0,J]* QT[DOF_TFA1]  + p['AxRedTFA'][0,1,J]* QT[DOF_TFA2]   )*CoordSys['a2']
+       dat['PLinVelET'][J,DOF_TSS1,0,:] = p['TwrSSSF'][0,J,0]*CoordSys['a3'] - (   p['AxRedTSS'][0,0,J]* QT[DOF_TSS1]  + p['AxRedTSS'][0,1,J]* QT[DOF_TSS2]   )*CoordSys['a2']
+       dat['PLinVelET'][J,DOF_TFA2,0,:] = p['TwrFASF'][1,J,0]*CoordSys['a1'] - (   p['AxRedTFA'][1,1,J]* QT[DOF_TFA2]  + p['AxRedTFA'][0,1,J]* QT[DOF_TFA1]   )*CoordSys['a2']
+       dat['PLinVelET'][J,DOF_TSS2,0,:] = p['TwrSSSF'][1,J,0]*CoordSys['a3'] - (   p['AxRedTSS'][1,1,J]* QT[DOF_TSS2]  + p['AxRedTSS'][0,1,J]* QT[DOF_TSS1]   )*CoordSys['a2']
+       TmpVec1 = np.cross( dat['AngVelEX'], dat['PLinVelET'][J,DOF_TFA1,0,:] )
+       TmpVec2 = np.cross( dat['AngVelEX'], dat['PLinVelET'][J,DOF_TSS1,0,:] )
+       TmpVec3 = np.cross( dat['AngVelEX'], dat['PLinVelET'][J,DOF_TFA2,0,:] )
+       TmpVec4 = np.cross( dat['AngVelEX'], dat['PLinVelET'][J,DOF_TSS2,0,:] )
+       dat['PLinVelET'][J,DOF_TFA1,1,:] = TmpVec1 - (   p['AxRedTFA'][0,0,J]*QDT[DOF_TFA1]  + p['AxRedTFA'][0,1,J]*QDT[DOF_TFA2]   )*CoordSys['a2']
+       dat['PLinVelET'][J,DOF_TSS1,1,:] = TmpVec2 - (   p['AxRedTSS'][0,0,J]*QDT[DOF_TSS1]  + p['AxRedTSS'][0,1,J]*QDT[DOF_TSS2]   )*CoordSys['a2']
+       dat['PLinVelET'][J,DOF_TFA2,1,:] = TmpVec3 - (   p['AxRedTFA'][1,1,J]*QDT[DOF_TFA2]  + p['AxRedTFA'][0,1,J]*QDT[DOF_TFA1]   )*CoordSys['a2']
+       dat['PLinVelET'][J,DOF_TSS2,1,:] = TmpVec4 - (   p['AxRedTSS'][1,1,J]*QDT[DOF_TSS2]  + p['AxRedTSS'][0,1,J]*QDT[DOF_TSS1]   )*CoordSys['a2']
+       LinVelXT               = QDT[DOF_TFA1]*dat['PLinVelET'][J,DOF_TFA1,0,:] \
+                              + QDT[DOF_TSS1]*dat['PLinVelET'][J,DOF_TSS1,0,:] \
+                              + QDT[DOF_TFA2]*dat['PLinVelET'][J,DOF_TFA2,0,:] \
+                              + QDT[DOF_TSS2]*dat['PLinVelET'][J,DOF_TSS2,0,:]
+       dat['LinAccETt'][J,:] =  QDT[DOF_TFA1]*dat['PLinVelET'][J,DOF_TFA1,1,:] \
+                              + QDT[DOF_TSS1]*dat['PLinVelET'][J,DOF_TSS1,1,:] \
+                              + QDT[DOF_TFA2]*dat['PLinVelET'][J,DOF_TFA2,1,:] \
+                              + QDT[DOF_TSS2]*dat['PLinVelET'][J,DOF_TSS2,1,:]
+       dat['LinVelET'][J,:] = LinVelXT + dat['LinVelEZ']
+       for I in range(NPX): # Loop through all DOFs associated with the angular motion of the platform (body X)
+          TmpVec0   = np.cross( dat['PAngVelEX'][PX[I],0,:], dat['rZT'][J,:]          )
+          TmpVec1   = np.cross( dat['PAngVelEX'][PX[I],0,:], EwXXrZT      + LinVelXT )
+          dat['PLinVelET'][J,PX[I],0,:] = dat['PLinVelET'][J,PX[I],0,:] + TmpVec0
+          dat['PLinVelET'][J,PX[I],1,:] = dat['PLinVelET'][J,PX[I],1,:] + TmpVec1
+          dat['LinVelET'][ J,        :] += QDT[PX[I]]*dat['PLinVelET'][J,PX[I],0,:]
+          dat['LinAccETt'][J,        :] += QDT[PX[I]]*dat['PLinVelET'][J,PX[I],1,:]
+    # ---
+    if IEC is None:
+        IEC = dict()
+    IEC['vF'] = EDVec2IEC(dat['LinVelEZ'])
+    IEC['vN'] = EDVec2IEC(dat['LinVelEO'])
+    IEC['udN'] = EDVec2IEC(LinVelXO) # Elastic motion of tower top
+    IEC['vGn'] = EDVec2IEC(dat['LinVelEU']) # velocity of nacelle COG
+    IEC['vTn'] = EDVec2IEC(dat['LinVelET']) # velocity of tower nodes
+
+    return dat, IEC
 
 if __name__ == '__main__':
 #     EDfilename='../yams/_Jens/FEMBeam_NewFASTCoeffs/data/NREL5MW_ED_Onshore.dat'
