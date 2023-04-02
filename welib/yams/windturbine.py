@@ -446,6 +446,11 @@ class WindTurbineStructure():
         print('-----------------------------------------------------------------------------')
         return resLI, sysLI, dfLI
 
+    def picklable(self):
+        """ Make the object picklable..."""
+        if self.MAP:
+            self.MAP=None # Library is ctype, not picklable...
+
 
 # --------------------------------------------------------------------------------}
 # --- Helpers 
@@ -468,6 +473,8 @@ def rigidBlades(blds, hub=None, r_O=[0,0,0]):
 def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, nSpanBld=None, algo='',
         bldStartAtRotorCenter=True):
     """
+    INPUTS:
+     - twrShapes: Select shapes to use for tower. If None, twrShapes=[0,1,2,3]
 
     """
     # TODO TODO TODO  Harmonize with TNSB.py

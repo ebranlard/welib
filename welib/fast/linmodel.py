@@ -609,6 +609,16 @@ class FASTLinModel(LinearStateSpace):
     # From welib.system.statespacelinear
     #def __repr__(self):
 
+    def picklable(self):
+        """ Make the object picklable..."""
+        if self.WT:
+            self.WT.picklable()
+        if self.WT_sim:
+            self.WT_sim.picklable()
+#         def noneIfLambda(obj):
+#             if callable(obj) and obj.__name__ == "<lambda>":
+#                 obj=None
+
     @property
     def defaultPickleFile(self):
         if self.fstFilename is None:

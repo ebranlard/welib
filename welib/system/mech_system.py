@@ -651,6 +651,12 @@ class MechSystem():
         #    print('[WARN] The A matrix is not guaranteed to be the linearized version when force is given as a function')
         return StateMatrix(self._Minv,self.C,self.K)
 
+    def eigA(self):
+        from welib.tools.eva import eigA
+        A = self.A # NOTE: not always defined...
+        freq_d, zeta, Q, freq_0 = eigA(A, fullEV=False, normQ=None, sort=True)
+        return freq_d, zeta, Q, freq_0 
+
     @property
     def B(self):
         """ 
@@ -713,6 +719,18 @@ class MechSystem():
             pass
 
         return s
+
+    def picklable(self):
+        """ Make the object picklable..."""
+        def noneIfLambda(attr):
+            obj = getattr(self, attr)
+            if callable(obj) and obj.__name__ == "<lambda>":
+                print('MechSystem: picklable: removing ', attr)
+                setattr(self, attr, None)
+        noneIfLambda('M')
+        noneIfLambda('_fM')
+        noneIfLambda('_fMinv')
+        noneIfLambda('_force_fn')
 
 
     def plot(self, fig=None, axes=None, label=None, res=None, calc='', qFactors=None, **kwargs):

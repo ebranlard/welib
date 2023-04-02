@@ -1297,7 +1297,7 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m, U=None, V=None, K=None, a
 
 
 def beamSectionLoadsFromShapeFunctions(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m, 
-        M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, corrections=1):
+        M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, corrections=1, PhiK=None):
     """ 
     
     """
@@ -1313,9 +1313,9 @@ def beamSectionLoadsFromShapeFunctions(x, xd, xdd, p_ext, F_top, M_top, s_span, 
         U         += x  [j] * PhiU[j] # Deflections
         V         += x  [j] * PhiV[j] # Slopes
         #v_struct  += xd [j] * PhiU[j]
-        a_struct  += xdd[j] * PhiU[j]
+        a_struct  += xdd[j] * PhiU[j] # TODO base motion
 
-    return beamSectionLoads3D(p_ext=p_ext, F_top=F_top, M_top=M_top, s_span=s_span, m=m, U=U, V=V, K=None, a_struct=a_struct, 
+    return beamSectionLoads3D(p_ext=p_ext, F_top=F_top, M_top=M_top, s_span=s_span, m=m, U=U, V=V, K=PhiK, a_struct=a_struct, 
             M_lumped=M_lumped, m_hydro=m_hydro, a_ext=a_ext, F_ext_lumped=F_ext_lumped, corrections=corrections)
     return F_sec, M_sec
 

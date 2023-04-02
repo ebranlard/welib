@@ -589,6 +589,11 @@ class LinearStateSpace(StateSpace):
         return G, phi
     
 
+    def eigA(self):
+        from welib.tools.eva import eigA
+        A = self.A # NOTE: not always defined...
+        freq_d, zeta, Q, freq_0 = eigA(A, fullEV=False, normQ=None, sort=True)
+        return freq_d, zeta, Q, freq_0 
 
     # --------------------------------------------------------------------------------}
     # --- Matrix manipulation

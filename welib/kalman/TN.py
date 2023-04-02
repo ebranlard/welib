@@ -1,3 +1,8 @@
+""" 
+Kalman filter model for "Tower Nacelle Shaft" (based on yams TNSB)"
+
+"""
+
 import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter

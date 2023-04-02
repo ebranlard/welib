@@ -387,15 +387,24 @@ class SimulatorFromOF():
 
         return fig
 
-    def save(self, filename=None, prefix='', dfFSlin=None):
+    def save(self, filename=None, prefix='', suffix='', **kwargs):
         if filename is None:
-            filename = self.fstFilename.replace('.fst','{}_yamsSim.pkl'.format(prefix))
+            parentDir= os.path.dirname(self.fstFilename)
+            base     = os.path.splitext(os.path.basename(self.fstFilename))[0]
+            filename = os.path.join(parentDir, prefix+base+suffix+'_yamsSim.pkl')
 
-        import pickle
+        if self.sysNL is not None:
+            self.sysNL.picklable()
+        if self.sysLI is not None:
+            self.sysLI.picklable()
+
         D={'dfNL':self.dfNL, 'dfLI':self.dfLI, 'dfFS':self.dfFS, 'p':self.p}
-        if dfFSlin is not None:
-            D['dfFSlin'] = dfFSlin
+        D['sysLI']=self.sysLI
+        D['sysNL']=self.sysNL
+        D.update(kwargs)
+        print(D.keys())
         print('>>> Export to:',filename)
+        import pickle
         pickle.dump(D,  open(filename,'wb'))
 
     # --------------------------------------------------------------------------------}
