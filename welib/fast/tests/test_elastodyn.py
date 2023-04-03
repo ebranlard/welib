@@ -14,9 +14,7 @@ scriptDir=os.path.dirname(__file__)
 class TestED(unittest.TestCase):
     """ See examples/ for more examples """
 
-
-
-    def test_fitShapeFunction1(self):
+    def test_ED_00_fitShapeFunction1(self):
 
         def checkShapes(filename, twr=True, plot=True, test=False):
             """ 
@@ -67,7 +65,7 @@ class TestED(unittest.TestCase):
         edFile = os.path.join(scriptDir,'../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Blade.dat')
         checkShapes(edFile, twr=False, plot=False, test=True)
 
-    def test_fitShapeFunction2(self):
+    def test_ED_00_fitShapeFunction2(self):
         x  = np.linspace(0,1)[1:-1]
         # Fit square
         phi = x**2
@@ -80,7 +78,7 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(coeffs, [ 1.2335,  0.0016 , -0.2593,  0.0087,  0.0154], 4)
 
 
-    def test_ED_rot_params(self):
+    def test_ED_00_rot_params(self):
         Gravity = 9.80665
         EDfilename=os.path.join(scriptDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         #p = bladeParameters(EDfilename, AdjBlMs=1)  # <<<<<<
@@ -103,7 +101,7 @@ class TestED(unittest.TestCase):
 
 
 
-    def test_ED_blade_params_NoBldAdj(self):
+    def test_ED_10_blade_params_NoBldAdj(self):
         # 
         # NOTE:  These parameters were obtained for AdjBlMs=1!!!
         # Kept to avoid redoing all these tests..
@@ -282,7 +280,7 @@ class TestED(unittest.TestCase):
 # 
 
 
-    def test_ED_tower_params(self):
+    def test_ED_10_tower_params(self):
         EDfilename=os.path.join(scriptDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         RotMass = 107107.00927723547
         Gravity = 9.80665
@@ -361,7 +359,31 @@ class TestED(unittest.TestCase):
         np.testing.assert_almost_equal(KK[6:,6:]/1e6,       p['Ke0']/1e6) # NOTE: Ke0 not Ke (which has Kg now)
 
 
+    def test_ED_20_Parameters(self):
+        # Test ED Parameters
+        # NOTE: ED_Parameters mostly calls towerParameters, bladeParameters, rotorParameters
+        #       But also stores info for the platform, hub, gen
+        fstSim = os.path.join(scriptDir, '../../../data/Spar/Main_Spar_ED.fst' )
+        p = ED_Parameters(fstSim)
+        # TODO test it
 
+    def test_ED_30_CoordSys(self):
+        # 
+        fstSim = os.path.join(scriptDir, '../../../data/Spar/Main_Spar_ED.fst' )
+        qDict  = {'Sg': 10.0, 'Sw':20.0, 'Hv': 5.0, 'R':0.0, 'P':0.3, 'Y':0, 'TFA1':1.0, 'TSS1':10.0, 'Yaw':np.pi/8}
+        p = ED_Parameters(fstSim)
+        CS = ED_CoordSys(qDict=qDict, TwrFASF=p['TwrFASF'], TwrSSSF=p['TwrSSSF'])
+        # TODO test it
+
+
+    def test_ED_50_CalcOutputs(self):
+        # 
+        fstSim = os.path.join(scriptDir, '../../../data/Spar/Main_Spar_ED.fst' )
+        qDict  = {'Sg': 10.0, 'Sw':20.0, 'Hv': 5.0, 'R':0.0, 'P':0.3, 'Y':0, 'TFA1':1.0, 'TSS1':10.0, 'Yaw':np.pi/8}
+        qdDict = {'Sg':  1.0, 'Sw': 2.0, 'Hv': 3.0, 'R':0.1, 'P':0.3, 'Y':0, 'TFA1':2.0, 'TSS1':4.0,  'Yaw':0.0}
+        p = ED_Parameters(fstSim)
+        x = {'qDict':qDict, 'qdDict':qdDict} 
+        CS, dat, IEC = ED_CalcOutputs(x, p)
 
 
 if __name__ == '__main__':

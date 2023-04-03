@@ -1299,6 +1299,13 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m, U=None, V=None, K=None, a
 def beamSectionLoadsFromShapeFunctions(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m, 
         M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, corrections=1, PhiK=None):
     """ 
+    Compute section loads along a beam represented by shape functions
+    INPUTS:
+     - x, xd, xdd : elastic motion associated with the shape functions
+                 array-like of shape nf
+     - p_ext: loads along the beam (without inertia), shape: (3 x n) [N/m]
+
+     - PhiU, PhiV, PhiK: Deflections, slopes, curvature of shape functions (nf x 3 x n)  
     
     """
     # Main dimensions
@@ -1309,15 +1316,20 @@ def beamSectionLoadsFromShapeFunctions(x, xd, xdd, p_ext, F_top, M_top, s_span, 
     V        = np.zeros(shapeDisp)
     #v_struct = np.zeros(shapeDisp)
     a_struct = np.zeros(shapeDisp)
+
+    # Compute elastic deformation, slope curvature:
     for j in np.arange(nf):
         U         += x  [j] * PhiU[j] # Deflections
         V         += x  [j] * PhiV[j] # Slopes
         #v_struct  += xd [j] * PhiU[j]
         a_struct  += xdd[j] * PhiU[j] # TODO base motion
+    if PhiK is not None:
+        for j in np.arange(nf):
+            K += x[j] * PhiK[j] # Deflections
 
-    return beamSectionLoads3D(p_ext=p_ext, F_top=F_top, M_top=M_top, s_span=s_span, m=m, U=U, V=V, K=PhiK, a_struct=a_struct, 
+    return beamSectionLoads3D(p_ext=p_ext, F_top=F_top, M_top=M_top, s_span=s_span, m=m, U=U, V=V, K=K, a_struct=a_struct, 
             M_lumped=M_lumped, m_hydro=m_hydro, a_ext=a_ext, F_ext_lumped=F_ext_lumped, corrections=corrections)
-    return F_sec, M_sec
+    #return F_sec, M_sec
 
 
 

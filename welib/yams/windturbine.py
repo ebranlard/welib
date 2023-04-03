@@ -21,8 +21,9 @@ import pandas as pd
 import copy
 import welib.weio as weio
 from collections import OrderedDict
-from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
+from welib.yams.rotations import R_x, R_y, R_z, rotMat
+from welib.yams.kinematics import rigidBodyMotion2Points
 
 class WindTurbineStructure():
     def __init__(self):
@@ -37,10 +38,12 @@ class WindTurbineStructure():
         self.r_NS_inN = None
         self.r_NR_inN = None
         self.r_SR_inS = None
+        self.shaft_tilt = None # [rad]
 
         # Information relevant for simulation
         self.DOF    ={'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
 
+        self.algo=None # 'OpenFAST'
         # Derived properties
         #self.DOFname
         #self.q0     
@@ -452,6 +455,268 @@ class WindTurbineStructure():
             self.MAP=None # Library is ctype, not picklable...
 
 
+
+    def kinematics(self, qDict, qdDict, qddDict=None):
+        """ Update kinematics from fnd to blades """
+
+        fnd = self.fnd
+        twr = self.twr
+        nac = self.nac
+        r_F0     = fnd.pos_global_init # np.array((0, 0, ED['PtfmRefzt']))
+        r_T0     = twr.pos_global_init # np.array((0, 0, ED['TowerBsHt']))
+        s_NGn0   = nac.masscenter # TODO
+        d = kinematics(qDict, qdDict, qddDict, r_F0=r_F0, r_T0=r_T0, twr=twr, 
+                s_NGn0=s_NGn0,
+                tilt=self.shaft_tilt,
+                algo = self.algo)
+
+        # -- RNA (without Yaw Br) COG
+        s_NGrna0_in_N = self.RNA_noYawBr.masscenter
+        dRNA = rigidBodyKinematics(s_NGrna0_in_N, d['r_N'], d['R_g2n'], v_N=d['v_N'], omega_n=d['omega_n'], a_N=d['a_N'], omegad_n=d['omegad_n'], point_name='Grna', source_name='N')
+        d.update(dRNA)
+
+        # -- IMU Kinematics
+        s_NIMU_in_N = np.array([self.ED['NcIMUxn'], self.ED['NcIMUyn'], self.ED['NcIMUzn']])
+        dIMU = rigidBodyKinematics(s_NIMU_in_N, d['r_N'], d['R_g2n'], v_N=d['v_N'], omega_n=d['omega_n'], a_N=d['a_N'], omegad_n=d['omegad_n'], point_name='IMU', source_name='N')
+        d.update(dIMU)
+
+        # Store in bodies
+        fnd.pos_global = d['r_F']
+        fnd.R_b2g      = d['R_g2f'].T
+
+        return d
+
+
+    def calcOutputsFromDF(WT, df, noAcc=False, useTopLoadsFromDF=False):
+        """ 
+        Given a dataFrame containing time series of DOF
+        Compute outputs using OpenFAST Naming Convention
+        
+        INPUTS: 
+         - df: dataframe with time series of degrees of fredom
+               For instance df= weio.read('main.outb').toDataFrame()
+               Columns Names: 'Time_[s]'
+               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+         - noAcc: set accelerations to zero
+        """
+        from welib.tools.tictoc import Timer
+        #from welib.beams.theory import UniformBeamGuyanModes, UniformBeamBendingModes
+        #from welib.yams.yams import UniformBeamBody
+        from welib.fast.postpro import ED_TwrGag #, ED_TwrStations, getEDClass
+        #from welib.fast.elastodyn import rotorParameters, towerParameters, ED_Parameters, ED_CoordSys, ED_Positions
+        #from welib.fast.elastodyn import ED_AngPosVelPAcc, ED_LinVelPAcc, ED_qDict2q
+        #from welib.weio.fast_input_deck import FASTInputDeck
+        #from welib.yams.windturbine import FASTWindTurbine
+        from welib.yams.flexibility import beamSectionLoads3D  # calls beamSectionLoads1D
+        #from welib.yams.rotations import rotMat, R_y, R_z, R_x
+        #from welib.yams.kinematics import *
+
+        def towerSectionLoads(twr, F_top_t, M_top_t, kin, gravity):
+            nSpan = len(twr.s_span)
+            p_ext = np.zeros(nSpan)
+            a_struct_t = np.zeros((3,nSpan))
+            R_g2t = kin['R_g2t']
+            for j in range(nSpan):
+                a_struct_t[:,j] = R_g2t.dot(kin['a_Ts'][j,:])
+            gravity_vec = np.array((0.,0.,-gravity)) # external acceleration (gravity/earthquake)
+            a_ext = R_g2t.dot(gravity_vec)
+            # NOTE: assumes that U,V, K have been computed using twr.updateFlexibleKinematics 
+            F_sec, M_sec =  beamSectionLoads3D(p_ext=p_ext, F_top=F_top_t, M_top=M_top_t, s_span=twr.s_span, m=twr.m, U=twr.U, V=twr.V, K=twr.K, a_struct=a_struct_t, 
+                     a_ext=a_ext, corrections=1)
+            return F_sec, M_sec
+
+
+        df.columns = [  v.split('_[')[0] for v in df.columns.values]
+
+        # --- States
+        DOFNames = ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+        sq   = ['Q_'+s for s in DOFNames]
+        sqd  = ['QD_'+s for s in DOFNames]
+        sqdd = ['QD2_'+s for s in DOFNames]
+        sqall = sq+sqd+sqdd
+        for s in sqall:
+            if s not in df.keys():
+                print('[WARN] Missing DOF from dataframe: {}'.format(s))
+                df[s]=0
+        Q   = df[sq]
+        QD  = df[sqd]
+        QDD = df[sqdd]
+        Q.columns   = DOFNames
+        QD.columns  = DOFNames
+        QDD.columns = DOFNames
+        if noAcc:
+            QDD *=0
+
+        # --- Outputs
+        colOut = ['Time']
+        colOut += sq + sqd + sqdd
+        # IMU
+        colOut += ['NcIMUTVxs','NcIMUTVys','NcIMUTVzs']
+        colOut += ['NcIMUTAxs','NcIMUTAys','NcIMUTAzs']
+        colOut += ['NcIMURVxs','NcIMURVys','NcIMURVzs']
+        colOut += ['NcIMURAxs','NcIMURAys','NcIMURAzs']
+        # Tower Top
+        colOut+= ['TwrTpTDxi','TwrTpTDyi','TwrTpTDzi']
+        # Yaw Brake
+        colOut+= ['YawBrTDxp','YawBrTDyp','YawBrTDzp']
+        colOut+= ['YawBrTDxt','YawBrTDyt','YawBrTDzt']
+        colOut+= ['YawBrTVxp','YawBrTVyp','YawBrTVzp']
+        colOut+= ['YawBrTAxp','YawBrTAyp','YawBrTAzp']
+        colOut+= ['YawBrRVxp','YawBrRVyp','YawBrRVzp']
+        colOut+= ['YawBrRAxp','YawBrRAyp','YawBrRAzp']
+        colOut+= ['YawBrFxp','YawBrFyp','YawBrFzp']
+        colOut+= ['YawBrMxp','YawBrMyp','YawBrMzp']
+        # ED Outputs
+        HEDOut, I = ED_TwrGag(WT.ED, addBase=False)
+        for iiSL,hED in enumerate(HEDOut):
+            sT='TwHt{}'.format(iiSL+1)
+            colOut+=[sT+'FLxt', sT+'FLyt', sT+'FLzt']
+            colOut+=[sT+'MLxt', sT+'MLyt', sT+'MLzt']
+        dfOut = pd.DataFrame(index=df.index, columns=colOut)
+
+        # --- Calc Output per time step
+        with Timer('Kinematics'):
+            for it,t in enumerate(df['Time']):
+                q   = Q.iloc[it,:]
+                qd  = QD.iloc[it,:]
+                qdd = QDD.iloc[it,:]
+                q['TSS1'] = -q['TSS1']
+                qd['TSS1'] = -qd['TSS1']
+                qdd['TSS1'] = -qdd['TSS1']
+    #             q['TSS2'] = -q['TSS2']
+
+                dd = WT.kinematics(q, qd, qdd)
+                dfOut['Time'].loc[it] = t
+                # TDi includes all platform motions
+                dfOut['TwrTpTDxi'].loc[it] = dd['u_N_tot'][0] 
+                dfOut['TwrTpTDyi'].loc[it] = dd['u_N_tot'][1]
+                dfOut['TwrTpTDzi'].loc[it] = dd['u_N_tot'][2]
+
+                u_N = dd['u_N']
+                v_N = dd['v_N']
+                a_N = dd['a_N']
+                om_N = dd['omega_n']
+                omd_N = dd['omegad_n']
+                u_N_p = dd['R_g2p'].dot(u_N)
+                u_N_t = dd['R_g2t'].dot(u_N)
+                v_N_p = dd['R_g2p'].dot(v_N)
+                a_N_p = dd['R_g2p'].dot(a_N)
+                om_N_p = dd['R_g2p'].dot(om_N)
+                omd_N_p = dd['R_g2p'].dot(omd_N)
+
+                dfOut['YawBrTDxt'].loc[it] = u_N_t[0]
+                dfOut['YawBrTDyt'].loc[it] = u_N_t[1]
+                dfOut['YawBrTDzt'].loc[it] = u_N_t[2]
+                dfOut['YawBrTDxp'].loc[it] = u_N_p[0]
+                dfOut['YawBrTDyp'].loc[it] = u_N_p[1]
+                dfOut['YawBrTDzp'].loc[it] = u_N_p[2]
+
+                dfOut['YawBrTVxp'].loc[it] = v_N_p[0]
+                dfOut['YawBrTVyp'].loc[it] = v_N_p[1]
+                dfOut['YawBrTVzp'].loc[it] = v_N_p[2]
+                dfOut['YawBrTAxp'].loc[it] = a_N_p[0]
+                dfOut['YawBrTAyp'].loc[it] = a_N_p[1]
+                dfOut['YawBrTAzp'].loc[it] = a_N_p[2]
+                dfOut['YawBrRVxp'].loc[it] = om_N_p[0] * 180/np.pi
+                dfOut['YawBrRVyp'].loc[it] = om_N_p[1] * 180/np.pi
+                dfOut['YawBrRVzp'].loc[it] = om_N_p[2] * 180/np.pi
+                dfOut['YawBrRAxp'].loc[it] = omd_N_p[0] * 180/np.pi
+                dfOut['YawBrRAyp'].loc[it] = omd_N_p[1] * 180/np.pi
+                dfOut['YawBrRAzp'].loc[it] = omd_N_p[2] * 180/np.pi
+
+                a_IMU = dd['a_IMU']
+                v_IMU = dd['v_IMU']
+                om_IMU = dd['omega_n']
+                omd_IMU = dd['omegad_n']
+
+                a_IMU_s = dd['R_g2s'].dot(a_IMU)
+                v_IMU_s = dd['R_g2s'].dot(v_IMU)
+                om_IMU_s = dd['R_g2s'].dot(om_IMU)
+                omd_IMU_s = dd['R_g2s'].dot(omd_IMU)
+
+                dfOut['NcIMUTVxs'].loc[it] = v_IMU_s[0]
+                dfOut['NcIMUTVys'].loc[it] = v_IMU_s[1]
+                dfOut['NcIMUTVzs'].loc[it] = v_IMU_s[2]
+                dfOut['NcIMUTAxs'].loc[it] = a_IMU_s[0]
+                dfOut['NcIMUTAys'].loc[it] = a_IMU_s[1]
+                dfOut['NcIMUTAzs'].loc[it] = a_IMU_s[2]
+                dfOut['NcIMURVxs'].loc[it] = om_IMU_s[0] * 180/np.pi
+                dfOut['NcIMURVys'].loc[it] = om_IMU_s[1] * 180/np.pi
+                dfOut['NcIMURVzs'].loc[it] = om_IMU_s[2] * 180/np.pi
+                dfOut['NcIMURAxs'].loc[it] = omd_IMU_s[0] * 180/np.pi
+                dfOut['NcIMURAys'].loc[it] = omd_IMU_s[1] * 180/np.pi
+                dfOut['NcIMURAzs'].loc[it] = omd_IMU_s[2] * 180/np.pi
+        
+
+                # --- Loads
+                gravity_vec = np.array([0,0,-WT.gravity])
+                # --- RNA (without Yaw Br) loads
+                omd_n = dd['omegad_n']
+                om_n = dd['omega_n']
+                R_g2p = dd['R_g2p']
+                R_g2n = dd['R_g2n']
+                r_Grna = dd['r_Grna']
+                a_Grna = dd['a_Grna']
+                Mrna  = WT.RNA_noYawBr.mass
+                JGrna = WT.RNA_noYawBr.masscenter_inertia
+                JGrna_g = (R_g2n.T).dot(JGrna).dot(R_g2n)
+                F_Grna_grav =  Mrna *gravity_vec
+                r_NGrna = dd['r_NGrna']
+
+                R_N   = Mrna * a_Grna - F_Grna_grav
+                tau_N = np.cross(r_NGrna, R_N)
+                tau_N += JGrna_g.dot(omd_n)
+                tau_N += np.cross(om_n, JGrna_g.dot(om_n))
+                # --- Force at N without YawBr Mass (such are "YawBr" sensors..)
+                # TODO add aero / gen
+                F_N = -R_N
+                M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
+                F_N_p = R_g2p.dot(F_N)
+                M_N_p = R_g2p.dot(M_N)
+
+                dfOut['YawBrFxp'].loc[it] = F_N_p[0]/1000
+                dfOut['YawBrFyp'].loc[it] = F_N_p[1]/1000
+                dfOut['YawBrFzp'].loc[it] = F_N_p[2]/1000
+                dfOut['YawBrMxp'].loc[it] = M_N_p[0]/1000
+                dfOut['YawBrMyp'].loc[it] = M_N_p[1]/1000
+                dfOut['YawBrMzp'].loc[it] = M_N_p[2]/1000
+
+                # Yaw Brake contribution at N
+                F_N_YawBr = WT.yawBr.mass * gravity_vec
+                F_N += F_N_YawBr
+
+                if useTopLoadsFromDF:
+                    F_N_p = np.array((df['YawBrFxp'].loc[it], df['YawBrFyp'].loc[it], df['YawBrFzp'].loc[it]))*1000
+                    M_N_p = np.array((df['YawBrMxp'].loc[it], df['YawBrMyp'].loc[it], df['YawBrMzp'].loc[it]))*1000
+                    F_N = (R_g2p.T).dot(F_N_p)
+                    M_N = (R_g2p.T).dot(M_N_p)
+                    F_N += F_N_YawBr
+
+                # --- Top Loads in tower coordinates
+                R_g2t = dd['R_g2t']
+                F_N_t = R_g2t.dot(F_N)
+                M_N_t = R_g2t.dot(M_N)
+                TopLoad_t = np.concatenate((F_N_t, M_N_t))
+
+                # --- Section Loads
+                F_sec, M_sec = towerSectionLoads(WT.twr, F_N_t, M_N_t, kin=dd, gravity=WT.gravity)
+
+                for iiSL, hSL in enumerate(HEDOut):
+                    iSL = np.argmin(np.abs(hSL-WT.twr.s_span))
+                    hSL = WT.twr.s_span[iSL]
+
+                    sT='TwHt{}'.format(iiSL+1)
+                    dfOut[sT+'FLxt'].loc[it] = F_sec[0, iSL]/1000
+                    dfOut[sT+'FLyt'].loc[it] = F_sec[1, iSL]/1000
+                    dfOut[sT+'FLzt'].loc[it] = F_sec[2, iSL]/1000
+                    dfOut[sT+'MLxt'].loc[it] = M_sec[0, iSL]/1000
+                    dfOut[sT+'MLyt'].loc[it] = M_sec[1, iSL]/1000
+                    dfOut[sT+'MLzt'].loc[it] = M_sec[2, iSL]/1000
+
+        return dfOut
+
+
+
 # --------------------------------------------------------------------------------}
 # --- Helpers 
 # --------------------------------------------------------------------------------{
@@ -517,7 +782,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
 
     # --- OpenFAST compatibility
     if algo.lower()=='openfast':
-        print('[INFO] YAMS Wind Turbine - Using Algo OpenFAST')
+        #print('[INFO] YAMS Wind Turbine - Using Algo OpenFAST')
         from welib.fast.elastodyn import rotorParameters, bladeParameters, towerParameters, bladeDerivedParameters, towerDerivedParameters
         pBld = bladeParameters(EDfile)
         pBld = bladeDerivedParameters(pBld, inertiaAtBladeRoot=False)
@@ -601,6 +866,9 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     #print(RNA)
     M_RNA = RNA.mass
 
+    # --- RNA without YawBr Mass
+    RNA_noYawBr = rot.combine(gen).combine(nac,r_O=[0,0,0])
+
     # --- Fnd (defined wrt ground/MSL "E")
 #     print(FST.keys())
     M_fnd = ED['PtfmMass']
@@ -610,6 +878,16 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
 
     # --- Twr
+    if twrShapes is None: 
+        twrShapes=[]
+        if ED['TwFADOF1']:
+            twrShapes+=[0]
+        if ED['TwFADOF2']:
+            twrShapes+=[1]
+        if ED['TwSSDOF1']:
+            twrShapes+=[2]
+        if ED['TwSSDOF2']:
+            twrShapes+=[3]
     twrFile = weio.read(twrfile)
     twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=algo, gravity=gravity) # TODO options
     twr_rigid  = twr.toRigidBody()
@@ -618,8 +896,6 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
         twr.MM[0,0]   = pTwr['TwrMass']
         twr.MM[1,1]   = pTwr['TwrMass']
         twr.MM[2,2]   = pTwr['TwrMass']
-        if twrShapes is None:
-            twrShapes=[0,1,2,3]
         twr.MM      [6:,6:] = pTwr['Me']   [np.ix_(twrShapes,twrShapes)]
         twr.KK      [6:,6:] = pTwr['Ke']   [np.ix_(twrShapes,twrShapes)]
         twr.KK0     [6:,6:] = pTwr['Ke0']  [np.ix_(twrShapes,twrShapes)]
@@ -703,20 +979,238 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     WT.fnd        = fnd        # origin at T
     WT.MAP        = MAP        # typically at (0,0,0) NOTE: not a body
     WT.K_Moor     = K_Moor     # HACK..
-    WT.RNA        = RNA        # origin at N, rigid body bld+hub+gen+nac
+    WT.RNA        = RNA          # origin at N, rigid body bld+hub+gen+nac+yawBr
+    WT.RNA_noYawBr = RNA_noYawBr # origin at N, rigid body bld+hub+gen+nac
     WT.WT_rigid   = WT_rigid   # rigid wind turbine body, origin at MSL
 
     WT.DOF= DOFs
 
     #WT.r_ET_inE = 
     #WT.r_TN_inT
+    # --- Geometry
     WT.r_NS_inN = r_NS_inN
     WT.r_NR_inN = r_NR_inN
     WT.r_SR_inS = r_SR_inS
+    WT.shaft_tilt = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST
+    #R_NS = R_y(WT.shaft_tilt)  # Rotation fromShaft to Nacelle
+
+
     WT.ED=ED
     WT.FST=FST
+    WT.algo=algo
 
     return WT
+
+
+
+# --------------------------------------------------------------------------------}
+# ---  
+# --------------------------------------------------------------------------------{
+def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NGn0=None, 
+        tilt=0,
+        algo='OpenFAST'):
+    """ 
+    INPUTS:
+     - qDict: dictionary for degrees of freedom with optional keys:
+            DOF_f=['Sg','Sw','Hv','R','P','Y']
+            DOF_t=['TFA1', 'TFA2', 'TSS1','TSS2']
+            DOF_n=['Yaw']
+     - r_F0:     undisplaced position of platform ref point, in global coord: (0, 0, PtfmRefzt)
+     - r_FT0:    undisplaced position of tower base        , in global coord  (0, 0, TowerBsHt)
+     - s_NGn0:   undisplaced position of nacelle COG      , in nacelle coord (NacCMxn, NacCMyn, NacCMzn)
+     - twr: BeamBody 
+
+    """
+
+    # --- Dealing with optional arguments
+    if qddDict is None:
+        qddDict = dict([(k,0) for k in qDict.keys()])
+    if r_F0 is None:
+        r_F0=np.array([0,0,0])
+    if r_T0 is None:
+        r_T0=np.array([0,0,0])
+    if algo=='OpenFAST':
+        rot_type = 'smallRot_OF'
+    else:
+        raise NotImplementedError()
+
+    # --- DOFs
+    DOF_f = ['Sg','Sw','Hv','R','P','Y']
+    q_f   = np.array([qDict  [DOF] if DOF in qDict.keys()   else 0 for DOF in DOF_f])
+    qd_f  = np.array([qdDict [DOF] if DOF in qdDict.keys()  else 0 for DOF in DOF_f])
+    qdd_f = np.array([qddDict[DOF] if DOF in qddDict.keys() else 0 for DOF in DOF_f])
+    DOF_t = np.array(['TFA1', 'TFA2', 'TSS1', 'TSS2'])[twr.shapes]
+    q_t   = np.array([qDict[DOF] for DOF in DOF_t])
+    qd_t  = np.array([qdDict[DOF] for DOF in DOF_t])
+    qdd_t = np.array([qddDict[DOF] for DOF in DOF_t])
+    qYaw   = qDict['Yaw']
+    qdYaw  = qdDict['Yaw']
+    qddYaw = qddDict['Yaw']
+
+    d = dict() # Outputs
+
+    # --- Ref point/fnd motion
+    r_F      = r_F0 + q_f[:3]
+    v_F      = qd_f[:3]
+    a_F      = qdd_f[:3]
+    theta_f  = q_f  [3:]
+    omega_f  = qd_f [3:]
+    omegad_f = qdd_f[3:]
+    R_f2g    = rotMat(q_f[3:], rot=rot_type)
+    R_g2f    = R_f2g.T
+
+    # Store in dict
+    d['r_F'] = r_F
+    d['v_F'] = v_F
+    d['a_F'] = a_F
+    d['R_g2f'] = R_g2f
+    d['theta_f'] = theta_f
+    d['omega_f'] = omega_f
+    d['omegad_f'] = omegad_f
+
+    # --- Tower base motion
+    R_t2g      = R_f2g.copy()
+    R_g2t      = R_t2g.T
+    s_FT0_in_f = r_T0-r_F0
+    r_FT       = R_f2g.dot(s_FT0_in_f)
+    r_T, v_T, a_T = rigidBodyMotion2Points(r_F, v_F, a_F, omega_f, omegad_f, r_FT) 
+    theta_t = theta_f.copy()
+    omega_t = omega_f.copy()
+    omegad_t = omegad_f.copy()
+
+    d['R_g2t'] = R_g2t
+    d['r_T'] = r_T
+    d['v_T'] = v_T
+    d['a_T'] = a_T
+    d['theta_ft'] = np.array((0,0,0))
+    d['theta_t']  = theta_t
+    d['omega_t']  = omega_t
+    d['omegad_t']  = omegad_t
+
+    # --- Tower section motions
+    nTwrSpan = len(twr.s_span)
+    r_Ts = np.zeros((nTwrSpan,3))
+    v_Ts = np.zeros((nTwrSpan,3))
+    a_Ts = np.zeros((nTwrSpan,3))
+    R_g2Ts = np.zeros((nTwrSpan,3,3)) 
+    theta_TTs = np.zeros((nTwrSpan,3)) 
+    theta_Ts  = np.zeros((nTwrSpan,3))
+    omega_Ts  = np.zeros((nTwrSpan,3))
+    omegad_Ts = np.zeros((nTwrSpan,3))
+    twr.updateFlexibleKinematics(q_t, qd_t, qdd_t) # yams.bodies.py
+    for j in range(nTwrSpan):
+        # TODO TODO TODO
+        # Missing dipsplacement, velocity, and acceleration due to shoterning of beam
+        # TODO TODO TODO Accelerations need debugging
+        s_TTs0_in_t = twr.s_G0[:,j]  # undisplaced position
+        u_Ts_in_t   = twr.U[:,j]     # displacement field
+        ud_Ts_in_t  = twr.UP[:,j]    # elastic velocity
+        udd_Ts_in_t = twr.UPP[:,j]    # elastic acceleration
+
+#         u_Ts_in_t[2]=-1 
+#         udd_Ts_in_t[2]=-14
+
+        if twr.main_axis=='z':
+            theta_TTs_in_t  = np.array([-twr.V[1,j]  , twr.V[0,j] , 0])
+            omega_TTs_in_t  = np.array([-twr.VP[1,j] , twr.VP[0,j], 0])
+            omegad_TTs_in_t = np.array([-twr.VPP[1,j] , twr.VPP[0,j], 0])
+        else:
+            raise NotImplementedError()
+
+        theta_TTs[j,:] =  R_t2g.dot(theta_TTs_in_t )
+        theta_Ts[j,:] =  theta_t + theta_TTs[j,:] # OK because small angle
+
+        R_Ts2t = rotMat(theta_TTs_in_t, rot=rot_type)
+        R_Ts2g = R_t2g.dot(R_Ts2t)
+        R_g2Ts[j,:,:] = R_Ts2g.T
+
+        omega_TTs = R_t2g.dot(omega_TTs_in_t)
+        omegad_TTs = R_t2g.dot(omegad_TTs_in_t) 
+        omega_Ts[j,:] = omega_t + omega_TTs
+        omegad_Ts[j,:] = omegad_t + omegad_TTs + np.cross(omega_t, omega_TTs) # TODO double check extra contrib
+
+        s_TTs_in_t  = s_TTs0_in_t + u_Ts_in_t # displaced position
+        r_TTs = R_t2g.dot(s_TTs_in_t)
+        ud_Ts = R_t2g.dot(ud_Ts_in_t)
+        udd_Ts = R_t2g.dot(udd_Ts_in_t)
+        r_Ts[j,:] = r_T + r_TTs
+        v_Ts[j,:] = v_T + np.cross(omega_t, r_TTs) + ud_Ts
+        a_Ts[j,:] = a_T + np.cross(omega_t, np.cross(omega_t, r_TTs)) + np.cross(omegad_t, r_TTs) 
+        a_Ts[j,:] += 2* np.cross(omega_t, ud_Ts) +  udd_Ts
+
+    d['r_Ts']   = r_Ts
+    d['v_Ts']   = v_Ts
+    d['a_Ts']   = a_Ts
+    d['R_g2Ts'] = R_g2Ts
+    d['theta_Ts']  = theta_Ts
+    d['theta_fTs'] = theta_TTs
+    d['omega_Ts']  = omega_Ts
+    d['omegad_Ts'] = omegad_Ts
+
+    # --- Tower Top point (before Yaw)
+    s_TTT0_in_t = twr.s_G0[:,-1] # undisplaced position
+    r_TT0 =  r_T0 +  s_TTT0_in_t # undisplaced position of tower top 
+    r_TT_undisp =  r_T +  R_t2g.dot(s_TTT0_in_t) # undisplaced, but rotated position of tower top 
+    r_TT = r_Ts[-1,:]
+    v_TT = v_Ts[-1,:]
+    a_TT = a_Ts[-1,:]
+    R_g2tt = R_g2Ts[-1,:,:] # To Tower Top
+    omega_tt = omega_Ts[-1,:]
+    omegad_tt = omegad_Ts[-1,:]
+    d['R_g2p'] = R_g2tt
+
+    # --- Nacelle Point/Body (last of tower)
+    R_tt2n = R_z(-qYaw)
+    R_g2n  = R_tt2n.dot(R_g2tt)
+    R_n2g  = R_g2n.T
+    omega_tt2n_in_t  = np.array((0,0,qdYaw))
+    omegad_tt2n_in_t = np.array((0,0,qddYaw))
+    omega_tt2n      = R_n2g.dot(omega_tt2n_in_t)
+    omegad_tt2n     = R_n2g.dot(omegad_tt2n_in_t)
+    r_N = r_TT
+    v_N = v_TT
+    a_N = a_TT
+    omega_n = omega_tt   + omega_tt2n
+    omegad_n = omegad_tt + omegad_tt2n + np.cross(omega_tt, omega_tt2n)
+    d['u_N_tot'] = r_N-r_TT0
+    d['u_N']    = r_N-r_TT_undisp
+    d['r_N']    = r_N
+    d['v_N']    = v_N
+    d['a_N']    = a_N
+    d['R_tt2n'] = R_tt2n
+    d['R_g2n']  = R_g2n
+    d['omega_n']  = omega_n
+    d['omegad_n'] = omegad_n
+
+    # --- Nacelle COG
+    dGn = rigidBodyKinematics(s_NGn0, r_N, R_g2n, v_N, omega_n, a_N=a_N, omegad_n=omegad_n, point_name='Gn', source_name='N')
+    d.update(dGn)
+
+    # --- Shaft
+    R_s2n = R_y(tilt)  # Rotation fromShaft to Nacelle
+    R_g2s = (R_s2n.T).dot(R_g2n)
+    d['R_g2s'] = R_g2s
+
+
+    return d
+
+def rigidBodyKinematics(s_NP0_in_n, r_N, R_g2n, v_N, omega_n, a_N=None, omegad_n=None, point_name='P', source_name='O'):
+    """ 
+    Simple rigid body motion kinematics for a point in the nacelle
+    """
+    if a_N is None:
+        a_N = np.array([0,0,0])
+    if omegad_n is None:
+        omegad_n = np.array([0,0,0])
+
+    r_NP = (R_g2n.T).dot(s_NP0_in_n)
+    r_P, v_P, a_P = rigidBodyMotion2Points(r_N, v_N, a_N, omega_n, omegad_n, r_NP) 
+    s = point_name
+    d = {'r_'+source_name+s:r_NP, 'r_'+s:r_P, 'v_'+s:v_P, 'a_'+s:a_P}
+    return d
+
+
+
 
 
 if __name__ == '__main__':

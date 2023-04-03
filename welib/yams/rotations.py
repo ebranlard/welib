@@ -8,7 +8,44 @@ Rotation matrices for different rotational coordinates conventions:
 import numpy as np
 from numpy import cos, sin, tan, arccos, trace
 
+# --- Definitions to ease comparison with sympy versions
+def Matrix(m):
+    return np.asarray(m)
 
+# --------------------------------------------------------------------------------}
+# --- Wrapper Function 
+# --------------------------------------------------------------------------------{
+def rotMat(p, rot="smallRot_OF"):
+    """ NOTE: this is a body to parent, not DCM """
+    if  rot == 'smallRot_OF':
+        R_b2p = smallRot_OF(p[0], p[1], p[2]).T 
+
+    elif rot =='bodyXYZ':
+        R_b2p = BodyXYZ_A(p[0], p[1], p[2])
+
+    elif rot =='bodyZXZ':
+        R_b2p = BodyZXZ_A(p[0], p[1], p[2]) #def BodyZXZ_A(phi, theta, psi):
+
+    elif rot =='bodyZYX':
+        R_b2p = BodyZYX_A(p[0], p[1], p[2]) #def BodyZYX_A(phi_x, phi_y, phi_z)
+
+    elif rot =='EulerP':
+        R_b2p = EulerP_A(p[0], p[1], p[2], p[3])
+    else:
+        raise NotImplementedError('Rotation type {}'.format(rot))
+    return R_b2p
+
+# --------------------------------------------------------------------------------}
+# --- Rotation matrices
+# --------------------------------------------------------------------------------{
+def R_x(t):
+    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
+
+def R_y(t):
+    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
+
+def R_z(t): 
+    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
 
 # --------------------------------------------------------------------------------}
 # --- Euler parameters 

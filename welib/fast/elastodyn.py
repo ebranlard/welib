@@ -7,9 +7,9 @@ COORDINATE SYSTEMS:
      |   z*      |  i  | inertial
      |   a*      |  t  | tower
      |   t*      |  te | tower elements
-     |   b*      |     | tower top
+     |   b*      |  p  | tower top
      |   d*      |  n  | nacelle (including yaw)
-     |   c*      |     | non rotating shaft
+     |   c*      |  s  | non rotating shaft
      |   e*      |  a  | rotating shaft
      |   f*      |     | teetered
      |   g*      |  h  | hub (including delta 3 for 2-bladed
@@ -1006,7 +1006,10 @@ def ED_qDict2q(qDict):
     for k,v in qDict.items():
         if k not in qMAP.keys():
             raise Exception('Key {} not supported by qMAP'.format(k))
-        q[qMAP[k]] = v
+        if k=='TSS1' or k=='TSS2':
+            q[qMAP[k]] = -v # <<<< NOTE: DOF has a negative convention
+        else:
+            q[qMAP[k]] = v
     return q
 
 
@@ -1084,19 +1087,19 @@ def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None):
         t1 = np.zeros((TwrNodes,3))
         t2 = np.zeros((TwrNodes,3))
         t3 = np.zeros((TwrNodes,3))
-        R_g2te = [] # List of transformations from global to tower elements
+        R_g2Ts = np.zeros((TwrNodes,3,3))# List of transformations from global to tower elements
         for j in range(TwrNodes):
             # Slope V:    Mode 1   V             Mode 2   V 
             ThetaFA = -TwrFASF[0,j,1]*q[DOF_TFA1] - TwrFASF[1,j,1]*q[DOF_TFA2]
             ThetaSS =  TwrSSSF[0,j,1]*q[DOF_TSS1] + TwrSSSF[1,j,1]*q[DOF_TSS2]
             R = smallRot_OF(ThetaSS, 0, ThetaFA)
             t1[j,:], t2[j,:], t3[j,:] = EDSysVecRot(R, a1, a2, a3)
-            R_g2te.append(EDSysVectoIECDCM(t1[j,:], t2[j,:], t3[j,:])) 
+            R_g2Ts[j,:,:] =EDSysVectoIECDCM(t1[j,:], t2[j,:], t3[j,:])
 
         # --- Tower-top / base plate coordinate system:
         # Slope V:    Mode 1   V             Mode 2   V 
-        print('>>> Coupling coeffs FA', -TwrFASF[0,-1,1], -TwrFASF[0,-1,1])
-        print('>>> Coupling coeffs SS',  TwrSSSF[0,-1,1],  TwrSSSF[0,-1,1])
+        #print('>>> Coupling coeffs FA', -TwrFASF[0,-1,1], -TwrFASF[0,-1,1])
+        #print('>>> Coupling coeffs SS',  TwrSSSF[0,-1,1],  TwrSSSF[0,-1,1])
         ThetaFA = -TwrFASF[0,-1,1]*q[DOF_TFA1] - TwrFASF[1,-1,1]*q[DOF_TFA2]
         ThetaSS =  TwrSSSF[0,-1,1]*q[DOF_TSS1] + TwrSSSF[1,-1,1]*q[DOF_TSS2]
         R = smallRot_OF(ThetaSS, 0, ThetaFA)
@@ -1104,7 +1107,7 @@ def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None):
         R_g2b = EDSysVectoIECDCM(b1, b2, b3)
     else:
         t1, t2, t3 = None, None, None
-        R_g2te = None
+        R_g2Ts = None
 
         b1, b2, b3  = a1, a2, a3
         R_g2b = R_g2t
@@ -1257,10 +1260,10 @@ def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None):
     CoordSys['d2'] = d2
     CoordSys['d3'] = d3
     # IEC
+    CoordSys['R_g2f']  = R_g2t
     CoordSys['R_g2t']  = R_g2t
-    CoordSys['R_g2te'] = R_g2te # To tower elements
+    CoordSys['R_g2Ts'] = R_g2Ts # To tower elements
     CoordSys['R_g2n']  = R_g2n  # To nacelle (including nacelle yaw)
-    # TODO
     return CoordSys
 
 
@@ -1380,15 +1383,15 @@ def ED_Positions(q=None, qDict=None, CoordSys=None, p=None, dat=None, IEC=None):
     # --- IEC
     if IEC is None:
         IEC = dict()
-    IEC['rF0'] = np.array([0,0,p['PtfmRefzt']])
-    IEC['rF']  = EDVec2IEC(dat['rZ']) + IEC['rF0']    # ED ReftPtfm point
-    IEC['rFT'] = EDVec2IEC(dat['rZT0'])  # Tower base from Floater
-    IEC['rT']  = IEC['rF'] + IEC['rFT']
-    IEC['rTN'] = EDVec2IEC(dat['rT0O'])  # Tower top / base plate/ nacelle origin from tower base
-    IEC['rN']  = EDVec2IEC(dat['rO'])+ IEC['rF0']    # Tower top / base plate/ nacelle origin
-    IEC['rNGnac'] = EDVec2IEC(dat['rOU'])   # From Tower top to nacelle COG
-    IEC['rGnac'] = IEC['rN'] + IEC['rNGnac'] # Nacelle COG
-    IEC['rTn'] = EDVec2IEC(dat['rT'], IEC['rF0']  )
+    IEC['r_F0'] = np.array([0,0,p['PtfmRefzt']])
+    IEC['r_F']  = EDVec2IEC(dat['rZ']) + IEC['r_F0']    # ED ReftPtfm point
+    IEC['r_FT'] = EDVec2IEC(dat['rZT0'])  # Tower base from Floater
+    IEC['r_T']  = IEC['r_F'] + IEC['r_FT']
+    IEC['r_TN'] = EDVec2IEC(dat['rT0O'])  # Tower top / base plate/ nacelle origin from tower base
+    IEC['r_N']  = EDVec2IEC(dat['rO'])+ IEC['r_F0']    # Tower top / base plate/ nacelle origin
+    IEC['r_NGn'] = EDVec2IEC(dat['rOU'])   # From Tower top to nacelle COG
+    IEC['r_Gn'] = IEC['r_N'] + IEC['r_NGn'] # Nacelle COG
+    IEC['r_Ts'] = EDVec2IEC(dat['rT'], IEC['r_F0']  )
 
     return dat, IEC
 
@@ -1610,15 +1613,16 @@ def ED_AngPosVelPAcc(q=None, qd=None, qDict=None, qdDict=None, CoordSys=None, p=
     # ---
     if IEC is None:
         IEC = dict()
-    IEC['ThetaEF'] = EDVec2IEC(dat['AngPosEX'])
-    IEC['OmegaEF'] = EDVec2IEC(dat['AngVelEX'])
-    IEC['ThetaFN'] = EDVec2IEC(dat['AngPosXB']) # TODO TODO ADD YAW
-    IEC['ThetaEN'] = IEC['ThetaEF'] + IEC['ThetaFN']
-    IEC['OmegaEN'] = EDVec2IEC(dat['AngVelEN'])
+    IEC['theta_f'] = EDVec2IEC(dat['AngPosEX'])
+    IEC['omega_f'] = EDVec2IEC(dat['AngVelEX'])
+    IEC['omega_t'] = IEC['omega_f'].copy()
+    IEC['theta_fn'] = EDVec2IEC(dat['AngPosXB']) # TODO TODO ADD YAW
+    IEC['theta_n'] = IEC['theta_f'] + IEC['theta_fn']
+    IEC['omega_n'] = EDVec2IEC(dat['AngVelEN'])
 
-    IEC['OmegaETn'] = EDVec2IEC(dat['AngVelEF']) # Tower nodes ang vel
-    IEC['ThetaFTn'] = EDVec2IEC(dat['AngPosXF']) # Tower nodes ang pos from platform
-    IEC['ThetaETn'] = EDVec2IEC(dat['AngPosEF']) # Tower nodes ang pos from platform
+    IEC['omega_Ts'] = EDVec2IEC(dat['AngVelEF']) # Tower nodes ang vel
+    IEC['theta_fTs'] = EDVec2IEC(dat['AngPosXF']) # Tower nodes ang pos from platform
+    IEC['theta_Ts'] = EDVec2IEC(dat['AngPosEF']) # Tower nodes ang pos from platform
 
     return dat, IEC
 
@@ -1985,13 +1989,41 @@ def ED_LinVelPAcc(q=None, qd=None, qDict=None, qdDict=None, CoordSys=None, p=Non
     # ---
     if IEC is None:
         IEC = dict()
-    IEC['vF'] = EDVec2IEC(dat['LinVelEZ'])
-    IEC['vN'] = EDVec2IEC(dat['LinVelEO'])
-    IEC['udN'] = EDVec2IEC(LinVelXO) # Elastic motion of tower top
-    IEC['vGn'] = EDVec2IEC(dat['LinVelEU']) # velocity of nacelle COG
-    IEC['vTn'] = EDVec2IEC(dat['LinVelET']) # velocity of tower nodes
+    IEC['v_F'] = EDVec2IEC(dat['LinVelEZ'])
+    IEC['v_N'] = EDVec2IEC(dat['LinVelEO'])
+    IEC['ud_N'] = EDVec2IEC(LinVelXO) # Elastic velocity of tower top
+    IEC['v_Gn'] = EDVec2IEC(dat['LinVelEU']) # velocity of nacelle COG
+    IEC['v_Ts'] = EDVec2IEC(dat['LinVelET']) # velocity of tower nodes
 
     return dat, IEC
+
+
+def ED_CalcOutputs(x, p, noAxRed=False):
+    """ 
+    INPUTS: 
+      - x: states (for now structural only)
+      - p: parameters, e.g. as returned by p = ED_Parameters(fstSim)
+    OUTPUTS:
+      - CS: dictionary of Coordinate system info
+      - dat: dictionary of structural variables in "ElastoDyn internal" coordinate system
+      - IEC: dictionary of structural variables in OpenFAST/IEC coordinate system
+
+    Example:
+        p = ED_Parameters(fstSim)
+        x['qDict']   = {'Sg': 10.0, 'Sw':20.0, 'Hv': 5.0, 'R':0.0, 'P':0.3, 'Y':0, 'TFA1':1.0, 'TSS1':10.0, 'Yaw':np.pi/8}
+        x['qdDict']  = {'Sg':  1.0, 'Sw': 2.0, 'Hv': 3.0, 'R':0.1, 'P':0.3, 'Y':0, 'TFA1':2.0, 'TSS1':4.0,  'Yaw':0.0}
+        
+    """
+    if noAxRed:
+        p['AxRedTFA']*=0 #
+        p['AxRedTSS']*=0 #
+    qDict  = x['qDict']
+    qdDict = x['qdDict']
+    CS = ED_CoordSys(qDict=qDict, TwrFASF=p['TwrFASF'], TwrSSSF=p['TwrSSSF'])
+    dat, IEC = ED_Positions(qDict=qDict, CoordSys=CS, p=p)
+    dat, IEC = ED_AngPosVelPAcc(qDict=qDict, qdDict=qdDict, CoordSys=CS, p=p, dat=dat, IEC=IEC)
+    dat, IEC = ED_LinVelPAcc   (qDict=qDict, qdDict=qdDict, CoordSys=CS, p=p, dat=dat, IEC=IEC)
+    return CS, dat, IEC
 
 if __name__ == '__main__':
 #     EDfilename='../yams/_Jens/FEMBeam_NewFASTCoeffs/data/NREL5MW_ED_Onshore.dat'

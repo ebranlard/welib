@@ -344,7 +344,7 @@ class HydroDyn:
                 MappingPoint = RefPointMapping + np.array([q[0],q[1],q[2]])
 
             elif RefPointMappingMotion=='follow_point':
-                qM,_,_ = rigidBodyMotion2Points_q6(RefPointMotion, RefPointMapping, q, rot='smallRot_OF')
+                qM,_,_, _ = rigidBodyMotion2Points_q6(RefPointMotion, RefPointMapping, q, rot='smallRot_OF')
                 MappingPoint=(RefPointMapping[0]+qM[0], RefPointMapping[1]+qM[1], RefPointMapping[2]+qM[2])
 
             elif RefPointMappingMotion=='none':
