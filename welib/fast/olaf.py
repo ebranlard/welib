@@ -8,7 +8,9 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
           deltaPsiDeg=6, nPerRot=None,
           targetFreeWakeLengthD=1,
           targetWakeLengthD=4.,
-          nNWrot=8, nFWrot=0, nFWrotFree=0,
+          nNWrot=8, 
+          nNWrotFree=1,
+          nFWrot=0, nFWrotFree=0,
           verbose=True, dt_glue_code=None):
     """
     Computes recommended time step and wake length for OLAF based on:
@@ -83,6 +85,7 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
     # Free near wake panels (based on distance)
     targetFreeWakeLength = targetFreeWakeLengthD * 2 * R
     nNWPanelsFree_FromU0 = int(targetFreeWakeLength / (Uc*dt_fvw))
+    nNWPanelsFree_FromRot = int(nNWrotFree*nPerRot)
     # Far wake (FW) panels, always from number of rotations
     nFWPanels     = int(nFWrot*nPerRot)
     nFWPanelsFree = int(nFWrotFree*nPerRot)
@@ -92,6 +95,7 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
     # Below we chose between criteria on number of rotation or donwstream distance
     # This can be adapted/improved
     myprint('Number of panels (NW free) from wind speed and distance:{:15d}'.format(nNWPanelsFree_FromU0))
+    myprint('Number of panels (NW free) from number of rotations    :{:15d}'.format(nNWPanelsFree_FromRot))
     myprint('Number of panels (NW+FW)   from wind speed and distance:{:15d}'.format(nAWPanels_FromU0))
     myprint('Number of panels (NW+FW)   from number of rotations    :{:15d}'.format(nAWPanels_FromRot))
     myprint('Number of panels (NW+FW)   from average between two    :{:15d}'.format(int((nAWPanels_FromRot+nAWPanels_FromU0)/2)))
@@ -103,10 +107,18 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
         myprint('[INFO] Using wind speed and distance to setup number of panels')
         # Wake distance wins, we keep the nFW from rot but increase nNW
         nAWPanels = nAWPanels_FromU0  # Total number of panels NW+FW
+    if nNWPanelsFree_FromRot>nNWPanelsFree_FromU0:
+        # Criteria based on rotation wins:
+        myprint('[INFO] Using number of rotations to setup number of free panels')
+        nNWPanelsFree = nNWPanelsFree_FromRot
+    else:
+        myprint('[INFO] Using wind speed and distance to setup number of free panels')
+        # Wake distance wins, we keep the nFW from rot but increase nNW
+        nNWPanelsFree = nNWPanelsFree_FromU0
+
     nNWPanels = nAWPanels - nFWPanels # nNW = All-Far Wake
 
     # See "free" near wake
-    nNWPanelsFree = nNWPanelsFree_FromU0
     if nNWPanelsFree>nNWPanels:
         nNWPanelsFree=nNWPanels
         myprint('[INFO] Capping number of free NW panels to max.')
