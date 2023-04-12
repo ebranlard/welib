@@ -28,9 +28,50 @@ def renameList(l, colMap, verbose=False):
                 print('Label {} not renamed'.format(s))
     return l
 
+
+def dfToSIunits(Mat, name='', verbose=False):
+    def SIscaling(name):
+        u  = unit(name).lower()
+        nu = no_unit(name)
+        if u in['deg','deg/s','deg/s^2']:
+            scaling = np.pi/180
+            replace = ('deg', 'rad')
+        elif u=='rpm':
+            scaling = 2*np.pi/60
+            replace =  (u, 'rad/s')
+        elif u in ['kn']:
+            scaling = 1000 # to N
+            replace =  (u, 'N')
+        elif u in ['kw']:
+            scaling = 1000 
+            replace = (u, 'W')
+        elif u in ['knm', 'kn-m', 'kn*m']:
+            scaling = 1000 
+            replace = (u, 'Nm')
+        else:
+            return None, None, None
+        newname = nu + '_['+u.replace(replace[0],replace[1])+']'
+        return newname, scaling, replace
+    newCols = list(Mat.columns.values)
+    for icol,col in enumerate(Mat.columns.values):
+        # Scaling based on units
+        newname, scaling, replace = SIscaling(col)
+        if newname is None:
+            continue # We skip
+        Mat.iloc[:,icol] *= scaling
+        newCols[icol] = newname
+        if verbose:
+            print('Mat {} - scaling {} for col {} > {}'.format(name, col, replace, newname))
+    Mat.columns = newCols
+    return Mat
+
 def matToSIunits(Mat, name='', verbose=False, row=True, col=True):
     """ 
     Scale a matrix (pandas dataframe) such that is has standard units
+
+    The understanding is that "Columns" are Input and Rows are Outputs
+    Because of that, columns are divided by the scaling, rows are multiplied by the scaling
+
 
 
         scalings['rpm']    =  (np.pi/30,'rad/s') 
@@ -50,20 +91,21 @@ def matToSIunits(Mat, name='', verbose=False, row=True, col=True):
             scaling = np.pi/180
             replace = ('deg', 'rad')
         elif u=='rpm':
-            scaling = 2*np.pi/60
+            scaling = np.pi/30
             replace =  (u, 'rad/s')
         elif u in ['kn']:
-            scaling = 1/1000 # to N
+            scaling = 1000 # to N
             replace =  (u, 'N')
         elif u in ['kw']:
-            scaling = 1/1000 
+            scaling = 1000 
             replace = (u, 'W')
         elif u in ['knm', 'kn-m', 'kn*m']:
-            scaling = 1/1000 
+            scaling = 1000 
             replace = (u, 'Nm')
         else:
             return None, None, None
         newname = nu + '_['+u.replace(replace[0],replace[1])+']'
+
         return newname, scaling, replace
 
 
@@ -74,7 +116,7 @@ def matToSIunits(Mat, name='', verbose=False, row=True, col=True):
             newname, scaling, replace = SIscaling(row)
             if newname is None:
                 continue # We skip
-            Mat.iloc[irow,:] *= scaling
+            Mat.iloc[irow,:] *= scaling # NOTE: for row scaling we multiply
             newIndex[irow] = newname
             if verbose:
                 print('Mat {} - scaling {} for row {} > {}'.format(name, row, replace, newname))
@@ -86,7 +128,7 @@ def matToSIunits(Mat, name='', verbose=False, row=True, col=True):
             newname, scaling, replace = SIscaling(col)
             if newname is None:
                 continue # We skip
-            Mat.iloc[:,icol] *= scaling
+            Mat.iloc[:,icol] /= scaling # NOTE: for column scaling, we divide!
             newCols[icol] = newname
             if verbose:
                 print('Mat {} - scaling {} for col {} > {}'.format(name, col, replace, newname))
