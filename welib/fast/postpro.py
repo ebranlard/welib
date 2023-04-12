@@ -1519,7 +1519,9 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
 
 
 
-def averagePostPro(outFiles_or_DFs,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean']):
+def averagePostPro(outFiles_or_DFs,avgMethod='periods',avgParam=None,
+        ColMap=None,ColKeep=None,ColSort=None,stats=['mean'],
+        skipIfWrongCol=False):
     """ Opens a list of FAST output files, perform average of its signals and return a panda dataframe
     For now, the scripts only computes the mean within a time window which may be a constant or a time that is a function of the rotational speed (see `avgMethod`).
     The script only computes the mean for now. Other stats will be added
@@ -1568,7 +1570,17 @@ def averagePostPro(outFiles_or_DFs,avgMethod='periods',avgParam=None,ColMap=None
             columns = MeanValues.columns
             result = pd.DataFrame(np.nan, index=np.arange(len(outFiles_or_DFs)), columns=columns)
         if MeanValues.shape[1]!=result.shape[1]:
-            print('[WARN] The number of columns for file {} is {} and not {}. Skipping.'.format(f, MeanValues.shape[1], result.shape[1]))
+            columns_ref = result.columns
+            columns_loc = MeanValues.columns
+            if skipIfWrongCol:
+                print('[WARN] File {} has {} columns and not {}. Skipping.'.format(f, MeanValues.shape[1], result.shape[1]))
+            else:
+                try:
+                    MeanValues=MeanValues[columns_ref]
+                    result.iloc[i,:] = MeanValues.copy().values
+                    print('[WARN] File {} has more columns than other files. Truncating.'.format(f, MeanValues.shape[1], result.shape[1]))
+                except:
+                    print('[WARN] File {} is missing some columns compared to other files. Skipping.'.format(f))
         else:
             result.iloc[i,:] = MeanValues.copy().values
 
