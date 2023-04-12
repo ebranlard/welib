@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 
+from welib.tools.stats import bin_DF
+
 def pd_interp1(x_new, xLabel, df):
     """ Interpolate a panda dataframe based on a set of new value
     This function assumes that the dataframe is a simple 2d-table
@@ -22,3 +24,5 @@ def pd_interp1(x_new, xLabel, df):
 
 def create_dummy_dataframe(size):
     return pd.DataFrame(data={'col1': np.linspace(0,1,size), 'col2': np.random.normal(0,1,size)})
+
+

@@ -11,17 +11,22 @@ import pandas as pd
 # --------------------------------------------------------------------------------}
 # --- Stats measures 
 # --------------------------------------------------------------------------------{
-def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean'):
+def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', absVal=True):
     """
     y1: ref
     y2: other
 
     """
+    from welib.tools.fatigue import equivalent_load
 
     sp=stats.split(',')
-
     stats = {}
     sStats=[]
+
+    t1=np.asarray(t1).astype(float)
+    y1=np.asarray(y1).astype(float)
+    t2=np.asarray(t2).astype(float)
+    y2=np.asarray(y2).astype(float)
 
     # Loop on statistics requested
     for s in sp:
@@ -36,16 +41,26 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean'):
                 r_sig = np.nan
             stats = {'sigRatio':r_sig}
             sStats+= [r'$\sigma_\mathrm{est}/\sigma_\mathrm{ref} = $'+r'{:.3f}'.format(r_sig)]
+
         elif s=='eps':
             # Mean relative error
-            eps     = float(mean_rel_err(t1, y1, t2, y2, method='mean'))
+            eps     = float(mean_rel_err(t1, y1, t2, y2, method=method, absVal=absVal))
             stats['eps'] = eps
             sStats+=['$\epsilon=$'+r'{:.1f}%'.format(eps)]
+
         elif s=='r2':
             # Rsquare
             R2 = float(rsquare(y2, y1)[0])
             stats['R2'] = R2
-            sStats+=[r'$R^2=$'+r'{:.3}'.format(R2)]
+            sStats+=[r'$R^2=$'+r'{:.3f}'.format(R2)]
+
+        elif s=='epsleq':
+            Leq1 = equivalent_load(t1, y1, m=5, nBins=100, method='fatpack')
+            Leq2 = equivalent_load(t2, y2, m=5, nBins=100, method='fatpack')
+            epsLeq = (Leq2-Leq1)/Leq1*100
+            stats['epsLeq'] = epsLeq
+            sStats+=[r'$\epsilon L_{eq}=$'+r'{:.1f}%'.format(epsLeq)]
+
         else:
             raise NotImplementedError(s)
     sStats=' - '.join(sStats)
@@ -77,9 +92,11 @@ def rsquare(y, f, c = True):
     # OUTPUT
       R2      : Coefficient of determination
       RMSE    : Root mean squared error """
-    # Compare inputs
+    # Sanity
     if not np.all(y.shape == f.shape) :
         raise Exception('Y and F must be the same size')
+    y = np.asarray(y).astype(float)
+    f = np.asarray(f).astype(float)
     # Check for NaN
     tmp = np.logical_not(np.logical_or(np.isnan(y),np.isnan(f))) 
     y = y[tmp]
@@ -95,7 +112,7 @@ def rsquare(y, f, c = True):
     rmse = np.sqrt(np.mean((y - f) ** 2))
     return r2,rmse
 
-def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='meanabs', verbose=False, varname=''):
+def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='meanabs', verbose=False, varname='', absVal=True):
     """ 
     return mean relative error in % 
 
@@ -106,6 +123,13 @@ def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='meanabs', verbose=F
                 |y1s-y2s|/|y1|
       '0-2': signals are scalled between 0 & 2
     """
+    def myabs(y):
+        if absVal:
+            return np.abs(y)
+        else:
+            return y
+
+
     if t1 is None and t2 is None:
         pass
     else:
@@ -114,26 +138,26 @@ def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='meanabs', verbose=F
     if method=='mean':
         # Method 1 relative to mean
         ref_val = np.nanmean(y1)
-        meanrelerr = np.nanmean(np.abs(y2-y1)/ref_val)*100 
+        meanrelerr = np.nanmean(myabs(y2-y1)/ref_val)*100 
     elif method=='meanabs':
-        ref_val = np.nanmean(np.abs(y1))
-        meanrelerr = np.nanmean(np.abs(y2-y1)/ref_val)*100 
+        ref_val = np.nanmean(abs(y1))
+        meanrelerr = np.nanmean(myabs(y2-y1)/ref_val)*100 
     elif method=='loc':
-        meanrelerr = np.nanmean(np.abs(y2-y1)/abs(y1))*100 
+        meanrelerr = np.nanmean(myabs(y2-y1)/abs(y1))*100 
     elif method=='minmax':
         # Method 2 scaling signals
         Min=min(np.nanmin(y1), np.nanmin(y2))
         Max=max(np.nanmax(y1), np.nanmax(y2))
         y1=(y1-Min)/(Max-Min)+0.5
         y2=(y2-Min)/(Max-Min)+0.5
-        meanrelerr = np.nanmean(np.abs(y2-y1)/np.abs(y1))*100 
+        meanrelerr = np.nanmean(myabs(y2-y1)/np.abs(y1))*100 
     elif method=='1-2':
         # transform values from 1 to 2
         Min=min(np.nanmin(y1), np.nanmin(y2))
         Max=max(np.nanmax(y1), np.nanmax(y2))
         y1 = (y1-Min)/(Max-Min)+1
         y2 = (y2-Min)/(Max-Min)+1
-        meanrelerr = np.nanmean(np.abs(y2-y1)/np.abs(y1))*100
+        meanrelerr = np.nanmean(myabs(y2-y1)/np.abs(y1))*100
     else:
         raise Exception('Unknown method',method)
 
