@@ -92,6 +92,7 @@ class TabulatedWSEstimatorBase():
         self.WSmax = 35
         self.CP    = None
         self.CT    = None
+        self.OP    = None
 
         # ---
         if fstFile:
