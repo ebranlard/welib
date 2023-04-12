@@ -526,7 +526,10 @@ class WindTurbineStructure():
             return F_sec, M_sec
 
 
+        # Sanitization of input dataframe
+        df = df.loc[:,~df.columns.duplicated()].copy()
         df.columns = [  v.split('_[')[0] for v in df.columns.values]
+        df.reset_index(inplace=True)
 
         # --- States
         DOFNames = ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
@@ -548,7 +551,7 @@ class WindTurbineStructure():
             QDD *=0
 
         # --- Outputs
-        colOut = ['Time']
+        colOut = ['Time_[s]']
         colOut += sq + sqd + sqdd
         # IMU
         colOut += ['NcIMUTVxs','NcIMUTVys','NcIMUTVzs']
@@ -570,23 +573,29 @@ class WindTurbineStructure():
         HEDOut, I = ED_TwrGag(WT.ED, addBase=False)
         for iiSL,hED in enumerate(HEDOut):
             sT='TwHt{}'.format(iiSL+1)
-            colOut+=[sT+'FLxt', sT+'FLyt', sT+'FLzt']
-            colOut+=[sT+'MLxt', sT+'MLyt', sT+'MLzt']
+            colOut+=[sT+'TPxi_[m]'  , sT+'TPyi_[m]'  , sT+'TPzi_[m]']
+            colOut+=[sT+'TDxt_[m]'  , sT+'TDyt_[m]'  , sT+'TDzt_[m]']
+            colOut+=[sT+'RDxt_[deg]', sT+'RDyt_[deg]', sT+'RDzt_[deg]']
+            colOut+=[sT+'ALxt_[m/s^2]', sT+'ALyt_[m/s^2]', sT+'ALzt_[m/s^2]']
+            colOut+=[sT+'FLxt_[kN]', sT+'FLyt_[kN]', sT+'FLzt_[kN]']
+            colOut+=[sT+'MLxt_[kN-m]', sT+'MLyt_[kN-m]', sT+'MLzt_[kN-m]']
+        # TODO TODO TODO FIGURE OUT WHY THIS RETURN DTYPE OBJECT
         dfOut = pd.DataFrame(index=df.index, columns=colOut)
 
         # --- Calc Output per time step
         with Timer('Kinematics'):
             for it,t in enumerate(df['Time']):
-                q   = Q.iloc[it,:]
-                qd  = QD.iloc[it,:]
-                qdd = QDD.iloc[it,:]
+                q   = Q.iloc[it,:].copy()
+                qd  = QD.iloc[it,:].copy()
+                qdd = QDD.iloc[it,:].copy()
+                # TODO TODO Sort out issue of convention in OpenFAST
                 q['TSS1'] = -q['TSS1']
                 qd['TSS1'] = -qd['TSS1']
                 qdd['TSS1'] = -qdd['TSS1']
     #             q['TSS2'] = -q['TSS2']
 
                 dd = WT.kinematics(q, qd, qdd)
-                dfOut['Time'].loc[it] = t
+                dfOut['Time_[s]'].loc[it] = t
                 # TDi includes all platform motions
                 dfOut['TwrTpTDxi'].loc[it] = dd['u_N_tot'][0] 
                 dfOut['TwrTpTDyi'].loc[it] = dd['u_N_tot'][1]
@@ -667,10 +676,25 @@ class WindTurbineStructure():
                 tau_N = np.cross(r_NGrna, R_N)
                 tau_N += JGrna_g.dot(omd_n)
                 tau_N += np.cross(om_n, JGrna_g.dot(om_n))
-                # --- Force at N without YawBr Mass (such are "YawBr" sensors..)
-                # TODO add aero / gen
+                # --- Force at N without YawBr Mass (such are "YawBr" sensors..) in global coordinates
                 F_N = -R_N
                 M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
+                if not useTopLoadsFromDF:
+                    # Aero force
+                    # TODO gen?
+                    R_g2s = dd['R_g2s']
+                    if 'Fadd_R_xs' in df.keys():
+                        Fadd_R_in_g = R_g2s.T.dot((df['Fadd_R_xs'].loc[it],0 ,0))
+                        Madd_R_in_g = R_g2s.T.dot((df['Madd_R_xs'].loc[it],0 ,0))
+                        r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+                        r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
+                        Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+                        Fadd_N = Fadd_R_in_g
+                        Madd_N = Madd_R_in_g + Madd_R_N*0 # TODO experiment
+                        F_N += Fadd_N
+                        M_N += Madd_N
+#                     else:
+#                         raise Exception('Temporary safety')
                 F_N_p = R_g2p.dot(F_N)
                 M_N_p = R_g2p.dot(M_N)
 
@@ -681,16 +705,16 @@ class WindTurbineStructure():
                 dfOut['YawBrMyp'].loc[it] = M_N_p[1]/1000
                 dfOut['YawBrMzp'].loc[it] = M_N_p[2]/1000
 
-                # Yaw Brake contribution at N
-                F_N_YawBr = WT.yawBr.mass * gravity_vec
-                F_N += F_N_YawBr
 
                 if useTopLoadsFromDF:
                     F_N_p = np.array((df['YawBrFxp'].loc[it], df['YawBrFyp'].loc[it], df['YawBrFzp'].loc[it]))*1000
                     M_N_p = np.array((df['YawBrMxp'].loc[it], df['YawBrMyp'].loc[it], df['YawBrMzp'].loc[it]))*1000
                     F_N = (R_g2p.T).dot(F_N_p)
                     M_N = (R_g2p.T).dot(M_N_p)
-                    F_N += F_N_YawBr
+                
+                # Yaw Brake contribution at N
+                F_N_YawBr = WT.yawBr.mass * gravity_vec
+                F_N += F_N_YawBr
 
                 # --- Top Loads in tower coordinates
                 R_g2t = dd['R_g2t']
@@ -706,12 +730,27 @@ class WindTurbineStructure():
                     hSL = WT.twr.s_span[iSL]
 
                     sT='TwHt{}'.format(iiSL+1)
-                    dfOut[sT+'FLxt'].loc[it] = F_sec[0, iSL]/1000
-                    dfOut[sT+'FLyt'].loc[it] = F_sec[1, iSL]/1000
-                    dfOut[sT+'FLzt'].loc[it] = F_sec[2, iSL]/1000
-                    dfOut[sT+'MLxt'].loc[it] = M_sec[0, iSL]/1000
-                    dfOut[sT+'MLyt'].loc[it] = M_sec[1, iSL]/1000
-                    dfOut[sT+'MLzt'].loc[it] = M_sec[2, iSL]/1000
+                    dfOut[sT+'FLxt_[kN]'  ].loc[it] = F_sec[0, iSL]/1000
+                    dfOut[sT+'FLyt_[kN]'  ].loc[it] = F_sec[1, iSL]/1000
+                    dfOut[sT+'FLzt_[kN]'  ].loc[it] = F_sec[2, iSL]/1000
+                    dfOut[sT+'MLxt_[kN-m]'].loc[it] = M_sec[0, iSL]/1000
+                    dfOut[sT+'MLyt_[kN-m]'].loc[it] = M_sec[1, iSL]/1000
+                    dfOut[sT+'MLzt_[kN-m]'].loc[it] = M_sec[2, iSL]/1000
+
+                    dfOut[sT+'TDxt_[m]'].loc[it] = dd['u_Ts_in_t'][iSL,0]
+                    dfOut[sT+'TDyt_[m]'].loc[it] = dd['u_Ts_in_t'][iSL,1]
+                    dfOut[sT+'TDzt_[m]'].loc[it] = dd['u_Ts_in_t'][iSL,2]
+                    dfOut[sT+'RDxt_[deg]'].loc[it] = dd['theta_TTs_in_t'][iSL,0]*180/np.pi
+                    dfOut[sT+'RDyt_[deg]'].loc[it] = dd['theta_TTs_in_t'][iSL,1]*180/np.pi
+                    dfOut[sT+'RDzt_[deg]'].loc[it] = dd['theta_TTs_in_t'][iSL,2]*180/np.pi
+                    a_Ts = R_g2t.dot(dd['a_Ts'][iSL])
+                    dfOut[sT+'ALxt_[m/s^2]'].loc[it] = a_Ts[0]
+                    dfOut[sT+'ALyt_[m/s^2]'].loc[it] = a_Ts[1]
+                    dfOut[sT+'ALzt_[m/s^2]'].loc[it] = a_Ts[2]
+
+                    dfOut[sT+'TPxi_[m]'].loc[it] = dd['r_Ts'][iSL,0]
+                    dfOut[sT+'TPyi_[m]'].loc[it] = dd['r_Ts'][iSL,1]
+                    dfOut[sT+'TPzi_[m]'].loc[it] = dd['r_Ts'][iSL,2]
 
         return dfOut
 
@@ -1089,6 +1128,9 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NG
 
     # --- Tower section motions
     nTwrSpan = len(twr.s_span)
+    u_Ts_in_t = np.zeros((nTwrSpan,3))
+    udd_Ts_in_t = np.zeros((nTwrSpan,3))
+    theta_TTs_in_t = np.zeros((nTwrSpan,3))
     r_Ts = np.zeros((nTwrSpan,3))
     v_Ts = np.zeros((nTwrSpan,3))
     a_Ts = np.zeros((nTwrSpan,3))
@@ -1103,24 +1145,21 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NG
         # Missing dipsplacement, velocity, and acceleration due to shoterning of beam
         # TODO TODO TODO Accelerations need debugging
         s_TTs0_in_t = twr.s_G0[:,j]  # undisplaced position
-        u_Ts_in_t   = twr.U[:,j]     # displacement field
-        ud_Ts_in_t  = twr.UP[:,j]    # elastic velocity
-        udd_Ts_in_t = twr.UPP[:,j]    # elastic acceleration
-
-#         u_Ts_in_t[2]=-1 
-#         udd_Ts_in_t[2]=-14
+        u_Ts_in_t[j,:]   = twr.U[:,j]     # displacement field
+        ud_Ts_in_t       = twr.UP[:,j]    # elastic velocity
+        udd_Ts_in_t[j,:] = twr.UPP[:,j]    # elastic acceleration
 
         if twr.main_axis=='z':
-            theta_TTs_in_t  = np.array([-twr.V[1,j]  , twr.V[0,j] , 0])
+            theta_TTs_in_t[j,:]  = np.array([-twr.V[1,j]  , twr.V[0,j] , 0])
             omega_TTs_in_t  = np.array([-twr.VP[1,j] , twr.VP[0,j], 0])
             omegad_TTs_in_t = np.array([-twr.VPP[1,j] , twr.VPP[0,j], 0])
         else:
             raise NotImplementedError()
 
-        theta_TTs[j,:] =  R_t2g.dot(theta_TTs_in_t )
+        theta_TTs[j,:] =  R_t2g.dot(theta_TTs_in_t[j,:] )
         theta_Ts[j,:] =  theta_t + theta_TTs[j,:] # OK because small angle
 
-        R_Ts2t = rotMat(theta_TTs_in_t, rot=rot_type)
+        R_Ts2t = rotMat(theta_TTs_in_t[j,:], rot=rot_type)
         R_Ts2g = R_t2g.dot(R_Ts2t)
         R_g2Ts[j,:,:] = R_Ts2g.T
 
@@ -1129,15 +1168,18 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NG
         omega_Ts[j,:] = omega_t + omega_TTs
         omegad_Ts[j,:] = omegad_t + omegad_TTs + np.cross(omega_t, omega_TTs) # TODO double check extra contrib
 
-        s_TTs_in_t  = s_TTs0_in_t + u_Ts_in_t # displaced position
+        s_TTs_in_t  = s_TTs0_in_t + u_Ts_in_t[j,:] # displaced position
         r_TTs = R_t2g.dot(s_TTs_in_t)
         ud_Ts = R_t2g.dot(ud_Ts_in_t)
-        udd_Ts = R_t2g.dot(udd_Ts_in_t)
+        udd_Ts = R_t2g.dot(udd_Ts_in_t[j,:])
         r_Ts[j,:] = r_T + r_TTs
         v_Ts[j,:] = v_T + np.cross(omega_t, r_TTs) + ud_Ts
         a_Ts[j,:] = a_T + np.cross(omega_t, np.cross(omega_t, r_TTs)) + np.cross(omegad_t, r_TTs) 
         a_Ts[j,:] += 2* np.cross(omega_t, ud_Ts) +  udd_Ts
 
+    d['theta_TTs_in_t']  = theta_TTs_in_t
+    d['u_Ts_in_t']  = u_Ts_in_t
+#     d['udd_Ts_in_t']  = udd_Ts_in_t
     d['r_Ts']   = r_Ts
     d['v_Ts']   = v_Ts
     d['a_Ts']   = a_Ts

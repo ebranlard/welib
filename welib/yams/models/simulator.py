@@ -18,6 +18,7 @@ from welib.yams.models.packman import loadPackage
 
 
 def _loadOFOut(filename, tMax=None, tRange=None):
+    """ see also welib.fast.linmodel """
     ext = os.path.splitext(filename)[1].lower()
     if ext=='.fst':
         if os.path.exists(filename.replace('.fst','.outb')): 
@@ -32,8 +33,11 @@ def _loadOFOut(filename, tMax=None, tRange=None):
         dfFS=dfFS[dfFS['Time_[s]']<tMax]
     if tRange is not None:
         dfFS = dfFS[np.logical_and(dfFS['Time_[s]']>=tRange[0],dfFS['Time_[s]']<=tRange[1])]
-
     time =dfFS['Time_[s]'].values
+    dfFS.reset_index(inplace=True)
+
+    # Remove duplicate
+    dfFS = dfFS.loc[:,~dfFS.columns.duplicated()].copy()
     return dfFS, time
 
 
