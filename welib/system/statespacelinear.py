@@ -382,7 +382,7 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------}
     # --- Time integration 
     # --------------------------------------------------------------------------------{
-    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', xoffset=None, uoffset=None, **options):
+    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', xoffset=None, uoffset=None, yoffset=None, **options):
         #dfLI = sysLI.res2DataFrame(self.channels, self.FASTDOFScales, q0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
         #
         if y0 is not None:
@@ -421,7 +421,7 @@ class LinearStateSpace(StateSpace):
         self.res    = res
 
         # --- From results to states, inputs, outputs DataFrame
-        df = self.res2DataFrame(res, calc=calc, sStates=None, xoffset=xoffset, uoffset=uoffset)
+        df = self.res2DataFrame(res, calc=calc, sStates=None, xoffset=xoffset, uoffset=uoffset, yoffset=yoffset)
         self.df = df 
 
         return res, df
@@ -431,9 +431,14 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------{
     # From welib.system.statespac.py
     #def res2DataFrame(self, res=None, calc='u,y,xd', sStates=None, xoffset=None, uoffset=None, yoffset=None):
+    #def store_states(self, res, sStates=None, xoffset=None, Factors=None):
+    #def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
+    #def calc_inputs(self, time=None, res=None, insertTime=True, dataFrame=True, uoffset=None):
 
-    def _calc_outputs(self, time, q, df):
+    def _calc_outputs(self, time, q, df, yoffset=None):
         """ low level implementation leaving room for optimization for other subclass."""
+        if yoffset is None:
+            yoffset = 0
         if self._inputs_ts is not None and len(time)==len(self._time_ts): # TODO more rigorous
             if self.verbose:
                 print('Calc output using simple matrix manipulation...')
@@ -441,12 +446,14 @@ class LinearStateSpace(StateSpace):
             MU = self._inputs_ts
             MY = calc_outputs(MX, MU, self.C, self.D)
             df.iloc[:,:] = MY.T
+            df.iloc[:,:] += yoffset
         else:
             calcOutput = self.dqdt_calcOutput()
             if self.verbose:
                 print('Calc output...')
             for i,t in enumerate(time):
-                df.iloc[i,:] = calcOutput(t, q[:,i])
+                y = calcOutput(t, q[:,i])
+                df.iloc[i,:] = y+yoffset
 
 
     def _calc_inputs(self, time, q, df):

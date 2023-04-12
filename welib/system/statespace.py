@@ -554,7 +554,7 @@ class StateSpace(System):
         # --- Try to compute outputs
         dfOut = None
         if 'y' in calcVals:
-            dfOut = self.calc_outputs(insertTime=True, yoffset=yoffset)
+            dfOut = self.calc_outputs(res=res, insertTime=True, yoffset=yoffset)
             if dfOut is None:
                 #TODO
                 dfStatesD = self.calcDeriv()
@@ -577,7 +577,7 @@ class StateSpace(System):
         else:
             if sStates is None:
                 sStates = self.sX
-            nCols = self.res.y.shape[0]
+            nCols = res.y.shape[0]
             if len(self.sX)!=nCols:
                 raise Exception("Inconsistency in length of states columnNames. Number of columns detected from res: {}. States columNames (sX):".format(nCols, self.sX))
         self.sX = sStates
@@ -673,13 +673,16 @@ class StateSpace(System):
                 raise Exception("Inconsistency in length of input columns. Number of columns detected from `Inputs`: {}. Inputs columns (sU):".format(nCols, self.sU))
         return cols
 
-    def _calc_outputs(self, time, q, df):
+    def _calc_outputs(self, time, q, df, yoffset=None):
         """ low level implementation leaving room for optimization for other subclass."""
         calcOutput = self.dqdt_calcOutput()
+        if yoffset is None:
+            yoffset =0
         if self.verbose:
             print('Calc output...')
         for i,t in enumerate(time):
-            df.iloc[i,:] = calcOutput(t, q[:,i])
+            y = calcOutput(t, q[:,i])
+            df.iloc[i,:] = y + yoffset
 
     def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
         """ 
@@ -696,10 +699,7 @@ class StateSpace(System):
         df = self._prepareOutputDF(res)
 
         # --- Calc output based on states
-        self._calc_outputs(res.t, res.y, df)
-        if yoffset is not None:
-            print('>>> STOPED IN STATESPACE.py')
-            raise Exception()
+        self._calc_outputs(res.t, res.y, df, yoffset=yoffset)
 
         if insertTime:
             df.insert(0,'Time_[s]', res.t)
