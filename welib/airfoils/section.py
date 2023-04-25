@@ -359,7 +359,10 @@ class Section(object):
     def eigA(self, x0=None, u0=None, t=0, normQ=None, fullEV=False):
         from welib.tools.eva import eigA
         A,_,_,_ = self.linearize(x0, u0=u0, t=0) 
-        nq2 = len(self.p_sim['sx'].split(','))
+        if len(self.p_sim['sx'])>0:
+            nq2 = len(self.p_sim['sx'].split(','))
+        else:
+            nq2=0
         freq_d, zeta, Q, freq_0 = eigA(A, nq=nq2, fullEV=fullEV, normQ=normQ, sort=True)
         return freq_d, zeta, Q, freq_0 
 
