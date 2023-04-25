@@ -1055,7 +1055,10 @@ def addToOutlist(OutList, Signals):
 # --- Generic df 
 # --------------------------------------------------------------------------------{
 def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, verbose=False):
-    """ Add/rename columns of a dataframe, potentially perform operations between columns
+    """ 
+    NOTE: see welib.tools.pandalib
+
+    Add/rename columns of a dataframe, potentially perform operations between columns
 
     dataDict: dictionary of data to be made available as "variable" in the column mapping
          'key' (new) : value (old)
