@@ -68,6 +68,7 @@ class Section(object):
         # --- Main data
         self._r_bar = None # r/R [-]
         self._R     = None # R [m]
+        self._beta  = 0 # [rad] Twist, negative about z, typically positive
         # Raw constant
         self._M33   = None # 3x3 mass matrix
         self._C33   = None # 3x3 damping matrix
@@ -125,6 +126,10 @@ class Section(object):
         """ set the 3x3 mass matrix, either using M33 or individual components """
         self._C33 = dampMatrix(cxx=cxx, cyy=cyy, czz=czz, cxy=cxy, cxz=cxz, cyz=cyz, C33=C33, sx='x,y,th')
         return self._C33
+
+    @property
+    def r(self):
+        return self._r_bar * self._R
 
     # --------------------------------------------------------------------------------}
     # --- Structure
@@ -220,6 +225,7 @@ class Section(object):
         self.sx_sim = sx_sim
         p = defaultParams(chord=self._chord, rho=self._rho, sx=self.sx_sim, ds=self.ds_model, di=self.di_model,
                 M=self._M33, C=self._C33, K=self._K33)
+        p['beta'] = self._beta
         if len(p['Iq'])==0:
             raise Exception('No states are present')
 
@@ -390,9 +396,10 @@ class Section(object):
         A, B, C, D = sys.linearize(x0, u0=u0, dx=self.dx, du=self.du, p=self.p_sim)
         return A, B, C, D
 
-    def eigA(self, x0=None, u0=None, t=0, normQ=None, fullEV=False):
+    def eigA(self, x0=None, u0=None, t=0, A=None, normQ=None, fullEV=False):
         from welib.tools.eva import eigA
-        A,_,_,_ = self.linearize(x0, u0=u0, t=0) 
+        if A is None:
+            A,_,_,_ = self.linearize(x0, u0=u0, t=t) 
         if len(self.p_sim['sx'])>0:
             nq2 = len(self.p_sim['sx'].split(','))
         else:
@@ -404,52 +411,57 @@ class Section(object):
     # --------------------------------------------------------------------------------}
     # --- Parametric/Campbell
     # --------------------------------------------------------------------------------{
-#     def doSim(sec,)
-#             Ux, Uy, theta_p, ds_model, di_model, a0, ap0, qop=None):
-#         self.setConstantInputs(Ux, Uy, theta_p=theta_p*np.pi/180)
-#         self.setDynInflow(di_model=di_model, a0=a0, ap0=ap0)
-#         self.setDynStall(ds_model=ds_model)
-#         self.setParameters(sx_sim=DOFs)
-#         # --- Frequencies
-#         u0 = [Ux, Uy, theta_p*np.pi/180]
-#         if qop is None:
-#             qop=self.q0
-#         qop = self.equilibrium(x0=qop, u0=u0, tol=1e-8, verbose=False)
-#         freq_d, zeta, Q, freq_0 = self.eigA(x0=qop, u0=u0)
-#         S = self.calcOutput(0, qop, self.u_sim, self.p_sim)
-#         S['Ux'] = Ux
-#         S['Uy'] = Uy
-#         for i,(f,z) in enumerate(zip(freq_0,zeta)):
-#             S['f'+str(i+1)] = f
-#             S['d'+str(i+1)] = z*100
-#         return freq_0, zeta*100, Q, S, qop
-# 
-# 
-# 
-#     Omega = 1.1 # [rad/s]
-# 
-#     Uy = Omega * self._R * self._r_bar
-#     Ux = np.linspace(1,10,50)
-#     fig,axes = plt.subplots(1, 2, sharey=False, figsize=(8.4,4.8)) # (6.4,4.8)
-#     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-# 
-# 
-#     nMax=10
-#     Q    = np.zeros((len(Ux), nMax, nMax), dtype=complex)*np.nan
-#     qop=None
-# 
-#     for i,ux in enumerate(Ux):
-#         f, z, q, S, qop = doSim(sec, ux, Uy, 0, ds_model, di_model, a0, ap0, qop=qop)
-#         print(q.shape)
-#         if i==0:
-#             df = pd.DataFrame(S).T
-#         else:
-#             dfloc = pd.DataFrame(S).T
-#             df = pd.concat((df,dfloc))
-#         Q   [i,:q.shape[0],:q.shape[1]] = q
-# 
-# 
-#     for iMode in range(nMax):
+    def campbell(self, WS, RPM, Pitch, A=None, AP=None):
+        """ 
+        - WS [deg]
+        - Pitch [deg]
+        - Pitch [deg]
+        """
+        # Default arguments
+        if A is None:
+            A=np.zeros_like(WS)
+        if AP is None:
+            AP=np.zeros_like(WS)
+
+        # Prepare outputs
+        AMat = []   # A matrices
+        df   = None
+
+        qop=None
+        r = self.r
+        for i,(U0, rpm, pitch, a0, ap0) in enumerate(zip(WS, RPM, Pitch, A, AP)):
+            Omega = np.asarray(rpm) * 2*np.pi/60
+            Ux      = U0
+            Uy      = Omega * r
+            theta_p = pitch *np.pi/180
+            u0 = [Ux, Uy, theta_p]
+            # TODO update interface
+            self.setConstantInputs(Ux, Uy, theta_p=theta_p)
+            self.setDynInflow(di_model=self.di_model, a0=a0, ap0=ap0)
+            self.setDynStall(ds_model=self.ds_model)
+            self.setParameters()
+            # --- Frequencies
+            if qop is None:
+                qop=self.q0
+            qop = self.equilibrium(x0=qop, u0=u0, tol=1e-8, verbose=False)
+            A,_,_,_ = self.linearize(x0=qop, u0=u0)
+            freq_d, zeta, Q, freq_0 = self.eigA(A=A)
+            # --- Store
+            AMat.append(A)
+            S = self.calcOutput(0, qop, self.u_sim, self.p_sim)
+            S['WS']   = U0
+            S['RPM']  = rpm
+            S['theta'] = pitch
+            for i,(f,z) in enumerate(zip(freq_0,zeta)):
+                S['f'+str(i+1)] = f
+                S['d'+str(i+1)] = z*100
+            if i==0:
+                df = pd.DataFrame(S).T
+            else:
+                dfloc = pd.DataFrame(S).T
+                df = pd.concat((df,dfloc))
+        return df, AMat
+
 
 
     # --------------------------------------------------------------------------------}
@@ -589,46 +601,49 @@ def nonlinear_model(t, q, u, p, calcOutput=False):
     OUTPUTS:
      - dq/dt, dfs
     """
-    # Split state into positions and speeds (qx, qxd), uaero states (qxa_ua), dynamic inflow states (qxa_di)
-    Iq=p['Iq']
-    Ix=p['Ix']
+    # Compute useful variables
+    m = calcMisc(t, q, p, u)
 
-    qx, qxd, qxa_ua, qxa_di = split_q(q, p['Iqxs'], p['Iqxsd'], p['Iqxa_ua'], p['Iqxa_di'])
+    # Aerodynamic Force (length 3)
+    Fa, aeroOut = Faero(t, m['x'], m['xd'], m['qxa_ua'], m['qxa_di'], p, u, calcOutput=calcOutput)
 
-    # Structural states (length 3, even if not all DOFs are actice)
-    q_full, x, xd = inflate_q(q, Iq=Iq)
+    # Inertial force (length 3)
+    Fs = Fstruct(t, q, p, u, calcOutput=calcOutput, m=m)
 
-    # Aerodynamic Force 
-    F, aeroOut = Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=calcOutput)
+    # Total force
+    F = np.zeros(3)
+    F[0] = Fa[0] + Fs[0]
+    F[1] = Fa[1] + Fs[1]
+    F[2] =-Fa[2] - Fs[2]
 
     # Derivative of states (structural and aero)
-    dqxd = dxd_dt(t, qx, qxd, F[Ix], p)
-    dxa  = dxa_dt(t, x, xd, qxa_ua, qxa_di, p, u)
-    dq = np.concatenate((qxd, dqxd, dxa)) # NOTE: assumed order here
+    dqxd = dxd_dt(t, m['qx'], m['qxd'], F[p['Ix']], p)
+    dxa  = dxa_dt(t, m['x'], m['xd'], m['qxa_ua'], m['qxa_di'], p, u)
+    dq = np.concatenate((m['qxd'], dqxd, dxa)) # NOTE: assumed order here
 
     if calcOutput:
-        q_full, xd, xdd = inflate_q(dq, Iq=Iq)
+        dq_full, xd, xdd = inflate_q(dq, Iq=p['Iq'])
         d = dict()
         ## Structural states
-        d['x']       = x[0]
-        d['y']       = x[1]
-        d['theta']   = x[2]
-        d['xd']      = xd[0]
-        d['yd']      = xd[1]
-        d['thetad']  = xd[2]
+        d['x']       = m['x'][0]
+        d['y']       = m['x'][1]
+        d['theta']   = m['x'][2]
+        d['xd']      = m['xd'][0]
+        d['yd']      = m['xd'][1]
+        d['thetad']  = m['xd'][2]
         d['xdd']     = xdd[0]
         d['ydd']     = xdd[1]
         d['thetadd'] = xdd[2]
         ## Aero
         d.update(aeroOut)
         if p['dynamicStallModel'] == 'oye':
-            d['fs']  = qxa_ua[0]
-            d['dfs'] = dxa[0]
+            d['fs']  = m['qxa_ua'][0]
+            d['dfs'] = dxa        [0]
         elif p['dynamicStallModel'] == 'mhh':
-            d['x1_ds']  = qxa_ua[0]
-            d['x2_ds']  = qxa_ua[1]
-            d['x3_ds']  = qxa_ua[2]
-            d['x4_ds']  = qxa_ua[3]
+            d['x1_ds']  = m['qxa_ua'][0]
+            d['x2_ds']  = m['qxa_ua'][1]
+            d['x3_ds']  = m['qxa_ua'][2]
+            d['x4_ds']  = m['qxa_ua'][3]
         return pd.Series(d)
     else:
         return dq
@@ -642,7 +657,7 @@ def defaultParams(sx=None, ds=None, di=None,
     # --- Aero
     p['chord'] = chord   # section chord [m]
     p['rho']   = rho     # air density [kg/m^3]
-    p['twist'] = 0       # Section twist "beta" [rad] (negative about z)
+    p['beta'] = 0        # Section twist "beta" [rad] (negative about z), typically positive
     p['x_AQ']   = np.nan # x coordinate of aerodynamic center from airfoil origin
     p['y_AQ']   = np.nan # y coordinate of aerodynamic center from airfoil origin
     p['x_AT']   = np.nan # x coordinate of 3/4 point from airfoil origin
@@ -746,6 +761,14 @@ def defaultParams(sx=None, ds=None, di=None,
 
 
     # --- System matrices
+    if len(sx)>0:
+        p['m'] = M[0,0]
+        p['x_AG'] = M[1,2]/p['m'] # TODO TODO TODO
+        p['y_AG'] =-M[0,2]/p['m'] # TODO TODO TODO
+    else:
+        p['m'] = 0
+        p['x_AG'] = 0
+        p['y_AG'] = 0
     p['M'] = massMatrix(M33=M, sx=sx)
     p['C'] = dampMatrix(C33=C, sx=sx)
     p['K'] = stifMatrix(K33=K, sx=sx)
@@ -810,11 +833,29 @@ def dampMatrix(cxx=0, cyy=0, czz=0, cxy=0, cxz=0, cyz=0, sx='x,y,th', C33=None):
     C = C[np.ix_(I,I)]
     return C
 
-def dxd_dt(t, x, xd, F, p):
+def dxd_dt(t, x, xd, F, p, m=None):
     # Structure acceleration
     RHS = - np.dot(p['C'], xd) - np.dot(p['K'], x) + F
     xdd = np.dot(p['invM'], RHS)
     return xdd
+
+def calcMisc(t, q, p, u):
+    m=dict()
+    # Split state into positions and speeds (qx, qxd), uaero states (qxa_ua), dynamic inflow states (qxa_di)
+    m['qx'], m['qxd'], m['qxa_ua'], m['qxa_di'] = split_q(q, p['Iqxs'], p['Iqxsd'], p['Iqxa_ua'], p['Iqxa_di'])
+        
+
+    # Structural states (length 3, even if not all DOFs are actice)
+    m['q_full'], m['x'], m['xd'] = inflate_q(q, Iq=p['Iq'])
+
+    # Orientation of the section
+    m['Ux'], m['Uy'], m['theta_p'] = inputsAtTime(t, u)
+    th  = m['x'][2]
+    m['omega'] = m['xd'][2]
+    m['theta'] = th + m['theta_p'] + p['beta'] 
+    m['rho_x'] = (-p['x_AG']* np.sin(m['theta']) + p['y_AG']*np.cos(m['theta']) )
+    m['rho_y'] = (-p['x_AG']* np.sin(m['theta']) + p['y_AG']*np.cos(m['theta']) )
+    return m
 
 
 # --------------------------------------------------------------------------------}
@@ -841,7 +882,7 @@ def dxa_dt(t, x, xd, xa_ua, xa_di, p, u):
     omega = xd[2]
 
     # Inputs
-    Ux, Uy, theta_p = inputsAtTime(t, u)
+    Ux, Uy, _ = inputsAtTime(t, u)
 
     # Main inflow variables at dynamic stall point 
     V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, xa_di, p, u, point='Q')
@@ -962,8 +1003,8 @@ def aeroVarsSS(t, x, xd, xa_di, p, u, point='Q'):
     Ux, Uy, theta_p = inputsAtTime(t, u)
     U = [Ux, Uy]
 
-    # Total torsion of the section
-    theta = th + theta_p + p['twist'] 
+    # Total torsion of the section (typically negative)
+    theta = th + theta_p + p['beta'] 
 
     # --- Structural velocities at point of interest (Q, or T)
     if point == 'Q':
@@ -1004,6 +1045,14 @@ def inducedVelocities(xa_di, Ux, Uy, Velx, Vely, p):
     return W, Wqs
 
 
+def Fstruct(t, q, p, u, calcOutput=False, m=None):
+    if m is None:
+        m = calcMisc(t, q, p, u)
+    Fs = np.zeros(3)
+    Fs[0] = p['m'] * m['omega']**2 * m['rho_x']
+    Fs[1] = p['m'] * m['omega']**2 * m['rho_y']
+    #print(Fs)
+    return Fs
 
 def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
     """ 
@@ -1020,8 +1069,6 @@ def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
     OUTPUTS:
      - F: aerodynamic force in each structural DOF
     """
-
-
     # Inputs
     Ux, Uy, theta_p = inputsAtTime(t, u)
     omega = xd[2]
@@ -1278,11 +1325,15 @@ def setup_nonlinear_model_dx(p):
     dq_full[:3]  = [0.01*c,0.01*c,0.01]   # x,y,th
     dq_full[3:6] = [0.01,  0.01,  0.01]   # xd,yd,thd
     dq_full[6:]  = 0.01  #... TODO
+#     dq_full[:3]  = [0.1*c,0.1*c, 1*np.pi/180]   # x,y,th
+#     dq_full[3:6] = [5. *c,5. *c, 40.]   # xd,yd,thd
+#     dq_full[6:]  =  0.1  #... TODO
     dx = dq_full[p['Iq']]
     return dx
 
 def setup_nonlinear_model_du(*args, **kwargs):
     du = np.array((0.01,0.01,0.001)) # Ux, Uy, theta_p
+    #du = np.array((0.05,0.05, 1*np.pi/180)) # Ux, Uy, theta_p
     return du
 
 
