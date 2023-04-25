@@ -327,9 +327,9 @@ def dynstall_mhh_steady(t, u, p):
     # Inputs
     U         = u['U'](t)
     alpha_34  = u['alpha_34'](t)
-    return dynstall_mhh_steady_simple(t, U, alpha_34, p)
+    return dynstall_mhh_steady_simple(U, alpha_34, p)
 
-def dynstall_mhh_steady_simple(t, U, alpha_34, p):
+def dynstall_mhh_steady_simple(U, alpha_34, p):
     # Parameters
     c      = p['chord']
     alpha0 = p['alpha0']
@@ -480,6 +480,10 @@ def dynstall_oye_dxdt(t,fs,u,p):
 def dynstall_oye_dxdt_simple(fs, fs_alpha, tau):
     """ d(fs)/dt = 1/tau (fs_st - fs) """
     return 1/tau * (fs_alpha - fs)
+
+def dynstall_oye_steady(alpha, p):
+    """ """
+    return p['F_st'](alpha)
 
 def dynstall_oye_output(t,fs,u,p):
     alpha   = u['alpha'](t)

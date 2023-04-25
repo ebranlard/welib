@@ -32,7 +32,6 @@ States:
   - xd: structural velocities: e.g.  (xd,yd,thd)  when sx=(x,y,th)
   - xa: aerodynamic states   : e.g.  (fs)         when sxa=(fs)
 
-
 References:
   [1] Branlard, Jonkman (2023) The aeroelastic cross section [TODO]
 
@@ -51,6 +50,12 @@ from welib.airfoils.DynamicStall import dynstall_oye_output_simple
 from welib.airfoils.DynamicStall import dynstall_mhh_outputs_simple
 from welib.airfoils.DynamicStall import dynstall_oye_param_from_polar
 from welib.airfoils.DynamicStall import dynstall_mhh_param_from_polar
+from welib.airfoils.DynamicStall import dynstall_mhh_steady_simple
+from welib.airfoils.DynamicStall import dynstall_oye_steady
+# Dynamic inflow
+from welib.dyninflow.DynamicInflow import dynflow_oye_dxdt_simple
+from welib.dyninflow.DynamicInflow import dynflow_oye_steady_simple
+from welib.dyninflow.DynamicInflow import tau1_dbemt, tau2_oye
 
 
 # --------------------------------------------------------------------------------}
@@ -61,6 +66,8 @@ class Section(object):
     def __init__(self):
         #self.arg = arg
         # --- Main data
+        self._r_bar = None # r/R [-]
+        self._R     = None # R [m]
         # Raw constant
         self._M33   = None # 3x3 mass matrix
         self._C33   = None # 3x3 damping matrix
@@ -74,6 +81,9 @@ class Section(object):
         self._pol   = None # Polar, instance of Polar class
         self._ppol  = None # Polar parameters
         self._tau   = None # TODO stieg oye time constant
+        # Induction / dynamic infloe
+        self._a0      = 0
+        self._ap0     = 0
 
 #     def setup_nonlinear_model_p(M, C, K, sx='x,y,th', 
 #             rho=1.225, chord=0.2, polarFilename='tjaere11_ds.csv', drag=False,  # Aero options
@@ -90,6 +100,8 @@ class Section(object):
         self.sys_sim = None
         self.res_sim = None
         self.df_sim = None
+        #  
+        self.u_op     = None
 
         
     def fromOpenFAST(self, fstFilename, r_bar=1.0):
@@ -123,6 +135,38 @@ class Section(object):
         ppol = polarParams(self._pol, chord=self._chord, tau=self._tau)
         self._ppol = ppol
 
+    # --------------------------------------------------------------------------------}
+    # --- Dynamic inflow
+    # --------------------------------------------------------------------------------{
+    def setDynInflow(self, di_model=None, a0=0, ap0=0, **kwargs):
+        self.di_model = di_model
+        self._a0      = a0
+        self._ap0     = ap0
+        if di_model is None:
+
+            pass
+        elif di_model=='oye':
+            # Check that main variables are set
+            if self._r_bar is None:
+                raise Exception('_r_bar must be set for Oye dyninflow model')
+            if self._R is None:
+                raise Exception('_R must be set for Oye dyninflow model')
+        else:
+            raise NotImplementedError()
+
+    @property
+    def di_tau1(self):
+        if self.di_model is None:
+            return np.nan
+        if self.u_op is None:
+            raise Exception('Operational input is None. Set it.')
+        U0 = self.u_op['Ux']
+        return tau1_dbemt(self._a0, self._R, U0)
+    @property
+    def di_tau2(self):
+        if self.di_model is None:
+            return np.nan
+        return tau2_oye(self._r_bar, self.di_tau1)
 
     # --------------------------------------------------------------------------------}
     # --- Simulation 
@@ -135,17 +179,25 @@ class Section(object):
         sys = StateSpace(dqdt=nonlinear_model, signature='t,q,u,p', verbose=True)
         return sys
 
-    def setParameters(self, sx_sim=None, ds_model=None, di_model=None):
+    # TODO get rid of this
+    def setParameters(self, sx_sim=None, ds_model=None):
         """ setup parameters for a given simulation"""
-        # TODO rething that..
+        # TODO rething that ..
         #if sx_sim is not None:
         #if ds_model is not None:
         #if di_model is not None:
         self.sx_sim = sx_sim
         self.ds_model = ds_model
-        self.di_model = di_model
         p = defaultParams(chord=self._chord, rho=self._rho, sx=self.sx_sim, ds=self.ds_model, di=self.di_model,
                 M=self._M33, C=self._C33, K=self._K33)
+        if len(p['Iq'])==0:
+            raise Exception('No states are present')
+
+        # --- Dynamic inflow / induction
+        p['a0']  = self._a0
+        p['ap0'] = self._ap0
+        p['di_tau1'] = self.di_tau1
+        p['di_tau2'] = self.di_tau2
 
         # --- Aerodynamic parameters
         if self._y_AQ>0: 
@@ -164,17 +216,81 @@ class Section(object):
 
         self.p_sim = p
 
-    def setInitialConditions(self, x=0, y=0, th=0, xd=0, yd=0, thd=0, fs=None, x_mhh=None):
-        if self.p_sim is None:
+    def setInitialConditions(self, q=None, x=0, y=0, th=0, xd=0, yd=0, thd=0, 
+            fs=None, x_mhh=None,
+            wx=0, wy=0, wxr=0, wyr=0,
+            uop=None,
+            equilibrium=False,
+            di_eq=False,
+            ds_eq=False,
+            verbose=False
+            ):
+
+        p = self.p_sim
+        if p is None:
             raise Exception('Call `setParameters` first')
-        state0, D = setup_nonlinear_model_x0(x=x, y=y, th=th, xd=xd, yd=yd, thd=thd, fs=fs, x_mhh=x_mhh, p=self.p_sim)
+        if q is not None:
+            state0=q
+        else:
+            state0 = setup_nonlinear_model_x0(x=x, y=y, th=th, xd=xd, yd=yd, thd=thd, 
+                    fs=fs, x_mhh=x_mhh, 
+                    wx=wx, wy=wy, wxr=wxr, wyr=wyr,
+                    p=self.p_sim)
+        if verbose:
+            state0_dict = OrderedDict((k,v) for k,v in zip(p['sq'].split(','), state0) )
+            print('q0 (user input):', dict(state0_dict))
+
+        # --- Equilibrim
+        if uop is None:
+            uop = self.u_sim
+
+        if equilibrium:
+            # We find full equilibrium
+            state0 = self.equilibrium(x0=state0, u0=uop)
+            if verbose:
+                state0_dict = OrderedDict((k,v) for k,v in zip(p['sq'].split(','), state0) )
+                print('q0 (full equil):', dict(state0_dict))
+        else:
+            if ds_eq or di_eq: 
+                q = state0
+                qx, qxd, qxa_ua, qxa_di = split_q(q, p['Iqxs'], p['Iqxsd'], p['Iqxa_ua'], p['Iqxa_di'])
+                q_full, x, xd = inflate_q(q, Iq=p['Iq'])
+                V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(0, x, xd, qxa_di, p, self.u_sim, point='Q')
+                V_rel2_ds, phi_ds, alpha_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(0, x, xd, qxa_di, p, self.u_sim, point=p['ds_inflow_point'])
+                if di_eq:
+                    if p['dynamicInflowModel'] is None:
+                        pass
+                    elif p['dynamicInflowModel'] =='oye':
+                        qxa_di[:2] = dynflow_oye_steady_simple(Wqs_AC[0], p['di_k'])
+                        qxa_di[2:] = dynflow_oye_steady_simple(Wqs_AC[1], p['di_k'])
+                    else:
+                        raise NotImplementedError()
+
+                if ds_eq:
+                    if p['dynamicStallModel'] is None:
+                        pass
+                    elif p['dynamicStallModel'] == 'mhh':
+                        qxa_ua = dynstall_mhh_steady_simple(np.sqrt(V_rel2_ds), alpha_ds, p)
+                    elif p['dynamicStallModel'] == 'oye':
+                        qxa_ua[0] = dynstall_oye_steady(alpha_ds, p)
+                    else:
+                        raise NotImplementedError()
+                state0 = np.concatenate((qx, qxd, qxa_ua, qxa_di)) # NOTE: assumed order here
+                if verbose:
+                    print('q0 (ds di eq)  :', dict(state0_dict))
+
+        state0_dict = OrderedDict((k,v) for k,v in zip(p['sq'].split(','), state0) )
+
         self.x0_sim = state0
-        self.x0_sim_dict = D
+        self.x0_sim_dict = state0_dict
+        if verbose:
+            print('q0 (final)     :', dict(state0_dict))
         return state0 
 
     def setConstantInputs(self, Ux=0, Uy=0, theta_p=0):
         """ setup inputs for the non linear model, constant inputs with time """
         self.u_sim = setup_nonlinear_model_u_cst(Ux=Ux, Uy=Uy, theta_p=theta_p)
+        self.u_op = {'Ux':Ux, 'Uy':Uy, 'theta_p':0}
         return self.u_sim
 
     def integrate(self, t_eval, y0=None, p=None, u=None, calc='u,y', **options):
@@ -304,7 +420,7 @@ def s2Iq(sq, sxs, sdi='', sua=''):
         Ixsd    = [sq.index(s+'d') for s in sxs.split(',')]
     else:
         Ixs = []
-        Ixd = []
+        Ixsd = []
     if len(sua)>0:
         Ixa_ua = [sq.index(s) for s in sua.split(',')]
     else:
@@ -319,22 +435,17 @@ def s2Iq(sq, sxs, sdi='', sua=''):
 def sx2I(sx):
     """ from structural DOF string to indices """
     D={'x':0,'y':1,'th':2,'p':2}
-    return [D[s] for s in sx.split(',')]
-
-# def sua2I(sua):
-#     D={'fs':0,'x1':0, 'x2':1, 'x3':2, 'x4':3}
-#     return [D[s] for s in sua.split(',')]
-# # 
-# def sdi2I(sdi):
-#     D={'wxr':6, 'wyr':7, 'wx':8, 'wy':9}
-#     return [D[s] for s in s.split(',')]
+    if len(sx)>0:
+        return [D[s] for s in sx.split(',')]
+    else:
+        return []
 
 def sq2I(sq, ds=None, di=None):
     D = {'x':0,'y':1,'th':2,'ph':2,'xd':3,'yd':4,'thd':5,'pd':5}
     iMax = 5
     if di is not None: 
         if di.lower()=='oye':
-            Ddi = {'wxr': iMax+1 ,'wyr':iMax+2, 'wx':iMax+3, 'wy':iMax+4}
+            Ddi = {'wxr': iMax+1 ,'wx':iMax+2, 'wyr':iMax+3, 'wy':iMax+4}
             iMax+=4
         else:
             raise NotImplementedError()
@@ -487,6 +598,11 @@ def defaultParams(sx=None, ds=None, di=None,
 
     # --- Dynamic inflow model
     p['dynamicInflowModel'] = di
+    p['a0']  = 0    # baseline axial induction
+    p['ap0'] = 0    # baseline tangential induction
+    p['di_tau1'] = 0    # 
+    p['di_tau2'] = 0    # 
+    p['di_k']    = 0.6  # 
 
     # --- Structural dynamics
     #p['x_G']   = np.nan # x coordinate of center of mass from airfoil origin
@@ -508,30 +624,33 @@ def defaultParams(sx=None, ds=None, di=None,
     nMax = 3
     if sx is None:
         sx='x,y,th'
-    p['sx']  = sx
-    p['sq']  = p['sx'] + ',' + ','.join([s+'d' for s in p['sx'].split(',')])
+    p['sx']  = sx.strip().strip(',').strip()
+    if len(sx)>0:
+        p['sq']  = p['sx'] + ',' + ','.join([s+'d' for s in p['sx'].split(',')])
+    else:
+        p['sq']  = ''
 
     p['sua'] = '' 
     if ds is not None:
         if ds.lower()=='oye':
-            p['sq']  += ',fs'
             p['sua'] = 'fs'
             nMax += 1
         elif ds.lower()=='mhh':
-            p['sq']  += ',x1,x2,x3,x4'
             p['sua'] = 'x1,x2,x3,x4'
             nMax += 4
         else:
             raise NotImplementedError()
+        p['sq']  += ',' +p['sua']
 
     p['sdi'] = ''
     if di is not None:
         if di.lower()=='oye':
-            p['sdi'] = '' # TODO
-            print('>>>>>>>>>>>>>> TODO OYE DI')
+            p['sdi'] = 'wxr,wx,wyr,wy'
             nMax += 0
         else:
             raise NotImplementedError()
+        p['sq']  += ',' +p['sdi']
+    p['sq'] = p['sq'].strip(',').replace(',,',',')
 
     p['Iq'] = sq2I(p['sq'], di=di, ds=ds)
     p['Ix'] = sx2I(p['sx'])
@@ -639,8 +758,8 @@ def dxa_dt(t, x, xd, xa_ua, xa_di, p, u):
     Ux, Uy, theta_p = inputsAtTime(t, u)
 
     # Main inflow variables at dynamic stall point 
-    V_rel2_AC, phi_AC, alpha_AC = aeroVarsSS(t, x, xd, xa_di, p, u, point='Q')
-    V_rel2_ds, phi_ds, alpha_ds = aeroVarsSS(t, x, xd, xa_di, p, u, point=p['ds_inflow_point'])
+    V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, xa_di, p, u, point='Q')
+    V_rel2_ds, phi_ds, alpha_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(t, x, xd, xa_di, p, u, point=p['ds_inflow_point'])
 
     # --- Dynamic stall (unsteady airfoil aerodynamics)
     if p['dynamicStallModel'] is None:
@@ -664,6 +783,19 @@ def dxa_dt(t, x, xd, xa_ua, xa_di, p, u):
     # --- Dynamic inflow 
     if p['dynamicInflowModel'] is None:
         pass
+    elif p['dynamicInflowModel']=='oye':
+        if len(xa_di)==4:
+            xa_di_x = xa_di[:2]
+            xa_di_y = xa_di[2:]
+            dxa_di_x = dynflow_oye_dxdt_simple(xa_di_x, Wqs_AC[0], p['di_tau1'], p['di_tau2'], k=p['di_k'])
+            dxa_di_y = dynflow_oye_dxdt_simple(xa_di_y, Wqs_AC[1], p['di_tau1'], p['di_tau2'], k=p['di_k'])
+            dxa_di[:2] =dxa_di_x
+            dxa_di[2:] =dxa_di_y
+        elif len(xa_di)==2:
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+
     else: 
         raise NotImplementedError('Dynamic inflow model: {}'.format(p['dynamicInflowModel']))
 
@@ -742,6 +874,7 @@ def aeroVarsSS(t, x, xd, xa_di, p, u, point='Q'):
 
     # Inputs
     Ux, Uy, theta_p = inputsAtTime(t, u)
+    U = [Ux, Uy]
 
     # Total torsion of the section
     theta = th + theta_p + p['twist'] 
@@ -758,12 +891,32 @@ def aeroVarsSS(t, x, xd, xa_di, p, u, point='Q'):
     # Velocity at point P
     xd_P = xd_A + omega * (-x_AP* np.sin(theta) + y_AP*np.cos(theta) )
     yd_P = yd_A - omega * ( x_AP* np.cos(theta) + y_AP*np.sin(theta) )
+    Vel = [xd_P, yd_P]
 
-    # Induction TODO
-    Wx, Wy = 0, 0
+    # Induction 
+    W, Wqs = inducedVelocities(xa_di, U[0], U[1], Vel[0], Vel[1], p)
 
-    Vrel2, phi, alpha =  aeroTriangle(Ux, Uy, Wx, Wy, xd_P, yd_P, theta, smallAngles=False)
-    return Vrel2, phi, alpha 
+    Vrel2, phi, alpha =  aeroTriangle(U[0], U[1], W[0], W[1], Vel[0], Vel[1], theta, smallAngles=False)
+
+    return Vrel2, phi, alpha, U, Vel, Wqs, W
+
+
+def inducedVelocities(xa_di, Ux, Uy, Velx, Vely, p):
+    # Inflow without induction
+    Vx = Ux - Velx
+    Vy = Uy - Vely
+    # Induced velocities
+    Wqs = [-p['a0']* Vx,  p['ap0'] * Vy ]
+    if len(xa_di)==0:
+        W = Wqs
+    elif len(xa_di)==2:
+        raise NotImplementedError()
+    elif len(xa_di)==4:
+        W = [xa_di[1], xa_di[3]]
+    else:
+        raise NotImplementedError()
+    return W, Wqs
+
 
 
 def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
@@ -788,8 +941,8 @@ def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
     omega = xd[2]
     
     # Inflow
-    V_rel2_AC, phi_AC, alpha_AC = aeroVarsSS(t, x, xd, qxa_di, p, u, point='Q')
-    V_rel2_ds, phi_ds, alpha_ds = aeroVarsSS(t, x, xd, qxa_di, p, u, point=p['ds_inflow_point'])
+    V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, qxa_di, p, u, point='Q')
+    V_rel2_ds, phi_ds, alpha_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(t, x, xd, qxa_di, p, u, point=p['ds_inflow_point'])
     U_AC = np.sqrt(V_rel2_AC)
 
     # Quasi-steady Polar data at ds_inflow_point for now
@@ -826,10 +979,27 @@ def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
 
     aeroOut = None
     if calcOutput:
+        # Inflow without induction
+        Vx = Uw_AC[0] - Vel_AC[0]
+        Vy = Uw_AC[1] - Vel_AC[1]
+        if Vx==0:
+            Vx=1e6
+        if Vy==0:
+            Vy=1e6
+        aqs = -Wqs_AC[0]/Vx
+        a   =   -W_AC[0]/Vx
+        apqs = Wqs_AC[1]/Vy
+        ap   =   W_AC[1]/Vy
         aeroOut  = {'alpha_AC':alpha_AC, 'U_AC':U_AC}
         aeroOut.update({'alpha_ds':alpha_ds, 'omega':omega})
         aeroOut.update({'Cl_qs':Cl_qs, 'Cd_qs':Cd_qs, 'Cm_qs':Cm_qs})
         aeroOut.update({'Cl_dyn':Cl_dyn, 'Cd_dyn':Cd_dyn, 'Cm_dyn':Cm_dyn})
+        aeroOut.update({'Uw_x_AC': Uw_AC[0]  , 'Uw_y_AC':Uw_AC[1]})
+        aeroOut.update({'Vel_x_AC':Vel_AC[0], 'Vel_y_AC':Vel_AC[1]})
+        aeroOut.update({'Wqs_x_AC':Wqs_AC[0], 'Wqs_y_AC':Wqs_AC[1]})
+        aeroOut.update({'Wdyn_x_AC':W_AC[0], 'Wdyn_y_AC':  W_AC[1]})
+        aeroOut.update({'a':a, 'ap':ap})
+        aeroOut.update({'aqs':aqs, 'apqs':apqs})
         aeroOut.update({'L': F_Q[0], 'D': F_Q[1], 'M': F_Q[2]})
         aeroOut.update({'Fx':F_A[0], 'Fy':F_Q[1], 'Mz':F_A[2]})
     return F_A, aeroOut
@@ -857,7 +1027,7 @@ def aeroLoads(rho, c, Vrel2, phi, Cl, Cd, Cm, alpha=None, x_AC=0, y_AC=0, smallA
         Mz = 1/2*rho*c*Vrel2*( c*Cm -Cl*(y_AC*np.cos(alpha) + x_AC*np.sin(alpha)) + Cd*(x_AC*np.cos(alpha)-y_AC*np.sin(alpha) ))
     return np.array([Fx, Fy, Mz]), np.array([L,D,M])
 
-def aeroTriangle(Ux, Uy, Wx, Wy, Vx, Vy, theta, smallAngles=False):
+def aeroTriangle(Ux, Uy, Wx, Wy, Velx, Vely, theta, smallAngles=False):
     """ 
     Return velocity triangle variables Vrel2, phi, alpha
     low level function
@@ -866,7 +1036,7 @@ def aeroTriangle(Ux, Uy, Wx, Wy, Vx, Vy, theta, smallAngles=False):
     INPUTS:
      - U: (disturbed) inflow/wind
      - W: induced velocities
-     - V: elastic velocities
+     - Vel: elastic velocities
      - theta : total pitch angle (negative about z) [rad]
               theta = theta_t + theta_p + Beta
                       theta_t: torsion
@@ -875,8 +1045,8 @@ def aeroTriangle(Ux, Uy, Wx, Wy, Vx, Vy, theta, smallAngles=False):
               
     """
     # Relative velocity
-    Vrelx = Ux - Vx + Wx
-    Vrely = Uy - Vy + Wy
+    Vrelx = Ux - Velx + Wx
+    Vrely = Uy - Vely + Wy
     Vrel2 = Vrelx**2 + Vrely**2
     # Flow angle
     if smallAngles:
@@ -979,14 +1149,16 @@ def setup_nonlinear_model_u_cst(Ux, Uy, theta_p):
     u['pitch'] = lambda t: theta_p
     return u
 
-def setup_nonlinear_model_x0(x=0, y=0, th=0, xd=0, yd=0, thd=0, fs=None, x_mhh=None, p=None):
+def setup_nonlinear_model_x0(x=0, y=0, th=0, xd=0, yd=0, thd=0, fs=None, x_mhh=None, wx=0, wy=0, wxr=0, wyr=0, p=None):
     """ setup initial conditions for the non linear model"""
     xs  = np.array([x, y, th])
     xsd = np.array([xd, yd, thd])
+
     if p['dynamicStallModel'] is None:
         xua = np.array([])
     elif p['dynamicStallModel'].lower() == 'oye':
             if fs is None:
+                # TODO
                 print('TODO figure out angle of attack')
                 # fs_i  = p['fPolar'](alphai*np.pi/180)[3] # initial position
                 xua = np.array([0])
@@ -999,16 +1171,17 @@ def setup_nonlinear_model_x0(x=0, y=0, th=0, xd=0, yd=0, thd=0, fs=None, x_mhh=N
             raise NotImplementedError()
     else:
         NotImplementedError()
+
     if p['dynamicInflowModel'] is None:
         xdi = np.array([])
     elif p['dynamicInflowModel'].lower() == 'oye':
-        xdi = np.array([0,0,0,0])
+        # TODO
+        xdi = np.array([wxr,wx,wyr,wy]) # Whatch out for order here
     else:
         NotImplementedError()
     q_full = np.concatenate((xs,xsd,xdi,xua))
     state0 = q_full[p['Iq']]
-    state0_dict = OrderedDict((k,v) for k,v in zip(p['sq'].split(','), state0) )
-    return state0, state0_dict
+    return state0
 
 
 
