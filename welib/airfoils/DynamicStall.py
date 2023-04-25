@@ -363,9 +363,9 @@ def dynstall_mhh_outputs(t, x, u, p, calcOutput=False):
     alpha     = u['alpha'](t)
     omega     = u['omega'](t)
     alpha_34  = u['alpha_34'](t)
-    return  dynstall_mhh_outputs_simple(t, x, U, U_dot, alpha, omega, alpha_34, p, calcOutput=calcOutput)
+    return  dynstall_mhh_outputs_simple(t, x, U, U_dot, omega, alpha_34, p, calcOutput=calcOutput)
 
-def dynstall_mhh_outputs_simple(t, x, U, U_dot, alpha, omega, alpha_34, p, calcOutput=False):
+def dynstall_mhh_outputs_simple(t, x, U, U_dot, omega, alpha_34, p, calcOutput=False):
     # States
     x1=x[0] # Downwash memory term 1
     x2=x[1] # Downwash memory term 2
