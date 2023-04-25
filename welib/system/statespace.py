@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import inspect
-from numpy.linalg import inv
+from numpy.linalg import inv, solve
 from collections import OrderedDict
 from scipy.integrate import  solve_ivp, odeint
 from scipy.optimize import OptimizeResult as OdeResultsClass 
@@ -420,6 +420,10 @@ class StateSpace(System):
     # --------------------------------------------------------------------------------}
     # --- State equation
     # --------------------------------------------------------------------------------{
+    def dqdt_eval(self, t, q, p=None, u=None):
+        """ Evaluate state space at t and q (and potentially u&q) """
+        return self.dqdt_ODE(p=p, u=u)(t,q)
+
     # --- signature related functions
     def dqdt_ODE(self, p=None, u=None):
         """ 
@@ -650,8 +654,9 @@ class StateSpace(System):
         # --- Check consistency with self.sY
         if self.sY is not None:
             if len(self.sY)!=len(cols):
-                raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
-            cols = self.sY
+                #raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
+                print('[WARN] Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):'.format(len(cols), self.sY))
+            #cols = self.sY
         return cols
 
     def _inferInputCols(self, time=None, q=None):
@@ -770,7 +775,7 @@ class StateSpace(System):
     # --------------------------------------------------------------------------------}
     # --- linearization
     # --------------------------------------------------------------------------------{
-    def linearize(self, x0, dx, u0=None, du=None): 
+    def linearize(self, x0, dx, u0=None, du=None, p=None): 
         """
         Small change of interface compared to parent class
 
@@ -781,19 +786,23 @@ class StateSpace(System):
             op=(0,x0)
         else:
             op=(0,x0,u0)
+        # Setting parameters if they are present
+        if p is not None:
+            self.param = p
+        else:
+            p = self.p
+            self.param = self.p
         
-        # TODO handle calcOuput better overall
+        # TODO handle calcOuput beelfter overall
         try:
             calcOutputForLin = self.dqdt_calcOutput(signatureWanted='t,q,u,p')
-            out = calcOutputForLin(0, self.q0, du, self.p)
+            out = calcOutputForLin(0, x0, du, p)
             #print('>>>>',out)
             # Giving this function to parent class for linearization
             self.Y = calcOutputForLin
         except TypeError:
             print("[FAIL] Error evaluating model outputs for linearization. Does the function dqdt has the argument `calcOutput`?")
 
-        # Setting parameters if they are present
-        self.param = self.p
 
         # Calling parent class
         lin = System.linearize(self, op, dx, du=du, use_implicit=False)
@@ -809,6 +818,44 @@ class StateSpace(System):
             D=lin[3]
         return A,B,C,D
 
+
+    def eigA(self, x0, dx, nq2, u0=None, du=None, p=None, normQ=None, fullEV=False):
+        """ nq: number of second order states ntot = 2*nq2 + nq1 """
+        from welib.tools.eva import eigA
+        A,_,_,_ = self.linearize(x0, dx=dx, u0=u0, du=du, p=p) 
+        freq_d, zeta, Q, freq_0 = eigA(A, nq=nq2, fullEV=fullEV, normQ=normQ, sort=True)
+        return freq_d, zeta, Q, freq_0 
+
+    # --------------------------------------------------------------------------------}
+    # --- Static equilibrium
+    # --------------------------------------------------------------------------------{
+    def equilibrium(self, x0, dx, u0=None, du=None, p=None, maxIter=1000, tol=1e-5):
+        """ 
+        Use a Newton method to find equilibrium point (dqdt=0), starting from x0
+        and given input u0
+          dx and du are needed to compute numerical Jacobians
+        """
+        x0 = np.asarray(x0).copy()
+        u0 = np.asarray(u0).copy()
+
+        f0 = self.dqdt_eval(t=0, q=x0, p=p, u=u0)
+        fnorm = np.linalg.norm(f0)
+        for nIter in range(maxIter):
+            if fnorm<tol:
+                break
+            # Value at operating point
+            f0 = self.dqdt_eval(t=0, q=x0, p=p, u=u0)
+            fnorm = np.linalg.norm(f0)
+            # Jacobian at operating point
+            A,B,C,D = self.linearize(x0=x0, u0=u0, dx=dx, du=du, p=p)
+            # Going to next point
+            dx_ = solve(A,f0)
+            x0 -= dx_
+        if nIter<maxIter:
+            print('[ OK ] equilibrium point found after {} iterations'.format(nIter+1))
+        else:
+            print('[FAIL] equilibrium point not found after {} iterations. Norm: {}'.format(nIter+1, fnorm))
+        return x0
 
     # --------------------------------------------------------------------------------}
     # --- Frequency domain and transfer function
