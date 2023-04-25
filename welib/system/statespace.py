@@ -829,7 +829,7 @@ class StateSpace(System):
     # --------------------------------------------------------------------------------}
     # --- Static equilibrium
     # --------------------------------------------------------------------------------{
-    def equilibrium(self, x0, dx, u0=None, du=None, p=None, maxIter=1000, tol=1e-5):
+    def equilibrium(self, x0, dx, u0=None, du=None, p=None, maxIter=1000, tol=1e-5, verbose=False):
         """ 
         Use a Newton method to find equilibrium point (dqdt=0), starting from x0
         and given input u0
@@ -852,7 +852,8 @@ class StateSpace(System):
             dx_ = solve(A,f0)
             x0 -= dx_
         if nIter<maxIter:
-            print('[ OK ] equilibrium point found after {} iterations'.format(nIter+1))
+            if verbose:
+                print('[ OK ] equilibrium point found after {} iterations'.format(nIter+1))
         else:
             print('[FAIL] equilibrium point not found after {} iterations. Norm: {}'.format(nIter+1, fnorm))
         return x0

@@ -127,6 +127,14 @@ class Section(object):
         return self._C33
 
     # --------------------------------------------------------------------------------}
+    # --- Structure
+    # --------------------------------------------------------------------------------{
+    def setStrucDOF(self):
+        #
+        pass
+
+
+    # --------------------------------------------------------------------------------}
     # --- Polar 
     # --------------------------------------------------------------------------------{
     def polarFromCSV(self, polarFilename, fformat=None):
@@ -134,6 +142,14 @@ class Section(object):
         # TODO TODO as a trigger
         ppol = polarParams(self._pol, chord=self._chord, tau=self._tau)
         self._ppol = ppol
+
+    # --------------------------------------------------------------------------------}
+    # --- Dynamic stall 
+    # --------------------------------------------------------------------------------{
+    def setDynStall(self, ds_model=None, **kwargs):
+        self.ds_model = ds_model
+        # TODO trigger
+
 
     # --------------------------------------------------------------------------------}
     # --- Dynamic inflow
@@ -168,26 +184,40 @@ class Section(object):
             return np.nan
         return tau2_oye(self._r_bar, self.di_tau1)
 
+
     # --------------------------------------------------------------------------------}
     # --- Simulation 
     # --------------------------------------------------------------------------------{
+    @property
+    def nq(self):
+        p = self.p_sim
+        return len(p['sq'].split(','))
+
+    @property
+    def q0(self):
+        return np.zeros(self.nq)
+
     @property
     def state_space(self):
         """ return state space model
         NOTE: safer to call it everytime in case number of DOF change
         """
-        sys = StateSpace(dqdt=nonlinear_model, signature='t,q,u,p', verbose=True)
+        sys = StateSpace(dqdt=nonlinear_model, signature='t,q,u,p', verbose=False)
         return sys
 
+    def calcOutput(self, t, q, u, p):
+        S = nonlinear_model(t, q, u, p, calcOutput=True)
+        return S
+
+
     # TODO get rid of this
-    def setParameters(self, sx_sim=None, ds_model=None):
+    def setParameters(self, sx_sim=None):
         """ setup parameters for a given simulation"""
         # TODO rething that ..
         #if sx_sim is not None:
         #if ds_model is not None:
         #if di_model is not None:
         self.sx_sim = sx_sim
-        self.ds_model = ds_model
         p = defaultParams(chord=self._chord, rho=self._rho, sx=self.sx_sim, ds=self.ds_model, di=self.di_model,
                 M=self._M33, C=self._C33, K=self._K33)
         if len(p['Iq'])==0:
@@ -308,11 +338,13 @@ class Section(object):
         self.df_sim = df
         return res, df
 
-    def saveSim(self, filename):
+    def saveSim(self, filename, df=None):
         from welib.tools.pandalib import remap_df
         # --- Scale
         ColMap={'alpha_AC':'{alpha_AC}*180/np.pi', 'alpha_ds':'{alpha_ds}*180/np.pi'}
-        df = remap_df(self.df_sim, ColMap)
+        if df is None:
+            df = self.df_sim
+        df = remap_df(df, ColMap)
         df.to_csv(filename, index=False, sep=',')
 
     def plot_states(self, *args, **kwargs):
@@ -341,10 +373,12 @@ class Section(object):
             print('Section: using default input: {} at t={}'.format(u0,t))
         return u0
 
-    def equilibrium(self, x0, u0=None, t=0):
+    def equilibrium(self, x0=None, u0=None, t=0, **kwargs):
+        if x0 is None:
+            x0=self.q0
         u0 = self.u0_default(u0, t)
         sys = self.state_space
-        xop = sys.equilibrium(x0=x0, u0=u0, dx=self.dx, du=self.du, p=self.p_sim)
+        xop = sys.equilibrium(x0=x0, u0=u0, dx=self.dx, du=self.du, p=self.p_sim, **kwargs)
         return xop
 
     def linearize(self, x0=None, u0=None, t=0):
@@ -367,6 +401,55 @@ class Section(object):
         return freq_d, zeta, Q, freq_0 
 
 
+    # --------------------------------------------------------------------------------}
+    # --- Parametric/Campbell
+    # --------------------------------------------------------------------------------{
+#     def doSim(sec,)
+#             Ux, Uy, theta_p, ds_model, di_model, a0, ap0, qop=None):
+#         self.setConstantInputs(Ux, Uy, theta_p=theta_p*np.pi/180)
+#         self.setDynInflow(di_model=di_model, a0=a0, ap0=ap0)
+#         self.setDynStall(ds_model=ds_model)
+#         self.setParameters(sx_sim=DOFs)
+#         # --- Frequencies
+#         u0 = [Ux, Uy, theta_p*np.pi/180]
+#         if qop is None:
+#             qop=self.q0
+#         qop = self.equilibrium(x0=qop, u0=u0, tol=1e-8, verbose=False)
+#         freq_d, zeta, Q, freq_0 = self.eigA(x0=qop, u0=u0)
+#         S = self.calcOutput(0, qop, self.u_sim, self.p_sim)
+#         S['Ux'] = Ux
+#         S['Uy'] = Uy
+#         for i,(f,z) in enumerate(zip(freq_0,zeta)):
+#             S['f'+str(i+1)] = f
+#             S['d'+str(i+1)] = z*100
+#         return freq_0, zeta*100, Q, S, qop
+# 
+# 
+# 
+#     Omega = 1.1 # [rad/s]
+# 
+#     Uy = Omega * self._R * self._r_bar
+#     Ux = np.linspace(1,10,50)
+#     fig,axes = plt.subplots(1, 2, sharey=False, figsize=(8.4,4.8)) # (6.4,4.8)
+#     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+# 
+# 
+#     nMax=10
+#     Q    = np.zeros((len(Ux), nMax, nMax), dtype=complex)*np.nan
+#     qop=None
+# 
+#     for i,ux in enumerate(Ux):
+#         f, z, q, S, qop = doSim(sec, ux, Uy, 0, ds_model, di_model, a0, ap0, qop=qop)
+#         print(q.shape)
+#         if i==0:
+#             df = pd.DataFrame(S).T
+#         else:
+#             dfloc = pd.DataFrame(S).T
+#             df = pd.concat((df,dfloc))
+#         Q   [i,:q.shape[0],:q.shape[1]] = q
+# 
+# 
+#     for iMode in range(nMax):
 
 
     # --------------------------------------------------------------------------------}
@@ -1191,14 +1274,15 @@ def setup_nonlinear_model_x0(x=0, y=0, th=0, xd=0, yd=0, thd=0, fs=None, x_mhh=N
 def setup_nonlinear_model_dx(p):
     nFull = max(6,np.max(p['Iq']))
     dq_full = np.zeros(nFull+1) 
-    dq_full[:3]  = [0.01,0.01,0.01]   # x,y,th
-    dq_full[3:6] = [0.01,0.01,0.01]   # xd,yd,thd
+    c = p['chord']
+    dq_full[:3]  = [0.01*c,0.01*c,0.01]   # x,y,th
+    dq_full[3:6] = [0.01,  0.01,  0.01]   # xd,yd,thd
     dq_full[6:]  = 0.01  #... TODO
     dx = dq_full[p['Iq']]
     return dx
 
 def setup_nonlinear_model_du(*args, **kwargs):
-    du = np.array((0.01,0.01,0.01)) # Ux, Uy, theta_p
+    du = np.array((0.01,0.01,0.001)) # Ux, Uy, theta_p
     return du
 
 

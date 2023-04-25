@@ -32,7 +32,8 @@ class TestSection(unittest.TestCase):
         C = sec.setDampMatrix(cxx=c, cyy=c)
         K = sec.setStifMatrix(kxx=k, kyy=k)
         sec.polarFromCSV(polarFilename=os.path.join(scriptDir,'../data/tjaere11_ds.csv'))
-        sec.setParameters(sx_sim='x', ds_model='oye')
+        sec.setDynStall(ds_model='oye')
+        sec.setParameters(sx_sim='x')
         sec.setConstantInputs(Ux, Uy, theta_p=theta_p*np.pi/180)
 
         # --- Time integration
