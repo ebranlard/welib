@@ -1,3 +1,7 @@
+""" 
+f is a function with signature f(t,x) where x is the state vector
+
+"""
 import numpy as np
 from scipy.optimize import OptimizeResult as OdeResultsClass 
 

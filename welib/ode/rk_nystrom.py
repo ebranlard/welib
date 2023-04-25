@@ -1,7 +1,11 @@
 """ 
 4-step Runge-Kutta-Nystrom time integration of 2nd order differential system
-"""
 
+f is a function with signature f(t,x) 
+
+IMPORTANT: x is assumed to be the concatenation of [pos,vel]
+
+"""
 import numpy as np
 from scipy.optimize import OptimizeResult as OdeResultsClass 
 
