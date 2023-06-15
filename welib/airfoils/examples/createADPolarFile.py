@@ -7,9 +7,11 @@ import numpy as np
 import os
 
 from welib.airfoils.Polar import Polar
-import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.csv_file import CSVFile
 
-MyDir=os.path.dirname(__file__)
+# Get current directory so this script can be called from any location
+scriptDir=os.path.dirname(__file__)
 
 
 def main_ReWriteADFile():
@@ -18,7 +20,7 @@ def main_ReWriteADFile():
       - open an existing AeroDyn polar file
       - rewrite it (unsteady parameters are recomputed)
     """
-    AD_polarFile_in = os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
+    AD_polarFile_in = os.path.join(scriptDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
     AD_polarFile_out = '_Polar_out.dat.ignore'
 
     # Open an existing AeroDyn polar file
@@ -39,7 +41,7 @@ def main_WriteADPolar():
       - Open a tabulated file with alpha,Cl,Cd,Cm 
       - Write an AeroDyn file from it (unsteady parameters are computed)
     """
-    polarFile_in     = os.path.join(MyDir,'../data/DU21_A17.csv')
+    polarFile_in     = os.path.join(scriptDir,'../data/DU21_A17.csv')
     polarFile_AD_out = '_Polar_out.dat.ignore'
 
     # Open a tabulated file with alpha,Cl,Cd,Cm 
@@ -56,13 +58,13 @@ def main_WriteADPolarLowLevel():
     Example 3: Same as Example 2, but with low level interface.
     """
     # --- Reading an existing AD file, just as a template, we'll replace things in it
-    templateADFile = os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
-    ADpol = weio.read(templateADFile)
+    templateADFile = os.path.join(scriptDir,'../../../data/NREL5MW/5MW_Baseline/Airfoils/Cylinder1.dat')
+    ADpol = FASTInputFile(templateADFile)
 
     # --- Creating a Polar object from Cl-Cd data
-    polarFile = os.path.join(MyDir,'../data/DU21_A17.csv')
-    p=weio.read(polarFile).toDataFrame().values
-    polar= Polar(np.nan, p[:,0],p[:,1],p[:,2],p[:,3])
+    polarFile = os.path.join(scriptDir,'../data/DU21_A17.csv')
+    p=CSVFile(polarFile).toDataFrame().values
+    polar= Polar(alpha=p[:,0],cl=p[:,1],cd=p[:,2],cm=p[:,3])
     (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=polar.unsteadyParams()
 
     # --- Updating the AD polar file 

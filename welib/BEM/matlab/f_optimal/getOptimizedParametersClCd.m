@@ -1,5 +1,5 @@
 function [a aprime phi c]=getOptimizedParametersClCd(Cl,Cd,lambda,B)
-global Rotor;
+    global Rotor
 R=Rotor.R;
 r=Rotor.r(:);
 rhub=min(r);

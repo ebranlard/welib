@@ -16,7 +16,7 @@ def prescribed_oscillations():
     radians=True
     #FFA-W3-241 airfoil Dyna Stall
 #     P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
-    P=Polar.fromfile(os.path.join(MyDir,'../data/DU21_A17.csv'),compute_params=True,to_radians=radians)
+    P=Polar(os.path.join(MyDir,'../data/DU21_A17.csv'), compute_params=True, radians=radians)
 
     if radians:
         deg_scale=np.pi/180
@@ -52,7 +52,7 @@ def prescribed_oscillations():
     for ia,alpham in enumerate(valpha_mean):
         valpha_t[ia,:]   = (alpham+DeltaAlpha*np.sin(omega*vt))*deg_scale
         valpha_dot_t     = (2*omega*np.cos(omega*vt) )*deg_scale
-        fs_prev = P.f_st_interp(alpham*deg_scale)# init with steady value
+        fs_prev = P.fs_interp(alpham*deg_scale)# init with steady value
 
         # Oye's Parameters and Inputs
         p_oye = dynstall_oye_param_from_polar(P, tau=tau_oye)
@@ -112,7 +112,7 @@ def prescribed_oscillations():
 
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(8.4,5.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    ax.plot(P.alpha/deg_scale  , P.f_st ,     label='f_st')
+    ax.plot(P.alpha/deg_scale  , P.fs  ,     label='f_s')
     ax.plot(P.alpha/deg_scale  , P.cl  , 'k-',label='Cl static', linewidth=2)
     ax.plot(P.alpha/deg_scale  , P.cl_fs  ,'k--',  label='Cl fully separated')
     ax.plot(P.alpha/deg_scale  , P.cl_inv ,'k-.',  label='Cl inviscid')

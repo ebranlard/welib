@@ -2,8 +2,8 @@
 Updated HydroDyn input file for the TCF project. Full scale model to verify OpenFAST against HAWC2/OrcaFlex for the TetraSpar project.
 False            Echo           - Echo the input file data (flag)
 ---------------------- ENVIRONMENTAL CONDITIONS --------------------------------
-          1025   WtrDens        - Water density (kg/m^3)
-           320   WtrDpth        - Water depth (meters)
+       default   WtrDens        - Water density (kg/m^3)
+       default   WtrDpth        - Water depth (meters)
              0   MSL2SWL        - Offset between still-water level and mean sea level (meters) [positive upward; unused when WaveMod = 6; must be zero if PotMod=1 or 2]
 ---------------------- WAVES ---------------------------------------------------
              0   WaveMod        - Incident wave kinematics model {0: none=still water, 1: regular (periodic), 1P#: regular with user-specified phase, 2: JONSWAP/Pierson-Moskowitz spectrum (irregular), 3: White noise spectrum (irregular), 4: user-defined spectrum from routine UserWaveSpctrm (irregular), 5: Externally generated wave-elevation time series, 6: Externally generated full wave-kinematics time series [option 6 is invalid for PotMod/=0]} (switch)

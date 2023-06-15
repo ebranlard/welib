@@ -123,6 +123,7 @@ if __name__ == '__main__':
     from welib.tools.spectral import fft_wrap
     from welib.tools.tictoc import Timer
 
+    from numpy.random import seed 
     seed(11)
 
     U0    = 8      # Wind speed [m/s], for Kaimal spectrum

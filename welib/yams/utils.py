@@ -7,21 +7,10 @@ import numpy as np
 
 # --- Definitions to ease comparison with sympy versions
 from numpy import cos ,sin
+from welib.yams.rotations import R_x, R_y, R_z
 
 def Matrix(m):
     return np.asarray(m)
-
-# --------------------------------------------------------------------------------}
-# --- Rotation matrices
-# --------------------------------------------------------------------------------{
-def R_x(t):
-    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
-
-def R_y(t):
-    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
-
-def R_z(t): 
-    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
 
 def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
@@ -63,6 +52,7 @@ def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
       - J: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix at COG
       - COG: (3-vector) x,y,z position of center of mass
     """
+    print('[WARN] yams.utils.rigidBodyMassMatrix: the interface of this function does not make much sense and should not be used')
     S=Mass*skew(COG)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);
@@ -136,13 +126,25 @@ def translateRigidBodyMassMatrix(M, r_P1P2):
     # First identify main properties (mass, inertia, location of center of mass from previous ref point)
     mass, J_G, Ref2COG = identifyRigidBodyMM(M)
     # New COG location from new (x,y) ref point
-    print(Ref2COG)
-    print(r_P1P2)
     Ref2COG -= np.asarray(r_P1P2)
-    print('>>>',Ref2COG)
     # Compute mass matrix 
     M_new =  rigidBodyMassMatrixAtP(mass, J_G, Ref2COG)
     return M_new
+
+
+def rotateRigidBodyMassMatrix(M_ss, R_s2d):
+    """ 
+    Rotate a 6x6 rigid body mass matrix from a source (s) coordinate to destination (d) coordinate system
+
+    INPUTS:
+     - M_ss: mass matrix in source coordinate, 6x6 array
+     - R_s2d: transformation matrix source two destination
+    """
+    R66_s2d = np.block(R_s2d)
+    M_dd = R66_s2d.dot(M_ss).dot(R66_s2d.T)
+    return M_dd
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Inertia functions 

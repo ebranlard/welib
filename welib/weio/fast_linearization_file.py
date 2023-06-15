@@ -1,11 +1,12 @@
-from __future__ import division
-from __future__ import print_function
-from __future__ import absolute_import
-from io import open
-from .file import File, isBinary, WrongFormatError, BrokenFormatError
-import pandas as pd
 import numpy as np
+import pandas as pd
 import re
+try:
+    from .file import File, WrongFormatError, BrokenFormatError
+except:
+    File = dict
+    class WrongFormatError(Exception): pass
+    class BrokenFormatError(Exception): pass
 
 class FASTLinearizationFile(File):
     """ 
@@ -89,10 +90,7 @@ class FASTLinearizationFile(File):
 
         def readMat(fid, n, m):
             vals=[f.readline().strip().split() for i in np.arange(n)]
-#             try:
             return np.array(vals).astype(float)
-#             except ValueError:
-#                 import pdb; pdb.set_trace()
 
         # Reading 
         with open(self.filename, 'r', errors="surrogateescape") as f:

@@ -21,7 +21,7 @@ def step_change():
     #  - There is no induction build-up (induction history) in the Oye's stall model itself
     #    Fs is continuous and progressive but not Cl since it uses the current alpha. 
     radians=True
-    P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
+    P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'), compute_params=True, radians=radians)
     if radians:
         deg_scale=np.pi/180
     else:
@@ -58,8 +58,8 @@ def step_change():
     # Steady values
     Cl_st1 = P.cl_interp(alpha1)
     Cl_st2 = P.cl_interp(alpha2)
-    fs1    = P.f_st_interp(alpha1)        # init with steady value
-    fs2    = P.f_st_interp(alpha2)        # init with steady value
+    fs1    = P.fs_interp(alpha1)        # init with steady value
+    fs2    = P.fs_interp(alpha2)        # init with steady value
     y0_oye = [0.] # <<<<<<<<<<<<<<<<<<<<<<<<< do not init to fs1
 
     Cl_oye  = np.zeros(len(vt))

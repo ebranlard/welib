@@ -1,4 +1,5 @@
 import os
+from collections import OrderedDict
 
 class WrongFormatError(Exception):
     pass
@@ -17,7 +18,7 @@ try: #Python3
 except NameError: # Python2
     FileNotFoundError = IOError
 
-class File(dict):
+class File(OrderedDict):
     def __init__(self,filename=None,**kwargs):
         if filename:
             self.read(filename, **kwargs)
@@ -155,7 +156,6 @@ class File(dict):
 # --- Helper functions
 # --------------------------------------------------------------------------------{
 def isBinary(filename):
-    from io import open
     with open(filename, 'r') as f:
         try:
             # first try to read as string

@@ -1,34 +1,58 @@
+"""
+
+main_axis='z' (assumed by default here)
+ ^z
+ |
+ | 
+ | 
+ | 
+ ------> x
+
+main_axis='x'
+ ^x
+ |
+ |
+ |
+ | 
+ ------> y
+
+"""
+
 import numpy as np
-import scipy
+from scipy.linalg import block_diag
 
-
-def timoshenko_KeMe(L, A, Ixx, Iyy, Jzz, kappa, E, G, rho, R=None, main_axis='z'): 
-    Me = timoshenko_Me(L, A, Ixx, Iyy, Jzz, rho, R=R, main_axis=main_axis)
-    Ke = timoshenko_Ke(L, A, Ixx, Iyy, Jzz, kappa, E, G, shear=True, R=R, main_axis=main_axis)
+def timoshenko_KeMe(L, A, Ixx, Iyy, Izz, kappa, E, G, rho, R=None, main_axis='z', shear=True, crossterms=True): 
+    Me = timoshenko_Me(L, A, Ixx, Iyy, Izz, rho, R=R, main_axis=main_axis, crossterms=crossterms)
+    Ke = timoshenko_Ke(L, A, Ixx, Iyy, Izz, kappa, E, G, shear=shear, R=R, main_axis=main_axis)
     return Ke, Me
 
-def timoshenko_Me(L, A, Ixx, Iyy, Jzz, rho, R=None, main_axis='z'):
+def timoshenko_Me(L, A, Ixx, Iyy, Izz, rho, R=None, main_axis='z', crossterms=True):
     """ Element Mass matrix for Timoshenko beam elements
 
     NOTE: beam is along z
 
     INPUTS:
-     - E : Young'se (elastic) modulus
-     - L : Elemente length
-     - A : Cross seection area
+     - E : Young's (elastic) modulus [N/m2]
+     - L : Element length [m]
+     - A : Cross section area [m^2]
+     - rho: Material density [kg/m^3] 
 
     OPTIONAL INPUTeS
         R   : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g
              if provided, element matrix is provided in global coord
 
     """
-    if main_axis!='z':
-        raise NotImplementedError()
+    if main_axis=='x':
+        Ixx, Iyy, Izz = Iyy, Izz, Ixx  # Transfer from main_axis=x to main_axis=z
 
     t = rho*A*L
-    rx = rho*Ixx
-    ry = rho*Iyy
-    po = rho*Jzz*L   
+    if crossterms:
+        rx = rho*Ixx
+        ry = rho*Iyy
+    else:
+        rx=0
+        ry=0
+    po = rho*Izz*L   
 
     Me = np.zeros((12,12))
        
@@ -73,15 +97,25 @@ def timoshenko_Me(L, A, Ixx, Iyy, Jzz, rho, R=None, main_axis='z'):
     Me[ 9,  3] = Me[ 3,  9]
     Me[10,  4] = Me[ 4, 10]
 
+    # Put element formulation such that main axis is "x"
+    if main_axis=='x':
+        Rz2x = np.array([
+            [0,0,1],
+            [1,0,0],
+            [0,1,0],
+            ])
+        RRz2x = block_diag(Rz2x,Rz2x,Rz2x,Rz2x)
+        Me = RRz2x.dot(Me).dot(RRz2x.T)
+
     if (R is not None):
-        RR = scipy.linalg.block_diag(R,R,R,R)
+        RR = block_diag(R,R,R,R)
         Me = np.transpose(RR).dot(Me).dot(RR)
-        Me = (Me + Me.T)/2 # enforcing symmetry
+        #Me = (Me + Me.T)/2 # enforcing symmetry
 
     return Me
 
 
-def timoshenko_Ke(L, A, Ixx, Iyy, Jzz, kappa, E, G, shear=True, R=None, main_axis='z'):
+def timoshenko_Ke(L, A, Ixx, Iyy, Izz, kappa, E, G, shear=True, R=None, main_axis='z'):
     """ Element stiffness matrix for Timoshenko beam elements
 
     NOTE: Beam directed along z
@@ -94,13 +128,15 @@ def timoshenko_Ke(L, A, Ixx, Iyy, Jzz, kappa, E, G, shear=True, R=None, main_axi
      - R    : Transformation matrix (3x3) from global coord to element coord: x_e = R.x_g
               if provided, element matrix is provided in global coord
      """
-    if main_axis!='z':
-        raise NotImplementedError()
+    if main_axis=='x':
+        Ixx, Iyy, Izz = Iyy, Izz, Ixx  # Transfer from main_axis=x to main_axis=z
+
+    # NOTE: equations below are for beam directed along z
     Ke = np.zeros((12,12))
     
-    Ax = kappa*A
-    Ay = kappa*A
     if (shear):
+       Ax = kappa*A
+       Ay = kappa*A
        Kx = 12*E*Iyy / (G*Ax*L*L)
        Ky = 12*E*Ixx / (G*Ay*L*L)
     else:
@@ -109,7 +145,7 @@ def timoshenko_Ke(L, A, Ixx, Iyy, Jzz, kappa, E, G, shear=True, R=None, main_axi
     Ke[ 8 , 8 ] = E*A/L
     Ke[ 6 , 6 ] = 12.0*E*Iyy/( L*L*L*(1.0 + Kx))
     Ke[ 7 , 7 ] = 12.0*E*Ixx/( L*L*L*(1.0 + Ky))
-    Ke[11 , 11] = G*Jzz/L
+    Ke[11 , 11] = G*Izz/L 
     Ke[9 , 9  ] = (4.0 + Ky                    ) *E*Ixx / ( L*(1.0+Ky )  )
     Ke[10 , 10] = (4.0 + Kx                    ) *E*Iyy / ( L*(1.0+Kx )  )
     Ke[ 1 , 3 ] = -6.*E*Ixx / ( L*L*(1.0+Ky   ))
@@ -151,11 +187,23 @@ def timoshenko_Ke(L, A, Ixx, Iyy, Jzz, kappa, E, G, shear=True, R=None, main_axi
     Ke[7  , 3 ] = -Ke[3 , 1 ]
     Ke[3  , 7 ] = -Ke[3 , 1 ]
 
+
+    # Put element formulation such that main axis is "x"
+    if main_axis=='x':
+        Rz2x = np.array([
+            [0,0,1],
+            [1,0,0],
+            [0,1,0],
+            ])
+        RRz2x = block_diag(Rz2x,Rz2x,Rz2x,Rz2x)
+        Ke = RRz2x.dot(Ke).dot(RRz2x.T)
+
+
     if (R is not None):
-        RR = scipy.linalg.block_diag(R,R,R,R)
+        RR = block_diag(R,R,R,R)
         #Ke = np.transpose(RR).dot(Ke).dot(RR)
         Ke = np.transpose(RR).dot( ( Ke.dot(RR) ) )
-        Ke = (Ke + Ke.T)/2 # enforcing symmetry 
+        #Ke = (Ke + Ke.T)/2 # enforcing symmetry 
     return Ke
 
 
@@ -175,18 +223,31 @@ def timoshenko_Fe_g(L, A, rho, g, R=np.eye(3), main_axis='z'):
     """
     F = np.zeros(12)
     w = rho*A*g       # weight per unit length
-    # lumped forces on both nodes (z component only):
-    F[2] = -0.5*L*w 
-    F[8] = F[2]
-    # lumped moments on node 1 (x and y components only):
     TempCoeff = L*L*w/12
-    F[3] = -TempCoeff * R[2,1] # = -L*w*Dy/12
-    F[4] =  TempCoeff * R[2,0] # =  L*w*Dx/12
-    # lumped moments on node 2: (note the opposite sign of node 1 moment)
-    F[9]  = -F[3]
-    F[10] = -F[4]
-    #F(12) is 0 for g along z alone
+    if main_axis=='z':
+        # lumped forces on both nodes (z component only):
+        F[2] = -0.5*L*w 
+        F[8] = F[2]
+        # lumped moments on node 1 (x and y components only):
+        F[3] = -TempCoeff * R[2,1] # = -L*w*Dy/12
+        F[4] =  TempCoeff * R[2,0] # =  L*w*Dx/12
+        # lumped moments on node 2: (note the opposite sign of node 1 moment)
+        F[9]  = -F[3]
+        F[10] = -F[4]
+        #F(12) is 0 for g along z alone
+    else:
+        # lumped forces on both nodes (z component only):
+        F[0] = -0.5*L*w  # gravity along x? waht to do?
+        F[6] = F[2]
+
+        raise NotImplementedError()
     return F
+
+# TODO implement general function for distributed loads px, py, pz
+# For instance, 
+#  eq = [qx qy qz qw];    distributed loads
+#      qx=eq(1); qy=eq(2); qz=eq(3); qw=eq(4);
+#    fle=L/2*[qx qy qz qw -1/6*qz*L 1/6*qy*L qx qy qz qw 1/6*qz*L -1/6*qy*L]';
 
 # SUBROUTINE ElemG(A, L, rho, DirCos, F, g)
 #    REAL(ReKi), INTENT( IN ) :: A     !< area

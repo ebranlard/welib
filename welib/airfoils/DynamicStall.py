@@ -9,11 +9,13 @@ from .Polar import Polar as Pol
 A1_Jones, A2_Jones, b1_Jones, b2_Jones = 0.165 , 0.335 , 0.0455 , 0.3
 A1_FAST,  A2_FAST,  b1_FAST,  b2_FAST  = 0.3   , 0.7   , 0.14   , 0.53
 
-def wagner(tau_t, constants='Jones'):
+def wagner(tau_t, constants=None, A1=None, A2=None, b1=None, b2=None):
     """ 
     Lift coefficient, Cl, from Wagner function
     INPUTS:
     - tau_t: dimensionless time
+    - constants: string in ['Jones', 'OpenFAST'] or None 
+    - A1, A2, b1, b2 : wagner constants, should be provided if constants is None
 
     Reference:  Wagner - R.T Jones approximation (Jones 1938)
     """
@@ -21,6 +23,13 @@ def wagner(tau_t, constants='Jones'):
         A1, A2, b1, b2 = A1_Jones, A2_Jones, b1_Jones, b2_Jones
     elif constants=='OpenFAST':
         A1, A2, b1, b2 = A1_FAST, A2_FAST, b1_FAST, b2_FAST
+    elif constants is None:
+        if all([A1, A2, b1, b2]):
+            pass # all good
+        else:
+            raise Exception('Provide A1, A2, b1, b2 if constants is None')
+
+
     else:
         raise NotImplementedError('Constants {}'.format(constants))
 
@@ -101,7 +110,7 @@ def dynstall_mhh_sim(time, u, p, x0=None, prefix='', method='continuous'):
     df['alphaF']   = np.zeros(len(time))
     df['ClP']   = np.zeros(len(time))
     for it,t in enumerate(time):
-        Cl, Cd, Cm, alphaE, Tu, fs_aE, Cl_fs, alpha_34, omega, U, alphaF, Clp, fs_aF = dynstall_mhh_outputs(t, y[:,it], u, p, more=True)
+        Cl, Cd, Cm, alphaE, Tu, fs_aE, Cl_fs, alpha_34, omega, U, alphaF, Clp, fs_aF = dynstall_mhh_outputs(t, y[:,it], u, p, calcOutput=True)
         df.loc[it,prefix + 'Vrel_[m/s]']     = U
         df.loc[it,prefix + 'alpha_34_[deg]'] = alpha_34*180/np.pi
         df.loc[it,prefix + 'Cl_[-]']         = Cl
@@ -128,7 +137,7 @@ def dynstall_mhh_sim(time, u, p, x0=None, prefix='', method='continuous'):
     return df
 
 
-def dynstall_mhh_param_from_polar(P, chord, Tf0=6.0, Tp0=1.5, A1=A1_Jones, A2=A2_Jones, b1=b1_Jones, b2=b2_Jones, constants='Jones'):
+def dynstall_mhh_param_from_polar(P, chord, Tf0=6.0, Tp0=1.5, A1=A1_Jones, A2=A2_Jones, b1=b1_Jones, b2=b2_Jones, constants='Jones', p=None):
     if not isinstance(P,Pol):
         raise Exception('Input should be an instance of the `Polar` class')
     if not P._radians :
@@ -145,13 +154,18 @@ def dynstall_mhh_param_from_polar(P, chord, Tf0=6.0, Tp0=1.5, A1=A1_Jones, A2=A2
     else:
         raise NotImplementedError('Constants {}'.format(constants))
 
-    p=dict()
+    if p is None:
+        p=dict()
     # Airfoil parameters
-    p['alpha0']     = P._alpha0
+    p['alpha0']     = P._alpha0 # TODO TODO requires compute params
     p['Cla']        = P._linear_slope
+    if p['alpha0'] is None:
+        raise Exception('>>>> TODO need to compute params on polar for MHH dyn stall model')
+    if p['Cla'] is None:
+        raise Exception('>>>> TODO need to compute params on polar for MHH dyn stall model')
     p['chord']      = chord
     # Polar functions
-    p['F_st']  = P.f_st_interp
+    p['F_st']  = P.fs_interp
     p['Cl_fs'] = P.cl_fs_interp
     p['Cl']    = P.cl_interp
     p['Cd']    = P.cd_interp
@@ -171,17 +185,20 @@ def dynstall_mhh_param_from_polar(P, chord, Tf0=6.0, Tp0=1.5, A1=A1_Jones, A2=A2
 
 def dynstall_mhh_dxdt(t,x,u,p):
     """ Time derivative of states for continous formulation """
+    # Inputs
+    U         = u['U'](t)
+    U_dot     = u['U_dot'](t)
+    omega     = u['omega'](t)
+    alpha_34  = u['alpha_34'](t)
+    return dynstall_mhh_dxdt_simple(t, x, U, U_dot, omega, alpha_34, p)
+
+def dynstall_mhh_dxdt_simple(t, x, U, U_dot, omega, alpha_34, p):
+    """ Time derivative of states for continous formulation """
     # States
     x1=x[0] # Downwash memory term 1
     x2=x[1] # Downwash memory term 2
     x3=x[2] # Clp', Lift coefficient with a time lag to the attached lift coeff
     x4=x[3] # f'' , Final separation point function
-    # Inputs
-    U         = u['U'](t)
-    U_dot     = u['U_dot'](t)
-    #alpha     = u['alpha'](t)
-    omega     = u['omega'](t)
-    alpha_34  = u['alpha_34'](t)
     # Parameters
     alpha0 = p['alpha0']
     Cla    = p['Cla']
@@ -191,8 +208,6 @@ def dynstall_mhh_dxdt(t,x,u,p):
     b1     = p['b1']
     b2     = p['b2']
     F_st   = p['F_st']
-    Cl_fs  = p['Cl_fs']
-    Cd     = p['Cd']
     # Variables derived from inputs
     U  = max(U, 0.01)
     Tu = max(c/(2*U), 1e-4)                                     # Eq. 23
@@ -222,8 +237,8 @@ def dynstall_mhh_dxdt(t,x,u,p):
         xdot[1] = -1/Tu * (b2 + c * U_dot/(2*U**2)) * x2 + b2 * A2 / Tu * (alpha_34-alpha0)
     xdot[2] = -1/Tp                             * x3 + 1/Tp * Clp
     xdot[3] = -1/Tf                             * x4 + 1/Tf * fs_aF
-#     print(t,xdot[3],fs_aF,x4)
     return xdot
+
 
 
 def dynstall_mhh_update_discr(t, dt, xd_old, u, p):
@@ -316,13 +331,14 @@ def dynstall_mhh_update_discr(t, dt, xd_old, u, p):
     xd[7] = U
     return xd
 
-def dynstall_mhh_steady(t,u,p):
+def dynstall_mhh_steady(t, u, p):
     """ Return steady state values for the 4 states of the MHH/HGM model"""
     # Inputs
     U         = u['U'](t)
-    U_dot     = u['U_dot'](t)
-    omega     = u['omega'](t)
     alpha_34  = u['alpha_34'](t)
+    return dynstall_mhh_steady_simple(U, alpha_34, p)
+
+def dynstall_mhh_steady_simple(U, alpha_34, p):
     # Parameters
     c      = p['chord']
     alpha0 = p['alpha0']
@@ -349,18 +365,21 @@ def dynstall_mhh_steady(t,u,p):
     x4     = F_st(alphaF)
     return [x1,x2,x3,x4]
 
-def dynstall_mhh_outputs(t,x,u,p,more=False):
-    # States
-    x1=x[0] # Downwash memory term 1
-    x2=x[1] # Downwash memory term 2
-    x3=x[2] # Clp', Lift coefficient with a time lag to the attached lift coeff
-    x4=x[3] # f'' , Final separation point function
+def dynstall_mhh_outputs(t, x, u, p, calcOutput=False):
     # Inputs
     U         = u['U'](t)
     U_dot     = u['U_dot'](t)
     alpha     = u['alpha'](t)
     omega     = u['omega'](t)
     alpha_34  = u['alpha_34'](t)
+    return  dynstall_mhh_outputs_simple(t, x, U, U_dot, omega, alpha_34, p, calcOutput=calcOutput)
+
+def dynstall_mhh_outputs_simple(t, x, U, U_dot, omega, alpha_34, p, calcOutput=False):
+    # States
+    x1=x[0] # Downwash memory term 1
+    x2=x[1] # Downwash memory term 2
+    x3=x[2] # Clp', Lift coefficient with a time lag to the attached lift coeff
+    x4=x[3] # f'' , Final separation point function
     # Parameters
     alpha0 = p['alpha0']
     Cla    = p['Cla']
@@ -433,7 +452,7 @@ def dynstall_mhh_outputs(t,x,u,p,more=False):
     #Cd_dyn =  Cd(alphaE) + (alpha-alphaE)*Cl(alphaE)
     #Cd_dyn =  Cd(alphaE) + Tu*omega
     Cm_dyn =  Cm_e + Cl_dyn*DeltaCmfpp - np.pi/2*Tu*omega    
-    if more:
+    if calcOutput:
         alphaF = x3/Cla + alpha0
         Clp     = Cla * (alphaE-alpha0) + np.pi * Tu * omega      # Eq. 13
         alphaF  = x3/Cla+alpha0                                   # p. 13
@@ -450,12 +469,13 @@ def dynstall_mhh_outputs(t,x,u,p,more=False):
 # --------------------------------------------------------------------------------}
 # --- Oye's dynamic stall 
 # --------------------------------------------------------------------------------{
-def dynstall_oye_param_from_polar(P,tau=None,tau_chord=None):
+def dynstall_oye_param_from_polar(P,tau=None,tau_chord=None, p=None):
     if tau_chord is None and tau is None:
         raise Exception('Provide `tau` or provide `tau_chord`')
-    p=dict()
+    if p is None:
+        p=dict()
     p['tau']   = 3*tau_chord if tau is None else tau
-    p['F_st']  = P.f_st_interp
+    p['F_st']  = P.fs_interp
     p['Clinv'] = P.cl_inv_interp
     p['Clfs']  = P.cl_fs_interp
     return p
@@ -466,9 +486,21 @@ def dynstall_oye_dxdt(t,fs,u,p):
     f_st    = p['F_st'](alpha)
     return 1/p['tau'] * (f_st - fs)
 
+def dynstall_oye_dxdt_simple(fs, fs_alpha, tau):
+    """ d(fs)/dt = 1/tau (fs_st - fs) """
+    return 1/tau * (fs_alpha - fs)
+
+def dynstall_oye_steady(alpha, p):
+    """ """
+    return p['F_st'](alpha)
+
 def dynstall_oye_output(t,fs,u,p):
     alpha   = u['alpha'](t)
     Clfs    = p['Clfs'](alpha)
     Clinv   = p['Clinv'](alpha)
     Cl      = fs*Clinv+(1-fs)*Clfs               
     return Cl
+
+def dynstall_oye_output_simple(fs, Clfs, Clinv, Cl_qs, Cd_qs, Cm_qs):
+    Cl      = fs*Clinv+(1-fs)*Clfs               
+    return Cl, Cd_qs, Cm_qs

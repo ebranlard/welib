@@ -76,7 +76,7 @@ def forced_vibration_particular_cst(frat, F0_over_k, zeta):
 
 def forced_vibration_particular(vt, k, m, F0, Omega, zeta):
     """
-    Particualr solution to forced harmonic vibrations, , x=H0 sin(Omega t - Phi)
+    Particular solution to forced harmonic vibrations, , x=H0 sin(Omega t - Phi)
     """
     omega0       = np.sqrt(k / m)
     H0, phi      = forced_vibration_particular_cst(Omega/omega0, F0/k, zeta)

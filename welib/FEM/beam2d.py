@@ -1,19 +1,22 @@
+""" 
+Hermitian Beam2D element
+- Bending in one transverse direction
+Euler-Bernoulli beam model. 
 
+The beam coordinate system is such that the cross section is assumed to be in the y-z plane
+(along x)
+
+Nodal DOF:    (u theta)
+Element DOFs: (u1 t1 u2 t2) 
+
+"""
 def beam2d_KeMe(EI,L,Mass,T=0, theta=None, MMFormulation='consistent' ):
     """ 
     Stiffness and mass matrices for Hermitian beam element with 2DOF per node.
-      - Bending in one transverse direction
-    Euler-Bernoulli beam model. 
-        
-    The beam coordinate system is such that the cross section is assumed to be in the y-z plane
-    (along x)
-        
-    Nodal DOF:    (u theta)
-    Element DOFs: (u1 t1 u2 t2) 
         
     INPUTS
-        EI  : Young Modulus times Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4]
-        L   :    Element length
+        EI   : Young Modulus times Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4]
+        L    :    Element length
         Mass :    Element mass = rho * A * L [kg]
 
     OPTIONAL INPUTS

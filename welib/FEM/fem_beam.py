@@ -24,7 +24,7 @@ References:
 import pandas as pd
 import numpy as np
 import scipy
-from welib.FEM.utils    import skew, elementDCMfromBeamNodes
+from welib.FEM.utils    import skew, elementDCMfromBeamNodes, rigidBodyMassMatrixAtP, xNodesInputToArray
 from welib.FEM.fem_core import insertFixedBCinModes
 from welib.system.eva import eig
 
@@ -133,6 +133,10 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
     # --- Craig-Bampton reduction
     MMr, KKr, Phi_G, Phi_CB, f_G, f_CB,_,_ = CraigBampton(MM, KK, Ileader, nModesCB=nCB, Ifollow=None, F=None, DD=None, fullModesOut=True)
 
+    # Insert Boundary conditions back in mode
+    Q_G  = insertFixedBCinModes(Phi_G, FEM['Tr'])
+    Q_CB = insertFixedBCinModes(Phi_CB, FEM['Tr'])
+
     CB=dict()
     CB['MM']     = MMr
     CB['KK']     = KKr
@@ -140,11 +144,9 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
     CB['Phi_CB'] = Phi_CB
     CB['f_G']    = f_G
     CB['f_CB']   = f_CB
+    CB['Q_G']    = Q_G
+    CB['Q_CB']   = Q_CB
 
-
-    # Insert Boundary conditions back in mode
-    Q_G  = insertBCinModes(Phi_G, FEM['Tr'])
-    Q_CB = insertBCinModes(Phi_CB, FEM['Tr'])
 
     # Identify modes for convenience
     _, names_G= identifyAndNormalizeModes(Q_G, element=element, normalize=False)
@@ -154,7 +156,7 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
         # Perform permutations
         raise NotImplementedError()
 
-    if element =='frame3d':
+    if element in ['frame3d', 'frame3dlin']:
         DN = ['ux','uy','uz','tx','ty','tz']
     else:
         raise NotImplementedError()
@@ -195,42 +197,6 @@ def CB_topNode(FEM, nCB=0, element='frame3d', main_axis='x'):
 # --------------------------------------------------------------------------------}
 # --- Helpers, consider adding to utils 
 # --------------------------------------------------------------------------------{
-def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None):
-    """ 
-    Rigid body mass matrix (6x6) at a given reference point: 
-      the center of gravity (if Ref2COG is None) 
-
-
-    INPUTS:
-     - m/tip: (scalar) body mass 
-                     default: None, no mass
-     - J_G: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix
-                     with respect to COG of body! 
-                     The inertia is transferred to the reference point if Ref2COG is not None
-                     default: None 
-     - Ref2COG: (3-vector) x,y,z position of center of gravity (COG) with respect to a reference point
-                     default: None, at first/last node.
-    OUTPUTS:
-      - M66 (6x6) : rigid body mass matrix at COG or given point 
-    """
-    # Default values
-    if m is None: m=0
-    if Ref2COG is None: Ref2COG=(0,0,0)
-    if J_G is None: J_G=np.zeros((3,3))
-    if len(J_G.flatten()==3): J_G = np.eye(3).dot(J_G)
-
-    M66 = np.zeros((6,6))
-    x,y,z = Ref2COG
-    Jxx,Jxy,Jxz = J_G[0,:]
-    _  ,Jyy,Jyz = J_G[1,:]
-    _  ,_  ,Jzz = J_G[2,:]
-    M66[0, :] =[   m     ,   0     ,   0     ,   0                 ,  z*m                , -y*m                 ]
-    M66[1, :] =[   0     ,   m     ,   0     , -z*m                ,   0                 ,  x*m                 ]
-    M66[2, :] =[   0     ,   0     ,   m     ,  y*m                , -x*m                ,   0                  ]
-    M66[3, :] =[   0     , -z*m    ,  y*m    , Jxx + m*(y**2+z**2) , Jxy - m*x*y         , Jxz  - m*x*z         ]
-    M66[4, :] =[  z*m    ,   0     , -x*m    , Jxy - m*x*y         , Jyy + m*(x**2+z**2) , Jyz  - m*y*z         ]
-    M66[5, :] =[ -y*m    , x*m     ,   0     , Jxz - m*x*z         , Jyz - m*y*z         , Jzz  + m*(x**2+y**2) ]
-    return M66
 
 def LinearDOFMapping(nElem, nNodesPerElem, nDOFperNode):
     """ 
@@ -271,11 +237,11 @@ def BuildGlobalMatrix(KK, Ke, index):
         Ke  - element matrix
         index - d.o.f. vector associated with an element
     """
-    for i,ii in enumerate(index):
-        for j,jj in enumerate(index):
-            KK[ii,jj] += Ke[i,j]
-    #
-    #KK[np.ix_(index,index)] += Ke
+    #for i,ii in enumerate(index):
+    #    for j,jj in enumerate(index):
+    #        KK[ii,jj] += Ke[i,j]
+    ##
+    KK[np.ix_(index,index)] += Ke
     return KK
 
 
@@ -358,44 +324,15 @@ def cbeam_assembly(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=
     if EA is None: EA=E*A
     if Kt is None: Kt= m*0+100     # Saint Venant torsion, TODO
 
-    if not hasattr(xNodes,'__len__'):
-        xNodes=[xNodes]
-    xNodes = np.asarray(xNodes)
-    if len(xNodes)==1:
-        xNodes0=xNodes
-        # Constant beam properties
-        xNodes=np.zeros((3,2))
-        xNodes[0,:] =[0, xNodes0[0]]     # Beam directed about x
-        EIx    = np.array([1, 1])*EIx
-        EIy    = np.array([1, 1])*EIy
-        EIz    = np.array([1, 1])*EIz
-        EA     = np.array([1, 1])*EA 
-        Kt     = np.array([1, 1])*Kt
-        A      = np.array([1, 1])*A  
-        m      = np.array([1, 1])*m  
-    elif len(xNodes.shape)==1:
-        xNodes0=xNodes
-        xNodes=np.zeros((3,len(xNodes)))
-        xNodes[0,:]=xNodes0
-
-
-    # --- Create node locations if user specified nElem
-    le0 = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
-    s_span0 = np.concatenate(([0],np.cumsum(le0)))
-
-    if nel is None:
-        # we will use xNodes provided by the user
-        nel=xNodes.shape[0]-1
-        interp_needed=False
-    else:
-        # We create elements with linear spacing along the curvilinear span
-        xNodes0=xNodes
-        xNodes=np.zeros((3,nel+1))
-        s_span     = np.linspace(0,s_span0[-1],nel+1)
-        xNodes[0,:] = np.interp(s_span, s_span0, xNodes0[0,:])
-        xNodes[1,:] = np.interp(s_span, s_span0, xNodes0[1,:])
-        xNodes[2,:] = np.interp(s_span, s_span0, xNodes0[2,:])
-        interp_needed=True
+    xNodes, xNodes0, s_span0, interp_needed = xNodesInputToArray(xNodes, main_axis='x', nel=nel)
+    if not hasattr(EIx,'__len__'):
+        EIx    = np.ones(xNodes0.shape[1])*EIx
+        EIy    = np.ones(xNodes0.shape[1])*EIy
+        EIz    = np.ones(xNodes0.shape[1])*EIz
+        EA     = np.ones(xNodes0.shape[1])*EA 
+        Kt     = np.ones(xNodes0.shape[1])*Kt
+        A      = np.ones(xNodes0.shape[1])*A  
+        m      = np.ones(xNodes0.shape[1])*m  
 
     # Recompute spanwise
     le = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
@@ -444,16 +381,16 @@ def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi
 
     INPUTS
       xNodes: (3x n+1) Nodes positions x,y,z along the beam for 3d beam [m]
-      G   : (scalar or n) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
       E   : (scalar or n) Elastic (Young) modulus
+      G   : (scalar or n) Shear modulus. Steel: 79.3  [Pa] [N/m^2]
       me   : (n) Mass per length of elements [kg/m]
       A    : (n) Beam cross section area along the beam, for elements [m^2]
-      EIy  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
-      EIz  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
-      EIz  : (n) Elastic Modulus times Second Moment of Area of cross section [Nm2]
+      EIx  : (n) Elastic Modulus times Polar  second moment of area,local x-axis. Ix=\iint(y^2+z^2) dy dz [m4], EIx,[Nm2]
+      EIy  : (n) Elastic Modulus times Planar second moment of area,local y-axis. Iy=\iint z^2 dy dz [m4],      EIy,[Nm2]
+      EIz  : (n) Elastic Modulus times Planar second moment of area,local z-axis. Iz=\iint y^2 dy dz [m4],      EIz,[Nm2]
+
       Kt   : (n) Torsion constant [m^4]
       phi : (n) rotation of principal axes wrt mean line (tangent) of the beam [rad]
-
 
       nel  : Number of elements. If provided Structural propeties and nodes will be interpolated to match nel. 
              Otherwise, the length of xNodes determines the discretization
@@ -573,8 +510,16 @@ def cbeam_assembly_frame3dlin(xNodes, m, Iy, Iz=None, A=None, Kv=None, E=None, G
         Iy2 = Iy[iNode2]
         Iz1 = Iz[iNode1]
         Iz2 = Iz[iNode2]
-        ke,me = frame3dlin_KeMe(E,G,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,le,me1,me2, R=None)
-        #ke,me= frame3dlin_KeMe(me1, me2, le)
+        # TODO
+        if hasattr(E,'__len__'):
+            E1=E[iNode1]
+        else:
+            E1=E
+        if hasattr(G,'__len__'):
+            G1=G[iNode1]
+        else:
+            G1=G
+        ke,me = frame3dlin_KeMe(E1,G1,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,le,me1,me2, R=None)
         Me[:,:,ie]=me
         Ke[:,:,ie]=ke
 
@@ -741,12 +686,15 @@ def generalizedMassMatrix(xNodes, MM, Se):
 
     assert(xNodes.shape[0]==3)
     nDOF=MM.shape[0]
+    #
+    nNodes = xNodes.shape[1]
 
     # --- Rigid body modes (t: translation, r:rotation)
     St = np.zeros((nDOF, 3))
     Sr = np.zeros((nDOF, 3))
-    for i in np.arange(xNodes.shape[1]):
-        R= skew(xNodes[:,i])
+    # Loop on node points
+    for i, nodeP in enumerate(xNodes.T):
+        R= skew(nodeP)
         St[i*dpn   : i*dpn+3, :]= np.eye(3)
         Sr[i*dpn   : i*dpn+3, :]= -R
         Sr[i*dpn+3 : i*dpn+6, :]= np.eye(3)
@@ -970,7 +918,7 @@ def orthogonalizeModePair(Q1, Q2, iDOFStart=0, nDOF=6):
 
 
 
-def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True):
+def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True, physicalScale=1):
     """ 
     Attempts to identify and normalized the first `nModes` modes
     Modes are normalized by last values unless this value is too small compared to the max
@@ -990,14 +938,14 @@ def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True)
         q=Q[:,i]
         mag = modeNorms(q, iDOFstart=0, nDOF=nDOF)
         idx= np.argsort(mag)[-1::-1]
-        iMax = idx[0]
-        U = Q[iMax::nDOF,i]
+        iMax = idx[0] # DOF (between 1-6) with macimum component
+        U = Q[iMax::nDOF,i] # Main component of the mode
         # Detect rigid body mode (0 or NaN frequencies), component constant and non-zero
         rigid=False
         for idof in np.arange(nDOF):
             Ui = Q[idof::nDOF,i]
             Umax  = max(abs(Ui))
-            if Umax>1e-6:
+            if Umax>1e-6*physicalScale:
                 if len(np.unique(np.around(Ui/Umax,3)))==1:
                     icst=idof
                     rigid=True
@@ -1017,7 +965,7 @@ def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True)
         # Normalization by max or last
         Umax  = max(abs(U))
         Ulast = abs(U[-1])
-        if Ulast*100< Umax: # some tuning factor if last is close to 0
+        if Ulast*100*physicalScale< Umax: # some tuning factor if last is close to 0
             # Normalize by max
             fact = Umax*np.sign(U[-1])
         else:

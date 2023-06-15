@@ -24,12 +24,12 @@ class Test(unittest.TestCase):
         pitch=2     #[deg]
         xdot=0      #[m/s]
         u_turb=0    #[m/s]
-        BEM=SteadyBEM(Omega,pitch,V0,xdot,u_turb,
+        BEM=calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                     nB,cone,r,chord,twist,polars,
-                    rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True)
+                    rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True, bUseCm=False)
 
-        np.testing.assert_almost_equal(BEM.Power ,445183.13,1)
-        np.testing.assert_almost_equal(BEM.Thrust,140978.66,1)
+        np.testing.assert_almost_equal(BEM.Power ,445680.62,1)
+        np.testing.assert_almost_equal(BEM.Thrust,140930.43,1)
 
 
         np.seterr(**old_settings)

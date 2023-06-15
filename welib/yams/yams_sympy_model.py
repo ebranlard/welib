@@ -1,6 +1,7 @@
 import os
 import numpy as np
-
+import pandas as pd
+import sympy as sp
 from sympy.physics.mechanics import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
 from sympy import diff, Matrix, trigsimp
@@ -128,7 +129,10 @@ class YAMSModel(object):
     def kaneEquations(self, Mform='symbolic', addGravity=True):
         """ 
         Compute equation of motions using Kane's method
-        Mform: form to use for mass matrix
+        Mform: form to use for mass matrix, either: 
+              - 'symbolic' : for most application, the mass matrix of flexible bodies is such that each element is a symbol
+              - 'TaylorExpanded': for flexible bodies, using Wallrapp's Taylor Expansion 
+
         addGravity: include gravity for elastic bodies
         """
         for sa in ['ref', 'coordinates', 'speeds','kdeqs','bodies','loads']:
@@ -144,6 +148,121 @@ class YAMSModel(object):
             self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform, addGravity=addGravity, g_vect=self.g_vect)
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
+
+    @property
+    def q_full(self):
+        return self.coordinates+self.speeds
+
+    def integrate(self, time, x0=None, p=None, u=None, M=None, F=None):
+        """ 
+        Perform time integration for a set of numerical values
+        Using Kane's equations of motions
+
+        x0: dictionary of initial states, keys are sympy variable, values are numerical
+        p: dictionary of parameters, keys are sympy variable, values are numerical
+        u: dictionary of inputs, keys are sympy variable, values are numerical
+        M: Optional mass matrix
+        D: Optional forcing vector
+        """
+        # --- Simulation
+        from scipy.integrate import odeint
+        from pydy.codegen.ode_function_generators import generate_ode_function
+        from collections import OrderedDict
+
+        # Get important matrices
+        if M is None:
+            M = self.kane.mass_matrix_full
+            #mass_matrix.simplify() #<<< Might change solution
+        if F is None:
+            F = self.kane.forcing_full
+            #forcing_vector.simplify()
+
+        # From dictionaries to list
+        if p is not None:
+            p_var = [k for k,v in p.items()]
+            p_num = np.array([v for k,v in p.items()])
+        else:
+            p_var = []
+            p_num = []
+        if u is not None:
+            u_var = [k for k,v in u.items()]
+            u_num = np.array([v for k,v in u.items()])
+        else:
+            u_var = []
+            u_num = []
+        x0DictFull = OrderedDict({k: 0.0 for k in self.q_full})
+        x0DictFull.update(x0)
+        x0 = np.array([v for k,v in x0DictFull.items()])
+
+        print('p_var',p_var)
+        print('p_num',p_num)
+        print('u_var',u_var)
+        print('u_num',u_num)
+        print('x0',x0)
+
+        # --- Generate code
+        RHS = generate_ode_function(F, self.coordinates, self.speeds, p_var, mass_matrix=M, specifieds=u_var)
+        self._RHS = RHS
+
+        if len(x0)!=len(self.q_full):
+            raise Exception('x0 should be twice the length of numerical coordinates')
+
+        # --- Simulate
+        y = odeint(RHS, x0, time, args=(u_num, p_num))
+
+        # TODO create dataframe
+        cols=['Time_[s]']+['{}'.format(sp.latex(c)) for c in self.q_full]
+        dat = np.column_stack((time, y))
+        df = pd.DataFrame(data=dat, columns=cols)
+        self.df = df
+
+
+        # --- Store for vizualisation
+        self._u = u
+        self._p = p
+        self._y=y
+        self._t=time
+        return y
+
+
+    def getScene(self, y=None, rp=0.1, al=1, axes=True, origins=True):
+        from pydy.viz.shapes import Cylinder, Sphere
+        from pydy.viz.visualization_frame import VisualizationFrame
+        from welib.yams.yams_sympy_tools import body_viz, frame_viz, MyScene
+        # --- Axes for each body
+        axes_viz=[]
+        if axes:
+            xax,yax,zax = frame_viz(self.ref.origin, self.ref.frame, l=al, r=0.05*al, name='inertial')
+            axes_viz += [xax,yax,zax]
+            for b in self.bodies:
+                 xax,yax,zax = frame_viz(b.origin, b.frame, l=al, r=0.05*al, name=b.name)
+                 axes_viz += [xax,yax,zax]
+        # --- Origins for each body
+        orgs_viz = []
+        if origins:
+            PointSphere = Sphere(color='black', radius=rp) 
+            for b in self.bodies:
+                 O_viz = VisualizationFrame(b.name+'_origin',b.frame, b.origin, PointSphere)
+                 orgs_viz+= [O_viz]
+
+        # --- Bodies representation
+        bods_viz=[]
+        for b in self.bodies:
+            # TODO function
+            bods_viz+=body_viz(b, b.viz_opts)
+
+        scene = MyScene(self.ref.frame, self.ref.origin,
+            *orgs_viz,
+            *axes_viz,
+            *bods_viz,
+             )
+        scene.constants = self._p
+        scene.states_symbols = self.coordinates + self.speeds
+        scene.states_trajectories = self._y
+        scene.times = self._t
+        return scene
+
+
 
     def smallAngleApprox(self, angle_list, extraSubs=None, order=1):
         """ 
@@ -249,11 +368,13 @@ class YAMSModel(object):
 
         return M,C,K,B
 
-    def to_EOM(self, extraSubs=None):
+    def to_EOM(self, extraSubs=None, simplify=False):
         """ return a class to easily manipulate the equations of motion in place"""
         EOM = self.EOM().subs(self.kdeqsSubs).doit()
         if extraSubs is not None:
             EOM = EOM.subs(extraSubs)
+        if simplify:
+            EOM.simplify()
 
         bodyReplaceDict=OrderedDict()
         for b in self.bodies:
@@ -322,7 +443,7 @@ class YAMSModel(object):
                 for sa_list_order in smallAngles:
                     sa_list = sa_list_order[0]
                     order   = sa_list_order[1]
-                    EOM.smallAngleApprox(sa_list, order=order)
+                    EOM.smallAngleApprox(sa_list, order=order, inPlace=True) # NOTE <<< EOM is now changed!
             with Timer('Simplify', silent=silentTimer):
                 EOM.simplify()
 
@@ -587,6 +708,15 @@ class EquationsOfMotionQ(object):
         self.input_vars=findInputs(EOM, q)     
         #self.mass_forcing_form(self, extraSubs=None) # M and F
         #self.linearize(self, op_point, noAcc, noVel=False, extraSubs=None): # M0,K0,B0
+
+
+    @property
+    def qdot(self):
+        return [diff(c,dynamicsymbols._t) for c in self.q]
+
+    @property
+    def qddot(self):
+        return [diff(diff(c,dynamicsymbols._t),dynamicsymbols._t) for c in self.q]
  
 
     def __repr__(self):
@@ -601,6 +731,12 @@ class EquationsOfMotionQ(object):
         s+='attributes: M0,K0,C0,B0  (call linearize) \n'.format(self.smallAnglesUsed)
         s+='methods that act on EOM in place (not M/F,M0): subs, simplify, trigsimp, expand\n'
         return s
+
+
+    def changeVar(self, newq, subs):
+        EOM_ = self.EOM.subs(subs)
+        EOM_.simplify()
+        return EquationsOfMotionQ(EOM_, newq, self.name, bodyReplaceDict=self.bodyReplaceDict)
 
 
     def subs(self, subs_list, inPlace=True):
@@ -623,20 +759,31 @@ class EquationsOfMotionQ(object):
         """ Trigonometric simplifications of  equations of motion """
         self.EOM = self.EOM.expand()
 
-    def smallAngleApprox(self, angle_list, order=1, inPlace=True):
+    def smallAngleApprox(self, angle_list, order=1, inPlace=False, newInstance=True):
         """ 
         Apply small angle approximation to EOM 
 
-        NOTE: inPlace!
+        NOTE: inPlace! <<<< TODO return another instance of EOM instead!
         """
         with Timer('Small angle approx',True,silent=True):
+            EOM_sa = smallAngleApprox(self.EOM, angle_list, order=order)
             if inPlace:
-                self.EOM = smallAngleApprox(self.EOM, angle_list, order=order)
+                # Change current object
+                self.EOM = EOM_sa
                 self.smallAnglesUsed+=angle_list
+            elif newInstance:
+                # Return a new instance of EOM
+                EOM = EquationsOfMotionQ(EOM_sa, self.q, self.name+'_sa', bodyReplaceDict=self.bodyReplaceDict)
+                EOM.input_vars = self.input_vars # ensure we have the same inputs..
+                EOM.smallAnglesUsed=self.smallAnglesUsed+angle_list
+                # NOTE: remember to call mass_forcing_form...
+                return EOM
             else:
-                return smallAngleApprox(self.EOM, angle_list, order=order)
+                # Return EOM directly
+                return EOM_sa
 
-    def mass_forcing_form(self, extraSubs=None):
+
+    def mass_forcing_form(self, extraSubs=None, simplify=False):
         """ Extract Mass Matrix and RHS from EOM """
         extraSubs = [] if extraSubs is None else extraSubs
         qd  = [diff(c,dynamicsymbols._t) for c in self.q]
@@ -645,14 +792,22 @@ class EquationsOfMotionQ(object):
         self.F = (self.M * Matrix(qdd) + self.EOM).expand() # remainder
         self.F = self.F.subs([(qddi,0) for qddi in qdd  ]) # safety
         self.F = self.F.expand()
+        if simplify:
+            self.F.simplify()
+            self.M.simplify()
 
-    def linearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None):
+    def linearize(self, op_point=None, noAcc=True, noVel=False, extraSubs=None, simplify=False):
         """
         Linearize EOM
         """
         op_point  = [] if op_point is None else op_point
         extraSubs = [] if extraSubs is None else extraSubs
         self.M0,self.C0,self.K0,self.B0, self.input_vars = linearizeQ(self.EOM, self.q, op_point=op_point, noAcc=noAcc, noVel=noVel, extraSubs=extraSubs)
+        if simplify:
+            self.M0.simplify()
+            self.K0.simplify()
+            self.C0.simplify()
+            self.B0.simplify()
         return self.M0, self.C0, self.K0, self.B0
 
     def saveTex(self, name='', prefix='', suffix='', folder='./', extraSubs=None, header=True, extraHeader=None, variables=['M','F','M0','C0','K0','B0'], doSimplify=False, velSubs=[(0,0)], fullPage=True):
@@ -767,7 +922,7 @@ def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs
     if noVel: 
         op_point0=[(qdi,0) for qdi in qd]
     op_point= op_point0+op_point # order might matter
-    print('>>> TODO sort op point so that diff wrt time are first, or do the trick with symbols')
+    print('>>> TODO linearize does not protect derivatives in substituion!')
     # use if isinstance sympy.core.function.Derivative
 
     # --- Inputs are dynamic symbols that are not coordinates

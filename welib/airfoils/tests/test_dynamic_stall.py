@@ -17,7 +17,7 @@ class TestDynamicStall(unittest.TestCase):
 
     def test_oye(self):
         #FFA-W3-241 airfoil Dyna Stall
-        P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True)
+        P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'), compute_params=True)
 
         omega       = 12.57
         T           = 2*np.pi/omega
@@ -25,7 +25,7 @@ class TestDynamicStall(unittest.TestCase):
         alpham      = 20
         dt          = 0.01                   # time step
         # 
-        fs_prev = P.f_st_interp(alpham) # init with steady value
+        fs_prev = P.fs_interp(alpham) # init with steady value
         Cl0 = P.cl_interp(alpham) # init with steady value
         Cl_new,fs_prev_new = P.dynaStallOye_DiscreteStep(alpham,tau,fs_prev,dt)
 
@@ -48,7 +48,7 @@ class TestDynamicStall(unittest.TestCase):
         # Starting from a wrong set point, the Cl value should converge to the steady Cl value
         # Script params, reading polar
         radians=True
-        P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
+        P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'), compute_params=True, radians=radians)
         U0, chord = 10, 0.1591
         alpha_st  = 3 * P._alpha0 
         tau_t     = np.linspace(0,40,30)
@@ -84,7 +84,7 @@ class TestDynamicStall(unittest.TestCase):
 
         ## Steady values
         Cl_st  = P.cl_interp(alpha_st)
-        fs_st  = P.f_st_interp(alpha_st) 
+        fs_st  = P.fs_interp(alpha_st) 
 
         ## --- Test that the last value is the steady state one
         np.testing.assert_almost_equal(Cl_mhh[-1], Cl_st, decimal=3)
@@ -110,7 +110,7 @@ class TestDynamicStall(unittest.TestCase):
         # Step from alpha0 to alpha0+2, testing the circulatory response (history), 
         # The Cl result is compared to Wagner's function
         radians=True # <<<
-        P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
+        P=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'), compute_params=True, radians=radians)
 
         U0, chord = 10, 0.1591
         alpha1  = P._alpha0 

@@ -2,6 +2,8 @@
 
 Yams numerical and recursive formulation.
 
+NOTE: this file is intended to be comparable with yams_sympy.py
+
 Reference:
      [1]: Branlard, Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex, Wind Energy, 2019
 """
@@ -107,7 +109,7 @@ class Connection():
 # --------------------------------------------------------------------------------}
 # --- Bodies 
 # --------------------------------------------------------------------------------{
-class Body(GenericBody):
+class Body(GenericBody): # TODO rename YAMSRecBody
     def __init__(B,name=''):
         GenericBody.__init__(B, name=name)
         B.Children    = []
@@ -318,18 +320,25 @@ class Body(GenericBody):
 # %             KK_N= BB_N_inN'*Nac.KK*BB_N_inN;
 
 
-    def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
+    def updateKinematics(o, x_0=None, R_0b=None, gz=None, v_0=None, a_v_0=None):
         # NOTE: this is overriden by BeamBody
         # Updating position of body origin in global coordinates
-        o.r_O = x_0[0:3]
-        o.gzf = gz
+        if x_0 is not None:
+            o.r_O = x_0[0:3]
+        if gz is not None:
+            o.gzf = gz
         # Updating Transformation matrix
-        o.R_0b=R_0b
+        if R_0b is not None:
+            o.R_0b=R_0b
+        else:
+            R_0b = o.R_0b
         # Updating rigid body velocity and acceleration
-        o.v_O_inB     = np.dot(R_0b, v_0[0:3])
-        o.om_O_inB    = np.dot(R_0b, v_0[3:6])
-        o.a_O_v_inB   = np.dot(R_0b, a_v_0[0:3])
-        o.omp_O_v_inB = np.dot(R_0b, a_v_0[3:6])
+        if v_0 is not None:
+            o.v_O_inB     = np.dot(R_0b, v_0[0:3])
+            o.om_O_inB    = np.dot(R_0b, v_0[3:6])
+        if a_v_0 is not None:
+            o.a_O_v_inB   = np.dot(R_0b, a_v_0[0:3])
+            o.omp_O_v_inB = np.dot(R_0b, a_v_0[3:6])
 
     @property
     def _positions_global(B): # todo rename
@@ -530,7 +539,7 @@ class GroundBody(Body, GenericInertialBody):
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
-class RigidBody(Body,GenericRigidBody):
+class RigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
     def __init__(B, name, mass, J_G, rho_G):
         """
         Creates a rigid body 
@@ -549,21 +558,26 @@ class RigidBody(Body,GenericRigidBody):
 # --------------------------------------------------------------------------------}
 # --- Beam Body 
 # --------------------------------------------------------------------------------{
-class BeamBody(GenericBeamBody, Body):
+class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
     def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
-            name='dummy'
+            name='dummy',
+            algo=''
             ):
         """ 
           Points P0 - Undeformed mean line of the body
         """
-        # --- nherit from BeamBody and Body 
+        int_method    = 'Flex'
+        if algo=='OpenFAST': 
+            int_method='OpenFAST'
+        # --- Inherit from BeamBody and Body 
         Body.__init__(B)
         GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
-                 massExpected=massExpected
+                 massExpected=massExpected,
+                 int_method=int_method
                 )
 
         B.gzf   = np.zeros((B.nf,1))
@@ -669,7 +683,13 @@ class BeamBody(GenericBeamBody, Body):
 # --- Uniform Beam Body 
 # --------------------------------------------------------------------------------{
 class UniformBeamBody(BeamBody):
-    def __init__(B, name, nShapes, nSpan, L, EI0, m, Mtop=0, jxxG=None, GKt=None, bAxialCorr=True, bCompatibility=False, bStiffnessFromGM=False, bStiffening=True, gravity=None, main_axis='x'):
+    def __init__(B, name, nShapes, nSpan, L, EI0, m, Mtop=0, jxxG=None, GKt=None, 
+            bAxialCorr=True, bCompatibility=False, bStiffnessFromGM=False, bStiffening=True, 
+            gravity=None, main_axis='x',
+            shapeFunctions='masslessbeam',
+            bottomBC='clamped',
+            topBC='free',
+            ):
 
         import welib.beams.theory as bt
         if jxxG is None:
@@ -681,8 +701,42 @@ class UniformBeamBody(BeamBody):
 
         A=1; rho=A*m;
         x=np.linspace(0,L,nSpan);
+        BC = '{}-{}'.format(bottomBC, topBC)
         # Mode shapes
-        freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-clamped-free',EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)
+        if shapeFunctions=='masslessbeam':
+            freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-{}'.format(BC),EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)
+        elif shapeFunctions=='Guyan':
+            if BC=='clamped-free':
+                freq,s_span,U,V,K  = bt.UniformBeamGuyanModes(EI0, rho, A, L, x= x, nModes = nShapes)
+            else:
+                raise NotImplementedError('{} {}'.format(shapeFunctions, BC))
+
+        elif shapeFunctions=='FEM':
+            #from welib.FEM.fem_beam import *
+            raise NotImplementedError('{} {}'.format(shapeFunctions, BC))
+            #nel      = 10             # Number of elements along the beam
+            #element  = 'frame3d'      # Type of element used in FEM
+            #if TopMass:
+            #    Mtop = 50000  # Top mass [kg]
+            #    M_tip= rigidBodyMassMatrixAtP(m=Mtop, J_G=None, Ref2COG=None)
+            #else:
+            #    M_tip=None
+            ## --- Structural data for uniform beam
+            #E   = 210e9     # Young modulus [Pa] [N/m^2]
+            #G   = 79.3e9    # Shear modulus. Steel: 79.3  [Pa] [N/m^2]
+            #L   = 100       # Beam Length [m]
+            #EIy0= 1.654e+12 # Planar second moment of area [m^4]
+            #m0  = 1.026e+04 # Mass per length [kg/m]
+            #EIx0= EIy0*2    # Polar second moment of area [m^4]
+            #A   = 1.00      # Area [m^2] 
+            #Kt  = EIy0/E*10 # Torsion constant [m^4]
+            ## --- Compute FEM model and mode shapes
+            #FEM=cbeam(L,m=m0,EIx=EIx0,EIy=EIy0,EIz=EIy0,EA=E*A,A=A,E=E,G=G,Kt=Kt,
+            #        element=element, nel=nel, BC=BC, M_tip=M_tip)
+            #x =FEM['xNodes'][0,:]
+            #Q =FEM ['Q']
+            #QY1 = [Q [1::6, iMode] for iMode in range(10) if FEM ['modeNames'][iMode].startswith('uy')]
+
         PhiU = np.zeros((nShapes,3,nSpan)) # Shape
         PhiV = np.zeros((nShapes,3,nSpan)) # Slope
         PhiK = np.zeros((nShapes,3,nSpan)) # Curvature
@@ -730,7 +784,8 @@ class UniformBeamBody(BeamBody):
 # --------------------------------------------------------------------------------{
 class FASTBeamBody(BeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
-            spanFrom0=False, massExpected=None, gravity=None
+            spanFrom0=False, massExpected=None, gravity=None,
+            algo='' # TODO OpenFAST
             ):
         """ 
         """
@@ -746,14 +801,17 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
         GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
                 spanFrom0=spanFrom0,
                 massExpected=massExpected,
-                gravity=gravity
+                gravity=gravity,
+                algo=algo
                 )
         # We need to inherit from "YAMS" Beam not just generic Beam
+        # NOTE: TODO TODO TODO: This will result in "YAMSBeamBody to be called twice...)
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
                 # NOTE: r_O, r_b2g is lost here
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
-                massExpected=massExpected
+                massExpected=massExpected,
+                algo=algo
                 )
 
 # --------------------------------------------------------------------------------}
@@ -814,7 +872,7 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
     else:
         raise Exception('Bi needs to be empty or a 2d array')
 
-    r_pi=r_pi.reshape(3,1)
+    r_pi=colvec(r_pi)
 
     # TODO use Translate here
     Bi = Matrix(np.zeros((6,ni+n_p)))

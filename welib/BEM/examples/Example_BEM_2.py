@@ -9,7 +9,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 # --- Local libraries
-from welib.BEM.steadyBEM import SteadyBEM, FASTFile2SteadyBEM
+from welib.BEM.steadyBEM import SteadyBEM # option 1: using class
+from welib.BEM.steadyBEM import calcSteadyBEM, FASTFile2SteadyBEM # option 2: low level
 import welib.weio as weio
 
 MyDir=os.path.dirname(__file__)
@@ -29,39 +30,45 @@ def main(test=False):
     Omega = df['RotSpeed_[rpm]'].values
     WS    = df['WS_[m/s]'].values
 
+    filenameOut    = os.path.join(OutDir,'_BEM_IntegratedValues.csv') if not test else None
+    radialBasename = os.path.join(OutDir,'_BEM_') if not test else None
 
-    # -- Extracting information from a FAST main file and sub files
-    nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(MainFASTFile) 
-    BladeData=np.column_stack((r,chord,twist))
+    # --- Option 1: using wrapper class
+    BEM = SteadyBEM(filename=MainFASTFile) # Initialize based on OpenFAST parameters
+    # Change algo options
+    BEM.bSwirl     = True  # swirl flow model enabled / disabled
+    BEM.bTipLoss   = True  # enable / disable tip loss model
+    BEM.bHubLoss   = False # enable / disable hub loss model
+    BEM.bAIDrag    = True  # influence on drag coefficient on normal force coefficient
+    BEM.bTIDrag    = False
+    BEM.relaxation = 0.4
+    BEM.bUseCm     = False  # Use Moment
+    #print(BEM)
+    # Compute performances for multiple operating conditions, store in dataframe, and export to file
+    dfOut,_ = BEM.parametric(Omega, Pitch, WS, outputFilename=filenameOut, radialBasename=radialBasename)
+    dfRad = BEM.radialDataFrame()
 
-    # --- Running BEM simulations for each operating conditions
-    a0 , ap0 = None,None # Initial guess for inductions, to speed up BEM
-    dfOut=None
-    if not os.path.exists(OutDir):
-        os.makedirs(OutDir)
-    # Loop on operating conditions
-    for i,(V0,RPM,pitch), in enumerate(zip(WS,Omega,Pitch)):
-        xdot   = 0        # [m/s]
-        u_turb = 0        # [m/s] 
-        BEM=SteadyBEM(RPM,pitch,V0,xdot,u_turb,
-                    nB,cone,r,chord,twist,polars,
-                    rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
-                    a_init =a0, ap_init=ap0)
-        a0, ap0 = BEM.a, BEM.aprime
-        # Export radial data to file
-        if not test:
-            filenameRadial = os.path.join(OutDir,'_BEM_ws{:02.0f}_radial.csv'.format(V0))
-            BEM.WriteRadialFile(filenameRadial)
-            print('>>>',filenameRadial)
-        dfOut = BEM.StoreIntegratedValues(dfOut)
+    # --- Option 2: using low level functions instead of class
+    if False:
+        # --- Extracting information from a FAST main file and sub files
+        nB,cone,r,chord,twist,polars,rho,KinVisc = FASTFile2SteadyBEM(MainFASTFile) 
+        # --- Running BEM simulations for each operating conditions
+        a0 , ap0 = None,None # Initial guess for inductions, to speed up BEM
+        dfOut=None
+        # Loop on operating conditions
+        for i,(V0,RPM,pitch), in enumerate(zip(WS,Omega,Pitch)):
+            BEM=calcSteadyBEM(RPM,pitch,V0,xdot=0,u_turb=0,
+                        nB=nB,cone=cone,r=r,chord=chord,twist=twist,polars=polars,
+                        rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,bUseCm=False,
+                        a_init =a0, ap_init=ap0)
+            a0, ap0 = out.a, out.aprime
+            # Export radial data to file
+            dfRad = BEM.radialDataFrame()
+            dfOut = out.StoreIntegratedValues(dfOut)
 
-    # --- Export integrated values to file
-    filenameOut= os.path.join(OutDir,'_BEM_IntegratedValues.csv')
+    # --- Plot
     if not test:
-        dfOut.to_csv(filenameOut,sep='\t',index=False)
-        print('>>>',filenameOut)
         print(dfOut.keys())
-        # --- Plot
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         ax.plot(dfOut['WS_[m/s]'].values, dfOut['AeroPower_[kW]'].values, label='Power')
@@ -72,14 +79,17 @@ def main(test=False):
         ax.tick_params(direction='in')
 
 
-    return dfOut
+
+    return dfOut, dfRad
 
 
 if __name__=="__main__":
-    main()
+    dfOut, dfRad = main(test=False)
     plt.show()
 if __name__=="__test__":
-    main(test=True)
+    dfOut, dfRad = main(test=True)
+    np.testing.assert_almost_equal(dfOut['AeroPower_[kW]'].values[-5], 5710.6344, 3)
+    np.testing.assert_almost_equal(dfRad['a_prime_[-]'].values[4], 0.1636598, 4)
     [os.remove(f) for f in glob.glob(os.path.join(MyDir,'_*.csv'))]
 if __name__=="__export__":
     main()

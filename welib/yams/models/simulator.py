@@ -17,7 +17,8 @@ from welib.yams.models.packman import loadPackage
 # --------------------------------------------------------------------------------{
 
 
-def _loadOFOut(filename, tMax=None):
+def _loadOFOut(filename, tMax=None, tRange=None):
+    """ see also welib.fast.linmodel """
     ext = os.path.splitext(filename)[1].lower()
     if ext=='.fst':
         if os.path.exists(filename.replace('.fst','.outb')): 
@@ -30,7 +31,13 @@ def _loadOFOut(filename, tMax=None):
         dfFS = weio.read(filename).toDataFrame()
     if tMax is not None:
         dfFS=dfFS[dfFS['Time_[s]']<tMax]
+    if tRange is not None:
+        dfFS = dfFS[np.logical_and(dfFS['Time_[s]']>=tRange[0],dfFS['Time_[s]']<=tRange[1])]
     time =dfFS['Time_[s]'].values
+    dfFS.reset_index(inplace=True)
+
+    # Remove duplicate
+    dfFS = dfFS.loc[:,~dfFS.columns.duplicated()].copy()
     return dfFS, time
 
 
@@ -93,6 +100,24 @@ def moorMatToSysMat(M, sq=None):
 class SimulatorFromOF():
     def __init__(self, WT=None, fstFilename=None, modelName=None, packageDir=''):
 
+        # --- Main Data
+        self.u           = None
+        self.du          = None
+        self.uop         = None
+        self.qop         = None
+        self.qdop        = None
+        self.WT          = None
+        self.fstFilename = None
+        self.modeName    = None
+        self.packageDir  = None
+        self.sysLI       = None
+        self.sysNL       = None
+        self.dfNL = None
+        self.dfLI = None
+        self.dfFS = None
+        self.time = None
+
+
         # --- Load the wind turbine model, NOTE relevant parameters "p" are in WT.yams_parameters()
         if WT is not None:
             self.WT = WT
@@ -101,13 +126,38 @@ class SimulatorFromOF():
             self.WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)  # TODO
             self.fstFilename = fstFilename
 
-        self.dfNL = None
-        self.dfLI = None
         # --- Import the python module that was generated
         self.modelName=modelName
         if modelName is not None:
             self.loadPackage(modelName, packageDir)
             self.WT.checkPackage(self.pkg)
+
+
+    def __repr__(self):
+        s='<YAMS {} object>:\n'.format(type(self).__name__)
+        s+=' - fstFilename: {} \n'.format(self.fstFilename)
+        s+=' - modelName: {} \n'.format(self.modelName)
+        s+=' - packageDir: {} \n'.format(self.packageDir)
+        s+=' - u:    {} \n'.format(self.u) # TODO
+        s+=' - du:   {} \n'.format(self.du) # TODO
+        s+=' - uop:  {} \n'.format(self.uop)
+        s+=' - qop:  {} \n'.format(self.qop)
+        s+=' - qdop: {} \n'.format(self.qdop)
+        s+=' object attributes: \n'
+        s+=' - WT, sysLI, sysNL, qdop \n'
+        if self.sysLI is not None:
+            s+=' * M_lin, K_lin, C_lin, B_lin, forcing0_lin\n'
+            s+=' * q0_lin:   {} \n'.format(self.q0_lin)
+        if self.sysNL is not None:
+            s+=' * M0, forcing0 \n'
+            s+=' * q0    :   {} \n'.format(self.q0)
+        s+=' useful functions:  \n'
+        s+='  - setupSim: setup a simulation based on a fst/out file\n'
+        s+='  - loadPackage: load a YAMS package\n'
+        s+='  - unloadPackage: unload a YAMS package\n'
+        return s
+
+
 
     def loadPackage(self, modelName=None, packageDir='', packagePath=None):
         pkg, packagePath=loadPackage(modelName=modelName, packageDir=packageDir, packagePath=packagePath)
@@ -124,6 +174,7 @@ class SimulatorFromOF():
         self.loadPackage(packagePath=self._packagePath)
 
     def setupSim(self, outFile=None, tMax=None, **kwargs):
+        # TODO: Harmonize with fast.linmodel
         # --- Load Reference simulation
         if outFile is None:
             self.dfFS, self.time = _loadOFOut(self.fstFilename, tMax)
@@ -142,6 +193,12 @@ class SimulatorFromOF():
 
         return self.time, self.dfFS, self.p
 
+    # --------------------------------------------------------------------------------}
+    # --- INPUTS
+    # --------------------------------------------------------------------------------{
+    # From welib.system.statespace.py
+    #def setInputTimeSeries(self, vTime, vU):
+    #def setInputFunction(self, fn, signature_u=None):
 
     def _zeroInputs(self):
         """ 
@@ -269,7 +326,7 @@ class SimulatorFromOF():
     def q0(self): return self.sysNL.q0
 
 
-    def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
+    def plot(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title='', dfFSlin=None):
         from welib.tools.colors import python_colors
         # --- Simple Plot
         dfNL = self.dfNL
@@ -297,19 +354,24 @@ class SimulatorFromOF():
             chan=df.columns[i+1]
             if dfNL is not None:
                 if chan in dfNL.columns:
-                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='non-linear', c=python_colors(0))
+                    ax.plot(dfNL['Time_[s]'], dfNL[chan], '-'  , label='WELIB non-linear', c=python_colors(0))
                 else:
-                    print('Missing column in NL: ',chan)
+                    print('simulator: plot: Missing column in NL          : ',chan)
             if dfLI is not None:
                 if chan in dfLI.columns:
-                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear', c=python_colors(1))
+                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='WELIB linear', c=python_colors(1))
                 else:
-                    print('Missing column in Lin: ',chan)
+                    print('simulator: plot: Missing column in Lin         : ',chan)
+            if dfFSlin is not None:
+                if chan in dfFSlin.columns:
+                    ax.plot(dfFSlin['Time_[s]'], dfFSlin[chan], '-.' , label='OpenFAST lin', c=python_colors(2))
+                else:
+                    print('simulator: plot: Missing column in Lin OpenFAST: ',chan)
             if dfFS is not None:
                 if chan in dfFS.columns:
-                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST non-linear')
                 else:
-                    print('Missing column in OpenFAST: ',chan)
+                    print('simulator: plot: Missing column in OpenFAST    : ',chan)
             ax.set_xlabel('Time [s]')
             ax.set_ylabel(chan)
             ax.tick_params(direction='in')
@@ -329,13 +391,24 @@ class SimulatorFromOF():
 
         return fig
 
-    def save(self, filename=None, prefix=''):
+    def save(self, filename=None, prefix='', suffix='', **kwargs):
         if filename is None:
-            filename = self.fstFilename.replace('.fst','{}_yamsSim.pkl'.format(prefix))
+            parentDir= os.path.dirname(self.fstFilename)
+            base     = os.path.splitext(os.path.basename(self.fstFilename))[0]
+            filename = os.path.join(parentDir, prefix+base+suffix+'_yamsSim.pkl')
 
-        import pickle
+        if self.sysNL is not None:
+            self.sysNL.picklable()
+        if self.sysLI is not None:
+            self.sysLI.picklable()
+
         D={'dfNL':self.dfNL, 'dfLI':self.dfLI, 'dfFS':self.dfFS, 'p':self.p}
+        D['sysLI']=self.sysLI
+        D['sysNL']=self.sysNL
+        D.update(kwargs)
+        print(D.keys())
         print('>>> Export to:',filename)
+        import pickle
         pickle.dump(D,  open(filename,'wb'))
 
     # --------------------------------------------------------------------------------}

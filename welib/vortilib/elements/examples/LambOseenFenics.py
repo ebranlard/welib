@@ -7,7 +7,6 @@ Comparison is done with analytical formulae of velocity, vector potential and vo
 
 """
 
-from __future__ import print_function
 import matplotlib.pyplot as plt
 import numpy as np
 

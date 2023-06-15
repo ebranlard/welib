@@ -300,6 +300,10 @@ class HydroDyn:
 
         - RefPointMotion: point used to defined rigid body motion, important parameter
         - RefPointMapping: point used to defined rigid body mapping
+        - RefPointMappingMotion: how does the reference point move with q
+              'translate': the reference point for mapping translate with q
+              'none':      the reference point for mapping does not move
+              'follow_point': the reference point for mapping follow the whole motion (translation and rotation)
 
         -optsM: options for Morison Calculation
 
@@ -340,7 +344,7 @@ class HydroDyn:
                 MappingPoint = RefPointMapping + np.array([q[0],q[1],q[2]])
 
             elif RefPointMappingMotion=='follow_point':
-                qM,_,_ = rigidBodyMotion2Points_q6(RefPointMotion, RefPointMapping, q, rot='smallRot_OF')
+                qM,_,_, _ = rigidBodyMotion2Points_q6(RefPointMotion, RefPointMapping, q, rot='smallRot_OF')
                 MappingPoint=(RefPointMapping[0]+qM[0], RefPointMapping[1]+qM[1], RefPointMapping[2]+qM[2])
 
             elif RefPointMappingMotion=='none':

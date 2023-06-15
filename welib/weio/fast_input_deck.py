@@ -1,12 +1,3 @@
-from __future__ import division
-from __future__ import unicode_literals
-from __future__ import print_function
-from __future__ import absolute_import
-from io import open
-from builtins import range
-from builtins import str
-from future import standard_library
-standard_library.install_aliases()
 import os
 import numpy as np
 import re
@@ -33,10 +24,13 @@ class FASTInputDeck(dict):
                  AC: airfoil coordinates (if present)
 
         """
+
         # Sanity
         if type(verbose) is not bool: 
             raise Exception('`verbose` arguments needs to be a boolean')
 
+        # Main Data
+        self.inputFilesRead = {}
         self.filename = fullFstPath
         self.verbose  = verbose
         self.readlist = readlist
@@ -47,7 +41,6 @@ class FASTInputDeck(dict):
         else:
             self.readlist = ['Fst']+self.readlist
 
-        self.inputfiles = {}
 
         # --- Harmonization with AeroElasticSE
         self.FAST_ver       = 'OPENFAST'
@@ -82,6 +75,19 @@ class FASTInputDeck(dict):
         # Read all inputs files
         if len(fullFstPath)>0:
             self.read()
+
+    @property
+    def ED(self):
+        ED = self.fst_vt['ElastoDyn']
+        if ED is None:
+            if 'ED' not in self.readlist:
+                self.readlist.append('ED')
+            if self.verbose:
+                print('>>> Reading ED', self.ED_path)
+            self.fst_vt['ElastoDyn'] = self._read(self.fst_vt['Fst']['EDFile'],'ED')
+            return self.fst_vt['ElastoDyn']
+        else:
+            return ED
 
 
     def readAD(self, filename=None, readlist=None, verbose=False, key='AeroDyn15'):
@@ -154,57 +160,37 @@ class FASTInputDeck(dict):
         files=[]
         files+=[self.ED_path, self.ED_twr_path, self.ED_bld_path]
         files+=[self.BD_path, self.BD_bld_path]
+        files+=[self.SD_path]
         return [f for f in files if f not in self.unusedNames]
 
-
-    @property
-    def ED_relpath(self):
+    def _relpath(self, k1, k2=None, k3=None):
         try:
-            return self.fst_vt['Fst']['EDFile'].replace('"','')
-        except:
-            return 'none'
-
-    @property
-    def ED_twr_relpath(self):
-        try:
-            return os.path.join(os.path.dirname(self.fst_vt['Fst']['EDFile']).replace('"',''), self.fst_vt['ElastoDyn']['TwrFile'].replace('"',''))
-        except:
-            return 'none'
-
-    @property
-    def ED_bld_relpath(self):
-        try:
-            if 'BldFile(1)' in self.fst_vt['ElastoDyn'].keys():
-                return os.path.join(os.path.dirname(self.fst_vt['Fst']['EDFile'].replace('"','')), self.fst_vt['ElastoDyn']['BldFile(1)'].replace('"',''))
+            if k2 is None:
+                return self.fst_vt['Fst'][k1].replace('"','')
             else:
-                return os.path.join(os.path.dirname(self.fst_vt['Fst']['EDFile'].replace('"','')), self.fst_vt['ElastoDyn']['BldFile1'].replace('"',''))
+                parent = os.path.dirname(self.fst_vt['Fst'][k1]).replace('"','')
+                if type(k3)==list:
+                    for k in k3:
+                        if k in self.fst_vt[k2].keys():
+                            child =  self.fst_vt[k2][k].replace('"','')
+                else:
+                    child =  self.fst_vt[k2][k3].replace('"','')
+                return os.path.join(parent, child)
         except:
             return 'none'
 
     @property
-    def BD_relpath(self):
-        try:
-            return self.fst_vt['Fst']['BDBldFile(1)'].replace('"','')
-        except:
-            return 'none'
-
+    def ED_path(self): return self._fullpath(self._relpath('EDFile'))
     @property
-    def BD_bld_relpath(self):
-        try:
-            return os.path.join(os.path.dirname(self.fst_vt['Fst']['BDBldFile(1)'].replace('"','')), self.fst_vt['BeamDyn']['BldFile'].replace('"',''))
-        except:
-            return 'none'
-
+    def SD_path(self): return self._fullpath(self._relpath('SubFile'))
     @property
-    def ED_path(self): return self._fullpath(self.ED_relpath)
+    def BD_path(self): return self._fullpath(self._relpath('BDBldFile(1)'))
     @property
-    def BD_path(self): return self._fullpath(self.BD_relpath)
+    def BD_bld_path(self): return self._fullpath(self._relpath('BDBldFile(1)','BeamDyn','BldFile'))
     @property
-    def BD_bld_path(self): return self._fullpath(self.BD_bld_relpath)
+    def ED_twr_path(self): return self._fullpath(self._relpath('EDFile','ElastoDyn','TwrFile'))
     @property
-    def ED_twr_path(self): return self._fullpath(self.ED_twr_relpath)
-    @property
-    def ED_bld_path(self): return self._fullpath(self.ED_bld_relpath)
+    def ED_bld_path(self): return self._fullpath(self._relpath('EDFile','ElastoDyn',['BldFile(1)','BldFile1']))
 
 
 
@@ -218,23 +204,29 @@ class FASTInputDeck(dict):
 
 
     def read(self, filename=None):
+        """ 
+        Read all OpenFAST inputs files, based on the requested list of modules `readlist`
+        """
         if filename is not None:
             self.filename = filename
 
-        # Read OpenFAST files
+        # Read main file (.fst, or .drv) and store into key "Fst"
+        if self.verbose:
+            print('Reading:', self.FAST_InputFile)
         self.fst_vt['Fst'] = self._read(self.FAST_InputFile, 'Fst')
         if self.fst_vt['Fst'] is None:
             raise Exception('Error reading main file {}'.format(self.filename))
         keys = self.fst_vt['Fst'].keys()
 
-
+        # Detect driver or OpenFAST version
         if 'NumTurbines' in keys:
             self.version='AD_driver'
+        elif 'DynamicSolve' in keys:
+            self.version='BD_driver'
         elif 'InterpOrder' in self.fst_vt['Fst'].keys():
             self.version='OF2'
         else:
             self.version='F7'
-
 
         if self.version=='AD_driver':
             # ---- AD Driver
@@ -244,14 +236,26 @@ class FASTInputDeck(dict):
 
             self.readAD(key='AeroDyn15')
 
+        elif self.version=='BD_driver':
+            # --- BD driver
+            self.fst_vt['BeamDyn'] = self._read(self.fst_vt['Fst']['InputFile'],'BD')
+            if self.fst_vt['BeamDyn'] is not None:
+                # Blades
+                bld_file = os.path.join(os.path.dirname(self.fst_vt['Fst']['InputFile']), self.fst_vt['BeamDyn']['BldFile'])
+                print('bld_file', bld_file)
+                self.fst_vt['BeamDynBlade']= self._read(bld_file,'BDbld')
+
+            del self.fst_vt['af_data']
+            del self.fst_vt['ac_data']
+
         elif self.version=='OF2':
             # ---- Regular OpenFAST file
             # ElastoDyn
             if 'EDFile' in self.fst_vt['Fst'].keys():
                 self.fst_vt['ElastoDyn'] = self._read(self.fst_vt['Fst']['EDFile'],'ED')
                 if self.fst_vt['ElastoDyn'] is not None:
-                    twr_file = self.ED_twr_relpath
-                    bld_file = self.ED_bld_relpath
+                    twr_file = self.ED_twr_path
+                    bld_file = self.ED_bld_path
                     self.fst_vt['ElastoDynTower'] = self._read(twr_file,'EDtwr')
                     self.fst_vt['ElastoDynBlade'] = self._read(bld_file,'EDbld')
 
@@ -275,7 +279,7 @@ class FASTInputDeck(dict):
 
             # SubDyn
             if self.fst_vt['Fst']['CompSub'] == 1:
-                self.fst_vt['SubDyn'] = self._read(self.fst_vt['Fst']['SubFile'],'HD')
+                self.fst_vt['SubDyn'] = self._read(self.fst_vt['Fst']['SubFile'], 'SD')
 
             # Mooring
             if self.fst_vt['Fst']['CompMooring']==1:
@@ -293,7 +297,7 @@ class FASTInputDeck(dict):
 
         # --- Backward compatibility
         self.fst = self.fst_vt['Fst']
-        self.ED  = self.fst_vt['ElastoDyn']
+        self._ED  = self.fst_vt['ElastoDyn']
         if not hasattr(self,'AD'):
             self.AD = None
         if self.AD is not None:
@@ -302,6 +306,7 @@ class FASTInputDeck(dict):
         self.IW  = self.fst_vt['InflowWind']
         self.BD  = self.fst_vt['BeamDyn']
         self.BDbld  = self.fst_vt['BeamDynBlade']
+        self.SD  = self.fst_vt['SubDyn']
 
     @ property
     def unusedNames(self):
@@ -330,7 +335,7 @@ class FASTInputDeck(dict):
             data = FASTInputFile(fullpath)
             if self.verbose:
                 print('>>> Read: ',fullpath)
-            self.inputfiles[shortkey] = fullpath
+            self.inputFilesRead[shortkey] = fullpath
             return data
         except FileNotFoundError:
             print('[WARN] File not found '+fullpath)
@@ -345,95 +350,122 @@ class FASTInputDeck(dict):
         self.filename=filename
         if directory is None:
             directory = os.path.dirname(filename)
+        else:
+            # Making sure filename is within directory
+            filename = os.path.join(directory, os.path.basename(filename))
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+  
         basename = os.path.splitext(os.path.basename(filename))[0]
 
 
         fst = self.fst_vt['Fst']
 
-        # Filenames
-        filename_ED     = os.path.join(directory,prefix+'ED'+suffix+'.dat')      if fst['CompElast']>0   else 'none'
-        filename_IW     = os.path.join(directory,prefix+'IW'+suffix+'.dat')      if fst['CompInflow']>0  else 'none'
-        filename_BD     = os.path.join(directory,prefix+'BD'+suffix+'.dat')      if fst['CompElast']==2  else 'none'
-        filename_AD     = os.path.join(directory,prefix+'AD'+suffix+'.dat')      if fst['CompAero']>0    else 'none'
-        filename_HD     = os.path.join(directory,prefix+'HD'+suffix+'.dat')      if fst['CompHydro']>0   else 'none'
-        filename_SD     = os.path.join(directory,prefix+'SD'+suffix+'.dat')      if fst['CompSub']>0     else 'none'
-        filename_MD     = os.path.join(directory,prefix+'MD'+suffix+'.dat')      if fst['CompMooring']>0 else 'none'
-        filename_SvD    = os.path.join(directory,prefix+'SvD'+suffix+'.dat')     if fst['CompServo']>0   else 'none'
-        filename_Ice    = os.path.join(directory,prefix+'Ice'+suffix+'.dat')     if fst['CompIce']>0     else 'none'
-        filename_ED_bld = os.path.join(directory,prefix+'ED_bld'+suffix+'.dat')  if fst['CompElast']>0   else 'none'
-        filename_ED_twr = os.path.join(directory,prefix+'ED_twr'+suffix+'.dat')  if fst['CompElast']>0   else 'none'
-        filename_BD_bld = os.path.join(directory,prefix+'BD_bld'+suffix+'.dat')  if fst['CompElast']>0   else 'none'
-        # TODO AD Profiles and OLAF
 
-        fst['EDFile']       = '"' + os.path.basename(filename_ED) + '"'
-        fst['BDBldFile(1)'] = '"' + os.path.basename(filename_BD) + '"'
-        fst['BDBldFile(2)'] = '"' + os.path.basename(filename_BD) + '"'
-        fst['BDBldFile(3)'] = '"' + os.path.basename(filename_BD) + '"'
-        fst['InflowFile']   = '"' + os.path.basename(filename_IW) + '"'
-        fst['AeroFile']     = '"' + os.path.basename(filename_AD) + '"'
-        fst['ServoFile']    = '"' + os.path.basename(filename_AD) + '"'
-        fst['HydroFile']    = '"' + os.path.basename(filename_HD) + '"'
-        fst['SubFile']      = '"' + os.path.basename(filename_SD) + '"'
-        fst['MooringFile']  = '"' + os.path.basename(filename_MD) + '"'
-        fst['IceFile']      = '"' + os.path.basename(filename_Ice)+ '"'
-        fst.write(filename)
+        if self.version=='AD_driver':
+            raise NotImplementedError()
 
-
-        ED =  self.fst_vt['ElastoDyn']
-        if fst['CompElast']>0:
-            ED['TwrFile'] = '"' + os.path.basename(filename_ED_twr)+ '"'
-            self.fst_vt['ElastoDynTower'].write(filename_ED_twr)
-        if fst['CompElast']==1:
-            if 'BldFile1' in ED.keys():
-                ED['BldFile1'] = '"' + os.path.basename(filename_ED_bld)+ '"'
-                ED['BldFile2'] = '"' + os.path.basename(filename_ED_bld)+ '"'
-                ED['BldFile3'] = '"' + os.path.basename(filename_ED_bld)+ '"'
-            else:
-                ED['BldFile(1)']   = '"' + os.path.basename(filename_ED_bld)+ '"'
-                ED['BldFile(2)']   = '"' + os.path.basename(filename_ED_bld)+ '"'
-                ED['BldFile(3)']   = '"' + os.path.basename(filename_ED_bld)+ '"'
-            self.fst_vt['ElastoDynBlade'].write(filename_ED_bld)
-
-        elif fst['CompElast']==2:
+        elif self.version=='BD_driver':
+            # --- BD driver
+            filename_BD     = os.path.join(directory, prefix+'BD'+suffix+'.dat')
+            filename_BD_bld = os.path.join(directory, prefix+'BD_bld'+suffix+'.dat')
+            fst['InputFile'] = '"' + os.path.basename(filename_BD) + '"'
+            fst.write(filename)
             BD = self.fst_vt['BeamDyn'] 
             BD['BldFile'] = '"'+os.path.basename(filename_BD_bld)+'"'
             self.fst_vt['BeamDynBlade'].write(filename_BD_bld)  # TODO TODO pick up the proper blade file!
             BD.write(filename_BD)
-        ED.write(filename_ED)
+
+        elif self.version=='OF2':
+
+            # Filenames
+            filename_ED     = os.path.join(directory,prefix+'ED'+suffix+'.dat')      if fst['CompElast']>0   else 'none'
+            filename_IW     = os.path.join(directory,prefix+'IW'+suffix+'.dat')      if fst['CompInflow']>0  else 'none'
+            filename_BD     = os.path.join(directory,prefix+'BD'+suffix+'.dat')      if fst['CompElast']==2  else 'none'
+            filename_AD     = os.path.join(directory,prefix+'AD'+suffix+'.dat')      if fst['CompAero']>0    else 'none'
+            filename_HD     = os.path.join(directory,prefix+'HD'+suffix+'.dat')      if fst['CompHydro']>0   else 'none'
+            filename_SD     = os.path.join(directory,prefix+'SD'+suffix+'.dat')      if fst['CompSub']>0     else 'none'
+            filename_MD     = os.path.join(directory,prefix+'MD'+suffix+'.dat')      if fst['CompMooring']>0 else 'none'
+            filename_SvD    = os.path.join(directory,prefix+'SvD'+suffix+'.dat')     if fst['CompServo']>0   else 'none'
+            filename_Ice    = os.path.join(directory,prefix+'Ice'+suffix+'.dat')     if fst['CompIce']>0     else 'none'
+            filename_ED_bld = os.path.join(directory,prefix+'ED_bld'+suffix+'.dat')  if fst['CompElast']>0   else 'none'
+            filename_ED_twr = os.path.join(directory,prefix+'ED_twr'+suffix+'.dat')  if fst['CompElast']>0   else 'none'
+            filename_BD_bld = os.path.join(directory,prefix+'BD_bld'+suffix+'.dat')  if fst['CompElast']>0   else 'none'
+            # TODO AD Profiles and OLAF
+
+            fst['EDFile']       = '"' + os.path.basename(filename_ED) + '"'
+            fst['BDBldFile(1)'] = '"' + os.path.basename(filename_BD) + '"'
+            fst['BDBldFile(2)'] = '"' + os.path.basename(filename_BD) + '"'
+            fst['BDBldFile(3)'] = '"' + os.path.basename(filename_BD) + '"'
+            fst['InflowFile']   = '"' + os.path.basename(filename_IW) + '"'
+            fst['AeroFile']     = '"' + os.path.basename(filename_AD) + '"'
+            fst['ServoFile']    = '"' + os.path.basename(filename_AD) + '"'
+            fst['HydroFile']    = '"' + os.path.basename(filename_HD) + '"'
+            fst['SubFile']      = '"' + os.path.basename(filename_SD) + '"'
+            fst['MooringFile']  = '"' + os.path.basename(filename_MD) + '"'
+            fst['IceFile']      = '"' + os.path.basename(filename_Ice)+ '"'
+            fst.write(filename)
 
 
-        if fst['CompInflow']>0:
-            self.fst_vt['InflowWind'].write(filename_IW)
+            ED =  self.fst_vt['ElastoDyn']
+            if fst['CompElast']>0:
+                ED['TwrFile'] = '"' + os.path.basename(filename_ED_twr)+ '"'
+                self.fst_vt['ElastoDynTower'].write(filename_ED_twr)
+            if fst['CompElast']==1:
+                if 'BldFile1' in ED.keys():
+                    ED['BldFile1'] = '"' + os.path.basename(filename_ED_bld)+ '"'
+                    ED['BldFile2'] = '"' + os.path.basename(filename_ED_bld)+ '"'
+                    ED['BldFile3'] = '"' + os.path.basename(filename_ED_bld)+ '"'
+                else:
+                    ED['BldFile(1)']   = '"' + os.path.basename(filename_ED_bld)+ '"'
+                    ED['BldFile(2)']   = '"' + os.path.basename(filename_ED_bld)+ '"'
+                    ED['BldFile(3)']   = '"' + os.path.basename(filename_ED_bld)+ '"'
+                self.fst_vt['ElastoDynBlade'].write(filename_ED_bld)
 
-        if fst['CompAero']>0:
-            self.fst_vt['AeroDyn15'].write(filename_AD)
-            # TODO other files
+            elif fst['CompElast']==2:
+                BD = self.fst_vt['BeamDyn'] 
+                BD['BldFile'] = '"'+os.path.basename(filename_BD_bld)+'"'
+                self.fst_vt['BeamDynBlade'].write(filename_BD_bld)  # TODO TODO pick up the proper blade file!
+                BD.write(filename_BD)
+            ED.write(filename_ED)
 
-        if fst['CompServo']>0:
-            self.fst_vt['ServoDyn'].write(filename_SvD)
 
-        if fst['CompHydro']==1:
-            self.fst_vt['HydroDyn'].write(filename_HD)
+            if fst['CompInflow']>0:
+                self.fst_vt['InflowWind'].write(filename_IW)
 
-        if fst['CompSub']==1:
-            self.fst_vt['SubDyn'].write(filename_SD)
-        elif fst['CompSub']==2:
-            raise NotImplementedError()
+            if fst['CompAero']>0:
+                self.fst_vt['AeroDyn15'].write(filename_AD)
+                # TODO other files
 
-        if fst['CompMooring']==1:
-            self.fst_vt['MAP'].write(filename_MD)
-        if self.fst_vt['Fst']['CompMooring']==2:
-            self.fst_vt['MoorDyn'].write(filename_MD)
+            if fst['CompServo']>0:
+                self.fst_vt['ServoDyn'].write(filename_SvD)
+
+            if fst['CompHydro']==1:
+                self.fst_vt['HydroDyn'].write(filename_HD)
+
+            if fst['CompSub']==1:
+                self.fst_vt['SubDyn'].write(filename_SD)
+            elif fst['CompSub']==2:
+                raise NotImplementedError()
+
+            if fst['CompMooring']==1:
+                self.fst_vt['MAP'].write(filename_MD)
+            if self.fst_vt['Fst']['CompMooring']==2:
+                self.fst_vt['MoorDyn'].write(filename_MD)
+
+        return filename
 
 
 
     def __repr__(self):
         s='<weio.FastInputDeck object>'+'\n'
         s+='filename   : '+self.filename+'\n'
+        s+='readlist   : {}'.format(self.readlist)+'\n'
         s+='version    : '+self.version+'\n'
         s+='AD version : '+self.ADversion+'\n'
         s+='fst_vt     : dict{'+','.join([k for k,v in self.fst_vt.items() if v is not None])+'}\n'
         s+='inputFiles : {}\n'.format(self.inputFiles)
+        s+='inputFilesRead : {}\n'.format(self.inputFilesRead)
         s+='\n'
         return s
 

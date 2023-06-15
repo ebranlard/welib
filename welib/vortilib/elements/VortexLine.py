@@ -2,13 +2,10 @@
 Reference:
     [1] E. Branlard - Wind Turbine Aerodynamics and Vorticity Based Method, Springer, 2017
 """
-#--- Legacy python 2.7
-from __future__ import division
-from __future__ import print_function
 # --- General
 import unittest
 import numpy as np
-import numpy.matlib
+# import numpy.matlib
 
 # --------------------------------------------------------------------------------}
 # --- Semi infinite vortex line

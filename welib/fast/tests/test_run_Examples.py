@@ -18,15 +18,18 @@ class TestExamples(unittest.TestCase):
         exclude_list=[]
         # Add tests to class
         MyDir=os.path.dirname(__file__)
-        files = glob.glob(os.path.join(MyDir,'../examples/[a-zA-Z]*.py'))
-        import matplotlib.pyplot as plt
+        files = glob.glob(os.path.join(MyDir,'../examples/[a-zA-Z-_]*.py'))
         print('\n--------------------------------------------------------------')
+        import matplotlib.pyplot as plt
         for f in files:
             print('Running example script: {}'.format(f))
             if hasattr(self,'subTest'):
                 with self.subTest(filename=os.path.basename(f)):
                     execfile(f, {'__name__': '__test__', 'print': lambda *_:None})
-                    plt.close('all')
+            try:
+                plt.close('all')
+            except:
+                pass
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 """ 
-Show that Guayan-Reduction of a single element result in rigid body modes
+Show that Guyan-Reduction of a single element result in rigid body modes
 
 """
 

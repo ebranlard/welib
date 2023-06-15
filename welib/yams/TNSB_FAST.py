@@ -13,10 +13,11 @@ import welib.weio as weio
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model
 # --------------------------------------------------------------------------------{
-def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=None, nSpan_bld=None, bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
         spanFrom0=True, # TODO for legacy, we keep this for now..
         bladeMassExpected=None,
-        gravity=None
+        gravity=None,
+        algo='' # TODO replace with OpenFAST
         ):
     """ 
     Returns the following structure
@@ -42,7 +43,10 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
         rootdir = os.path.dirname(ED_or_FST_file)
         EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
         if gravity is None:
-            gravity = FST['gravity']
+            try:
+                gravity = FST['gravity']
+            except:
+                pass
     else:
         EDfile=ED_or_FST_file
 
@@ -53,6 +57,31 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     twr     = weio.read(twrfile)
     bld     = weio.read(bldfile)
+    if gravity is None:
+        gravity = ED['gravity'] # Old interface, method above should work, so raise Exception here
+
+    # --- Default arguments
+    if nSpan_twr is None:
+        if algo=='OpenFAST':
+            nSpan_twr = ED['TwrNodes']
+            print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan_twr))
+        else:
+            nSpan_twr=101
+            print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan_twr))
+    else:
+        if algo=='OpenFAST':
+            print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan_twr))
+    if nSpan_bld is None:
+        if algo=='OpenFAST':
+            nSpan_bld = ED['BldNodes']
+            print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
+        else:
+            nSpan_bld=61
+            print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
+    else:
+        if algo=='OpenFAST':
+            print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
+
 
     ## --- Strucural and geometrical Inputs
     if main_axis=='x':
@@ -97,6 +126,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     IR_hub = np.zeros((3,3))
     I0_nac=np.zeros((3,3)) 
 
+	# TODO, here hub and Gen put together...
     if main_axis=='x':
         IR_hub[2,2] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
         I0_nac[0,0]= ED['NacYIner']
@@ -115,7 +145,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     # --------------------------------------------------------------------------------{
     # Bld
     Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity)) # NOTE: legacy spanfrom0
+    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
     Blds[0].MM *=bBldMass
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))
@@ -130,8 +160,9 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
         R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
         B.R_b2g= R_SB
 
-    # ShaftHubGen Body  NOTE: generator!!!
+    # ShaftHubGen Body  NOTE: generator!!! This is ugly
     Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
+    
     # Gen only
     Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
 
@@ -146,7 +177,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
     M_rot= sum([B.mass for B in Blds])
     M_RNA= M_rot + Sft.mass + Nac.mass + Yaw.mass
     # Tower Body
-    Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity)
+    Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
     #print('Stiffnening', bStiffening)
     #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
     if DEBUG:
@@ -174,7 +205,7 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=10
 
     # --- Initial conditions
     omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
-    psi_init   = ED['Azimuth']*np.pi/180 # rad
+    psi_init   = ED['Azimuth']*np.pi/180   # rad
     FA_init    = ED['TTDspFA']
     iPsi     = Struct.iPsi
     nDOFMech = len(Struct.MM)

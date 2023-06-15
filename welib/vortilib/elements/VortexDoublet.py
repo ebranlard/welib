@@ -1,5 +1,3 @@
-#--- Legacy python 2.7
-from __future__ import division
 import numpy as np
 import unittest
     

@@ -1,5 +1,3 @@
-from __future__ import print_function, division
-
 from sympy.core.backend import zeros, Matrix, diff, eye
 from sympy import solve_linear_system_LU
 # try:
