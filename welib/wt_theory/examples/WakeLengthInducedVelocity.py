@@ -37,6 +37,7 @@ def plotInduction(U0=1, yGround=-1.5, rel='Abs'):
     # uzL_2p5Dg,uz0_2p5Dg , r_25g= induction_vs_length(vL, Zcp = -5, yGround=-1.5)
 
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
     xCrits_inR=np.array([3,4,6])*2
     u = uzL/uz0*100
     ax.plot(vL_inR/2, u, 'k',label='')
@@ -55,11 +56,18 @@ def plotInduction(U0=1, yGround=-1.5, rel='Abs'):
     else:
         ax.set_ylabel(r'Induced velocity fraction $u_L/u_\infty$ [%]')
         ax.set_ylim([95,100])
-    ax.tick_params(direction='in') #, top=True, right=True, labelright=False, labeltop=False, which='both')
+    ax.tick_params(direction='in', top=True, right=True)
     ax.set_title('WT Theory - Induced velocity vs Wake length')
 
 if __name__ == '__main__':
     #fig.savefig('WakeLengthRotorInduction{}.pdf'.format(rel))
     plotInduction()
     plt.show()
+
+if __name__=="__export__":
+    plotInduction()
+
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
+
 

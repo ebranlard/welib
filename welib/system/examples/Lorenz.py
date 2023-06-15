@@ -29,7 +29,6 @@ t_eval = np.arange(0.0, tmax, dt)
 # --- Time integration
 res1 = odeint(dqdt_lorenz, y0, t_eval, p, tfirst=True) # NOTE: uses LSODA method
 res2 = solve_ivp(dqdt_lorenz, (t_eval[0],t_eval[-1]), y0, args=p, method=method, t_eval=t_eval, atol=1.49e-8, rtol=1.49e-8)
-print(res2.y.shape)
  
 # --- Plots
 fig = plt.figure()
@@ -41,15 +40,22 @@ ax = fig.add_subplot(1, 2, 2, projection='3d')
 ax.plot(res2.y[0, :], res2.y[1, :], res2.y[2, :])
 ax.set_title('solve_ivp')
 
-fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-ax.plot(t_eval, res1[:,0]    , label='')
-ax.plot(t_eval, res2.y[0,:]    , label='')
-ax.set_xlabel('Time ')
-ax.set_ylabel('x')
+fig.suptitle('System - Lorenz attractor')
+
 
 
 if __name__ == '__main__':
+
+    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    ax.plot(t_eval, res1[:,0]    , label='')
+    ax.plot(t_eval, res2.y[0,:]    , label='')
+    ax.set_xlabel('Time ')
+    ax.set_ylabel('x')
+
     plt.show()
 
+if __name__=="__export__":
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
 

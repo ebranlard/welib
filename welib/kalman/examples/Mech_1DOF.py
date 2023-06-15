@@ -11,9 +11,9 @@ from  welib.kalman.kalmanfilter import KalmanFilter
 
 MyDir=os.path.dirname(__file__)
 
-def main():
+def main(tMax=100):
     # --- Main parameters
-    tRange=[0,100]  # Time range for simulation [s]
+    tRange=[0,tMax]  # Time range for simulation [s]
     nUnderSamp=1    # 1: use same time steps as measurements, >1: undersample
     NoiseRFactor=0  # Add noise to measurements. 0: no noise
     algo     = '3'  # Define algorithm kind for splitting qh into states and inputs
@@ -146,4 +146,9 @@ if __name__ == '__main__':
     plt.show()
 
 if __name__ == '__test__':
-    main()
+    main(tMax=1)
+
+if __name__=="__export__":
+    pass
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)

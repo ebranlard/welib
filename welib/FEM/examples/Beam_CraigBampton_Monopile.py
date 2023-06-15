@@ -26,7 +26,7 @@ import welib.weio as weio
 MyDir=os.path.dirname(__file__)
 
 
-def MonopileFEM(TopMass=False):
+def MonopileFEM(TopMass=False, verbose=False):
     # --- Parameters
     BC       = 'clamped-free' # Boundary condition: free-free or clamped-free
     element  = 'frame3d'      # Type of element used in FEM
@@ -79,9 +79,10 @@ def MonopileFEM(TopMass=False):
                 element=element, BC=BC, M_tip=M_tip)
 
     # --- Show frequencies to screen
-    print('Mode   Frequency  Label ')
-    for i in np.arange(8):
-        print('{:4d} {:10.3f}   {:s}'.format(i+1,FEM['freq'][i],FEM['modeNames'][i]))
+    if verbose:
+        print('Mode   Frequency  Label ')
+        for i in np.arange(8):
+            print('{:4d} {:10.3f}   {:s}'.format(i+1,FEM['freq'][i],FEM['modeNames'][i]))
 
     # --- Perform Craig-Bampton reduction, fixing the top node of the beam
     Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = CB_topNode(FEM, nCB=8, element=element, main_axis='x')
@@ -119,7 +120,7 @@ def MonopileFEM(TopMass=False):
     return FEM, CB
 
 if __name__=='__main__':
-    FEM, CB = MonopileFEM() 
+    FEM, CB = MonopileFEM(verbose=False) 
     plt.show()
 
 if __name__=='__test__':

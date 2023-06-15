@@ -18,7 +18,7 @@ from welib.tools.clean_exceptions import *
 
 MyDir=os.path.dirname(__file__)
 
-def ModeShapesElastoDynTower():
+def ModeShapesElastoDynTower(verbose=False):
     # --- Parameters
     nel      = 100            # Number of elements along the beam
     BC       = 'clamped-free' # Boundary condition: free-free or clamped-free
@@ -31,8 +31,9 @@ def ModeShapesElastoDynTower():
         fstFile=os.path.join(MyDir,'./../../../data/NREL5MW/Main_Onshore.fst')
         from welib.yams.windturbine import WindTurbineStructure
         WT = WindTurbineStructure().fromFAST(fstFile)
-        print(WT.twr)
-        print(WT.RNA)
+        if verbose:
+            print(WT.twr)
+            print(WT.RNA)
         TowerLen = WT.twr.length
         RNAMass  = WT.RNA.mass
         RNA_J_G  = WT.RNA.masscenter_inertia
@@ -53,13 +54,15 @@ def ModeShapesElastoDynTower():
              [0,1,0]])
     RNA_J_G= R_OF2FEM.dot(RNA_J_G).dot(R_OF2FEM.T)
     RNA_G  = R_OF2FEM.dot(RNA_G)
-    print('RNA_J_G\n',np.around(RNA_J_G,6))
-    print('RNA_G\n',RNA_G)
+    if verbose:
+        print('RNA_J_G\n',np.around(RNA_J_G,6))
+        print('RNA_G\n',RNA_G)
 
     # --- Set RNA rigid body mass matrix at tower top
     #M_tip= None
     M_tip= rigidBodyMassMatrixAtP(m=RNAMass, J_G=RNA_J_G*0, Ref2COG=RNA_G)
-    print('M_Tip\n',np.around(M_tip,2))
+    if verbose:
+        print('M_Tip\n',np.around(M_tip,2))
 
     TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
     twr = weio.FASTInputFile(TwrFile).toDataFrame()
@@ -83,10 +86,10 @@ def ModeShapesElastoDynTower():
 
     return FEM
 
-def compareFEMwithTheory():
+def compareFEMwithTheory(FEM):
     # --- Compare modes with theory
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.94, bottom=0.11, hspace=0.30, wspace=0.30)
     COLORS=plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     x =FEM['xNodes'][0,:]
@@ -94,45 +97,49 @@ def compareFEMwithTheory():
     QY1 = [Q [1::6, iMode] for iMode in range(10) if FEM ['modeNames'][iMode].startswith('uy')]
 
     for iModeY in range(3):
-        ax.plot(x   , QY1[iModeY], 's', c=COLORS[iModeY], label='FEM (no top mass) Mode {}'.format(iModeY+1)) # FEM no top mass
+        ax.plot(x   , QY1[iModeY], '-', c=COLORS[iModeY], label='FEM Mode {}'.format(iModeY+1)) # FEM no top mass
     ax.set_xlabel('Beam span [m]')
     ax.set_ylabel('Deflection [m]')
     ax.tick_params(direction='in')
-    ax.set_title('FEM - mode shapes of a beam')
+    ax.set_title('FEM - mode shapes of tower')
     ax.legend()
 
     return FEM
 
-def plotModes(FEM):
-    nModesPlot=8
+def plotModes(FEM, print=False):
     # --- Show frequencies to screen
-    print('Mode   Frequency  Label ')
-    for i in np.arange(nModesPlot):
-        print('{:4d} {:10.3f}   {:s}'.format(i+1,FEM['freq'][i],FEM['modeNames'][i]))
+    if print:
+        print('Mode   Frequency  Label ')
+        for i in np.arange(nModesPlot):
+            print('{:4d} {:10.3f}   {:s}'.format(i+1,FEM['freq'][i],FEM['modeNames'][i]))
 
     # --- Plot mode components for first few modes
+    nModesPlot=4
     x=FEM['xNodes'][0,:]
     Q=FEM['Q']
 
-    fig,axes = plt.subplots(1, nModesPlot, sharey=False, figsize=(12.4,2.5))
-    fig.subplots_adjust(left=0.04, right=0.98, top=0.91, bottom=0.11, hspace=0.40, wspace=0.30)
-    for i in np.arange(nModesPlot):
-        axes[i].plot(x, Q[0::6,i]  ,'-'  , label='ux')
-        axes[i].plot(x, Q[1::6,i]  ,'-'  , label='uy')
-        axes[i].plot(x, Q[2::6,i]  ,'-'  , label='uz')
-        axes[i].plot(x, Q[3::6,i]  ,':'  , label='vx')
-        axes[i].plot(x, Q[4::6,i]  ,':'  , label='vy')
-        axes[i].plot(x, Q[5::6,i]  ,':'  , label='vz')
-        axes[i].set_xlabel('')
-        axes[i].set_ylabel('')
-        axes[i].set_title(FEM['modeNames'][i])
+    fig,axes = plt.subplots(2, int(nModesPlot/2), sharex=True, sharey=False, figsize=(6.4,3.9)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.09, right=0.97, top=0.94, bottom=0.15, hspace=0.27, wspace=0.23)
+    axes=np.array(axes).flatten()
+    for i,ax in enumerate(axes):
+        ax.plot(x, Q[0::6,i]  ,'-'  , label=r'$u_x$')
+        ax.plot(x, Q[1::6,i]  ,'--'  , label=r'$u_y$')
+        ax.plot(x, Q[2::6,i]  ,':'  , label=r'$u_z$')
+        #axes[i].plot(x, Q[3::6,i]  ,':'  , label='vx')
+        #axes[i].plot(x, Q[4::6,i]  ,':'  , label='vy')
+        #axes[i].plot(x, Q[5::6,i]  ,':'  , label='vz')
+        ax.set_xlabel('x [m]')
+        ax.set_ylabel('')
+        ax.set_title(FEM['modeNames'][i])
         if i==0:
             axes[i].legend()
+    for ax in axes:
+        ax.tick_params(direction='in', top=True, right=True)
 
 if __name__=='__main__':
     FEM  = ModeShapesElastoDynTower()
-
     plotModes(FEM)
+    FEM = compareFEMwithTheory(FEM) # TODO unfinished
 
     plt.show()
 
@@ -163,7 +170,9 @@ if __name__=='__test__':
 #     np.testing.assert_equal(modeNames[7], 'vx1')
 
 if __name__=='__export__':
-    pass
-#     from welib.tools.repo import export_figs_callback
-#     FEM= compareFEMwithTheory()
-#     export_figs_callback(__file__)
+    from welib.tools.repo import export_figs_callback
+
+    FEM  = ModeShapesElastoDynTower()
+    FEM = compareFEMwithTheory(FEM) # TODO unfinished
+
+    export_figs_callback(__file__)

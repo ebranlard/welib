@@ -9,11 +9,13 @@ from .Polar import Polar as Pol
 A1_Jones, A2_Jones, b1_Jones, b2_Jones = 0.165 , 0.335 , 0.0455 , 0.3
 A1_FAST,  A2_FAST,  b1_FAST,  b2_FAST  = 0.3   , 0.7   , 0.14   , 0.53
 
-def wagner(tau_t, constants='Jones'):
+def wagner(tau_t, constants=None, A1=None, A2=None, b1=None, b2=None):
     """ 
     Lift coefficient, Cl, from Wagner function
     INPUTS:
     - tau_t: dimensionless time
+    - constants: string in ['Jones', 'OpenFAST'] or None 
+    - A1, A2, b1, b2 : wagner constants, should be provided if constants is None
 
     Reference:  Wagner - R.T Jones approximation (Jones 1938)
     """
@@ -21,6 +23,13 @@ def wagner(tau_t, constants='Jones'):
         A1, A2, b1, b2 = A1_Jones, A2_Jones, b1_Jones, b2_Jones
     elif constants=='OpenFAST':
         A1, A2, b1, b2 = A1_FAST, A2_FAST, b1_FAST, b2_FAST
+    elif constants is None:
+        if all([A1, A2, b1, b2]):
+            pass # all good
+        else:
+            raise Exception('Provide A1, A2, b1, b2 if constants is None')
+
+
     else:
         raise NotImplementedError('Constants {}'.format(constants))
 

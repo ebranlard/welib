@@ -14,7 +14,7 @@ from welib.vortilib.elements.InviscidVortexPatch   import * # ivp_u, ivp_omega
 from welib.vortilib.elements.LambOseen             import * # lo_omega
 from welib.vortilib.elements.VortexPatch2DGaussian import * # vpg_omega
 
-def main():
+def main(test=False):
     # --- Parameters
     minSpeed=0
     nX=30
@@ -27,7 +27,7 @@ def main():
     SmoothParam = 0.1 # as function of diagonal length (should be <1 since no projection of omega)
     KernelOrder = 2
 
-    # Control points
+    # --- Control points
     vX = np.linspace(-8,8,nX)
     vY = np.linspace(-8,8,nY)
     XCP,YCP = np.meshgrid(vX,vY)
@@ -35,7 +35,8 @@ def main():
     Ycp = YCP.flatten()
     Area = (vX[1]-vX[0])*(vY[1]-vY[0]) # Area occupied by each particles
     dr   = np.sqrt((vX[1]-vX[0])**2 + (vY[1]-vY[0])**2) # Diagonal of cells, used for regularization
-    # Particles, put at control points...
+    # --- Vorticity distribution, discretized onto particles
+    # Particles are put at control points here
     PartP     = np.column_stack((Xcp, Ycp))
     u_th = None
     if distribution=='LambOseen':
@@ -56,19 +57,22 @@ def main():
         maxSpeed = 0.057
     else:
         raise NotImplementedError('')
-
+    # Particle intensities: omega * Area (where omega is a function)
     PartGammas = omega(Xcp, Ycp)*Area
 
 
     # --- Computing U
-    print('Computing...')
+    if not test:
+        print('Computing...')
     U_num = vps_u(PartP,PartP[:,:2],PartGammas,SmoothModel,KernelOrder,SmoothParam=SmoothParam*dr)
-    print('Done!')
+    if not test:
+        print('Done!')
     Ux_num = np.reshape(U_num[:,0],(nY,nX))
     Uy_num = np.reshape(U_num[:,1],(nY,nX))
     Speed_num = np.sqrt(Ux_num**2 + Uy_num**2)
     #omega_z_num_calc,__ = matlab_curl_2d(X,Y,U2,V2)
-    print('min: ',np.min(Speed_num.ravel()),' - max: ',np.max(Speed_num.ravel()))
+    if not test:
+        print('min: ',np.min(Speed_num.ravel()),' - max: ',np.max(Speed_num.ravel()))
 
 
     fig,axes = plt.subplots(1, 2, sharey=False, figsize=(6.2,4.6)) # (6.4,4.8)
@@ -91,7 +95,8 @@ def main():
         Ux_th = np.reshape(Ux_th,(nY,nX))
         Uy_th = np.reshape(Uy_th,(nY,nX))
         Speed_th = np.sqrt(Ux_th**2 + Uy_th**2)
-        print('min: ',np.min(Speed_th.ravel()),' - max: ',np.max(Speed_th.ravel()))
+        if not test:
+            print('min: ',np.min(Speed_th.ravel()),' - max: ',np.max(Speed_th.ravel()))
         ax=axes[1]
         im = ax.contourf(XCP, YCP, Speed_th, levels=np.linspace(minSpeed,maxSpeed,250), vmin=minSpeed, vmax=maxSpeed)
         sp=ax.streamplot(vX,vY,Ux_th,Uy_th,color='k',start_points=start.T,linewidth=0.7,density=30,arrowstyle='-')
@@ -99,19 +104,20 @@ def main():
         ax.set_xlabel('x [m]')
         ax.set_aspect('equal','box')
         ax.set_title('Theory')
+    fig.suptitle('Vortilib - 2D vorticity patch discretized with vortex points')
     # cb=fig.colorbar(im)
 
 
-
-    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.2,4.6)) # (6.4,4.8)
-    fig.subplots_adjust(left=0.12, right=0.98, top=0.96, bottom=0.12, hspace=0.20, wspace=0.20)
-    ix=np.argmin(np.abs(vX))
-    iy=np.argmin(np.abs(vY))
-    ax.plot(vY,Ux_num[:,ix], label='x=0 num')
-    ax.plot(vX,Uy_num[iy,:], label='y=0 num')
-    ax.plot(vY,Ux_th[:,ix] , label='x=0 th')
-    ax.plot(vX,Uy_th[iy,:] , label='y=0 th')
-    ax.legend()
+    if not test:
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.2,4.6)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.98, top=0.96, bottom=0.12, hspace=0.20, wspace=0.20)
+        ix=np.argmin(np.abs(vX))
+        iy=np.argmin(np.abs(vY))
+        ax.plot(vY,Ux_num[:,ix], label='x=0 num')
+        ax.plot(vX,Uy_num[iy,:], label='y=0 num')
+        ax.plot(vY,Ux_th[:,ix] , label='x=0 th')
+        ax.plot(vX,Uy_th[iy,:] , label='y=0 th')
+        ax.legend()
 
 
 
@@ -123,9 +129,9 @@ if __name__ == '__main__':
 #if __name__=="__test__":
 #    main()
 #    pass
-#if __name__=="__export__":
-#    main()
-#    from welib.tools.repo import export_figs_callback
-#    export_figs_callback(__file__)
+if __name__=="__export__":
+   main(test=True)
+   from welib.tools.repo import export_figs_callback
+   export_figs_callback(__file__)
 
 

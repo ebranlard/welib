@@ -58,7 +58,7 @@ def main():
     ax.set_xlabel(r'$x/a$ [-]')
     ax.set_ylabel(r'$r/a$ [-]')
     ax.set_aspect('equal','box')
-    ax.tick_params(direction='in')
+    ax.tick_params(direction='in', top=True, right=True)
     ax.set_title('Vortilib - Flow about an Ellipsoid')
 
 

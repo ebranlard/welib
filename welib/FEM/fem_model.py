@@ -157,7 +157,7 @@ class FEMModel(GraphModel):
 
         # 
         if Nodes is not None:
-            print('>>>', self.Nodes[0].data)
+            #print('>>>', self.Nodes[0].data)
             if 'DOFs' not in self.Nodes[0].data.keys():
                 print('>>> Attributing DOFs to Nodes and Elements')
                 g = distributeDOF(self, mainElementType=mainElementType)
