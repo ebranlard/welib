@@ -51,7 +51,7 @@ class TestSection(unittest.TestCase):
         # --- Frequencies
         u0 = [Ux, Uy, theta_p*np.pi/180]
         xop = sec.equilibrium(x0=q0, u0=u0)
-        freq_d, zeta, Q, freq_0 = sec.eigA(x0=xop, u0=u0)
+        freq_d, zeta, Q, freq_0, A = sec.eigA(x0=xop, u0=u0)
         #print('Frequencies',freq_0)
         #print('Damping    ',zeta*100)
         # print('Q\n',np.abs(Q))
