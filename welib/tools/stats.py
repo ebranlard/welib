@@ -240,7 +240,7 @@ def bin_DF(df, xbins, colBin, stats='mean'):
     Perform bin averaging of a dataframe
     INPUTS:
       - df   : pandas dataframe
-      - xBins: end points delimiting the bins, array of ascending x values)
+      - xBins: end points delimiting the bins, array of ascending x values
       - colBin: column name (string) of the dataframe, used for binning 
     OUTPUTS:
        binned dataframe, with additional columns 'Counts' for the number 
@@ -264,13 +264,13 @@ def bin_DF(df, xbins, colBin, stats='mean'):
 
 def bin_signal(x, y, xbins=None, stats='mean', nBins=None):
     """ 
-    Perform bin averaging of a dataframe
+    Perform bin averaging of a signal
     INPUTS:
-      - df   : pandas dataframe
-      - xBins: end points delimiting the bins, array of ascending x values)
-      - colBin: column name (string) of the dataframe, used for binning 
+      - x: x-values 
+      - y: y-values, signal values
+      - xBins: end points delimiting the bins, array of ascending x values
     OUTPUTS:
-       binned dataframe, with additional columns 'Counts' for the number 
+      - xBinned, yBinned
 
     """
     if xbins is None:
@@ -280,6 +280,55 @@ def bin_signal(x, y, xbins=None, stats='mean', nBins=None):
     df = pd.DataFrame(data=np.column_stack((x,y)), columns=['x','y'])
     df2 = bin_DF(df, xbins, colBin='x', stats=stats)
     return df2['x'].values, df2['y'].values
+
+
+
+def bin2d_signal(x, y, z, xbins=None, ybins=None, nXBins=None, nYBins=None):
+    """ 
+    Bin signal z based on x and y values using xbins and ybins
+
+    """
+    if xbins is None:
+        xmin, xmax = np.min(x), np.max(x)
+        dx = (xmax-xmin)/nXBins
+        xbins=np.arange(xmin, xmax+dx/2, dx)
+    if ybins is None:
+        ymin, ymax = np.min(y), np.max(y)
+        dy = (ymax-ymin)/nYBins
+        ybins=np.arange(ymin, ymax+dy/2, dy)
+
+    x = np.asarray(x).flatten()
+    y = np.asarray(y).flatten()
+    z = np.asarray(z).flatten()
+
+    Counts = np.zeros((len(xbins)-1, len(ybins)-1))
+    XMean  = np.zeros((len(xbins)-1, len(ybins)-1))*np.nan
+    YMean  = np.zeros((len(xbins)-1, len(ybins)-1))*np.nan
+    ZMean  = np.zeros((len(xbins)-1, len(ybins)-1))*np.nan
+    ZStd   = np.zeros((len(xbins)-1, len(ybins)-1))*np.nan
+
+    xmid = xbins[:-1] + np.diff(xbins)/2
+    ymid = ybins[:-1] + np.diff(ybins)/2
+    YMid, XMid = np.meshgrid(ymid, xmid)
+
+    for ixb, xb in enumerate(xbins[:-1]):
+        print(ixb)
+        bX = np.logical_and(x >= xb, x <= xbins[ixb+1]) # TODO decide on bounds
+        for iyb, yb in enumerate(ybins[:-1]):
+            bY = np.logical_and(y >= yb, y <= ybins[iyb+1]) # TODO decide on bounds
+
+            bXY = np.logical_and(bX, bY)
+            Counts[ixb, iyb] = sum(bXY)
+            if Counts[ixb,iyb]>0:
+                ZMean [ixb, iyb] = np.mean(z[bXY])
+                ZStd  [ixb, iyb] = np.std( z[bXY])
+                XMean [ixb, iyb] = np.mean(x[bXY])
+                YMean [ixb, iyb] = np.mean(y[bXY])
+
+    return XMean, YMean, ZMean, ZStd, Counts, XMid, YMid
+
+
+
 
 
 
