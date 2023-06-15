@@ -199,6 +199,7 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
         run_if_ext_missing=None,
         discard_if_ext_present=None,
         dispatch=False,
+        stdOutToFile=False,
         echo=True):
     """ Write one or several batch file, all paths are written relative to the batch file directory.
     The batch file will consist of lines of the form:
@@ -217,6 +218,7 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
     - discard_if_ext_present: similar to run_if_ext_missing, but this time, the lines are not written to the batch file
                           The test for existing outputs is done before writing the batch file
     - dispatch: if True, the input files are dispatched (the first nBatches files are dispathced on the nBatches)
+    - stdOutToFile: if True, the output of the command is redirected to filename.stdout
 
     example:
        writeBatch('dir/MyBatch.bat', ['dir/c1.fst','dir/c2.fst'], 'op.exe', flags='-v', run_if_ext_missing='.outb')
@@ -257,6 +259,9 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
                 ff_abs = os.path.abspath(ff)
                 ff_rel = os.path.relpath(ff_abs, batchdir)
                 cmd = fastExe_rel + flags + ' '+ ff_rel + flags_after
+                if stdOutToFile:
+                    stdout = os.path.splitext(ff_rel)[0]+'.stdout'
+                    cmd += ' > ' +stdout
                 if run_if_ext_missing is not None:
                     # TODO might be windows only
                     ff_out = os.path.splitext(ff_rel)[0] + run_if_ext_missing

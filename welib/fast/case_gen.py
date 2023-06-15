@@ -233,9 +233,13 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
             removeFASTOuputs(wd)
         if os.path.exists(wd) and removeAllowed:
             shutil.rmtree(wd, ignore_errors=False, onerror=handleRemoveReadonlyWin)
-        copyTree(templateDir, wd)
-        if removeAllowed:
-            removeFASTOuputs(wd)
+        templateDir = os.path.normpath(templateDir)
+        wd          = os.path.normpath(wd)
+        # NOTE: need some special handling if path are the sames
+        if templateDir!=wd:
+            copyTree(templateDir, wd)
+            if removeAllowed:
+                removeFASTOuputs(wd)
 
 
     TemplateFiles=[]
