@@ -123,7 +123,18 @@ class SteadyBEM():
         polars=[]
         ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
         for ipolar in  ProfileID:
-            polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
+            nTabs = F.AD.AF[ipolar-1]['NumTabs']
+            if nTabs==1:
+                polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
+            else:
+                print('[WARN] BEM multiple polar present')
+                vRe   = [F.AD.AF[ipolar-1]['re_{}'.format(i+1)] for i in range(nTabs)]
+                vCtrl = [F.AD.AF[ipolar-1]['Ctrl_{}'.format(i+1)] for i in range(nTabs)]
+                print(vRe)
+                print(vCtrl)
+                # Taking last polar...
+                polars.append(F.AD.AF[ipolar-1]['AFCoeff_{}'.format(nTabs)])
+                
         self.polars = polars
         self.bAIDrag  = F.AD['AIDrag']
         self.bTIDrag  = F.AD['TIDrag']
@@ -616,7 +627,7 @@ def rotPolar2Airfoil(tau, kappa, beta):
 def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, 
         drdz=1, algorithm='legacy', 
-        CTcorrection='AeroDyn', swirlMethod='AeroDyn'):
+        CTcorrection='AeroDyn15', swirlMethod='AeroDyn'):
     """Compute the induction coefficients
 
         Inputs

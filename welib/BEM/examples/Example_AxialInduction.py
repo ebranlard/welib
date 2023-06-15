@@ -21,7 +21,7 @@ def main(test=False):
     ax.plot(a ,Ct_a(a,method='Glauert'),'-' ,label = 'Glauert (ac=1/3)')
     ax.plot(a ,Ct_a(a,method='Spera')  ,'.' ,label = 'Spera (ac=0.3)')
     # Functions that depend on Ct only
-    ax.plot(a_Ct(Ct,method = 'AeroDyn'         ),Ct,'-' ,label = 'AeroDyn'          )
+    ax.plot(a_Ct(Ct,method = 'AeroDyn15'       ),Ct,'-' ,label = 'AeroDyn'          )
     ax.plot(a_Ct(Ct,method = 'HAWC2'           ),Ct,'--',label = 'HAWC2'            )
     ax.plot(a_Ct(Ct,method = 'WEHandbook'      ),Ct,':' ,label = 'Handbook'         )
     ax.plot(a_Ct(Ct,method = 'GlauertEmpirical'),Ct,'-.',label = 'Glauert Empirical')

@@ -13,7 +13,7 @@ class Test(unittest.TestCase):
         # Without relaxation, high thrust correction will lead to large hysteris 
         # in axial induction
         bSwirl=True
-        CTcorrection='AeroDyn'
+        CTcorrection='AeroDyn15'
         swirlMethod='HAWC2'
         relaxation=0.5
         a_last=np.array([0])
@@ -80,7 +80,7 @@ class Test(unittest.TestCase):
         RPM=10
         # Read a FAST model to get Aerodynamic parameters to initialze unstady BEM code
         BEM = UnsteadyBEM(os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst'))
-        BEM.CTcorrection = 'AeroDyn' 
+        BEM.CTcorrection = 'AeroDyn15' 
         BEM.swirlMethod  = 'AeroDyn' 
         BEM.bUseCm = True  # Use Moment 
         BEM.bSwirl = True 

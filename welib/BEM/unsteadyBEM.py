@@ -86,7 +86,7 @@ class UnsteadyBEM():
         self.nIt = 200  # maximum number of iterations in BEM
         self.aTol = 10 ** -6 # tolerance for axial induction factor convergence
         self.relaxation = 0.5  # relaxation factor in axial induction factor
-        self.CTcorrection = 'AeroDyn'  #  type of CT correction more model implementated in the future like 'spera'
+        self.CTcorrection = 'AeroDyn15'  #  type of CT correction more model implementated in the future like 'spera'
         self.swirlMethod  = 'AeroDyn' # type of swirl model
         self.bUseCm = True  # Use Moment 
         self.bSwirl = True  # swirl flow model enabled / disabled
@@ -166,7 +166,17 @@ class UnsteadyBEM():
         polars=[]
         ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
         for ipolar in  ProfileID:
-            polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
+            nTabs = F.AD.AF[ipolar-1]['NumTabs']
+            if nTabs==1:
+                polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
+            else:
+                print('[WARN] unsteadyBEM multiple polar present')
+                vRe   = [F.AD.AF[ipolar-1]['re_{}'.format(i+1)] for i in range(nTabs)]
+                vCtrl = [F.AD.AF[ipolar-1]['Ctrl_{}'.format(i+1)] for i in range(nTabs)]
+                print(vRe)
+                print(vCtrl)
+                # Taking last polar...
+                polars.append(F.AD.AF[ipolar-1]['AFCoeff_{}'.format(nTabs)])
         self.polars = polars
         self.bAIDrag  = F.AD['AIDrag']
         self.bTIDrag  = F.AD['TIDrag']
@@ -280,6 +290,7 @@ class UnsteadyBEM():
         self.chi0     = np.zeros(nt)
         self.RtVAvg   = np.zeros((nt,3))
         self.psi      = np.zeros(nt)
+        self.Omega    = np.zeros(nt)  # [rpm]
         self.RtArea   = np.zeros(nt)
         self.SkewAzimuth  = np.zeros((nt,nB))
         # Blade blades
@@ -323,6 +334,7 @@ class UnsteadyBEM():
         df = pd.DataFrame()
         df['Time_[s]']        = self.time
         df['Azimuth_[deg]']   = np.mod(self.psi,360)
+        df['RtSpeed_[rpm]']   = self.Omega
         df['RtAeroFxh_[N]']   = self.Thrust
         df['RtAeroMxh_[N-m]'] = self.Torque
         df['RtAeroPwr_[W]']   = self.Power
@@ -346,7 +358,7 @@ class UnsteadyBEM():
 
 
         for iB in np.arange(self.nB):
-            df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.SkewAzimuth[:,iB],360)
+            df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.psi+self.SkewAzimuth[:,iB],360)
 
         print('>>> {} outputs'.format(self.projMod))
         if self.projMod=='polar': # TODO replace with "outProj"
@@ -467,6 +479,11 @@ class UnsteadyBEM():
         xBEM0: BEM states at t-1
 
         INPUTS:
+         - t: current time step [s]
+         - dt: time interval [s]
+         - xd0: discreate states at current time step. Instance of BEMDiscreteStates
+         - psi: current azimuth [rad]
+         - psiB0: azimuthal offsets for each blades compared to psi 
          - origin_pos_gl: position of rotor origin in global coordinates
          - omega_gl:  rotational speed of rotor in global coordinates
          - R_r2g   :  transformation from rotor coordinates to global
@@ -645,6 +662,11 @@ class UnsteadyBEM():
                         relaxation=p.relaxation, a_last=xd0.a,
                         algorithm=self.algorithm, drdz=drdz
                 )
+                # TODO consider using these
+                k  = sigma*cnForAI/(4*F)*Vrel_norm_a**2/(Vrel_p[:,:,0]**2)            /drdz
+                kp =-sigma*ctForTI/(4*F)*Vrel_norm_a**2/(Vrel_p[:,:,0]*Vrel_p[:,:,1]) /drdz # NOTE: yp has different convention OpenFAST/WELIB
+                #a[:,:]      = 0.3
+                #aprime[:,:] = 0.02
 
             if np.any(np.isnan(a)):
                 print('>> BEM crashing')
@@ -665,6 +687,19 @@ class UnsteadyBEM():
                 xd0.a      = a.copy()
                 xd0.Vind_g = xd1.Vind_qs_g.copy()
                 xd0.Vind_p = xd1.Vind_qs_p.copy()
+            #print('')
+            #print('Vflw',Vflw_p[0,19,:])
+            #print('F      ',F[0,19])
+            #print('phi tl ',phi_tl[0,19])
+            #print('sigma  ',sigma[0,19])
+            #print('Vrel_p ',Vrel_p[0,19,:])
+            #print('Vrel_a ',Vrel_a[0,19,:])
+            #print('cn     ',cnForAI[0,19], ctForTI[0,19])
+            #print('drdz   ',drdz) # TODO
+            #print('k      ',k[0,19], kp[0,19])
+
+
+
         if firstCallEquilibrium:
             # Initialize dynamic wake variables
             xd0.Vind_qs_p  = xd1.Vind_qs_p.copy()
@@ -808,6 +843,7 @@ class UnsteadyBEM():
         self.phi[it]   = phi*180./pi
         self.Gamma[it]  = 0.5*Re*Cl*p.kinVisc*10**6 # Circulation [m^2/s]
         self.psi[it]  = psi*180/pi
+        self.Omega[it]  = Omega*60/(2*np.pi) # [rpm]
         self.RtArea[it]  = pi*R_p**2
 
         for iB in np.arange(nB):
@@ -919,6 +955,7 @@ class UnsteadyBEM():
                     )
             #if np.mod(t,1)<dt/2:
             #    print(t)
+            # --- Aditional storage
         df = self.toDataFrame()
         return df
 
