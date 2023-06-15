@@ -38,6 +38,7 @@ References:
 """
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from collections import OrderedDict
 # Local
 from welib.airfoils.Polar import Polar
@@ -148,6 +149,32 @@ class Section(object):
         ppol = polarParams(self._pol, chord=self._chord, tau=self._tau)
         self._ppol = ppol
 
+    def plotPolar(self):
+        pol    = self._ppol['Polar']
+        fPolar = self._ppol['fPolar'] #['cl','cd','cm','fs','cl_inv','cl_fs'], radians=True)
+        # p['alpha_0']  = alpha_0  # TODO HARMONIZATION WITH DS
+        # p['Cl_slope'] = Cl_slope  # TODO HARMONIZATION WITH DS
+        # p['alpha_range']     = None
+        # p['alpha_range_lin'] = None
+
+        alpha = np.linspace(pol.alpha[0], pol.alpha[-1], 100)
+        M     = fPolar(alpha)
+
+
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(alpha*180/np.pi, M[0,:], '-', label = 'cl')
+        ax.plot(alpha*180/np.pi, M[1,:], '-', label = 'cd')
+        ax.plot(alpha*180/np.pi, M[2,:], '-', label = 'cm')
+        ax.plot(alpha*180/np.pi, M[3,:], '-', label = 'fs')
+        ax.plot(alpha*180/np.pi, M[4,:], '--', label = 'cl_inv')
+        ax.plot(alpha*180/np.pi, M[5,:], ':', label = 'cl_fs')
+
+        ax.set_xlabel('angle of attack [deg]')
+        ax.legend()
+        #plt.show()
+        return ax
+
     # --------------------------------------------------------------------------------}
     # --- Dynamic stall 
     # --------------------------------------------------------------------------------{
@@ -213,6 +240,11 @@ class Section(object):
     def calcOutput(self, t, q, u, p):
         S = nonlinear_model(t, q, u, p, calcOutput=True)
         return S
+
+    # For convenience
+    def Faero(self, t, q, u, p, calcOutput=False, m=None):
+        return Faero(t, q, u, p, calcOutput=calcOutput, m=m)
+
 
 
     # TODO get rid of this
@@ -291,8 +323,8 @@ class Section(object):
                 q = state0
                 qx, qxd, qxa_ua, qxa_di = split_q(q, p['Iqxs'], p['Iqxsd'], p['Iqxa_ua'], p['Iqxa_di'])
                 q_full, x, xd = inflate_q(q, Iq=p['Iq'])
-                V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(0, x, xd, qxa_di, p, self.u_sim, point='Q')
-                V_rel2_ds, phi_ds, alpha_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(0, x, xd, qxa_di, p, self.u_sim, point=p['ds_inflow_point'])
+                V_rel2_AC, phi_AC, alpha_AC, Vrel_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(0, x, xd, qxa_di, p, self.u_sim, point='Q')
+                V_rel2_ds, phi_ds, alpha_ds, Vrel_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(0, x, xd, qxa_di, p, self.u_sim, point=p['ds_inflow_point'])
                 if di_eq:
                     if p['dynamicInflowModel'] is None:
                         pass
@@ -347,7 +379,12 @@ class Section(object):
     def saveSim(self, filename, df=None):
         from welib.tools.pandalib import remap_df
         # --- Scale
-        ColMap={'alpha_AC':'{alpha_AC}*180/np.pi', 'alpha_ds':'{alpha_ds}*180/np.pi'}
+        ColMap={'alpha_AC':'{alpha_AC}*180/np.pi',
+                'alpha_ds':'{alpha_ds}*180/np.pi',
+                'thetat':  '{thetat}*180/np.pi',
+                'theta':   '{theta}*180/np.pi',
+                'pitch':   '{pitch}*180/np.pi',
+                }
         if df is None:
             df = self.df_sim
         df = remap_df(df, ColMap)
@@ -405,13 +442,13 @@ class Section(object):
         else:
             nq2=0
         freq_d, zeta, Q, freq_0 = eigA(A, nq=nq2, fullEV=fullEV, normQ=normQ, sort=True)
-        return freq_d, zeta, Q, freq_0 
+        return freq_d, zeta, Q, freq_0 , A
 
 
     # --------------------------------------------------------------------------------}
     # --- Parametric/Campbell
     # --------------------------------------------------------------------------------{
-    def campbell(self, WS, RPM, Pitch, A=None, AP=None):
+    def campbell(self, WS, RPM, Pitch, A=None, AP=None, sx_sim=None):
         """ 
         - WS [deg]
         - Pitch [deg]
@@ -439,13 +476,13 @@ class Section(object):
             self.setConstantInputs(Ux, Uy, theta_p=theta_p)
             self.setDynInflow(di_model=self.di_model, a0=a0, ap0=ap0)
             self.setDynStall(ds_model=self.ds_model)
-            self.setParameters()
+            self.setParameters(sx_sim=sx_sim) # TODO
             # --- Frequencies
             if qop is None:
                 qop=self.q0
             qop = self.equilibrium(x0=qop, u0=u0, tol=1e-8, verbose=False)
             A,_,_,_ = self.linearize(x0=qop, u0=u0)
-            freq_d, zeta, Q, freq_0 = self.eigA(A=A)
+            freq_d, zeta, Q, freq_0, A = self.eigA(A=A)
             # --- Store
             AMat.append(A)
             S = self.calcOutput(0, qop, self.u_sim, self.p_sim)
@@ -601,14 +638,14 @@ def nonlinear_model(t, q, u, p, calcOutput=False):
     OUTPUTS:
      - dq/dt, dfs
     """
-    # Compute useful variables
-    m = calcMisc(t, q, p, u)
+    # Compute variables useful to several other functions
+    m = calcMisc(t, q, u, p)
 
     # Aerodynamic Force (length 3)
-    Fa, aeroOut = Faero(t, m['x'], m['xd'], m['qxa_ua'], m['qxa_di'], p, u, calcOutput=calcOutput)
+    Fa, aeroOut = Faero(t, q, u, p, calcOutput=calcOutput, m=m)
 
     # Inertial force (length 3)
-    Fs = Fstruct(t, q, p, u, calcOutput=calcOutput, m=m)
+    Fs = Fstruct(t, q, u, p, calcOutput=calcOutput, m=m)
 
     # Total force
     F = np.zeros(3)
@@ -627,13 +664,20 @@ def nonlinear_model(t, q, u, p, calcOutput=False):
         ## Structural states
         d['x']       = m['x'][0]
         d['y']       = m['x'][1]
-        d['theta']   = m['x'][2]
+        d['thetat']  = m['x'][2]
         d['xd']      = m['xd'][0]
         d['yd']      = m['xd'][1]
         d['thetad']  = m['xd'][2]
         d['xdd']     = xdd[0]
         d['ydd']     = xdd[1]
         d['thetadd'] = xdd[2]
+        # Inputs
+        # (NOTE: computed with "calc='u')
+        #m['Ux'], m['Uy'], m['theta_p'] = inputsAtTime(t, u)
+        # Struct
+        d['theta'] = m['theta']
+        d['rho_x'] = m['rho_x']
+        d['rho_y'] = m['rho_y']
         ## Aero
         d.update(aeroOut)
         if p['dynamicStallModel'] == 'oye':
@@ -839,11 +883,13 @@ def dxd_dt(t, x, xd, F, p, m=None):
     xdd = np.dot(p['invM'], RHS)
     return xdd
 
-def calcMisc(t, q, p, u):
+def calcMisc(t, q, u, p):
+    """ Compute useful variables used by many subfunctions 
+    In particular, split the state vector into structural states and aero states
+    """
     m=dict()
     # Split state into positions and speeds (qx, qxd), uaero states (qxa_ua), dynamic inflow states (qxa_di)
     m['qx'], m['qxd'], m['qxa_ua'], m['qxa_di'] = split_q(q, p['Iqxs'], p['Iqxsd'], p['Iqxa_ua'], p['Iqxa_di'])
-        
 
     # Structural states (length 3, even if not all DOFs are actice)
     m['q_full'], m['x'], m['xd'] = inflate_q(q, Iq=p['Iq'])
@@ -885,8 +931,8 @@ def dxa_dt(t, x, xd, xa_ua, xa_di, p, u):
     Ux, Uy, _ = inputsAtTime(t, u)
 
     # Main inflow variables at dynamic stall point 
-    V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, xa_di, p, u, point='Q')
-    V_rel2_ds, phi_ds, alpha_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(t, x, xd, xa_di, p, u, point=p['ds_inflow_point'])
+    V_rel2_AC, phi_AC, alpha_AC, Vrel_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, xa_di, p, u, point='Q')
+    V_rel2_ds, phi_ds, alpha_ds, Vrel_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(t, x, xd, xa_di, p, u, point=p['ds_inflow_point'])
 
     # --- Dynamic stall (unsteady airfoil aerodynamics)
     if p['dynamicStallModel'] is None:
@@ -1023,9 +1069,9 @@ def aeroVarsSS(t, x, xd, xa_di, p, u, point='Q'):
     # Induction 
     W, Wqs = inducedVelocities(xa_di, U[0], U[1], Vel[0], Vel[1], p)
 
-    Vrel2, phi, alpha =  aeroTriangle(U[0], U[1], W[0], W[1], Vel[0], Vel[1], theta, smallAngles=False)
+    Vrel, Vrel2, phi, alpha =  aeroTriangle(U[0], U[1], W[0], W[1], Vel[0], Vel[1], theta, smallAngles=False)
 
-    return Vrel2, phi, alpha, U, Vel, Wqs, W
+    return Vrel2, phi, alpha, Vrel, U, Vel, Wqs, W
 
 
 def inducedVelocities(xa_di, Ux, Uy, Velx, Vely, p):
@@ -1045,16 +1091,16 @@ def inducedVelocities(xa_di, Ux, Uy, Velx, Vely, p):
     return W, Wqs
 
 
-def Fstruct(t, q, p, u, calcOutput=False, m=None):
+def Fstruct(t, q, u, p, calcOutput=False, m=None):
     if m is None:
-        m = calcMisc(t, q, p, u)
+        m = calcMisc(t, q, u, p)
     Fs = np.zeros(3)
     Fs[0] = p['m'] * m['omega']**2 * m['rho_x']
     Fs[1] = p['m'] * m['omega']**2 * m['rho_y']
     #print(Fs)
     return Fs
 
-def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
+def Faero(t, q, u, p, calcOutput=False, m=None):
     """ 
     Returns aerodynamic force (in inertial frame) based on states 
 
@@ -1068,14 +1114,20 @@ def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
            fPolar, dynamicStall
     OUTPUTS:
      - F: aerodynamic force in each structural DOF
+     - aeroOut: dictionary of additional outputs
     """
+    if m is None:
+        m = calcMisc(t, q, u, p)
+    x, xd, qxa_ua, qxa_di = m['x'], m['xd'], m['qxa_ua'], m['qxa_di'] 
+
+
     # Inputs
     Ux, Uy, theta_p = inputsAtTime(t, u)
     omega = xd[2]
     
     # Inflow
-    V_rel2_AC, phi_AC, alpha_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, qxa_di, p, u, point='Q')
-    V_rel2_ds, phi_ds, alpha_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(t, x, xd, qxa_di, p, u, point=p['ds_inflow_point'])
+    V_rel2_AC, phi_AC, alpha_AC, Vrel_AC, Uw_AC, Vel_AC, Wqs_AC, W_AC = aeroVarsSS(t, x, xd, qxa_di, p, u, point='Q')
+    V_rel2_ds, phi_ds, alpha_ds, Vrel_ds, Uw_ds, Vel_ds, Wqs_ds, W_ds = aeroVarsSS(t, x, xd, qxa_di, p, u, point=p['ds_inflow_point'])
     U_AC = np.sqrt(V_rel2_AC)
 
     # Quasi-steady Polar data at ds_inflow_point for now
@@ -1127,8 +1179,11 @@ def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
         aeroOut.update({'alpha_ds':alpha_ds, 'omega':omega})
         aeroOut.update({'Cl_qs':Cl_qs, 'Cd_qs':Cd_qs, 'Cm_qs':Cm_qs})
         aeroOut.update({'Cl_dyn':Cl_dyn, 'Cd_dyn':Cd_dyn, 'Cm_dyn':Cm_dyn})
+        aeroOut.update({'Vrel_x_AC': Vrel_AC[0], 'Vrel_y_AC': Vrel_AC[1]})
+        aeroOut.update({'Vrel_x_ds': Vrel_ds[0], 'Vrel_y_ds': Vrel_ds[1]})
         aeroOut.update({'Uw_x_AC': Uw_AC[0]  , 'Uw_y_AC':Uw_AC[1]})
         aeroOut.update({'Vel_x_AC':Vel_AC[0], 'Vel_y_AC':Vel_AC[1]})
+        aeroOut.update({'Vel_x_ds':Vel_ds[0], 'Vel_y_ds':Vel_ds[1]})
         aeroOut.update({'Wqs_x_AC':Wqs_AC[0], 'Wqs_y_AC':Wqs_AC[1]})
         aeroOut.update({'Wdyn_x_AC':W_AC[0], 'Wdyn_y_AC':  W_AC[1]})
         aeroOut.update({'a':a, 'ap':ap})
@@ -1141,10 +1196,13 @@ def Faero(t, x, xd, qxa_ua, qxa_di, p, u, calcOutput=False):
 # --------------------------------------------------------------------------------}
 # --- Aerodynamic, low level functions 
 # --------------------------------------------------------------------------------{
-def aeroLoads(rho, c, Vrel2, phi, Cl, Cd, Cm, alpha=None, x_AC=0, y_AC=0, smallAngles=False):
+def aeroLoads(rho, c, Vrel2, phi, Cl, Cd, Cm, alpha=None, theta=None, x_AC=0, y_AC=0, smallAngles=False):
     """ 
     Return Aerodynamic loads at airfoil origin
     low level function 
+
+    NOTE: Vrel, phi need to be at the same point
+          if alpha is provided it also need to be at the same point! 
     """
     L = 1/2*rho*c   *Vrel2*Cl
     D = 1/2*rho*c   *Vrel2*Cd
@@ -1156,8 +1214,12 @@ def aeroLoads(rho, c, Vrel2, phi, Cl, Cd, Cm, alpha=None, x_AC=0, y_AC=0, smallA
     else:
         Fx =  L*np.cos(phi)+D*np.sin(phi)
         Fy = -L*np.sin(phi)+D*np.cos(phi)
-        # TODO implement formulation with theta instead to avoid confusion of "what is alpha" here
-        Mz = 1/2*rho*c*Vrel2*( c*Cm -Cl*(y_AC*np.cos(alpha) + x_AC*np.sin(alpha)) + Cd*(x_AC*np.cos(alpha)-y_AC*np.sin(alpha) ))
+        if theta is not None:
+            Mz = M - Fx * (-x_AC * np.sin(theta)+y_AC*np.cos(theta)) + Fy * (x_AC*np.cos(theta) + y_AC*np.sin(theta))
+        elif alpha is not None:
+            Mz = 1/2*rho*c*Vrel2*( c*Cm -Cl*(y_AC*np.cos(alpha) + x_AC*np.sin(alpha)) + Cd*(x_AC*np.cos(alpha)-y_AC*np.sin(alpha) ))
+        else:
+            raise NotImplementedError('Provide alpha or theta')
     return np.array([Fx, Fy, Mz]), np.array([L,D,M])
 
 def aeroTriangle(Ux, Uy, Wx, Wy, Velx, Vely, theta, smallAngles=False):
@@ -1205,7 +1267,7 @@ def aeroTriangle(Ux, Uy, Wx, Wy, Velx, Vely, theta, smallAngles=False):
     if alpha<-np.pi/2:
         alpha=-np.pi/2
 
-    return Vrel2, phi, alpha
+    return [Vrelx, Vrely], Vrel2, phi, alpha
 
 def polarInterpolant(filename, fformat=None, variables='cl,cd,cm,fs,cl_inv,cl_fs'):
     """ 
@@ -1322,12 +1384,18 @@ def setup_nonlinear_model_dx(p):
     nFull = max(6,np.max(p['Iq']))
     dq_full = np.zeros(nFull+1) 
     c = p['chord']
+
+    dq_full[:3]  = [0.001*c,0.001*c,0.001]   # x,y,th
+    dq_full[3:6] = [0.001,  0.001,  0.001]   # xd,yd,thd
+    dq_full[6:]  = 0.001  #... TODO
+
     dq_full[:3]  = [0.01*c,0.01*c,0.01]   # x,y,th
     dq_full[3:6] = [0.01,  0.01,  0.01]   # xd,yd,thd
     dq_full[6:]  = 0.01  #... TODO
-#     dq_full[:3]  = [0.1*c,0.1*c, 1*np.pi/180]   # x,y,th
-#     dq_full[3:6] = [5. *c,5. *c, 40.]   # xd,yd,thd
-#     dq_full[6:]  =  0.1  #... TODO
+    #####
+    dq_full[:3]  = [0.1*c,0.1*c, 1*np.pi/180]   # x,y,th
+    dq_full[3:6] = [5. *c,5. *c, 40.]   # xd,yd,thd # TODO
+    dq_full[6:]  =  0.1  #... TODO
     dx = dq_full[p['Iq']]
     return dx
 
