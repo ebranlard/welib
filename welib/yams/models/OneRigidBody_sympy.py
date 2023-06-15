@@ -20,6 +20,7 @@ _defaultOpts={
     'J_form':'cross',  #< 
     'J_at_Origin':False,  #< 
     'NoDOFImpliesNoSpeed':False,  #< if the DOF is not active, then its derivative and accelerations (arising from rotation of COG) are zeroed
+    'extraRot':(0,0,0)
 }
 
 
@@ -93,9 +94,9 @@ def get_model_one_body(model_name, **opts):
     rel_pos[0] = x      if bDOFs[0] else 0
     rel_pos[1] = y      if bDOFs[1] else 0
     rel_pos[2] = z      if bDOFs[2] else 0
-    rPhix= phi_x if bDOFs[3] else 0
-    rPhiy= phi_y if bDOFs[4] else 0
-    rPhiz= phi_z if bDOFs[5] else 0
+    rPhix= phi_x + opts['extraRot'][0] if bDOFs[3] else 0
+    rPhiy= phi_y + opts['extraRot'][1] if bDOFs[4] else 0
+    rPhiz= phi_z + opts['extraRot'][2] if bDOFs[5] else 0
     print('Free connection ref', rel_pos, (rPhix,rPhiy,rPhiz))
     print('>>>>>>>>>>>> ORDER IMPORTANT')
     #ref.connectTo(body, type='Free' , rel_pos=rel_pos, rot_amounts=(rPhiy,rPhix,rPhiz), rot_order='YXZ')  

@@ -348,10 +348,11 @@ class WindTurbineStructure():
         if WT.MAP is not None:
             if WT.MAP._K_lin is None:
                 if MoorAtRef:
-                    #K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,p['z_OT']))
-                    K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,p['z_EF']))
+                    #MoorP = (0,0,p['z_OT'])
+                    MoorP = (0,0,p['z_EF'])
                 else:
-                    K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=(0,0,0))
+                    MoorP = (0,0,0)
+                K_Moor,_ = WT.MAP.stiffness_matrix(epsilon=1e-2, point=MoorP)
             else:
                 K_Moor = WT.MAP._K_lin
             for i in range(6):
