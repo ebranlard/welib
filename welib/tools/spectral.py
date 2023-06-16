@@ -64,7 +64,6 @@ def fft_wrap(t,y,dt=None, output_type='amplitude',averaging='None',averaging_win
         #if dtDelta0 !=dt:
         if relDiff>0.01:
             print('[WARN] dt from tmax-tmin different from dt from t2-t1 {} {}'.format(dt, dtDelta0) )
-            import pdb; pdb.set_trace()
     Fs = 1/dt
     if averaging =='none':
         frq, PSD, Info = psd(y, fs=Fs, detrend=detrend, return_onesided=True)

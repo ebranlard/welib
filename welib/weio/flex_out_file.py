@@ -35,8 +35,8 @@ class FLEXOutFile(File):
         # --- Then the sensor file
         parentdir = os.path.dirname(self.filename)
         basename = os.path.splitext(os.path.basename(self.filename))[0]
-        print(parentdir)
-        print(basename)
+        #print(parentdir)
+        #print(basename)
         PossibleFiles=[]
         PossibleFiles+=[os.path.join(parentdir, basename+'.Sensor')]
         PossibleFiles+=[os.path.join(parentdir, 'Sensor_'+basename)]
