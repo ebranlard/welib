@@ -17,8 +17,6 @@
 # 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import division, print_function, absolute_import
-
 import numpy as np
 import pandas as pd
 from six import string_types
@@ -51,15 +49,21 @@ def fft_wrap(t,y,dt=None, output_type='amplitude',averaging='None',averaging_win
     averaging        = averaging.lower()
     averaging_window = averaging_window.lower()
     y = np.asarray(y)
+    n0 = len(y) 
+    nt = len(t) 
+    if len(t)!=len(y):
+        raise Exception('t and y should have the same length')
     y = y[~np.isnan(y)]
     n = len(y) 
 
     if dt is None:
         dtDelta0 = t[1]-t[0]
         # Hack to use a constant dt
-        dt = (np.max(t)-np.min(t))/(n-1)
-        if dtDelta0 !=dt:
-            print('[WARN] dt from tmax-tmin different from dt from t2-t1' )
+        dt = (np.max(t)-np.min(t))/(n0-1)
+        relDiff = abs(dtDelta0-dt)/dt*100
+        #if dtDelta0 !=dt:
+        if relDiff>0.01:
+            print('[WARN] dt from tmax-tmin different from dt from t2-t1 {} {}'.format(dt, dtDelta0) )
     Fs = 1/dt
     if averaging =='none':
         frq, PSD, Info = psd(y, fs=Fs, detrend=detrend, return_onesided=True)
@@ -666,13 +670,15 @@ def pwelch(x, window='hamming', noverlap=None, nfft=None, fs=1.0, nperseg=None,
         detrend='constant'
 
     freqs, Pxx, Info = csd(x, x, fs, window, nperseg, noverlap, nfft, detrend,
-                     return_onesided, scaling, axis)
+                     return_onesided, scaling, axis, returnInfo=True)
 
     return freqs, Pxx.real, Info
 
 
 def csd(x, y, fs=1.0, window='hann', nperseg=None, noverlap=None, nfft=None,
-        detrend='constant', return_onesided=True, scaling='density', axis=-1):
+        detrend='constant', return_onesided=True, scaling='density', axis=-1,
+        returnInfo=False
+        ):
     r"""
     Estimate the cross power spectral density, Pxy, using Welch's
     method.
@@ -689,7 +695,10 @@ def csd(x, y, fs=1.0, window='hann', nperseg=None, noverlap=None, nfft=None,
         else:
             Pxy = np.reshape(Pxy, Pxy.shape[:-1])
 
-    return freqs, Pxy, Info
+    if returnInfo:
+        return freqs, Pxy, Info
+    else:
+        return freqs, Pxy
 
 
 
@@ -706,7 +715,7 @@ def coherence(x, y, fs=1.0, window='hann', nperseg=None, noverlap=None,
 
     freqs, Pxx, Infoxx = welch(x, fs, window, nperseg, noverlap, nfft, detrend, axis=axis)
     _, Pyy, Infoyy     = welch(y, fs, window, nperseg, noverlap, nfft, detrend, axis=axis)
-    _, Pxy, Infoxy     = csd(x, y, fs, window, nperseg, noverlap, nfft, detrend, axis=axis)
+    _, Pxy, Infoxy     = csd(x, y, fs, window, nperseg, noverlap, nfft, detrend, axis=axis, returnInfo=True)
 
     Cxy = np.abs(Pxy)**2 / Pxx / Pyy
 

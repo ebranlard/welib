@@ -1,6 +1,7 @@
-from sympy import *
 
 def main():
+    from sympy import symbols, sqrt, diff
+
     r, x, k = symbols('r x k')
     a, b, c = symbols('a b c')
     delta, zeta, mu = symbols('delta zeta mu')

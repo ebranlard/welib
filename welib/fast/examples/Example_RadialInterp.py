@@ -24,7 +24,19 @@ def main():
     # --- Define output radial stations
     # Option 1 - Get all these locations automatically (recommended)
     fstFile = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst') # must correspond to the one used to generate outputs
-    r_AD, r_ED, r_BD, IR_AD, IR_ED, IR_BD, R, r_hub, fst = postpro.FASTRadialOutputs(fstFile, df.columns.values)
+    d = postpro.FASTSpanwiseOutputs(fstFile, df.columns.values)
+    r_AD      = d['r_AD']
+    r_ED_bld  = d['r_ED_bld']
+    r_ED_twr  = d['r_ED_twr']
+    r_BD      = d['r_BD']
+    IR_AD     = d['IR_AD']
+    IR_ED_bld = d['IR_ED_bld']
+    IR_ED_twr = d['IR_ED_twr']
+    IR_BD     = d['IR_BD']
+    TwrLen    = d['TwrLen']
+    R         = d['R']
+    r_hub     = d['r_hub']
+    fst       = d['fst']
 
     # Option 2 - Get ouputs locations for each module
     #r_ED_gag, IR_ED = ED_BldGag(fstFile)
@@ -38,8 +50,8 @@ def main():
     # NOTE: format need to be adjusted if you use AllOuts, or outputs at few nodes
     r    = 60         # Radial location where outputs are to be interpolated
     Cl_interp  = postpro.radialInterpTS(df, r, 'Cl_[-]', r_AD,  bldFmt='AB{:d}', ndFmt='N{:03d}')
-    TDx_interp = postpro.radialInterpTS(df, r, 'TDx_[m]', r_ED, bldFmt='B{:d}' , ndFmt='N{:03d}')
-    #TDx_interp = postpro.radialInterpTS(df, r, 'TDx_[m]', r_ED, bldFmt='B{:d}' , ndFmt='N{d}')
+    TDx_interp = postpro.radialInterpTS(df, r, 'TDx_[m]', r_ED_bld, bldFmt='B{:d}' , ndFmt='N{:03d}')
+    #TDx_interp = postpro.radialInterpTS(df, r, 'TDx_[m]', r_ED_bld, bldFmt='B{:d}' , ndFmt='N{d}')
 
     # --- Plot
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)

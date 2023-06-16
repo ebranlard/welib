@@ -200,7 +200,6 @@ def buildTMatrix(self, RA):
                         break
                 if aID==-1:
                     raise Exception()
-                    import pdb; pdb.set_trace()
                 if aID not in IRA:
                     #print('NID',idNodeSel, 'SKIPPED, the RA',aID, 'has already been processed')
                     continue # We pass to the next joint, important so that:

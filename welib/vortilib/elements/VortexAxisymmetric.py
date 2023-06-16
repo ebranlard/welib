@@ -10,6 +10,66 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 from welib.vortilib.elements.VortexRing import rings_u
+from welib.vortilib.elements.VortexCylinder import vc_tang_u_doublet, vc_tang_u
+from welib.vortilib.elements.VortexRing import ring_u_polar 
+
+def axisym_surface_u(x_surf, R_surf, gamma, Xcp, Rcp, nRings =50, includeCylinder=True):
+    """ 
+    Computes the induced velocity field by a axisymmetric vorticity surface of constant intensity
+
+    INPUTS:
+       x_surf: axial points defining the surface (array)
+               NOTE: last point will be continued by a semi-inf cylinder
+       R_surf: surface radius, for each axial point (array)
+       gamma: intensity of the vorticity surface (typically <0) [m/s]
+       Xcp : scalar/array/matrix of Control Points axial coordinates
+       Rcp : scalar/array/matrix of Control Points radial coordinates (same dimension as Xcp)
+
+       nRings: number of rings used to discretize the surface up until the last value of x_surf
+       includeCylinder: if true, a semi-infinite vortex cylinder is used to continue the surface to infinity
+
+    """
+
+    Xcp=np.asarray(Xcp)
+    Rcp=np.asarray(Rcp)
+    # --- Vortex rings (Quadrature points/discretization of the surface)
+    x_rings = np.linspace(np.min(x_surf), np.max(x_surf), nRings) # Equi-spacing the rings 
+    R_rings = np.interp(x_rings, x_surf, R_surf) # Interpolating the ring radii based on the input surface distribution 
+
+    dx_rings = x_rings[-1]-x_rings[-2] # Distance between the two last rings
+    Gamma_ring = gamma*dx_rings        # Circulation of each vortex ring [m^2/s]
+    epsilon_ring  =  dx_rings/2         # Basic epsilon, scaling can be done later (see TODO)
+
+    # --- Vortex cylinder
+    x_cyl = x_rings[-1] + dx_rings/2  # Cylinder starts at dx/2 after the last ring
+    R_cyl = R_rings[-1]             # Cylinder has same radius as last ring
+
+    # --- Cylinder induced velocity 
+    if includeCylinder:
+#         ur_cyl, ux_cyl = vc_tang_u_doublet(Rcp, Rcp*0, Xcp-x_cyl, gamma_t=gamma, R=R_cyl, r_bar_Cut=6,polar_out=True)
+        ur_cyl, ux_cyl = vc_tang_u(Rcp, Rcp*0, Xcp-x_cyl, gamma_t=gamma, R=R_cyl,polar_out=True)
+
+    # --- Induced velocity from all rings
+    ur_rings, ux_rings = np.zeros(Xcp.shape), np.zeros(Xcp.shape)
+    for i_ring, (x_ring, R_ring) in enumerate(zip(x_rings, R_rings)):
+        if i_ring==0:
+            Gamma_ring_scaled=Gamma_ring/2 # first ring represent half a ring..
+        else:
+            Gamma_ring_scaled   = Gamma_ring   # TODO insert scaling here
+        epsilon_ring_scaled = epsilon_ring # TODO insert epsilon hack here
+        ur, ux =  ring_u_polar(Rcp, Xcp, Gamma=Gamma_ring_scaled, r0=R_ring, z0=x_ring, epsilon=epsilon_ring_scaled, reg_method='Saffman')
+        ur_rings += ur
+        ux_rings += ux
+
+    geom = (x_rings, R_rings, x_cyl, R_cyl)
+
+    # --- Total velocity
+    if includeCylinder:
+        ur = ur_cyl + ur_rings
+        ux = ux_cyl + ux_rings
+        return ur, ux, geom
+    else:
+        return ur_rings, ux_rings, geom
 
 
 
@@ -53,7 +113,7 @@ def getDrDz(r, z):
 
 def axisym_predefined_distributions(r, z, params=None, distribution='singular_ring', velocity=False):
     """ 
-    Return vorticity field and optional velcoity field for some predefined distributions
+    Return vorticity field and optional velocity field for some predefined distributions
     """
     from welib.vortilib.elements.VortexRing import ring_u
     from welib.vortilib.elements.VortexCylinder import cylinder_tang_u, vc_tang_u
@@ -152,7 +212,7 @@ def axisym_predefined_distributions(r, z, params=None, distribution='singular_ri
 
 if __name__ == '__main__':
 
-    from pybra.curves import streamQuiver
+    from welib.tools.curves import streamQuiver
     distribution='singular_ring'
     distribution='cylinder'
     distribution='regularized_ring'

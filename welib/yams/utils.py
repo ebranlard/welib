@@ -7,44 +7,42 @@ import numpy as np
 
 # --- Definitions to ease comparison with sympy versions
 from numpy import cos ,sin
+from welib.yams.rotations import R_x, R_y, R_z
 
 def Matrix(m):
     return np.asarray(m)
 
-# --------------------------------------------------------------------------------}
-# --- Rotation matrices
-# --------------------------------------------------------------------------------{
-def R_x(t):
-    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
-
-def R_y(t):
-    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
-
-def R_z(t): 
-    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
-
-def skew(v):
+def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
     [ 0, -z , y]
     [ z,  0 ,-x]
     [-y,  x , 0]
     """
-    x,y,z=v
-    return np.array([[ 0, -z , y],
-                     [ z,  0 ,-x],
-                     [-y,  x , 0]])
+    x=np.asarray(x).ravel()
+    return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
 
-def skew2(v):
-    """ Returns the skew(v).skew(v) 
+def skew2(x):
+    """ Returns the skew(x).skew(x) 
          [ 0 -z  y]   [ 0 -z  y]   [  -y**2 - z**2  ,       xy       ,         xz      ]
     S2 = [ z  0 -x] . [ z  0 -x] = [       yx       , - x**2 - z**2  ,         yz      ]
          [-y  x  0]   [-y  x  0]   [       zx       ,       zy       ,   - x**2 - y**2 ]
     """
-    x,y,z=np.asarray(v).flatten()
+    x,y,z=np.asarray(x).flatten()
     return np.array( [
             [ - y**2 - z**2  ,       x*y      ,         x*z      ],
             [       y*x      , - x**2 - z**2  ,         y*z      ],
             [       z*x      ,       z*y      ,   - x**2 - y**2 ]])
+
+def extractVectFromSkew(M):
+    """ Return a 3-vector from a skew matrix """
+    # [ 0, -z , y]
+    # [ z,  0 ,-x]
+    # [-y,  x , 0]
+    M = np.asarray(M)
+    x = 0.5*( M[2,1]-M[1,2])
+    y = 0.5*( M[0,2]-M[2,0])
+    z = 0.5*(-M[0,1]+M[1,0])
+    return np.array([x,y,z])
 
 
 def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
@@ -54,6 +52,7 @@ def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
       - J: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix at COG
       - COG: (3-vector) x,y,z position of center of mass
     """
+    print('[WARN] yams.utils.rigidBodyMassMatrix: the interface of this function does not make much sense and should not be used')
     S=Mass*skew(COG)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);
@@ -127,13 +126,25 @@ def translateRigidBodyMassMatrix(M, r_P1P2):
     # First identify main properties (mass, inertia, location of center of mass from previous ref point)
     mass, J_G, Ref2COG = identifyRigidBodyMM(M)
     # New COG location from new (x,y) ref point
-    print(Ref2COG)
-    print(r_P1P2)
     Ref2COG -= np.asarray(r_P1P2)
-    print('>>>',Ref2COG)
     # Compute mass matrix 
     M_new =  rigidBodyMassMatrixAtP(mass, J_G, Ref2COG)
     return M_new
+
+
+def rotateRigidBodyMassMatrix(M_ss, R_s2d):
+    """ 
+    Rotate a 6x6 rigid body mass matrix from a source (s) coordinate to destination (d) coordinate system
+
+    INPUTS:
+     - M_ss: mass matrix in source coordinate, 6x6 array
+     - R_s2d: transformation matrix source two destination
+    """
+    R66_s2d = np.block(R_s2d)
+    M_dd = R66_s2d.dot(M_ss).dot(R66_s2d.T)
+    return M_dd
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Inertia functions 
@@ -192,15 +203,49 @@ def translateInertiaMatrixFromCOG(I_G, Mass, r_GP):
 # --------------------------------------------------------------------------------}
 # --- Loads 
 # --------------------------------------------------------------------------------{
-def transferLoadsZPoint(ls, z, phi_x, phi_y):
+def transferLoadsZPoint(ls, z, phi_x, phi_y, phi_z, rot_type='default'):
     """ 
-    z: destination to source (z_s - z_d)
+    Used to transfer loads from HydroF*i to the Platform ref point
+
+    HydroF*i are translated similarly to the ref point, but due to rotation, an extra laver arm is present
+
+    Undisplaced  ->   Displaced:
+           P     ->      P
+           |              \
+           |               \
+           0     ->         0
+
+    HydroF*i are computed at "0" above. 
+    They need to be transfered to P
+
+    z: destination to source (z_s - z_d) = (z_0 - z_P)
     """
+    # --- Rotation
+    s_b=[0,0,z]
+    from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
+    if rot_type=='default' or rot_type=='bodyXYZ':
+        #  BodyXYZ_A.dot(s_b)
+        r = (  z*np.sin(phi_y) , -z * np.sin(phi_x) * np.cos(phi_y),  z *np.cos(phi_x)* np.cos(phi_y))
+
+    elif rot_type=='smallRot_OF':
+        #  smallRot_OF.T .dot(s_b)
+        r = np.zeros((3,len(phi_z)))
+        for i,(phi_x1,phi_y1, phi_z1) in enumerate(zip(phi_x,phi_y,phi_z)):
+            R_b2g = smallRot_OF(phi_x1, phi_y1, phi_z1).T
+            r[:,i] = R_b2g.dot(s_b)
+
+    elif rot_type=='smallRot':
+        #  smallRot_A .dot(s_b)
+        r = (z*phi_y, -z*phi_x , z)
+
+    else:
+        raise Exception()
     ld    = np.zeros(ls.shape)
+    # Forces
     ld[0] = ls[0]
     ld[1] = ls[1]
     ld[2] = ls[2]
-    r = (  z*np.sin(phi_y) , -z * np.sin(phi_x) * np.cos(phi_y),  z *np.cos(phi_x)* np.cos(phi_y))
+    # Moments
     ld[3] = ls[3] + r[1] * ls[2] - r[2] * ls[1]
     ld[4] = ls[4] + r[2] * ls[0] - r[0] * ls[2]
     ld[5] = ls[5] + r[0] * ls[1] - r[1] * ls[0]

@@ -11,8 +11,8 @@ class TestPolarInterp(unittest.TestCase):
 
     def test_interp(self):
         # --- Interpolation of self is self
-        P1=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
-        P2=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
+        P1=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
+        P2=Polar(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'))
         P3= blend(P1,P2,0.5)
         np.testing.assert_equal(P3.alpha,P1.alpha)
         np.testing.assert_equal(P3.cl,P1.cl)

@@ -1,4 +1,10 @@
 """
+
+Yams recursive formulation with sympy.
+For Kane's formalism (similar), see yams_kane.py
+
+NOTE: this file is intended to be comparable with yams.py
+
 Reference:
      [1]: Branlard, Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex, Wind Energy, 2019
 """
@@ -22,7 +28,7 @@ from sympy.physics.mechanics.functions import msubs
 from sympy.physics.vector import init_vprinting, vlatex
 
 # Local
-from welib.yams.yams_sympy_tools import exprHasFunction
+from welib.yams.yams_sympy_tools import exprHasFunction, skew, colvec, cross #,ete
 from collections import OrderedDict 
 
 #init_vprinting(use_latex='mathjax', pretty_print=False)
@@ -37,13 +43,6 @@ __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
 # --------------------------------------------------------------------------------}
 # --- Helper functions 
 # --------------------------------------------------------------------------------{
-def colvec(v): 
-    return Matrix([[v[0]],[v[1]],[v[2]]])
-def cross(V1,V2):
-    return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
-def eye(n): 
-    return Matrix( np.eye(n).astype(int) )
-
 def ensureMat(x, nr, nc):
     """ Ensures that the input is a matrix of shape nr, nc"""
     if not isinstance(x,Matrix):
@@ -62,29 +61,38 @@ def coord2vec(M31, e):
     M31 = ensureList(M31, 3)
     return M31[0] * e.x + M31[1] * e.y + M31[2] * e.z
 
-            
-def skew(x):
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
-    #S = Matrix(np.zeros((3,3)).astype(int))
-    if hasattr(x,'shape') and len(x.shape)==2:
-        if x.shape[0]==3:
-            return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
-        else:
-            raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
-    else:
-        return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 def rotToDCM(rot_type, rot_amounts, rot_order=None):
     """
     return matrix from a ref_frame to another frame rotated by specified amounts
+
+    INPUTS (see sympy.physics.vector.ReferenceFrame.orient):
+     - rot_type    : The method used to generate the direction cosine matrix. Supported methods are
+              'SmallRot': small angle rotations (ADDED in YAMS)
+              'Axis': simple rotations about a single common axis
+              'DCM': for setting the direction cosine matrix directly
+              'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
+              'Space': three successive rotations about the parent frames’ unit vectors
+              'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
+     - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
+                The input types are:
+                'Axis': 2-tuple (expr/sym/func, Vector)
+                'DCM': Matrix, shape(3,3)
+                'Body': 3-tuple of expressions, symbols, or functions
+                'Space': 3-tuple of expressions, symbols, or functions
+                'Quaternion': 4-tuple of expressions, symbols, or functions
+
+     - rot_order: string or int. If applicable, the order of the successive of rotations. 
+                  The string '123', 'XYZ' and integer 123 are equivalent.
+                  Required for 'Body' and 'Space'.
     
     New type added: SmallRot
     
     see sympy.orientnew
-        rotToDCM(frame, 'Axis', (3, N.x)       )
-        rotToDCM(frame, 'Body', (x,y,z), 'XYZ' )
-        rotToDCM(frame, 'DCM' , M )
-        rotToDCM(frame, 'SmallRot' , (x,y,z) )
+        rotToDCM('Axis', (3, N.x)       )
+        rotToDCM('Body', (x,y,z), 'XYZ' )
+        rotToDCM('DCM' , M )
+        rotToDCM('SmallRot' , (x,y,z) )
     """
     ref_frame = ReferenceFrame('dummyref')
     if rot_type =='SmallRot':
@@ -194,7 +202,7 @@ class Taylor(object):
 # --- Connections 
 # --------------------------------------------------------------------------------{
 class Connection():
-    def __init__(self,Type,RelPoint=None,RelOrientation=None,JointRotations=None):
+    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None):
         if RelOrientation is None:
             RelOrientation=eye(3)
         if RelPoint is None:
@@ -262,6 +270,8 @@ class YAMSBody(object):
         self.children = [] # children bodies
         self.inertial_frame = None # storing the typical inertial frame use for computation
         self.inertial_origin = None # storing the typical inertial frame use for computation
+
+        self.viz_opts={}
 
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
@@ -419,8 +429,56 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------}
     # --- Connection between bodies
     # --------------------------------------------------------------------------------{
-    def connectTo(parent, child, type='Rigid', rel_pos=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False):
-        # register parent/child relationship
+    def connectTo(parent, child, type='Rigid', rel_pos=None, rel_pos_b=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False, ref_frame=None):
+        """ 
+        Define a connection between parent and child bodies
+
+        INPUTS:
+         - type: 
+             'Rigid': the two bodies are rigidly connected
+             'Free' : the two bodies have free motions (e.g. a floating platform, or two bodies with spring)
+             'Joint': the two bodies have a rotational joint between them, rot_amounts needs to be provided
+
+         - rel_pos: array like of shape 1, 2 or 3, for x, y, z component of relative position between 
+                    parent and child expressed in the PARENT COORDINATE SYSTEM. Examples:
+                        rel_pos = (x_PC(t), y_PC, 0)   where x_PC is a dynamic symbol
+
+         - rel_pos_b: array like of shape 1, 2 or 3, for x, y, z component of relative position between 
+                    parent and child expressed in the CHILD COORDINATE  SYSTEM. Examples:
+                        rel_pos = (x_PC(t), y_PC, 0)   where x_PC is a dynamic symbol
+
+
+        ROTATION/ORIENTATION INPUTS: (see sympy.physics.vector.ReferenceFrame.orient):
+         - rot_type    : The method used to generate the direction cosine matrix. Supported methods are
+                  'SmallRot': small angle rotations (ADDED in YAMS)
+                  'Axis': simple rotations about a single common axis
+                  'DCM': for setting the direction cosine matrix directly
+                  'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
+                  'Space': three successive rotations about the parent frames’ unit vectors
+                  'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
+         - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
+                    The input types are:
+                    'Axis': 2-tuple (expr/sym/func, Vector)
+                    'DCM': Matrix, shape(3,3)
+                    'Body': 3-tuple of expressions, symbols, or functions
+                    'Space': 3-tuple of expressions, symbols, or functions
+                    'Quaternion': 4-tuple of expressions, symbols, or functions
+    
+         - rot_order: string or int. If applicable, the order of the successive of rotations. 
+                      The string '123', 'XYZ' and integer 123 are equivalent.
+                      Required for 'Body' and 'Space'.
+
+         - frame_ref: when provided, the rotations are actually about the ref_frame
+                      otherwise, rotations are about the parent frame
+
+        """
+        # --- Safety checks
+        if rel_pos is None and rel_pos_b is None:
+            raise Exception('Provide either rel_pos or rel_pos_b')
+        if rel_pos is not None and rel_pos_b is not None:
+            raise Exception('Provide either rel_pos or rel_pos_b')
+
+        # --- register parent/child relationship
         child.parent = parent
         parent.children.append(child)
         if isinstance(parent, YAMSInertialBody):
@@ -435,27 +493,48 @@ class YAMSBody(object):
                 child.inertial_frame  = parent.inertial_frame # the same frame is used for all connected bodies
                 child.inertial_origin = parent.inertial_origin
 
-        if rel_pos is None or len(rel_pos)!=3:
+
+        # --- Deal with orientation first (creating a path connecting frames together)
+        if ref_frame is None:
+            ref_frame = parent.frame
+        if rot_amounts is None:
+            child.frame.orient(ref_frame, 'Axis', (0, ref_frame.x) ) 
+        else:
+            if rot_type in ['Body','Space']:
+                child.frame.orient(ref_frame, rot_type, rot_amounts, rot_order) # <<< 
+            else: 
+                # rot_type is DCM
+                child.frame.orient(ref_frame, rot_type, rot_amounts) # <<< 
+
+
+        # --- Then deal with position and velocity
+        t = dynamicsymbols._t
+        if rel_pos is not None:
+            pos_frame = parent.frame
+            rel_pos_in_child_frame = False
+        else:
+            rel_pos = rel_pos_b
+            pos_frame = child.frame
+            rel_pos_in_child_frame = True
+        if len(rel_pos)!=3:
             raise Exception('rel_pos needs to be an array of size 3')
 
-        pos = 0 * parent.frame.x
-        vel = 0 * parent.frame.x
-
-        t = dynamicsymbols._t
+        pos = 0 * pos_frame.x
+        vel = 0 * pos_frame.x
 
         if type=='Free':
             # --- "Free", "floating" connection
             if not isinstance(parent, YAMSInertialBody):
                 raise Exception('Parent needs to be inertial body for a free connection')
             # Defining relative position and velocity of child wrt parent
-            for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
+            for d,e in zip(rel_pos[0:3], (pos_frame.x, pos_frame.y, pos_frame.z)):
                 if d is not None:
                     pos += d * e
                     vel += diff(d,t) * e
 
         elif type=='Rigid':
             # Defining relative position and velocity of child wrt parent
-            for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
+            for d,e in zip(rel_pos[0:3], (pos_frame.x, pos_frame.y, pos_frame.z)):
                 if d is not None:
                     pos += d * e
                     d_ = diff(d,t)
@@ -466,7 +545,7 @@ class YAMSBody(object):
                         vel += d_ * e
         elif type=='Joint':
             # Defining relative position and velocity of child wrt parent
-            for d,e in zip(rel_pos[0:3], (parent.frame.x, parent.frame.y, parent.frame.z)):
+            for d,e in zip(rel_pos[0:3], (pos_frame.x, pos_frame.y, pos_frame.z)):
                 if d is not None:
                     pos += d * e
                     if exprHasFunction(d) and not dynamicAllowed:
@@ -476,23 +555,20 @@ class YAMSBody(object):
             #  Orientation
             if rot_amounts is None:
                 raise Exception('rot_amounts needs to be provided with Joint connection')
-            for d in rot_amounts:
+            if rot_type.lower()=='axis':
+                rot_vars = [rot_amounts[0]]
+            else:
+                rot_vars = rot_amounts
+            for d in rot_vars:
                 if d!=0 and d!=1 and not exprHasFunction(d):
                     print('>>> WARNING: Rotation amount variable is not a dynamic variable for joint connection, variable: {}'.format(d))
                     #raise Exception('Rotation amount variable should be a dynamic variable for a joint connection, variable: {}'.format(d))
         else:
             raise Exception('Unsupported joint type: {}'.format(type))
 
-        # Orientation (creating a path connecting frames together)
-        if rot_amounts is None:
-            child.frame.orient(parent.frame, 'Axis', (0, parent.frame.x) ) 
-        else:
-            if rot_type in ['Body','Space']:
-                child.frame.orient(parent.frame, rot_type, rot_amounts, rot_order) # <<< 
-            else: 
-                # rot_type is DCM
-                child.frame.orient(parent.frame, rot_type, rot_amounts) # <<< 
-
+        if rel_pos_in_child_frame:
+            # NOTE: because the position is expressed wrt child frame, diff above does not work
+            vel =  diff(pos, t, parent.frame)
         # Position of child origin wrt parent origin
         child.origin.set_pos(parent.origin, pos)
         # Velocity of child origin frame wrt parent frame (0 for rigid or joint)
@@ -512,6 +588,104 @@ class YAMSBody(object):
 
         #r_OB = child.origin.pos_from(child.inertial_origin)
         #vel_OB = r_OB.diff(t, child.inertial_frame)
+
+    def update_origin_pos(body, PointRef, pos):
+        """ 
+        Set position of origin and perform necessary triggers
+        TODO
+        """
+        pass
+        #body.origin.set_pos(PointRef, pos)
+        #body.origin.v2pt_theory(ref.origin, ref.frame, body.frame)
+
+    def update_ang_vel(body, omega_symbs, ref_frame=None, out_frame=None):
+        # Default values
+        if ref_frame is None:
+            ref_frame = body.inertial_frame
+            #ref_frame = body.parent.frame # <<<
+        if out_frame is None:
+            out_frame = body.frame
+
+        omega = omega_symbs[0]*out_frame.x + omega_symbs[1]*out_frame.y + omega_symbs[2]*out_frame.z
+
+        body.frame.set_ang_vel(ref_frame, omega)
+        # Update origin velocity (origin may move compared to parent origin, so use v1pt)
+        body.origin.v1pt_theory    (body.parent.origin, ref_frame, body.frame)   # TODO
+        body.origin.v1pt_theory    (body.inertial_origin, ref_frame, body.frame) # TODO
+        # Update masscenter velocity (COG and origin fixed in bod frame, so use v2pt)
+        body.masscenter.v2pt_theory(body.origin, ref_frame,  body.frame)
+
+    def kdeqsSubsOmega(body, omega_symbs, ref_frame=None, out_frame=None, simplify=True):
+        """
+        return kinematic differential substitutions for "omega"
+
+        omega is the rotational velocity from the ref_frame to the body frame
+
+        The three symbols omega_symbs are expected to be the components of omega
+        in the out_frame
+
+        """
+        # Default values
+        if ref_frame is None:
+            ref_frame = body.inertial_frame
+        if out_frame is None:
+            out_frame = body.frame
+        omega = body.frame.ang_vel_in(ref_frame) 
+        kdeqsSubs = []
+        if simplify:
+            kdeqsSubs += [(omega_symbs[0], omega.dot(out_frame.x).simplify())]
+            kdeqsSubs += [(omega_symbs[1], omega.dot(out_frame.y).simplify())] 
+            kdeqsSubs += [(omega_symbs[2], omega.dot(out_frame.z).simplify())]
+        else:
+            kdeqsSubs += [(omega_symbs[0], omega.dot(out_frame.x))]
+            kdeqsSubs += [(omega_symbs[1], omega.dot(out_frame.y))] 
+            kdeqsSubs += [(omega_symbs[2], omega.dot(out_frame.z))]
+        return kdeqsSubs
+
+
+    def printPosVel(body, origin=True, masscenter=True, inertial=True, kdeqsSubs=None,):
+        """ print position and velocity """
+        from IPython.display import display
+        # Origin position and velocity
+        if origin:
+            print('Position of body origin from parent origin')
+            display(body.origin.pos_from(body.parent.origin))
+            if inertial:
+                print('Position of body origin from inertial origin')
+                display(body.origin.pos_from(body.inertial_origin))
+            print('Velocity of body origin from parent frame')
+            display(body.origin.vel(body.parent.frame))
+            if inertial:
+                print('Velocity of body origin from inertial frame')
+                display(body.origin.vel(body.inertial_frame))
+                if kdeqsSubs:
+                    display(body.origin.vel(body.inertial_frame).express(body.inertial_frame).subs(kdeqsSubs).simplify())
+
+        # Mass center position and velocity
+        if masscenter:
+            print('Position of body masscenter from parent origin')
+            display(body.masscenter.pos_from(body.parent.origin))
+            if inertial:
+                print('Position of body masscenter from inertial origin')
+                display(body.masscenter.pos_from(body.inertial_origin))
+            print('Velocity of body masscenter from parent frame')
+            display(body.masscenter.vel(body.parent.frame))
+            if inertial:
+                print('Velocity of body masscenter from inertial frame')
+                display(body.masscenter.vel(body.inertial_frame))
+        # Angular velocity
+        print('Angular velocity of body frame wrt parent frame')
+        display(body.frame.ang_vel_in(body.parent.frame))
+        if kdeqsSubs is not None:
+            print('Angular velocity of body frame wrt parent frame (with kdeqs substitutions)')
+            display(body.frame.ang_vel_in(body.parent.frame).subs(kdeqsSubs))
+        if inertial:
+            print('Angular velocity of body frame wrt inertial frame')
+            display(body.frame.ang_vel_in(body.inertial_frame))
+            if kdeqsSubs is not None:
+                print('Angular velocity of body frame wrt inertial frame (with kdeqs substitutions)')
+                display(body.frame.ang_vel_in(body.inertial_frame).subs(kdeqsSubs))
+
 
     # --------------------------------------------------------------------------------}
     # --- Visualization 
@@ -734,7 +908,7 @@ class GroundBody(Body):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class YAMSRigidBody(YAMSBody,SympyRigidBody):
-    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_diag=False, J_cross=False, J_at_Origin=False,
+    def __init__(self, name, mass=None, J_G=None, rho_G=None, J_form='full', J_at_Origin=False,
              name_for_var = None):
         """
         Define a rigid body and introduce symbols for convenience.
@@ -749,8 +923,10 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             mass : scalar, body mass
             J_G  : 3x3 array or 3-array defining the coordinates of the inertia tensor in the body frame at the COG
             rho_G: array-like of length 3 defining the coordinates of the COG in the body frame
-            J_diag: if true, the inertial tensor J_G is initialized as diagonal
-            J_cross: if true, the inertial tensor J_G is initialized as a "cross"
+            J_form:  form of the inertial tensor
+                   'full': all components are included 
+                   'diag': only diagonal component  
+                   'cross': diagonal and anti-diagonal components
             name_for_var: name to use for variables names. If None, name is used.
         
         
@@ -787,10 +963,14 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             izx = Symbol('J_zx_'+name_for_var)
             ixy = Symbol('J_xy_'+name_for_var)
             iyz = Symbol('J_yz_'+name_for_var)
-        if J_diag:
+        if J_form=='full':
+            pass
+        elif J_form=='diag':
             ixy, iyz, izx =0,0,0
-        if J_cross:
+        elif J_form=='cross':
             ixy, iyz =0,0
+        else:
+            raise NotImplementedError('J_form ',J_form)
             
         #inertia: dyadic : (inertia(frame, *list), point)
         if J_at_Origin:
@@ -1416,7 +1596,9 @@ class YAMSFlexibleBody(YAMSBody):
         return rd
     
 
-
+# --------------------------------------------------------------------------------}
+# --- Beam Body 
+# --------------------------------------------------------------------------------{
 class BeamBody(Body):
     def __init__(B,Name,nf,main_axis='z',nD=2):
         super(BeamBody,B).__init__(Name)

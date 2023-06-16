@@ -16,9 +16,11 @@ class TestWindTurbSparOpenFAST(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Read FAST structural model
-        cls.WT = FASTWindTurbine(os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst'), algo='OpenFAST') #, bldStartAtRotorCenter=False )
+        fstSim = os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst')
+        cls.WT = FASTWindTurbine(fstSim, algo='OpenFAST') #, bldStartAtRotorCenter=False )
+        cls.fstSim = fstSim
 
-    def test_bld(self):
+    def test_WT_00_bld(self):
         # --- Blade
         # NOTE: bldes have "R" as origin
         bld0=self.WT.bld[0]
@@ -109,7 +111,7 @@ class TestWindTurbSparOpenFAST(unittest.TestCase):
         #print('FirstMom  {:15.3f}{:15.3f}'.format(pED['FirstMom'] ,   361234.779))
         #print('CG        {:15.3f}{:15.3f}'.format(pED['BldCG']    ,       20.524))
 
-    def test_twr(self):
+    def test_WT_00_twr(self):
         # --- Tower
         twr=self.WT.twr
         #print(twr)
@@ -119,13 +121,47 @@ class TestWindTurbSparOpenFAST(unittest.TestCase):
         np.testing.assert_almost_equal(twr.length,      67.6)
         # np.testing.assert_allclose(np.diag(twr.inertia), [2.6183e8,2.6183e8, 0.0], 1e-3)
 
-    def test_rotor(self):
+    def test_WT_00_rotor(self):
         # NOTE: rotor is hub + rigid blades, with "R" as origin, but define with "N" as global
         rot = self.WT.rot
         # Rotor Mass            (kg)       109582.342
         # Rotor Inertia         (kg-m^2) 38479110.193
         np.testing.assert_almost_equal(rot.mass,           109582.342, 3)
         np.testing.assert_almost_equal(rot.inertia[0,0], 38479110.193, 3) # TODO TODO TODO WRONG BECAUSE OF BLADE DEFINITION
+
+
+    def test_WT_50_Kinematics(self):
+        qDict   = {'Sg': 10.0, 'Sw':20.0, 'Hv': 5.0, 'R':0.0, 'P':0.3, 'Y':0, 'TFA1':1.0, 'TSS1':10.0,'TFA2':0, 'TSS2':0, 'Yaw':np.pi/8}
+        qdDict  = {'Sg':  1.0, 'Sw': 2.0, 'Hv': 3.0, 'R':0.1, 'P':0.3, 'Y':0, 'TFA1':0.1, 'TSS1':0.2, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}
+        qddDict = {'Sg':  0.1, 'Sw': 0.0, 'Hv': 0.2, 'R':0.01,'P':0.1, 'Y':0, 'TFA1':0.1, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}
+#         qDict   = {'Sg':  0.0, 'Sw': 0.0, 'Hv': 0.0, 'R':0.0, 'P':0.0, 'Y':0, 'TFA1':0.0, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}
+#         qdDict  = {'Sg':  0.0, 'Sw': 0.0, 'Hv': 0.0, 'R':0.0, 'P':0.0, 'Y':0, 'TFA1':0.0, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':100.0}
+#         qddDict = {'Sg':  0.0, 'Sw': 0.0, 'Hv': 0.0, 'R':0.0, 'P':0.0, 'Y':0, 'TFA1':0.0, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}
+
+        kin = self.WT.kinematics(qDict, qdDict, qddDict)
+
+        if True:
+            from welib.fast.elastodyn import ED_Parameters, ED_CalcOutputs
+            p = ED_Parameters(self.fstSim)
+            #print(p.keys())
+            # NOTE: noAxRed for now
+            CS, dat, IEC =  ED_CalcOutputs(x={'qDict':qDict, 'qdDict':qdDict}, p=p, noAxRed=True)
+
+            #print('------------------------')
+            #for k,v in kin.items():
+            #    if len(v.shape)==1:
+            #        if k in IEC.keys():
+            #            print('{:15s} :{} {}'.format(k,v, IEC[k]))
+            #        else:
+            #            print('{:15s} :{}'.format(k,v))
+            np.testing.assert_almost_equal(kin['r_F']  , IEC['r_F'] , 4)
+            np.testing.assert_almost_equal(kin['R_g2f'], CS['R_g2f'] , 5)
+            np.testing.assert_almost_equal(kin['r_T']  , IEC['r_T'] , 4)
+            np.testing.assert_almost_equal(kin['r_N']  , IEC['r_N'] , 4)
+            np.testing.assert_almost_equal(kin['R_g2n'], CS['R_g2n'] , 4)
+            np.testing.assert_almost_equal(kin['r_Gn'] , IEC['r_Gn'], 4)
+            np.testing.assert_almost_equal(kin['omega_n'] , IEC['omega_n'] , 4)
+
 
 
 # --------------------------------------------------------------------------------}
@@ -136,7 +172,7 @@ class TestWindTurbSpar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Read FAST structural model
-        cls.WT = FASTWindTurbine(os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst'), algo='')
+        cls.WT = FASTWindTurbine(os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst'), algo='', twrShapes=[0,1,2,3])
 
     def test_fnd_ED(self):
         # --- Floater

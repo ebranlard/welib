@@ -27,7 +27,12 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
         # --- Fixed number of digits
         if type(x)==int:
             raise NotImplementedError()
-        if digits==4:
+        if digits==5:
+            if abs(x)<100000 and abs(x)>1e-6:
+                s= "{:.5f}".format(x)
+            else:
+               s= "{:.5e}".format(x)
+        elif digits==4:
             if abs(x)<10000 and abs(x)>1e-5:
                 s= "{:.4f}".format(x)
             else:
@@ -47,6 +52,13 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
                 s= "{:.1f}".format(x)
             else:
                s= "{:.1e}".format(x)
+        elif digits==0:
+            if abs(x)<1000000 and abs(x)>1e-1:
+                s= "{:.0f}".format(x)
+            else:
+               s= "{:.0e}".format(x)
+        else:
+            raise NotImplementedError('digits',digits)
     elif method=='fixed_number_of_char':
         xlow  = 10**(-(nchar-2))
         xhigh = 10**( (nchar-1))
@@ -66,31 +78,64 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
             sfmt='{:'+str(nchar)+'.'+str(nchar-7)+'e'+'}' # Need 7 char for exp
         s = sfmt.format(x)
 #         print(xlow, xhigh, sfmt, len(s))
+    else:
+        raise NotImplementedError(method)
 
     if align=='right':
         return s.rjust(nchar)
     else:
         return s.ljust(nchar)
 
-def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True):
+def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True, openChar='[',closeChar=']', sepChar=' ', xmin=1e-16):
+    """ 
+    return a matrix as a string, with misc output options
+    INPUTS:
+      - M: array of float/int
+      - var: string
+    """
     s=''
     if var is not None:
+        if not isinstance(var, str):
+            raise Exception()
         s=var+':'
         if newline:
             s+='\n'
     s+=sindent
     for iline,line in enumerate(M):
-        s+='['+' '.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0)  for v in line ])+']'
+        s+= openChar+sepChar.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0, xmin=xmin)  for v in line ])+closeChar
         if iline<M.shape[0]-1:
             s+='\n'+sindent
     return s
 
-def printMat(*args, **kwargs):
-    print(prettyMat(*args, **kwargs))
+def printMat(M, var=None, **kwargs):
+    """ 
+    print a matrix with formatting options
+    see prettyMat for input arguments and documentation
+    
+    example: 
+        printMat(M, 'M')
+          or 
+        printMat('M', M)
 
-def printVec(M, *args, newline=False, **kwargs):
+        printMat(M, 'M', digits=1, align='right')
+    """
+    # Being nice if the user calls it by swapping the two arguments
+    if not isinstance(var, str):
+        if isinstance(M, str):
+            # we swap 
+            M, var = var, M
+    M=np.asarray(M)
+    print(prettyMat(M, var=var, **kwargs))
+
+def printVec(M, var, newline=False, **kwargs):
+    # Being nice if the user calls it by swapping the two arguments
+    if not isinstance(var, str):
+        if isinstance(M, str):
+            # we swap 
+            M, var = var, M
+    M=np.asarray(M)
     M=np.atleast_2d(M)
-    print(prettyMat(M, *args, newline=newline, **kwargs))
+    print(prettyMat(M, var=var, newline=newline, **kwargs))
 
 if __name__ == '__main__':
     f= 10.**np.arange(-8,8,1)
@@ -109,4 +154,4 @@ if __name__ == '__main__':
 #         print(s, len(s), -x)
 #     print(pretty_num(0, digits=d, nchar=nc))
 
-    print(printMat(M, 'M', digits=1, align='right'))
+    printMat(M, 'M', digits=1, align='right')

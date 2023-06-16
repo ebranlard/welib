@@ -2,8 +2,6 @@
 References:
     [1] E. Branlard - Wind Turbine Aerodynamics and Vorticity Based Method, Springer, 2017
 """
-#--- Legacy python 2.7
-from __future__ import division
 # --- General
 import unittest
 import numpy as np

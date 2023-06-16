@@ -167,13 +167,13 @@ def get_model(model_name, **opts):
         if (not opts['floating']) or opts['mergeFndTwr']:
             fnd = None # the floater is merged with the twr, or we are not floating
         else:
-            fnd = YAMSRigidBody('F', rho_G = [0,0,z_FG], J_diag=True) 
+            fnd = YAMSRigidBody('F', rho_G = [0,0,z_FG], J_form='diag') 
     # --- Tower
     twr = None
     if not bRotorOnly:
         if nDOF_twr==0:
             # Ridid tower
-            twr = YAMSRigidBody('T', rho_G = [0,0,z_TG], J_diag=True) 
+            twr = YAMSRigidBody('T', rho_G = [0,0,z_TG], J_form='diag') 
         elif nDOF_twr<=4:
             # Flexible tower
             twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='twr-z')
@@ -185,7 +185,7 @@ def get_model(model_name, **opts):
     if bFullRNA:
         if not bRotorOnly:
             # Nacelle
-            nac = YAMSRigidBody('N', rho_G = [x_NG ,0, z_NG], J_cross=True) 
+            nac = YAMSRigidBody('N', rho_G = [x_NG ,0, z_NG], J_form='cross') 
 
         # Shaft
         # TODO shaft mass and inertia...
@@ -216,12 +216,12 @@ def get_model(model_name, **opts):
                         blds.append(B)
         else:
             # Rotor
-            rot = YAMSRigidBody('R', rho_G = [0,0,0], J_diag=True)
+            rot = YAMSRigidBody('R', rho_G = [0,0,0], J_form='diag')
             rot.inertia = (inertia(rot.frame, Jxx_R, JO_R, JO_R), rot.origin)  # defining inertia at orign
     else:
         # Nacelle
         #nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
-        nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_cross=True) 
+        nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_form='cross') 
         rot = None
 
     # --------------------------------------------------------------------------------}

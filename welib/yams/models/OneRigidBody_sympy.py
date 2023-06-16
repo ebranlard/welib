@@ -17,9 +17,10 @@ _defaultOpts={
     'orderH':2,  #< order of taylor expansion for H term
     'rotOrder':'XYZ',  #< 
     'CG_on_z':False,  #< 
-    'J_cross':True,  #< 
+    'J_form':'cross',  #< 
     'J_at_Origin':False,  #< 
     'NoDOFImpliesNoSpeed':False,  #< if the DOF is not active, then its derivative and accelerations (arising from rotation of COG) are zeroed
+    'extraRot':(0,0,0)
 }
 
 
@@ -28,9 +29,9 @@ phi_x, phi_y, phi_z       = dynamicsymbols('phi_x, phi_y, phi_z')
 x, y, z                   = dynamicsymbols('x, y, z')
 xd, yd, zd                = dynamicsymbols('xd, yd, zd')                # dynamicsymbols('x, y, z',1)
 omega_x, omega_y, omega_z = dynamicsymbols('omega_x, omega_y, omega_z')
-M_B                       = symbols('M_B')                              # Masses: Foundation/Tower/Nacelle/Rotor
-Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')              # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
-x_BG, y_BG, z_BG          = symbols('x_BG, y_BG, z_BG')                # Position of Foundation COG in F, measured from point T
+# M_B                       = symbols('M_B')                              # Masses: Foundation/Tower/Nacelle/Rotor
+# Jxx_B, Jyy_B, Jzz_B       = symbols('Jxx_B, Jyy_B, Jzz_B')              # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
+# x_BG, y_BG, z_BG          = symbols('x_BG, y_BG, z_BG')                # Position of Foundation COG in F, measured from point T
 
 J_O, J_zz        = symbols('J_O, J_zz')    # NOTE: JO                                                = Jyy = Jzz for a three bladed rotor!
 
@@ -49,11 +50,12 @@ def get_model_one_body(model_name, **opts):
             opts[k]=v
     for k,v in opts.items():
         if k not in _defaultOpts.keys():
-            print('Key {} not supported for model options.'.format(k))
+            raise Exception('Key {} not supported for model options.'.format(k))
     #print(opts)
 
     # Extract info from model name
-    s= model_name[1:]
+    sB = model_name[0].upper()
+    s  = model_name[1:]
     if len(s)==1:
         nDOF_body   = int(s[0])
         bDOFs   = [False]*6
@@ -69,12 +71,14 @@ def get_model_one_body(model_name, **opts):
 
     print('body',','.join(['1' if b else '0' for b in bDOFs]))
 
+    x_BG, y_BG, z_BG  = symbols('x_{}G, y_{}G, z_{}G'.format(sB,sB,sB))                # Position of Foundation COG in F, measured from point T
+
     # --- Isolated bodies 
     ref = YAMSInertialBody('E') 
     if opts['CG_on_z']:
-        body = YAMSRigidBody('B', rho_G = [0,0,z_BG], J_diag=True, J_cross=opts['J_cross'], J_at_Origin=opts['J_at_Origin']) 
+        body = YAMSRigidBody(sB, rho_G = [0,0,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin']) 
     else:
-        body = YAMSRigidBody('B', rho_G = [x_BG,y_BG,z_BG], J_diag=True, J_cross=opts['J_cross'], J_at_Origin=opts['J_at_Origin'])
+        body = YAMSRigidBody(sB, rho_G = [x_BG,y_BG,z_BG], J_form=opts['J_form'], J_at_Origin=opts['J_at_Origin'])
     #print(body)
 
     # --- Body DOFs
@@ -90,9 +94,9 @@ def get_model_one_body(model_name, **opts):
     rel_pos[0] = x      if bDOFs[0] else 0
     rel_pos[1] = y      if bDOFs[1] else 0
     rel_pos[2] = z      if bDOFs[2] else 0
-    rPhix= phi_x if bDOFs[3] else 0
-    rPhiy= phi_y if bDOFs[4] else 0
-    rPhiz= phi_z if bDOFs[5] else 0
+    rPhix= phi_x + opts['extraRot'][0] if bDOFs[3] else 0
+    rPhiy= phi_y + opts['extraRot'][1] if bDOFs[4] else 0
+    rPhiz= phi_z + opts['extraRot'][2] if bDOFs[5] else 0
     print('Free connection ref', rel_pos, (rPhix,rPhiy,rPhiz))
     print('>>>>>>>>>>>> ORDER IMPORTANT')
     #ref.connectTo(body, type='Free' , rel_pos=rel_pos, rot_amounts=(rPhiy,rPhix,rPhiz), rot_order='YXZ')  

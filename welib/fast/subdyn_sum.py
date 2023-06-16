@@ -20,24 +20,30 @@ class SubDynModel(FEMModel):
 
     def fromSummaryFile(self, filename):
         # --- Read summary file
-        import yaml
-        with open(filename, 'r', errors="surrogateescape") as fid:
-            data=yaml.load(fid, Loader=yaml.SafeLoader)
-            for k,v in data.items():
-                if isinstance(v,list):
-                    data[k]=np.array(v)
+        from welib.weio.fast_summary_file import FASTSummaryFile
+        data = FASTSummaryFile(filename) 
+        #import yaml
+        #print('Reading yaml...', end='')
+        #with open(filename, 'r', errors="surrogateescape") as fid:
+        #    data=yaml.load(fid, Loader=yaml.SafeLoader)
+        #print('Done')
         #print(data.keys())
+        #for k,v in data.items():
+        #    if isinstance(v,list):
+        #        data[k]=np.array(v)
         DOF2Nodes = data['DOF2Nodes']
-        self.nDOF = data['nDOF_red']
+        self.nDOF_red = data['nDOF_red']
         PhiM      = data['PhiM']
         PhiR      = data['PhiR']
         Nodes     = data['Nodes']
         Elements  = data['Elements']
-        DOFs= np.arange(self.nDOF)
+        DOFs= np.arange(self.nDOF_red)
         # Reindexing with -1
         DOF_L = data['DOF___L'].ravel()-1 # internal DOFs
         DOF_B = data['DOF___B'].ravel()-1 # internal
         DOF_F = data['DOF___F'].ravel()
+
+        # --- TODO merge with subdynSumToGraph(data) in fast_input_file_graph...
         if DOF2Nodes.shape[1]==3:
             DOF2Nodes=np.column_stack((DOFs,DOF2Nodes))
         else:
@@ -73,34 +79,46 @@ class SubDynModel(FEMModel):
 
         # CB modes
         if PhiM is not None:
-            Phi_CB = np.vstack((np.zeros((len(DOF_B),PhiM.shape[1])),PhiM, np.zeros((len(DOF_F),PhiM.shape[1]))))
-            dispCB, posCB, INodes = self.NodesDisp(DOF_K, Phi_CB, maxDisp=maxDisp)
+            Q_CB = np.vstack((np.zeros((len(DOF_B),PhiM.shape[1])),PhiM, np.zeros((len(DOF_F),PhiM.shape[1]))))
+            dispCB, posCB, INodesCB = self.NodesDisp(DOF_K, Q_CB, maxDisp=maxDisp)
 
         # Guyan modes
-        Phi_Guyan = np.vstack((np.eye(len(DOF_B)),PhiR))
-        dispGy, posGy, INodesGy = self.NodesDisp(DOF_K, Phi_Guyan, maxDisp=maxDisp, sortDim=2)
+        Q_GY = np.vstack((np.eye(len(DOF_B)),PhiR))
+        dispGY, posGY, INodesGY = self.NodesDisp(DOF_K, Q_GY, maxDisp=maxDisp, sortDim=2)
 
-        def toDF(pos,disp):
-            columns=['z_[m]','x_[m]','y_[m]']
-            dataZXY=np.column_stack((pos[:,2],pos[:,0],pos[:,1]))
-            disptot=disp.copy()
-            for ishape in np.arange(disp.shape[2]):
-                disptot[:,:,ishape]= pos + disp[:,:,ishape]
-                sMode='Mode{:d}'.format(ishape+1)
-                columns+=[sMode+'x_[m]',sMode+'y_[m]',sMode+'z_[m]']
-            disptot= np.moveaxis(disptot,2,1).reshape(disptot.shape[0],disptot.shape[1]*disptot.shape[2])
-            disp   = np.moveaxis(disp,2,1).reshape(disp.shape[0],disp.shape[1]*disp.shape[2])
-            data = np.column_stack((dataZXY,disptot))
-            df= pd.DataFrame(data = data ,columns = columns)
 
-            disp[np.isnan(disp)]=0
-            data = np.column_stack((dataZXY,disp))
-            dfDisp= pd.DataFrame(data = data ,columns = columns)
-            # remove zero 
-            df2= df.loc[:, (dfDisp !=0).any(axis=0)]
-            return df
+        # --- FEM Model
+        self.f_G    = data['GY_frequencies'].flatten()
+        self.f_CB   = data['CB_frequencies'].flatten()
+        if PhiM is not None:
+            self.Phi_CB = data['PhiM'] # Not Extended with BC, might need checking
+            self.Q_CB   = Q_CB         # full
+        self.Phi_G = data['PhiR'] # Not Extended, might need checking
+        self.Q_GY  = Q_GY         # full
 
-        df=toDF(posGy, dispGy)
+        # --- Add modes
+        # TODO this is more or less FEMModel.setModes
+        for iMode in range(dispGY.shape[2]):
+            try:
+                self.addMode(displ=dispGY[:,:,iMode], name='GY{:d}'.format(iMode+1), freq=self.f_G[iMode], group='GY')
+            except:
+                raise 
+        for iMode in range(len(self.f_CB)):
+            self.addMode(displ=dispCB[:,:,iMode], name='CB{:d}'.format(iMode+1), freq=self.f_CB[iMode], group='CB') 
+
+        # --- Store
+        if PhiM is not None:
+            self.dispCB   = dispCB
+            self.posCB    = posCB
+            self.INodesCB = INodesCB
+            self.dfCB = self.toDF(posCB, dispCB)
+        else:
+            self.dfCB = None
+
+        self.dispGY   = dispGY
+        self.posGY    = posGY
+        self.INodesGY = INodesGY
+        self.dfGY     = self.toDF(posGY, dispGY)
 
         try:
             # Full system matrices
@@ -108,12 +126,31 @@ class SubDynModel(FEMModel):
             KK        = data['K']
             self.setFullMatrices(MM,KK)
         except:
-            print('>>> Full mass and stiffness matrices not included in summary file')
+            print('[INFO] Full mass and stiffness matrices not included in summary file')
             pass
-        self.toDataFrame()
+
+    def toDF(self, pos,disp):
+        columns=['z_[m]','x_[m]','y_[m]']
+        dataZXY=np.column_stack((pos[:,2],pos[:,0],pos[:,1]))
+        disptot=disp.copy()
+        for ishape in np.arange(disp.shape[2]):
+            disptot[:,:,ishape]= pos + disp[:,:,ishape]
+            sMode='Mode{:d}'.format(ishape+1)
+            columns+=[sMode+'x_[m]',sMode+'y_[m]',sMode+'z_[m]']
+        disptot= np.moveaxis(disptot,2,1).reshape(disptot.shape[0],disptot.shape[1]*disptot.shape[2])
+        disp   = np.moveaxis(disp,2,1).reshape(disp.shape[0],disp.shape[1]*disp.shape[2])
+        data = np.column_stack((dataZXY,disptot))
+        df= pd.DataFrame(data = data ,columns = columns)
+
+        disp[np.isnan(disp)]=0
+        data = np.column_stack((dataZXY,disp))
+        dfDisp= pd.DataFrame(data = data ,columns = columns)
+        # remove zero 
+        df2= df.loc[:, (dfDisp !=0).any(axis=0)]
+        return df
 
     def toDataFrame(self):
-        dfs={}
+        return {'GY':self.dfGY,'CB':self.dfCB}
 #         Mr, Kr, Phi_G, Phi_CB, f_CB, f_G = self.CraigBampton(Ileader=DOF_B, Ifollow=DOF_L)
 #         print(data['PhiL'])
 
@@ -152,9 +189,25 @@ class SubDynModel(FEMModel):
 
 
 if __name__=='__main__':
+    from welib.fast.subdyn_sum import SubDynModel
+    filename = 'SybDyn-sum-MC-04JAN23.yaml'
+    filename = '../../data/example_files/FASTSum_Pendulum.SD.sum.yaml'
+
     np.set_printoptions(linewidth=500)
     mdl=SubDynModel()
-    mdl.fromSummaryFile('../../data/example_files/FASTSum_Pendulum.SD.sum.yaml')
-    mdl.toJSON('./_out.json')
-    print(mdl)
+    mdl.fromSummaryFile()
+    mdl.toJSON('_OUT.json')
 
+    # --- Lower level functions
+    #from welib.weio.fast_summary_file import FASTSummaryFile
+    #sds = FASTSummaryFile(filename) 
+    #df = sds.toDataFrame(sortDim=2)
+    #print(df)
+    #sds.toJSON()
+    #sds.toGraph().toJSON('_OUT3.json')
+    #df = sds.toDataFrame(sortDim=None)
+
+    #import matplotlib.pyplot as plt
+    #plt.plot(df['z_[m]'], df['GuyanMode1x_[m]'])
+    #plt.plot(df['z_[m]'], df['GuyanMode5x_[m]'])
+    #plt.show()

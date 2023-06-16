@@ -68,9 +68,14 @@ def simulate(pkg, time, q0, qd0=None, p=None, u=None, acc=False, forcing=False, 
     # Create a Mechanical System
     sysNL = MechSystem(fM, F=fF, x0=q0, xdot0=qd0 )
     # Integrate in time
-    resNL = sysNL.integrate(time, method='RK45')
+    resNL, _ = sysNL.integrate(time, method='RK45')
     # Store in a nice dataframe, potentially with acceleration and forcing
-    dfNL = sysNL.toDataFrame(acc=acc, forcing=forcing, **kwargs)
+    calc=''
+    if acc:
+        calc+='xdd,'
+    if forcing:
+        calc+='f,'
+    dfNL = sysNL.res2DataFrame(resNL, calc=calc, **kwargs)
 
     # TODO point accelerations, additional outputs etc.
 
@@ -106,7 +111,7 @@ def linearModel(pkg, p, dq0=None, dqd0=None, time=None, uop=None, qop=None, qdop
 
     # --- Initial conditions (with op)
     q0  = dq0 + qop
-    qd0 = dq0 + qdop
+    qd0 = dqd0 + qdop
 #     dq0  = self.q0  - qop
 #     dqd0 = self.qd0 - qdop
     print('q0  :',q0)
@@ -131,8 +136,8 @@ def linearModel(pkg, p, dq0=None, dqd0=None, time=None, uop=None, qop=None, qdop
         K_lin += Ke
     print('B_lin\n',B_lin)
     if noBlin:
-        n=B_lin.shape[1]
-        B_lin[:n,:n] = np.eye(n)
+        n,m=B_lin.shape
+        B_lin = np.eye(max(n,m))[:n,:m]
         print('B_lin\n',B_lin)
 
     if MCKu is not None:
@@ -211,16 +216,16 @@ def IMUjacobian(pkg, q0, qd0, p, method='finiteDifferences', uop=None, u=None, d
     if qd0 is None:
         qd0=np.asarray(q0)*0
 
-    fh = AccelerationP_IMU
-    f0 = fh(q0, qd0, p, u, pkg)
+    fh = lambda q,qd : AccelerationP_IMU(q,qd,p,u,pkg)
+    f0 = fh(q0, qd0) #, p, u, pkg)
     if method=='finiteDifferences':
         # --- Method 1 Finite differences
         from welib.system.linearization import numerical_jacobian
         qdd0 = q0*0
         if dq is None or dqd is None:
             raise Exception('dq and dqd need to be provided when using finite differences')
-        Kacc = numerical_jacobian(fh, (q0,qd0), 0, dq  , p, pkg)
-        Cacc = numerical_jacobian(fh, (q0,qd0), 1, dqd , p, pkg)
+        Kacc = numerical_jacobian(fh, (q0,qd0), 0, dq )
+        Cacc = numerical_jacobian(fh, (q0,qd0), 1, dqd)
     elif method=='packageJacobians':
         # --- Method 2 pkg
         Ma,Ca,Ka = pkg.AccLinP_IMU(q=q0, qd=qd0, p=p)

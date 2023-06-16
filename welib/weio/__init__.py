@@ -19,8 +19,12 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
 
     """
     global _FORMATS
+    errors=[]
     if _FORMATS is not None:
-        return _FORMATS
+        if ignoreErrors:
+            return _FORMATS, errors
+        else:
+            return _FORMATS
     # --- Library formats
     from .fast_input_file         import FASTInputFile
     from .fast_output_file        import FASTOutputFile
@@ -52,8 +56,10 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     from .vtk_file import VTKFile
     from .bladed_out_file         import BladedFile
     from .parquet_file            import ParquetFile
+    from .pickle_file             import PickleFile        
     from .cactus_file             import CactusFile
     from .raawmat_file            import RAAWMatFile
+    from .rosco_discon_file       import ROSCODISCONFile
     from .rosco_performance_file  import ROSCOPerformanceFile
     priorities = []
     formats = []
@@ -86,11 +92,13 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     addFormat(40, FileFormat(FLEXWaveKinFile))
     addFormat(40, FileFormat(FLEXDocFile))
     addFormat(50, FileFormat(BModesOutFile))
+    addFormat(50, FileFormat(ROSCODISCONFile))
     addFormat(50, FileFormat(ROSCOPerformanceFile))
     addFormat(60, FileFormat(NetCDFFile))
     addFormat(60, FileFormat(VTKFile))
     addFormat(60, FileFormat(TDMSFile))
     addFormat(60, FileFormat(ParquetFile))
+    addFormat(60, FileFormat(PickleFile))
     addFormat(70, FileFormat(CactusFile))
     addFormat(70, FileFormat(RAAWMatFile))
 
@@ -241,6 +249,8 @@ def detectFormat(filename, **kwargs):
 
 def read(filename, fileformat=None, **kwargs):
     F = None
+    if not os.path.exists(filename):
+        raise FileNotFoundError('weio cannot read the following file because it does not exist:\n   Inp. path: {}\n   Abs. path: {}'.format(filename, os.path.abspath(filename)))
     # Detecting format if necessary
     if fileformat is None:
         fileformat,F = detectFormat(filename, **kwargs)

@@ -37,9 +37,9 @@ class PointMesh:
         R_b2g     : rotation matrix from body 2 global
         omega     : rotational vel of body
         omega_dot : rotational acc of body
-        RefPoint: Define the reference point where the Rigid Body Motion is to be applied, very important parameter
+        RefPoint: Define the reference point (on the undisplaced mesh) where the Rigid Body Motion is to be applied, very important parameter
         """
-        from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
+        from welib.yams.rotations import rotMat
         # --- Default arguments
         if RefPoint is None:
             RefPoint = self.RefPoint
@@ -61,12 +61,13 @@ class PointMesh:
 
         if R_b2g is None:
 #             R_b2g = BodyXYZ_A(theta[0], theta[1], theta[2])# matrix body 2 global, order XYZ
-            if rot_type=='smallRot_OF':
-                R_b2g = smallRot_OF(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
-            elif rot_type=='smallRot':
-                R_b2g = smallRot_A(theta[0], theta[1], theta[2])
-            else:
-                raise Exception('Rotation type not supported: {}'.format(rot_type))
+            R_b2g = rotMat(theta, rot_type)
+            #if rot_type=='smallRot_OF':
+            #    R_b2g = smallRot_OF(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
+            #elif rot_type=='smallRot':
+            #    R_b2g = smallRot_A(theta[0], theta[1], theta[2])
+            #else:
+            #    raise Exception('Rotation type not supported: {}'.format(rot_type))
         # --- Sanitation    
         u         = np.asarray(u)
         u_dot     = np.asarray(u_dot)
@@ -81,9 +82,18 @@ class PointMesh:
         self.TranslationDisp[:,:] = u + (r_AB - r_AB0)
         self.TranslationVel [:,:] = u_dot  + om_x_r
         self.TranslationAcc [:,:] = u_ddot + np.cross(omega_dot, r_AB) + np.cross(omega, om_x_r)
-        self.Orientation [:,:,:]  = R_b2g.T
+        self.Orientation [:,:,:]  = R_b2g.T # TODO TODO TODO Shouldn't we also have RefOrientation here?
         self.RotationVel [:,:]    = omega
         self.RotationAcc [:,:]    = omega_dot
+
+    def perturbNode(self, iNode, q):
+        from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
+        u         = np.array([q[0]   , q[1]   , q[2]])
+        theta     = np.array([q[3]   , q[4]   , q[5]])
+        R_b2g = smallRot_OF(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
+        # --- Motion
+        self.TranslationDisp[iNode,:] += u 
+        self.Orientation  [iNode,:,:]  = R_b2g.T # TODO?
 
     def mapLoadsToPoint(self, P):
         """ Map Force and Moment fields to a given point"""
@@ -97,12 +107,42 @@ class PointMesh:
         return F, M
 
     def transferMotion2IdenticalMesh(self, target):
-        target.TranslationDisp = self.TranslationDisp
-        target.TranslationVel  = self.TranslationVel 
-        target.TranslationAcc  = self.TranslationAcc 
-        target.Orientation     = self.Orientation    
-        target.RotationVel     = self.RotationVel    
-        target.RotationAcc     = self.RotationAcc    
+        target.TranslationDisp = self.TranslationDisp.copy()
+        target.TranslationVel  = self.TranslationVel .copy()
+        target.TranslationAcc  = self.TranslationAcc .copy()
+        target.Orientation     = self.Orientation    .copy()
+        target.RotationVel     = self.RotationVel    .copy()
+        target.RotationAcc     = self.RotationAcc    .copy()
+
+    def backupValues(self):
+        """ Backup mesh motion values, useful at an operating point """
+        self.TranslationDisp_0 = self.TranslationDisp.copy()
+        self.TranslationVel_0  = self.TranslationVel .copy()
+        self.TranslationAcc_0  = self.TranslationAcc .copy()
+        self.Orientation_0     = self.Orientation    .copy()
+        self.RotationVel_0     = self.RotationVel    .copy()
+        self.RotationAcc_0     = self.RotationAcc    .copy()
+
+    def restoreValues(self):
+        """ Resstore stored values by backupValues() """
+        self.TranslationDisp = self.TranslationDisp_0.copy()
+        self.TranslationVel  = self.TranslationVel_0.copy()
+        self.TranslationAcc  = self.TranslationAcc_0.copy()
+        self.Orientation     = self.Orientation_0.copy()
+        self.RotationVel     = self.RotationVel_0.copy()
+        self.RotationAcc     = self.RotationAcc_0.copy()
+
+    def packLoads(self, FthenM=True):
+        if FthenM:
+            # Force for all nodes + Moment for all nodes
+            M = np.vstack((self.Force,self.Moment))
+        else:
+            # Force+Moment for each node
+            M=np.zeros((self.nNodes*2, 3))
+            for i in range(self.nNodes):
+                M[i*3+0: i*3+3] = self.Force[i,:]
+                M[i*3+3: i*3+6] = self.Moment[i,:]
+        return M.flatten()
 
     # --------------------------------------------------------------------------------}
     # --- IO  

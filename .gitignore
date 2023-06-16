@@ -11,7 +11,8 @@
 __pycache*
 *.egg-info*
 *.ipynb_checkpoints*
-*.ipynb
+#*.ipynb
+pydy-resources
 _IGNORE
 *_TODO.m
 TODO
@@ -21,4 +22,5 @@ _*
 *.pdf
 *Copy.py
 tags
+dist
 

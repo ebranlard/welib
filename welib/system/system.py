@@ -7,7 +7,7 @@ import numpy as np
 from numpy.linalg import inv
 #from scipy.integrate import  solve_ivp #odeint
 
-from .linearization import * 
+from .linearization import linearize_function
 
 # --------------------------------------------------------------------------------}
 # --- Linear system
@@ -49,20 +49,30 @@ class System():
           'xdotxup':  Fx(t,xdot,x,u,p)   Y(t,x,u,p)        (implicit)
 
         """
+        # TODO Need to handle different interface for Fx and Y!
+
+
+        interface=interface.replace(',','').replace('q','x')
+
         self.Fx        = Fx
         self.Y         = Y
         self.interface = interface
         self.param     = param
 
+
         self.implicit  = interface.find('xdot')==0
-        self.has_param = interface.find('p')>0
+        self.has_param = interface.find('p')>0 
         self.has_input = interface.find('u')>0
-        self.has_output = Y is not None
-        if self.has_param and param is None:
-            raise Exception('Parameters needs to be provided since necessary for the function interface')
+        # Being relaxed about parameters being provided
+        #if self.has_param and param is None:
+        #    raise Exception('Parameters needs to be provided since necessary for the function interface')
+
+    @property
+    def has_output(self):
+        return self.Y is not None
 
 
-    def linearize(self, op, dx, dxp=None, du=None, use_implicit=False):
+    def linearize(self, op, dx, dxd=None, du=None, use_implicit=False):
         """ 
         Linearize the system
 
@@ -72,6 +82,9 @@ class System():
             op = (t_op, x_op, u_op)          (with u_op optional)
         
         """
+        if self.has_param and self.param is None:
+            raise Exception('Parameters needs to be provided since necessary for the function interface')
+
         # Checks
         if not isinstance(op,tuple):
             raise Exception('Operating point needs to be specified as a tuple')
@@ -96,12 +109,12 @@ class System():
             if len(op_imp)!=self.nArgsImplicit:
                 raise Exception('Number of values of implicit operating point ({}) does not match number of main argument of implicit function ({}), with interface {} '.format(len(op_imp),self.nArgsImplicit,self.interface))
 
-            if dxp is None:
+            if dxd is None:
                 raise Exception('delta_xdot needs to be specicified for linearization of implicit equations')
 
             F=self.implicit_function
 
-            deltas = np.array([None, dxp, dx, du], dtype=object)     # (dt, dxp, dx, du)
+            deltas = np.array([None, dxd, dx, du], dtype=object)     # (dt, dxd, dx, du)
             Iargs  = list(range(1,self.nArgsImplicit)) # [1,2] or [1,2,3]
             deltas = deltas[Iargs]
 
@@ -125,14 +138,20 @@ class System():
             deltas = deltas[Iargs]
 
             # --- Compute necessary jacobians
-            A, B = linearize_function(self.Fx, op, Iargs, deltas, self.param)
+            if self.has_param:
+                A, B = linearize_function(self.Fx, op, Iargs, deltas, self.param)
+            else:
+                A, B = linearize_function(self.Fx, op, Iargs, deltas)
 
         # --- Linearization of output equation
         if self.has_output:
             deltas = np.array([None, dx, du], dtype=object)  # (dt, dx, du)
             Iargs  = list(range(1,self.nArgs)) # [1] or [1,2]
             deltas = deltas[Iargs]
-            C, D = linearize_function(self.Y, op, Iargs, deltas, self.param)
+            if self.has_param:
+                C, D = linearize_function(self.Y, op, Iargs, deltas, self.param)
+            else:
+                C, D = linearize_function(self.Y, op, Iargs, deltas)
 
             return A, B, C, D
         else:
@@ -192,7 +211,6 @@ class System():
         return s
 
 if __name__ == '__main__':
-    from pybra.clean_exceptions import *
 
     def model(t, x, u, p):
         return p['A'].dot(x) + p['B'].dot(u)
@@ -240,7 +258,7 @@ if __name__ == '__main__':
     delta_u  = np.zeros(u0.shape)+0.001
 
     op=(0,x0,u0)
-    A,B,C,D=sys.linearize(op, dx=delta_x, dxp=delta_xd, du=delta_u, use_implicit=True)
+    A,B,C,D=sys.linearize(op, dx=delta_x, dxd=delta_xd, du=delta_u, use_implicit=True)
     print('A')
     print(A)
     print('B')

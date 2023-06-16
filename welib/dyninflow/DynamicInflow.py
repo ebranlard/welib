@@ -13,13 +13,9 @@ def tau1_oye(a_bar, R, U0):
     """ """
     return  1.1/( 1-1.3*min(a_bar,0.5) ) * R/U0
 
-def tau1_dbemt(a_bar, R, Un0_disk):
-    # We need to extrapolate the radius and disk velocity to the i+1 timestep
-    # We will grab the i+1 version of vind,s and the disk averaged induction by using the
-    # the already updated states of the BEMT module.
-    #bjj: I believe u(1) is at t, which seems inconsistant with this comment
-    U0n_disk = min(U0n_disk,0.1)
-    return min( 1.1/( 1-1.3*min(a_disk,0.5) ) * R/Un0_disk , 100) # plateau 100s
+def tau1_dbemt(a_bar, R, U0n_disk):
+    U0n_disk = max(U0n_disk,0.1)
+    return min( 1.1/( 1-1.3*min(a_bar,0.5) ) * R/U0n_disk , 100) # plateau 100s
 
 def tau2_oye(r_bar, tau1):
     return (0.39-0.26*r_bar**2)*tau1
@@ -32,11 +28,21 @@ def dynflow_oye_dxdt(t, x, u, tau1, tau2, k=0.6):
     See Reference [2]
     """
     x_qs     = u['Vqs'](t)
+    return dynflow_oye_dxdt_simple(x, x_qs, tau1, tau2, k)
+
+def dynflow_oye_dxdt_simple(x, x_qs, tau1, tau2, k=0.6):
+    """ Time derivative of states for continous formulation """
     xred = x[0]
     xdyn = x[1]
     xred_dot =               - 1/tau1*xred + (1-k)/tau1*x_qs
     xdyn_dot  = -1/tau2*xdyn + 1/tau2*xred +     k/tau2*x_qs
     return [xred_dot, xdyn_dot]
+
+def dynflow_oye_steady_simple(x_qs, k):
+    x    = np.zeros(2)
+    x[0] = x_qs * (1-k)   # Vred   # Vint=Vred + kVqs
+    x[1] = x_qs           # Vdyn
+    return x
 
 def dynflow_oye_steady(t, u, p):
     Vqs  = u['Vqs'](t)

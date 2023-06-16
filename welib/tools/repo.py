@@ -8,6 +8,7 @@ import os
 import re
 from welib.tools.figure import *
 import matplotlib.pyplot as plt
+from termcolor import colored, cprint
 
 FIG_MD=[]
 TIT_MD=[]
@@ -16,10 +17,10 @@ def export_figs_callback(filename):
     from welib.tools.repo import FIG_MD, TIT_MD
     script_dir = os.path.dirname(filename)
     setFigurePath('_figs/')
-    figNames, filenames, titles = export2png(print_latex=False)
+    figNames, filenames, titles = export2png(print_latex=False, verbose=False)
     print('filename:',filename)
     print('figNames:',figNames)
-    print('titles:',titles)
+    print('titles:  ',titles)
     for fign, fn, t in zip(figNames,filenames,titles):
         TIT_MD+=['[{}](/{})'.format(t, filename.replace('\\','/'))]
         FIG_MD+=['![{}](/../figs/{})'.format(t, fn)]
@@ -36,6 +37,11 @@ def export_figs_rec(maindir):
     print(FIG_MD)
     reobj = re.compile('[a-zA-Z0-9][a-zA-Z0-9_]*.py')
     for root,dirnames,filenames in os.walk(maindir):
+        sp = re.split(r'/|\\', root)
+        if any([s.startswith('_') for s in sp]):
+            #print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SKIPPING',root)
+            continue
+
         if os.path.basename(root)=='examples':
             for f in filenames:
                 if reobj.match(f):
@@ -43,11 +49,18 @@ def export_figs_rec(maindir):
                     fullpath=os.path.join(root,f)
                     print('Running example script: {}'.format(fullpath))
                     plt.close('all')
+                    n1=len(TIT_MD)
                     execfile(fullpath, {'__name__': '__export__', 'print': lambda *_:None})
+                    n2=len(TIT_MD)
+                    if n2>n1:
+                        cprint('[ OK ] {} figure(s)'.format(n2-n1), 'green')
+                    else:
+                        cprint('[INFO] No figure: {}'.format(fullpath), 'red')
     print('--------------------------------------------------------------')
     nCols= 5
     nRow= np.int(np.ceil(len(TIT_MD)/nCols))
 
+    # --- Generate markdown for README.md
     k=0
     kk=0
     print(''.join(['| ']*nCols) +  ' |')

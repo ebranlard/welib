@@ -1,4 +1,7 @@
+""" 
+Tools for Campbell diagrams and MBC
 
+"""
 import os
 import pandas as pd
 import numpy as np

@@ -159,10 +159,10 @@ class Structure():
         if s.main_axis=='x':
             raise NotImplementedError('Main axis along x')
 
-        rhoN_x = s.r_NGrna_inN[0,0]
-        rhoN_z = s.r_NGrna_inN[2,0]
-        rNR_x  = s.r_NR_inN[0,0]
-        rNR_z  = s.r_NR_inN[2,0]
+        rhoN_x = s.r_NGrna_inN.flatten()[0]
+        rhoN_z = s.r_NGrna_inN.flatten()[2]
+        rNR_x  = s.r_NR_inN.flatten()[0]
+        rNR_z  = s.r_NR_inN.flatten()[2]
         g      = s.gravity
         ux1c   = s.Twr.Bhat_x_bc[1,0]
         vy1c   = s.Twr.Bhat_t_bc[1,0]  # Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
@@ -194,10 +194,10 @@ class Structure():
     def print_RNA(s):
         print('----------------- RNA ---------------------------------------')
         print('M_RNA      ', s.M_RNA)
-        print('r_NGrna_inN',s.r_NGrna_inN.T)
-        print('     r_NGnac_inN ',s.r_NGnac_inN.T , 'M_nac',s.Nac.mass)
-        print('     r_NGhub_inN ',s.r_NGhub_inN.T , 'M_hub',s.Sft.mass)
-        print('     r_NGrot_inN ',s.r_NGrot_inN.T , 'M_rot',s.M_rot)
+        print('r_NGrna_inN', np.asarray(s.r_NGrna_inN).flatten())
+        print('     r_NGnac_inN ',np.asarray(s.r_NGnac_inN).flatten(), 'M_nac',s.Nac.mass)
+        print('     r_NGhub_inN ',np.asarray(s.r_NGhub_inN).flatten(), 'M_hub',s.Sft.mass)
+        print('     r_NGrot_inN ',np.asarray(s.r_NGrot_inN).flatten(), 'M_rot',s.M_rot)
 
     def print_couplings(s):
         print('---------------Couplings ---------------------------------------')

@@ -21,7 +21,7 @@ import pandas as pd
 import numpy as np
 from scipy import linalg
 
-def polyeig(*A, sort=False):
+def polyeig(*A, sort=False, normQ=None):
     """
     Solve the polynomial eigenvalue problem:
         (A0 + e A1 +...+  e**p Ap)x = 0
@@ -67,12 +67,13 @@ def polyeig(*A, sort=False):
         e = e[I]
 
     # Scaling each mode by max
-    X /= np.tile(np.max(np.abs(X),axis=0), (n,1))
+    if normQ=='byMax':
+        X /= np.tile(np.max(np.abs(X),axis=0), (n,1))
 
     return X, e
 
 
-def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False):
+def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massScaling=True):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -84,27 +85,29 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False):
     """
     if M is not None:
         D,Q = linalg.eig(K,M)
+        # --- rescaling using mass matrix to be consistent with Matlab
+        # TODO, this can be made smarter
+        # TODO this should be a normQ
+        if massScaling:
+            for j in range(M.shape[1]):
+                q_j = Q[:,j]
+                modalmass_j = np.dot(q_j.T,M).dot(q_j)
+                Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
+        Lambda=np.dot(Q.T,K).dot(Q)
     else:
         D,Q = linalg.eig(K)
-    # --- rescaling TODO, this can be made smarter
-    if M is not None:
-        for j in range(M.shape[1]):
-            q_j = Q[:,j]
-            modalmass_j = np.dot(q_j.T,M).dot(q_j)
-            Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
-        Lambda=np.dot(Q.T,K).dot(Q)
-        lambdaDiag=np.diag(Lambda) # Note lambda might have off diganoal values due to numerics
-        I = np.argsort(lambdaDiag)
-        # Sorting eigen values
-        if sort:
-            Q          = Q[:,I]
-            lambdaDiag = lambdaDiag[I]
-        if freq_out:
-            Lambda = np.sqrt(lambdaDiag)/(2*np.pi) # frequencies [Hz]
-        else:
-            Lambda = np.diag(lambdaDiag) # enforcing purely diagonal
-    else:
         Lambda = np.diag(D)
+
+    # --- Sort
+    lambdaDiag=np.diag(Lambda)
+    if sort:
+        I = np.argsort(lambdaDiag)
+        Q          = Q[:,I]
+        lambdaDiag = lambdaDiag[I]
+    if freq_out:
+        Lambda = np.sqrt(lambdaDiag)/(2*np.pi) # frequencies [Hz]
+    else:
+        Lambda = np.diag(lambdaDiag) # enforcing purely diagonal
 
     # --- Renormalize modes if users wants to
     if normQ == 'byMax':
@@ -125,12 +128,10 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False):
             print('[WARN] Found {:d} complex eigenvectors at positions {}/{}'.format(sum(bb),W,Q.shape[0]))
         Lambda = np.real(Lambda)
 
-
-
     return Q,Lambda
 
 
-def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None):
+def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None, sort=True):
     """
     Perform eigenvalue analysis on a "state" matrix A
     where states are assumed to be ordered as {q, q_dot, q1}
@@ -180,11 +181,12 @@ def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None):
     freq_0  = omega_0/(2*np.pi)      # natural frequency [Hz]
 
     # Sorting
-    I = np.argsort(freq_0)
-    freq_d = freq_d[I]
-    freq_0 = freq_0[I]
-    zeta   = zeta[I]
-    Q      = Q[:,I]
+    if sort:
+        I = np.argsort(freq_0)
+        freq_d = freq_d[I]
+        freq_0 = freq_0[I]
+        zeta   = zeta[I]
+        Q      = Q[:,I]
 
     # Normalize Q
     if normQ=='byMax':
@@ -196,26 +198,39 @@ def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None):
 
 
 
-def eigMK(M, K, sort=True, normQ=None, discardIm=False):
+def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScaling=True):
     """ 
     Eigenvalue analysis of a mechanical system
     M, K: mass, and stiffness matrices respectively
-    """
-    Q, freq_0 = eig(K, M, freq_out=True, sort=sort, normQ=normQ, discardIm=discardIm)
-    return Q, freq_0
 
-def eigMCK(M, C, K, method='full_matrix', sort=True): 
+    Should be equivalent to calling eig(K, M) in Matlab (NOTE: argument swap)
+    except that frequencies are returned instead of "Lambda"
+
+    OUTPUTS:
+      Q, freq_0 if freq_out
+      Q, Lambda otherwise
+    """
+    return eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out, massScaling=massScaling)
+
+
+def eigMCK(M, C, K, method='full_matrix', sort=True, normQ=None): 
     """
     Eigenvalue analysis of a mechanical system
     M, C, K: mass, damping, and stiffness matrices respectively
+
+    NOTE: full_matrix, state_space and state_space_gen should return the same
+          when damping is present
     """
     if np.linalg.norm(C)<1e-14:
-        # No damping
-        Q, freq_0 =  eigMK(M, K, sort=sort)
-        freq_d = freq_0
-        zeta   = freq_0*0
-        return freq_d, zeta, Q, freq_0
+        if method.lower() not in ['state_space', 'state_space_gen']:
+            # No damping
+            Q, freq_0 =  eigMK(M, K, sort=sort, freq_out=True, normQ=normQ)
+            freq_d = freq_0
+            zeta   = freq_0*0
+            return freq_d, zeta, Q, freq_0
 
+
+    n = M.shape[0] # Number of DOFs
 
     if method.lower()=='diag_beta':
         ## using K, M and damping assuming diagonal beta matrix (Rayleigh Damping)
@@ -226,20 +241,50 @@ def eigMCK(M, C, K, method='full_matrix', sort=True):
         xi[xi>2*np.pi] = np.NAN
         zeta        = xi/(2*np.pi)
         freq_d      = freq_0*np.sqrt(1-zeta**2)
+
     elif method.lower()=='full_matrix':
         ## Method 2 - Damping based on K, M and full D matrix
-        Q,e = polyeig(K,C,M)
+        Q,v = polyeig(K,C,M, sort=sort, normQ=normQ)
         #omega0 = np.abs(e)
-        zeta = - np.real(e) / np.abs(e)
-        freq_d = np.imag(e) / (2*np.pi)
+        zeta = - np.real(v) / np.abs(v)
+        freq_d = np.imag(v) / (2*np.pi)
         # Keeping only positive frequencies
         bValid = freq_d > 1e-08
         freq_d = freq_d[bValid]
         zeta   = zeta[bValid]
         Q      = Q[:,bValid]
         # logdec2 = 2*pi*dampratio_sorted./sqrt(1-dampratio_sorted.^2);
+
+    elif method.lower()=='state_space':
+        # See welib.system.statespace.StateMatrix
+        Minv = np.linalg.inv(M)
+        I = np.eye(n)
+        Z = np.zeros((n, n))
+        A = np.block([[np.zeros((n, n)), np.eye(n)],
+                      [ -Minv@K        , -Minv@C  ]])
+        return eigA(A, normQ=normQ, sort=sort)
+
+    elif method.lower()=='state_space_gen':
+        I = np.eye(n)
+        Z = np.zeros((n, n))
+        A = np.block([[Z, I],
+                      [-K, -C]])
+        B = np.block([[I, Z],
+                      [Z, M]])
+        # solve the generalized eigenvalue problem
+        D, Q = linalg.eig(A, B)
+        # Keeping every other states (assuming pairs..)
+        v = D[::2]
+        Q = Q[:n, ::2]
+
+        # calculate natural frequencies and damping
+        omega_0 = np.abs(v)              # natural cyclic frequency [rad/s]
+        freq_d  = np.imag(v)/(2*np.pi)   # damped frequency [Hz]
+        zeta    = - np.real(v)/omega_0   # damping ratio
+
     else:
         raise NotImplementedError()
+
     # Sorting
     if sort:
         I = np.argsort(freq_d)

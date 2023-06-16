@@ -3,17 +3,77 @@ Tools for yams_sympy
 """
 
 import numpy as np
+import os
 import sympy
 from sympy import latex, python, symarray, diff
 from sympy import Symbol, Matrix, collect
-from sympy import Function, DeferredVector
+from sympy import Function, DeferredVector, Derivative
 import sympy.physics.mechanics as me
 from sympy.physics.vector import dynamicsymbols
 from sympy.physics.mechanics.functions import find_dynamicsymbols
 from sympy import sin, cos, exp, sqrt
 
-def frame_viz(Origin, frame, l=1, r=0.08):
-    """ """
+
+# --------------------------------------------------------------------------------}
+# --- Basic math 
+# --------------------------------------------------------------------------------{
+def colvec(v): 
+    return Matrix([[v[0]],[v[1]],[v[2]]])
+def cross(V1,V2):
+    return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
+def eye(n): 
+    return Matrix( np.eye(n).astype(int) )
+
+
+def skew(x):
+    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
+    #S = Matrix(np.zeros((3,3)).astype(int))
+    if hasattr(x,'shape') and len(x.shape)==2:
+        if x.shape[0]==3:
+            return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
+        else:
+            raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
+    else:
+        return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
+
+# --------------------------------------------------------------------------------}
+# --- PYDY VIZ related...
+# --------------------------------------------------------------------------------{
+try:
+    import pydy.viz.scene 
+    from pydy.viz.scene import Scene
+    from pydy.viz.shapes import Shape
+    MyScene=Scene
+except:
+    Scene=object
+class MyScene(Scene):
+    def __init__(self, reference_frame, origin, *visualization_frames,
+                 **kwargs):
+        Scene.__init__(self, reference_frame, origin, *visualization_frames,
+                 **kwargs)
+        self.pydy_directory = "yams-viz-resources"
+    def create_static_html(self, overwrite=False, silent=False, prefix=None):
+        import distutils
+        import os
+        cur_dir=os.getcwd()
+        base = os.path.basename(cur_dir)
+        while base== self.pydy_directory:
+            parent = os.path.dirname(cur_dir)
+            os.chdir(parent)
+            print('>>>> CHANGING DIRECTORY')
+            cur_dir=os.getcwd()
+            base = os.path.basename(cur_dir)
+        Scene.create_static_html(self, overwrite=overwrite, silent=silent, prefix=prefix)
+
+
+def frame_viz(Origin, frame, l=1, r=0.08, name=''):
+    """
+    Generate visualization objects for a frame, i.e. three axes, represented by cylinders 
+      x: red
+      y: green
+      z: blue
+
+    """
     from pydy.viz.shapes import Cylinder
     from pydy.viz.visualization_frame import VisualizationFrame
     from sympy.physics.mechanics import Point
@@ -29,12 +89,69 @@ def frame_viz(Origin, frame, l=1, r=0.08):
     X_center=Point('X'); X_center.set_pos(Origin, l/2 * X_frame.y)
     Y_center=Point('Y'); Y_center.set_pos(Origin, l/2 *   frame.y)
     Z_center=Point('Z'); Z_center.set_pos(Origin, l/2 * Z_frame.y)
-    X_viz_frame = VisualizationFrame(X_frame, X_center, X_shape)
-    Y_viz_frame = VisualizationFrame(  frame, Y_center, Y_shape)
-    Z_viz_frame = VisualizationFrame(Z_frame, Z_center, Z_shape)
+    X_viz_frame = VisualizationFrame(name+'_xaxis',X_frame, X_center, X_shape)
+    Y_viz_frame = VisualizationFrame(name+'_yaxis',  frame, Y_center, Y_shape)
+    Z_viz_frame = VisualizationFrame(name+'_zaxis',Z_frame, Z_center, Z_shape)
     return X_viz_frame, Y_viz_frame, Z_viz_frame
 
+def body_viz(b, vo):
+    """ 
+    Return a "vizualization" of a body, based on options 
+    For "pydy" viz for now
+    
+    - b: YAMSBody
+    - vo: dictionary of options
+    """
+    from pydy.viz.shapes import Cylinder, Sphere, Cube, Box
+    from pydy.viz.visualization_frame import VisualizationFrame
+    from sympy.physics.mechanics import Point
+    # NOTE: rememeber that cylinders are along "y" by default and about their center
+    X_frame  = b.frame.orientnew('ffx', 'Axis', (-np.pi/2, b.frame.z) ) # Make y be x
+    Z_frame  = b.frame.orientnew('ffz', 'Axis', (+np.pi/2, b.frame.x) ) # Make y be z
+    vo = b.viz_opts
+    if 'type' in vo:
+        if vo['type']=='cylinder':
+            l = vo['length']
+            cyl = Cylinder(radius=vo['radius'], length=l, color=vo['color'])
+            C_center=Point('C'); 
+            if vo['normal'] == 'y':
+                C_center.set_pos(b.origin, l/2 * b.frame.y)
+                bod_viz = VisualizationFrame(b.name+'_body',b.frame, C_center, cyl)
+            elif vo['normal'] == 'z':
+                C_center.set_pos(b.origin, l/2 * Z_frame.y)
+                bod_viz = VisualizationFrame(b.name+'_body',Z_frame, C_center, cyl)
+            elif vo['normal'] == 'x':
+                C_center.set_pos(b.origin, l/2 * X_frame.y)
+                bod_viz = VisualizationFrame(b.name+'_body',X_frame, C_center, cyl)
+            return [bod_viz]
+        elif vo['type']=='three-blades':
+            l = vo['radius']
+            blade_shape = Cylinder(radius=0.03*vo['radius'] , length=l, color=vo['color'])
+            # TODO might need to be thought again
+            if vo['normal'] == 'z':
+                B1_frame  = b.frame.orientnew('b1', 'Axis', (np.pi/2+0 ,        b.frame.z) ) # Y pointing along blade-Z
+                B2_frame  = b.frame.orientnew('b2', 'Axis', (np.pi/2+2*np.pi/3, b.frame.z) )
+                B3_frame  = b.frame.orientnew('b3', 'Axis', (np.pi/2+4*np.pi/3, b.frame.z) )
+                B1_center=Point('B1'); B1_center.set_pos(b.origin, l/2 * B1_frame.y)
+                B2_center=Point('B2'); B2_center.set_pos(b.origin, l/2 * B2_frame.y)
+                B3_center=Point('B3'); B3_center.set_pos(b.origin, l/2 * B3_frame.y)
+            B1_viz = VisualizationFrame(b.name+'_body_blade1',B1_frame, B1_center, blade_shape)
+            B2_viz = VisualizationFrame(b.name+'_body_blade2',B2_frame, B2_center, blade_shape)
+            B3_viz = VisualizationFrame(b.name+'_body_blade3',B3_frame, B3_center, blade_shape)
+            return [B1_viz, B2_viz, B3_viz]
+        elif vo['type']=='cube':
+            cube = Cube(length=vo['length'], color=vo['color'], name=b.name+'_body')
+            return [VisualizationFrame(b.name+'_body', b.frame, b.origin, cube)]
+        elif vo['type']=='box':
+            box = Box(width=vo['width'], height=vo['height'], depth=vo['depth'], color=vo['color'], name=b.name+'_body')
+            return [VisualizationFrame(b.name+'_body', b.frame, b.origin, box)]
+        else:
+            raise NotImplementedError('Type, ',vo['type'])
 
+
+# --------------------------------------------------------------------------------}
+# --- Tools
+# --------------------------------------------------------------------------------{
 def exprHasFunction(expr):
     """ return True if a sympy expression contains a function"""
     if hasattr(expr, 'atoms'): 
@@ -45,7 +162,7 @@ def exprHasFunction(expr):
 
 def subs_no_diff(expr, subslist):
     """ 
-    Perform sustitution in an expression, but not in the time derivatives
+    Perform substitution in an expression, but not in the time derivatives
     Only works if Subslist is a simple lists of ( var, value) 
 
 
@@ -147,7 +264,7 @@ def myjacobian(expr, var_list, value_list=None):
         jac = jac.subs(sub_list)
     return jac
 
-def linearize(expr, x0, order=1, sym=False):
+def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True):
     """ 
     Return a Taylor expansion of the expression at the operating point x0
     INPUTS:
@@ -158,37 +275,96 @@ def linearize(expr, x0, order=1, sym=False):
     OUTPUTS:
        linearized expression
 
+    Basically computes:
+      f(x,y) = f(x0,y0) + df/dx_0 (x-x0) + df/dy_0 (y-y0)
+
+    if y=dx/dt, y is considered to be an independent variable (dxdt is substituted for a dummy variable y)
+
+
+    Examples: 
+        linearize(Function('f')(x,y), [(x, x0),(y, y0)], order=1)
+
+
+
+
     """
-    # --- First protect expression from derivatives
     time=dynamicsymbols._t
+    x0_bkp = x0
+    # --- First protect variables that are derivatives
+    # TODO We really need to do something cleaner for that. Consider using:
+    #    qd.is_Derivative
+    #    qd.variables
+    #    qd.variable_count
+    #    qd.free_symbols
+    #    qd._vwr_variables
+    #    qd.expr
+    DummysXD=symarray('DUMQD', len(x0))
+    xd_2_dum=[]
+    x0_new=[]
+    for i,(q,q0) in enumerate(x0):
+        if q.is_Derivative:
+            xd_dum = DummysXD[i]
+            x0_new.append((xd_dum, q0))
+            xd_2_dum=[(q, xd_dum)]
+        else:
+            x0_new.append((q,q0))
+    x0 = x0_new
+    dum_2_xd = [(b,a) for a,b in xd_2_dum]
+
+    # --- Then protect expression from derivatives
     # Mapping derivative -> Dummy
     Dummys=symarray('DUM', len(x0))
-    DT2Dummy=[(diff(v,time),Dummys[i]) for i,(v,x) in enumerate(x0)]
+    DT2Dummy=[]
+    for i,(v,x) in enumerate(x0):
+        dv = diff(v,time)
+        if dv.is_Derivative:
+            DT2Dummy.append( (dv, Dummys[i])  )
     Dummy2DT=[(b,a) for a,b in DT2Dummy]
+
+    # --- Remove Dummys
+    RemoveDummy = dum_2_xd + Dummy2DT
+    #print('RemoveDummy',RemoveDummy)
+    #print('x0',x0)
 
     # Helper function, linearizes one expression (for matrices and lists..)
     def __linearize_one_expr(myexpr):
-        # Remove derivatives
+        # backup myexpr
+        myexpr0=myexpr
+        # Make operating point derivatives "dummy"
+        myexpr = myexpr.subs(xd_2_dum)
+        # Make other derivatives of states "dummy"
         myexpr = myexpr.subs(DT2Dummy)
+
+        if myexpr.has(Derivative) and doSimplifyIfDeriv:
+            print('[WARN] Yams sympy linearize: Expression still contains derivative. Behavior might not be the right one. To be safe, we are running simplify on the expression.')
+            #NOTE: if expressions contains diff(-x,t) it won't work (for instance after a substitution). We need it simplified to -diff(x,t)
+            # We simplify expression
+            myexpr0=myexpr0.simplify()
+            # Make operating point derivatives "dummy"
+            myexpr = myexpr0.subs(xd_2_dum)
+            # Make other derivatives of states "dummy"
+            myexpr = myexpr.subs(DT2Dummy)
+        # --- Order 0
         flin=myexpr.subs(x0)  # Order 0
-        if order==0:
-            return flin.subs(Dummy2DT)
-        
-        df = [(myexpr.diff(v1).subs(x0))*(v1-v10) for v1,v10 in x0]
-        flin+=sum(df)
-        if order==1:
-            return flin.subs(Dummy2DT)
-        
-        df2 = [ (myexpr.diff(v1)).diff(v2).subs(x0)*(v1-v10)*(v2-v20) for v1,v10 in x0 for v2,v20 in x0]
-        flin+=sum(df2)/2
-        if order==2:
-            return flin.subs(Dummy2DT)
-        
-        df3 = [ (myexpr.diff(v1)).diff(v2).diff(v3).subs(x0)*(v1-v10)*(v2-v20)*(v3-v30) for v1,v10 in x0 for v2,v20 in x0 for v3,v30 in x0]
-        flin+=sum(df3)/6
-        if order==3:
-            return flin.subs(Dummy2DT)
-        raise NotImplementedError('Higher order')
+        # --- Order 1
+        if order>=1:
+            df = [(myexpr.diff(v1).subs(x0))*(v1-v10) for v1,v10 in x0]
+            df = sum(df)
+            flin += df
+        # --- Order 2
+        if order>=2:
+            df2 = [ (myexpr.diff(v1)).diff(v2).subs(x0)*(v1-v10)*(v2-v20) for v1,v10 in x0 for v2,v20 in x0]
+            df2 = sum(df2)/2
+            flin+=df2
+        # --- Order 3
+        if order>=3:
+            df3 = [ (myexpr.diff(v1)).diff(v2).diff(v3).subs(x0)*(v1-v10)*(v2-v20)*(v3-v30) for v1,v10 in x0 for v2,v20 in x0 for v3,v30 in x0]
+            df3 = sum(df3)/6
+            flin+=df3
+
+        if order>3:
+            raise NotImplementedError('Higher order')
+        return flin.subs(RemoveDummy)
     
     # --- Hanlde inputs of multiple dimension, scalar, vectors, matrices
     try:
@@ -224,7 +400,7 @@ def linearize(expr, x0, order=1, sym=False):
 
 def smallAngleApprox(expr, angle_list, order=1, sym=True):
     """ 
-    Perform small angle approximation of an expresion by linearizaing about the "0" operating point of each angle
+    Perform small angle approximation of an expression by linearizing about the "0" operating point of each angle
 
     INPUTS:
         expr: expression to be linearized
@@ -236,7 +412,7 @@ def smallAngleApprox(expr, angle_list, order=1, sym=True):
     """
     # operating point
     x0=[(angle,0) for angle in angle_list]
-    return linearize(expr, x0, order=order, sym=sym)
+    return linearize(expr, x0, order=order, sym=sym, doSimplifyIfDeriv=False)
 
 
 
@@ -475,7 +651,7 @@ def cleanPy(expr, dofs=None, varname='R', indent=0, replDict=None, noTimeDep=Fal
                             symbols_s.pop(i)
                         else:
                             print('yams: cleanPy, TODO replace dict: {} {}'.format(k,v) )
-                            import pdb; pdb.set_trace()
+                            raise Exception()
             # Parameters
             for symb in symbols:
                 ssymb=repr(symb)
