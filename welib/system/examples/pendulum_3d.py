@@ -263,7 +263,7 @@ if __name__=="__export__":
     ax.plot( time, CG[2,:], label='z')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('COG position [m]')
-    ax.set_title('3D pendulum - motion')
+    ax.set_title('System - 3D pendulum - motion')
     ax.legend()
     ax.tick_params(direction='in')
 

@@ -49,7 +49,7 @@ ax.set_yticks([0,0.1,0.2,0.3])
 ax.set_ylim([0,0.3])
 ax.set_xlim([0,1])
 ax.legend()
-ax.set_title('BEM - Ideal rotor planform')
+ax.set_title('BEM Theory - Ideal rotor planform')
 
 ax=axes[1]
 ax.plot(r_bar, twist_nw, 'k' , label='Without wake rotation')

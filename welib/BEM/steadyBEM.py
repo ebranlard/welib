@@ -522,7 +522,8 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
                 break
         nIt = iterations + 1
         if iterations == nItMax-1:
-            print('Maximum iterations reached : Omega=%.2f V0=%.2f' % (Omega,V0))
+            if verbose:
+                print('Maximum iterations reached : Omega=%.2f V0=%.2f' % (Omega,V0))
         #print('Converged: V0=%2.f om=%5.2f pit=%3.1f nIt=%d' % (V0,Omega,pitch, nIt))
         # --------------------------------------------------------------------------------
         # --- Step 6: Outputs
