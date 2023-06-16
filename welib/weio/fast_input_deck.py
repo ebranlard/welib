@@ -330,7 +330,10 @@ class FASTInputDeck(dict):
             return None
 
         # Attempt reading
-        fullpath =os.path.join(self.FAST_directory, relfilepath)
+        if relfilepath.startswith(self.FAST_directory):
+            fullpath = relfilepath
+        else:
+            fullpath = os.path.join(self.FAST_directory, relfilepath)
         try:
             data = FASTInputFile(fullpath)
             if self.verbose:
