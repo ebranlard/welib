@@ -33,3 +33,13 @@ Add `.gitconfig` to your path, to apply filters on jupyter notebooks
 ```bash
 git config --local include.path ../.gitconfig
 ```
+
+
+
+## Conda 
+
+conda-forge, 
+make a pull request there.
+ - setup build script (https://conda-forge.org/docs/maintainer/adding_pkgs.html). 
+    see e.g. FLORIS (https://github.com/conda-forge/floris-feedstock/blob/master/recipe/meta.yaml).
+ - make a pull request to https://github.com/conda-forge/staged-recipes/ 
