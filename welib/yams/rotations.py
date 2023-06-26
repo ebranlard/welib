@@ -6,7 +6,8 @@ Rotation matrices for different rotational coordinates conventions:
  - BodyZYX :  
 """
 import numpy as np
-from numpy import cos, sin, tan, arccos, trace
+from numpy import cos, sin, tan, arccos, trace, arctan2
+from math import copysign
 
 # --- Definitions to ease comparison with sympy versions
 def Matrix(m):
@@ -223,12 +224,16 @@ def BodyZXZ_toEuler(phi, theta, psi):
 # --- Bryant angles XYZ
 # --------------------------------------------------------------------------------{
 def BodyXYZ_A(phi_x, phi_y, phi_z):
-    """ Transformation matrix body to global for rotation of type Body and order XYZ"""
+    """ Transformation matrix body to global/parent for rotation of type Body and order XYZ"""
     A = np.zeros((3,3))
     A[0,:] = [cos(phi_y)*cos(phi_z),-sin(phi_z)*cos(phi_y),sin(phi_y)]
     A[1,:] = [sin(phi_x)*sin(phi_y)*cos(phi_z)+sin(phi_z)*cos(phi_x),-sin(phi_x)*sin(phi_y)*sin(phi_z)+cos(phi_x)*cos(phi_z),-sin(phi_x)*cos(phi_y)]
     A[2,:] = [sin(phi_x)*sin(phi_z)-sin(phi_y)*cos(phi_x)*cos(phi_z),sin(phi_x)*cos(phi_z)+sin(phi_y)*sin(phi_z)*cos(phi_x),cos(phi_x)*cos(phi_y)]
     return A
+
+def BodyXYZ_DCM(phi_x, phi_y, phi_z):
+    """ Transformation matrix global/parent to body for rotation of type Body and order XYZ"""
+    return BodyXYZ_A.T
 
 def BodyXYZ_G(phi_x, phi_y, phi_z):
     """ Angular velocity matrix such that omega_global = G theta_dot for rotation of type Body and order XYZ"""
@@ -267,6 +272,45 @@ def BodyXYZ_toEuler(phi_x, phi_y, phi_z):
     Convert to Bryant angles to Euler parameters
     """
     return EulerP_fromA(BodyXYZ_A(phi_x,phi_y,phi_z))
+
+
+def BodyXYZ_fromA(A):
+    return BodyXYZ_fromDCM(A.T)
+
+def BodyXYZ_fromDCM(M):
+    """
+    Obtain the three angles phi_x, phi_y, phi_z such that  
+        M = BodyXYZ_DCM(phi_x, phi_y, phi_z):
+    Based on EulerExtract routine from OpenFAST
+    INPUTS:
+     - M: tranformation matrix from global/parent to body
+    OUTPUTS
+     - phi_x, phi_y, phi_z
+    """
+    phi=[0,0,0]
+    cy = np.sqrt( M[0,0]**2 + M[1,0]**2 ) 
+    if cy<1e-16:
+        phi[1] = arctan2( M[2,0], cy )
+        phi[2] = 0
+        phi[0] = arctan2(  M[1,2], M[1,1] )
+    else:
+        phi[2] = arctan2( -M[1,0], M[0,0] )
+        cz     = cos( phi[2] )
+        sz     = sin( phi[2] )
+        if abs(cz)<1e-16:
+            cy = copysign( cy, -M[1,0]/sz )
+        else:
+            cy = copysign( cy,  M[0,0]/cz )
+        phi[1] = arctan2( M[2,0], cy )
+        cz = cos( phi[2] )
+        sz = sin( phi[2] )
+        cx = sz*M[0,1] + cz*M[1,1]
+        sx = sz*M[0,2] + cz*M[1,2]
+        phi[0] = arctan2( sx, cx )
+    return phi
+            
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Angles ZYX
