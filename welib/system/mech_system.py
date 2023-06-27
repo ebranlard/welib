@@ -733,7 +733,7 @@ class MechSystem():
         noneIfLambda('_force_fn')
 
 
-    def plot(self, fig=None, axes=None, label=None, res=None, calc='', qFactors=None, **kwargs):
+    def plot(self, fig=None, axes=None, label=None, res=None, df=None, sStates=None, calc='', qFactors=None, **kwargs):
         """ Simple plot of states after time integration"""
         if res is None:
             res=self.res
@@ -751,7 +751,8 @@ class MechSystem():
         axes = np.atleast_1d(axes)
         n=self.nDOF
 
-        df=self.res2DataFrame(sStates=None, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
+        if df is None:
+            df = self.res2DataFrame(res=res, sStates=sStates, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
         for i,ax in enumerate(axes):
             if i+1>len(df.columns):
                 continue
