@@ -3,11 +3,23 @@ Set of high thrust corrections
 
 NOTE: ac=0.4 -> Ctc = (1-(1-2*ac)**2) = 0.96
 
+
+
+
+References:
+    [1] Branlard (2017) Wind turbine aerodynamics and vorticity-based methods. Springer
+    [2] Madsen, Larsen, Pirrung, Li, Zahle (2020) Implementation of the blade element momentum model
+on a polar grid and its aeroelastic load impact. Wind Energ. Sci.
+
+
 """
 import numpy as np
 
 
-def a_Ct(Ct, a=None, F=None, method='AeroDyn'):
+MaxTanChi0 = 100  # maximum absolute value allowed for tan(chi0), an arbitary large number
+
+
+def a_Ct(Ct, a=None, F=None, theta_yaw=0, CT=None, method='AeroDyn'):
     """ 
     High thrust corrections of the form: 
        a=a(Ct)
@@ -15,11 +27,11 @@ def a_Ct(Ct, a=None, F=None, method='AeroDyn'):
        a=a(Ct,a)
     INPUTS:
         Ct: Local thrust coefficient
-        a: induction factor
-        F : tip-loss factor
+        a: induction ac_valtor
+        F : tip-loss ac_valtor
     """
-    if F is None:
-        F=np.ones(Ct.shape)
+    Ct, scalar = to_array(Ct)
+    F = array_like(F, Ct, 1)
     # -------------------------------------------------------
     # --- a = a(Ct)
     # -------------------------------------------------------
@@ -52,20 +64,38 @@ def a_Ct(Ct, a=None, F=None, method='AeroDyn'):
         a[In] = 0.5*(1-np.sqrt(1-Ct[In]/F[In]))
     elif method=='HAWC2':
         #k = [-0.0017077,0.251163,0.0544955,0.0892074]
+        # Numerical values from [2]
         k = [0.0       ,0.2460  ,0.0586,   0.0883]
         Ct = Ct/F
-        a = k[3]*Ct**3+k[2]*Ct**2+k[1]*Ct+k[0]
+        if theta_yaw==0:
+            ka = 1
+        else:
+            Ca=np.array([[-0.5136 , 0.4438 , -0.1640],
+                         [ 2.1735 ,-2.6145 ,  0.8646],
+                         [-2.0705 , 2.1667 , -0.6481 ]])
+            if CT is None:
+                raise Exception('CT needs to be provided for HAWC2 method')
+            CT = min(CT,0.9)
+            #ka1= Ca[0,2]*theta_yaw**3 +Ca[0,1]*theta_yaw**2 + Ca[0,0]*theta_yaw
+            #ka2= Ca[1,2]*theta_yaw**3 +Ca[1,1]*theta_yaw**2 + Ca[1,0]*theta_yaw
+            #ka3= Ca[2,2]*theta_yaw**3 +Ca[2,1]*theta_yaw**2 + Ca[2,0]*theta_yaw
+            th = np.array([theta_yaw, theta_yaw**2, theta_yaw**3])
+            ka1,ka2,ka3 = Ca.dot(th)
+            ka = ka3 * CT**3 + ka2 * CT**2  + ka1 * CT  +1
+
+        a = ka*(k[3]*Ct**3+k[2]*Ct**2+k[1]*Ct+k[0])
     # -------------------------------------------------------
-    # --- a = a(Ct,a)
+    # --- a = a(Ct,a) TODO TODO TODO might need rethinking..
+    # with a = 1/2*(1-sqrt(1-Ct))
     # -------------------------------------------------------
-    elif method=='Glauert_CTa':
-       ac=0.3;
-       #Ic =Ct/F> 1-(1-(2*ac))**2  # Correction
-       Ic = a>ac                  # Correction
-       fg=0.25*(5-3*a[Ic])
-       a[Ic] = Ct[Ic]/(4*F[Ic]*(1-fg*a[Ic]))
-       #In = np.logical_not(Ic)    # Normal
-       #a[In] = 0.5*(1-np.sqrt(1-Ct[In]/F[In]))
+    elif method=='Glauert_CTa': # see [1]
+        ac=0.3;
+        #Ic =Ct/F> 1-(1-(2*ac))**2  # Correction
+        Ic = a>ac                  # Correction
+        fg=0.25*(5-3*a[Ic])
+        a[Ic] = Ct[Ic]/(4*F[Ic]*(1-fg*a[Ic]))
+        #In = np.logical_not(Ic)    # Normal
+        #a[In] = 0.5*(1-np.sqrt(1-Ct[In]/F[In]))
     elif method=='Spera_CTa':
         ac    = 0.34
         Ic    = a>ac
@@ -81,21 +111,24 @@ def a_Ct(Ct, a=None, F=None, method='AeroDyn'):
     return a
 
 
-def Ct_a(a, F=None, method='Glauert', ac=None, chi0=0):
+def Ct_a(a, F=None, method='Glauert', ac=None, chi=0):
     """ 
     High thrust corrections of the form: Ct = Ct(a)
         see a_Ct
     """
-    if not hasattr(a, '__len__'):
-        scalar=True
-        a = np.atleast_1d(a)
-    else:
-        scalar=False
-        a = np.asarray(a)
-    if F is None:
-        F=np.ones(a.shape)
-    Ct     = 4*a*F*(1-a)
-    if method=='Glauert':
+    a, scalar = to_array(a)
+    F = array_like(F, a, 1)
+    Ct = 4*a*F*(1-a)
+
+
+    if method=='MomentumTheory':
+        Ct = 4*a*F*(1-a)
+
+    elif method=='MomentumGlauertSkew':
+
+        Ct = 4*a*F * np.sqrt((1-a)**2 + np.tan(chi)**2)
+
+    elif method=='Glauert': # Glauert hight thrust  # see [1]
         if ac is None:
             ac = 1/3
         Ic     = a>ac
@@ -123,16 +156,13 @@ def Ct_a(a, F=None, method='Glauert', ac=None, chi0=0):
 
 
     elif method=='BladedNoCorr':
-        a0_local = a0(chi0)
+        a0_local = ac_val(chi)
         for ia, (aa,FF) in enumerate(zip(a,F)):
             if aa<a0_local:
                 Ct[ia] = 4*aa*FF*(1-aa)
             else:
-                c = getEmpiricalCoefficients(chi0=chi0, F=FF, method=method)
+                c = getEmpiricalCoefficients(chi=chi, F=FF, method=method)
                 Ct[ia] =c[0] + c[1]*aa + c[2]*aa**2
-
-
-
        #if (k <= k0 ) then
        #    if (VxCorrected2 > 0.0) then
        #        a = k/(k+1.0)
@@ -148,12 +178,12 @@ def Ct_a(a, F=None, method='Glauert', ac=None, chi0=0):
         #c = getEmpiricalCoefficients(chi0=chi0, F=F, method=method)
         #Ct =c[0] + c[1]*a + c[2]*a**2
 
-        a0_local = a0(chi0)
+        a0_local = ac_val(chi)
         for ia, (aa,FF) in enumerate(zip(a,F)):
             if aa<a0_local:
-                Ct[ia] = 4*aa*FF*(1-aa)
+                Ct[ia] = 4*aa*FF*np.sqrt((1-aa)**2 + np.tan(chi)**2)
             else:
-                c = getEmpiricalCoefficients(chi0=chi0, F=FF, method=method)
+                c = getEmpiricalCoefficients(chi=chi, F=FF, method=method)
                 Ct[ia] =c[0] + c[1]*aa + c[2]*aa**2
 
 
@@ -163,47 +193,67 @@ def Ct_a(a, F=None, method='Glauert', ac=None, chi0=0):
         Ct = Ct[0]
     return Ct
 
-def a0(chi):
-   return np.clip(0.5*np.cos(45*np.pi/180)/np.cos(chi), 0, 0.5)
+def ac_val(chi=0, method='Bladed'):
+    """ Return the critical value of the axial induction ac_valtor above which the high-trust
+        correction should be used 
+    """
+    if method=='Bladed':
+        return np.clip(0.5*np.cos(45*np.pi/180)/np.cos(chi), 0, 0.5)
+    else:
+        raise NotImplementedError()
+
+def ak_lim(chi):
+    a0 = ac_val(chi)
+    k0 = a0/(1-a0)
+    tan_chi0 = np.clip(np.tan(chi),  -MaxTanChi0, MaxTanChi0)
+    k0_lim = k0*np.sqrt(1+(tan_chi0/(1-a0))**2)
+    return a0, k0, k0_lim, tan_chi0
 
 
-def getEmpiricalCoefficients(chi0=0, F=1, method='BladedCorr'):
+
+
+def getEmpiricalCoefficients(chi=0, F=1, method='BladedCorr'):
     """ Return polynomial coefficients 
         CT = 4*a*(1-a)*F = c0 + c1*a + c2*a^2 + ...
     """
     if hasattr(F, '__len__'):
         raise Exception('F should be scalar')
-    if hasattr(chi0, '__len__'):
-        raise Exception('chi0 should be scalar')
+    if hasattr(chi, '__len__'):
+        raise Exception('chi should be scalar')
 
-    MaxTanChi0 = 100  # maximum absolute value allowed for tan(chi0), an arbitary large number
     if method=='BladedCorr':
-        # Empirical CT = 4*a*(1-a)*F = c2*a^2 + c1*a + c0 for a > a0
-        a0_local = a0(chi0)
-        denom = (a0_local**2 - 2*a0_local + 1)
-        temp2 = np.clip(np.tan(chi0), -MaxTanChi0, MaxTanChi0)**2
-        temp1 = np.sqrt((a0_local-1)**2 +temp2)
+        # Empirical CT = c2*a^2 + c1*a + c0 for a > a_c
+        a_c = ac_val(chi)
+        denom = (1-a_c)**2
+        tchi2 = np.clip(np.tan(chi), -MaxTanChi0, MaxTanChi0)**2  # tan(chi)**2
+        # Value and slope at a=a_c
+        CT_c = 4*F*a_c * np.sqrt( (1-a_c)**2 + tchi2 ) 
+        s_c = 4*F*(1-3*a_c+2*a_c**2+tchi2)/np.sqrt( (1-a_c)**2 + tchi2 ) 
+        # Empirial value of CT at a=1
+        CT_1 = max(1, np.sqrt(((-0.64755/(np.cos(chi)*np.cos(chi)) - 0.8509/np.cos(chi) + 3.4984)*F)**2 + 16*tchi2))
         
-        CTata1 = np.sqrt(((-0.64755/(np.cos(chi0)*np.cos(chi0)) - 0.8509/np.cos(chi0) + 3.4984)*F)**2 + 16*temp2)
-        CTata1 = max(1, CTata1)
-        
-        c2 = (CTata1 - 4*F/temp1 + 16*F*a0_local/temp1 - 4*F*a0_local*temp1 - 4*temp2*F/temp1 - 20*F*(a0_local**2)/temp1 + 8*F*(a0_local**3)/temp1 + 4*temp2*F*a0_local/temp1 ) /denom
-        c1 = 2*( 2*F/temp1 - a0_local*CTata1 - 6*F*a0_local/temp1 + 2*temp2*F/temp1 + 2*F*(a0_local**2)/temp1 + 4*F*(a0_local**2)*temp1 + 6*F*(a0_local**3)/temp1 - 4*F*(a0_local**4)/temp1 - 2*temp2*F*(a0_local**2)/temp1 )/denom
-        c0 = a0_local*( a0_local*CTata1 - 4*F/temp1 + 4*F*temp1 + 16*F*a0_local/temp1 - 8*F*a0_local*temp1 - 4*temp2*F/temp1 - 20*F*(a0_local**2)/temp1 + 8*F*(a0_local**3)/temp1 + 4*temp2*F*a0_local/temp1 )/denom
+        # --- Analytical solution for particuliar case above
+        #temp1 = np.sqrt((a_c-1)**2 +tchi2)
+        #c2 = (CT_1 - 4*F/temp1 + 16*F*a_c/temp1 - 4*F*a_c*temp1 - 4*tchi2*F/temp1 - 20*F*(a_c**2)/temp1 + 8*F*(a_c**3)/temp1 + 4*tchi2*F*a_c/temp1 ) /denom
+        #c1 = 2*( 2*F/temp1 - a_c*CT_1 - 6*F*a_c/temp1 + 2*tchi2*F/temp1 + 2*F*(a_c**2)/temp1 + 4*F*(a_c**2)*temp1 + 6*F*(a_c**3)/temp1 - 4*F*(a_c**4)/temp1 - 2*tchi2*F*(a_c**2)/temp1 )/denom
+        #c0 = a_c*( a_c*CT_1 - 4*F/temp1 + 4*F*temp1 + 16*F*a_c/temp1 - 8*F*a_c*temp1 - 4*tchi2*F/temp1 - 20*F*(a_c**2)/temp1 + 8*F*(a_c**3)/temp1 + 4*tchi2*F*a_c/temp1 )/denom
+
+        # --- General solution
+        c0, c1, c2 = secondOrderCoeffC1(a_c, s_c, CT_c, CT_1)
         return [c0, c1, c2]
      
 
     elif method=='BladedNoCorr':
         # Empirical CT = 4*a*(1-a)*F = c2*a^2 + c1*a + c0 for a > a0
-        a0_local = a0(chi0)
-        denom = (a0_local**2 - 2*a0_local + 1)
+        a_c = ac_val(chi)
+        denom = (a_c**2 - 2*a_c + 1)
 
-        CTata1 = (-0.64755/(np.cos(chi0)*np.cos(chi0)) - 0.8509/np.cos(chi0) + 3.4984)*F      
+        CTata1 = (-0.64755/(np.cos(chi)*np.cos(chi)) - 0.8509/np.cos(chi) + 3.4984)*F      
         CTata1 = max( 1, CTata1 )       
 
-        c2 =  (-4*F*a0_local**2 + 8*F*a0_local - 4*F + CTata1)/denom    
-        c1 = 2*(2*F*a0_local**2 - CTata1*a0_local - 4*F*a0_local  + 2*F)/denom    
-        c0 = CTata1*(a0_local**2)/denom
+        c2 =  (-4*F*a_c**2 + 8*F*a_c - 4*F + CTata1)/denom    
+        c1 = 2*(2*F*a_c**2 - CTata1*a_c - 4*F*a_c  + 2*F)/denom    
+        c0 = CTata1*(a_c**2)/denom
 
         return [c0, c1, c2]
     else:
@@ -217,12 +267,7 @@ def a_Ct_numInverse(fCta):
     """ take a Ct(a) function and make it a a(Ct) function"""
     from  scipy.optimize import minimize_scalar
     def a_Ct_local(Ct): 
-        if not hasattr(Ct, '__len__'):
-            scalar=True
-            Ct = np.atleast_1d(Ct)
-        else:
-            scalar=False
-        Ct = np.asarray(Ct)
+        Ct, scalar = to_array(Ct)
         a = []
         for ct in Ct:
             minimize = lambda a : abs(fCta(a) - ct) # NOTE: abs value
@@ -236,29 +281,31 @@ def a_Ct_numInverse(fCta):
     return a_Ct_local
 
 
-def a_k(k, F=None, method='Buhl'):
+def a_k(k, chi=0, phi=0.1, F=None, method='Buhl', outputMore=False):
     """
     Return a = a(k) 
+    INPUTS:
+      - k:
+      - phi: flow angle mostly used for sign (positive or negative)
+      - F: tiploss ac_valtor
     """
-
-    if not hasattr(k, '__len__'):
-        scalar=True
-        k = np.atleast_1d(k)
-    else:
-        scalar=False
-    if F is None:
-        F=np.ones(k.shape)
+    k, scalar = to_array(k)
+    F = array_like(F, k, 1)
 
     A = 4*k*F
     a = np.zeros(k.shape)
 
-    if method=='Momentum theory':
+    if method=='MomentumTheory':
+        if chi!=0:
+            raise Exception('Momentum Theory `a_k` only for chi=0')
         Ip = k>-1
         # TODO might need a switch based on "Vx" or phi
         a[Ip]  = k[ Ip]/(1+k[ Ip]) 
         a[~Ip] = k[~Ip]/(k[~Ip]-1) 
 
     elif method=='Buhl' or method=='AeroDyn15':
+        if chi!=0:
+            raise Exception('Buhl or AeroDyn15 `a_k` only for chi=0')
 
         InductionLimit = 1000000
         isValid=np.asarray([True]*len(k))
@@ -301,35 +348,242 @@ def a_k(k, F=None, method='Buhl'):
         a[~isValid]=np.nan
 
 
+    elif method=='Thrust': # TODO rename
 
-    elif method=='Thrust':
-        c = getEmpiricalCoefficients(chi0=chi0, F=F, method=method)
+        for ik,kk in enumerate(k):
+            a[ik], _ = axialInductionFromEmpiricalThrust(kk, chi, phi=phi, F=F[ik])
 
-#        y1 = 2.0*A + c1
-#        y2 = 4.0*A*(c2+c1+c0) + c1*c1 - 4.0*c0*c2 
-#        y3 = 2.0*(A-c2)
-#        if ( EqualRealNos( y3, 0.0_R8Ki ) ) then
-#           axInd = 1.0 - 1.0/(2.0*SQRT(y2))
-#        else
-#           if (phi>=0.0) then
-#              axInd = ( y1 - SQRT(y2) ) / y3
-#           else
-#              axInd = ( y1 + SQRT(y2) ) / y3
-#           end if
-#        end if
-
+    elif method=='MomentumGlauertSkewRoots' or method=='MomentumGlauertSkewRootsWithHT':
+        highThrustCorr =  method=='MomentumGlauertSkewRootsWithHT'
+        cs=np.zeros((3,len(k)))
+        roots = np.zeros((4,len(k)))
+        for ik,kk in enumerate(k):
+            a[ik],cs[:,ik], roots[:,ik] = axialInductionFromGlauertMomentum(kk, chi=chi, phi=phi, F=F[ik], highThrustCorr=highThrustCorr)
+        if outputMore:
+            return a, cs, roots
     else:
         raise NotImplementedError('High-thrust correction method for `a_k` function unknown:'+method)
 
     return a
 
+
+
+def axialInductionFromGlauertMomentum(k, chi, phi=0.1, F=1, highThrustCorr=True):
+    """ 
+    Solve for `a` in skew-momentum relation equation:
+          BET     =     MT
+        (1-a)^2 k = a sqrt((1-a)^2 + tan(chi)^2)
+
+    Which, when squared, leads to the fourth order polynomial:
+
+       (1-k^2)a^4 + (4k^2-2)a^3 + (-6k^2 + tan^2\chi +1)a^2 + 4k^2 a - k^2 = 0 
+
+    For high loading |k|>k_lim a hight thrust correction is used.
+
+    Introduced to match OpenFAST interac_vale
+
+    INPUTS:
+     - k: load ac_valtor [-]
+
+    OUTPUTS:
+     - a: axial induction ac_valtor, scalar [-]
+     - c: c0, c1, c2
+
+    """
+    c=[0,0,0]
+    a0, k0, k0_lim, tan_chi0 = ak_lim(chi)
+    if not highThrustCorr:
+        k0_lim = np.inf
+    if abs(k)<=k0_lim:
+        c11 = tan_chi0**2
+        c12 = k**2
+        coeffs = (1-c12, 4*c12-2,  1+c11 -6*c12, 4*c12, -c12)
+        roots = np.roots(coeffs) # Note: the roots are always real as far as I can tell
+        #bReal = np.abs(np.imag(roots))<1e-10 
+        #roots = np.sort(np.real(roots[bReal]))
+        roots = np.sort(np.real(roots))
+        if phi>=0:
+            if roots[0]<0:
+                # Will happen when k \in [0,1], we chose the solution of a in [0,1]
+                a =  roots[1] # 
+            else:
+                a =  roots[0]
+        else:
+            a =  min( roots[0], roots[1])
+    else:
+        roots=None
+        a, c = axialInductionFromEmpiricalThrust(k, chi=chi, phi=phi, F=F, momentumCorr=True)
+    return a, c, roots
+
+# 
+def axialInductionFromEmpiricalThrust(k, chi, phi, F, momentumCorr=True, H=1):
+    """ 
+
+    Method where the induced velocity are ac_valtored out of the BT thrust
+    and the HT is a second order polynomial
+
+    CTs are:
+          CT_BT = 4kF (1-a^2)   CT defined using Vxp
+          CT_HT = c2 a^2 + c1 a  + c0 
+
+    Equate them:
+        (A-c2)a^2 - (2A +c1) a  + (1-c0) =0  A = 4kf
+
+    Optional, square it:
+      (A^2-c_2^2)a^4 + (-4A^2 - 2c_1 c_2) a^3 + (6A^2 - 2c_0 c_2 - c_1^2)a^2 + (-4A^2 -2c_0 c_1) a + (A^2-c_0^2) = 0
+
+    Below are two methods, one where the equation above is solved for directly, one where it's squared first
+
+    """
+    # Coefficients for empirical CT = c2*a^2 + c1*a + c0 for a > a0
+    if momentumCorr:
+        [c0,c1,c2] = getEmpiricalCoefficients(chi=chi, F=F, method='BladedCorr')
+    else:
+        [c0,c1,c2] = getEmpiricalCoefficients(chi=chi, F=F, method='BladedNoCorr')
+    A = 4*F*k
+
+    # --- Solve for axial induction
+    if not momentumCorr: 
+        # Using un-squared version:
+        #    (A-c2)a^2 - (2A +c1) a  + (1-c0) =0
+        y1 = 2*A + c1
+        y2 = 4*A*(c2+c1+c0) + c1*c1 - 4*c0*c2 
+        y3 = 2*(A-c2)
+        if abs(y3)<1e-16:
+            a = 1 - 1/(2*np.sqrt(y2))
+        else:
+            if phi>=0:
+                a = ( y1 - np.sqrt(y2) ) / y3
+            else:
+                a = ( y1 + np.sqrt(y2) ) / y3
+        H=1.0 # TODO
+#        if ((axInd>a0(chi0)).AND.(axInd<=1.0)) then
+#           H = (4.0*axInd*(1.0-axInd)*F)/(c0+c1*axInd+c2*axInd*axInd)
+#        elseif (axInd>1.0) then
+#           H = (-4.0*axInd*(1.0-axInd)*F)/(c0+c1*axInd+c2*axInd*axInd)
+#        else
+#           H = 1.0
+    else:
+        # Using squared version:
+        #    (A^2-c_2^2)a^4 + (-4A^2 - 2c_1 c_2) a^3 + (6A^2 - 2c_0 c_2 - c_1^2)a^2 + (-4A^2 -2c_0 c_1) a + (A^2-c_0^2) = 0
+        A2 = A**2 
+        coeffs = (A2 - c2*c2, -4*A2-2*c1*c2, 6*A2 -2*c0*c2 -c1*c1, -4*A2 - 2*c0*c1, A2 -c0*c0)
+        roots = np.roots(coeffs)     # NOTE: those roots are often complex
+        bReal = np.abs(np.imag(roots))<1e-10 # So we neglec the imaginary solutions below
+        roots = np.sort(np.real(roots[bReal]))
+        if phi>=0:
+            if roots[0]<0:
+                # Will happen when k \in [0,1], we chose the solution of a in [0,1]
+                a =  roots[1] # 
+            elif roots[1]<1:
+                a =  roots[1]
+            else:
+                a =  roots[0]
+        else:
+            #a =  min( roots[1], roots[2])
+            a =  roots[1]
+
+#        if (phi >= 0.0) then
+#            if (real(roots(0))<0.0_R8Ki) then
+#                axInd = real(roots(1))
+#            elseif (real(roots(1))<1.0_R8Ki) then
+#                axInd = real(roots(1))
+#            else
+#                axInd = real(roots(0))
+#            endif
+#        else
+#            axInd = real(roots(1))
+
+
+
+#        tan_chi0 = min(MaxTanChi0, max(-MaxTanChi0, tan(chi0)))
+#        if (equalrealnos(axInd,1.0_R8Ki)) then
+#            H = 0       
+#        elseif ((axInd>a0(chi)).AND.(axInd<=1.0)) then
+#            H = 4.0_R8Ki*axInd*(1.0_R8Ki-axInd)*F*sqrt(1 + (tan_chi0/(1.0_R8Ki-axInd)*F)**2)/sqrt((c0+c1*axInd+c2*axInd*axInd)**2 + (4.0_R8Ki*axInd*tan_chi)**2)
+#            ! Alternatively following implemention can be used but it keeps H from approaching zero as a -> 1
+#            !H = (4.0_R8Ki*axInd*sqrt(((1.0_R8Ki-axInd)*F)**2 + tan(chi)**2))/sqrt((c0+c1*axInd+c2*axInd*axInd)**2 + (4.0_R8Ki*axInd*tan(chi))**2)           
+#        elseif (axInd>1.0) then
+#            H = -4.0_R8Ki*axInd*(1.0_R8Ki-axInd)*F*sqrt(1 + (tan_chi/(1.0_R8Ki-axInd)*F)**2)/sqrt((c0+c1*axInd+c2*axInd*axInd)**2 + (4.0_R8Ki*axInd*tan_chi0)**2)
+#            ! Alternatively following implemention can be used but it keeps H from approaching zero as a -> 1
+#            !H = -(4.0_R8Ki*axInd*sqrt(((1.0_R8Ki-axInd)*F)**2 + tan(chi0)**2))/sqrt((c0+c1*axInd+c2*axInd*axInd)**2 + (4.0_R8Ki*axInd*tan(chi))**2)
+#        else
+#            H = 1.0
+#        if (k<0.0) then
+#            H = 1.0
+#
+    return a, (c0,c1,c2)
+
+def k_a(a, chi=0, F=None, method='Glauert'):
+    """ Returns k = k(a) """
+    a, scalar = to_array(a)
+    F = array_like(F, a, 1)
+
+
+    if method=='MomentumTheory':
+
+        k= a/(1-a)
+
+    elif method=='MomentumGlauertSkew':
+        tan_chi0 = np.clip(np.tan(chi),  -MaxTanChi0, MaxTanChi0)
+        k = a/(1-a)**2 * np.sqrt((1-a)**2 + tan_chi0**2)
+
+    else:
+        # Try a CT-a relation
+        Ct = Ct_a(a, F=F, method=method, chi=chi)
+        k = Ct/(4*a*F)
+    return k
+
+
+# --------------------------------------------------------------------------------}
+# --- Helper functions 
+# --------------------------------------------------------------------------------{
+def to_array(a) :
+    if not hasattr(a, '__len__'):
+        scalar=True
+        a = np.atleast_1d(a)
+    else:
+        scalar=False
+        a = np.asarray(a)
+    return a, scalar
+
+def array_like(F, a, Fdefault):
+    if F is None:
+        F = Fdefault * np.ones(a.shape)
+    else :
+        if not hasattr(F, '__len__'):
+            F = F * np.ones(a.shape)
+        else:
+            if len(F)!=len(a):
+                raise Exception('F and a must have the same dimension')
+    return F
+
+
+def secondOrderCoeffC1(a_c, s_c, CT_c, CT_1):
+    """ 
+    return polynomial coeffs for a C1-continuous second order polynomial such that:
+       CT = c0 + c1*a + c2*a2 
+       CT(a_c)     = CT_c
+       CT(1)       = CT_1
+       dCT/da(a_c) = s_c
+    """
+    denom = (a_c**2 - 2*a_c + 1)
+    c0=(CT_1*a_c**2 - 2*CT_c*a_c + CT_c + a_c**2*s_c - a_c*s_c)/denom
+    c1=(-2*CT_1*a_c + 2*CT_c*a_c - a_c**2*s_c + s_c)/denom
+    c2=(CT_1 - CT_c + a_c*s_c - s_c)/denom
+    return c0, c1, c2
+
+
+# --------------------------------------------------------------------------------}
+# --- Test / debug 
+# --------------------------------------------------------------------------------{
 def main_plot_a_k():
     import matplotlib.pyplot as plt
     k = np.linspace(-2,2,50)
 
     fig,ax = plt.subplots(1,1)
     # Functions that depend on a only
-    ax.plot(k, a_k(k, method='Momentum theory'),'k-' ,label = 'Momentum theory')
+    ax.plot(k, a_k(k, method='MomentumTheory'),'k-' ,label = 'Momentum theory')
     ax.plot(k, a_k(k, method='Buhl'),'--' ,label = 'Buhl')
     ax.set_xlim([-2,2])
     ax.set_ylim([-2,2])
@@ -345,15 +599,15 @@ def main_plot():
     fig,ax = plt.subplots(1,1)
 
     # Functions that depend on a only
-    ax.plot(a ,Ct_MT,'k-' ,label = 'Momentum theory'          )
+    ax.plot(a ,Ct_MT,'k-' ,label = 'MomentumTheory'          )
 #     ax.plot(a ,Ct_a(a,method='Glauert'),'-' ,label = 'Glauert (ac=1/3)')
 #     ax.plot(a ,Ct_a(a,method='Spera')  ,'.' ,label = 'Spera (ac=0.3)')
     chi0=0
-    ax.plot(a ,Ct_a(a,method='BladedCorr'  , chi0=chi0),'o' ,label = 'BladedCorr')
-    ax.plot(a ,Ct_a(a,method='BladedNoCorr', chi0=chi0),'+' ,label = 'BladedNoCorr')
+    ax.plot(a ,Ct_a(a,method='BladedCorr'  , chi=chi0),'o' ,label = 'BladedCorr')
+    ax.plot(a ,Ct_a(a,method='BladedNoCorr', chi=chi0),'+' ,label = 'BladedNoCorr')
     chi0=30*np.pi/180
-    ax.plot(a ,Ct_a(a,method='BladedCorr'  , chi0=chi0),'o' ,label = 'BladedCorr')
-    ax.plot(a ,Ct_a(a,method='BladedNoCorr', chi0=chi0),'+' ,label = 'BladedNoCorr')
+    ax.plot(a ,Ct_a(a,method='BladedCorr'  , chi=chi0),'o' ,label = 'BladedCorr')
+    ax.plot(a ,Ct_a(a,method='BladedNoCorr', chi=chi0),'+' ,label = 'BladedNoCorr')
     #ax.plot(a ,Ct_a(a,method='Leishman')  ,'--' ,label = 'Leishman') # Buggy
     #ax.plot(a ,Ct_a(a,method='Buhl')  ,'+' ,label = 'Buhl') # Same as AeroDyn15 & 14
 
@@ -383,12 +637,12 @@ def main_plot_coeffs():
 
     C_corr   = np.zeros((3,len(chi)))
     C_noco = np.zeros((3,len(chi)))
-    A0       = np.zeros(len(chi))
+    AC       = np.zeros(len(chi))
 
-    for ic, chi0 in enumerate(chi):
-        A0[ic] = a0(chi0)
-        C_corr[:,ic] = getEmpiricalCoefficients(chi0=chi0, F=1, method='BladedCorr')
-        C_noco[:,ic] = getEmpiricalCoefficients(chi0=chi0, F=1, method='BladedNoCorr')
+    for ic, chi in enumerate(chi):
+        AC[ic] = ac_val(chi)
+        C_corr[:,ic] = getEmpiricalCoefficients(chi=chi, F=1, method='BladedCorr')
+        C_noco[:,ic] = getEmpiricalCoefficients(chi=chi, F=1, method='BladedNoCorr')
 
     chi*=180/np.pi 
 
@@ -400,7 +654,7 @@ def main_plot_coeffs():
     ax.plot(chi, C_noco[1,:],'--' ,c=fColrs(2)   , label='c1 no corr')
     ax.plot(chi, C_corr[2,:],'-'  ,c=fColrs(3)   , label='c2 corr')
     ax.plot(chi, C_noco[2,:],'--' ,c=fColrs(3)   , label='c2 no corr')
-    ax.plot(chi, A0    , label='A0')
+    ax.plot(chi, AC    , label='a_c')
     ax.set_xlabel('')
     ax.set_ylabel('')
     ax.legend()
@@ -414,18 +668,18 @@ def main_plot_coeffs():
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
 
-    for ic, chi0 in enumerate(chi):
+    for ic, chi in enumerate(chi):
         Ct = a*0
-        A0[ic] = a0(chi0)
-        c_corr = getEmpiricalCoefficients(chi0=chi0, F=1, method='BladedCorr')
-        c_noco = getEmpiricalCoefficients(chi0=chi0, F=1, method='BladedNoCorr')
+        AC[ic] = ac_val(chi)
+        c_corr = getEmpiricalCoefficients(chi=chi, F=1, method='BladedCorr')
+        c_noco = getEmpiricalCoefficients(chi=chi, F=1, method='BladedNoCorr')
 
-        Ct = Ct_a(a, F=None, method='BladedNoCorr', ac=None, chi0=chi0)
+        Ct = Ct_a(a, F=None, method='BladedNoCorr', ac=None, chi=chi)
 #         b=a>a0
 #         aa= a[b]
 #         Ct[b] = c[0]
 
-        ax.plot(a, Ct, label='chi = {}'.format(chi0*180/np.pi))
+        ax.plot(a, Ct, label='chi = {}'.format(chi*180/np.pi))
     ax.set_xlabel('a')
     ax.set_ylabel('Ct')
     ax.legend()

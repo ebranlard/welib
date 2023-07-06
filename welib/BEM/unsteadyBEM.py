@@ -360,7 +360,7 @@ class UnsteadyBEM():
         for iB in np.arange(self.nB):
             df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.psi+self.SkewAzimuth[:,iB],360)
 
-        print('>>> {} outputs'.format(self.projMod))
+        #print('>>> BEM: projMod: {} outputs'.format(self.projMod))
         if self.projMod=='polar': # TODO replace with "outProj"
             Vflw_o = self.Vwnd_p-self.Vstr_p
             Vwnd_o = self.Vwnd_p
@@ -605,7 +605,7 @@ class UnsteadyBEM():
             # --- Hub loss
             if (p.bHubLoss): #Glauert hub loss correction
                 F = F* 2./pi*arccos(exp(-nB/2. *(r_p-rhub_p)/ (rhub_p*np.sin(phi_tl))))
-            #F[F<=1e-3]=0.5
+            F[F<=1e-5]=1e-5
             # --------------------------------------------------------------------------------
             # --- Step 3: Angle of attack
             # --------------------------------------------------------------------------------
@@ -663,8 +663,11 @@ class UnsteadyBEM():
                         algorithm=self.algorithm, drdz=drdz
                 )
                 # TODO consider using these
-                k  = sigma*cnForAI/(4*F)*Vrel_norm_a**2/(Vrel_p[:,:,0]**2)            /drdz
-                kp =-sigma*ctForTI/(4*F)*Vrel_norm_a**2/(Vrel_p[:,:,0]*Vrel_p[:,:,1]) /drdz # NOTE: yp has different convention OpenFAST/WELIB
+                # NOTE: yp has different convention OpenFAST/WELIB
+                Vrel_xp = clip_zeros(Vrel_p[:,:,0], 1e-5) # To avoid division by zero
+                Vrel_yp = clip_zeros(Vrel_p[:,:,1], 1e-5)
+                k  = sigma*cnForAI/(4*F)*Vrel_norm_a**2/(Vrel_xp**2)    /drdz
+                kp =-sigma*ctForTI/(4*F)*Vrel_norm_a**2/(Vrel_xp*Vrel_yp) /drdz
                 #a[:,:]      = 0.3
                 #aprime[:,:] = 0.02
 
@@ -973,7 +976,7 @@ def rotPolar2Airfoil(tau, kappa, beta):
 def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, 
         drdz=1, algorithm='legacy', 
-        CTcorrection='AeroDyn', swirlMethod='AeroDyn'):
+        CTcorrection='AeroDyn15', swirlMethod='AeroDyn'):
     """Compute the induction coefficients
 
         Inputs
@@ -1019,7 +1022,7 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         fg = 0.25*(5.-3.*a[bHigh])
         a[bHigh] = Ct[bHigh]/(4.*F[bHigh]*(1.-fg*a[bHigh]))
     else:
-        a = a_Ct(Ct, a, F, method=CTcorrection)
+        a = a_Ct(Ct=Ct, a=a, F=F, method=CTcorrection)
 
     a[F<0.01]=1 # HACK to match aerodyn # TODO make that an option
 
@@ -1057,6 +1060,14 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
     a      = np.clip(a     ,-1,1.5)
     Ct     = np.clip(Ct    ,-1,3)
     return a, aprime, Ct
+
+
+
+def clip_zeros(x, tol=1e-5):
+    b = np.abs(x)<tol
+    #x[b] = tol*np.sign(x[b]) # NOTE: sign return 0 if x==0
+    x[b] = tol* (2*(x[b] >= 0) - 1)
+    return x
 
 # --------------------------------------------------------------------------------}
 # --- Helper class to prescribe a motion
