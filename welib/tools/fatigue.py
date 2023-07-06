@@ -41,7 +41,7 @@ def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap
     time : array-like, the time values corresponding to the signal (s)
     signals : array-like, the load signal
     m :    Wohler exponent (default is 3)
-    Teq : The equivalent period (Default 1Hz)
+    Teq : The equivalent period (Default 1, for 1Hz)
     nBins : Number of bins in rainflow count histogram
     method: 'rainflow_windap, rainflow_astm, fatpack
 
@@ -823,7 +823,7 @@ class TestFatigue(unittest.TestCase):
             # mean value of the signal shouldn't matter
             signal = amplitude * np.sin(time) + 5
             r_eq_1hz = eq_load(signal, no_bins=1, m=m, neq=neq)[0]
-            r_eq_1hz_expected = ((2*nr_periods*amplitude**m)/neq)**(1/m)
+            r_eq_1hz_expected = 2*((nr_periods*amplitude**m)/neq)**(1/m)
             np.testing.assert_allclose(r_eq_1hz, r_eq_1hz_expected)
 
             # sine signal with 20 periods (40 peaks)
@@ -833,7 +833,7 @@ class TestFatigue(unittest.TestCase):
             # mean value of the signal shouldn't matter
             signal = amplitude * np.sin(time) + 9
             r_eq_1hz2 = eq_load(signal, no_bins=1, m=m, neq=neq)[0]
-            r_eq_1hz_expected2 = ((2*nr_periods*amplitude**m)/neq)**(1/m)
+            r_eq_1hz_expected2 = 2*((nr_periods*amplitude**m)/neq)**(1/m)
             np.testing.assert_allclose(r_eq_1hz2, r_eq_1hz_expected2)
 
             # 1hz equivalent should be independent of the length of the signal
@@ -900,8 +900,6 @@ class TestFatigue(unittest.TestCase):
         #         print (cycle_matrix(signal1, 4, 4, rainflow_func=rainflow_astm))
         #         # Cycle matrix where signal1 and signal2 contributes with 50% each
         #         print (cycle_matrix([(.5, signal1), (.5, signal2)], 4, 8, rainflow_func=rainflow_astm))
-
-
 
 
 
