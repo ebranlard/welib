@@ -31,7 +31,7 @@ import numpy as np
 __all__  = ['rainflow_astm', 'rainflow_windap','eq_load','eq_load_and_cycles','cycle_matrix','cycle_matrix2']
 
 
-def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap', meanBin=True, binStartAt0=True):
+def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap', meanBin=True, binStartAt0=False):
     """Equivalent load calculation
 
     Calculate the equivalent loads for a list of Wohler exponent
@@ -79,9 +79,15 @@ def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap
         except IndexError:
             # Currently fails for constant signal
             return np.nan
-        # find range count and bin
-        N, S = fatpack.find_range_count(ranges, nBins)
 
+        # --- Legacy fatpack
+        # if (not binStartAt0) and (not meanBin):
+        #    N, S = fatpack.find_range_count(ranges, nBins)
+        # --- Setup bins
+        # If binStartAt0 is True, the same bins as WINDAP are used
+        bins = create_bins(ranges, nBins, binStartAt0=binStartAt0)
+        # --- Using bin_count to get value at center of bins 
+        N, S = bin_count(ranges, bins, meanBin=meanBin)
 
     else:
         raise NotImplementedError(method)
@@ -142,7 +148,9 @@ def create_bins(x, bins, binStartAt0=False):
         else:
             xmin = np.min(x)
             if xmin==xmax:
-                xmin=0
+                # I belive that's what's done by histogram. double check
+                xmin=xmin-0.5
+                xmax=xmax+0.5
         bins = np.linspace(xmin, xmax, num=bins + 1) 
     return bins
 
@@ -433,12 +441,7 @@ def cycle_matrix(signals, ampl_bins=10, mean_bins=10, rainflow_func=rainflow_win
         ampls, means = rainflow_func(signals[:])
         weights = np.ones_like(ampls)
     if isinstance(ampl_bins, int):
-        amax = ampls[weights>0].max()
-        if binStartAt0:
-            amin = 0
-        else:
-            amin = ampls[weights>0].min()
-        ampl_bins = np.linspace(amin, amax, num=ampl_bins + 1) 
+        ampl_bins = create_bins(ampls[weights>0], ampl_bins, binStartAt0=binStartAt0)
     cycles, ampl_edges, mean_edges = np.histogram2d(ampls, means, [ampl_bins, mean_bins], weights=weights)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -1022,10 +1025,10 @@ class TestFatigue(unittest.TestCase):
 
 
         if hasFatpack:
-            Leq = equivalent_load(t, y, m=4, nBins=10, method='fatpack')
+            Leq = equivalent_load(t, y, m=4, nBins=10, method='fatpack', binStartAt0=False, meanBin=False)
             np.testing.assert_almost_equal(Leq, 9.584617089, 3)
 
-            Leq = equivalent_load(t, y, m=4, nBins=1, method='fatpack')
+            Leq = equivalent_load(t, y, m=4, nBins=1, method='fatpack', binStartAt0=False, meanBin=False)
             np.testing.assert_almost_equal(Leq, 9.534491302, 3)
 
 
@@ -1061,11 +1064,11 @@ class TestFatigue(unittest.TestCase):
             T_all=time[-1]
             Leq1[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='rainflow_windap')
             if hasFatpack:
-                Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='fatpack')
+                Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='fatpack', binStartAt0=False)
         Leq_ref = 2*A*(vf*Teq)**(1/m)
         np.testing.assert_array_almost_equal(    Leq1/A, Leq_ref/A, 2)
         if hasFatpack:
-            np.testing.assert_array_almost_equal(Leq2/A, Leq_ref/A, 1)
+            np.testing.assert_array_almost_equal(Leq2/A, Leq_ref/A, 2)
         #import matplotlib.pyplot as plt
         #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
         #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
