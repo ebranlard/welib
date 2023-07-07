@@ -902,6 +902,89 @@ class TestFatigue(unittest.TestCase):
         #         print (cycle_matrix([(.5, signal1), (.5, signal2)], 4, 8, rainflow_func=rainflow_astm))
 
 
+    def test_equivalent_load(self):
+        """ Higher level interface """
+        try:
+            import fatpack
+            hasFatpack=True
+        except:
+            hasFatpack=False
+        dt = 0.1
+        f0 = 1  ; 
+        A  = 5  ; 
+        t=np.arange(0,10,dt);
+        y=A*np.sin(2*np.pi*f0*t)
+
+        Leq = equivalent_load(t, y, m=10, nBins=100, method='rainflow_windap')
+        np.testing.assert_almost_equal(Leq, 9.4714702, 3)
+
+        Leq = equivalent_load(t, y, m=1, nBins=100, method='rainflow_windap')
+        np.testing.assert_almost_equal(Leq, 9.4625320, 3)
+
+        Leq = equivalent_load(t, y, m=4, nBins=10, method='rainflow_windap')
+        np.testing.assert_almost_equal(Leq, 9.420937, 3)
+
+
+        if hasFatpack:
+            Leq = equivalent_load(t, y, m=4, nBins=10, method='fatpack')
+            np.testing.assert_almost_equal(Leq, 9.584617089, 3)
+
+            Leq = equivalent_load(t, y, m=4, nBins=1, method='fatpack')
+            np.testing.assert_almost_equal(Leq, 9.534491302, 3)
+
+
+
+    def test_equivalent_load_sines(self):
+        # Check analytical formulae for sine of various frequencies
+        # See welib.tools.examples.Example_Fatigue.py
+        try:
+            import fatpack
+            hasFatpack=True
+        except:
+            hasFatpack=False
+
+        # --- Dependency on frequency
+        m     = 2   # Wohler slope
+        A     = 3   # Amplitude
+        nT    = 100 # Number of periods
+        nPerT = 100 # Number of points per period
+        Teq   = 1  # Equivalent period [s]
+        nBins = 10  # Number of bins
+
+        vf =np.linspace(0.1,10,21)
+        vT  = 1/vf
+        T_max=np.max(vT*nT)
+        vomega =vf*2*np.pi
+        Leq1    = np.zeros_like(vomega)
+        Leq2    = np.zeros_like(vomega)
+        Leq_ref = np.zeros_like(vomega)
+        for it, (T,omega) in enumerate(zip(vT,vomega)):
+            # --- Option 1 - Same number of periods
+            time = np.linspace(0, nT*T, nPerT*nT+1)
+            signal = A * np.sin(omega*time) # Mean does not matter 
+            T_all=time[-1]
+            Leq1[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='rainflow_windap')
+            if hasFatpack:
+                Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='fatpack')
+        Leq_ref = 2*A*(vf*Teq)**(1/m)
+        np.testing.assert_array_almost_equal(    Leq1/A, Leq_ref/A, 2)
+        if hasFatpack:
+            np.testing.assert_array_almost_equal(Leq2/A, Leq_ref/A, 1)
+        #import matplotlib.pyplot as plt
+        #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        #ax.plot(vf, Leq_ref/A,  'kd' , label ='Theory')
+        #ax.plot(vf, Leq1   /A,   'o' , label ='Windap m={}'.format(m))
+        #if hasFatpack:
+        #    ax.plot(vf, Leq2/A,  'k.' , label ='Fatpack')
+        #ax.legend()
+        #plt.show()
+
+
+
+
+
+
 
 if __name__ == '__main__':
     unittest.main()
