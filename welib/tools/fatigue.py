@@ -31,7 +31,7 @@ import numpy as np
 __all__  = ['rainflow_astm', 'rainflow_windap','eq_load','eq_load_and_cycles','cycle_matrix','cycle_matrix2']
 
 
-def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap', meanBin=True, binStartAt0=False):
+def equivalent_load(time, signal, m=3, Teq=1, bins=100, method='rainflow_windap', meanBin=True, binStartAt0=False):
     """Equivalent load calculation
 
     Calculate the equivalent loads for a list of Wohler exponent
@@ -42,11 +42,11 @@ def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap
     signals : array-like, the load signal
     m :    Wohler exponent (default is 3)
     Teq : The equivalent period (Default 1, for 1Hz)
-    nBins : Number of bins in rainflow count histogram
+    bins : Number of bins in rainflow count histogram
     method: 'rainflow_windap, rainflow_astm, fatpack
     meanBin: if True, use the mean of the ranges within a bin (recommended)
              otherwise use the middle of the bin (not recommended).
-    binStartAt0: if True bins start at zero.
+    binStartAt0: if True bins start at zero. Otherwise, start a lowest range
 
 
 
@@ -68,8 +68,8 @@ def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap
 
     if method in rainflow_func_dict.keys():
         # Call wetb function for one m
-        #Leq = eq_load(signal, m=[m], neq=neq, no_bins=nBins, rainflow_func=rainflow_func_dict[method])[0][0]
-        N, S = find_range_count(signal, bins=nBins, method=method, meanBin=meanBin)
+        #Leq = eq_load(signal, m=[m], neq=neq, no_bins=bins, rainflow_func=rainflow_func_dict[method])[0][0]
+        N, S = find_range_count(signal, bins=bins, method=method, meanBin=meanBin)
         
     elif method=='fatpack':
         import fatpack
@@ -82,10 +82,10 @@ def equivalent_load(time, signal, m=3, Teq=1, nBins=100, method='rainflow_windap
 
         # --- Legacy fatpack
         # if (not binStartAt0) and (not meanBin):
-        #    N, S = fatpack.find_range_count(ranges, nBins)
+        #    N, S = fatpack.find_range_count(ranges, bins)
         # --- Setup bins
         # If binStartAt0 is True, the same bins as WINDAP are used
-        bins = create_bins(ranges, nBins, binStartAt0=binStartAt0)
+        bins = create_bins(ranges, bins, binStartAt0=binStartAt0)
         # --- Using bin_count to get value at center of bins 
         N, S = bin_count(ranges, bins, meanBin=meanBin)
 
@@ -1014,21 +1014,21 @@ class TestFatigue(unittest.TestCase):
         t=np.arange(0,10,dt);
         y=A*np.sin(2*np.pi*f0*t)
 
-        Leq = equivalent_load(t, y, m=10, nBins=100, method='rainflow_windap')
+        Leq = equivalent_load(t, y, m=10, bins=100, method='rainflow_windap')
         np.testing.assert_almost_equal(Leq, 9.4714702, 3)
 
-        Leq = equivalent_load(t, y, m=1, nBins=100, method='rainflow_windap')
+        Leq = equivalent_load(t, y, m=1, bins=100, method='rainflow_windap')
         np.testing.assert_almost_equal(Leq, 9.4625320, 3)
 
-        Leq = equivalent_load(t, y, m=4, nBins=10, method='rainflow_windap')
+        Leq = equivalent_load(t, y, m=4, bins=10, method='rainflow_windap')
         np.testing.assert_almost_equal(Leq, 9.420937, 3)
 
 
         if hasFatpack:
-            Leq = equivalent_load(t, y, m=4, nBins=10, method='fatpack', binStartAt0=False, meanBin=False)
+            Leq = equivalent_load(t, y, m=4, bins=10, method='fatpack', binStartAt0=False, meanBin=False)
             np.testing.assert_almost_equal(Leq, 9.584617089, 3)
 
-            Leq = equivalent_load(t, y, m=4, nBins=1, method='fatpack', binStartAt0=False, meanBin=False)
+            Leq = equivalent_load(t, y, m=4, bins=1, method='fatpack', binStartAt0=False, meanBin=False)
             np.testing.assert_almost_equal(Leq, 9.534491302, 3)
 
 
@@ -1062,9 +1062,9 @@ class TestFatigue(unittest.TestCase):
             time = np.linspace(0, nT*T, nPerT*nT+1)
             signal = A * np.sin(omega*time) # Mean does not matter 
             T_all=time[-1]
-            Leq1[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='rainflow_windap')
+            Leq1[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
             if hasFatpack:
-                Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, nBins=nBins, method='fatpack', binStartAt0=False)
+                Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack', binStartAt0=False)
         Leq_ref = 2*A*(vf*Teq)**(1/m)
         np.testing.assert_array_almost_equal(    Leq1/A, Leq_ref/A, 2)
         if hasFatpack:
@@ -1079,6 +1079,68 @@ class TestFatigue(unittest.TestCase):
         #ax.legend()
         #plt.show()
 
+    def test_equivalent_load_sines_sum(self):
+        # --- Sum of two sinusoids
+        try:
+            import fatpack
+            hasFatpack=True
+        except:
+            hasFatpack=False
+        bs0 = True # Bin Start at 0
+        m     = 2   # Wohler slope
+        nPerT = 100 # Number of points per period
+        Teq   = 1  # Equivalent period [s]
+        nBins = 10 # Number of bins
+        nT1   = 10 # Number of periods
+        nT2   = 20 # Number of periods
+        T1 = 10
+        T2 = 5
+        A1 = 3 # Amplitude
+        A2 = 5 # Amplitude
+        # --- Signals
+        time1 = np.linspace(0, nT1*T1, nPerT*nT1+1)
+        time2 = np.linspace(0, nT2*T2, nPerT*nT2+1)
+        signal1 = A1 * np.sin(2*np.pi/T1*time1)
+        signal2 = A2 * np.sin(2*np.pi/T2*time2)
+        # --- Individual Leq
+        #print('----------------- SIGNAL 1')
+        DEL1 = (2*A1)**m * nT1/time1[-1]
+        Leq_th = (DEL1)**(1/m)
+        Leq1 = equivalent_load(time1, signal1, m=m, Teq=Teq, bins=nBins, method='rainflow_windap', binStartAt0=bs0)
+        if hasFatpack:
+            Leq2 = equivalent_load(time1, signal1, m=m, Teq=Teq, bins=nBins, method='fatpack', binStartAt0=bs0)
+            np.testing.assert_array_almost_equal(Leq2, Leq_th, 3)
+        np.testing.assert_array_almost_equal(Leq1, Leq_th, 1)
+        #print('>>> Leq1   ',Leq1)
+        #print('>>> Leq2   ',Leq2)
+        #print('>>> Leq TH ',Leq_th)
+        #print('----------------- SIGNAL 2')
+        DEL2 = (2*A2)**m * nT2/time2[-1]
+        Leq_th = (DEL2)**(1/m)
+        Leq1 = equivalent_load(time2, signal2, m=m, Teq=Teq, bins=nBins, method='rainflow_windap', binStartAt0=bs0)
+        if hasFatpack:
+            Leq2 = equivalent_load(time2, signal2, m=m, Teq=Teq, bins=nBins, method='fatpack', binStartAt0=bs0)
+            np.testing.assert_array_almost_equal(Leq2, Leq_th, 3)
+        np.testing.assert_array_almost_equal(Leq1, Leq_th, 1)
+        #print('>>> Leq1   ',Leq1)
+        #print('>>> Leq2   ',Leq2)
+        #print('>>> Leq TH ',Leq_th)
+        # --- Concatenation
+        #print('----------------- CONCATENATION')
+        signal = np.concatenate((signal1, signal2))
+        time   = np.concatenate((time1, time2+time1[-1]))
+        T_all=time[-1]
+        DEL1 = (2*A1)**m * nT1/T_all  
+        DEL2 = (2*A2)**m * nT2/T_all  
+        Leq_th = (DEL1+DEL2)**(1/m)
+        Leq1 = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap', binStartAt0=bs0)
+        if hasFatpack:
+            Leq2 = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack', binStartAt0=bs0)
+            np.testing.assert_array_almost_equal(Leq2, Leq_th, 1)
+        np.testing.assert_array_almost_equal(Leq1, Leq_th, 1)
+        #print('>>> Leq1   ',Leq1)
+        #print('>>> Leq2   ',Leq2)
+        #print('>>> Leq TH ',Leq_th)
 
 
 
