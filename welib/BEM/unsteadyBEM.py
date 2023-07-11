@@ -7,7 +7,7 @@ Reference:
 """
 import numpy as np
 import os
-from numpy import cos, sin, arctan2, pi, arccos, exp, abs, min, sqrt
+from numpy import cos, sin, arctan2, pi, arccos, exp, sqrt
 from scipy.interpolate import interp1d
 import copy
 import pandas as pd
@@ -256,13 +256,19 @@ class UnsteadyBEM():
         self.Vrel_xa = np.zeros((nt,nB,nr)) # 
         self.Vrel_ya = np.zeros((nt,nB,nr)) # 
         self.Vrel_za = np.zeros((nt,nB,nr)) # 
+        self.Vind_g = np.zeros((nt,nB,nr,3))
+        self.Vind_h = np.zeros((nt,nB,nr,3))
         self.Vind_p = np.zeros((nt,nB,nr,3))
         self.Vind_s = np.zeros((nt,nB,nr,3))
         self.Vind_qs_p = np.zeros((nt,nB,nr,3))
         self.Vflw_p = np.zeros((nt,nB,nr,3)) # Vwnd-Vstr
+        self.Vwnd_g = np.zeros((nt,nB,nr,3))
+        self.Vwnd_h = np.zeros((nt,nB,nr,3))
         self.Vwnd_p = np.zeros((nt,nB,nr,3))
         self.Vwnd_s = np.zeros((nt,nB,nr,3))
         self.Vwnd_a = np.zeros((nt,nB,nr,3))
+        self.Vstr_g = np.zeros((nt,nB,nr,3))
+        self.Vstr_h = np.zeros((nt,nB,nr,3))
         self.Vstr_p = np.zeros((nt,nB,nr,3))
         self.Vstr_s = np.zeros((nt,nB,nr,3))
         self.Vstr_xa = np.zeros((nt,nB,nr))
@@ -270,6 +276,12 @@ class UnsteadyBEM():
         self.Vrel   = np.zeros((nt,nB,nr))
         self.AxInd  = np.zeros((nt,nB,nr))
         self.TnInd  = np.zeros((nt,nB,nr))
+        self.AxInd_qs = np.zeros((nt,nB,nr))
+        self.TnInd_qs = np.zeros((nt,nB,nr))
+        self.BEM_F    = np.zeros((nt,nB,nr))
+        self.BEM_k    = np.zeros((nt,nB,nr))
+        self.BEM_kp   = np.zeros((nt,nB,nr))
+        self.BEM_CT_qs= np.zeros((nt,nB,nr))
         # Loads per span
         self.L      = np.zeros((nt,nB,nr))
         self.D      = np.zeros((nt,nB,nr))
@@ -324,6 +336,9 @@ class UnsteadyBEM():
         BldNd_OutList:   if None, all possible channels are output.  Otherwise, set it to a list of channel names with units. 
                          for instance:  ['Fx_[N/m]', 'Vx_[m/s]', 'AxInd_[-]', Phi_[deg]'] 
         """
+        p=self # Alias
+
+
         columns=['Time_[s]']
         columns+=['Thrust_[N]']
         columns+=['Torque_[N/m]']
@@ -342,12 +357,12 @@ class UnsteadyBEM():
         df['RtAeroCq_[-]']    = self.CQ
         df['RtAeroCp_[-]']    = self.CP
         # Temporary
-        df['RtFldFxh_[N]']   = self.Thrust
-        df['RtFldMxh_[N-m]'] = self.Torque
-        df['RtFldPwr_[W]']   = self.Power
-        df['RtFldCt_[-]']    = self.CT
-        df['RtFldCq_[-]']    = self.CQ
-        df['RtFldCp_[-]']    = self.CP
+        df['RtAeroFxh_[N]']   = self.Thrust
+        df['RtAeroMxh_[N-m]'] = self.Torque
+        df['RtAeroPwr_[W]']   = self.Power
+        df['RtAeroCt_[-]']    = self.CT
+        df['RtAeroCq_[-]']    = self.CQ
+        df['RtAeroCp_[-]']    = self.CP
 
         df['RtVAvgxh_[m/s]']  = self.RtVAvg[:,0]
         df['RtVAvgyh_[m/s]']  = self.RtVAvg[:,1]
@@ -378,7 +393,18 @@ class UnsteadyBEM():
         if BldNd_BlOutNd is None: 
             BldNd_BlOutNd = np.arange(len(self.r))
         if BldNd_OutList is None:
-            BldNd_OutList=['Fx_[N/m]','Fy_[N/m]','Vx_[m/s]','Vy_[m/s]','VDisx_[m/s]','VDisy_[m/s]','STVx_[m/s]','STVy_[m/s]','STVz_[m/s]','Vrel_[m/s]','TnInd_[-]','AxInd_[-]','Phi_[deg]','Vindx_[m/s]','Vindy_[m/s]','Alpha_[deg]','Fn_[N/m]','Ft_[N/m]','Cl_[-]','Cd_[-]']
+
+            BldNd_OutList =[]
+            BldNd_OutList+=['Fx_[N/m]','Fy_[N/m]','Vx_[m/s]','Vy_[m/s]','VDisx_[m/s]','VDisy_[m/s]','STVx_[m/s]','STVy_[m/s]','STVz_[m/s]','Vrel_[m/s]','TnInd_[-]','AxInd_[-]','Phi_[deg]','Vindx_[m/s]','Vindy_[m/s]','Alpha_[deg]','Fn_[N/m]','Ft_[N/m]','Cl_[-]','Cd_[-]']
+            BldNd_OutList+=['VDisz_[m/s]']
+            BldNd_OutList+=['Re_[-]', 'Gam_[m^2/s]']
+            BldNd_OutList+=['STVxi_[m/s]' ,'STVyi_[m/s]', 'STVzi_[m/s]']
+            BldNd_OutList+=['STVxp_[m/s]' ,'STVyp_[m/s]', 'STVzp_[m/s]']
+            BldNd_OutList+=['STVxh_[m/s]' ,'STVyh_[m/s]', 'STVzh_[m/s]']
+            BldNd_OutList+=['Vdisxi_[m/s]','Vdisyi_[m/s]','Vdiszi_[m/s]']
+            BldNd_OutList+=['Vdisxp_[m/s]','Vdisyp_[m/s]','Vdiszp_[m/s]']
+            BldNd_OutList+=['Vdisxh_[m/s]','Vdisyh_[m/s]','Vdiszh_[m/s]']
+            #BldNd_OutList+=['VUndx_[m/s]','VUndy_[m/s]','VUndz_[m/s]']
         # All columns
         BldNd_columns = ['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+ c for iB in BldNd_BladesOut  for c in BldNd_OutList for ir in BldNd_BlOutNd]
         # Dataframe
@@ -386,74 +412,60 @@ class UnsteadyBEM():
 
         df= pd.concat((df,df_B_r),axis=1)
 
+        def set3dVar(lab, var):
+            #print('>>> Setting {:15s}  - min:{:13.3e} max:{:13.3e}'.format(lab, np.min(var.flatten()), np.max(var.flatten())))
+            for iB in BldNd_BladesOut:
+                for ir in np.arange(len(self.r)): 
+                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+lab] = var[:,iB,ir]
+
+
         # AeroDyn x-y is "section coord" s
-        # AeroDyn n-t is "airfoil coord" a
+        # AeroDyn n-t is "airfoil coord" a but y is switched
         # AeroDyn doesn't have polar coord..
-        for iB in np.arange(self.nB):
-            # TODO TODO TODO Might need rethinking with polarProj
-            if 'Fx_[N/m]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fx_[N/m]'] = self.F_s[:,iB,ir,0]
-            if 'Fy_[N/m]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fy_[N/m]'] =-self.F_s[:,iB,ir,1] # NOTE: weird sign
-            # TODO TODO TODO Might need rethinking with polarProj
-            if 'Vx_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vx_[m/s]'] =      Vflw_o[:,iB,ir,0]
-            if 'Vy_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vy_[m/s]'] =      Vflw_o[:,iB,ir,1]
-            if 'VDisx_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisx_[m/s]'] =      Vwnd_o[:,iB,ir,0]
-            if 'VDisy_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'VDisy_[m/s]'] =      Vwnd_o[:,iB,ir,1]
-            if 'STVx_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVx_[m/s]'] = self.Vstr_s[:,iB,ir,0]
-            if 'STVy_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVy_[m/s]'] = self.Vstr_s[:,iB,ir,1]
-            if 'STVz_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'STVz_[m/s]'] = self.Vstr_s[:,iB,ir,2]
-            if 'Vrel_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vrel_[m/s]'] = self.Vrel[:,iB,ir]
-            if 'TnInd_[-]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'TnInd_[-]'] = self.TnInd[:,iB,ir]
-            if 'AxInd_[-]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'AxInd_[-]'] = self.AxInd[:,iB,ir]
-            if 'Phi_[deg]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Phi_[deg]'] = self.phi[:,iB,ir]
-            if 'Vindx_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindx_[m/s]'] = self.Vind_s[:,iB,ir,0]
-            if 'Vindy_[m/s]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Vindy_[m/s]'] = self.Vind_s[:,iB,ir,1]
-            if 'Alpha_[deg]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Alpha_[deg]'] = self.alpha[:,iB,ir]
-            #AeroDyn "n-t", is almost like xa but y is switched
-            # TODO TODO TODO Might need rethinking with polarProj
-            if 'Fn_[N/m]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Fn_[N/m]'] = self.F_a[:,iB,ir,0]
-            if 'Ft_[N/m]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Ft_[N/m]'] =-self.F_a[:,iB,ir,1]
-            if 'Cl_[-]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cl_[-]'] = self.Cl[:,iB,ir]
-            if 'Cd_[-]' in BldNd_OutList:
-                for ir in np.arange(len(self.r)):
-                    df['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+'Cd_[-]'] = self.Cd[:,iB,ir]
+        for l in BldNd_OutList:
+            if   l == 'Fx_[N/m]'       : set3dVar(l, self.F_s[:,:,:,0]        )
+            elif l == 'Fy_[N/m]'       : set3dVar(l,-self.F_s[:,:,:,1]        ) # NOTE: weird sign
+            elif l == 'Vx_[m/s]'       : set3dVar(l, Vflw_o        [: ,:, :,0] )
+            elif l == 'Vy_[m/s]'       : set3dVar(l, Vflw_o        [: ,:, :,1] )
+            elif l == 'VDisx_[m/s]'    : set3dVar(l, Vwnd_o        [: ,:, :,0] )
+            elif l == 'VDisy_[m/s]'    : set3dVar(l, Vwnd_o        [: ,:, :,1] )
+            elif l == 'VDisz_[m/s]'    : set3dVar(l, Vwnd_o        [: ,:, :,2] )
+            elif l == 'Vdisxi_[m/s]'   : set3dVar(l, self.Vwnd_g   [: ,:, :,0] )
+            elif l == 'Vdisyi_[m/s]'   : set3dVar(l, self.Vwnd_g   [: ,:, :,1] )
+            elif l == 'Vdiszi_[m/s]'   : set3dVar(l, self.Vwnd_g   [: ,:, :,2] )
+            elif l == 'Vdisxh_[m/s]'   : set3dVar(l, self.Vwnd_h   [: ,:, :,0] )
+            elif l == 'Vdisyh_[m/s]'   : set3dVar(l, self.Vwnd_h   [: ,:, :,1] )
+            elif l == 'Vdiszh_[m/s]'   : set3dVar(l, self.Vwnd_h   [: ,:, :,2] )
+            elif l == 'Vdisxp_[m/s]'   : set3dVar(l, self.Vwnd_p   [: ,:, :,0] )
+            elif l == 'Vdisyp_[m/s]'   : set3dVar(l, self.Vwnd_p   [: ,:, :,1] )
+            elif l == 'Vdiszp_[m/s]'   : set3dVar(l, self.Vwnd_p   [: ,:, :,2] )
+            elif l == 'STVx_[m/s]'     : set3dVar(l, self.Vstr_s   [: ,:, :,0] )
+            elif l == 'STVy_[m/s]'     : set3dVar(l, self.Vstr_s   [: ,:, :,1] )
+            elif l == 'STVz_[m/s]'     : set3dVar(l, self.Vstr_s   [: ,:, :,2] )
+            elif l == 'STVxi_[m/s]'    : set3dVar(l, self.Vstr_g   [: ,:, :,0] )
+            elif l == 'STVyi_[m/s]'    : set3dVar(l, self.Vstr_g   [: ,:, :,1] )
+            elif l == 'STVzi_[m/s]'    : set3dVar(l, self.Vstr_g   [: ,:, :,2] )
+            elif l == 'STVxh_[m/s]'    : set3dVar(l, self.Vstr_h   [: ,:, :,0] )
+            elif l == 'STVyh_[m/s]'    : set3dVar(l, self.Vstr_h   [: ,:, :,1] )
+            elif l == 'STVzh_[m/s]'    : set3dVar(l, self.Vstr_h   [: ,:, :,2] )
+            elif l == 'STVxp_[m/s]'    : set3dVar(l, self.Vstr_p   [: ,:, :,0] )
+            elif l == 'STVyp_[m/s]'    : set3dVar(l, self.Vstr_p   [: ,:, :,1] )
+            elif l == 'STVzp_[m/s]'    : set3dVar(l, self.Vstr_p   [: ,:, :,2] )
+            elif l == 'Vrel_[m/s]'     : set3dVar(l, self.Vrel     [: ,:, :]   )
+            elif l == 'TnInd_[-]'      : set3dVar(l, self.TnInd    [: ,:, :]   )
+            elif l == 'AxInd_[-]'      : set3dVar(l, self.AxInd    [: ,:, :]   )
+            elif l == 'Phi_[deg]'      : set3dVar(l, self.phi      [: ,:, :]   )
+            elif l == 'Vindx_[m/s]'    : set3dVar(l, self.Vind_s   [: ,:, :,0] )
+            elif l == 'Vindy_[m/s]'    : set3dVar(l, self.Vind_s   [: ,:, :,1] )
+            elif l == 'Alpha_[deg]'    : set3dVar(l, self.alpha    [: ,:, :]   )
+            elif l == 'Fn_[N/m]'       : set3dVar(l, self.F_a      [: ,:, :,0] )
+            elif l == 'Ft_[N/m]'       : set3dVar(l,-self.F_a     [: ,:, :,1] )
+            elif l == 'Cl_[-]'         : set3dVar(l, self.Cl       [: ,:, :]   )
+            elif l == 'Cd_[-]'         : set3dVar(l, self.Cd       [: ,:, :]   )
+            elif l == 'Re_[-]'         : set3dVar(l, self.Re       [: ,:, :]   )
+            elif l == 'Gam_[m^2/s]'    : set3dVar(l, self.Gamma    [: ,:, :]   )
+            else:
+                raise Exception('Unavaible channel',l)
         return df
 
     def toDataFrameRadial(self, it=-1):
@@ -469,7 +481,7 @@ class UnsteadyBEM():
 
     def timeStep(self, t, dt, xd0, psi, psiB0,
             origin_pos_gl, omega_gl, R_r2g,  # Kinematics of rotor origin
-            R_ntr2g, R_bld2r, # for each blade
+            R_bld2r, # for each blade
             pos_gl, Vstr_gl, R_s2g, R_a2g,            # Kinematics of nodes
             Vwnd_gl, # Wind at each positions in global
             firstCallEquilibrium=False,
@@ -487,11 +499,11 @@ class UnsteadyBEM():
          - origin_pos_gl: position of rotor origin in global coordinates
          - omega_gl:  rotational speed of rotor in global coordinates
          - R_r2g   :  transformation from rotor coordinates to global
-         - R_ntr2g :  transformation from polar grid to global" (for each blade) (nB x 3 x 3)
          - R_bld2r :  transformation from blade to rotor (for each blade)        (nB x 3 x 3)
                       typically consist of azimuth, cone and pitch
          - pos_gl: positions of all blade nodes in global              (nB x nr x 3)
-         - Vstr_gl: structural velocity of a llblade nodes in global   (nB x nr x 3)
+         - Vstr_gl: structural velocity of a ll blade nodes in global   (nB x nr x 3)
+         - Vwnd_gl: wind velocity of a ll blade nodes in global        (nB x nr x 3)
          - R_s2g  : transformation matrix from "section" to global     (nB x nr x 3 x 3)
          - R_a2g  : transformation matrix from airfoil to global       (nB x nr x 3 x 3)
         """
@@ -510,6 +522,30 @@ class UnsteadyBEM():
         # --------------------------------------------------------------------------------
         # --- Step 0: geometry 
         # --------------------------------------------------------------------------------
+        # --- "n-t-r" and rotating blade hub system
+        # "n-t-r"  is the same but with t=-yh
+        # Precalculate the M_ph matrix -- no reason to recalculate for each output
+        R_r2h = np.zeros((3,3))  # Rotor to blade rotating hub
+        R_g2h = np.zeros((self.nB,3,3))  # Rotor to blade rotating hub
+        R_ntr2g = np.zeros((self.nB,3,3)) # "n-t-r" to global
+        for  iB in range(self.nB):
+             psi_hub = 2*pi*iB/self.nB
+             R_r2h[0,:] = [ 1, 0           , 0            ]
+             R_r2h[1,:] = [ 0, cos(psi_hub), sin(psi_hub) ]
+             R_r2h[2,:] = [ 0,-sin(psi_hub), cos(psi_hub) ]
+             R_g2h[iB, :, :] = R_r2h.dot( R_r2g.T ) # inertial to Blade rotating hub
+             # "n-t-r"  is the same but with t=-yh
+             RR=(R_g2h[iB].T).copy()
+             RR[:,1]*=-1
+             R_ntr2g[iB] = RR
+             #print(RR-R_ntr2g[iB])
+#         import pdb; pdb.set_trace()
+
+        # --- p, polar grid coordinates
+        R_g2p = np.zeros((self.nB, nr, 3, 3))
+        #print('TODO Compute Coord p')
+
+#         R_ntr2g[iB]
         # --- Compute rotor radius, hub radius, and section radii
         r_p = np.zeros((nB,nr)) # radius in polar grid
         r_b = np.zeros((nB,nr)) # radius in blade coordinates
@@ -531,6 +567,11 @@ class UnsteadyBEM():
             #dz = np.diff(r_b[iB])
             #print('k', kappa, np.arccos(dr/dz)*180/np.pi) # NOTE: not accurate, need sign as well
         R_p = np.max(Rs_p) # Rotor radius projected onto polar grid
+
+
+
+
+
         # --- Rotor speed for power
         omega_r = R_r2g.T.dot(omega_gl) # rotational speed in rotor coordinate system
         Omega = omega_r[0] # rotation speed of shaft (along x)
@@ -556,16 +597,19 @@ class UnsteadyBEM():
             Vstr_p  = np.zeros((nB,nr,3))
             Vwnd_p  = np.zeros((nB,nr,3))
             Vrel_k  = np.zeros((nB,nr,3))
+            Vind_g  = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
+                #R_p2g = R_ntr2g[iB] # TODO TODO TODO
+                R_p2g = R_g2h[iB].T # TODO TODO TODO
                 R_p2g = R_ntr2g[iB]
                 for ie in np.arange(nr):
                     # Velocity in global
                     Vwnd_g = Vwnd_gl[iB,ie]
                     # NOTE: inductions from previous time step, in polar grid (more realistic than global)
                     #Vind_g = xd0.Vind_g[iB,ie] # dynamic inductions at previous time step
-                    Vind_g = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
+                    Vind_g[iB,ie] = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
                     Vstr_g = Vstr_gl[iB,ie]
-                    Vrel_g = Vwnd_g+Vind_g-Vstr_g
+                    Vrel_g = Vwnd_g+Vind_g[iB,ie]-Vstr_g
                     # Polar coordinates
                     Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_g) # Structural velocity in polar coordinates
                     Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
@@ -625,7 +669,7 @@ class UnsteadyBEM():
             C_g        = np.zeros((nB,nr,3))
             C_p_noDrag = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
-                R_p2g = R_ntr2g[iB]
+                R_p2g = R_ntr2g[iB] # TODO TODO TODO
                 for ie in np.arange(nr):
                     C_g        [iB,ie]=R_a2g[iB,ie].dot(np.array([C_xa       [iB,ie], C_ya       [iB,ie], 0]))
                     C_p        [iB,ie]=(R_p2g.T).dot(C_g[iB,ie])
@@ -679,7 +723,7 @@ class UnsteadyBEM():
             # Quasi steady inductions, polar and global coordinates
             xd1.Vind_qs_p = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
-                R_p2g = R_ntr2g[iB]
+                R_p2g = R_ntr2g[iB] # TODO TODO TODO TODO
                 for ie in np.arange(nr):
                     # NOTE: Vind is negative along n and t!
                     xd1.Vind_qs_p[iB,ie] = np.array([-a[iB,ie]*Vflw_p[iB,ie,0],  aprime[iB,ie]*Vflw_p[iB,ie,1], 0])
@@ -724,7 +768,7 @@ class UnsteadyBEM():
             xd1.Vind_dyn_p = xd1.Vind_int_p + (xd0.Vind_dyn_p - xd1.Vind_int_p) * exp(-dt/tau2)
             # In global
             for iB in np.arange(nB):
-                R_p2g = R_ntr2g[iB]
+                R_p2g = R_ntr2g[iB] # TODO TODO TODO
                 for ie in np.arange(nr):
                     xd1.Vind_dyn_g[iB,ie] = R_p2g.dot(xd1.Vind_dyn_p[iB,ie]) # global
         else:
@@ -753,7 +797,7 @@ class UnsteadyBEM():
         # Fake "Azimuth angle" used for skew model
         SkewAzimuth=np.zeros(nB)
         for iB in np.arange(nB):
-            z_hat = R_ntr2g[iB][:,2]
+            z_hat = R_ntr2g[iB][:,2] # TODO TODO
             tmp_sz_y = -1.0*np.dot(z_hat,y_hat_disk)
             tmp_sz   =      np.dot(z_hat,z_hat_disk)
             if np.abs(tmp_sz_y)<1e-8 and np.abs(tmp_sz)<1e-8:
@@ -828,6 +872,17 @@ class UnsteadyBEM():
         self.AxInd[it] = a_dyn      
         self.TnInd[it] = aprime_dyn 
         self.Vrel[it]  = Vrel_norm_a
+        self.Re[it]    = Re
+        # Global system
+        self.Vwnd_g[it] = Vwnd_gl
+        self.Vstr_g[it] = Vstr_gl
+        self.Vind_g[it] = Vind_g
+        # H system
+        for  iB in range(self.nB):
+            for ie in np.arange(nr):
+                self.Vwnd_h[it,iB,ie] = R_g2h[iB].dot( Vwnd_gl[iB,ie,:])
+                self.Vstr_h[it,iB,ie] = R_g2h[iB].dot( Vstr_gl[iB,ie,:])
+                self.Vind_h[it,iB,ie] = R_g2h[iB].dot( Vind_g [iB,ie,:])
         # polar system (missing Vind)
         self.Vrel_p[it]  = Vrel_p[:,:,:] # NOTE: Vrel is using previous inductions..
         self.Vstr_p[it]  = Vstr_p[:,:,:]
@@ -845,12 +900,14 @@ class UnsteadyBEM():
         self.alpha[it] = alpha*180./pi
         self.phi[it]   = phi*180./pi
         self.Gamma[it]  = 0.5*Re*Cl*p.kinVisc*10**6 # Circulation [m^2/s]
+        # Gamma y%WriteOutput( OutIdx ) = 0.5 * p%BEMT%chord(IdxNode,IdxBlade) * m%BEMT_y%Vrel(IdxNode,IdxBlade) * m%BEMT_y%Cl(IdxNode,IdxBlade) ! "Gam" [m^2/s]
+
         self.psi[it]  = psi*180/pi
         self.Omega[it]  = Omega*60/(2*np.pi) # [rpm]
         self.RtArea[it]  = pi*R_p**2
 
         for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB]
+            R_p2g = R_ntr2g[iB] # TODO TODO TODO p is not ntr
             for ie in np.arange(nr):
                 Vind_g = xd1.Vind_g[iB,ie] # dynamic inductions at current time step
                 Vind_s = (R_s2g[iB,ie].T).dot(Vind_g) # Induced velocity in section coordinates
@@ -904,7 +961,9 @@ class UnsteadyBEM():
                 #  RES.Edge = sum(RES.BladeEdge)
         return xd1
 
-    def simulationConstantRPM(self, time, RPM, windSpeed=None, windExponent=None, windRefH=None, windFunction=None, cone=0, tilt=0, hubHeight=None, firstCallEquilibrium=True):
+    def simulationConstantRPM(self, time, RPM, windSpeed=None, windExponent=None, windRefH=None, windFunction=None, cone=0, tilt=0, hubHeight=None, firstCallEquilibrium=True,
+            BldNd_BladesOut=None, BldNd_BlOutNd=None  # Blade outputs
+            ):
         """ 
         wrapper function to perform a simple simulation at constant RPM
        
@@ -949,7 +1008,6 @@ class UnsteadyBEM():
             Vwnd_g = np.moveaxis(np.array([u,v,w]),0,-1) # nB x nr x 3
             xdBEM = self.timeStep(t, dt, xdBEM, motion.psi, motion.psi_B0,
                     motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_ntr2g,
                     motion.R_bld2b, # From blades 2 rotor/shaft
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                     Vwnd_g,
@@ -959,7 +1017,7 @@ class UnsteadyBEM():
             #if np.mod(t,1)<dt/2:
             #    print(t)
             # --- Aditional storage
-        df = self.toDataFrame()
+        df = self.toDataFrame(BldNd_BladesOut=BldNd_BladesOut, BldNd_BlOutNd=BldNd_BlOutNd)
         return df
 
 # --------------------------------------------------------------------------------}
@@ -1156,7 +1214,6 @@ class PrescribedRotorMotion():
         self.vel_gl = np.zeros((self.nB,nr,3))   # linear velocities
         self.R_s2g  = np.zeros((self.nB,nr,3,3)) # Orientation section to global
         self.R_a2g  = np.zeros((self.nB,nr,3,3)) # Orientation airfoil to global
-        self.R_ntr2g = [np.eye(3)]*self.nB
 
     def setType(self, sType, **kwargs):
         self.sType=sType
@@ -1174,7 +1231,7 @@ class PrescribedRotorMotion():
 
         # Update of positions
         for iB in np.arange(self.nB):
-            self.R_ntr2g[iB] = R_b2g.dot(self.R_ntr2b[iB])
+            #self.R_ntr2g[iB] = R_b2g.dot(self.R_ntr2b[iB])
             for ir in np.arange(len(self.r)):
                 s_OP =  R_b2g.dot(self.pos0[iB,ir,:])
                 self.pos_gl[iB,ir,:] = P_gl   + s_OP
