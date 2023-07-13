@@ -40,7 +40,7 @@ class BEMDiscreteStates:
         # Induction
         self.Vind_g  = np.zeros((nB,nr,3)) # Dynamic induced velocity with skew and dyn wake, global coordinates
         self.Vind_p  = np.zeros((nB,nr,3)) # Dynamic induced velocity with skew and dyn wake, polar coordinates
-        self.a       = np.zeros((nB,nr)) # axial induction
+        self.a_qs    = np.zeros((nB,nr)) # axial induction
         # Dynamic wake
         self.Vind_qs_p  = np.zeros((nB,nr,3)) # Quasi-steady velocity, polar coordinates
         self.Vind_qs_g  = np.zeros((nB,nr,3)) # Quasi-steady velocity
@@ -254,6 +254,7 @@ class UnsteadyBEM():
         nr = len(self.r)
         # --- Spanwise data
         # Coeffients
+        self.TSR    = np.zeros(nt)
         self.Cl_qs  = np.zeros((nt,nB,nr))
         self.Cd_qs  = np.zeros((nt,nB,nr))
         self.Cl     = np.zeros((nt,nB,nr))
@@ -288,6 +289,7 @@ class UnsteadyBEM():
         self.Vstr_xa = np.zeros((nt,nB,nr))
         self.Vstr_ya = np.zeros((nt,nB,nr))
         self.Vrel   = np.zeros((nt,nB,nr))
+        # BEM var
         self.AxInd  = np.zeros((nt,nB,nr))
         self.TnInd  = np.zeros((nt,nB,nr))
         self.AxInd_qs = np.zeros((nt,nB,nr))
@@ -370,14 +372,7 @@ class UnsteadyBEM():
         df['RtAeroCt_[-]']    = self.CT
         df['RtAeroCq_[-]']    = self.CQ
         df['RtAeroCp_[-]']    = self.CP
-        # Temporary
-        df['RtAeroFxh_[N]']   = self.Thrust
-        df['RtAeroMxh_[N-m]'] = self.Torque
-        df['RtAeroPwr_[W]']   = self.Power
-        df['RtAeroCt_[-]']    = self.CT
-        df['RtAeroCq_[-]']    = self.CQ
-        df['RtAeroCp_[-]']    = self.CP
-
+        df['RtTSR_[-]']        = self.TSR
         df['RtVAvgxh_[m/s]']  = self.RtVAvg[:,0]
         df['RtVAvgyh_[m/s]']  = self.RtVAvg[:,1]
         df['RtVAvgzh_[m/s]']  = self.RtVAvg[:,2]
@@ -389,13 +384,12 @@ class UnsteadyBEM():
         for iB in np.arange(self.nB):
             df['B'+str(iB+1)+'Azimuth_[deg]']  = np.mod(self.psi+self.SkewAzimuth[:,iB],360)
 
-        #print('>>> BEM: projMod: {} outputs'.format(self.projMod))
         if self.projMod=='polar': # TODO replace with "outProj"
             Vflw_o = self.Vwnd_p-self.Vstr_p
-            Vwnd_o = self.Vwnd_p
+            Vwnd_o = self.Vwnd_p.copy()
         elif self.projMod=='noSweepPitchTwist':
             Vflw_o = self.Vwnd_s-self.Vstr_s
-            Vwnd_o = self.Vwnd_s
+            Vwnd_o = self.Vwnd_s.copy()
         else:
             raise NotImplementedError()
 
@@ -409,24 +403,96 @@ class UnsteadyBEM():
         if BldNd_OutList is None:
 
             BldNd_OutList =[]
-            BldNd_OutList+=['Fx_[N/m]','Fy_[N/m]','Vx_[m/s]','Vy_[m/s]','VDisx_[m/s]','VDisy_[m/s]','STVx_[m/s]','STVy_[m/s]','STVz_[m/s]','Vrel_[m/s]','TnInd_[-]','AxInd_[-]','Phi_[deg]','Vindx_[m/s]','Vindy_[m/s]','Alpha_[deg]','Fn_[N/m]','Ft_[N/m]','Cl_[-]','Cd_[-]']
-            BldNd_OutList+=['VDisz_[m/s]']
-            BldNd_OutList+=['Re_[-]', 'Gam_[m^2/s]']
-            BldNd_OutList+=['STVxi_[m/s]' ,'STVyi_[m/s]', 'STVzi_[m/s]']
-            BldNd_OutList+=['STVxp_[m/s]' ,'STVyp_[m/s]', 'STVzp_[m/s]']
-            BldNd_OutList+=['STVxh_[m/s]' ,'STVyh_[m/s]', 'STVzh_[m/s]']
-            BldNd_OutList+=['Vdisxi_[m/s]','Vdisyi_[m/s]','Vdiszi_[m/s]']
-            BldNd_OutList+=['Vdisxp_[m/s]','Vdisyp_[m/s]','Vdiszp_[m/s]']
-            BldNd_OutList+=['Vdisxh_[m/s]','Vdisyh_[m/s]','Vdiszh_[m/s]']
-            #BldNd_OutList+=['VUndx_[m/s]','VUndy_[m/s]','VUndz_[m/s]']
+            BldNd_OutList+=['VDisx', 'VDisy' ,'VDisz']
+            BldNd_OutList+=['VDisxi','VDisyi','VDiszi']
+            BldNd_OutList+=['VDisxp','VDisyp','VDiszp']
+            BldNd_OutList+=['VDisxh','VDisyh','VDiszh']
+            BldNd_OutList+=['STVx','STVy','STVz']
+            BldNd_OutList+=['STVxi' ,'STVyi', 'STVzi']
+            BldNd_OutList+=['STVxp' ,'STVyp', 'STVzp']
+            BldNd_OutList+=['STVxh' ,'STVyh', 'STVzh']
+            BldNd_OutList+=['Vx','Vy']
+            BldNd_OutList+=['Vindx','Vindy']
+            BldNd_OutList+=['Vindxi','Vindyi','Vindzi']
+            BldNd_OutList+=['Vindxp','Vindyp','Vindzp']
+            BldNd_OutList+=['Vindxh','Vindyh','Vindzh']
+            BldNd_OutList+=['AxInd_qs','TnInd_qs']
+            BldNd_OutList+=['BEM_F','BEM_k','BEM_kp','BEM_CT_qs']
+            BldNd_OutList+=['AxInd'   ,'TnInd'  ]
+            BldNd_OutList+=['Vrel','Phi' ,'Alpha']
+            BldNd_OutList+=['Cl','Cd']
+            BldNd_OutList+=['Re', 'Gam']
+            BldNd_OutList+=['Fx','Fy']
+            BldNd_OutList+=['Fn','Ft','Mm']
+
+        RefColUnits={
+            'fx'        : 'Fx'       +'_[N/m]'   ,
+            'fy'        : 'Fy'       +'_[N/m]'   ,
+            'vx'        : 'Vx'       +'_[m/s]'   ,
+            'vy'        : 'Vy'       +'_[m/s]'   ,
+            'vdisx'     : 'VDisx'    +'_[m/s]'   ,
+            'vdisy'     : 'VDisy'    +'_[m/s]'   ,
+            'vdisz'     : 'VDisz'    +'_[m/s]'   ,
+            'vdisxi'    : 'VDisxi'   +'_[m/s]'   ,
+            'vdisyi'    : 'VDisyi'   +'_[m/s]'   ,
+            'vdiszi'    : 'VDiszi'   +'_[m/s]'   ,
+            'vdisxh'    : 'VDisxh'   +'_[m/s]'   ,
+            'vdisyh'    : 'VDisyh'   +'_[m/s]'   ,
+            'vdiszh'    : 'VDiszh'   +'_[m/s]'   ,
+            'vdisxp'    : 'VDisxp'   +'_[m/s]'   ,
+            'vdisyp'    : 'VDisyp'   +'_[m/s]'   ,
+            'vdiszp'    : 'VDiszp'   +'_[m/s]'   ,
+            'stvx'      : 'STVx'     +'_[m/s]'   ,
+            'stvy'      : 'STVy'     +'_[m/s]'   ,
+            'stvz'      : 'STVz'     +'_[m/s]'   ,
+            'stvxi'     : 'STVxi'    +'_[m/s]'   ,
+            'stvyi'     : 'STVyi'    +'_[m/s]'   ,
+            'stvzi'     : 'STVzi'    +'_[m/s]'   ,
+            'stvxh'     : 'STVxh'    +'_[m/s]'   ,
+            'stvyh'     : 'STVyh'    +'_[m/s]'   ,
+            'stvzh'     : 'STVzh'    +'_[m/s]'   ,
+            'stvxp'     : 'STVxp'    +'_[m/s]'   ,
+            'stvyp'     : 'STVyp'    +'_[m/s]'   ,
+            'stvzp'     : 'STVzp'    +'_[m/s]'   ,
+            'vrel'      : 'Vrel'     +'_[m/s]'   ,
+            'axind'     : 'AxInd'    +'_[-]'     ,
+            'tnind'     : 'TnInd'    +'_[-]'     ,
+            'axind_qs'  : 'AxInd_qs' +'_[-]'     ,
+            'tnind_qs'  : 'TnInd_qs' +'_[-]'     ,
+            'phi'       : 'Phi'      +'_[deg]'   ,
+            'vindx'     : 'Vindx'    +'_[m/s]'   ,
+            'vindy'     : 'Vindy'    +'_[m/s]'   ,
+            'vindxi'    : 'Vindxi'   +'_[m/s]'   ,
+            'vindyi'    : 'Vindyi'   +'_[m/s]'   ,
+            'vindzi'    : 'Vindzi'   +'_[m/s]'   ,
+            'vindxh'    : 'Vindxh'   +'_[m/s]'   ,
+            'vindyh'    : 'Vindyh'   +'_[m/s]'   ,
+            'vindzh'    : 'Vindzh'   +'_[m/s]'   ,
+            'vindxp'    : 'Vindxp'   +'_[m/s]'   ,
+            'vindyp'    : 'Vindyp'   +'_[m/s]'   ,
+            'vindzp'    : 'Vindzp'   +'_[m/s]'   ,
+            'alpha'     : 'Alpha'    +'_[deg]'   ,
+            'fn'        : 'Fn'       +'_[N/m]'   ,
+            'ft'        : 'Ft'       +'_[N/m]'   ,
+            'mm'        : 'Mm'       +'_[N-m/m]' ,
+            'cl'        : 'Cl'       +'_[-]'     ,
+            'cd'        : 'Cd'       +'_[-]'     ,
+            're'        : 'Re'       +'_[-]'     ,
+            'gam'       : 'Gam'      +'_[m^2/s]' ,
+            'bem_f'     : 'BEM_F'    +'_[-]'     ,
+            'bem_k'     : 'BEM_k'    +'_[-]'     ,
+            'bem_kp'    : 'BEM_kp'   +'_[-]'     ,
+            'bem_ct_qs' : 'BEM_CT_qs'+'_[-]'     }
+
         # All columns
-        BldNd_columns = ['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+ c for iB in BldNd_BladesOut  for c in BldNd_OutList for ir in BldNd_BlOutNd]
+        BldNd_columns = ['AB'+str(iB+1)+'N{:03d}'.format(ir+1)+ RefColUnits[c.lower()] for iB in BldNd_BladesOut  for c in BldNd_OutList for ir in BldNd_BlOutNd]
         # Dataframe
         df_B_r = pd.DataFrame(np.zeros((len(self.time), len(BldNd_columns))), columns=BldNd_columns)
 
         df= pd.concat((df,df_B_r),axis=1)
 
-        def set3dVar(lab, var):
+        def set3dVar(ll,  var):
+            lab = RefColUnits[ll]
             #print('>>> Setting {:15s}  - min:{:13.3e} max:{:13.3e}'.format(lab, np.min(var.flatten()), np.max(var.flatten())))
             for iB in BldNd_BladesOut:
                 for ir in np.arange(len(self.r)): 
@@ -436,51 +502,74 @@ class UnsteadyBEM():
         # AeroDyn x-y is "section coord" s
         # AeroDyn n-t is "airfoil coord" a but y is switched
         # AeroDyn doesn't have polar coord..
+        # TODO make it case/unit insensitive and based on AeroDyn OutList!
         for l in BldNd_OutList:
-            if   l == 'Fx_[N/m]'       : set3dVar(l, self.F_s[:,:,:,0]        )
-            elif l == 'Fy_[N/m]'       : set3dVar(l,-self.F_s[:,:,:,1]        ) # NOTE: weird sign
-            elif l == 'Vx_[m/s]'       : set3dVar(l, Vflw_o        [: ,:, :,0] )
-            elif l == 'Vy_[m/s]'       : set3dVar(l, Vflw_o        [: ,:, :,1] )
-            elif l == 'VDisx_[m/s]'    : set3dVar(l, Vwnd_o        [: ,:, :,0] )
-            elif l == 'VDisy_[m/s]'    : set3dVar(l, Vwnd_o        [: ,:, :,1] )
-            elif l == 'VDisz_[m/s]'    : set3dVar(l, Vwnd_o        [: ,:, :,2] )
-            elif l == 'Vdisxi_[m/s]'   : set3dVar(l, self.Vwnd_g   [: ,:, :,0] )
-            elif l == 'Vdisyi_[m/s]'   : set3dVar(l, self.Vwnd_g   [: ,:, :,1] )
-            elif l == 'Vdiszi_[m/s]'   : set3dVar(l, self.Vwnd_g   [: ,:, :,2] )
-            elif l == 'Vdisxh_[m/s]'   : set3dVar(l, self.Vwnd_h   [: ,:, :,0] )
-            elif l == 'Vdisyh_[m/s]'   : set3dVar(l, self.Vwnd_h   [: ,:, :,1] )
-            elif l == 'Vdiszh_[m/s]'   : set3dVar(l, self.Vwnd_h   [: ,:, :,2] )
-            elif l == 'Vdisxp_[m/s]'   : set3dVar(l, self.Vwnd_p   [: ,:, :,0] )
-            elif l == 'Vdisyp_[m/s]'   : set3dVar(l, self.Vwnd_p   [: ,:, :,1] )
-            elif l == 'Vdiszp_[m/s]'   : set3dVar(l, self.Vwnd_p   [: ,:, :,2] )
-            elif l == 'STVx_[m/s]'     : set3dVar(l, self.Vstr_s   [: ,:, :,0] )
-            elif l == 'STVy_[m/s]'     : set3dVar(l, self.Vstr_s   [: ,:, :,1] )
-            elif l == 'STVz_[m/s]'     : set3dVar(l, self.Vstr_s   [: ,:, :,2] )
-            elif l == 'STVxi_[m/s]'    : set3dVar(l, self.Vstr_g   [: ,:, :,0] )
-            elif l == 'STVyi_[m/s]'    : set3dVar(l, self.Vstr_g   [: ,:, :,1] )
-            elif l == 'STVzi_[m/s]'    : set3dVar(l, self.Vstr_g   [: ,:, :,2] )
-            elif l == 'STVxh_[m/s]'    : set3dVar(l, self.Vstr_h   [: ,:, :,0] )
-            elif l == 'STVyh_[m/s]'    : set3dVar(l, self.Vstr_h   [: ,:, :,1] )
-            elif l == 'STVzh_[m/s]'    : set3dVar(l, self.Vstr_h   [: ,:, :,2] )
-            elif l == 'STVxp_[m/s]'    : set3dVar(l, self.Vstr_p   [: ,:, :,0] )
-            elif l == 'STVyp_[m/s]'    : set3dVar(l, self.Vstr_p   [: ,:, :,1] )
-            elif l == 'STVzp_[m/s]'    : set3dVar(l, self.Vstr_p   [: ,:, :,2] )
-            elif l == 'Vrel_[m/s]'     : set3dVar(l, self.Vrel     [: ,:, :]   )
-            elif l == 'TnInd_[-]'      : set3dVar(l, self.TnInd    [: ,:, :]   )
-            elif l == 'AxInd_[-]'      : set3dVar(l, self.AxInd    [: ,:, :]   )
-            elif l == 'Phi_[deg]'      : set3dVar(l, self.phi      [: ,:, :]   )
-            elif l == 'Vindx_[m/s]'    : set3dVar(l, self.Vind_s   [: ,:, :,0] )
-            elif l == 'Vindy_[m/s]'    : set3dVar(l, self.Vind_s   [: ,:, :,1] )
-            elif l == 'Alpha_[deg]'    : set3dVar(l, self.alpha    [: ,:, :]   )
-            elif l == 'Fn_[N/m]'       : set3dVar(l, self.F_a      [: ,:, :,0] )
-            elif l == 'Ft_[N/m]'       : set3dVar(l,-self.F_a     [: ,:, :,1] )
-            elif l == 'Cl_[-]'         : set3dVar(l, self.Cl       [: ,:, :]   )
-            elif l == 'Cd_[-]'         : set3dVar(l, self.Cd       [: ,:, :]   )
-            elif l == 'Re_[-]'         : set3dVar(l, self.Re       [: ,:, :]   )
-            elif l == 'Gam_[m^2/s]'    : set3dVar(l, self.Gamma    [: ,:, :]   )
+            ll = l.lower()
+            if ll == 'vx'       : set3dVar(ll, Vflw_o        [: ,:, :,0] )
+            elif ll == 'vy'       : set3dVar(ll, Vflw_o        [: ,:, :,1] )
+            elif ll == 'vdisx'    : set3dVar(ll, Vwnd_o        [: ,:, :,0] )
+            elif ll == 'vdisy'    : set3dVar(ll, Vwnd_o        [: ,:, :,1] )
+            elif ll == 'vdisz'    : set3dVar(ll, Vwnd_o        [: ,:, :,2] )
+            elif ll == 'vdisxi'   : set3dVar(ll, self.Vwnd_g   [: ,:, :,0] )
+            elif ll == 'vdisyi'   : set3dVar(ll, self.Vwnd_g   [: ,:, :,1] )
+            elif ll == 'vdiszi'   : set3dVar(ll, self.Vwnd_g   [: ,:, :,2] )
+            elif ll == 'vdisxh'   : set3dVar(ll, self.Vwnd_h   [: ,:, :,0] )
+            elif ll == 'vdisyh'   : set3dVar(ll, self.Vwnd_h   [: ,:, :,1] )
+            elif ll == 'vdiszh'   : set3dVar(ll, self.Vwnd_h   [: ,:, :,2] )
+            elif ll == 'vdisxp'   : set3dVar(ll, self.Vwnd_p   [: ,:, :,0] )
+            elif ll == 'vdisyp'   : set3dVar(ll, self.Vwnd_p   [: ,:, :,1] )
+            elif ll == 'vdiszp'   : set3dVar(ll, self.Vwnd_p   [: ,:, :,2] )
+            elif ll == 'stvx'     : set3dVar(ll, self.Vstr_s   [: ,:, :,0] )
+            elif ll == 'stvy'     : set3dVar(ll, self.Vstr_s   [: ,:, :,1] )
+            elif ll == 'stvz'     : set3dVar(ll, self.Vstr_s   [: ,:, :,2] )
+            elif ll == 'stvxi'    : set3dVar(ll, self.Vstr_g   [: ,:, :,0] )
+            elif ll == 'stvyi'    : set3dVar(ll, self.Vstr_g   [: ,:, :,1] )
+            elif ll == 'stvzi'    : set3dVar(ll, self.Vstr_g   [: ,:, :,2] )
+            elif ll == 'stvxh'    : set3dVar(ll, self.Vstr_h   [: ,:, :,0] )
+            elif ll == 'stvyh'    : set3dVar(ll, self.Vstr_h   [: ,:, :,1] )
+            elif ll == 'stvzh'    : set3dVar(ll, self.Vstr_h   [: ,:, :,2] )
+            elif ll == 'stvxp'    : set3dVar(ll, self.Vstr_p   [: ,:, :,0] )
+            elif ll == 'stvyp'    : set3dVar(ll, self.Vstr_p   [: ,:, :,1] )
+            elif ll == 'stvzp'    : set3dVar(ll, self.Vstr_p   [: ,:, :,2] )
+            elif ll == 'vrel'     : set3dVar(ll, self.Vrel     [: ,:, :]   )
+            elif ll == 'axind'    : set3dVar(ll, self.AxInd    [: ,:, :]   )
+            elif ll == 'tnind'    : set3dVar(ll, self.TnInd    [: ,:, :]   )
+            elif ll == 'axind_qs' : set3dVar(ll, self.AxInd_qs [: ,:, :]   )
+            elif ll == 'tnind_qs' : set3dVar(ll, self.TnInd_qs [: ,:, :]   )
+            elif ll == 'phi'      : set3dVar(ll, self.phi      [: ,:, :]   )
+            elif ll == 'vindx'    : set3dVar(ll, self.Vind_s   [: ,:, :,0] )
+            elif ll == 'vindy'    : set3dVar(ll, self.Vind_s   [: ,:, :,1] )
+            elif ll == 'vindxi'   : set3dVar(ll, self.Vind_g   [: ,:, :,0] )
+            elif ll == 'vindyi'   : set3dVar(ll, self.Vind_g   [: ,:, :,1] )
+            elif ll == 'vindzi'   : set3dVar(ll, self.Vind_g   [: ,:, :,2] )
+            elif ll == 'vindxh'   : set3dVar(ll, self.Vind_h   [: ,:, :,0] )
+            elif ll == 'vindyh'   : set3dVar(ll, self.Vind_h   [: ,:, :,1] )
+            elif ll == 'vindzh'   : set3dVar(ll, self.Vind_h   [: ,:, :,2] )
+            elif ll == 'vindxp'   : set3dVar(ll, self.Vind_p   [: ,:, :,0] )
+            elif ll == 'vindyp'   : set3dVar(ll, self.Vind_p   [: ,:, :,1] )
+            elif ll == 'vindzp'   : set3dVar(ll, self.Vind_p   [: ,:, :,2] )
+            elif ll == 'alpha'    : set3dVar(ll, self.alpha    [: ,:, :]   )
+            #elif ll == 'fn'       : set3dVar(ll, self.F_s      [: ,:, :,0] ) # TODO should be F_a
+            #elif ll == 'ft'       : set3dVar(ll,-self.F_s      [: ,:, :,1] ) # TODO
+            elif ll == 'fx'       : set3dVar(ll, self.F_s      [: ,:, :,0] ) # TODO should be F_a
+            elif ll == 'fy'       : set3dVar(ll,-self.F_s      [: ,:, :,1] ) # TODO
+            elif ll == 'fn'       : set3dVar(ll, self.F_a[:,:,:,0]        ) # NOT GOOD IN HIGH CONE
+            elif ll == 'ft'       : set3dVar(ll,-self.F_a[:,:,:,1]        ) # NOT GOOD IN HIGH CONE
+            elif ll == 'mm'       : set3dVar(ll,self.Mm       [: ,:, :]   ) 
+            elif ll == 'cl'       : set3dVar(ll, self.Cl       [: ,:, :]   )
+            elif ll == 'cd'       : set3dVar(ll, self.Cd       [: ,:, :]   )
+            elif ll == 're'       : set3dVar(ll, self.Re       [: ,:, :]   )
+            elif ll == 'gam'      : set3dVar(ll, self.Gamma    [: ,:, :]   )
+            elif ll == 'bem_f'    : set3dVar(ll, self.BEM_F    [: ,:, :]   )
+            elif ll == 'bem_k'    : set3dVar(ll, self.BEM_k    [: ,:, :]   )
+            elif ll == 'bem_kp'   : set3dVar(ll, self.BEM_kp   [: ,:, :]   )
+            elif ll == 'bem_ct_qs': set3dVar(ll, self.BEM_CT_qs[: ,:, :]   )
             else:
                 raise Exception('Unavaible channel',l)
         return df
+
+
+
 
     def toDataFrameRadial(self, it=-1):
         df = pd.DataFrame()
@@ -534,8 +623,10 @@ class UnsteadyBEM():
         p = self # alias
         ### Loop on blades
         # --------------------------------------------------------------------------------
-        # --- Step 0: geometry 
+        # --- Step 0a: geometry 
         # --------------------------------------------------------------------------------
+        x_hat_disk = R_r2g[:,0]
+
         # --- "n-t-r" and rotating blade hub system
         # "n-t-r"  is the same but with t=-yh
         # Precalculate the M_ph matrix -- no reason to recalculate for each output
@@ -556,15 +647,36 @@ class UnsteadyBEM():
         # --- Polar grid coordinates and radial-coordinate 
         R_g2p = np.zeros((self.nB, nr, 3, 3)) # transformation from global to staggered-polar, "orientationAnnulus"
         r_p   = np.zeros((self.nB, nr))       # radius in polar grid, "rLocal"
+        drdz  = np.zeros((self.nB, nr))       # projection of element dz
         Rs_p=[0]*nB
         P_rotor_i = origin_pos_gl
-        xhat_r_i = R_r2g[:,0] 
+        x_hat_disk = R_r2g[:,0] 
         for iB in range(self.nB):
+            r_RA      = np.zeros((nr,3))  # Vector from rotor center to Airfoil
+            r_RA_orth = np.zeros((nr,3))  # Vector from rotor center to airfoil projected on polar plane
             for ie in range(nr):
-                R_g2p[iB,ie,:,:], DP_h, DP_p = polarCoord(P_rotor_i, xhat_r_i, pos_gl[iB,ie])  
-                r_p[iB, ie] = norm(DP_p)
+                R_g2p[iB,ie,:,:], r_RA[ie,:], r_RA_orth[ie,:] = polarCoord(P_rotor_i, x_hat_disk, pos_gl[iB,ie])  
+                r_p[iB, ie] = norm(r_RA_orth[ie,:])  # "r_local"
+            dr = norm(r_RA_orth[1:]-r_RA_orth[0:-1], axis=1)
+            dz = norm(r_RA     [1:]-r_RA     [0:-1], axis=1)
+            dr = np.concatenate(([dr[0]], dr))
+            dz = np.concatenate(([dz[0]], dz))
+            drdz[iB, dz!=0] = dr/dz
         rhub_p  = np.mean(r_p[iB,0])
         R_p     = np.max (r_p[iB,-1]) # Rotor radius projected onto polar grid
+        if self.algorithm=='polarProj':
+            pass
+        else:
+            drdz = 1
+        if self.algorithm=='polarProj':
+            # NOTE: section is ill-defined
+            # AeroDyn uses "orientaion annulus everywhere..
+            for iB in range(self.nB):
+                for ie in range(nr):
+                    R_s2g[iB,ie,:,:] = R_g2p[iB,ie,:,:].T
+        else:
+            pass
+            #raise Exception()
 
         # --- Curvilinear coordinates
         # See Init_BEMTmodule, "zRoot, zTip, zLocal"
@@ -597,86 +709,185 @@ class UnsteadyBEM():
         #print('R_p',   R_p)
         #print('>>> sHub',sHub[iB])
         #print('>>> sBldNodes',sBldNodes[iB])
+        # --- TipLoss HubLoss - Constants
+        tipLossConst = np.zeros((self.nB, nr))
+        hubLossConst = np.zeros((self.nB, nr))
+        for iB in range(self.nB):
+            tipLossConst[iB] = self.nB*(sBldNodes[iB,-1] - sBldNodes[iB,:])/(2.0*sBldNodes[iB,:])
+            # NOTE different conventions are possible for hub losses
+            hubLossConst[iB] = self.nB*(sBldNodes[iB, :] - sHub[iB]       )/(2.0*sHub[iB])
+
+        bFixedInduction = np.zeros((self.nB, nr), dtype=bool)
+        if p.bTipLoss:
+            bFixedInduction = np.logical_or(bFixedInduction, tipLossConst==0)
+        if p.bHubLoss:
+            bFixedInduction = np.logical_or(bFixedInduction, hubLossConst==0)
+        tipLossConst[bFixedInduction] = 1
+        hubLossConst[bFixedInduction] = 1
+        bFValid = np.logical_not(bFixedInduction)
+
+
 
         # --- Rotor speed for power
         omega_r = R_r2g.T.dot(omega_gl) # rotational speed in rotor coordinate system
         Omega = omega_r[0] # rotation speed of shaft (along x)
 
-        if self.algorithm=='polarProj':
-            drdz = cos(cant)
-        else:
-            drdz = 1
 
+        # --------------------------------------------------------------------------------}
+        # --- Step 0b: Wind and structural Velocities - Skew coordinate system
+        # --------------------------------------------------------------------------------{
+        # --- Flow
+        Vstr_p  = np.zeros((nB,nr,3))
+        Vwnd_p  = np.zeros((nB,nr,3))
+        for iB in np.arange(nB):
+            for ie in np.arange(nr):
+                R_p2g = R_g2p[iB,ie].T
+                # Polar coordinates
+                Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_gl[iB,ie]) # Structural velocity in polar coordinates
+                Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_gl[iB,ie]) # Wind Velocity in polar coordinates
+        Vflw_p  = Vwnd_p- Vstr_p  # Relative flow velocity, including wind and structural motion
+        Vflw_g  = Vwnd_gl-Vstr_gl # Relative flow velocity, including wind and structural motion
+        #print('Vwndxp,',Vwnd_p[0,:,0])
+        #print('Vwndyp,',Vwnd_p[0,:,1])
+        #print('Vwndzp,',Vwnd_p[0,:,2])
+        #print('Vstrxp,',Vstr_p[0,:,0])
+        #print('Vstryp,',Vstr_p[0,:,1])
+        #print('Vstrzp,',Vstr_p[0,:,2])
+        #print('Vflw_xp,',Vflw_p[0,:,0])
+        #print('Vflw_yp,',Vflw_p[0,:,1])
+        #print('Vflw_zp,',Vflw_p[0,:,2])
+
+        # --- Average wind
+        # Average wind in global, and rotor coord
+        Vwnd_avg_g = np.mean(np.mean(Vwnd_gl[:,:,:],axis=0),axis=0)
+        Vwnd_avg_r = (R_r2g.T).dot(Vwnd_avg_g)
+        # Average relative wind (Wnd-Str)
+        Vflw_avg_g = np.mean(np.mean(Vflw_g[:,:,:],axis=0),axis=0) # "V_diskAvg"
+        # Coordinate system with "y" in the cross wind direction for skew model
+        V_dot_x  = np.dot(Vflw_avg_g, x_hat_disk)
+        V_ytmp   = V_dot_x * x_hat_disk - Vflw_avg_g
+        V_ynorm  = sqrt(V_ytmp[0]**2+V_ytmp[1]**2+V_ytmp[2]**2)
+        if abs(V_ynorm)<1e-8:
+            y_hat_disk = R_r2g[:,1]
+            z_hat_disk = R_r2g[:,2]
+        else:
+            y_hat_disk = V_ytmp / V_ynorm
+            z_hat_disk = np.cross(Vflw_avg_g, x_hat_disk ) / V_ynorm
+        # --- Skew
+        # Fake "Azimuth angle" used for skew model
+        SkewAzimuth=np.zeros(nB)
+        for iB in np.arange(nB):
+            z_hat = R_ntr2g[iB][:,2] # TODO TODO
+            tmp_sz_y = -1.0*np.dot(z_hat,y_hat_disk)
+            tmp_sz   =      np.dot(z_hat,z_hat_disk)
+            if np.abs(tmp_sz_y)<1e-8 and np.abs(tmp_sz)<1e-8:
+                SkewAzimuth[iB]=0
+            else:
+                SkewAzimuth[iB] = arctan2( tmp_sz_y, tmp_sz )
+        # Skew angle without induction
+        Vw_r = (R_r2g.T).dot(Vflw_avg_g)
+        Vw_rn     = Vw_r[0] # normal to disk
+        Vw_r_norm = sqrt(Vw_r[0]**2+Vw_r[1]**2+Vw_r[2]**2)
+        chi0      = np.arccos(Vw_rn / Vw_r_norm)
+
+        # --- TSR
+        if V_dot_x==0:
+            TSR = 0
+        else:
+            TSR =  Omega * R_p / V_dot_x
+
+
+        # --- START ITERATION FOR QUASI-STEADY INDUCTIONS
         if firstCallEquilibrium:
             nItMax=50
         else:
             nItMax=1
-        for iterations in np.arange(nItMax):
+        for iteration in np.arange(nItMax):
+            #print('')
+            #print('>>>>>>>>>>>> TIME ', t, '>>>>>>>>>>>>>>>>>>>>> ITERATION ', iteration)
             # --------------------------------------------------------------------------------
             # --- Step 1: velocity components
             # --------------------------------------------------------------------------------
             Vrel_a  = np.zeros((nB,nr,3))
             Vrel_p  = np.zeros((nB,nr,3))
-            Vstr_p  = np.zeros((nB,nr,3))
-            Vwnd_p  = np.zeros((nB,nr,3))
             Vrel_k  = np.zeros((nB,nr,3))
             Vind_g  = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
-                #R_p2g = R_ntr2g[iB] # TODO TODO TODO
-                R_p2g = R_g2h[iB].T # TODO TODO TODO
-                R_p2g = R_ntr2g[iB]
                 for ie in np.arange(nr):
-                    # Velocity in global
-                    Vwnd_g = Vwnd_gl[iB,ie]
+                    #R_p2g = R_ntr2g[iB] 
+                    #R_p2g = R_g2h[iB].T 
+                    R_p2g = R_g2p[iB,ie].T
                     # NOTE: inductions from previous time step, in polar grid (more realistic than global)
+                    # Global
                     #Vind_g = xd0.Vind_g[iB,ie] # dynamic inductions at previous time step
                     Vind_g[iB,ie] = (R_p2g).dot(xd0.Vind_p[iB,ie]) # dynamic inductions at previous time step
-                    Vstr_g = Vstr_gl[iB,ie]
-                    Vrel_g = Vwnd_g+Vind_g[iB,ie]-Vstr_g
+                    Vrel_g = Vwnd_gl[iB,ie]+Vind_g[iB,ie]-Vstr_gl[iB,ie]
                     # Polar coordinates
-                    Vstr_p[iB,ie] = (R_p2g.T).dot(Vstr_g) # Structural velocity in polar coordinates
                     Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
-                    Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_g) # Wind Velocity in polar coordinates
                     # Kappa coordinates
                     Vrel_k[iB,ie,0] = Vrel_p[iB,ie,0]*np.cos(cant[iB,ie]) # n 
                     Vrel_k[iB,ie,1] = Vrel_p[iB,ie,1] # t
                     # Airfoil coordinates
                     Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g) # TODO use R_p2a instead, and remove zp component
-            Vflw_p  = Vwnd_p-Vstr_p # Relative flow velocity, including wind and structural motion
-            Vflw_g  = Vwnd_gl-Vstr_gl # Relative flow velocity, including wind and structural motion
+            #print('xd0Vind_xp,',xd0.Vind_p[0,:,0])
+            #print('xd0Vind_yp,',xd0.Vind_p[0,:,1])
+            #print('xd0Vind_zp,',xd0.Vind_p[0,:,2])
 
             # Velocity norm and Reynolds
             Vrel_norm_k = sqrt(Vrel_k[:,:,0]**2 + Vrel_k[:,:,1]**2)
             Vrel_norm_a = sqrt(Vrel_a[:,:,0]**2 + Vrel_a[:,:,1]**2)
-            Re        = Vrel_norm_a*p.chord/p.kinVisc/10**6 # Reynolds in million
+            # TODO Change AeroDyn
+            a_dyn      =-xd0.Vind_p[:,:,0]/Vflw_p[:,:,0] 
+            aprime_dyn = xd0.Vind_p[:,:,1]/Vflw_p[:,:,1]
+            VrelUA, v_ac_x, v_ac_y = RelativeVelocityUA( a_dyn, aprime_dyn, Vflw_p[:,:,0], Vflw_p[:,:,1], cant, xVelCorr=0)
+            Re        = VrelUA*p.chord/p.kinVisc/10**6 # Reynolds in million
+            #Re        = Vrel_norm_a*p.chord/p.kinVisc/10**6 # Reynolds in million
+            #ReUA = ReynoldsNumberUA(iteration, self.algorithm, a_dyn, aprime_dyn, Vflw_p[:,:,0], Vflw_p[:,:,1], Vflw_p[:,:,2], p.chord, p.kinVisc, toe, cant, twist)
+
             # --------------------------------------------------------------------------------
             # --- Step 2: Flow Angle and tip loss
             # --------------------------------------------------------------------------------
-            phi_k = np.arctan2(Vrel_k[:,:,0],-Vrel_k[:,:,1]) # flow angle [rad] in kappa system
-            phi_p = np.arctan2(Vrel_p[:,:,0],-Vrel_p[:,:,1])  # NOTE: using polar grid for phi
+            phi_k = np.arctan2(Vrel_k[:,:,0], Vrel_k[:,:,1]) # flow angle [rad] in kappa system
+            phi_p = np.arctan2(Vrel_p[:,:,0], Vrel_p[:,:,1]) # NOTE: using polar grid for phi
             if self.algorithm=='legacy':
                 phi_tl = phi_p
                 phi    = phi_p
             elif self.algorithm=='polarProj':
-                phi_tl = phi_k
+                #phi_tl = phi_kappa(phi_k, cant)
+                phi_tl = phi_p                    # TODO Check equivalence with above 
                 phi    = phi_k
             else:
                 raise Exception()
             # --- Tip and hub losses
-            F = np.ones((nB,nr))
+            F    = np.ones((nB,nr))
+            Ftip = np.ones((nB,nr))
+            Fhub = np.ones((nB,nr))
+            bFValid = np.logical_and(bFValid, phi_tl>0)
+            sphi   = sin(phi_tl[bFValid])
             if (p.bTipLoss): #Glauert tip correction
-                b=sin(phi_tl)>0.01
-                F[b] = 2./pi*arccos(exp(-(nB *(R_p-r_p[b]))/(2*r_p[b]*sin(phi_tl[b]))))
-                b2=abs(r_p-R_p)<1e-3
-                F[b2]=0.001
+                # --- Keep me
+                #b=sin(phi_tl)>0.01
+                #Ftip[b] = 2./pi*arccos(exp(-(nB *(R_p-r_p[b]))/(2*r_p[b]*sin(phi_tl[b]))))
+                #b2=abs(r_p-R_p)<1e-3
+                #Ftip[b2]=0.001
+                factorTip     = np.clip(tipLossConst[bFValid] / sphi , -1    , np.inf)
+                expFactor     = np.clip(np.exp(-factorTip)           , 0     ,  1)
+                Ftip[bFValid] = np.clip(2./pi*arccos(expFactor)      , 0.0001,  1)
+
             # --- Hub loss
             if (p.bHubLoss): #Glauert hub loss correction
-                F = F* 2./pi*arccos(exp(-nB/2. *(r_p-rhub_p)/ (rhub_p*np.sin(phi_tl))))
-            F[F<=1e-5]=1e-5
+                # TODO TODO TODO
+                factorHub     = np.clip(hubLossConst[bFValid] / sphi , -1    , np.inf)
+                expFactor     = np.clip(np.exp(-factorHub)           , 0     ,  1)
+                Fhub[bFValid] = np.clip(2./pi*arccos(expFactor)      , 0.0001,  1)
+                #Fhub[bFValid] = 2./pi*arccos(exp(-nB/2. *(r_p-rhub_p)/ (rhub_p*np.sin(phi_tl))))
+            F = Ftip * Fhub
+
             # --------------------------------------------------------------------------------
             # --- Step 3: Angle of attack
             # --------------------------------------------------------------------------------
             alpha = np.arctan2(Vrel_a[:,:,0],Vrel_a[:,:,1])        # angle of attack [rad]
+            #print('ALPHA\n', alpha*180/np.pi)
             # --------------------------------------------------------------------------------
             # --- Step 4: Aerodynamic Coefficients
             # --------------------------------------------------------------------------------
@@ -692,8 +903,9 @@ class UnsteadyBEM():
             C_g        = np.zeros((nB,nr,3))
             C_p_noDrag = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
-                R_p2g = R_ntr2g[iB] # TODO TODO TODO
                 for ie in np.arange(nr):
+                    #R_p2g = R_ntr2g[iB] # TODO TODO TODO
+                    R_p2g = R_g2p[iB,ie].T
                     C_g        [iB,ie]=R_a2g[iB,ie].dot(np.array([C_xa       [iB,ie], C_ya       [iB,ie], 0]))
                     C_p        [iB,ie]=(R_p2g.T).dot(C_g[iB,ie])
                     C_p_noDrag [iB,ie]=(R_p2g.T).dot(R_a2g[iB,ie]).dot(np.array([C_xa_noDrag[iB,ie], C_ya_noDrag[iB,ie], 0]))
@@ -721,53 +933,85 @@ class UnsteadyBEM():
             sigma    = p.chord*p.nB/(2*pi*r_p) # NOTE: using radius in polar grid
             #a,aprime,CT = fInductionCoefficients(a_last,Vrel_in4,Un,Ut,V0_in3,V0_in4,nnW_in4,omega,chord(e),F,Ftip,CnForAI,CtForTI,lambda_r,sigma(e),phi,Algo)
             if p.WakeMod==0:
-                a      = V0*0
-                aprime = V0*0
+                a_qs   = V0*0
+                aprime_qs = V0*0
             else:
-                a,aprime,CT = _fInductionCoefficients(Vrel_norm_k, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi, 
-                        bSwirl=p.bSwirl, CTcorrection=p.CTcorrection, swirlMethod=p.swirlMethod,
-                        relaxation=p.relaxation, a_last=xd0.a,
-                        algorithm=self.algorithm, drdz=drdz
-                )
-                # TODO consider using these
-                # NOTE: yp has different convention OpenFAST/WELIB
-                Vrel_xp = clip_zeros(Vrel_p[:,:,0], 1e-5) # To avoid division by zero
-                Vrel_yp = clip_zeros(Vrel_p[:,:,1], 1e-5)
-                k  = sigma*cnForAI/(4*F)*Vrel_norm_a**2/(Vrel_xp**2)    /drdz
-                kp =-sigma*ctForTI/(4*F)*Vrel_norm_a**2/(Vrel_xp*Vrel_yp) /drdz
-                #a[:,:]      = 0.3
-                #aprime[:,:] = 0.02
+                if p.algorithm =='legacy':
+                    a_qs,aprime_qs,CT = _fInductionCoefficients(Vrel_norm_k, V0, F, cnForAI, ctForTI, lambda_r, sigma, phi, 
+                            bSwirl=p.bSwirl, CTcorrection=p.CTcorrection, swirlMethod=p.swirlMethod,
+                            relaxation=p.relaxation, a_last=xd0.a_qs,
+                            algorithm=self.algorithm, drdz=drdz
+                    )
 
-            if np.any(np.isnan(a)):
+                    #k =  sigma*cnForAI/(4*F*np.sin(phi)**2)*drdz # NOTE: OpenFAST formulation
+                    #kp =-sigma*ctForTI/(4*F*np.sin(phi)*np.cos(phi))
+                    k  = 1/(1-a_qs)
+                    kp = aprime_qs/(1+aprime_qs)
+                else:
+
+                    Vrel_xp = clip_zeros(Vrel_p[:,:,0], 1e-5) # To avoid division by zero
+                    Vrel_yp = clip_zeros(Vrel_p[:,:,1], 1e-5)
+
+                    # --- k factor
+                    k =  sigma*cnForAI/(4*F*np.sin(phi)**2)*drdz # NOTE: OpenFAST formulation
+                    k2 = sigma*cnForAI/(4*F*np.sin(phi)**2)*cos(cant)**2/drdz   
+                    k1 = sigma*cnForAI/(4*F)*Vrel_norm_a**2/(Vrel_xp**2)/drdz
+                    # TODO Solve for a_qs
+                    # TODO Solve for a_qs
+                    # TODO Solve for a_qs
+                    a_qs = k/(k+1.0)
+                    effectiveYaw = chi0 # TODO TODO
+                    #print('chi0',chi0)
+                    #print('>>xd0a',xd0.a_qs[0])
+                    #print('>>xd1a',xd1.a_qs[0])
+                    a_qs_last = xd0.a_qs # TODO Temporary because right now a is solved above
+                    a0_an = np.sqrt(1+(np.tan(effectiveYaw)/(1.0-a_qs_last))**2)
+                    a0_an = 1
+                    kpCorrectionFactor = 1
+                    kp =-sigma*ctForTI/(4*F*np.sin(phi)*np.cos(phi))*(kpCorrectionFactor)/a0_an            
+                    kp1=-sigma*ctForTI/(4*F)*Vrel_norm_a**2/(Vrel_xp*Vrel_yp) /drdz
+#                     if iteration==3:
+#                         import pdb; pdb.set_trace()
+
+                    # TODO Solve for aprime_qs
+                    # TODO Solve for aprime_qs
+                    # TODO Solve for aprime_qs
+                    aprime_qs = kp/(1-kp)
+                    CT=0 # TODO TODO TODO
+
+            # --- Wherever the tiploss factor is undefined 
+            k        [bFixedInduction] = 0
+            kp       [bFixedInduction] = 0
+            a_qs     [bFixedInduction] = 1.00
+            aprime_qs[bFixedInduction] = 0.00
+            # --- HACK
+            #a_qs[:,:]      = 0.3
+            #aprime_qs[:,:] = 0.05
+            #a_qs     [bFixedInduction] = 0.20
+            #aprime_qs[bFixedInduction] = 0.002
+
+            if np.any(np.isnan(a_qs)):
                 print('>> BEM crashing')
 
             # Storing last values, for relaxation
-            xd1.a=a.copy()
+            xd1.a_qs = a_qs.copy()
             # Quasi steady inductions, polar and global coordinates
             xd1.Vind_qs_p = np.zeros((nB,nr,3))
             for iB in np.arange(nB):
-                R_p2g = R_ntr2g[iB] # TODO TODO TODO TODO
                 for ie in np.arange(nr):
-                    # NOTE: Vind is negative along n and t!
-                    xd1.Vind_qs_p[iB,ie] = np.array([-a[iB,ie]*Vflw_p[iB,ie,0],  aprime[iB,ie]*Vflw_p[iB,ie,1], 0])
+                    R_p2g = R_g2p[iB,ie].T
+                    xd1.Vind_qs_p[iB,ie] = np.array([-a_qs[iB,ie]*Vflw_p[iB,ie,0],  aprime_qs[iB,ie]*Vflw_p[iB,ie,1], 0])
                     xd1.Vind_qs_g[iB,ie] = R_p2g.dot(xd1.Vind_qs_p[iB,ie]) # global
 
             if firstCallEquilibrium:
                 # We update the previous states induction
-                xd0.a      = a.copy()
+                xd0.a_qs   = a_qs.copy()
                 xd0.Vind_g = xd1.Vind_qs_g.copy()
                 xd0.Vind_p = xd1.Vind_qs_p.copy()
-            #print('')
-            #print('Vflw',Vflw_p[0,19,:])
-            #print('F      ',F[0,19])
-            #print('phi tl ',phi_tl[0,19])
-            #print('sigma  ',sigma[0,19])
-            #print('Vrel_p ',Vrel_p[0,19,:])
-            #print('Vrel_a ',Vrel_a[0,19,:])
-            #print('cn     ',cnForAI[0,19], ctForTI[0,19])
-            #print('drdz   ',drdz) # TODO
-            #print('k      ',k[0,19], kp[0,19])
 
+            # --- END OF ITERATION LOOP
+
+        # --- ITERATION LOOP OVER
 
 
         if firstCallEquilibrium:
@@ -780,7 +1024,8 @@ class UnsteadyBEM():
         # --- Dynamic wake model, in polar coordinates (for "constant" structural velocity)
         # --------------------------------------------------------------------------------
         if (p.bDynaWake):
-            a_avg = min([np.mean(a),0.5])
+            #raise Exception()
+            a_avg = min([np.mean(a_qs),0.5])
             V_avg = max([np.mean(V0),0.001])
             tau1 = 1.1 / (1 - 1.3 *a_avg)*R_p/V_avg
             tau2 = (0.39 - 0.26 * (r_p/R_p)**2) * tau1
@@ -791,89 +1036,61 @@ class UnsteadyBEM():
             xd1.Vind_dyn_p = xd1.Vind_int_p + (xd0.Vind_dyn_p - xd1.Vind_int_p) * exp(-dt/tau2)
             # In global
             for iB in np.arange(nB):
-                R_p2g = R_ntr2g[iB] # TODO TODO TODO
                 for ie in np.arange(nr):
+                    #R_p2g = R_ntr2g[iB] # TODO TODO TODO
+                    R_p2g = R_g2p[iB,ie].T
                     xd1.Vind_dyn_g[iB,ie] = R_p2g.dot(xd1.Vind_dyn_p[iB,ie]) # global
         else:
             xd1.Vind_dyn_g = xd1.Vind_qs_g.copy()
             xd1.Vind_dyn_p = xd1.Vind_qs_p.copy()
 
-        # --------------------------------------------------------------------------------}
-        # --- Disk averaged quantities
-        # --------------------------------------------------------------------------------{
-        # Average wind in global, and rotor coord
-        Vwnd_avg_g = np.mean(np.mean(Vwnd_gl[:,:,:],axis=0),axis=0)
-        Vwnd_avg_r = (R_r2g.T).dot(Vwnd_avg_g)
-        # Average relative wind (Wnd-Str)
-        Vflw_avg_g = np.mean(np.mean(Vflw_g[:,:,:],axis=0),axis=0)
-        x_hat_disk = R_r2g[:,0]
-        # Coordinate system with "y" in the cross wind direction for skew model
-        V_dot_x  = np.dot(Vflw_avg_g, x_hat_disk)
-        V_ytmp   = V_dot_x * x_hat_disk - Vflw_avg_g
-        V_ynorm  = sqrt(V_ytmp[0]**2+V_ytmp[1]**2+V_ytmp[2]**2)
-        if abs(V_ynorm)<1e-8:
-            y_hat_disk = R_r2g[:,1]
-            z_hat_disk = R_r2g[:,2]
-        else:
-            y_hat_disk = V_ytmp / V_ynorm
-            z_hat_disk = np.cross(Vflw_avg_g, x_hat_disk ) / V_ynorm
-        # Fake "Azimuth angle" used for skew model
-        SkewAzimuth=np.zeros(nB)
-        for iB in np.arange(nB):
-            z_hat = R_ntr2g[iB][:,2] # TODO TODO
-            tmp_sz_y = -1.0*np.dot(z_hat,y_hat_disk)
-            tmp_sz   =      np.dot(z_hat,z_hat_disk)
-            if np.abs(tmp_sz_y)<1e-8 and np.abs(tmp_sz)<1e-8:
-                SkewAzimuth[iB]=0
-            else:
-                SkewAzimuth[iB] = arctan2( tmp_sz_y, tmp_sz )
-        # Skew angle without induction
-        Vw_r = (R_r2g.T).dot(Vflw_avg_g)
-        Vw_rn     = Vw_r[0] # normal to disk
-        Vw_r_norm = sqrt(Vw_r[0]**2+Vw_r[1]**2+Vw_r[2]**2)
-        chi0      = np.arccos(Vw_rn / Vw_r_norm)
 
         # --------------------------------------------------------------------------------
         # ---  Yaw model, repartition of the induced velocity
         # --------------------------------------------------------------------------------
         if p.bYawModel:
-           #xd1.Vind_g = xd1.Vind_dyn_g.copy()
-           #xd1.Vind_p = xd1.Vind_dyn_p.copy()
-           #psi0 = np.arctan( Vwnd_avg_g[2]/Vwnd_avg_r[1])  # TODO
-           # Sections that are about 0.7%R
-           Ir= np.logical_and(r_p[0]>=0.5*R_p, r_p[0] <=0.8*R_p)
-           if len(Ir)==0:
-               Ir=r_p[0]>0
-           Vind_avg_g = np.mean(np.mean(xd1.Vind_dyn_g[:,Ir,:],axis=0),axis=0)
-           Vind_avg_r = (R_r2g.T).dot(Vind_avg_g)
-           # Skew angle with induction
-           V_r      = Vwnd_avg_r + Vind_avg_r
-           V_rn     = V_r[0] # normal to disk
-           V_r_norm = sqrt(V_r[0]**2+V_r[1]**2+V_r[2]**2)
-           chi = np.arccos(V_rn/V_r_norm)
-           #print('chi0',chi0*180/pi,'chi',chi*180/pi,'psi0',psi0*180/np.pi)
-           if np.abs(chi)>pi/2:
-               print('>>> chi too large')
-           yawCorrFactor = 15*np.pi/32 # close to 3/2
-           for iB in np.arange(nB):
-               R_p2g = R_ntr2g[iB]
-               for ie in np.arange(nr):
-                   xd1.Vind_p[iB,ie] = xd1.Vind_dyn_p[iB,ie]
-                   xd1.Vind_p[iB,ie,0] = xd1.Vind_dyn_p[iB,ie,0] * (1 + yawCorrFactor*r_p[iB,ie]/R_p * np.tan(chi/2)*np.sin(SkewAzimuth[iB])) #* np.cos(psiB0[iB]+psi - psi0))
-                   xd1.Vind_g[iB,ie] = R_p2g.dot(xd1.Vind_p[iB,ie]) # global
-                   # AeroDyn:
-                   #chi = (0.6_ReKi*a + 1.0_ReKi)*chi0
-                   #a = a * (1.0 +  yawCorrFactor * yawCorr_tan * (tipRatio) * sin(azimuth))
+            #raise Exception('YawModel')
+            #xd1.Vind_g = xd1.Vind_dyn_g.copy()
+            #xd1.Vind_p = xd1.Vind_dyn_p.copy()
+            #psi0 = np.arctan( Vwnd_avg_g[2]/Vwnd_avg_r[1])  # TODO
+            # Sections that are about 0.7%R
+            Ir= np.logical_and(r_p[0]>=0.5*R_p, r_p[0] <=0.8*R_p)
+            if len(Ir)==0:
+                Ir=r_p[0]>0
+            Vind_avg_g = np.mean(np.mean(xd1.Vind_dyn_g[:,Ir,:],axis=0),axis=0)
+            Vind_avg_r = (R_r2g.T).dot(Vind_avg_g)
+            # Skew angle with induction
+            V_r      = Vwnd_avg_r + Vind_avg_r
+            V_rn     = V_r[0] # normal to disk
+            V_r_norm = sqrt(V_r[0]**2+V_r[1]**2+V_r[2]**2)
+            chi = np.arccos(V_rn/V_r_norm)
+            #print('chi0',chi0*180/pi,'chi',chi*180/pi,'psi0',psi0*180/np.pi)
+            if np.abs(chi)>pi/2:
+                print('>>> chi too large')
+            yawCorrFactor = 15*np.pi/32 # close to 3/2
+            for iB in np.arange(nB):
+                for ie in np.arange(nr):
+                    #R_p2g = R_ntr2g[iB]
+                     R_p2g = R_g2p[iB,ie].T
+                     xd1.Vind_p[iB,ie]   = xd1.Vind_dyn_p[iB,ie]
+                     xd1.Vind_p[iB,ie,0] = xd1.Vind_dyn_p[iB,ie,0] * (1 + yawCorrFactor*r_p[iB,ie]/R_p * np.tan(chi/2)*np.sin(SkewAzimuth[iB])) #* np.cos(psiB0[iB]+psi - psi0))
+                     xd1.Vind_g[iB,ie]   = R_p2g.dot(xd1.Vind_p[iB,ie]) # global
+                     # AeroDyn:
+                    #chi = (0.6_ReKi*a + 1.0_ReKi)*chi0
+                    #a = a * (1.0 +  yawCorrFactor * yawCorr_tan * (tipRatio) * sin(azimuth))
 
 
         else:
            xd1.Vind_g = xd1.Vind_dyn_g.copy()
            xd1.Vind_p = xd1.Vind_dyn_p.copy()
+
+
         # --------------------------------------------------------------------------------
         # --- Step 6: Outputs
         # --------------------------------------------------------------------------------
         it = xd1.it # time step
         # --- Coefficients
+        self.TSR[it] = TSR
         self.Cl[it]   = Cl
         self.Cd[it]   = Cd
         self.Cm[it]   = Cm
@@ -885,7 +1102,7 @@ class UnsteadyBEM():
         self.L[it]    = q_dyn * Cl
         self.D[it]    = q_dyn * Cd
         self.Mm[it]   = q_dyn * Cm * p.chord
-        self.Fn[it]   = q_dyn * C_p[:,:,0]
+        self.Fn[it]   = q_dyn * C_p[:,:,0]  # NOTE: this is what would make sense but not what AeroDyn does
         self.Ft[it]   = q_dyn * C_p[:,:,1]
         self.F_a[it,:,:,0] = q_dyn * C_xa
         self.F_a[it,:,:,1] = q_dyn * C_ya
@@ -894,8 +1111,11 @@ class UnsteadyBEM():
         aprime_dyn = xd1.Vind_p[:,:,1]/Vflw_p[:,:,1]
         self.AxInd[it] = a_dyn      
         self.TnInd[it] = aprime_dyn 
-        self.Vrel[it]  = Vrel_norm_a
-        self.Re[it]    = Re
+        self.AxInd_qs[it] = a_qs
+        self.TnInd_qs[it] = aprime_qs 
+        #self.Vrel[it]  = Vrel_norm_a
+        self.Vrel[it]  = VrelUA # TODO Change AeroDyn
+        self.Re[it]    = Re     # TODO Change AeroDyn
         # Global system
         self.Vwnd_g[it] = Vwnd_gl
         self.Vstr_g[it] = Vstr_gl
@@ -919,9 +1139,18 @@ class UnsteadyBEM():
         self.Vrel_xa[it] = Vrel_a[:,:,0]
         self.Vrel_ya[it] = Vrel_a[:,:,1]
         self.Vrel_za[it] = Vrel_a[:,:,2]
-        # --- Misc
-        self.alpha[it] = alpha*180./pi
+        # --- BEM Variables 
+        self.BEM_F[it]  = F
+        self.BEM_k[it]  = k
+        self.BEM_kp[it] = kp
+        self.BEM_CT_qs[it] = 4*k*F*(1-a_qs)**2
+
+        #self.alpha[it] = alpha*180./pi
+        self.alpha[it] = (phi - twist)*180/np.pi # TODO: Change AeroDyn - y%WriteOutput( OutIdx )  = Rad2M180to180Deg( m%BEMT_y%phi(IdxNode,IdxBlade) - m%BEMT_u(Indx)%theta(IdxNode,IdxBlade) )
+
+
         self.phi[it]   = phi*180./pi
+        # --- Misc
         self.Gamma[it]  = 0.5*Re*Cl*p.kinVisc*10**6 # Circulation [m^2/s]
         # Gamma y%WriteOutput( OutIdx ) = 0.5 * p%BEMT%chord(IdxNode,IdxBlade) * m%BEMT_y%Vrel(IdxNode,IdxBlade) * m%BEMT_y%Cl(IdxNode,IdxBlade) ! "Gam" [m^2/s]
 
@@ -930,8 +1159,9 @@ class UnsteadyBEM():
         self.RtArea[it]  = pi*R_p**2
 
         for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB] # TODO TODO TODO p is not ntr
             for ie in np.arange(nr):
+                #R_p2g = R_ntr2g[iB]
+                R_p2g = R_g2p[iB,ie].T
                 Vind_g = xd1.Vind_g[iB,ie] # dynamic inductions at current time step
                 Vind_s = (R_s2g[iB,ie].T).dot(Vind_g) # Induced velocity in section coordinates
                 #Vind_a = (R_a2g[iB,ie].T).dot(Vind_g) # Induced velocity in airfoil coordinates
@@ -1076,7 +1306,7 @@ def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
     if algorithm=='legacy':
         a = 1. / ((4.*F*sin(phi)**2)/(sigma*(cnForAI+10**-8))+1) # NOTE singularity avoided
     elif algorithm=='polarProj':
-        a = 1. / ((4.*F*sin(phi)**2)/(drdz*sigma*(cnForAI+10**-8))+1) # NOTE simgularity avoided
+        a = 1. / ((4.*F*sin(phi)**2)/(drdz*sigma*(cnForAI+10**-8))+1) # NOTE singularity avoided
     else:
         raise NotImplementedError()
     # CT=(1-a_last).^2.*sigma.*CnForAI./((sind(phi)).^2)
@@ -1283,8 +1513,8 @@ class PrescribedRotorMotion():
                 s_OP =  R_SB2g.dot(self.pos0[iB,ir,:])
                 self.pos_gl[iB,ir,:] = P_gl   + s_OP
                 self.vel_gl[iB,ir,:] = vel_gl + np.cross(omega_gl, s_OP)
-                self.R_s2g[iB,ir,:,:] = R_SB2g.dot(self.R_s2SB_0[iB,ir,:]) # NOTE: ill-defined
                 self.R_a2g[iB,ir,:,:] = R_SB2g.dot(self.R_a2SB_0[iB,ir,:])
+                self.R_s2g[iB,ir,:,:] = R_SB2g.dot(self.R_s2SB_0[iB,ir,:]) # NOTE: ill-defined
 
     def update(self, t):
         if self.sType=='constantRPM':
@@ -1379,12 +1609,13 @@ def rotPolar2Airfoil(tau, kappa, beta):
      - kappa: cant angle [rad]
      - beta:  twist angle with wind turbine convention (negative about zb) [rad]
     """
-    return np.array([
+    M33= np.array([
         [ cos(kappa)*cos(beta),   -cos(tau)*sin(beta)+sin(tau)*sin(kappa)*cos(beta),  -sin(tau)*sin(beta) - cos(tau)*sin(kappa)*cos(beta)],
         [  cos(kappa)*sin(beta),    cos(tau)*cos(beta)+sin(tau)*sin(kappa)*sin(beta),   sin(tau)*cos(beta) - cos(tau)*sin(kappa)*sin(beta)],
         [  sin(kappa)          ,   -sin(tau)*cos(kappa)                             ,        cos(tau)*cos(kappa)                        ]]
         , dtype='object'
         )
+    return M33.astype(float)
     #return EulerConstruct(tau, kappa, -beta):
     #return BodyXYZ_DCM(tau, kappa, -beta)
 
@@ -1401,6 +1632,7 @@ def airfoilAxesInPolar(tau, kappa, beta):
      - za_p 
     """
     R_p2a = rotPolar2Airfoil(tau, kappa, beta)
+    print('R_p2a',R_p2a.shape)
     xa_p = R_p2a[0,:] # "afNormalVec"
     ya_p = R_p2a[1,:] # "afAxialVec"
     za_p = R_p2a[2,:] # "afRadialVec"
@@ -1509,6 +1741,55 @@ def calcCantAngle(f, xi, stencilSize=3):
             fPrime[i] += cx[j]*fIn [j]            
     cantAngle = np.arctan2(fPrime, cPrime)*180/np.pi
     return cantAngle
+
+
+def phi_kappa(phi, kappa):
+    y = sin(phi)
+    x = cos(phi)*cos(kappa)
+    b = np.logical_not(np.logical_and(y== 0, y == 0))
+    phi_k = np.zeros_like(phi)
+    #phi_k[b] = 0
+    phi_k[b] = np.arctan2(y[b], x[b])
+    return phi_k
+
+def ReynoldsNumberUA(BEMMod, axInduction, tanInduction, Vx, Vy, Vz, chord, nu, toe, cant, theta):
+    """ Return Reynolds number in million
+    NOTE: ugly  funciton, temporary for now to match AeroDyn
+    """
+    Vx_p = Vx*(1-axInduction) 
+    Vy_p = Vy*(1+tanInduction)
+    Vz_p = Vz
+    ## Project inflow vector onto airfoil plane
+    if BEMMod=='polarProj':
+        xa_p, ya_p, za_p = airfoilAxesInPolar(toe, cant, theta)
+        #xa_p = xa_p.astype(float)
+        #ya_p = ya_p.astype(float)
+        #za_p = za_p.astype(float)
+        dotProduct = Vx_p*za_p[0,:,:] + Vy_p*za_p[1,:,:] + Vz_p*za_p[2,:,:]
+        Vrel_x = Vx_p - dotProduct*za_p[0]  
+        Vrel_y = Vy_p - dotProduct*za_p[1]  
+        Vrel_z = Vz_p - dotProduct*za_p[2]  
+        #inflowVecInAirfoilPlane = inflowVec - dot_product( inflowVec, za_p ) * za_p 
+    else:
+        raise Exception()
+#          # TODO TODO TODO EB CHECK THAT THE SAME MIGHT BE OBTAINED IF cant=0, toe=0
+#          inflowVecInAirfoilPlane(1) = inflowVec(1)
+#          inflowVecInAirfoilPlane(2) = inflowVec(2)
+#          inflowVecInAirfoilPlane(3) = 0.0_ReKi
+    # Wxy: resultant velocity in the xy airfoil plane.
+    Wxy = np.sqrt(Vrel_x**2 + Vrel_y**2)
+    Re =  Wxy * chord / nu
+    Re[Re<0.001] = 0.001 
+    Re = Re/10**6
+    return Re
+
+def RelativeVelocityUA( axInduction, tanInduction, Vx, Vy, cantAngle, xVelCorr=0):
+      v_ac_x = (Vx*cos(cantAngle)+xVelCorr)*(1 - axInduction)
+      v_ac_y =                           Vy*(1 + tanInduction)
+      Vrel = np.sqrt(v_ac_x**2 + v_ac_y**2)
+      return Vrel, v_ac_x, v_ac_y
+
+
 
 
 if __name__=="__main__":
