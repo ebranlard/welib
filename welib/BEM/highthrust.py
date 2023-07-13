@@ -597,20 +597,23 @@ def a_k(k, chi=0, phi=0.1, F=None, method='Buhl', outputMore=False):
 
 def axialInductionFromGlauertMomentum(k, chi, phi=0.1, F=1, highThrustCorr=True):
     """ 
-    Solve for `a` in skew-momentum relation equation:
-          BET     =     MT
-        (1-a)^2 k = a sqrt((1-a)^2 + tan(chi)^2)
-
+    Solve for `a` by equating blade element theory (BET) and momentum theory (MT) thrust
+   
+    At low loading, |k|<kc, Glauert's skew momentum theory is used:
+   
+           BET     =     MT
+         (1-a)^2 k = a sqrt((1-a)^2 + tan(chi)^2)
+   
     Which, when squared, leads to the fourth order polynomial:
+   
+        (1-k^2)a^4 + (4k^2-2)a^3 + (-6k^2 + tan^2\chi +1)a^2 + 4k^2 a - k^2 = 0 
+   
+    At high loading, |k|>kc, a hight thrust correction (2nd order polynomial) is used for "MT"
 
-       (1-k^2)a^4 + (4k^2-2)a^3 + (-6k^2 + tan^2\chi +1)a^2 + 4k^2 a - k^2 = 0 
-
-    For high loading |k|>k_lim a hight thrust correction is used.
-
-    Introduced to match OpenFAST interac_vale
+    Introduced to match OpenFAST interface
 
     INPUTS:
-     - k: load ac_valtor [-]
+     - k: load factor [-]
 
     OUTPUTS:
      - a: axial induction ac_valtor, scalar [-]
@@ -618,10 +621,10 @@ def axialInductionFromGlauertMomentum(k, chi, phi=0.1, F=1, highThrustCorr=True)
 
     """
     c=[0,0,0]
-    a0, k0, k0_lim, tan_chi0 = ak_lim(chi, method='Bladed', convention='aUn')
+    ac, k0, kc, tan_chi0 = ak_lim(chi, method='Bladed', convention='aUn')
     if not highThrustCorr:
-        k0_lim = np.inf
-    if abs(k)<=k0_lim:
+        kc = np.inf
+    if abs(k)<=kc:
         c11 = tan_chi0**2
         c12 = k**2
         coeffs = (1-c12, 4*c12-2,  1+c11 -6*c12, 4*c12, -c12)
@@ -646,7 +649,7 @@ def axialInductionFromGlauertMomentum(k, chi, phi=0.1, F=1, highThrustCorr=True)
 def axialInductionFromEmpiricalThrust(k, chi, phi, F, momentumCorr=True, H=1):
     """ 
 
-    Method where the induced velocity are ac_valtored out of the BT thrust
+    Method where the induced velocity are factored out of the BET thrust
     and the HT is a second order polynomial
 
     CTs are:

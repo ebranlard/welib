@@ -182,5 +182,44 @@ class Test(unittest.TestCase):
 
 
 
+    def test_curvilinearPolarCoord(self):
+        P_rotor_i = np.array([-5.0191, 0, 90.0])
+        xhat_r_i  = np.array([1., 0. ,0.])
+        pos_gl = np.array([[ -3.87003334 , 0.    ,     90.96418141],
+                           [  4.43319871 , 0.    ,     96.62601307],
+                           [ 20.39687518 , 1.    ,    108.71572082],
+                           [ 33.81590465 , 2.    ,    116.05940163],
+                           [ 49.66949941 , 5.    ,    122.8351107 ]])
+        P_root_i = np.array([-3.87003334,  0.,         90.96418141])
+
+        #  Test curvilinear coordinates
+        sHub, sBldNodes = curvilinearCoord(P_rotor_i, P_root_i, pos_gl)
+        np.testing.assert_almost_equal(sHub, 1.5, 6)
+        np.testing.assert_almost_equal(sBldNodes,[ 1.499999999,11.5498756211,31.59981327,46.9295229,64.4294287], 6)
+
+        # Test polar projectiong
+        ie = 4 
+        R_g2p, DP_h, DP_p = polarCoord(P_rotor_i, xhat_r_i, pos_gl[ie])  
+        R_g2p_ref = np.array([[1.00000000  ,    0.00000000  ,    0.00000000],
+                              [0.00000000  ,   0.988603819  ,  -0.150540655],
+                              [0.00000000  ,   0.150540655  ,   0.988603819]])
+        np.testing.assert_almost_equal(R_g2p, R_g2p_ref, 7)
+        np.testing.assert_almost_equal(DP_p, [0,5, 32.835110700301229], 7)
+
+
+
+    def test_cantCalc(self):
+         prebend = np.array([  0.0000, 1.0000, 2.0000, 5.0000, 10.00000000])
+         span    = np.array([  0.0000, 10.000, 30.000, 45.000, 61.49989999])
+         Cant_ref   = np.array([ 6.6544250460, 4.76364169,   7.728636995, 13.9857084,  19.646625])
+
+         Cant = calcCantAngle(prebend, span)
+         np.testing.assert_almost_equal(Cant, Cant_ref, 5)
+
+
+
+
 if __name__ == '__main__':
-    unittest.main()
+    #Test().test_curvilinearPolarCoord()
+    Test().test_cantCalc()
+#     unittest.main()

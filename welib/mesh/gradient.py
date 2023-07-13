@@ -1,5 +1,65 @@
 import numpy as np
 
+
+def differ_stencil ( x0, o, p, x ):
+    """ Determine coefficients C to approximate the derivative at X0
+         of order O and precision P, using finite differences, so that 
+          d^o f(x)/dx^o (x0) = sum ( 0 <= i <= o+p-1 ) c(i) f(x(i)) + O(h^(p))
+        where H is the maximum spacing between X0 and any X(I).
+    Based on a Fortran code from John Burkardt licensed under the GNU LGPL license.
+    """
+    n = o + p
+    assert(len(x)==n)
+    dx = x - x0
+    b = np.zeros(n)
+    c = np.zeros(n)
+    b[o] = 1
+    c = vm_solve(n, dx, b)
+    fact = np.math.factorial(o)
+    c *= fact
+    return c
+
+def vm_solve (n, a, b):
+    """ 
+    Solves a linear  system Ax = b  (Vandermonde) for x
+    Based on a Fortran code from John Burkardt licensed under the GNU LGPL license.
+
+    The R8VM storage format is used for an M by N Vandermonde matrix.
+    An M by N Vandermonde matrix is defined by the values in its second
+    row, which will be written here as X(1:N).  The matrix has a first 
+    row of 1's, a second row equal to X(1:N), a third row whose entries
+    are the squares of the X values, up to the M-th row whose entries
+    are the (M-1)th powers of the X values.  The matrix can be stored
+    compactly by listing just the values X(1:N).
+   
+    Vandermonde systems are very close to singularity.  The singularity
+    gets worse as N increases, and as any pair of values defining
+    the matrix get close.  Even a system as small as N = 10 will
+    involve the 9th power of the defining values.
+    INPUTS:
+     - n: number of rows and columns of A
+     - A(n): input matrix
+     - B(n): right hand side
+    OUTPUTS:
+     - x(n): solution of the linear system
+    """
+    #  Check for explicit singularity.
+    for j in range(n-1):
+        for i in range(j+1, n):
+            if a[i] == a[j]:
+              raise Exception('System is singular')
+    # Solve
+    x = b.copy()
+    for j in range(n-1):
+        for i in  range(n-1, j, -1):
+            x[i] = x[i] - a[j] * x[i-1]
+    for j in  range(n-1, -1, -1):
+        for i in  range(j+1, n):
+            x[i] = x[i] / ( a[i] - a[i-j-1] )
+        for i in  range(j, n-1):
+            x[i] = x[i] - x[i+1]
+    return x
+
 def gradient_regular(f,dx=1,order=4):
     # Compute gradient of a function on a regular grid with different order
     # INPUTS

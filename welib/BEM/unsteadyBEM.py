@@ -8,14 +8,19 @@ Reference:
 import numpy as np
 import os
 from numpy import cos, sin, arctan2, pi, arccos, exp, sqrt
+from numpy.linalg import norm
 from scipy.interpolate import interp1d
 import copy
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
+
+
 # Load more models
 # try:
 from welib.BEM.highthrust import a_Ct
+from welib.yams.rotations import BodyXYZ_fromDCM, BodyXYZ_A, BodyXYZ_DCM # EulerExtract, EulerConstruct
 # except: 
 #     pass
 
@@ -70,6 +75,7 @@ class UnsteadyBEM():
         #self.twist  = None
         self.nB     = None
         self.r      = None # radial stations
+        self.meanLineAC = None #(nB, nr, 3)) x,y,z position of the AC (prebend, presweep, "r")
 
         # Algorithm
         self.setDefaultOptions()
@@ -140,9 +146,9 @@ class UnsteadyBEM():
             r_hub         = dvr['HubRad(1)']
             # Input geometry (may be overriden by motion/simulations)
             self.cone0    = dvr['PreCone(1)']
-            self.tilt0    = dvr['ShftTilt(1)']
+            self.tilt0    = dvr['ShftTilt(1)']  # OpenFAST convention, negative about yn [deg]
             self.OverHang = dvr['OverHang(1)']
-            self.Twr2Shft  = dvr['Twr2Shft(1)']
+            self.Twr2Shft = dvr['Twr2Shft(1)']
 
             HubHt = dvr['HubHt(1)']
             self.TowerHt  = HubHt - self.Twr2Shft + self.OverHang*sin(self.tilt0*np.pi/180) # TODO double check
@@ -152,17 +158,23 @@ class UnsteadyBEM():
             r_hub      = F.ED['HubRad']
             # Input geometry (may be overriden by motion/simulations)
             self.cone0     = F.ED['PreCone(1)']
-            self.tilt0     = F.ED['ShftTilt']
+            self.tilt0     = F.ED['ShftTilt']  # OpenFAST convention, negative about yn [deg]
             self.TowerHt   = F.ED['TowerHt']
             self.OverHang  = F.ED['OverHang']
             self.Twr2Shft  = F.ED['Twr2Shft']
 
 
         # --- Aerodynamics
-        self.r     = F.AD.Bld1['BldAeroNodes'][:,0] + r_hub
-        chord      = F.AD.Bld1['BldAeroNodes'][:,5]
-        self.chord = np.stack([chord]*self.nB)
-        self.twist = F.AD.Bld1['BldAeroNodes'][:,4]*np.pi/180
+        self.r        = F.AD.Bld1['BldAeroNodes'][:,0] + r_hub
+        self.chord    = np.stack([F.AD.Bld1['BldAeroNodes'][:,5]]*self.nB)
+        nr = len(self.r)
+        self.meanLineAC = np.zeros((self.nB, nr,3))
+        for iB in range(self.nB):
+            # TODO Use AD.Bld123
+            self.meanLineAC[iB,:,0] = F.AD.Bld1['BldAeroNodes'][:,1] # along xb
+            self.meanLineAC[iB,:,1] = F.AD.Bld1['BldAeroNodes'][:,2] # along yb
+            self.meanLineAC[iB,:,2] = self.r
+        self.twist    = F.AD.Bld1['BldAeroNodes'][:,4]*np.pi/180
         polars=[]
         ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
         for ipolar in  ProfileID:
@@ -201,7 +213,8 @@ class UnsteadyBEM():
         s+=' - twist     : size: {}, min: {}, max: {} [deg]\n'.format(len(self.twist), np.min(self.twist), np.max(self.twist))
         s+=' - polars    : size: {}\n'.format(len(self.polars))
         s+=' - nB        : {}\n'.format(self.nB)
-        s+=' - cone0     : {} [deg]\n'.format(self.cone0 )
+        s+=' - cone0     : {} [deg] (OpenFAST convention, about yh)\n'.format(self.cone0 )
+        s+=' - tilt0     : {} [deg] (OpenFAST convention, negative along yn)\n'.format(self.tilt0 )
         # Environment
         s+='Environmental conditions:\n'
         s+=' - rho       : {} [kg/m^3]\n'.format(self.rho    )
@@ -227,6 +240,7 @@ class UnsteadyBEM():
 
     def _init(self):
         # Creating interpolation functions for each polar, now in rad!
+        # TODO RE/Ctrl
         self.fPolars = [interp1d(p[:,0]*np.pi/180,p[:,1:],axis=0) for p in self.polars]
 
     def getInitStates(self):
@@ -481,7 +495,7 @@ class UnsteadyBEM():
 
     def timeStep(self, t, dt, xd0, psi, psiB0,
             origin_pos_gl, omega_gl, R_r2g,  # Kinematics of rotor origin
-            R_bld2r, # for each blade
+            R_bld2SB, # from Blade to Shaft-Blade for each blade
             pos_gl, Vstr_gl, R_s2g, R_a2g,            # Kinematics of nodes
             Vwnd_gl, # Wind at each positions in global
             firstCallEquilibrium=False,
@@ -499,7 +513,7 @@ class UnsteadyBEM():
          - origin_pos_gl: position of rotor origin in global coordinates
          - omega_gl:  rotational speed of rotor in global coordinates
          - R_r2g   :  transformation from rotor coordinates to global
-         - R_bld2r :  transformation from blade to rotor (for each blade)        (nB x 3 x 3)
+         - R_bld2SB :  transformation from blade to Shaft-Blade (for each blade)        (nB x 3 x 3)
                       typically consist of azimuth, cone and pitch
          - pos_gl: positions of all blade nodes in global              (nB x nr x 3)
          - Vstr_gl: structural velocity of a ll blade nodes in global   (nB x nr x 3)
@@ -538,49 +552,58 @@ class UnsteadyBEM():
              RR=(R_g2h[iB].T).copy()
              RR[:,1]*=-1
              R_ntr2g[iB] = RR
-             #print(RR-R_ntr2g[iB])
-#         import pdb; pdb.set_trace()
 
-        # --- p, polar grid coordinates
-        R_g2p = np.zeros((self.nB, nr, 3, 3))
-        #print('TODO Compute Coord p')
-
-#         R_ntr2g[iB]
-        # --- Compute rotor radius, hub radius, and section radii
-        r_p = np.zeros((nB,nr)) # radius in polar grid
-        r_b = np.zeros((nB,nr)) # radius in blade coordinates
+        # --- Polar grid coordinates and radial-coordinate 
+        R_g2p = np.zeros((self.nB, nr, 3, 3)) # transformation from global to staggered-polar, "orientationAnnulus"
+        r_p   = np.zeros((self.nB, nr))       # radius in polar grid, "rLocal"
         Rs_p=[0]*nB
-        R_bld2g = np.zeros((nB,3,3)) # from blade to global
-        for iB in np.arange(nB):
-            R_p2g = R_ntr2g[iB] # TODO make it a function of element
-            R_bld2g[iB] =  R_r2g.dot(R_bld2r[iB])
-            # radial position (in polar grid) of first and last node taken
-            Rs_p[iB] = (R_p2g.T).dot(pos_gl[iB,-1,:]-origin_pos_gl)[2]
-            rhub_p   = (R_p2g.T).dot(pos_gl[iB, 0,:]-origin_pos_gl)[2]
-            # loop on elements
-            for ie in np.arange(nr):
-                r_p[iB,ie] = (R_p2g.T)  .dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in polar grid
-                r_b[iB,ie] = (R_bld2g[iB].T).dot(pos_gl[iB,ie,:]-origin_pos_gl)[2] # radial position in blade coordinate (from rotor center) 
-            #print('r_b',r_b[iB])
-            #print('r_p',r_p[iB])
-            #dr = np.diff(r_p[iB])
-            #dz = np.diff(r_b[iB])
-            #print('k', kappa, np.arccos(dr/dz)*180/np.pi) # NOTE: not accurate, need sign as well
-        R_p = np.max(Rs_p) # Rotor radius projected onto polar grid
+        P_rotor_i = origin_pos_gl
+        xhat_r_i = R_r2g[:,0] 
+        for iB in range(self.nB):
+            for ie in range(nr):
+                R_g2p[iB,ie,:,:], DP_h, DP_p = polarCoord(P_rotor_i, xhat_r_i, pos_gl[iB,ie])  
+                r_p[iB, ie] = norm(DP_p)
+        rhub_p  = np.mean(r_p[iB,0])
+        R_p     = np.max (r_p[iB,-1]) # Rotor radius projected onto polar grid
 
+        # --- Curvilinear coordinates
+        # See Init_BEMTmodule, "zRoot, zTip, zLocal"
+        # NOTE: in OpenFAST this does is done at Init only (no aeroelastic deformation)
+        sHub = np.zeros(self.nB)              # "zRoot"
+        sBldNodes = np.zeros((self.nB, nr))   # "zLocal"
+        for iB in range(self.nB):
+            P_root_i = pos_gl[iB, 0] # NOTE: that's an approximation
+            sHub[iB], sBldNodes[iB] = curvilinearCoord(P_rotor_i, P_root_i, pos_gl[iB,:])
 
-
-
+        # --- From polar to airfoil (includes aeroelastic deformation)
+        R_p2a = np.zeros((self.nB, nr, 3, 3)) 
+        toe   = np.zeros((self.nB, nr))
+        cant  = np.zeros((self.nB, nr))
+        twist = np.zeros((self.nB, nr)) # including pitch and aeroelastic torsion
+        for iB in range(self.nB):
+            for ie in range(nr):
+                R_p2a[iB,ie] = (R_a2g[iB,ie].T).dot(R_g2p[iB,ie].T)
+                phis =  BodyXYZ_fromDCM(R_p2a[iB,ie]) # "EulerExtract"
+                toe [iB, ie] =  phis[0]
+                cant[iB, ie] =  phis[1]
+                twist[iB, ie]= -phis[2] # NOTE: - for wind energy convention
+        #iB=0
+        #print('')
+        #print('toe' ,toe[iB]*180/np.pi)
+        #print('cant',cant[iB]*180/np.pi)
+        #print('twist',twist[iB]*180/np.pi)
+        #print('r_p',r_p[iB])
+        #print('rHub_p',rhub_p)
+        #print('R_p',   R_p)
+        #print('>>> sHub',sHub[iB])
+        #print('>>> sBldNodes',sBldNodes[iB])
 
         # --- Rotor speed for power
         omega_r = R_r2g.T.dot(omega_gl) # rotational speed in rotor coordinate system
         Omega = omega_r[0] # rotation speed of shaft (along x)
 
-        if kappa is None:
-            kappa = 0 # TODO TODO could compute it based on r_p and r_b
-
         if self.algorithm=='polarProj':
-            drdz = cos(kappa*np.pi/180)
+            drdz = cos(cant)
         else:
             drdz = 1
 
@@ -615,7 +638,7 @@ class UnsteadyBEM():
                     Vrel_p[iB,ie] = (R_p2g.T).dot(Vrel_g)
                     Vwnd_p[iB,ie] = (R_p2g.T).dot(Vwnd_g) # Wind Velocity in polar coordinates
                     # Kappa coordinates
-                    Vrel_k[iB,ie,0] = Vrel_p[iB,ie,0]*np.cos(kappa*np.pi/180) # n  # TODO TODO use cant
+                    Vrel_k[iB,ie,0] = Vrel_p[iB,ie,0]*np.cos(cant[iB,ie]) # n 
                     Vrel_k[iB,ie,1] = Vrel_p[iB,ie,1] # t
                     # Airfoil coordinates
                     Vrel_a[iB,ie] = (R_a2g[iB,ie].T).dot(Vrel_g) # TODO use R_p2a instead, and remove zp component
@@ -929,16 +952,16 @@ class UnsteadyBEM():
                 self.F_s[it,iB,ie] = (R_s2g[iB,ie].T).dot(F_g)
 
         # --- Integral quantities for rotor
+        # TODO Might need rethinking
         if self.bUseCm:
-            Mz  = np.trapz(self.Mm[it,0], r_p) # TODO TODO TODO first blade
-            QMz = Mz * np.sin(kappa*np.pi/180) # Contribution for one blade TODO TODO TODO
+            QMz = np.trapz(self.Mm[it,:]*np.sin(cant), r_p)
         else:
-            QMz = 0
+            QMz = np.zeros(nB)
 
         # --- Integral quantities for rotor
         # TODO integration should be with r_b and using forces on airfoil
         self.BladeThrust[it,:] = np.trapz(self.Fn[it,:]    , r_p)       # Normal to rotor plane
-        self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r_p, r_p) +QMz  # About shaft 
+        self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r_p, r_p) + QMz[:]  # About shaft 
         self.Thrust[it] = np.sum(self.BladeThrust[it,:])            # Normal to rotor plane
         self.Torque[it] = np.sum(self.BladeTorque[it,:])
         self.Power[it]  = Omega*self.Torque[it]
@@ -961,7 +984,7 @@ class UnsteadyBEM():
                 #  RES.Edge = sum(RES.BladeEdge)
         return xd1
 
-    def simulationConstantRPM(self, time, RPM, windSpeed=None, windExponent=None, windRefH=None, windFunction=None, cone=0, tilt=0, hubHeight=None, firstCallEquilibrium=True,
+    def simulationConstantRPM(self, time, RPM, windSpeed=None, windExponent=None, windRefH=None, windFunction=None, cone=None, tilt=None, hubHeight=None, firstCallEquilibrium=True,
             BldNd_BladesOut=None, BldNd_BlOutNd=None  # Blade outputs
             ):
         """ 
@@ -976,8 +999,8 @@ class UnsteadyBEM():
           - windFunction: function with interface: f(x,y,z,t)=u,v,w
                        with x,y,z,u arrays of arbitrary shapes
 
-        - cone: override cone values, in degrees, OpenFAST convention
-        - tilt: override tilt values, in degrees, OpenFAST convention
+        - cone: override cone values, in degrees, OpenFAST convention [deg]
+        - tilt: override tilt values, in degrees, OpenFAST convention (negative about yn !) [deg]
         - hubHeight: if provided, override the hubheight that is computed based on OverHang, Twr2Shaft and Tilt
         - firstCallEquilibrium: if true, the inductions are set to the equilibrium values at t=0 (otherwise,0)
 
@@ -1007,12 +1030,11 @@ class UnsteadyBEM():
             u,v,w = windFunction(motion.pos_gl[:,:,0], motion.pos_gl[:,:,1], motion.pos_gl[:,:,2], t)  
             Vwnd_g = np.moveaxis(np.array([u,v,w]),0,-1) # nB x nr x 3
             xdBEM = self.timeStep(t, dt, xdBEM, motion.psi, motion.psi_B0,
-                    motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-                    motion.R_bld2b, # From blades 2 rotor/shaft
+                    motion.origin_pos_gl, motion.omega_gl, motion.R_SB2g, 
+                    motion.R_bld2SB, # From blades 2 Shaft-Blade
                     motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
                     Vwnd_g,
                     firstCallEquilibrium= it==0 and firstCallEquilibrium,
-                    kappa=cone # TODO TODO TODO get rid of me!
                     )
             #if np.mod(t,1)<dt/2:
             #    print(t)
@@ -1023,13 +1045,6 @@ class UnsteadyBEM():
 # --------------------------------------------------------------------------------}
 # --- Utils common between steady and unsteady BEM
 # --------------------------------------------------------------------------------{
-def rotPolar2Airfoil(tau, kappa, beta):
-    return np.array([
-        [ cos(kappa)*cos(beta),   -cos(tau)*sin(beta)+sin(tau)*sin(kappa)*cos(beta),  -sin(tau)*sin(beta) - cos(tau)*sin(kappa)*cos(beta)],
-        [  cos(kappa)*sin(beta),    cos(tau)*cos(beta)+sin(tau)*sin(kappa)*sin(beta),   sin(tau)*cos(beta) - cos(tau)*sin(kappa)*sin(beta)],
-        [  sin(kappa)          ,   -sin(tau)*cos(kappa)                             ,        cos(tau)*cos(kappa)                        ]]
-        , dtype='object'
-        )
 
 def _fInductionCoefficients(Vrel_norm, V0, F, cnForAI, ctForTI,
         lambda_r, sigma, phi, relaxation=0.4, a_last=None, bSwirl=True, 
@@ -1142,58 +1157,89 @@ class PrescribedRotorMotion():
     """
     def __init__(self):
         # body kinematics, Body is "rotor"
-        self.R_b2g = np.eye(3) # orientation from body to global
-        self.R_b2g0 = np.eye(3) # orientation from body to global at t=0 (typically: tilt)
+        self.R_SB2g = np.eye(3) # orientation from body to global
+        self.R_SB2g_0 = np.eye(3) # orientation from body to global at t=0 (typically: tilt)
         self.origin_pos_gl0 = np.array([0,0,0]) # body origin at t=0 (position of rotor center)
         self.origin_pos_gl = np.array([0,0,0]) # body origin   (position of rotor center)
         self.origin_vel_gl = np.array([0,0,0])
         self.omega_gl      = np.array([0,0,0])
 
         # Blades 
-        self.R_bld2b=None # rotation matrices from blades to body (i.e. rotor), contains azimuth and cone
+        self.R_bld2SB=None # rotation matrices from blades to shaft-blade (i.e. rotor), contains azimuth and cone
 
-    def init_from_inputs(self,  nB, r, twist, rotorOrigin, tilt, cone, psi0=0):
+        # --- DATA
+        self.tilt = None # About yn, negative of OpenFAST convention [rad]
+
+
+    def init_from_inputs(self,  nB, r, twist, rotorOrigin, tilt, cone, psi0=0, meanLineAC=None):
+        """ 
+        INPUTS:
+         - tilt: tilt angle [deg], with OpenFAST convention, negative about yn
+         - cone: cone angle [deg], with OpenFAST convention
+ x_hat_disk.dot(elemPosRelToHub)
+
+         - meanLineAC: position of AC for each blade, in each blade coordinate system (nB x nr x 3)
+                        meanLineAC [iB, :, 0]: prebend
+                        meanLineAC [iB, :, 1]: presweep
+                        meanLineAC [iB, :, 2]: radial 
+        """
         # TODO TODO Pitch!
         self.nB   =  nB
-        self.cone = cone*np.pi/180
-        self.tilt = -tilt*np.pi/180 
+        self.cone =  cone*np.pi/180
+        self.tilt = -tilt*np.pi/180  # input has OpenFAST convention negative about yn, add negative signe
         self.r     = r               # spanwise position, from hub center (typically r= HubRad->TipRad)
         self.twist = twist
         self.allocate()
         self.origin_pos_gl0 = rotorOrigin
 
         # Basic geometries for nacelle
-        self.R_b2g0 = R_y(self.tilt)  # Rotation fromShaft to Nacelle
+        self.R_SB2g_0 = R_y(self.tilt)  # Rotation fromShaft to Nacelle
 
         # Orientation of blades with respect to body
-        self.R_bld2b = [np.eye(3)]*self.nB
+        self.R_bld2SB = [np.eye(3)]*self.nB
         self.R_ntr2b = [np.eye(3)]*self.nB
         self.psi_B0  = np.zeros(self.nB)
         for iB in np.arange(self.nB):
             self.psi_B0[iB]= psi0 + iB*2*np.pi/self.nB
             R_SB = R_x(self.psi_B0[iB]) 
-            self.R_bld2b[iB] = R_SB.dot(R_y(self.cone)) # blade2shaft / blade2rotor
+            self.R_bld2SB[iB] = R_SB.dot(R_y(self.cone)) # blade2shaft / blade2rotor
             self.R_ntr2b[iB] = R_SB.dot(np.array([[1,0,0],[0,-1,0],[0,0,1]])) # "n-t-r" to shaft
 
         # Set initial positions and orientations in body coordinates
         nr=len(self.r)
-        meanLine=np.zeros((nr,3))
-        meanLine[:,0]=0 # TODO prebend
-        meanLine[:,1]=0 # TODO presweep
-        meanLine[:,2]=self.r
+        if meanLineAC is None:
+            meanLineAC = np.zeros((self.nB, nr, 3))
+            meanLineAC[:,:,2]=self.r
         for iB in np.arange(self.nB):
+            CrvAC = meanLineAC[iB,:,0]
+            Cant = calcCantAngle(CrvAC, self.r-self.r[0])
+            #print('r'    , self.r-self.r[0])
+            #print('CrvAC', CrvAC )
+            #print('Cant',  Cant )
+            Cant *= np.pi/180
+
             for ir in np.arange(nr):
-                self.pos0[iB,ir,:] = self.R_bld2b[iB].dot(meanLine[ir,:])
-                R_a2bld = R_z(-self.twist[ir]) # section to blade
-                self.R_a02b[iB,ir,:,:] = self.R_bld2b[iB].dot(R_a2bld)   # TODO curvature
-                self.R_s02b[iB,ir,:,:] = self.R_bld2b[iB]                # TODO curvature
+                self.pos0[iB,ir,:] = self.R_bld2SB[iB].dot(meanLineAC[iB,ir,:])
+                R_a2bld = BodyXYZ_A(0, Cant[ir],  -self.twist[ir])
+                #R_a2bld = BodyXYZ_A(0, 0,  -self.twist[ir])  # airfoil to blade, twist only
+                #R_a2bld = R_z(-self.twist[ir])              # airfoil to blade, twist only
+                self.R_a2SB_0[iB,ir,:,:] = self.R_bld2SB[iB].dot(R_a2bld)
+                #R_g2a_0 =  (self.R_a2SB_0[iB,ir,:,:]).T .dot(self.R_SB2g_0.T) # "BladeMotion%Orientation"
+                #print('orientationlL',R_a2bld[:,0])
+                #print('orientationlL',R_a2bld[:,1])
+                #print('orientationlL',R_a2bld[:,2])
+                #print('BLADE MOTION REF ORI',R_g2a_0[0,:])
+                #print('BLADE MOTION REF ORI',R_g2a_0[1,:])
+                #print('BLADE MOTION REF ORI',R_g2a_0[2,:])
+                self.R_s2SB_0[iB,ir,:,:] = self.R_a2SB_0[iB,ir,:,:] #self.R_bld2SB[iB]  # TODO without pitch twist
 
     def init_from_BEM(self, BEM, tilt=None, cone=None, psi0=0):
         """ 
         Initializes motion from a BEM class
         Possibility to override the tilt and cone geometry:
-        tilt: tilt angle in deg, with OpenFAST convention
-        cone: cone angle in deg, with OpenFAST convention
+        INPUTS:
+         - tilt: tilt angle [deg], with OpenFAST convention, negative about yn
+         - cone: cone angle [deg], with OpenFAST convention
         
         """
         if tilt is None:
@@ -1202,24 +1248,25 @@ class PrescribedRotorMotion():
             cone=BEM.cone0
 
         rotorOrigin =[BEM.OverHang*np.cos(-tilt*np.pi/180), 0, BEM.TowerHt+BEM.Twr2Shft-BEM.OverHang*np.sin(-tilt*np.pi/180)]
-        self.init_from_inputs(BEM.nB, BEM.r, BEM.twist, rotorOrigin, tilt=tilt, cone=cone, psi0=0)
+        meanLineAC = BEM.meanLineAC
+        self.init_from_inputs(BEM.nB, BEM.r, BEM.twist, rotorOrigin, tilt=tilt, cone=cone, psi0=0, meanLineAC=meanLineAC)
 
     def allocate(self):
         nr = len(self.r)
         # Section nodes
         self.pos0    = np.zeros((self.nB,nr,3))   # position of nodes at t= 0 in body coordinates 
-        self.R_s02b  = np.zeros((self.nB,nr,3,3)) # Orientation section to body at t=0
-        self.R_a02b  = np.zeros((self.nB,nr,3,3)) # Orientation airfoil to body at t=0
+        self.R_s2SB_0  = np.zeros((self.nB,nr,3,3)) # Orientation section to (Shaft-Blade body) at t=0
+        self.R_a2SB_0  = np.zeros((self.nB,nr,3,3)) # Orientation airfoil to (Shaft-Blade body) at t=0
         self.pos_gl = np.zeros((self.nB,nr,3))   # position of all nodes
         self.vel_gl = np.zeros((self.nB,nr,3))   # linear velocities
-        self.R_s2g  = np.zeros((self.nB,nr,3,3)) # Orientation section to global
+        self.R_s2g  = np.zeros((self.nB,nr,3,3)) # Orientation section to global # NOTE: ill-defined
         self.R_a2g  = np.zeros((self.nB,nr,3,3)) # Orientation airfoil to global
 
     def setType(self, sType, **kwargs):
         self.sType=sType
         self.opts=kwargs
 
-    def rigidbodyKinUpdate(self, P_gl, vel_gl, omega_gl, R_b2g):
+    def rigidbodyKinUpdate(self, P_gl, vel_gl, omega_gl, R_SB2g):
         """
         Update position, velocities, orientations of nodes assuming a rigid body motion
         of the origin given as input
@@ -1227,17 +1274,17 @@ class PrescribedRotorMotion():
         self.origin_pos_gl = P_gl
         self.origin_vel_gl = vel_gl
         self.omega_gl      = omega_gl
-        self.R_b2g         = R_b2g
+        self.R_SB2g         = R_SB2g
 
         # Update of positions
         for iB in np.arange(self.nB):
-            #self.R_ntr2g[iB] = R_b2g.dot(self.R_ntr2b[iB])
+            #self.R_ntr2g[iB] = R_SB2g.dot(self.R_ntr2b[iB])
             for ir in np.arange(len(self.r)):
-                s_OP =  R_b2g.dot(self.pos0[iB,ir,:])
+                s_OP =  R_SB2g.dot(self.pos0[iB,ir,:])
                 self.pos_gl[iB,ir,:] = P_gl   + s_OP
                 self.vel_gl[iB,ir,:] = vel_gl + np.cross(omega_gl, s_OP)
-                self.R_s2g[iB,ir,:,:] = R_b2g.dot(self.R_s02b[iB,ir,:])
-                self.R_a2g[iB,ir,:,:] = R_b2g.dot(self.R_a02b[iB,ir,:])
+                self.R_s2g[iB,ir,:,:] = R_SB2g.dot(self.R_s2SB_0[iB,ir,:]) # NOTE: ill-defined
+                self.R_a2g[iB,ir,:,:] = R_SB2g.dot(self.R_a2SB_0[iB,ir,:])
 
     def update(self, t):
         if self.sType=='constantRPM':
@@ -1245,9 +1292,9 @@ class PrescribedRotorMotion():
             psi = t*omega
             pos = self.origin_pos_gl0
             vel = np.array([0,0,0])
-            ome = self.R_b2g0.dot(np.array([omega,0,0]))
-            R_b2g = self.R_b2g0.dot(R_x(psi))
-            self.rigidbodyKinUpdate(pos, vel, ome, R_b2g)
+            ome = self.R_SB2g_0.dot(np.array([omega,0,0]))
+            R_SB2g = self.R_SB2g_0.dot(R_x(psi))
+            self.rigidbodyKinUpdate(pos, vel, ome, R_SB2g)
             self.psi=psi # hack
 
         elif self.sType=='x-oscillation':
@@ -1258,8 +1305,8 @@ class PrescribedRotorMotion():
             pos = self.origin_pos_gl0+np.array([x,0,0])
             vel = np.array([xdot,0,0])
             ome = np.array([0,0,0])
-            R_b2g =self.R_b2g0
-            self.rigidbodyKinUpdate(pos, vel, ome, R_b2g)
+            R_SB2g =self.R_SB2g_0
+            self.rigidbodyKinUpdate(pos, vel, ome, R_SB2g)
 
         elif self.sType=='constantRPM x-oscillation':
             omega = self.opts['frequency']*2.*np.pi
@@ -1270,9 +1317,9 @@ class PrescribedRotorMotion():
             psi = t*omegapsi
             pos = self.origin_pos_gl0+np.array([x,0,0])
             vel = np.array([xdot,0,0])
-            ome = self.R_b2g0.dot(np.array([omegapsi,0,0]))
-            R_b2g = self.R_b2g0.dot(R_x(psi))
-            self.rigidbodyKinUpdate(pos, vel, ome, R_b2g)
+            ome = self.R_SB2g_0.dot(np.array([omegapsi,0,0]))
+            R_SB2g = self.R_SB2g_0.dot(R_x(psi))
+            self.rigidbodyKinUpdate(pos, vel, ome, R_SB2g)
             self.psi=psi # hack
         else:
             raise NotImplementedError(sType)
@@ -1322,36 +1369,200 @@ class PrescribedRotorMotion():
         ani = FuncAnimation(fig, update, frames=np.arange(0,int((tmax-t0)/dt)), init_func=init, blit=False, interval=interval)
         return ani
 
+# --------------------------------------------------------------------------------}
+# --- Geometrical Utils 
+# --------------------------------------------------------------------------------{
+def rotPolar2Airfoil(tau, kappa, beta):
+    """ Return R_p2a based on three angles. Watch out for Beta convention!
+    INPUTS:
+     - tau:   toe angle [rad]
+     - kappa: cant angle [rad]
+     - beta:  twist angle with wind turbine convention (negative about zb) [rad]
+    """
+    return np.array([
+        [ cos(kappa)*cos(beta),   -cos(tau)*sin(beta)+sin(tau)*sin(kappa)*cos(beta),  -sin(tau)*sin(beta) - cos(tau)*sin(kappa)*cos(beta)],
+        [  cos(kappa)*sin(beta),    cos(tau)*cos(beta)+sin(tau)*sin(kappa)*sin(beta),   sin(tau)*cos(beta) - cos(tau)*sin(kappa)*sin(beta)],
+        [  sin(kappa)          ,   -sin(tau)*cos(kappa)                             ,        cos(tau)*cos(kappa)                        ]]
+        , dtype='object'
+        )
+    #return EulerConstruct(tau, kappa, -beta):
+    #return BodyXYZ_DCM(tau, kappa, -beta)
+
+def airfoilAxesInPolar(tau, kappa, beta):
+    """ 
+    See OpenFAST routine getAirfoilOrientation
+    INPUTS:
+     - tau:   toe angle [rad]
+     - kappa: cant angle [rad]
+     - beta:  twist angle with wind turbine convention (negative about zb) [rad]
+    OUTPUTS:
+     - xa_p 
+     - ya_p 
+     - za_p 
+    """
+    R_p2a = rotPolar2Airfoil(tau, kappa, beta)
+    xa_p = R_p2a[0,:] # "afNormalVec"
+    ya_p = R_p2a[1,:] # "afAxialVec"
+    za_p = R_p2a[2,:] # "afRadialVec"
+    return xa_p, ya_p, za_p
+
+def polarCoord(P_rotor, x_hat_disk, P_bld):
+    """ 
+    Compute transformation matrix from global to polar for each blade node
+
+    See OPENFAST subroutine Calculate_MeshOrientation_Rel2Hub
+    INPUTS:
+      - P_rotor:   3-vector, position of rotor center in global
+      - x_hat_disk: 3-vector, normal vector, hub or shaft x axis
+      - P_bld: 3-vector, position of blade node in global
+    OUTPUTS:
+      - R_g2p: from global to polar, 3x3
+    """
+    R_g2p = np.zeros((3, 3))
+    # Project element position onto the rotor plane
+    elemPosRelToRotor = P_bld - P_rotor 
+    elemPosRotorProj = elemPosRelToRotor - x_hat_disk * ( x_hat_disk.dot(elemPosRelToRotor) )
+
+    # Get unit vectors of the local annulus reference frame
+    z_hat_annulus = elemPosRotorProj/ np.linalg.norm( elemPosRotorProj )
+    x_hat_annulus = x_hat_disk
+    y_hat_annulus = np.cross( z_hat_annulus, x_hat_annulus )
+
+    # Form a orientation matrix for the annulus reference frame
+    R_g2p[0, :]  = x_hat_annulus
+    R_g2p[1, :]  = y_hat_annulus
+    R_g2p[2, :]  = z_hat_annulus
+    return R_g2p, elemPosRelToRotor, elemPosRotorProj
+
+
+def curvilinearCoord(P_r, P_root, P_b):
+    """
+    Approximate curvilinear coordinates along the blade, 0 at the rotor center (not blade root)
+    # See Init_BEMTmodule, "zRoot, zTip, zLocal"
+    INPUTS:
+      - P_r:   3-vector, position of rotor center in global coordinates
+      - P_root:   3-vector, position of blade root in global coordinates
+                  Note: typically P_root=P_b[0] but it might not necesarily be the case
+      - P_b: (nrx3)-array, positions of blade nodes in global coordinates
+    OUTPUTS:
+      -
+    """
+    assert(P_b.shape[1]==3)
+    nr  = len(P_b)
+    s = np.zeros(nr)
+    s_h = norm(P_root - P_r)  # hub
+    s[0] = s_h + norm(P_b[0] - P_root)  # NOTE: second term is usually zero if blade starts at root
+    for ie in range(nr-1):
+        s[ie+1] = s[ie] + norm( P_b[ie+1] - P_b[ie] )
+
+    return s_h, s
+
+
+def calcCantAngle(f, xi, stencilSize=3):
+    """ 
+    Compute Cant angle from prebend using second order accurate gradient
+
+    INPUTS:
+     - f : (prebend) function values , array of size n
+     - xi: (radius)  x value where the function is evaluated, array of size n
+     - stencilSize: stencil for ! For 
+    OUTPUTS:
+     - cantAngel in [deg]
+    """
+    from welib.mesh.gradient import differ_stencil
+    #dfdx = np.gradient(f,xi)
+    #dxdx = np.gradient(xi,xi)
+    #crvAng = np.degrees(np.arctan2(dfdx,dxdx))
+    #print('dfdx',dfdx)
+    #print('dxdx',dxdx)
+    #print('dfdx',dfdx*180/np.pi)
+    #print('crvAng',crvAng)
+    #dx = np.gradient(xi)
+    #df = np.gradient(f)
+    #crvAng = np.degrees(np.arctan2(df,dx))
+    #print('crvAng',crvAng)
+
+    nx = len(xi)
+    ns = stencilSize
+
+    cPrime   = np.zeros(nx)
+    fPrime   = np.zeros(nx)
+    cantAngle = np.zeros(nx)
+    cx   = np.zeros(ns)
+    cf   = np.zeros(ns)
+    xiIn = np.zeros(ns)
+    fIn  = np.zeros(ns)
+
+    for i in range(nx):
+        if i==0:
+            fIn  = f [0:ns]
+            xiIn = xi[0:ns]
+        elif i==nx-1:
+            fIn  = f [nx-ns:nx]
+            xiIn = xi[nx-ns:nx]
+        else:
+            fIn  = f [i-1:i+2]
+            xiIn = xi[i-1:i+2]
+        cx = differ_stencil( xi[i], 1, 2, xiIn)
+        for j in range(ns):
+            cPrime[i] += cx[j]*xiIn[j]
+            fPrime[i] += cx[j]*fIn [j]            
+    cantAngle = np.arctan2(fPrime, cPrime)*180/np.pi
+    return cantAngle
+
+
 if __name__=="__main__":
     """ See examples/ for more examples """
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib.animation import FuncAnimation
+    import welib.essentials
 
-    # --- Read a FAST model to get Aerodynamic parameters
-    BEM = UnsteadyBEM('./Main_Onshore.fst')
-    BEM.CTcorrection='AeroDyn' # High Thrust correction
-    BEM.swirlMethod ='AeroDyn' # type of swirl model
-#    BEM.swirlMethod ='HAWC2' # type of swirl model
-#     BEM.bSwirl = True  # swirl flow model enabled / disabled
-    BEM.WakeMod=1 # 0: no inductions, 1: BEM inductions
-#     BEM.bTipLoss = True # enable / disable tip loss model
-#     BEM.bHubLoss = False # enable / disable hub loss model
-#     BEM.bTipLossCl = False # enable / disable Cl loss model
-#     BEM.TipLossMethod = 'Glauert'  # type of tip loss model
-#     BEM.bDynaStall = True # dynamic stall model
-    BEM.bDynaWake = True # dynamic inflow model
-#    BEM.bDynaWake = True # dynamic inflow model
-    BEM.bYawModel = True # Yaw correction
-#     BEM.bYawModel = False # Yaw correction
-#     BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
-#     BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
-    BEM.relaxation = 0.3
+    cone = 50
+    inputfile = 'C:/W0/Work/2018-NREL/BAR-Cone-BEM/simulations_parametric/cone/np2_DEBUG/ad_driver_p{:02d}.dvr'.format(cone)
+    BEM = UnsteadyBEM(inputfile)
+    BEM.algorithm='polarProj'
+    BEM.bYawModel = False # Yaw correction
+    BEM.bDynaStall = False # dynamic stall model
+    BEM.bDynaWake = False # dynamic stall model
+    print(BEM)
+    time=np.arange(0,10,0.1)
+    windSpeed = 10
+    RPM       = 10
 
-    time=np.arange(0,10,0.05)
-    RPM=10
-    df= BEM.simulationConstantRPM(time, RPM, windSpeed=10, windExponent=0.0, windRefH=90, windFunction=None, cone=None, tilt=None, firstCallEquilibrium=True)
-    df.to_csv('_BEM.csv', index=False)
+    dfTS = BEM.simulationConstantRPM(time, RPM, windSpeed=windSpeed, cone=cone, firstCallEquilibrium=True, BldNd_BladesOut=1)
+    #dfTS.to_csv('ad_driver_p{:02.0f}.csv'.format(c), index=False)
+
+# 
+# 
+# 
+# 
+# 
+# 
+#     # --- Read a FAST model to get Aerodynamic parameters
+#     BEM = UnsteadyBEM('./Main_Onshore.fst')
+#     BEM.CTcorrection='AeroDyn' # High Thrust correction
+#     BEM.swirlMethod ='AeroDyn' # type of swirl model
+# #    BEM.swirlMethod ='HAWC2' # type of swirl model
+# #     BEM.bSwirl = True  # swirl flow model enabled / disabled
+#     BEM.WakeMod=1 # 0: no inductions, 1: BEM inductions
+# #     BEM.bTipLoss = True # enable / disable tip loss model
+# #     BEM.bHubLoss = False # enable / disable hub loss model
+# #     BEM.bTipLossCl = False # enable / disable Cl loss model
+# #     BEM.TipLossMethod = 'Glauert'  # type of tip loss model
+# #     BEM.bDynaStall = True # dynamic stall model
+#     BEM.bDynaWake = True # dynamic inflow model
+# #    BEM.bDynaWake = True # dynamic inflow model
+#     BEM.bYawModel = True # Yaw correction
+# #     BEM.bYawModel = False # Yaw correction
+# #     BEM.bAIDrag = True # influence on drag coefficient on normal force coefficient
+# #     BEM.bTIDrag = True # influence on drag coefficient on tangential force coefficient
+#     BEM.relaxation = 0.3
+# 
+#     time=np.arange(0,10,0.05)
+#     RPM=10
+#     df= BEM.simulationConstantRPM(time, RPM, windSpeed=10, windExponent=0.0, windRefH=90, windFunction=None, cone=None, tilt=None, firstCallEquilibrium=True)
+#     df.to_csv('_BEM.csv', index=False)
 
 #     # --- Read a FAST model to get structural parameters for blade motion
 #     motion = PrescribedRotorMotion()
@@ -1371,8 +1582,8 @@ if __name__=="__main__":
 #     for it,t in enumerate(BEM.time):
 #         motion.update(t)
 #         xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi,
-#                 motion.origin_pos_gl, motion.omega_gl, motion.R_b2g, 
-#                 motion.R_ntr2g, motion.R_bld2b,
+#                 motion.origin_pos_gl, motion.omega_gl, motion.R_SB2g, 
+#                 motion.R_ntr2g, motion.R_bld2SB,
 #                 motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
 #                 firstCallEquilibrium=it==0
 # #                 firstCallEquilibrium=it==0
