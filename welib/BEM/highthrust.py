@@ -515,6 +515,7 @@ def a_k(k, chi=0, phi=0.1, F=None, method='Buhl', outputMore=False):
       - k:
       - phi: flow angle mostly used for sign (positive or negative)
       - F: tiploss ac_valtor
+      - chi: [rad]
     """
     k, scalar = to_array(k)
     F = array_like(F, k, 1)

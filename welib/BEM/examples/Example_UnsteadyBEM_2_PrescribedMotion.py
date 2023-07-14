@@ -38,7 +38,7 @@ def main(test=False):
         xdBEM = BEM.timeStep(t, dt, xdBEM, motion.psi, motion.psi_B0,
                 motion.origin_pos_gl, motion.omega_gl, motion.R_SB2g, 
                 motion.R_bld2SB,
-                motion.pos_gl, motion.vel_gl, motion.R_s2g, motion.R_a2g,
+                motion.pos_gl, motion.vel_gl, motion.R_a2g,
                 Vwnd_g,
                 firstCallEquilibrium= it==0
                 )
