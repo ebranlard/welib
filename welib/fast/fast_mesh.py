@@ -39,7 +39,7 @@ class PointMesh:
         omega_dot : rotational acc of body
         RefPoint: Define the reference point (on the undisplaced mesh) where the Rigid Body Motion is to be applied, very important parameter
         """
-        from welib.yams.rotations import BodyXYZ_A, smallRot_OF, smallRot_A
+        from welib.yams.rotations import rotMat
         # --- Default arguments
         if RefPoint is None:
             RefPoint = self.RefPoint
@@ -61,12 +61,13 @@ class PointMesh:
 
         if R_b2g is None:
 #             R_b2g = BodyXYZ_A(theta[0], theta[1], theta[2])# matrix body 2 global, order XYZ
-            if rot_type=='smallRot_OF':
-                R_b2g = smallRot_OF(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
-            elif rot_type=='smallRot':
-                R_b2g = smallRot_A(theta[0], theta[1], theta[2])
-            else:
-                raise Exception('Rotation type not supported: {}'.format(rot_type))
+            R_b2g = rotMat(theta, rot_type)
+            #if rot_type=='smallRot_OF':
+            #    R_b2g = smallRot_OF(theta[0], theta[1], theta[2]).T # TO MATCH OPENFAST !!!
+            #elif rot_type=='smallRot':
+            #    R_b2g = smallRot_A(theta[0], theta[1], theta[2])
+            #else:
+            #    raise Exception('Rotation type not supported: {}'.format(rot_type))
         # --- Sanitation    
         u         = np.asarray(u)
         u_dot     = np.asarray(u_dot)

@@ -23,6 +23,7 @@ def DCM_T(P1, P2, main_axis='z'):
     Transforms from element to global coordinates:  xg = DC_T.xe,  Kg = DC_T.Ke.DC_T^t
     NOTE that this is the transpose of what is normally considered the Direction Cosine Matrix  
     """
+
     Dx = P2[0]-P1[0]
     Dy = P2[1]-P1[1]
     Dz = P2[2]-P1[2]
@@ -32,27 +33,35 @@ def DCM_T(P1, P2, main_axis='z'):
         raise Exception('Length is zero')
 
     R = np.zeros((3,3))
-
-    if main_axis=='z':
-        if Dxy == 0.0: # TODO tolerance?
-            if Dz < 0:   #x is kept along global x
-                R[0, 0] =  1.0
-                R[1, 1] = -1.0
-                R[2, 2] = -1.0
-            else:
-                R[0, 0] = 1.0
-                R[1, 1] = 1.0
-                R[2, 2] = 1.0
+    if Dxy == 0.0: # TODO tolerance?
+        if Dz < 0:   #x is kept along global x
+            R[0, 0] =  1.0
+            R[1, 1] = -1.0
+            R[2, 2] = -1.0
         else:
-            R[0, 0] =  Dy/Dxy
-            R[0, 1] = +Dx*Dz/(L*Dxy)
-            R[0, 2] =  Dx/L
-            R[1, 0] = -Dx/Dxy
-            R[1, 1] = +Dz*Dy/(L*Dxy)
-            R[1, 2] =  Dy/L
-            R[2, 0] = 0.0
-            R[2, 1] = -Dxy/L
-            R[2, 2] = +Dz/L
+            R[0, 0] = 1.0
+            R[1, 1] = 1.0
+            R[2, 2] = 1.0
+    else:
+        R[0, 0] =  Dy/Dxy
+        R[0, 1] = +Dx*Dz/(L*Dxy)
+        R[0, 2] =  Dx/L
+        R[1, 0] = -Dx/Dxy
+        R[1, 1] = +Dz*Dy/(L*Dxy)
+        R[1, 2] =  Dy/L
+        R[2, 0] = 0.0
+        R[2, 1] = -Dxy/L
+        R[2, 2] = +Dz/L
+    if main_axis=='z':
+        pass
+    elif main_axis=='x':
+        # Transform from element axis "z" to element axis "x"
+        Rez2ex = np.array([
+            [0,0,1],
+            [1,0,0],
+            [0,1,0],
+            ])
+        R = Rez2ex.dot(R)
     else:
         raise NotImplementedError()
     return R
@@ -305,3 +314,61 @@ def deleteRowsCols(M, IDOF):
     M = np.delete(M, IDOF, axis=1) # removing columns
     M = np.delete(M, IDOF, axis=0) # removing lines
     return M
+
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Nodes 
+# --------------------------------------------------------------------------------{
+def xNodesInputToArray(xNodes, main_axis='x', nel=None):
+    """ 
+    Accepts multiple definitions of xNodes. Return a 3D array of shape (3xn)
+    - xNodes: define beam length, beam spanwise positions or beam nodes, either:
+          -  (scalar) Beam length, for uniform beam [m]
+          -  (1xn) Span vector of the beam (for straight beams) [m]
+          -  (2xn) Nodes positions x,z along the beam for 2d beam [m]
+          -  (3xn) Nodes positions x,y,z along the beam for 3d beam [m]
+    """
+    # --- First deal win user inputs (scalar, array, or matrix)
+    if not hasattr(xNodes,'__len__'):
+        xNodes=[xNodes]
+    xNodes = np.asarray(xNodes)
+    if len(xNodes)==1:
+        xNodes0=xNodes
+        # Constant beam properties
+        xNodes=np.zeros((3,2)) # We return only two nodes
+        if main_axis=='x':
+            xNodes[0,:] =[0, xNodes0[0]] # Beam directed about x
+        elif main_axis=='z':
+            xNodes[2,:] =[0, xNodes0[0]] # Beam directed about z
+        else:
+            raise NotImplementedError()
+    elif len(xNodes.shape)==1:
+        xNodes0=xNodes
+        xNodes=np.zeros((3,len(xNodes)))
+        if main_axis=='x':
+            xNodes[0,:]=xNodes0
+        elif main_axis=='z':
+            xNodes[2,:]=xNodes0
+        else:
+            raise NotImplementedError()
+
+    xNodes0 = xNodes
+    le0     = np.sqrt((xNodes[0,1:]-xNodes[0,0:-1])**2+(xNodes[1,1:]-xNodes[1,0:-1])**2+(xNodes[2,1:]-xNodes[2,0:-1])**2)
+    s_span0 = np.concatenate(([0],np.cumsum(le0)))
+    # --- Create node locations if user specified nElem
+    if nel is None:
+        # we will use xNodes provided by the user
+        interp_needed=False
+    else:
+        # We create elements with linear spacing along the curvilinear span
+        xNodes=np.zeros((3,nel+1))
+        s_span     = np.linspace(0,s_span0[-1],nel+1)
+        xNodes[0,:] = np.interp(s_span, s_span0, xNodes0[0,:])
+        xNodes[1,:] = np.interp(s_span, s_span0, xNodes0[1,:])
+        xNodes[2,:] = np.interp(s_span, s_span0, xNodes0[2,:])
+        interp_needed=True
+
+    return xNodes, xNodes0, s_span0, interp_needed
+

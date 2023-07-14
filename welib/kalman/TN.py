@@ -1,10 +1,16 @@
+""" 
+Kalman filter model for "Tower Nacelle Shaft" (based on yams TNSB)"
+
+"""
+
 import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter
 from .filters import moving_average
+from welib.ws_estimator.tabulated import TabulatedWSEstimator
 from welib.yams.TNSB_FAST import FASTmodel2TNSB
 
-from welib.ws_estimator.tabulated import TabulatedWSEstimator
+
 import welib.fast.fastlib as fastlib
 import welib.weio as weio
 
@@ -70,8 +76,8 @@ class KalmanFilterTN(KalmanFilter):
         KF.WT=WT
 
         # --- Creating a wind speed estimator (reads tabulated aerodynamic data)
-        KF.wse = TabulatedWSEstimator(fst_file=FstFile)
-        KF.wse.load_files(base=base,suffix='')
+        KF.wse = TabulatedWSEstimator(fstFile=FstFile)
+        KF.wse.loadFromBasename(basename=base,suffix='')
         print(KF.wse)
         # --- Building continuous and discrete state matrices
         M,C,K = WT.MM, WT.DD, WT.KK
@@ -127,19 +133,20 @@ class KalmanFilterTN(KalmanFilter):
         P = KF.P
 
         for it in range(0,KF.nt-1):    
+            t = it*KF.dt
             # --- "Measurements"
-            y  = KF.Y[:,it]
+            y  = KF.Y.iloc[it,:].values
 
             # --- KF predictions
-            u=KF.U_clean[:,it]
+            u=KF.U_clean.iloc[it,:].values
             x,P,_ = KF.estimateTimeStep(u,y,x,P,KF.Q,KF.R)
 
             # --- Estimate thrust and WS - Non generic code
             WS0       = x[KF.iX['WS']]
-            pitch     = y[KF.iY['pitch']]
+            pitch     = y[KF.iY['pitch']]*180/np.pi # deg
             Qaero_hat = x[KF.iX['Qaero']]
             omega     = x[KF.iX['omega']]
-            WS_hat = KF.wse.estimate(Qaero_hat, pitch, omega, WS0, relaxation = 0)
+            WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch, omega, WS0, relaxation = 0)
             Qaero_hat = np.max(Qaero_hat,0)
             Thrust = KF.wse.Thrust(WS_hat, pitch, omega)
             GF = KF.WT.GF_lin(Thrust,x,bFull=True)
@@ -149,8 +156,8 @@ class KalmanFilterTN(KalmanFilter):
             x[KF.iX['psi']]    = np.mod(x[KF.iX['psi']], 2*np.pi)
 
             # --- Store
-            KF.X_hat[:,it+1] = x
-            KF.Y_hat[:,it+1] = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
+            KF.X_hat.iloc[it+1,:] = x
+            KF.Y_hat.iloc[it+1,:] = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
 
             if np.mod(it,500) == 0:
                 print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it,KF.time[it],x[7],x[4]))
@@ -163,19 +170,19 @@ class KalmanFilterTN(KalmanFilter):
         z_test = fastlib.ED_TwrGag(WT.ED) - WT.ED['TowerBsHt']
         EI     = np.interp(z_test, WT.Twr.s_span, WT.Twr.EI[0,:])
         kappa  = np.interp(z_test, WT.Twr.s_span, WT.Twr.PhiK[0][0,:])
-        qx    = KF.X_hat[KF.iX['ut1']]
+        qx    = KF.X_hat['ut1']
         KF.M_sim = [qx*EI[i]*kappa[i]/1000 for i in range(len(z_test))]                 # in [kNm]
         KF.M_ref = [KF.df['TwHt{:d}MLyt'.format(i+1)].values for i in range(len(z_test)) ] # in [kNm]
         return KF.M_sim, KF.M_ref
 
     def export(KF,OutputFile):
-        M=np.column_stack([KF.time]+[KF.X_clean[j,:] for j,_ in enumerate(KF.sX)])
-        M=np.column_stack([M]+[KF.X_hat  [j,:] for j,_ in enumerate(KF.sX)])
-        M=np.column_stack([M]+[KF.Y      [j,:] for j,_ in enumerate(KF.sY)])
-        M=np.column_stack([M]+[KF.Y_hat  [j,:] for j,_ in enumerate(KF.sY)])
+        M=np.column_stack([KF.time]+[KF.X_clean[sj] for j,sj in enumerate(KF.sX)])
+        M=np.column_stack([M]+[KF.X_hat  [sj] for j,sj in enumerate(KF.sX)])
+        M=np.column_stack([M]+[KF.Y      [sj] for j,sj in enumerate(KF.sY)])
+        M=np.column_stack([M]+[KF.Y_hat  [sj] for j,sj in enumerate(KF.sY)])
         if len(KF.sS)>0:
-            M=np.column_stack([M]+[KF.S_clean[j,:] for j,_ in enumerate(KF.sS)])
-            M=np.column_stack([M]+[KF.S_hat  [j,:] for j,_ in enumerate(KF.sS)])
+            M=np.column_stack([M]+[KF.S_clean[sj] for j,sj in enumerate(KF.sS)])
+            M=np.column_stack([M]+[KF.S_hat  [sj] for j,sj in enumerate(KF.sS)])
         M=np.column_stack([M]+KF.M_ref)
         M=np.column_stack([M]+KF.M_sim)
         header='time'+','
@@ -250,52 +257,52 @@ class KalmanFilterTN(KalmanFilter):
         # fig.set_size_inches(13.8,4.8,forward=True) # default is (6.4,4.8)
         fig.set_size_inches(13.8,8.8,forward=True) # default is (6.4,4.8)
         ax=fig.add_subplot(6,2,1)
-        time_plot(ax,time,X_clean[iX['Qaero'],:]/ 1000, X_hat[iX['Qaero'],:]/ 1000)
+        time_plot(ax,time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
         ax.set_ylabel('Aerodynamic Torque [kNm]')
 
         ax=fig.add_subplot(6,2,2)
-        spec_plot(ax,time,X_clean[iX['Qaero'],:]/ 1000, X_hat[iX['Qaero'],:]/ 1000)
+        spec_plot(ax,time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
         # ax.set_ylabel('Power Spectral Density (Welch Avg.)') 
 
 
         ax=fig.add_subplot(6,2,3)
         try:
-            time_plot(ax,time,X_clean[iX['WS'],:], X_hat[iX['WS'],:])
+            time_plot(ax,time,X_clean['WS'], X_hat['WS'])
         except:
-            time_plot(ax,time,S_clean[iS['WS'],:], S_hat[iS['WS'],:])
+            time_plot(ax,time,S_clean['WS'], S_hat['WS'])
         ax.set_ylabel('WS [m/s]')
 
         ax=fig.add_subplot(6,2,4)
         try:
-            spec_plot(ax,time,X_clean[iX['WS'],:], X_hat[iX['WS'],:])
+            spec_plot(ax,time,X_clean['WS'], X_hat['WS'])
         except:
-            spec_plot(ax,time,S_clean[iS['WS'],:], S_hat[iS['WS'],:])
+            spec_plot(ax,time,S_clean['WS'], S_hat['WS'])
 
         ax=fig.add_subplot(6,2,5)
-        time_plot(ax,time,X_clean[iX['omega'],:], X_hat[iX['omega'],:])
+        time_plot(ax,time,X_clean['omega'], X_hat['omega'])
         ax.set_ylabel('Omega [RPM]')
 
         ax=fig.add_subplot(6,2,6)
-        spec_plot(ax,time,X_clean[iX['omega'],:], X_hat[iX['omega'],:])
+        spec_plot(ax,time,X_clean['omega'], X_hat['omega'])
 
         ax=fig.add_subplot(6,2,7)
         try:
-            time_plot(ax,time,X_clean[iX['Thrust'],:]/1000, X_hat[iX['Thrust'],:]/1000)
+            time_plot(ax,time,X_clean['Thrust']/1000, X_hat['Thrust']/1000)
         except:
-            time_plot(ax,time,S_clean[iS['Thrust'],:]/1000, S_hat[iS['Thrust'],:]/1000)
+            time_plot(ax,time,S_clean['Thrust']/1000, S_hat['Thrust']/1000)
         ax.set_ylabel('Thrust [kN]')
 
         ax=fig.add_subplot(6,2,8)
         try:
-            spec_plot(ax,time,X_clean[iX['Thrust'],:]/1000, X_hat[iX['Thrust'],:]/1000)
+            spec_plot(ax,time,X_clean['Thrust']/1000, X_hat['Thrust']/1000)
         except:
-            spec_plot(ax,time,S_clean[iS['Thrust'],:]/1000, S_hat[iS['Thrust'],:]/1000)
+            spec_plot(ax,time,S_clean['Thrust']/1000, S_hat['Thrust']/1000)
 
         ax=fig.add_subplot(6,2,9)
-        time_plot(ax,time,X_clean[iX['ut1'],:], X_hat[iX['ut1'],:])
+        time_plot(ax,time,X_clean['ut1'], X_hat['ut1'])
         ax.set_ylabel('TT position [m]')
         ax=fig.add_subplot(6,2,10)
-        spec_plot(ax,time,X_clean[iX['ut1'],:], X_hat[iX['ut1'],:])
+        spec_plot(ax,time,X_clean['ut1'], X_hat['ut1'])
 
         #                
         try:

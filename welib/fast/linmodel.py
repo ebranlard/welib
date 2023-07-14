@@ -13,9 +13,10 @@ import matplotlib.pyplot as plt
 
 # Local
 import welib.weio as weio
+from welib.weio.fast_output_file import writeDataFrame
 
 from welib.fast.tools.lin import * # backward compatibility
-from welib.fast.tools.lin import matToSIunits, renameList
+from welib.fast.tools.lin import matToSIunits, renameList, dfToSIunits
 
 from welib.system.statespacelinear import LinearStateSpace
 from welib.yams.windturbine import FASTWindTurbine
@@ -49,8 +50,8 @@ DEFAULT_COL_MAP_LIN ={
   'BPitch1_[rad]'       : 'pitchB1'    , # Also B1Pitch_[rad]
   'PitchColl_[rad]'     : 'pitch'    , # Also B1Pitch_[rad]
   'Qgen_[Nm]'           : 'Qgen'     ,
-  'HubFxN1_[N]'         : 'Thrust'   ,
-  'HubFyN1_[N]'         : 'fay'   ,
+  'HubFxN1_[N]'         : 'Thrust'   ,  # A bit controversial to call those "Aero", they come from ED
+  'HubFyN1_[N]'         : 'fay'   ,   
   'HubFzN1_[N]'         : 'faz'   ,
   'HubMxN1_[Nm]'        : 'Qaero'    , 
   'HubMyN1_[Nm]'        : 'may'      , 
@@ -91,10 +92,12 @@ DEFAULT_COL_MAP_OF ={
 #   'NcIMUTAxs_[m/s^2]'   : 'TTIMUx'   ,
 #   'NcIMUTAys_[m/s^2]'   : 'TTIMUy'   ,
 #   'NcIMUTAzs_[m/s^2]'   : 'TTIMUz'   ,
-#   'BPitch1_[rad]'       : 'pitchB1'    , # Also B1Pitch_[rad]
-#   'PitchColl_[rad]'     : 'pitch'    , # Also B1Pitch_[rad]
+  'BldPitch1_[rad]'     : 'pitch'    , # Also B1Pitch_[rad]
 #   'Qgen_[Nm]'           : 'Qgen'     ,
-#   'HubFxN1_[N]'         : 'Thrust'   ,
+  'RtAeroFxh_[N]'         : 'Thrust'   ,
+  'RtFldFxh_[N]'          : 'Thrust'   ,
+  'RtAeroMxh_[N-m]'       : 'Qaero'   ,
+  'RtFldMxh_[N-m]'        : 'Qaero'   ,
 #   'HubFyN1_[N]'         : 'fay'   ,
 #   'HubFzN1_[N]'         : 'faz'   ,
 #   'HubMxN1_[Nm]'        : 'Qaero'    , 
@@ -160,7 +163,10 @@ DEFAULT_COL_MAP_OF ={
 
 
 
-def _loadOFOut(filename, tMax=None, zRef=None):
+def _loadOFOut(filename, tMax=None, tRange=None, zRef=None):
+    """ 
+    see also welib.yams.model.simulator 
+    """
     ext = os.path.splitext(filename)[1].lower()
     if ext=='.fst':
         if os.path.exists(filename.replace('.fst','.outb')): 
@@ -175,7 +181,10 @@ def _loadOFOut(filename, tMax=None, zRef=None):
     dfFS = weio.read(outfile).toDataFrame()
     if tMax is not None:
         dfFS=dfFS[dfFS['Time_[s]']<tMax]
+    if tRange is not None:
+        dfFS = dfFS[np.logical_and(dfFS['Time_[s]']>=tRange[0],dfFS['Time_[s]']<=tRange[1])]
     time =dfFS['Time_[s]'].values
+    dfFS.reset_index(inplace=True)
 
     # Remove duplicate
     dfFS = dfFS.loc[:,~dfFS.columns.duplicated()].copy()
@@ -219,6 +228,15 @@ class FASTLinModel(LinearStateSpace):
         # --- DATA
         self.WT          = None
         self.fstFilename = fstFilename
+        self.pickleFile  = None
+        # --- DATA for time simulation
+        self.WT_sim = None
+        self.sys_sim = None
+        self.qop_sim = None
+        self.uop_sim = None
+        self.yop_sim = None
+        self.fstFilename_sim = None
+        self.time        = None
         self.dfFS        = None
         self.df          = None
 
@@ -237,7 +255,8 @@ class FASTLinModel(LinearStateSpace):
         elif linFiles is not None:
             # Load all the lin File
             A, B, C, D, xop, uop, yop, sX, sU, sY = self.loadLinFiles(linFiles)
-            LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, q0=xop,
+            LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, 
+                    qop=xop, uop=uop, yop=yop,
                     sX=sX, sU=sU, sY=sY,
                     verbose=False)
 
@@ -245,7 +264,8 @@ class FASTLinModel(LinearStateSpace):
             # 
             linFiles = [os.path.splitext(fstFilename)[0]+'.1.lin']
             A, B, C, D, xop, uop, yop, sX, sU, sY = self.loadLinFiles(linFiles)
-            LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, q0=xop,
+            LinearStateSpace.__init__(self, A=A, B=B, C=C, D=D, 
+                    qop=xop, uop=uop, yop=yop,
                     sX=sX, sU=sU, sY=sY,
                     verbose=False)
         else:
@@ -253,11 +273,17 @@ class FASTLinModel(LinearStateSpace):
 
         if fstFilename is not None:
             print('FASTLinModel: loading WT :',fstFilename)
-            self.WT = FASTWindTurbine(fstFilename)
+            self.WT = FASTWindTurbine(fstFilename, algo='OpenFAST')
             self.fstFilename     = fstFilename
 
         # Set A, B, C, D to SI units
+        # will scale the matrices
         self.toSI(verbose=False)
+
+
+        if usePickle:
+            if self.pickleFile is None:
+                self.save() # No pickle file was found (.lin was read, we save the pickle to speedup)
 
 
     def loadLinFiles(self, linFiles):
@@ -274,12 +300,27 @@ class FASTLinModel(LinearStateSpace):
             colMap = DEFAULT_COL_MAP_LIN
         LinearStateSpace.rename(self, colMap=colMap, verbose=verbose)
 
-    def setupSimFromOF(self, outFile=None, fstFilename=None, tMax=None, rename=True, colMap=None, **kwargs):
+    # --------------------------------------------------------------------------------}
+    # --- SETUP FROM OF 
+    # --------------------------------------------------------------------------------{
+    def setupSimFromOF(self, outFile=None, fstFilename=None, tRange=None, renameFS=True, colMap=None, inPlace=True, 
+            qopMethod='lin', 
+            uopMethod='zero', uMethod='zero',
+            yopMethod='mean',
+            **kwargs):
+        """ 
+        Set simulation input and model based on OpenFAST simulation.
+        INPUTS:
+         - tRange : if provided, limit the time vector to tRange
+         - rename: if True, rename out file columns based on colMap or on DEFAULT_COL_MAP_OF
+         - inPlace: if True, will potentially reduce the dimension of the A, B, C, D of the current lin model
+        """
+        # TODO: Harmonize with yams.models.simulator
 
         # --- Load turbine config
         if fstFilename is not None:
             print('FASTLinModel: loading WT :',fstFilename)
-            self.WT_sim = FASTWindTurbine(fstFilename)
+            self.WT_sim = FASTWindTurbine(fstFilename, algo='OpenFAST')
             self.fstFilename_sim = fstFilename 
         else:
             self.WT_sim = self.WT
@@ -289,15 +330,16 @@ class FASTLinModel(LinearStateSpace):
         #zRef =  -self.p['z_OT'] 
         zRef = - self.WT_sim.twr.pos_global[2]  
         if outFile is None:
-            self.dfFS, self.time = _loadOFOut(self.fstFilename_sim, tMax, zRef)
+            self.dfFS, self.time = _loadOFOut(self.fstFilename_sim, tRange=tRange, zRef=zRef)
         else:
-            self.dfFS, self.time = _loadOFOut(outFile, tMax, zRef)
+            self.dfFS, self.time = _loadOFOut(outFile, tRange=tRange, zRef=zRef)
 
         # --- Scale to SI
-        self.dfFS = matToSIunits(self.dfFS, 'dfOF', verbose=False, row=False)
+        self.dfFS_raw = self.dfFS.copy()
+        self.dfFS = dfToSIunits(self.dfFS, 'dfOF', verbose=False)
 
-        # --- Rename
-        if rename:
+        # --- Rename OpenFAST dataframe (inputs/outputs)
+        if renameFS:
             if colMap is None:
                 colMap = DEFAULT_COL_MAP_OF
             self.dfFS.columns = renameList(list(self.dfFS.columns), colMap, False)
@@ -305,14 +347,60 @@ class FASTLinModel(LinearStateSpace):
             self.dfFS = self.dfFS.loc[:,~self.dfFS.columns.duplicated()].copy()
 
 
+        # --- Create a linear model for this simulation
+        ## DOF names
+        sX = self.WT_sim.DOFname
+        # sanity check that sX is fully included in self.sX
+        sMissingInSelf = [s for s in sX if s not in self.sX]
+        if len(sMissingInSelf)>0:
+            print('[WARN] The simulation has the following DOFs which are not in the lin model: {}'.format(sMissingInSelf))
+            sX = [s for s in sX if s in self.sX]
+            print('       The intersection of the two will be used: {}'.format(sX))
+        sX = list(sX) + ['d'+s for s in sX]
+        sY = self.sY # TODO?
+        sU = self.sU # TODO?
+        if inPlace:
+            self.extract(sX=sX, sU=sU, sY=sY, check=True, inPlace=True) # NOTE: self.s*, A, B, etc. will be updated
+            self.sys_sim = None
+            self.q0_NL = self.WT_sim.z0[self.sX]
+            if qopMethod=='lin':
+                # We use the linear operating point from the linear model
+                self.qop_sim = self.qop
+            elif qopMethod=='zero':
+                self.qop_sim = self.qop*0
+            elif qopMethod=='mean':
+                self.qop_sim = self.qop*0
+                for s in self.sX:
+                    if s in self.dfFS.columns:
+                        self.qop_sim[s] = self.dfFS[s].mean()
+                    else:
+                        print('[WARN] column missing in OpenFAST DataFrame {}'.format(s))
+            else:
+                self.qop_sim = self.qop*0
+                if len(qopMethod)!=len(self.q_op_sim):
+                    raise Exception()
+                for i,s in enumerate(self.sX):
+                    self.qop_sim[s] = qopMethod[i]
 
-        # --- Initial inputs to zero
-        self._zeroInputs()
+            ## --- qop mean
+            self.setStateInitialConditions(self.q0_NL-self.qop_sim)
 
+        else:
+            raise NotImplementedError()
+            ## Initial conditions (Non-linear)!
+            q0_NL = self.WT_sim.z0 #  WT_sim
+            q0_lin = q0_NL - self.q0_ # Linear initial conditions are wrt to lin model op
+            A, B ,C, D  = self.extract(sX=sX, sU=sU, sY=sY, check=True, inPlace=False)
+            #A, B, C, D, xop, uop, yop, sX, sU, sY = self.loadLinFiles(linFiles)
+            self.sys_sim = LinearStateSpace(A=A, B=B, C=C, D=D, q0=q0_lin,
+                    sX=sX, sU=sU, sY=sY,
+                    verbose=False)
 
-        # --- Initial conditions (Non-linear)!
-        q0 = self.WT.z0
-        self.q0_NL = q0[self.sX]
+        # --- Inputs
+        self.setupInputs(uMethod, uopMethod, df=self.dfFS)
+
+        # --- Outputs..
+        self.setupOutputs(yopMethod, df=self.dfFS)
 
         # --- Initial parameters
         #if self.modelName[0]=='B':
@@ -322,12 +410,146 @@ class FASTLinModel(LinearStateSpace):
 
         return self.time, self.dfFS #, self.p
 
-    def _zeroInputs(self):
+
+    def setupInputs(self, uMethod, uopMethod, df=None):
+        """ 
+            uopMethod='zero', uMethod='zero',
+        """
+
+        # --- Non linear inputs
+        nu = len(self.sU)
+        u  = np.zeros((nu,len(self.time)))
+        if uMethod=='zero':
+            self._zeroInputs() #uopMethod=uopMethod)
+
+        elif uMethod=='DF':
+            for iu, su in enumerate(self.sU):
+                if su not in ['fhx','fhy','fhz','mhx','mhy','mhz']: # NOTE: for hydro, we would double count the stiffness
+                    print('>>> Getting input from OpenFAST: ',su)
+                    vu = df[su].values
+                    bNaN = np.isnan(vu)
+                    if sum(bNaN)>0:
+                        print('[WARN] INPUT {} has {} NaN values, replaced by 0'.format(su, sum(bNaN)))
+                    vu[bNaN] = 0
+                    u[iu,:] = vu
+        else:
+            raise NotImplementedError('uMethod ',uMethod)
+
+        # --- Non linear operating point
+        if uopMethod=='zero':
+            # --- uop 0
+            self.uop_sim  = np.zeros(nu)
+        elif uopMethod=='mean':
+            # --- uop mean
+            self.uop_sim  = np.zeros(nu)
+            for iu, su in enumerate(self.sU):
+                if su not in ['fhx','fhy','fhz','mhx','mhy','mhz']: # NOTE: for hydro, we would double count the stiffness
+                    self.uop_sim[iu] = np.mean(u[iu,:])
+        elif uopMethod=='lin':
+            self.uop_sim  = self.uop.values
+        else:
+            raise NotImplementedError('uopMethod ',uopMethod)
+
+        # This is the "true" inputs for a linear model
+        du = (u.T-self.uop_sim).T
+        self.setInputTimeSeries(self.time, du)
+
+            #  u[0,:] = dfOF['HydroFzi_[N]'].values - model.WT.mass*model.WT.gravity
+            #  u[0,:] = dfOF['HydroFzi_[N]'].values  
+            #  # --- Linear model input operating point
+            #  uop['F_hx'] = np.mean(dfFS['HydroFxi_[N]'].values)  *0
+            #  uop['F_hy'] = np.mean(dfFS['HydroFyi_[N]'].values)  *0
+            #  #uop['F_hz'] = np.mean(dfFS['HydroFzi_[N]'].values)
+            #  uop['F_hz'] = p['M_B']*p['g']
+            #  uop['M_hx'] = np.mean(dfFS['HydroMxi_[N-m]'].values)*0
+            #  if meanMhy:
+            #      uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)
+            #  else:
+            #      uop['M_hy'] = np.mean(dfFS['HydroMyi_[N-m]'].values)*0
+            #  #uop['M_hy'] = dfFS['HydroMyi_[N-m]'].values[0]
+            #  uop['M_hz'] = np.mean(dfFS['HydroMzi_[N-m]'].values)*0
+            #  # --- Linear pertubation inputs
+            #  for i,su in enumerate(self.info['su']):
+            #      if su=='F_hz': du[i,:] = dfFS['HydroFzi_[N]'].values     - uop[su]  #- p['M_B']*p['g']
+            #      if su=='M_hz': du[i,:] = dfFS['HydroMzi_[N-m]'].values   - uop[su]
+
+    def setupOutputs(self, yopMethod, df=None):
+        # --- Outputs..
+        ny = len(self.sY)
+        self.yop_sim  = np.zeros(ny)
+        if yopMethod == 'zero':
+            pass
+        elif yopMethod == 'mean':
+            for iy, sy in enumerate(self.sY):
+                print('>>> Getting output from DataFrame: ',sy)
+                yi = df[sy].values 
+                self.yop_sim[iy] = np.mean(yi)
+        elif yopMethod == 'lin':
+            self.yop_sim = self.yop.values
+        else:
+            raise Exception('yopMethod')
+
+    def resFromOF(self, removeOP=True):
+        """ """
+        from scipy.optimize import OptimizeResult as OdeResultsClass 
+        #self.WT_sim = self.WT
+        #self.fstFilename_sim = self.fstFilename 
+        #self.dfFS, self.time = _loadOFOut(outFile, tRange=tRange, zRef=zRef)
+        #self.dfFS_raw = self.dfFS.copy()
+        #self.dfFS = dfToSIunits(self.dfFS, 'dfOF', verbose=False)
+        state_ts = np.zeros((len(self.sX),len(self.time)))
+        self.qop_sim
+        for i,s in enumerate(self.sX):
+            if s not in self.dfFS.keys():
+                print('[WARN] fastlinModel: resFromOF: state missing from dataframe: ', s)
+            else:
+                if removeOP:
+                    state_ts[i,:] = self.dfFS[s].values - self.qop_sim[s]
+                else:
+                    state_ts[i,:] = self.dfFS[s].values
+#                 if s!='q_FA1':
+#                     state_ts[i,:] = 0
+#                 else:
+#                     state_ts[i,:] *= 3.32
+#                 if s=='x':
+#                     state_ts[i,:] = 0
+#                 if s=='dx':
+#                     state_ts[i,:] = 0
+#                 if s=='phi_y':
+#                     state_ts[i,:] = 0
+#                 if s=='dphi_y':
+#                     state_ts[i,:] = 0
+
+        res = OdeResultsClass(t=self.time, y=state_ts) # To mimic result class of solve_ivp
+        return res
+
+    def accFromOF(self):
+        """ """
+        sq = self.WT_sim.DOFname
+        cols = ['dd'+ s for s in sq]
+        data    = np.full((len(self.time), len(cols)), np.nan)
+        df      = pd.DataFrame(columns = cols, data = data)
+        for s in cols:
+            if s not in self.dfFS.keys():
+                print('[WARN] fastlinModel: accFromOF: acceleration missing from dataframe: ', s)
+            else:
+                df[s] = self.dfFS[s].values
+        return df
+
+    # --------------------------------------------------------------------------------}
+    # --- INPUTS
+    # --------------------------------------------------------------------------------{
+    # From welib.system.statespacelinear.py
+    #def setInputTimeSeries(self, vTime, vU):
+    # From welib.system.statespace.py
+    #def setInputFunction(self, fn, signature_u=None):
+    def _zeroInputs(self, uopMethod='zero'):
         """ 
         u:   dictionary of functions of time
         uop: dictionary
         du : nu x nt array, time series of time
         """
+        # TODO: Harmonize with yams.models.simulator
         # Examples of su: T_a, M_y_a M_z_a F_B
 
         nu = len(self.sU)
@@ -337,9 +559,12 @@ class FASTLinModel(LinearStateSpace):
         #    u[su] = lambda t, q=None: 0  # NOTE: qd not supported yet
         #    #u[su] = lambda t, q=None, qd=None: 0  # Setting inputs as zero as funciton of time
 
-        #uop=dict() # Inputs at operating points
-        #for su in self.sU:
-        #    uop[su] = 0  # Setting inputs as zero as function of time
+        uop_sim=dict() # Inputs at operating points
+        if uopMethod=='zero':
+            for su in self.sU:
+                uop_sim[su] = 0  # Setting inputs as zero as function of time
+        else:
+            raise NotImplementedError('uopMethod {}'.format(uopMethod))
 
         u = np.zeros((nu, len(self.time))) # Zero for all time
 
@@ -352,29 +577,106 @@ class FASTLinModel(LinearStateSpace):
         self.setInputTimeSeries(self.time, u)
 
         #self.du  = du
-        #self.uop = uop
-        self.qop = self.qop_default
+        self.uop_sim = uop_sim
+        #self.qop = self.qop_default
         #self.qdop = qdop
 
-    @property
-    def qop_default(self):
-        return pd.Series(np.zeros(len(self.sX)), index=self.sX)
 
-    def plotCompare(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title=''):
+    # --------------------------------------------------------------------------------}
+    # --- Time integration 
+    # --------------------------------------------------------------------------------{
+    # From yams.system.statespacelinear :
+    #def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', xoffset=None, uoffset=None, **options):
+    # From yams.system.statespace :
+    #def integrate(self, t_eval, method='RK45', y0=None, p=None, u=None, calc='u,y,qd', xoffset=None, **options):
+    #def res2DataFrame(self, res=None, calc='u,y,xd', sStates=None, xoffset=None, uoffset=None, yoffset=None):
+    #def store_states(self, res, sStates=None, xoffset=None, Factors=None):
+    #def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
+    #def calc_inputs(self, time=None, res=None, insertTime=True, dataFrame=True, uoffset=None):
+
+    def simulate_fake(self, calc='u,y'):
+        """ Use OpenFAST states instead of performing time integration """
+        if self.dfFS is None:
+            raise Exception('Call `setupSimFromOF` first')
+        # Get fake "res" from OF dataframe 
+        res  = self.resFromOF()
+        # Store states in dataframe, compute inputs & outputs
+        #    dfLIX = self.store_states(res=res)
+        #    dfLIY = self.calc_outputs(res=res)
+        #    dfLII = self.calc_inputs(res=res)
+        dfLI  = self.res2DataFrame(res=res, calc=calc, xoffset=self.qop_sim, uoffset=self.uop_sim, yoffset=self.yop_sim)
+        # Store OF accelerations TODO Check for duplicate if one day we add acceleration to calc (we should)
+        dfLIA = self.accFromOF()
+        dfLI = pd.concat((dfLI, dfLIA), axis=1)
+        # Store (watch out for that...)
+        self.df  = dfLI
+        self.res = res
+        return dfLI
+
+
+    def simulate(self, sys_sim=None, out=False, prefix='', calc='', renameStates=False, **options):
+        """
+        Simulate based on a 
+
+        - calc: string comma separated, e.g. 'u,y,qd' : compute inputs, outputs, and "accelerations"
+        """
+        # TODO: harmonize with yams.models.simulator
+        if sys_sim is None:
+            if self.sys_sim is None:
+                sys_sim = self
+            else:
+                sys_sim = self.sys_sim
+
+        # TODO TODO TODO WHY U IS NONE?????
+        self.res, self.df =  sys_sim.integrate(self.time, method='RK45', y0=sys_sim.q0, u=None, calc=calc, xoffset=self.qop_sim, uoffset=self.uop_sim, yoffset=self.yop_sim, **options)
+        #self.WT_sim.FASTDOFScales, 
+        # NOTE: this is a duplication, res2DataFrame is already called in integrate...
+        # --- Using OpenFAST DOF names
+        if renameStates:
+            # TODO TODO TODO THIS IS NASTY
+            self.df = self.res2DataFrame(self.res, sStates=self.WT_sim.channels, calc=calc, xoffset=self.qop_sim, uoffset=self.uop_sim, yoffset=self.yop_sim, Factors=self.WT_sim.FASTDOFScales) #x0=qop, xd0=qdop, 
+#         if calcOutput:
+#             for it, t in enumerate(time):
+#                 # Reference point motion
+#                 q   = dfOF[qCol].iloc[it].values
+#                 qd  = dfOF[qdCol].iloc[it].values
+#                 qdd = dfOF[qddCol].iloc[it].values
+#                 fh[it,:] = -M.dot(qdd) - C.dot(qd) - K.dot(q)
+#                 pass
+#         self.resLI, self.sysLI, self.dfLI = resLI, sysLI, dfLI
+# 
+        if out:
+            outFile = self.fstFilename_sim.replace('.fst', '{}_FASTLin.outb'.format(prefix))
+            print('FASTLinModel: writing {}'.format(outFile))
+            writeDataFrame(self.df, outFile)
+
+        return self.df
+
+    def plotCompare(self, export=False, nPlotCols=2, prefix='', fig=None, figSize=(12,10), title='', useRenamedFS=True,
+            columns=None
+            ):
         """ 
         NOTE: taken from simulator. TODO harmonization
         """
         from welib.tools.colors import python_colors
+        from welib.tools.stats import comparison_stats
         # --- Simple Plot
         dfLI = self.df
-        dfFS = self.dfFS
+        if useRenamedFS:
+            dfFS = self.dfFS # <<<
+        else:
+            dfFS = self.dfFS_raw # <<<
+
         if dfLI is None and dfFS is None:
             df = dfFS
         else:
             df = dfLI
 
+        if columns is None:
+            columns=df.columns[1:]
+
         if fig is None:
-            fig,axes = plt.subplots(int(np.ceil((len(df.columns)-1)/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
+            fig,axes = plt.subplots(int(np.ceil((len(columns))/nPlotCols)), nPlotCols, sharey=False, sharex=True, figsize=figSize)
         else:
             axes=fig.axes
             assert(len(axes)>0)
@@ -383,17 +685,23 @@ class FASTLinModel(LinearStateSpace):
         else:
             fig.subplots_adjust(left=0.07, right=0.98, top=0.955, bottom=0.05, hspace=0.20, wspace=0.33)
         for i,ax in enumerate((np.asarray(axes).T).ravel()):
-            if i+1>=len(df.columns):
+            if i>=len(columns):
                 continue
-            chan=df.columns[i+1]
+            t2=None; y2=None
+            chan=columns[i]
             if dfLI is not None:
                 if chan in dfLI.columns:
-                    ax.plot(dfLI['Time_[s]'], dfLI[chan], '--' , label='linear', c=python_colors(1))
+                    t2=dfLI['Time_[s]']; y2=dfLI[chan]
+                    ax.plot(t2, y2, '--' , label='linear', c=python_colors(1))
                 else:
                     print('Missing column in Lin: ',chan)
             if dfFS is not None:
                 if chan in dfFS.columns:
-                    ax.plot(dfFS['Time_[s]'], dfFS[chan], 'k:' , label='OpenFAST')
+                    t1=dfFS['Time_[s]']; y1=dfFS[chan]
+                    ax.plot(t1, y1, 'k:' , label='OpenFAST')
+                    if t2 is not None:
+                        stats2, sStats2 =  comparison_stats(t1, y1, t2, y2, stats='eps,R2', method='mean')
+                        print(chan, sStats2)
                 else:
                     print('Missing column in OpenFAST: ',chan)
             ax.set_xlabel('Time [s]')
@@ -415,11 +723,58 @@ class FASTLinModel(LinearStateSpace):
 
         return fig
 
+    # --------------------------------------------------------------------------------}
+    # --- Matrix manipulation
+    # --------------------------------------------------------------------------------{
+    # From welib.system.statespacelinear
+    #def rename(self, colMap, verbose=False):
+    #def extract(self, sX=None, sU=None, sY=None, verbose=False, check=True, inPlace=True):
+    #def toSI(self, verbose=False):
+    #def fromDataFrames(self, A, B=None, C=None, D=None):
+    #def toDataFrames(self):
+
+
+    # --------------------------------------------------------------------------------}
+    # ---  IO functions for printing
+    # --------------------------------------------------------------------------------{
+    # From welib.system.statespacelinear
+    #def __repr__(self):
+
+    def printOP(self):
+        print('>>> q0_NL  ', dict(self.q0_NL))
+        print('>>> qop    ', dict(self.qop))
+        print('>>> q0     ', dict(self.q0))
+        print('>>> qop_sim', dict(self.qop_sim))
+        print('>>> uop_sim', self.uop_sim)
+        print('>>> yop_sim', self.yop_sim)
+
+
+    def picklable(self):
+        """ Make the object picklable..."""
+        if self.WT:
+            self.WT.picklable()
+        if self.WT_sim:
+            self.WT_sim.picklable()
+#         def noneIfLambda(obj):
+#             if callable(obj) and obj.__name__ == "<lambda>":
+#                 obj=None
+
     @property
     def defaultPickleFile(self):
         if self.fstFilename is None:
             raise NotImplementedError('Default pickle with no fstFilename')
         return self.fstFilename.replace('.fst','_linModel.pkl')
+
+    def load(self, pickleFile=None):
+        if pickleFile is None:
+            pickleFile = self.defaultPickleFile
+        print('FASTLinModel: loading PKL:',pickleFile)
+
+        d = LinearStateSpace.load(self, pickleFile)
+        self.WT          = d['WT']
+        self.fstFilename = d['fstFilename']
+        self.pickleFile = pickleFile
+
 
     def save(self, pickleFile=None):
         if pickleFile is None:
@@ -431,16 +786,7 @@ class FASTLinModel(LinearStateSpace):
         d = {'fstFilename':self.fstFilename, 'WT':self.WT}
         LinearStateSpace.save(self, pickleFile, d)
         print('FASTLinModel: writing PKL: ', pickleFile)
-
-    def load(self, pickleFile=None):
-        if pickleFile is None:
-            pickleFile = self.defaultPickleFile
-        print('FASTLinModel: loading PKL:',pickleFile)
-
-        d = LinearStateSpace.load(self, pickleFile)
-        self.WT          = d['WT']
-        self.fstFilename = d['fstFilename']
-
+        self.pickleFile = pickleFile
 
 
 # --------------------------------------------------------------------------------}

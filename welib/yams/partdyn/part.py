@@ -262,9 +262,13 @@ class PartSystem(list):
         return res
 
 
-    def animate2Dtrajectories(self, res, XLIM=[-6,6], YLIM=[-6,6], plane='XY'):
+    def animate2Dtrajectories(self, res, XLIM=[-6,6], YLIM=[-6,6], plane='XY', frame=None, fromInit=False, fig=None):
+        from welib.tools.colors import python_colors
         # Create figure for plotting
-        fig, ax = plt.subplots()
+        if fig is None:
+            fig, ax = plt.subplots()
+        else:
+            ax = fig.gca()
         if plane=='XY':
             i1,i2=0,1
         elif plane=='XZ':
@@ -273,7 +277,7 @@ class PartSystem(list):
             ax.clear()
             for ip,p in enumerate(self):
                 x_p  = res.y[ip*3:ip*3+3,i]
-                ax.plot(x_p[i1], x_p[i2], 'o')
+                ax.plot(x_p[i1], x_p[i2], 'o', c=python_colors(ip))
             for sp in self._springs:
                 ip1 = sp['ip1']
                 ip2 = sp['ip2']
@@ -283,11 +287,42 @@ class PartSystem(list):
 
             ax.set_xlim(XLIM)
             ax.set_ylim(YLIM)
-            ax.set_title('{:.2f}'.format(res.t[i]))
-        ani = animation.FuncAnimation(fig, animate, interval=1, frames=len(res.t))
-        plt.show()
+            ax.tick_params(direction='in', top=True, right=True)
+            ax.set_title('time = {:.2f}'.format(res.t[i]))
+        def plotFromInit(i):
+            for ip,p in enumerate(self):
+                x_p0 = res.y[ip*3:ip*3+3,0]
+                x_p  = res.y[ip*3:ip*3+3,i]
+                ax.plot(x_p0[i1], x_p0[i2], 'ko')
+                ax.plot(x_p[i1], x_p[i2], 'o', c=python_colors(ip))
+                #ax.plot([x_p0[i1],x_p[i1]], [x_p0[i2], x_p[i2]], 'k:')
+            for sp in self._springs:
+                ip1 = sp['ip1']
+                ip2 = sp['ip2']
+                x_p1 = res.y[ip1*3:ip1*3+3,0]
+                x_p2 = res.y[ip2*3:ip2*3+3,0]
+                ax.plot([x_p1[i1],x_p2[i1]], [x_p1[i2], x_p2[i2]],'k--')
+                x_p1 = res.y[ip1*3:ip1*3+3,i]
+                x_p2 = res.y[ip2*3:ip2*3+3,i]
+                ax.plot([x_p1[i1],x_p2[i1]], [x_p1[i2], x_p2[i2]],'k-')
+
+            ax.set_xlim(XLIM)
+            ax.set_ylim(YLIM)
+            ax.tick_params(direction='in', top=True, right=True)
+            ax.set_title('time = {:.2f}'.format(res.t[i]))
+        if frame:
+            if fromInit:
+                plotFromInit(frame)
+            else:
+                animate(frame)
+            return fig
+
+        else:
+            ani = animation.FuncAnimation(fig, animate, interval=1, frames=len(res.t))
+            plt.show()
 
     def plot2Dtrajectories(self, res, XLIM=[-6,6], YLIM=[-6,6], plane='XY'):
+        from welib.tools.colors import python_colors
         fig, ax = plt.subplots()
         if plane=='XY':
             i1,i2=0,1
@@ -295,7 +330,7 @@ class PartSystem(list):
             i1,i2=0,2
         for ip,p in enumerate(self):
             x_p  = res.y[ip*3:ip*3+3,:]
-            ax.plot(x_p[i1,:], x_p[i2,:], '-')
+            ax.plot(x_p[i1,:], x_p[i2,:], '-', c=python_colors(ip))
 
         ax.set_xlim(XLIM)
         ax.set_ylim(YLIM)

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 class KalmanFilter(object):
-    def __init__(self,sX0,sXa,sU,sY,sS=None):
+    def __init__(self,sX0,sXa,sU,sY,sS=None, sXd=None):
         sS = [] if sS is None else sS
         self.sX0 = sX0
         self.sXa = sXa
@@ -11,8 +11,14 @@ class KalmanFilter(object):
         self.sY  = sY
         self.sS  = sS # Storage, "Misc" values
 
+
         #  State vector is States and Augmented states
         self.sX=np.concatenate((self.sX0,self.sXa))
+
+        if sXd is None:
+            sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
+        self.sXd = sXd
+
 
         # --- Defining index map for convenience
         self.iX={lab: i   for i,lab in enumerate(self.sX)}
@@ -181,9 +187,15 @@ class KalmanFilter(object):
         self.Y_clean = pd.DataFrame(data=np.zeros((self.nt,self.nY)), columns=self.sY)
         self.U_clean = pd.DataFrame(data=np.zeros((self.nt,self.nU)), columns=self.sU)
         self.S_clean = pd.DataFrame(data=np.zeros((self.nt,self.nS)), columns=self.sS)
+        self.XD_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sXd)
         for i,lab in enumerate(self.sX):
             try:
                 self.X_clean[lab]=df[ColMap[lab]].values
+            except:
+                print('[WARN] Clean state not available      :', lab)
+        for i,lab in enumerate(self.XD_clean.columns):
+            try:
+                self.XD_clean[lab]=df[ColMap[lab]].values
             except:
                 print('[WARN] Clean state not available      :', lab)
 
@@ -217,6 +229,8 @@ class KalmanFilter(object):
         self.Y_hat = pd.DataFrame(data=np.zeros((self.nt, self.nY)), columns=self.sY)
         self.Y     = pd.DataFrame(data=np.zeros((self.nt, self.nY)), columns=self.sY)
         self.S_hat = pd.DataFrame(data=np.zeros((self.nt, self.nS)), columns=self.sS)
+        self.U_hat = pd.DataFrame(data=np.zeros((self.nt, self.nU)), columns=self.sU)
+        self.XD_hat = pd.DataFrame(data=np.zeros((self.nt, self.nX)), columns=self.sXd)
     
 #     # TODO use property or dict syntax
 #     def get_vY(self,lab):
@@ -356,16 +370,20 @@ class KalmanFilter(object):
     # --------------------------------------------------------------------------------{
 
     def plot_X(KF, title='States X', **kwargs):
+        """ plot states, return fig """
         return _plot(KF.time, KF.X_clean, KF.X_hat, KF.sX, title=title, **kwargs)
 
 
     def plot_U(KF, title='Inputs U', **kwargs):
-        print('>>> kalmanfilter: TODO TODO plot U')
+        """ plot inputs, return fig """
+        return _plot(KF.time, KF.U_clean, KF.U_hat, KF.sU, title=title, **kwargs)
 
     def plot_Y(KF, title='Measurements Y', **kwargs):
+        """ plot measurements, return fig """
         return _plot(KF.time, KF.Y_clean, KF.Y_hat, KF.sY, title=title, X_noisy=KF.Y, **kwargs)
 
     def plot_S(KF, title='Stored Values S',**kwargs):
+        """ plot stored values, return fig """
         if KF.nS==0:
             return
         return _plot(KF.time, KF.S_clean, KF.S_hat, KF.sS, title=title, **kwargs)
@@ -377,6 +395,64 @@ class KalmanFilter(object):
                 pickle.dump(self,f)
         else:
             raise NotImplementedError()
+
+    def saveOutputs(KF, filename, fmt='outb', df=None):
+
+        if df is None:
+            df = KF.toDataFrame()
+
+        if fmt=='csv':
+            pass
+        elif fmt=='outb':
+            from welib.weio.fast_output_file import writeDataFrame
+            writeDataFrame(df, filename, binary=True)
+        else:
+            raise NotImplementedError()
+
+        return df
+
+
+    def toDataFrame(KF):
+        """ Concatenante all info into a dataframe """
+
+        def splitunit(s):
+            iu=s.rfind('_[')
+            if iu>1:
+                return s[:iu], s[iu:]
+            else:
+                return s, ''
+
+        def cleancol(l):
+            return ['_clean'.join(splitunit(c)) for c in l]
+
+        cols = []
+        cols += list(KF.X_hat.columns)
+        cols += cleancol(KF.X_clean.columns)
+        cols += list(KF.U_hat.columns)
+        cols += cleancol(KF.U_clean.columns)
+        cols += ['OUT_'+c for c in list(KF.Y_hat.columns)]
+        cols += ['OUT_'+c for c in cleancol(KF.Y_clean.columns)]
+        cols += list(KF.S_hat.columns)
+        cols += cleancol(KF.S_clean.columns)
+        df = pd.concat((KF.X_hat, KF.X_clean, KF.U_hat, KF.U_clean, KF.Y_hat, KF.Y_clean, KF.S_hat, KF.S_clean), axis=1)
+        df.columns = cols
+
+        # "Accelerations" 
+        dfAcc = pd.concat((KF.XD_hat, KF.XD_clean), axis=1)
+        cols = list(KF.XD_hat.columns)
+        cols += cleancol(KF.XD_clean.columns)
+        dfAcc.columns=cols
+        # We keep only the part that is not already in the state vector
+        col_new = [c for c in cols if c not in df.columns]
+        dfAcc=dfAcc[col_new] 
+
+        # 
+        df = pd.concat((df,dfAcc), axis=1)
+
+
+        df.insert(0, 'Time_[s]', KF.time)
+        return df
+
 
     @staticmethod
     def load(filename):
@@ -390,7 +466,8 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8)):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2'):
+    from welib.tools.stats import comparison_stats
     import matplotlib
     import matplotlib.pyplot as plt
     # --- Compare States
@@ -429,15 +506,28 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
     for j,i in enumerate(I):
         s  = sX[i]
         ax = axes[j]
-        ax.plot(time,X_clean[s],''  , color=COLRS[0],label='Reference')
+        if X_clean is not None:
+            ax.plot(time,X_clean[s],''  , color=COLRS[0],label='Reference')
         if X_noisy is not None:
             ax.plot(time,X_noisy[s],'-.',  color=COLRS[2] ,label='Noisy')
         ax.plot(time,X_hat[s],'--', color=COLRS[1],label='Estimate')
+
+        if stats:
+            if X_clean is not None:
+                _, sStats = comparison_stats(time, X_clean[s], time, X_hat[s], stats=stats)
+                Ylim = ax.get_ylim()
+                Xlim = ax.get_xlim()
+                ax.text(Xlim[0]*1.01 ,Ylim[0]+(Ylim[1]-Ylim[0])*0.82, sStats, fontsize=10)
+
         ax.set_ylabel(s)
         ax.tick_params(direction='in')
     axes[0].set_title(title)
     axes[-1].set_xlabel('Time [s]')
-    axes[-1].legend()
+    axes[len(I)-1].legend()
+    # Remove unnecessary axes
+    if len(axes)>len(I):
+        for j in range(len(I), len(axes)):
+            axes[j].axis('off')
     return fig
 
 

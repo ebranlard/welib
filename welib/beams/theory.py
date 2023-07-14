@@ -173,7 +173,32 @@ def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip',nMod
 
     return freq,x,ModesU,ModesV,ModesK
 
+def UniformBeamGuyanModes(EI, rho, A, L, x=None, norm='tip', nModes=2):
+    #from welib.FEM.frame3d import N3, N4
+    if x is None or len(x)==0:
+        x = np.linspace(0,L,101)
+    if np.amax(x) != L:
+        raise Exception('Max of x should be equal to L')
 
+    x0 = x/L
+    freq = np.nan # TODO use EI and m
+    U1 = 3*x0**2 - 2*x0**3      # N3
+    U2 = L*x0**2*(x0-1)         # N4
+    V1 = 1/L*(6*x0 - 6*x0**2)
+    K1 = 1/L**2 *(6 - 12*x0)
+    V2 = 3*x0**2 -2*x0
+    K2 = 1/L*(6*x0 -2 )
+    ModesU = np.zeros((nModes,len(x0)))
+    ModesV = np.zeros((nModes,len(x0)))
+    ModesK = np.zeros((nModes,len(x0)))
+    ModesU[0,:] = U1
+    ModesU[1,:] = U2
+    ModesV[0,:] = V1
+    ModesV[1,:] = V2
+    ModesK[0,:] = K1
+    ModesK[1,:] = K2
+
+    return freq,x,ModesU,ModesV,ModesK
     
 # --------------------------------------------------------------------------------}
 # --- Longitudinal modes 

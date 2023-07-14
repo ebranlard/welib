@@ -1,5 +1,7 @@
 """ 
 
+See also welib.wt_theory.idealrotors
+
 References:
   [1] Wind Energy Explained, 3rd edition, Chapter 3
 

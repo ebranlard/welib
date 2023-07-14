@@ -156,7 +156,7 @@ MathematicaLightGreen = np.array([158,204,170 ])/255.;
 # 
 ManuDarkBlue    = np.array([0   ,0  ,0.7 ])     ;
 ManuDarkRed     = np.array([138 ,42 ,93  ])/255.;
-ManuDarkOrange  = np.array([245 ,131,1   ])/255.;
+# ManuDarkOrange  = np.array([245 ,131,1   ])/255.;
 ManuDarkOrange  = np.array([198 ,106,1   ])/255.;
 ManuLightOrange = np.array([255.,212,96  ])/255.;
 # 

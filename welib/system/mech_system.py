@@ -394,18 +394,19 @@ class MechSystem():
         df = self.res2DataFrame(DOFs=DOFs, Factors=Factors)
         df.to_csv(filename, sep=',', index=False)
 
-    def res2DataFrame(self, res=None, DOFs=None, Factors=None, 
+    def res2DataFrame(self, res=None, sStates=None, Factors=None, 
             x0=None, xd0=None, 
             calc='xdd,f', # xdd, f, y
             sAcc=None, sForcing=None
             ):
         """ Return time integration results as a dataframe
-        DOFs:    array of string for DOFs names   (2xnDOF, positions and velocities)
+        sStates: array of string for DOFs names   (2xnDOF, positions and velocities)
         Factors: array of floats to scale the DOFs (2xnDOF)
         x0 :  array of floats to add to the DOF (1xnDOF)
         xd0:  array of floats to add to the velocities (1xnDOF)
               NOTE: the positions will be increased linearly
         """
+        # TODO harmonize with statespace.res2DataFrame
         import pandas as pd
 
         calcVals = calc.split(',')
@@ -415,72 +416,87 @@ class MechSystem():
                 raise Exception('Call integrate before res2DataFrame')
             res = self.res
 
-        if DOFs is None:
-            DOFs  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]
-            DOFs += ['xd_{}'.format(i) for i in np.arange(self.nDOF)]
+        if sStates is None:
+            sStates  = ['x_{}'.format(i) for i in np.arange(self.nDOF)]
+            sStates += ['xd_{}'.format(i) for i in np.arange(self.nDOF)]
         if sAcc is None:
             sAcc = ['xdd_{}'.format(i) for i in np.arange(self.nDOF)]
         if sForcing is None:
             sForcing = ['F_{}'.format(i) for i in np.arange(self.nDOF)]
 
-        header = ' Time_[s], '+','.join(DOFs)
+        # --- Time and states
+        dfStates = self.store_states(res, sStates=sStates, x0=x0, xd0=xd0, Factors=Factors)
 
-        res = self.res
-
-        # Combine time series into a matrix
-        M    = np.column_stack((res.t, res.y.T))
-        time = res.t
-        cols = ['Time_[s]']+DOFs
-
-        # Scaling
-        if Factors is not None:
-            for i, f in enumerate(Factors):
-                M[:,i+1] *= f
-        # Offset Velocity
-        if xd0 is not None:
-            for i, xd0_ in enumerate(xd0):
-                if Factors is not None:
-                    M[:,self.nDOF+i+1] += xd0_*Factors[i+self.nDOF] # Add to velocity
-                    M[:,i+1]           += (xd0_*time)*Factors[i]    # Position increases linearly
-                else:
-                    M[:,self.nDOF+i+1] += xd0_      # Add to velocity
-                    M[:,i+1]           += xd0_*time # Position increases linearly
-        # Offset position
-        if x0 is not None:
-            for i, x0_ in enumerate(x0):
-                if Factors is not None:
-                    M[:,i+1] += x0_*Factors[i]
-                else:
-                    M[:,i+1] += x0_
-
-        for i,d in enumerate(DOFs):
-            if DOFs[i].find('[deg]')>1: 
-                if np.max(M[:,i+1])>180:
-                    M[:,i+1] = np.mod(M[:,i+1], 360)
-        dfStates =  pd.DataFrame(data=M, columns=cols)
-
-        # Accelerations 
+        # --- Accelerations 
         dfAcc = None
         if 'xdd' in calcVals:
             xdd = self.TS_Acceleration
             dfAcc =  pd.DataFrame(data=xdd.T, columns=sAcc)
 
-        # Forcing
+        # --- Forcing
         dfF = None
         if 'f' in calcVals:
             F     = self.TS_Forcing
             dfF =  pd.DataFrame(data=F.T, columns=sForcing)
 
-        # Outputs
+        # --- Try to compute outputs
         dfOut = None
         if 'y' in calcVals:
             dfOut = self.calc_outputs(insertTime=True, yoffset=None)
+        # --- Try to compute inputs
 
         # --- Concatenates everything into one DataFrame
         df = pd.concat((dfStates, dfAcc, dfF, dfOut), axis=1)
         df = df.loc[:,~df.columns.duplicated()].copy()
 
         return df
+
+    def store_states(self, res, sStates=None, x0=None, xd0=None, Factors=None):
+        #nStates = len(self.q0)
+        #if sStates is None and self.sX is None:
+        #    sStates = ['x{}'.format(i+1) for i in range(nStates)] # TODO
+        #else:
+        #    if sStates is None:
+        #        sStates = self.sX
+        #    nCols = self.res.y.shape[0]
+        #    if len(self.sX)!=nCols:
+        #        raise Exception("Inconsistency in length of states columnNames. Number of columns detected from res: {}. States columNames (sX): {}".format(nCols, self.sX))
+        #self.sX = sStates
+
+        # Store as a matrix
+        M = res.y.T.copy()
+
+        # Scaling
+        if Factors is not None:
+            for i, f in enumerate(Factors):
+                M[:,i] *= f
+        # Scaling offsets
+        if Factors is not None and x0 is not None:
+            x0 *= np.asarray(Factors[:self.nDOF])
+        if Factors is not None and xd0 is not None:
+            xd0 *= np.asarray(Factors[self.nDOF:])
+
+        # Offset Velocity
+        if xd0 is not None:
+            for i, xd0_ in enumerate(xd0):
+                M[:,self.nDOF+i] += xd0_       # Add to velocity
+                M[:,i]           += xd0_*res.t # Position increases linearly (e.g. azimuth)
+        # Offset position
+        if x0 is not None:
+            for i, x0_ in enumerate(x0):
+                M[:,i] += x0_
+
+        # Degrees
+        for i,d in enumerate(sStates):
+            if sStates[i].find('[deg]')>1: 
+                if np.max(M[:,i])>180:
+                    M[:,i] = np.mod(M[:,i], 360)
+        # Insert time
+        dfStates =  pd.DataFrame(data=M, columns=sStates)
+        dfStates.insert(0, 'Time_[s]', res.t)
+        return dfStates
+
+
 
 
     def _prepareOutputDF(self, res):
@@ -635,6 +651,12 @@ class MechSystem():
         #    print('[WARN] The A matrix is not guaranteed to be the linearized version when force is given as a function')
         return StateMatrix(self._Minv,self.C,self.K)
 
+    def eigA(self):
+        from welib.tools.eva import eigA
+        A = self.A # NOTE: not always defined...
+        freq_d, zeta, Q, freq_0 = eigA(A, fullEV=False, normQ=None, sort=True)
+        return freq_d, zeta, Q, freq_0 
+
     @property
     def B(self):
         """ 
@@ -698,8 +720,20 @@ class MechSystem():
 
         return s
 
+    def picklable(self):
+        """ Make the object picklable..."""
+        def noneIfLambda(attr):
+            obj = getattr(self, attr)
+            if callable(obj) and obj.__name__ == "<lambda>":
+                print('MechSystem: picklable: removing ', attr)
+                setattr(self, attr, None)
+        noneIfLambda('M')
+        noneIfLambda('_fM')
+        noneIfLambda('_fMinv')
+        noneIfLambda('_force_fn')
 
-    def plot(self, fig=None, axes=None, label=None, res=None, calc='', qFactors=None, **kwargs):
+
+    def plot(self, fig=None, axes=None, label=None, res=None, df=None, sStates=None, calc='', qFactors=None, **kwargs):
         """ Simple plot of states after time integration"""
         if res is None:
             res=self.res
@@ -717,7 +751,8 @@ class MechSystem():
         axes = np.atleast_1d(axes)
         n=self.nDOF
 
-        df=self.res2DataFrame(DOFs=None, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
+        if df is None:
+            df = self.res2DataFrame(res=res, sStates=sStates, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
         for i,ax in enumerate(axes):
             if i+1>len(df.columns):
                 continue

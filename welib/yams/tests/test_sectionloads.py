@@ -25,13 +25,10 @@ class Test(unittest.TestCase):
         #F_lumped[int(n/2)]=1000
         #F_lumped[int(3*n/4)]=1000
 
-
-        method='plin'
-
         F_tot = np.trapz(p,z) + F_top + np.sum(F_lumped)
         M_tot = np.trapz(p*z ,z) + F_top*z[-1]
 
-        Fs, Ms   = beamSectionLoads1D(z, p, F_top, M_top, s=1, F_lumped=F_lumped, method=method)
+        Fs, Ms   = beamSectionLoads1D(z, p, F_top, M_top, s=1, F_lumped=F_lumped, method='plin')
         Fs2, Ms2 = beamSectionLoads1D(z, p, F_top, M_top, s=1, F_lumped=F_lumped, method='manual')
         Fs3, Ms3 = beamSectionLoads1D(z, p, F_top, M_top, s=1, F_lumped=F_lumped, method='cumtrapz')
 
@@ -56,6 +53,7 @@ class Test(unittest.TestCase):
         #axes[1].set_xlabel('M [Nm]')
         #axes[0].legend()
         #axes[1].legend()
+        #plt.show()
 
         
         dz=np.diff(z)[0]

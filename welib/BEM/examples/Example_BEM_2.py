@@ -34,10 +34,15 @@ def main(test=False):
     radialBasename = os.path.join(OutDir,'_BEM_') if not test else None
 
     # --- Option 1: using wrapper class
-    BEM = SteadyBEM(FASTFileName=MainFASTFile) # Initialize based on OpenFAST parameters
+    BEM = SteadyBEM(filename=MainFASTFile) # Initialize based on OpenFAST parameters
     # Change algo options
-    BEM.bTIDrag  = False
+    BEM.bSwirl     = True  # swirl flow model enabled / disabled
+    BEM.bTipLoss   = True  # enable / disable tip loss model
+    BEM.bHubLoss   = False # enable / disable hub loss model
+    BEM.bAIDrag    = True  # influence on drag coefficient on normal force coefficient
+    BEM.bTIDrag    = False
     BEM.relaxation = 0.4
+    BEM.bUseCm     = False  # Use Moment
     #print(BEM)
     # Compute performances for multiple operating conditions, store in dataframe, and export to file
     dfOut,_ = BEM.parametric(Omega, Pitch, WS, outputFilename=filenameOut, radialBasename=radialBasename)
@@ -54,7 +59,7 @@ def main(test=False):
         for i,(V0,RPM,pitch), in enumerate(zip(WS,Omega,Pitch)):
             BEM=calcSteadyBEM(RPM,pitch,V0,xdot=0,u_turb=0,
                         nB=nB,cone=cone,r=r,chord=chord,twist=twist,polars=polars,
-                        rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,
+                        rho=rho,KinVisc=KinVisc,bTIDrag=False,bAIDrag=True,bUseCm=False,
                         a_init =a0, ap_init=ap0)
             a0, ap0 = out.a, out.aprime
             # Export radial data to file
@@ -83,7 +88,7 @@ if __name__=="__main__":
     plt.show()
 if __name__=="__test__":
     dfOut, dfRad = main(test=True)
-    np.testing.assert_almost_equal(dfOut['AeroPower_[kW]'].values[-5], 5677.2006, 3)
+    np.testing.assert_almost_equal(dfOut['AeroPower_[kW]'].values[-5], 5710.6344, 3)
     np.testing.assert_almost_equal(dfRad['a_prime_[-]'].values[4], 0.1636598, 4)
     [os.remove(f) for f in glob.glob(os.path.join(MyDir,'_*.csv'))]
 if __name__=="__export__":

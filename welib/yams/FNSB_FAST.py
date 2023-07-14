@@ -16,10 +16,12 @@ import welib.weio as weio
 # TODO TODO TODO
 # TODO TODO TODO HARMONIZE WITH WINDTURBINE.PY AND TNSB..
 # TODO TODO TODO
-def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_bld=61,bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan_bld=None, bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
         spanFrom0=True, # TODO for legacy, we keep this for now..
-        bladeMassExpected=None
-):
+        bladeMassExpected=None,
+        gravity=None,
+        algo='' # TODO replace with OpenFAST
+        ):
     """ 
     Returns the following structure
       Fnd :  BeamBody
@@ -45,6 +47,11 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
     FST=weio.read(FST_file)
     rootdir = os.path.dirname(FST_file)
     EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
+    if gravity is None:
+        try:
+           gravity = FST['gravity']
+        except:
+           pass
     subfile = os.path.join(rootdir,FST['SubFile'].strip('"')).replace('\\','/')
 
     # Reading elastodyn file
@@ -54,6 +61,8 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     #twr     = weio.read(twrfile)
     bld     = weio.read(bldfile)
+    if gravity is None:
+       gravity = ED['gravity'] # Old interface, method above should work, so raise Exception here
 
     # Reading SubDyn file
     sub     = weio.read(subfile)
@@ -77,6 +86,27 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
         DampMat=DampMat[np.ix_(shapes,shapes)]
 
 
+    # --- Default arguments
+#     if nSpan_sub is None:
+#         if algo=='OpenFAST':
+#             nSpan_sub = 
+#             print('[INFO] FNSB_FAST: Using number of substructure nodes ({}) from OpenFAST Input file.'.format(nSpan_sub))
+#         else:
+#             nSpan_sub=101
+#             print('[INFO] FNSB_FAST: Using default number of substructure nodes ({}).'.format(nSpan_sub))
+#     else:
+#         if algo=='OpenFAST':
+#             print('[INFO] FNSB_FAST: Using user-specified number of substructure nodes ({}).'.format(nSpan_sub))
+    if nSpan_bld is None:
+        if algo=='OpenFAST':
+            nSpan_bld = ED['BldNodes']
+            print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
+        else:
+            nSpan_bld=61
+            print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
+    else:
+        if algo=='OpenFAST':
+            print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
 
     nB = ED['NumBl']
     nDOF = 1 + nShapes_sub + nShapes_bld * nB # +1 for Shaft
@@ -127,9 +157,11 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
 
     M_hub   = ED['HubMass']*bHubMass
     M_nac   = ED['NacMass'] *bNacMass
+    M_yaw   = ED['YawBrMass']
     IR_hub = np.zeros((3,3))
     I0_nac=np.zeros((3,3)) 
 
+	# TODO, here hub and Gen put together...
     if main_axis=='x':
         IR_hub[2,2] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
         I0_nac[0,0]= ED['NacYIner']
@@ -140,7 +172,7 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
     I0_nac = I0_nac * bNacMass
 
     # Inertias not at COG...
-    IG_hub = translateInertiaMatrix(IR_hub, M_hub, np.array([0,0,0]), r_RGhub_inS)
+    IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG=r_RGhub_inS)
     IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, r_NGnac_inN)
 
     # --------------------------------------------------------------------------------}
@@ -148,7 +180,7 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
     # --------------------------------------------------------------------------------{
     # Bld
     Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected)) # NOTE: legacy spanfrom0
+    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
     Blds[0].MM *=bBldMass
     for iB in range(nB-1):
         Blds.append(copy.deepcopy(Blds[0]))
@@ -163,14 +195,26 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
         R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
         B.R_b2g= R_SB
 
-    # ShaftHub Body 
-    Sft=RigidBody('ShaftHub',M_hub,IG_hub,r_SGhub_inS);
+    # ShaftHubGen Body  NOTE: generator!!! This is ugly
+    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
+    
+    # Gen only
+    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+
+    #print('>>> IG_hub',IG_hub, r_SGhub_inS)
     # Nacelle Body
     Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
-    M_rot= sum([B.Mass for B in Blds])
-    M_RNA= M_rot + Sft.Mass + Nac.Mass;
+    # Yaw Bearing # TODO TODO TODO
+    Yaw=RigidBody('YawBearing',M_yaw,(0,0,0),(0,0,0));
+    if M_yaw>0:
+        print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN FTNSB')
+
+    M_rot= sum([B.mass for B in Blds])
+    M_RNA= M_rot + Sft.mass + Nac.mass + Yaw.mass
+    # Tower Body
+    #   None for now
     # Substructure Body
-    Fnd = FASTBeamBody('substructure', ED, sub, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening)
+    Fnd = FASTBeamBody('substructure', ED, sub, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
     #print(Fnd)
     #print('Fnd MM\n',Fnd.MM[6:,6:])
     #print('Fnd KK\n',Fnd.KK[6:,6:])
@@ -182,8 +226,8 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
     #print('Stiffnening', bStiffening)
     #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
     if DEBUG:
-        print('HubMass',Sft.Mass)
-        print('NacMass',Nac.Mass)
+        print('HubMass',Sft.mass)
+        print('NacMass',Nac.mass)
         print('RotMass',M_rot)
         print('RNAMass',M_RNA)
         print('IG_hub')
@@ -203,9 +247,9 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=101,nSpan_
     r_TN_inT = r_FT_inF+r_TN_inT # assume that F and T are in system E here
 
     if assembly=='manual':
-        Struct = manual_assembly(Fnd,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = manual_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
     else:
-        Struct = auto_assembly(Fnd,Nac,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = auto_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
 
     # --- Initial conditions
     omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s

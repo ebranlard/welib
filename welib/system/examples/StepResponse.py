@@ -35,7 +35,7 @@ fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
 fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
 ax.plot(time/T, x_s/A    , label='Step')
 ax.plot(time/T, x_d/A    , label='Impulse')
-ax.tick_params(direction='in')
+ax.tick_params(direction='in', top=True, right=True)
 ax.set_xlabel('Time/T [-]')
 ax.set_ylabel('x/A [-]')
 ax.set_title('System - 2nd order - Responses')
@@ -46,6 +46,5 @@ if __name__ == '__main__':
 if __name__ == '__test__':
     pass
 if __name__=="__export__":
-    pass
-    #from welib.tools.repo import export_figs_callback
-    #export_figs_callback(__file__)
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)

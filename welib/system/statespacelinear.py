@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from numpy.linalg import inv
@@ -8,7 +9,7 @@ from scipy.optimize import OptimizeResult as OdeResultsClass
 from scipy.linalg import expm
 # Local
 from welib.system.statespace import StateSpace
-from welib.fast.tools.lin import matToSIunits, subMat # TODO
+from welib.fast.tools.lin import matToSIunits, subMat, subSeries # TODO
 # --------------------------------------------------------------------------------}
 # --- Simple statespace functions ltiss (linear time invariant state space)
 # --------------------------------------------------------------------------------{
@@ -175,16 +176,28 @@ class LinearStateSpace(StateSpace):
     def nInputs(self):
     def nOutputs(self):
     """
-    def __init__(self, A=None, B=None, C=None, D=None, q0=None,
+    def __init__(self, A=None, B=None, C=None, D=None, 
+            qop=None, uop=None, yop=None,
             sX=None, sU=None, sY=None,
             verbose=False,
             ):
         """ 
         INPUTS:
+         - A, B, C, D: state matrices (may be None/empty)
+         - qop: degrees of freedom at operating point
          - sX: list of names for states
          - sY: list of names for outputs
          - sU: list of names for inputs
         """
+        # --- Data
+        self.A = None
+        self.B = None
+        self.C = None
+        self.D = None
+        self.q0_  = None
+        self.qop_ = None
+        self.uop_ = None
+        self.yop_ = None
         if A is None:
             A = np.zeros((0,0))
         self.A = np.asarray(A)
@@ -193,7 +206,7 @@ class LinearStateSpace(StateSpace):
         # --- StateSpace
         StateSpace.__init__(self, dqdt=self.dqdt_tqu, signature='t,q,u', 
                 sX = sX, sU=sU, sY=sY,
-                q0=q0, verbose=verbose)
+                verbose=verbose)
         # --- System
         self.Y = self.Outputs_tqu
 
@@ -218,6 +231,17 @@ class LinearStateSpace(StateSpace):
         else:
             self.D=np.asarray(D)
 
+        # Operating point of linear model
+        if qop is None:
+            qop = np.zeros(self.nStates)*np.nan
+        if uop is None:
+            uop = np.zeros(self.nInputs)*np.nan
+        if yop is  None:
+            yop = np.zeros(self.nOutputs)*np.nan
+        self.qop_ = qop
+        self.uop_ = uop
+        self.yop_ = yop
+
         # --- For linear models we can infer the dimensions of states easily
         #if sX is None:
         #    self.sX = ['x{}'.format(i+1) for i in range(self.nStates)]
@@ -225,6 +249,57 @@ class LinearStateSpace(StateSpace):
         #    self.sY = ['y{:d}'.format(i+1) for i in range(self.nOutputs)]
         #if sU is None:
         #    self.sU = ['u{:d}'.format(i+1) for i in range(self.nInputs)]
+
+
+    #def stateMatrices(self, A=None, B=None, C=None, D=None, sX=None, sU=None, sY=None):
+#         if A is None:
+#             A = np.zeros((0,0))
+#         self.A = np.asarray(A)
+#         # --- Linear system
+#         if B is None:
+#             nq = A.shape[0]
+#             B = np.zeros((nq,0))
+#             # No Inputs
+#             self.setInputFunction(lambda t,q: np.zeros(0), signature_u='t,q')
+#         self.B = np.asarray(B)
+# 
+#         if C is None:
+#             if sY is None:
+#                 sY = sX
+#                 self.C=np.eye(A.shape[0]) # output all states
+#             else:
+#                 self.C=np.zeros((len(sY), A.shape[0])) 
+#         else:
+#             self.C=np.asarray(C)
+#         if D is None:
+#             self.D=np.zeros((self.C.shape[0],self.B.shape[1]))
+#         else:
+#             self.D=np.asarray(D)
+#         # --- Names
+#         self.sX = sX
+#         self.sY = sY
+#         self.sU = sU
+
+    @property
+    def q0(self):
+        return pd.Series(self.q0_, index=self.sStates)
+
+    @property
+    def qop(self):
+        return pd.Series(self.qop_, index=self.sStates)
+
+    @property
+    def qop_default(self):
+        return pd.Series(np.zeros(len(self.sX)), index=self.sX)
+
+    @property
+    def uop(self):
+        return pd.Series(self.uop_, index=self.sInputs)
+
+    @property
+    def yop(self):
+        return pd.Series(self.yop_, index=self.sOutputs)
+
 
 
     @property
@@ -246,11 +321,13 @@ class LinearStateSpace(StateSpace):
     # --- Initial conditions
     # --------------------------------------------------------------------------------{
     def setStateInitialConditions(self, q0=None):
-        self.q0 = np.zeros(self.nStates)
         if q0 is not None:
             if len(q0)!=self.nStates:
                 raise Exception('Wrong dimension for q0 ({} instead of {} )'.format(len(q0),self.nStates))
-            self.q0 = q0
+        else:
+            q0 = np.zeros(self.nStates)
+        self.q0_ =  q0 # pd.Series(q0, index=self.sStates)
+
             
     # --------------------------------------------------------------------------------}
     # --- INPUTS
@@ -305,8 +382,8 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------}
     # --- Time integration 
     # --------------------------------------------------------------------------------{
-    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', xoffset=None, uoffset=None, **options):
-        #dfLI = sysLI.res2DataFrame(self.channels, self.FASTDOFScales, x0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
+    def integrate(self, t_eval, method='RK45', y0=None, u=None, calc='', xoffset=None, uoffset=None, yoffset=None, **options):
+        #dfLI = sysLI.res2DataFrame(self.channels, self.FASTDOFScales, q0=qop, xd0=qdop, acc=acc, forcing=forcing, sAcc=self.acc_channels)
         #
         if y0 is not None:
             self.setStateInitialConditions(y0)
@@ -315,16 +392,16 @@ class LinearStateSpace(StateSpace):
         if method is None:
             method='RK45'
 
-        # --- Satity checks
-        if len(self.q0)!=self.nStates:
-            raise Exception('Size of initial condition ({}) different from number of states ({}).'.format(len(self.q0), self.nStates))
+        # --- Sanity checks
+        if len(self.q0_)!=self.nStates:
+            raise Exception('Size of initial condition ({}) different from number of states ({}).'.format(len(self.q0_), self.nStates))
         if self.A.shape[0]!=self.nStates or self.A.shape[1]!=self.nStates:
             raise Exception('Shape of A ({}) different from number of states ({}).'.format(self.A.shape, self.nStates))
         if np.any(np.isnan(self.A)): raise Exception('A matrix contains nan')
         if np.any(np.isnan(self.B)): raise Exception('B matrix contains nan')
         if np.any(np.isnan(self.C)): raise Exception('C matrix contains nan')
         if np.any(np.isnan(self.D)): raise Exception('D matrix contains nan')
-        if np.any(np.isnan(self.q0)): raise Exception('Initial condition contains nan')
+        if np.any(np.isnan(self.q0_)): raise Exception('Initial condition contains nan')
 
         # Clean values stored after integration
         self.cleanSimData()
@@ -338,13 +415,13 @@ class LinearStateSpace(StateSpace):
             res = OdeResultsClass(t=t_eval, y=x) # To mimic result class of solve_ivp
 
         else:
-            res = integrate(t_eval, self.q0, self.A, self.B, self.Inputs, method=method, **options)
+            res = integrate(t_eval, self.q0_, self.A, self.B, self.Inputs, method=method, **options)
 
         # Store
         self.res    = res
 
         # --- From results to states, inputs, outputs DataFrame
-        df = self.res2DataFrame(res, calc=calc, sStates=None, xoffset=xoffset, uoffset=uoffset)
+        df = self.res2DataFrame(res, calc=calc, sStates=None, xoffset=xoffset, uoffset=uoffset, yoffset=yoffset)
         self.df = df 
 
         return res, df
@@ -352,8 +429,16 @@ class LinearStateSpace(StateSpace):
     # --------------------------------------------------------------------------------}
     # --- Simulation storage
     # --------------------------------------------------------------------------------{
-    def _calc_outputs(self, time, q, df):
+    # From welib.system.statespac.py
+    #def res2DataFrame(self, res=None, calc='u,y,xd', sStates=None, xoffset=None, uoffset=None, yoffset=None):
+    #def store_states(self, res, sStates=None, xoffset=None, Factors=None):
+    #def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
+    #def calc_inputs(self, time=None, res=None, insertTime=True, dataFrame=True, uoffset=None):
+
+    def _calc_outputs(self, time, q, df, yoffset=None):
         """ low level implementation leaving room for optimization for other subclass."""
+        if yoffset is None:
+            yoffset = 0
         if self._inputs_ts is not None and len(time)==len(self._time_ts): # TODO more rigorous
             if self.verbose:
                 print('Calc output using simple matrix manipulation...')
@@ -361,12 +446,14 @@ class LinearStateSpace(StateSpace):
             MU = self._inputs_ts
             MY = calc_outputs(MX, MU, self.C, self.D)
             df.iloc[:,:] = MY.T
+            df.iloc[:,:] += yoffset
         else:
             calcOutput = self.dqdt_calcOutput()
             if self.verbose:
                 print('Calc output...')
             for i,t in enumerate(time):
-                df.iloc[i,:] = calcOutput(t, q[:,i])
+                y = calcOutput(t, q[:,i])
+                df.iloc[i,:] = y+yoffset
 
 
     def _calc_inputs(self, time, q, df):
@@ -493,8 +580,8 @@ class LinearStateSpace(StateSpace):
     def frequency_response_numerical(self, omega, int_method=None, **kwargs):
         from welib.system.transferfunction import numerical_frequency_response
 
-        if self.q0 is not None:
-            q0 = self.q0
+        if self.q0_ is not None:
+            q0 = self.q0_
         else:
             q0 = np.zeros(self.nStates) # TODO q0 equilibrium
 
@@ -509,6 +596,11 @@ class LinearStateSpace(StateSpace):
         return G, phi
     
 
+    def eigA(self):
+        from welib.tools.eva import eigA
+        A = self.A # NOTE: not always defined...
+        freq_d, zeta, Q, freq_0 = eigA(A, fullEV=False, normQ=None, sort=True)
+        return freq_d, zeta, Q, freq_0 
 
     # --------------------------------------------------------------------------------}
     # --- Matrix manipulation
@@ -539,21 +631,30 @@ class LinearStateSpace(StateSpace):
     def extract(self, sX=None, sU=None, sY=None, verbose=False, check=True, inPlace=True):
         """ """
         A, B, C, D = self.toDataFrames()
+        q0, qop, uop, yop = self.toSeries()
         if sX is not None:
-            A = subMat(A, rows=sX, cols=sX, check=check, name = 'A')
-            B = subMat(B, rows=sX         , check=check, name = 'B')
+            self.qop_ = subSeries(qop, rows=sX, check=check)
+            self.q0_  = subSeries(q0,  rows=sX, check=check)
+            sXd = ['d'+s for s in sX]
+            A = subMat(A, rows=sXd, cols=sX, check=check, name = 'A')
+            B = subMat(B, rows=sXd         , check=check, name = 'B')
             C = subMat(C,          cols=sX, check=check, name = 'C')
+        else:
+            q0 = q0.values
         if sU is not None:
+            self.uop_ = subSeries(uop, rows=sU, check=check)
             B = subMat(B,          cols=sU, check=check, name = 'B')
             D = subMat(D,          cols=sU, check=check, name = 'D')
         if sY is not None:
+            self.yop_ = subSeries(yop, rows=sY, check=check)
             C = subMat(C, rows=sY,          check=check, name = 'C')
             D = subMat(D, rows=sY,          check=check, name = 'D')
 
         if inPlace:
             self.fromDataFrames(A, B, C, D)
             # Trigger, make sure q0 has the right size
-            self.setStateInitialConditions(None)
+            self.setStateInitialConditions(self.q0_)
+
         return A, B, C, D
 
 
@@ -584,11 +685,15 @@ class LinearStateSpace(StateSpace):
 
     def toDataFrames(self):
         """ return dataframes for system matrices using labels"""
-        A = pd.DataFrame(self.A, index=self.sX, columns=self.sX)
-        B = pd.DataFrame(self.B, index=self.sX, columns=self.sU)
+        sXd = ['d'+s for s in self.sX]
+        A = pd.DataFrame(self.A, index=sXd    , columns=self.sX)
+        B = pd.DataFrame(self.B, index=sXd    , columns=self.sU)
         C = pd.DataFrame(self.C, index=self.sY, columns=self.sX)
         D = pd.DataFrame(self.D, index=self.sY, columns=self.sU)
         return A, B, C, D
+
+    def toSeries(self):
+        return self.q0, self.qop, self.uop, self.yop
 
 
     # --------------------------------------------------------------------------------}
@@ -610,24 +715,36 @@ class LinearStateSpace(StateSpace):
             s+='| - Force t0  : {} \n'.format(self._force_ts[:,0])
             s+='| - Force tend: {} \n'.format(self._force_ts[:,-1])
         s+='|Attributes:\n'
-        s+='| - A: State-State Matrix  \n'
+        s+='| - A: State-State Matrix ({} x {})\n'.format(self.nStates, self.nStates)
         s+=str(self.A)+'\n'
-        s+='| - B: State-Input Matrix  \n'
+        s+='| - B: State-Input Matrix ({} x {})\n'.format(self.nStates, self.nInputs)
         s+=str(self.B)+'\n'
         if self.C is not None:
-            s+='| - C: State-Ouputs Matrix  \n'
+            s+='| - C: Outputs-States Matrix ({} x {})\n'.format(self.nOutputs, self.nStates)
             s+=str(self.C)+'\n'
         if self.D is not None:
-            s+='| - D: Input-Ouputs Matrix  \n'
+            s+='| - D: Outputs-Inputs Matrix ({} x {})\n'.format(self.nOutputs, self.nInputs)
             s+=str(self.D)+'\n'
-        s+='| - q0: {}\n'.format(self.q0)
+
+        s+='| * q0:  {}\n'.format(dict(self.q0))
+        s+='| * qop: {}\n'.format(dict(self.qop))
+        s+='| * uop: n:{}\n'.format(len(self.uop))
+        s+='| * yop: n:{}\n'.format(len(self.yop))
         return s
 
     def load(self, pickleFile):
         import pickle
+        if not os.path.exists(pickleFile):
+            raise Exception('File does not exist: {}'.format(pickleFile))
         d = pickle.load(open(pickleFile,'rb'))
         self.fromDataFrames(d['A'], d['B'], d['C'], d['D'])
-        self.setStateInitialConditions(d['q0'])
+        self.setStateInitialConditions(d['q0'].values)
+        try:
+            self.qop_ = d['qop'].values
+        except:
+            raise Exception('The pickle file is an old pickle file, please regenerate it: {}'.format(pickleFile))
+        self.uop_ = d['uop'].values
+        self.yop_ = d['yop'].values
         return d
 
     def save(self, pickleFile, extraDict=None):
@@ -635,8 +752,7 @@ class LinearStateSpace(StateSpace):
         if extraDict is None:
             extraDict={}
         A, B, C, D = self.toDataFrames()
-        q0 = self.q0
-        extraDict.update({'A':A, 'B':B, 'C':C, 'D':D, 'q0':q0})
+        extraDict.update({'A':A, 'B':B, 'C':C, 'D':D, 'q0':self.q0, 'qop':self.qop, 'uop':self.uop, 'yop':self.yop})
         pickle.dump(extraDict, open(pickleFile,'wb'))
 
 

@@ -71,7 +71,7 @@ def main():
     ax.spines['top'].set_visible(False)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title('Elliptical Coordinates')
+    ax.set_title('Vortilib - Elliptical Coordinates')
 
 
 if __name__ == '__main__':

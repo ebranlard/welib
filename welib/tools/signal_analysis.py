@@ -418,15 +418,32 @@ def correlation(x, nMax=80, dt=1, method='manual'):
     """ 
     Compute auto correlation of a signal
     """
+
+    def acf(x, nMax=20):
+        return np.array([1]+[np.corrcoef(x[:-i], x[i:])[0,1]  for i in range(1, nMax)])
+
+
     nvec   = np.arange(0,nMax)
     sigma2 = np.var(x)
     R    = np.zeros(nMax)
-    R[0] =1
-    for i,nDelay in enumerate(nvec[1:]):
-        R[i+1] = np.mean(  x[0:-nDelay] * x[nDelay:]  ) / sigma2
+    #R[0] =1
+    #for i,nDelay in enumerate(nvec[1:]):
+    #    R[i+1] = np.mean(  x[0:-nDelay] * x[nDelay:]  ) / sigma2
+    #    R[i+1] = np.corrcoef(x[:-nDelay], x[nDelay:])[0,1] 
+
+    R= acf(x, nMax=nMax)
 
     tau = nvec*dt
     return R, tau
+# Auto-correlation comes in two versions: statistical and convolution. They both do the same, except for a little detail: The statistical version is normalized to be on the interval [-1,1]. Here is an example of how you do the statistical one:
+# 
+# 
+# def autocorr(x):
+#     result = numpy.correlate(x, x, mode='full')
+#     return result[result.size/2:]
+
+
+
 
 
 def correlated_signal(coeff, n=1000, seed=None):

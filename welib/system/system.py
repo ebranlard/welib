@@ -7,7 +7,7 @@ import numpy as np
 from numpy.linalg import inv
 #from scipy.integrate import  solve_ivp #odeint
 
-from .linearization import * 
+from .linearization import linearize_function
 
 # --------------------------------------------------------------------------------}
 # --- Linear system

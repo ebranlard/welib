@@ -164,7 +164,7 @@ class FigureExporter:
             print(' ')
 
     @staticmethod
-    def export(fig,figformat,i=1,n=1,width=None,height=None,figNameLast='',script_name='',script_run_dir='',script_run_date='', print_latex=True):
+    def export(fig,figformat,i=1,n=1,width=None,height=None,figNameLast='',script_name='',script_run_dir='',script_run_date='', print_latex=True, verbose=False):
         if i is None:
             i=1
         # params (for now, using global params)
@@ -201,11 +201,13 @@ class FigureExporter:
             #set(gca,'YLim',ylims);
 
         # --- Exporting in figure pathc
-        print('Export path: ',params.path)
+        if verbose:
+            print('Export path: ',params.path)
         for ifp in range(len(params.path)):
             filename='%s%s.%s'%(params.path[ifp],figName,figformat);
             fig.savefig(filename)
-            print('Figure file: ',filename)
+            if verbose:
+                print('Figure file: ',filename)
             # restoring the title
             if axTitle is not None:
                 axTitle.set_title(title)
@@ -228,7 +230,7 @@ class FigureExporter:
         return figNameLast, filename, title
 
 # --- Export call wrapper 
-def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True):
+def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
     import pylab
     import inspect
     import os
@@ -248,29 +250,30 @@ def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True):
         figures=[manager.canvas.figure for manager in pylab.matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
         figNameLast=''
         for i, figure in enumerate(figures):
-            figNameLast, filename, title=__exporter.export(fig=figure,figformat=figformat,i=(i+1),n=len(figures),width=width,height=height,figNameLast=figNameLast,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date,print_latex=print_latex)
+            figNameLast, filename, title=__exporter.export(fig=figure,figformat=figformat,i=(i+1),n=len(figures),width=width,height=height,figNameLast=figNameLast,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date,print_latex=print_latex, verbose=verbose)
             figNames.append(figNameLast)
             fileNames.append(filename)
             titles.append(title)
 
     else:
-        figNameLast, filename, title = __exporter.export(fig=fig,figformat=figformat,i=i,width=width,height=height,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date, print_latex=print_latex)
+        figNameLast, filename, title = __exporter.export(fig=fig,figformat=figformat,i=i,width=width,height=height,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date, print_latex=print_latex, verbose=verbose)
         figNames.append(figNameLast)
         fileNames.append(filename)
         titles.append(title)
     
-    for ifp in range(len(_global_params.path)):
-        print('Figure saved in: %s'%_global_params.path[ifp]);
-    print(' ');
+    if verbose:
+        for ifp in range(len(_global_params.path)):
+            print('Figure saved in: %s'%_global_params.path[ifp]);
+        print(' ');
 
     return figNames, fileNames, titles
 
-def export2pdf(fig=None,i=None,width=None,height=None,print_latex=True):
-    return export('pdf',fig=fig,i=i,width=width,height=height,print_latex=print_latex)
-def export2png(fig=None,i=None,width=None,height=None,print_latex=True):
-    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex)
-def export2eps(fig=None,i=None,width=None,height=None,print_latex=True):
-    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex)
+def export2pdf(fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
+    return export('pdf',fig=fig,i=i,width=width,height=height,print_latex=print_latex, verbose=verbose)
+def export2png(fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
+    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex, verbose=verbose)
+def export2eps(fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
+    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex, verbose=verbose)
 
 
 # --------------------------------------------------------------------------------}

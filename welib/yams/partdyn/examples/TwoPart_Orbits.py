@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from welib.yams.partdyn.part import*
 
 
-def orbit(problem = 'moon'):
+def orbit(problem = 'moon', test=False):
     # Parameters
     mEarth = 5.97219e24    # 
     rEarth = 6.371e6       # earth radius [m]
@@ -88,7 +88,8 @@ def orbit(problem = 'moon'):
         r1 = r_min
         v1 =  L/(mu*r_min) # linear velocity at r_min, v1 = r theta_dot
         v2 = 0
-        print('Eccentricity',e)
+        if not test:
+            print('Eccentricity',e)
 
         # --- sanity checks
         #Ermin =  L**2/(2*mu*r_min**2) -k/r_min
@@ -111,7 +112,8 @@ def orbit(problem = 'moon'):
 
 
     # --- Energy
-    sys.plotEnergy(res)
+    if not test:
+        sys.plotEnergy(res)
 
     ## --- Plot trajectory
     fig,ax = plt.subplots(1,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -124,7 +126,7 @@ def orbit(problem = 'moon'):
     #ax.plot(res.y[0,:]-res.y[3,:],res.y[1,:]-res.y[4,:],'-' , label = '{} Position wrt. Earth Position'.format(problem) )
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
-    ax.set_title('{} Orbit'.format(problem))
+    ax.set_title('PartDyn - Gravitational interaction - {} Orbit'.format(problem))
 
     # --- Plot main points
     F = np.sqrt(a**2-b**2) # Location of Foci from origin = F=a*e 
@@ -152,9 +154,17 @@ def orbit(problem = 'moon'):
 
     return res
 
-res = orbit('Moon')
-res = orbit('Satellite')
 
 
 if __name__ == '__main__':
+    res = orbit('Moon', test=True)
+    res = orbit('Satellite', test=True)
     plt.show()
+
+if __name__=="__export__":
+    res = orbit('Moon', test=True)
+
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
+
+

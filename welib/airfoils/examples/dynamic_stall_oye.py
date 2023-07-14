@@ -67,7 +67,7 @@ def prescribed_oscillations():
     ax.set_ylabel('Cl [-]')
     ax.set_xlim(XLIM)
     ax.set_ylim([0,2.2])
-    ax.set_title('Oye dynamic stall model')
+    ax.set_title('Airfoils - Oye dynamic stall model')
 
 if __name__ == '__main__':
     prescribed_oscillations()

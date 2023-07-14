@@ -9,10 +9,10 @@ from scipy.optimize import minimize_scalar
 from welib.ws_estimator.tabulated import TabulatedWSEstimatorBase
 
 import welib.weio as weio
-from welib.weio.fast_input_deck import FASTInputDeck
 from welib.weio.pickle_file import PickleFile
 from welib.tools.signal_analysis import zero_crossings
 from welib.tools.dictlib import renameDictKey
+from welib.tools.tictoc import Timer
 from welib.yams.models.simulator import _loadOFOut
 
 
@@ -40,42 +40,50 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
             self.loadPickle(pickleFile)
 
     def loadPickle(self, pickleFile):
+        """ Load pickle and set class from it """
         self.pickleFile = pickleFile
         pkl = PickleFile(pickleFile)
         # --- Sanitize pickle
         pkl = renameDictKey(pkl, ['Oper' ,'OP'] , 'OP')
         pkl = renameDictKey(pkl, ['Operi','OPi'], 'OPi')
         self.pkl=pkl
-        # --- Operating conditions
-        OP = pkl['OP']
-        #from welib.fast.tools.lin import matToSIunits
-        #OP = matToSIunits(OP, name='OP', verbose=False, row=False, col=True)
-        OP = self._sanitizeOP(OP, expectedCols=['WS_[m/s]', 'Pitch_[deg]', 'RotSpeed_[rpm]', 'PhiY_[deg]'], onlyExpected=False)
-
-        self.OP=OP
-        self.WS_op   =OP['WS_[m/s]'].values
-        self.omega_op=OP['RotSpeed_[rpm]'].values*2*np.pi/60 # [rad/s]
-        self.omegaRated=np.max(self.omega_op)
-#         self.omegaLow  =0.4*self.omegaRated
-        self.WSRated=np.interp(self.omegaRated*0.98, self.omega_op, self.WS_op)
-#             self.WSCutOff=28
 
         # ---
-        self.WS     = pkl['WS']
-        self.pitch  = pkl['Pitch']
-        self.omega  = pkl['RPM' ]*np.pi/30
-        self.phiy   = pkl['PhiY']
-        self.CP     = pkl['CP']
-        self.CT     = pkl['CT']
+        self.setDB(pkl['WS'], pkl['Pitch'], pkl['RPM'], pkl['PhiY'], pkl['CP'], pkl['CT'])
+
+        # --- Operating conditions
+        OP = pkl['OP']
+        self._setOP(OP)
+        self._interpOP() # (Needs weights to be computed first)
+
+
+    def setDB(self, WS, pitch, rpm, phiy, CP, CT):
+        self.WS     = np.asarray(WS)
+        self.pitch  = np.asarray(pitch)
+        self.omega  = np.asarray(rpm)*np.pi/30
+        self.phiy   = np.asarray(phiy)
+        self.CP     = CP
+        self.CT     = CT
+        MWS     = np.full((len(WS), len(rpm), len(pitch), len(phiy)), np.nan)
+        Momega  = np.full((len(WS), len(rpm), len(pitch), len(phiy)), np.nan)
+        assert(MWS.shape == CP.shape)
+        assert(CP.shape == CT.shape)
+        # TODO vectorize
+        for i,ws in enumerate(WS): 
+            for j,om in enumerate(self.omega): 
+                for k,pit in enumerate(pitch): 
+                    for l,phi in enumerate(phiy): 
+                        MWS   [i,j,k,l] = ws
+                        Momega[i,j,k,l] = om
+
+        #         MWS     = MWS             # TODO generated from WS...
+        #         Momega  = MRPM*np.pi/30
         self.CP[np.isnan(self.CP)]=0
         self.CP[self.CP<0]=0
         self.CT[np.isnan(self.CT)]=0
         self.CT[self.CT<0]=0
 
         # --- Computing weights
-        MWS     = pkl['MWS']
-        Momega  = pkl['MOmega']*np.pi/30
-        #print(pkl.keys())
         if self.R is None:
             raise Exception('R should be set')
         if self.rho is None:
@@ -88,16 +96,91 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         self.Q = Q
         self.computeWeights(P, Q, T) # TODO
 
+        if self.OP is not None:
+            # Trigger
+            self._interpOP() # (Needs weights to be computed first)
 
+
+    def setFromTimeSeries(self, df, nWS=6, nRPM=6, nPitch=5, nPhi=4):
+        """ """
+        # --- Time series
+        Q     = df['Qaero'].values
+        WS    = df['WS'].values
+        omega = df['dpsi'].values          # rad/s
+        rpm   = omega * 30/ np.pi
+        pitch = df['pitch'].values*180/np.pi # deg
+        phiy  = df['phi_y'].values*180/np.pi # deg
+        P     = df['power'].values
+        T     = df['Thrust'].values # ...Hoping that's correct
+        R   = self.R
+        rho = self.rho
+        CP = P / (1/2 * rho * np.pi * R**2 * WS**3)
+        CT = T / (1/2 * rho * np.pi * R**2 * WS**2)
+
+        # ---- Bins
+        WSb    = np.linspace(np.min(WS)  , np.max(WS), nWS)
+        RPMb   = np.linspace(np.min(rpm) , np.max(rpm), nRPM)
+        Pitchb = np.linspace(np.min(pitch), np.max(pitch), nPitch)
+        Phiyb  = np.linspace(np.min(phiy), np.max(phiy), nPhi)
+        dws = np.diff(WSb)[0]
+        dom = np.diff(RPMb)[0]
+        dpi = np.diff(Pitchb)[0]
+        dph = np.diff(Phiyb)[0]
+
+        # --- Filling up CP/CT
+        MCP = np.full((len(WSb), len(RPMb), len(Pitchb), len(Phiyb)), np.nan)
+        MCT = np.full((len(WSb), len(RPMb), len(Pitchb), len(Phiyb)), np.nan)
+        for i,ws in enumerate(WSb): 
+            for j,om in enumerate(RPMb): 
+                for k,pit in enumerate(Pitchb): 
+                    for l,ph in enumerate(Phiyb): 
+                        bWS = np.logical_and(WS    >= ws-dws , WS    <= ws+dws)
+                        bOM = np.logical_and(rpm   >= om-dom , rpm   <= om+dom)
+                        bPI = np.logical_and(pitch >= pit-dpi, pitch <= pit+dpi)
+                        bPH = np.logical_and(phiy  >= ph-dph , phiy  <= ph+dph)
+                        if len(bWS)==0:
+                            print('>>> NO WS SELECTION')
+                        if len(bOM)==0:
+                            print('>>> NO OMEGA SELECTION')
+                        if len(bPI)==0:
+                            print('>>> NO PITCH SELECTION')
+                        if len(bPH)==0:
+                            print('>>> NO PHI SELECTION')
+                        bAll = np.logical_and.reduce((bWS,bOM,bPI,bPH))
+                        IAll = np.where(bAll)[0]
+                        #if len(IAll)==0:
+                        #    print('>>> NO Total SELECTION')
+                        MCP[i,j,k,l] = np.mean(CP[bAll])
+                        MCT[i,j,k,l] = np.mean(CT[bAll])
+        # --- Reset DB
+        self.setDB(WSb, Pitchb, RPMb, Phiyb, MCP, MCT)
+
+    def _setOP(self, OP):
+
+        # --- Operating conditions
+        OP = self._sanitizeOP(OP, expectedCols=['WS_[m/s]', 'Pitch_[deg]', 'RotSpeed_[rpm]', 'PhiY_[deg]'], onlyExpected=False)
+
+        self.OP=OP
+        self.WS_op   =OP['WS_[m/s]'].values
+        self.omega_op=OP['RotSpeed_[rpm]'].values*2*np.pi/60 # [rad/s]
+        self.omegaRated=np.max(self.omega_op)
+#         self.omegaLow  =0.4*self.omegaRated
+        self.WSRated=np.interp(self.omegaRated*0.98, self.omega_op, self.WS_op)
+
+        WS = self.OP['WS_[m/s]'].values
+        self.WSHR = np.linspace(WS[0], WS[-1], 2*len(WS))
+
+    def _interpOP(self):
+        # Needs Weights to be computed
         # ---  Compute interpolated values at Operating points to be consistent
         WS    = self.OP['WS_[m/s]'].values[:]
         Omega = self.OP['RotSpeed_[rpm]'].values[:] *np.pi/30
         pitch = self.OP['Pitch_[deg]'].values[:]
         phiy  = self.OP['PhiY_[deg]'].values[:]
         self.OP['Paero_i_[W]'] = self.Power(WS, Omega, pitch, phiy) # Interpolated power
-        Q2                     = self.Torque(WS, Omega, pitch, phiy) # Interpolated torque
-        Q1                      = self.OP['Paero_i_[W]']/Omega
         self.OP['Qaero_i_[Nm]'] = self.OP['Paero_i_[W]']/Omega
+#         Q2                     = self.Torque(WS, Omega, pitch, phiy) # Interpolated torque
+#         Q1                      = self.OP['Paero_i_[W]']/Omega
 #         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
 #         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
 #         ax.plot(WS, Q1 ,'-'   , label='')
@@ -118,17 +201,32 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         #LambdaMid = self.Lambda[:-1] + np.diff(self.Lambda)/2
         #Lambda = np.sort(np.concatenate((self.Lambda, LambdaMid)))
         #self.LambdaHR = Lambda
-        WS = self.OP['WS_[m/s]'].values
-        #WS = self.WS
-        self.WSHR = np.linspace(WS[0], WS[-1], 2*len(WS))
 
     def Power(self, WS, omega, pitch, phiy):
+        """
+         - WS: wind speed [m/s]
+         - omega: rotational speed [rad/s]
+         - pitch: pitch angle [deg]
+         - phiy: platform pitch angle [deg]
+         """
         return self.fP( (WS, omega, pitch, phiy) )
 
     def Thrust(self, WS, omega, pitch, phiy):
+        """
+         - WS: wind speed [m/s]
+         - omega: rotational speed [rad/s]
+         - pitch: pitch angle [deg]
+         - phiy: platform pitch angle [deg]
+         """
         return self.fT( (WS, omega, pitch, phiy) )
 
     def Torque(self, WS, omega, pitch, phiy):
+        """
+         - WS: wind speed [m/s]
+         - omega: rotational speed [rad/s]
+         - pitch: pitch angle [deg]
+         - phiy: platform pitch angle [deg]
+         """
         return self.fQ( (WS, omega, pitch, phiy) )
 
     def TorqueAt(self, omega, pitch, phiy):
@@ -275,6 +373,8 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
             if debug:
                 info['WS_oper'] = WSoper
                 info['WS_crossOP'] = WScrossOP
+        else:
+            WSoper=WS0
 
         # --- Find torque for given pitch and omega
         if method.find('crossing')>=0:
@@ -388,7 +488,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         """ 
         Perform wind speed estimation given a time series of aerodynamic torque, pitch and rotational speed
         """
-        print('Estimating WS on time series...')
+        from welib.tools.tictoc import Timer
         WS_est = np.zeros(omega.shape)
         if WS_prev is None:
             WS_prev = 1
@@ -448,37 +548,60 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
             bValid[i] = b
         return bValid
 
-    def estimateTimeSeriesFromOF(self, fstFilename, tRange=None, **kwargs):
+    def estimateTimeSeriesFromOF(self, fstFilename, tRange=None, noiseRfactor=0, plotNaN=False, **kwargs):
         """" 
          - tRange: tuple (tmin, tmax) to limit the time used
         """
         df, time = _loadOFOut(fstFilename, tRange=tRange)
         WS_ref     = df['RtVAvgxh_[m/s]'].values # Rotor avg
         Pitch      = df['BldPitch1_[deg]'].values
-        Qaero_ref  = df['RtFldMxh_[N-m]'].values
+        try:
+            Taero_ref  = df['RtFldFxh_[N]'].values
+            Qaero_ref  = df['RtFldMxh_[N-m]'].values
+        except:
+            Taero_ref  = df['RtAeroFxh_[N]'].values
+            Qaero_ref  = df['RtAeroMxh_[N-m]'].values
         Omega      = df['RotSpeed_[rpm]'].values*2*np.pi/60 # rad/s
         PhiY       = df['PtfmPitch_[deg]'].values
+        
+        # Adding noise
+        n = len(time)
+        Omega_m      = Omega     + np.std(Omega)     * noiseRfactor * np.random.randn(n)
+        PhiY_m       = PhiY      + np.std(PhiY)      * noiseRfactor * np.random.randn(n)
+        Pitch_m      = Pitch     + np.std(Pitch)     * noiseRfactor * np.random.randn(n)
+        Qaero_ref_m  = Qaero_ref + np.std(Qaero_ref) * noiseRfactor * np.random.randn(n)
+
+
         # Estimating wind speed on time series
-        WS_est, ts_info = self.estimateTimeSeries(Qaero_ref, omega=Omega, pitch=Pitch, phiy=PhiY, WS_prev=WS_ref[0]*0.9, WS_ref=WS_ref, time=time, **kwargs)
+        with Timer('Wind speed estimation on time series:', writeBefore=True):
+            WS_est, ts_info = self.estimateTimeSeries(Qaero_ref_m, omega=Omega_m, pitch=Pitch_m, phiy=PhiY_m, WS_prev=WS_ref[0]*0.9, WS_ref=WS_ref, time=time, **kwargs)
         # Evaluating torque
-        Qaero_eval = self.Torque(WS_ref, omega=Omega, pitch=Pitch, phiy=PhiY)
-        Qaero_est  = self.Torque(WS_est, omega=Omega, pitch=Pitch, phiy=PhiY)
+        Qaero_eval = self.Torque(WS_ref, omega=Omega_m, pitch=Pitch_m, phiy=PhiY_m)
+        Taero_eval = self.Thrust(WS_ref, omega=Omega_m, pitch=Pitch_m, phiy=PhiY_m)
+        Qaero_est  = self.Torque(WS_est, omega=Omega_m, pitch=Pitch_m, phiy=PhiY_m)
+        Taero_est  = self.Thrust(WS_est, omega=Omega_m, pitch=Pitch_m, phiy=PhiY_m)
         # Monitoring if nan occured
         bNaN = np.isnan(Qaero_eval)
-        if sum(bNaN)>0:
+        if sum(bNaN)>0 and plotNaN:
             fig = self.plotValidSamples()
             axes=fig.axes
-            axes[0].plot(WS_ref[bNaN], Pitch[bNaN], 'k.', label='NaN')
-            axes[1].plot(WS_ref[bNaN], Omega[bNaN], 'k.', label='NaN')
-            axes[2].plot(WS_ref[bNaN], PhiY[bNaN] , 'k.', label='NaN')
+            axes[0].plot(WS_ref[bNaN], Pitch_m[bNaN], 'k.', label='NaN')
+            axes[1].plot(WS_ref[bNaN], Omega_m[bNaN], 'k.', label='NaN')
+            axes[2].plot(WS_ref[bNaN], PhiY_m[bNaN] , 'k.', label='NaN')
             axes[0].legend()
-        # Storing data into a dataframe
-        M    = np.column_stack((time, WS_ref, WS_est, Qaero_ref, Qaero_eval, Qaero_est, Omega, Pitch, PhiY))
-        cols = ['Time_[s]','WS_ref_[m/s]','WS_est_[m/s]','Qaero_ref_[N]','Qaero_eval_[N]','Qaero_est_[N]','Omega_[rad/s]','Pitch_[deg]', 'PtfmPitch_[deg]']
+        # Storing data into a dataframe # TODO ADD CLEAN AS WELL
+        M    = np.column_stack((time, WS_ref, WS_est))
+        M    = np.column_stack((M, Taero_ref, Taero_eval, Taero_est))
+        M    = np.column_stack((M, Qaero_ref, Qaero_eval, Qaero_est))
+        M    = np.column_stack((M, Omega_m, Pitch_m, PhiY_m))
+        cols = ['Time_[s]','WS_ref_[m/s]','WS_est_[m/s]']
+        cols+= ['Taero_ref_[N]','Taero_eval_[N]','Taero_est_[N]']
+        cols+= ['Qaero_ref_[Nm]','Qaero_eval_[Nm]','Qaero_est_[Nm]']
+        cols+= ['Omega_[rad/s]','Pitch_[deg]', 'PtfmPitch_[deg]']
         dfOut = pd.DataFrame(data=M, columns=cols)
         return dfOut
 
-    def debugOP(self, omega, pitch, phiy, ws=None):
+    def debugOP(self, omega, pitch, phiy, ws=None, surrounding=False):
         """
         Look at raw data and interpolated around a given an operating point
         """
@@ -493,7 +616,10 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
             print('>>> Clipping was needed!')
 
         def findSurroundingIndices(x,v):
-            i=np.argmin(np.abs(v-x)) 
+            try:
+                i=np.argmin(np.abs(v-x)) 
+            except:
+                import pdb; pdb.set_trace()
             if v[i]>x and i!=0: 
                 i=i-1
             if v[i]==x and i==len(v): 
@@ -511,12 +637,13 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         ipy,jpy = findSurroundingIndices(phiy, self.phiy)
         if ws is not None:
             iws,jws = findSurroundingIndices(ws, self.WS)
-        print('omega: {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.omega[iom], omega, self.omega[jom], iom, jom ))
-        print('RPM  : {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.omega[iom]*30/np.pi, omega*30/np.pi, self.omega[jom]*30/np.pi, iom, jom))
-        print('pitch: {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.pitch[ipi], pitch, self.pitch[jpi], ipi, jpi ))
-        print('phiy : {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.phiy [ipy], phiy , self.phiy [jpy], ipy, jpy))
-        if ws is not None:
-            print('ws   : {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.WS [iws], ws , self.WS [jws], iws, jws))
+        if surrounding:
+            print('omega: {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.omega[iom], omega, self.omega[jom], iom, jom ))
+            print('RPM  : {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.omega[iom]*30/np.pi, omega*30/np.pi, self.omega[jom]*30/np.pi, iom, jom))
+            print('pitch: {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.pitch[ipi], pitch, self.pitch[jpi], ipi, jpi ))
+            print('phiy : {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.phiy [ipy], phiy , self.phiy [jpy], ipy, jpy))
+            if ws is not None:
+                print('ws   : {:8.3f} <= {:8.3f} <= {:8.3f} - index: {} {}'.format(self.WS [iws], ws , self.WS [jws], iws, jws))
 
         WS1, P1 = self.PowerAt (omega=omega, pitch=pitch, phiy=phiy)
         WS1, Q1 = self.TorqueAt(omega=omega, pitch=pitch, phiy=phiy)
@@ -527,10 +654,11 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         ax.plot(self.WS, self.Q[:, iom , ipi , ipy]  , 'k-', label='raw')
         if ws is not None:
             ax.plot(self.WS[iw], self.Q[iw, iom , ipi , ipy]  , 'ko')
-        ax.plot(self.WS[:], self.Q[:, jom, ipi, ipy], 'k--', alpha=0.1)
-        ax.plot(self.WS[:], self.Q[:, iom, jpi, ipy], 'k--', alpha=0.1)
-        ax.plot(self.WS[:], self.Q[:, iom, ipi, jpy], 'k--', alpha=0.1)
-        ax.plot(self.WS[:], self.Q[:, jom, jpi, jpy], 'k--', alpha=0.1)
+        if surrounding:
+            ax.plot(self.WS[:], self.Q[:, jom, ipi, ipy], 'k--', alpha=0.1)
+            ax.plot(self.WS[:], self.Q[:, iom, jpi, ipy], 'k--', alpha=0.1)
+            ax.plot(self.WS[:], self.Q[:, iom, ipi, jpy], 'k--', alpha=0.1)
+            ax.plot(self.WS[:], self.Q[:, jom, jpi, jpy], 'k--', alpha=0.1)
         ax.plot(WS1, Q1 , label='Interpolated')
         ax.plot(self.OP['WS_[m/s]'], self.OP['Qaero_i_[Nm]'], ':', label='OP')
         ax.set_xlabel('Wind speed [m/s]')
@@ -682,7 +810,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
     def __repr__(self):
         s=''
         s+='<ws_estimator.TabulatedWSEstimator object> \n'
-        s+=' - WS     : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.WS),np.max(self.WS),self.WS[1]-self.WS[0], len(self.WS))
+        #s+=' - WS     : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.WS),np.max(self.WS),self.WS[1]-self.WS[0], len(self.WS))
         s+=' - omega  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.omega),np.max(self.omega),self.omega[1]-self.omega[0], len(self.omega))
         s+=' - pitch  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.pitch) ,np.max(self.pitch) ,self.pitch[1]-self.pitch[0]  , len(self.pitch))
         s+=' - phiy   : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.phiy) ,np.max(self.phiy) ,self.phiy[1]-self.phiy[0]  , len(self.phiy))

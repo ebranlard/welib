@@ -7,21 +7,10 @@ import numpy as np
 
 # --- Definitions to ease comparison with sympy versions
 from numpy import cos ,sin
+from welib.yams.rotations import R_x, R_y, R_z
 
 def Matrix(m):
     return np.asarray(m)
-
-# --------------------------------------------------------------------------------}
-# --- Rotation matrices
-# --------------------------------------------------------------------------------{
-def R_x(t):
-    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
-
-def R_y(t):
-    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
-
-def R_z(t): 
-    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
 
 def skew(x):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
@@ -63,7 +52,7 @@ def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
       - J: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix at COG
       - COG: (3-vector) x,y,z position of center of mass
     """
-    print('[WARN] the interface of this function does not make much sense and show not be used')
+    print('[WARN] yams.utils.rigidBodyMassMatrix: the interface of this function does not make much sense and should not be used')
     S=Mass*skew(COG)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);

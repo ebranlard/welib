@@ -14,6 +14,27 @@ from sympy.physics.mechanics.functions import find_dynamicsymbols
 from sympy import sin, cos, exp, sqrt
 
 
+# --------------------------------------------------------------------------------}
+# --- Basic math 
+# --------------------------------------------------------------------------------{
+def colvec(v): 
+    return Matrix([[v[0]],[v[1]],[v[2]]])
+def cross(V1,V2):
+    return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
+def eye(n): 
+    return Matrix( np.eye(n).astype(int) )
+
+
+def skew(x):
+    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
+    #S = Matrix(np.zeros((3,3)).astype(int))
+    if hasattr(x,'shape') and len(x.shape)==2:
+        if x.shape[0]==3:
+            return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
+        else:
+            raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
+    else:
+        return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 # --------------------------------------------------------------------------------}
 # --- PYDY VIZ related...

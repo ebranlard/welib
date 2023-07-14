@@ -13,14 +13,13 @@ import matplotlib.pyplot as plt
 from welib.yams.partdyn.part import*
 
 
-def spring(fixP2=True):
+def spring(test=False, fixP2=True):
     # --- Parameters
     m1      = 10
     m_      = 100       
     r       = 3
     phi     = 1*np.pi/6
     tension = 1
-    r_max = 6
 
     f = 1
     k = (2*np.pi)**2 *m1
@@ -50,28 +49,29 @@ def spring(fixP2=True):
     R = sys.barycenter(res)
 
     # --- 
-    i1,i2=0,2
-    fig,ax = plt.subplots(1,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    ax.plot(res.y[i1  ,:],res.y[i2  ,:] ,'-' , label = 'Position')
-    ax.plot(res.y[i1+3,:],res.y[i2+3,:] ,'o' , label = 'Position')
-    ax.plot(res.y[i1+6,:],res.y[i2+6,:] ,'o' , label = 'Position')
-    ax.plot(res.y[i1+9,:],res.y[i2+9,:] ,'o' , label = 'Position')
-    #ax.plot(R[i1,:],R[i2  ,:] ,'k:' , label = 'Barycenter')
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
-    ax.set_title('')
+    if not test:
+        i1,i2=0,2
+        fig,ax = plt.subplots(1,1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(res.y[i1  ,:],res.y[i2  ,:] ,'-' , label = 'Position')
+        ax.plot(res.y[i1+3,:],res.y[i2+3,:] ,'o' , label = 'Position')
+        ax.plot(res.y[i1+6,:],res.y[i2+6,:] ,'o' , label = 'Position')
+        ax.plot(res.y[i1+9,:],res.y[i2+9,:] ,'o' , label = 'Position')
+        #ax.plot(R[i1,:],R[i2  ,:] ,'k:' , label = 'Barycenter')
+        ax.set_xlabel('x [m]')
+        ax.set_ylabel('y [m]')
+        ax.set_title('')
 
 
 
-    # --- Plot animation
-    if __name__ == '__main__':
-        sys.animate2Dtrajectories(res, XLIM=[-r_max, r_max], YLIM=[-r_max, r_max], plane='XZ')
 
-    return res
+    return res, sys
 
-res = spring()
 
 
 if __name__ == '__main__':
+    res, sys = spring(test=True)
+    # --- Plot animation
+    r_max = 6
+    sys.animate2Dtrajectories(res, XLIM=[-r_max, r_max], YLIM=[-r_max, r_max], plane='XZ')
     plt.show()

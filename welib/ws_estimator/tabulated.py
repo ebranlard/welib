@@ -92,13 +92,14 @@ class TabulatedWSEstimatorBase():
         self.WSmax = 35
         self.CP    = None
         self.CT    = None
+        self.OP    = None
 
         # ---
         if fstFile:
             fst = FASTInputDeck(fstFile)
             R       = fst.ED['TipRad']
             if fst.AD is None:
-                raise Exception('AeroDyn file not read but needed for wind speed estimator, while reading {}'.format(fst_file))
+                raise Exception('AeroDyn file not read but needed for wind speed estimator, while reading {}'.format(fstFile))
             rho_AD = fst.AD['AirDens']
             try:
                 rho_main = fst.fst['AirDens']

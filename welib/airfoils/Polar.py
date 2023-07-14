@@ -42,7 +42,8 @@ class Polar(object):
     """
 
     def __init__(self, filename=None, alpha=None, cl=None, cd=None, cm=None, Re=None, 
-            compute_params=False, radians=None, fformat='auto', verbose=False):
+            compute_params=False, radians=None, cl_lin_method='max',
+            fformat='auto', verbose=False):
         """Constructor
 
         Parameters
@@ -118,9 +119,9 @@ class Polar(object):
 
         # NOTE: method needs to be in harmony for linear_slope and the one used in cl_fully_separated
         if compute_params:
-            self._linear_slope, self._alpha0 = self.cl_linear_slope(method="max")
+            self._linear_slope, self._alpha0 = self.cl_linear_slope(method=cl_lin_method)
             if not self._cl_fs_lock:
-                self.cl_fully_separated()
+                self.cl_fully_separated(method=cl_lin_method)
             if not self._cl_inv_lock:
                 self.cl_inv = self._linear_slope * (self.alpha - self._alpha0)
 
@@ -136,6 +137,9 @@ class Polar(object):
         s+=' - _alpha0:            {} [{}]\n'.format(self._alpha0, sunit)
         s+=' - _linear_slope:      {} [1/{}]\n'.format(self._linear_slope, sunit)
         s+='Derived parameters:\n'
+        s+=' * cl_inv             : array of size {} \n'.format(len(self.alpha))
+        s+=' * cl_fs              : array of size {} \n'.format(len(self.alpha))
+        s+=' * fs                 : array of size {} \n'.format(len(self.alpha))
         s+=' * cl_lin (UNSURE)    : array of size {} \n'.format(len(self.alpha))
         s+='Functional parameters:\n'
         s+=' * alpha0 :            {} [{}]\n'.format(self.alpha0(),sunit)
@@ -1051,6 +1055,7 @@ class Polar(object):
         if not self._fs_lock:
             fs = (self.cl - cl_fs) / (cl_inv - cl_fs + 1e-10)
             fs[np.where(fs < 1e-15)] = 0
+            fs[np.where(fs > 1)] = 1
             # Storing
             self.fs = fs
         self.cl_fs = cl_fs
@@ -1527,6 +1532,7 @@ def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRa
       - alpha: angle of attack in radians
       - Cl   : lift coefficient
       - window: [alpha_min, alpha_max]: region when linear slope is sought
+      - method: 'max', 'optim', 'leastsquare', 'leastsquare_constraint'
       
     OUTPUTS:
       - Cl_alpha, alpha0: lift slope (1/rad) and angle of attack (rad) of zero lift

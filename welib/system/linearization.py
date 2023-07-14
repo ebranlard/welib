@@ -1,6 +1,15 @@
+""" 
+Tools for linearizing functions.
+
+Generic functions:
+- numerical_jacobian(f, op, arg_number, deltas, *f_args):
+
+-  df/dx        = linearize_Fx(F, x0, dx, *p)             where F = F(x, p)
+-  df/dx, df/du = linearize_Fxu(F, x0, u0, dx, du, *p)    where F = F(x, u, p)
+
+"""
 import numpy as np
 import copy
-
 
 # --------------------------------------------------------------------------------}
 # --- Generic functions 

@@ -27,7 +27,12 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
         # --- Fixed number of digits
         if type(x)==int:
             raise NotImplementedError()
-        if digits==4:
+        if digits==5:
+            if abs(x)<100000 and abs(x)>1e-6:
+                s= "{:.5f}".format(x)
+            else:
+               s= "{:.5e}".format(x)
+        elif digits==4:
             if abs(x)<10000 and abs(x)>1e-5:
                 s= "{:.4f}".format(x)
             else:
@@ -81,7 +86,7 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
     else:
         return s.ljust(nchar)
 
-def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True, openChar='[',closeChar=']', sepChar=' '):
+def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True, openChar='[',closeChar=']', sepChar=' ', xmin=1e-16):
     """ 
     return a matrix as a string, with misc output options
     INPUTS:
@@ -97,7 +102,7 @@ def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', c
             s+='\n'
     s+=sindent
     for iline,line in enumerate(M):
-        s+= openChar+sepChar.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0)  for v in line ])+closeChar
+        s+= openChar+sepChar.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0, xmin=xmin)  for v in line ])+closeChar
         if iline<M.shape[0]-1:
             s+='\n'+sindent
     return s
@@ -119,6 +124,7 @@ def printMat(M, var=None, **kwargs):
         if isinstance(M, str):
             # we swap 
             M, var = var, M
+    M=np.asarray(M)
     print(prettyMat(M, var=var, **kwargs))
 
 def printVec(M, var, newline=False, **kwargs):
@@ -127,6 +133,7 @@ def printVec(M, var, newline=False, **kwargs):
         if isinstance(M, str):
             # we swap 
             M, var = var, M
+    M=np.asarray(M)
     M=np.atleast_2d(M)
     print(prettyMat(M, var=var, newline=newline, **kwargs))
 

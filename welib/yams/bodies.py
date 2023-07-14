@@ -31,8 +31,10 @@ class Body(object):
     """
     def __init__(self, name='', r_O=[0,0,0], R_b2g=np.eye(3)):
         self.name = name
-        self._r_O   = np.asarray(r_O).ravel()
-        self._R_b2g = np.asarray(R_b2g)
+        self._r_O            = np.asarray(r_O).ravel()
+        self.pos_global_init = np.asarray(r_O).ravel()
+        self._R_b2g          = np.asarray(R_b2g)
+        self.R_b2g_init      = np.asarray(R_b2g)
 
         self._mass=None
         self.MM  = None # To be defined by children
@@ -194,11 +196,13 @@ class RigidBody(Body):
 
     def __repr__(self):
         s='<RigidBody object>:\n'.format(self.name)
+        s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
         s+=' - mass:         {}\n'.format(self.mass)
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
+        s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
         s+='Useful getters: inertia_at, mass_matrix\n'
@@ -499,18 +503,31 @@ class BeamBody(FlexibleBody):
         return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
 
-    def updateFlexibleKinematics(B, qe, qep):
+    def updateFlexibleKinematics(B, qe, qep, qepp=None):
         """ see yams.py updateKinematics"""
         # Deflections shape
         B.U  = np.zeros((3,B.nSpan));
         B.V  = np.zeros((3,B.nSpan));
         B.K  = np.zeros((3,B.nSpan));
-        B.UP = np.zeros((3,B.nSpan));
+        # Displacement fields
         for j in range(B.nf):
-            B.UP[0:3,:] +=  qep[j] * B.PhiU[j][0:3,:]
             B.U [0:3,:] +=  qe[j]  * B.PhiU[j][0:3,:]
             B.V [0:3,:] +=  qe[j]  * B.PhiV[j][0:3,:]
             B.K [0:3,:] +=  qe[j]  * B.PhiK[j][0:3,:]
+
+        # Velocities
+        B.UP = np.zeros((3,B.nSpan));
+        B.VP = np.zeros((3,B.nSpan));
+        for j in range(B.nf):
+            B.UP[0:3,:] +=  qep[j] * B.PhiU[j][0:3,:]
+            B.VP[0:3,:] +=  qep[j] * B.PhiV[j][0:3,:]
+        # Accelerations
+        if qepp is not None:
+            B.UPP = np.zeros((3,B.nSpan));
+            B.VPP = np.zeros((3,B.nSpan));
+            for j in range(B.nf):
+                B.UPP[0:3,:] +=  qepp[j] * B.PhiU[j][0:3,:]
+                B.VPP[0:3,:] +=  qepp[j] * B.PhiV[j][0:3,:]
         #B.V_tot=B.V+B.V0;
         #B.K_tot=B.K+B.K0;
         # Position of mean line
@@ -599,11 +616,14 @@ class BeamBody(FlexibleBody):
 
     def __repr__(self):
         s='<BeamBody {} object>:\n'.format(self.name)
+        s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
+        s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
         s+=' - mass:         {}\n'.format(self.mass)
         s+=' * length:      {}\n'.format(self.length)
+        s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
@@ -745,7 +765,7 @@ class FASTBeamBody(BeamBody):
             # --- Substructure / fnd
             from welib.fast.subdyn import SubDyn   
             name = 'fnd'
-            sd = SubDyn(sdData = inp)
+            sd = SubDyn(inp)
             p, damp_zeta, RayleighCoeff, DampMat = sd.toYAMSData(shapes)
             r_O   = p['r_O']
             R_b2g = p['R_b2g']
@@ -776,7 +796,6 @@ class FASTBeamBody(BeamBody):
             raise NotImplementedError()
 
         # TODO TODO sort out span for Blades and HubRad 
-
         BeamBody.__init__(self, name, p['s_span'], p['s_P0'], p['m'], p['EI'], p['PhiU'], p['PhiV'], p['PhiK'], jxxG=p['jxxG'], 
                 s_min=p['s_min'], s_max=p['s_max'],
                 r_O = r_O, R_b2g=R_b2g,  # NOTE: this is lost in YAMS
@@ -785,3 +804,4 @@ class FASTBeamBody(BeamBody):
                 massExpected=massExpected,
                 int_method=int_method
                 )
+        self.shapes=shapes

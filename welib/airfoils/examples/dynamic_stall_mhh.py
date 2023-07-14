@@ -133,7 +133,7 @@ def prescribed_oscillations():
     ax.set_xlim(XLIM)
     ax.set_ylim(YLIM)
     ax.legend()
-    ax.set_title('MGH dynamic stall model')
+    ax.set_title('Airfoils - MGH dynamic stall model')
 
 if __name__ == '__main__':
     prescribed_oscillations()

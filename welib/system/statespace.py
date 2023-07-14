@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import inspect
-from numpy.linalg import inv
+from numpy.linalg import inv, solve
 from collections import OrderedDict
 from scipy.integrate import  solve_ivp, odeint
 from scipy.optimize import OptimizeResult as OdeResultsClass 
@@ -197,6 +197,10 @@ class StateSpace(System):
             return self.sY
         else:
             return None
+
+    @property
+    def q0_pd(self):
+        return pd.Series(self.q0, index=self.sStates)
 
     # --------------------------------------------------------------------------------}
     # --- Signatures
@@ -416,6 +420,10 @@ class StateSpace(System):
     # --------------------------------------------------------------------------------}
     # --- State equation
     # --------------------------------------------------------------------------------{
+    def dqdt_eval(self, t, q, p=None, u=None):
+        """ Evaluate state space at t and q (and potentially u&q) """
+        return self.dqdt_ODE(p=p, u=u)(t,q)
+
     # --- signature related functions
     def dqdt_ODE(self, p=None, u=None):
         """ 
@@ -531,7 +539,10 @@ class StateSpace(System):
         self.df       = None
 
 
-    def res2DataFrame(self, res=None, calc='u,y,xd', sStates=None, xoffset=None, uoffset=None, yoffset=None):
+    def res2DataFrame(self, res=None, calc='u,y,xd', Factors=None, sStates=None, xoffset=None, uoffset=None, yoffset=None):
+        """ Return time integration results as a dataframe
+        """
+        # TODO harmonize with mech_system.res2DataFrame
         calcVals = calc.split(',')
 
         if res is None:
@@ -539,12 +550,15 @@ class StateSpace(System):
                 raise Exception('Call integrate before res2DataFrame')
             res = self.res
 
-        dfStates = self.store_states(res, sStates=sStates, xoffset=xoffset)
+        # --- Time and states
+        dfStates = self.store_states(res, sStates=sStates, xoffset=xoffset, Factors=Factors)
+        # --- Accelerations 
+        # --- Forcing
 
         # --- Try to compute outputs
         dfOut = None
         if 'y' in calcVals:
-            dfOut = self.calc_outputs(insertTime=True, yoffset=yoffset)
+            dfOut = self.calc_outputs(res=res, insertTime=True, yoffset=yoffset)
             if dfOut is None:
                 #TODO
                 dfStatesD = self.calcDeriv()
@@ -560,21 +574,47 @@ class StateSpace(System):
 
         return df
 
-    def store_states(self, res, sStates=None, xoffset=None):
+    def store_states(self, res, sStates=None, xoffset=None, Factors=None):
         nStates = len(self.q0)
         if sStates is None and self.sX is None:
             sStates = ['x{}'.format(i+1) for i in range(nStates)] # TODO
         else:
-            sStates = self.sX
-            nCols = self.res.y.shape[0]
+            if sStates is None:
+                sStates = self.sX
+            nCols = res.y.shape[0]
             if len(self.sX)!=nCols:
                 raise Exception("Inconsistency in length of states columnNames. Number of columns detected from res: {}. States columNames (sX):".format(nCols, self.sX))
         self.sX = sStates
+
+        # Store as a matrix
+        M = res.y.T.copy()
+
+        # Scaling
+        if Factors is not None:
+            for i, f in enumerate(Factors):
+                M[:,i] *= f
+
+        # Scaling offsets
+        if Factors is not None and xoffset is not None:
+            xoffset *= np.asarray(Factors)
+
         if xoffset is not None:
             xoffset=np.asarray(xoffset).flatten()
-            dfStates = pd.DataFrame(data=self.res.y.T+xoffset, columns=sStates)
-        else:
-            dfStates = pd.DataFrame(data=self.res.y.T, columns=sStates)
+            M = M + xoffset
+
+        # Offset Velocity TODO
+        #if xd0 is not None: 
+        #    for i, xd0_ in enumerate(xd0):
+        #        M[:,i]           += xd0_*res.t # Position increases linearly (e.g. azimuth)
+        # Degrees
+        for i,d in enumerate(sStates):
+            if sStates[i].find('[deg]')>1: 
+                if np.max(M[:,i])>180:
+                    M[:,i] = np.mod(M[:,i], 360)
+
+
+        dfStates = pd.DataFrame(data=M, columns=sStates)
+        # Insert time
         dfStates.insert(0, 'Time_[s]', res.t)
         self.dfStates = dfStates
         return dfStates
@@ -614,8 +654,9 @@ class StateSpace(System):
         # --- Check consistency with self.sY
         if self.sY is not None:
             if len(self.sY)!=len(cols):
-                raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
-            cols = self.sY
+                #raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
+                print('[WARN] Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):'.format(len(cols), self.sY))
+            #cols = self.sY
         return cols
 
     def _inferInputCols(self, time=None, q=None):
@@ -637,13 +678,16 @@ class StateSpace(System):
                 raise Exception("Inconsistency in length of input columns. Number of columns detected from `Inputs`: {}. Inputs columns (sU):".format(nCols, self.sU))
         return cols
 
-    def _calc_outputs(self, time, q, df):
+    def _calc_outputs(self, time, q, df, yoffset=None):
         """ low level implementation leaving room for optimization for other subclass."""
         calcOutput = self.dqdt_calcOutput()
+        if yoffset is None:
+            yoffset =0
         if self.verbose:
             print('Calc output...')
         for i,t in enumerate(time):
-            df.iloc[i,:] = calcOutput(t, q[:,i])
+            y = calcOutput(t, q[:,i])
+            df.iloc[i,:] = y + yoffset
 
     def calc_outputs(self, res=None, insertTime=True, dataFrame=True, yoffset=None):
         """ 
@@ -660,10 +704,7 @@ class StateSpace(System):
         df = self._prepareOutputDF(res)
 
         # --- Calc output based on states
-        self._calc_outputs(res.t, res.y, df)
-        if yoffset is not None:
-            print('>>> STOPED IN STATESPACE.py')
-            raise Exception()
+        self._calc_outputs(res.t, res.y, df, yoffset=yoffset)
 
         if insertTime:
             df.insert(0,'Time_[s]', res.t)
@@ -734,7 +775,7 @@ class StateSpace(System):
     # --------------------------------------------------------------------------------}
     # --- linearization
     # --------------------------------------------------------------------------------{
-    def linearize(self, x0, dx, u0=None, du=None): 
+    def linearize(self, x0, dx, u0=None, du=None, p=None): 
         """
         Small change of interface compared to parent class
 
@@ -745,19 +786,23 @@ class StateSpace(System):
             op=(0,x0)
         else:
             op=(0,x0,u0)
+        # Setting parameters if they are present
+        if p is not None:
+            self.param = p
+        else:
+            p = self.p
+            self.param = self.p
         
-        # TODO handle calcOuput better overall
+        # TODO handle calcOuput beelfter overall
         try:
             calcOutputForLin = self.dqdt_calcOutput(signatureWanted='t,q,u,p')
-            out = calcOutputForLin(0, self.q0, du, self.p)
+            out = calcOutputForLin(0, x0, du, p)
             #print('>>>>',out)
             # Giving this function to parent class for linearization
             self.Y = calcOutputForLin
         except TypeError:
             print("[FAIL] Error evaluating model outputs for linearization. Does the function dqdt has the argument `calcOutput`?")
 
-        # Setting parameters if they are present
-        self.param = self.p
 
         # Calling parent class
         lin = System.linearize(self, op, dx, du=du, use_implicit=False)
@@ -773,6 +818,45 @@ class StateSpace(System):
             D=lin[3]
         return A,B,C,D
 
+
+    def eigA(self, x0, dx, nq2, u0=None, du=None, p=None, normQ=None, fullEV=False):
+        """ nq: number of second order states ntot = 2*nq2 + nq1 """
+        from welib.tools.eva import eigA
+        A,_,_,_ = self.linearize(x0, dx=dx, u0=u0, du=du, p=p) 
+        freq_d, zeta, Q, freq_0 = eigA(A, nq=nq2, fullEV=fullEV, normQ=normQ, sort=True)
+        return freq_d, zeta, Q, freq_0 
+
+    # --------------------------------------------------------------------------------}
+    # --- Static equilibrium
+    # --------------------------------------------------------------------------------{
+    def equilibrium(self, x0, dx, u0=None, du=None, p=None, maxIter=1000, tol=1e-5, verbose=False):
+        """ 
+        Use a Newton method to find equilibrium point (dqdt=0), starting from x0
+        and given input u0
+          dx and du are needed to compute numerical Jacobians
+        """
+        x0 = np.asarray(x0).copy()
+        u0 = np.asarray(u0).copy()
+
+        f0 = self.dqdt_eval(t=0, q=x0, p=p, u=u0)
+        fnorm = np.linalg.norm(f0)
+        for nIter in range(maxIter):
+            if fnorm<tol:
+                break
+            # Value at operating point
+            f0 = self.dqdt_eval(t=0, q=x0, p=p, u=u0)
+            fnorm = np.linalg.norm(f0)
+            # Jacobian at operating point
+            A,B,C,D = self.linearize(x0=x0, u0=u0, dx=dx, du=du, p=p)
+            # Going to next point
+            dx_ = solve(A,f0)
+            x0 -= dx_
+        if nIter<maxIter:
+            if verbose:
+                print('[ OK ] equilibrium point found after {} iterations'.format(nIter+1))
+        else:
+            print('[FAIL] equilibrium point not found after {} iterations. Norm: {}'.format(nIter+1, fnorm))
+        return x0
 
     # --------------------------------------------------------------------------------}
     # --- Frequency domain and transfer function

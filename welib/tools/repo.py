@@ -8,6 +8,7 @@ import os
 import re
 from welib.tools.figure import *
 import matplotlib.pyplot as plt
+from termcolor import colored, cprint
 
 FIG_MD=[]
 TIT_MD=[]
@@ -16,10 +17,10 @@ def export_figs_callback(filename):
     from welib.tools.repo import FIG_MD, TIT_MD
     script_dir = os.path.dirname(filename)
     setFigurePath('_figs/')
-    figNames, filenames, titles = export2png(print_latex=False)
+    figNames, filenames, titles = export2png(print_latex=False, verbose=False)
     print('filename:',filename)
     print('figNames:',figNames)
-    print('titles:',titles)
+    print('titles:  ',titles)
     for fign, fn, t in zip(figNames,filenames,titles):
         TIT_MD+=['[{}](/{})'.format(t, filename.replace('\\','/'))]
         FIG_MD+=['![{}](/../figs/{})'.format(t, fn)]
@@ -33,9 +34,17 @@ def export_figs_rec(maindir):
         os.mkdir('_figs')
     except:
         pass
-    print(FIG_MD)
+    FIG_MD.clear()
+    TIT_MD.clear()
+    HAS_FIG=[]
+    HAS_NOFIG=[]
     reobj = re.compile('[a-zA-Z0-9][a-zA-Z0-9_]*.py')
     for root,dirnames,filenames in os.walk(maindir):
+        sp = re.split(r'/|\\', root)
+        if any([s.startswith('_') for s in sp]):
+            #print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SKIPPING',root)
+            continue
+
         if os.path.basename(root)=='examples':
             for f in filenames:
                 if reobj.match(f):
@@ -43,11 +52,28 @@ def export_figs_rec(maindir):
                     fullpath=os.path.join(root,f)
                     print('Running example script: {}'.format(fullpath))
                     plt.close('all')
+                    n1=len(TIT_MD)
                     execfile(fullpath, {'__name__': '__export__', 'print': lambda *_:None})
+                    n2=len(TIT_MD)
+                    if n2>n1:
+                        HAS_FIG.append(fullpath)
+                        cprint('[ OK ] {} figure(s)'.format(n2-n1), 'green')
+                    else:
+                        HAS_NOFIG.append(fullpath)
+                        cprint('[INFO] No figure: {}'.format(fullpath), 'red')
     print('--------------------------------------------------------------')
     nCols= 5
     nRow= np.int(np.ceil(len(TIT_MD)/nCols))
+    # --- print a summary
+    print('Scripts with figures:')
+    for f in HAS_FIG:
+        cprint(f, 'green')
+    print('Scripts without figures:')
+    for f in HAS_NOFIG:
+        cprint(f, 'red')
+    print('')
 
+    # --- Generate markdown for README.md
     k=0
     kk=0
     print(''.join(['| ']*nCols) +  ' |')
