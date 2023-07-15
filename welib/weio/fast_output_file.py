@@ -9,6 +9,15 @@ Main content:
 - data, info = def load_binary_output(filename, use_buffer=True)
 - def writeDataFrame(df, filename, binary=True)
 - def writeBinary(fileName, channels, chanNames, chanUnits, fileID=2, descStr='')
+
+NOTE: 
+  - load_binary and writeBinary are not "fully reversible" for now.
+      Some small numerical errors are introduced in the conversion.
+      Some of the error is likely due to the fact that Python converts to "int" and "float" (double).
+      Maybe all the operations should be done in single. I tried but failed. 
+      I simply wonder if the operation is perfectly reversible. 
+             
+
 """
 from itertools import takewhile
 import numpy as np
@@ -127,13 +136,19 @@ class FASTOutputFile(File):
             self.info['attribute_units'] = [re.sub(r'[()\[\]]','',u) for u in self.info['attribute_units']]
 
 
-    def _write(self): 
-        if self['binary']:
+    def _write(self, binary=None, fileID=4): 
+        if binary is None:
+            binary = self['binary']
+
+        if binary:
+            # NOTE: fileID=2 will chop the channels name of long channels use fileID4 instead
             channels = self.data
             chanNames = self.info['attribute_names']
             chanUnits = self.info['attribute_units']
             descStr   = self.info['description']
-            writeBinary(self.filename, channels, chanNames, chanUnits, fileID=2, descStr=descStr)
+            if isinstance(descStr, list):
+                descStr=(''.join(descStr[:2])).replace('\n','')
+            writeBinary(self.filename, channels, chanNames, chanUnits, fileID=fileID, descStr=descStr)
         else:
             # ascii output
             with open(self.filename,'w') as f:
@@ -232,7 +247,7 @@ def load_ascii_output(filename):
         return data, info
 
 
-def load_binary_output(filename, use_buffer=True):
+def load_binary_output(filename, use_buffer=False):
     """
     03/09/15: Ported from ReadFASTbinary.m by Mads M Pedersen, DTU Wind
     24/10/18: Low memory/buffered version by E. Branlard, NREL
@@ -244,8 +259,15 @@ def load_binary_output(filename, use_buffer=True):
     %
     %  Edited for FAST v7.02.00b-bjj  22-Oct-2012
     """
-    def fread(fid, n, type):
-        fmt, nbytes = {'uint8': ('B', 1), 'int16':('h', 2), 'int32':('i', 4), 'float32':('f', 4), 'float64':('d', 8)}[type]
+    StructDict = {
+            'uint8': ('B', 1, np.uint8), 
+            'int16':('h', 2, np.int16), 
+            'int32':('i', 4, np.int32), 
+            'float32':('f', 4, np.float32),
+            'float64':('d', 8, np.float64)}
+    def fread(fid, n, dtype):
+        fmt, nbytes, npdtype = StructDict[dtype]
+        #return np.array(struct.unpack(fmt * n, fid.read(nbytes * n)), dtype=npdtype)
         return struct.unpack(fmt * n, fid.read(nbytes * n))
 
     def freadRowOrderTableBuffered(fid, n, type_in, nCols, nOff=0, type_out='float64'):
@@ -305,11 +327,11 @@ def load_binary_output(filename, use_buffer=True):
         NT = fread(fid, 1, 'int32')[0]  #;             % The number of time steps, INT(4)
 
         if FileID == FileFmtID_WithTime:
-            TimeScl = fread(fid, 1, 'float64')  #;           % The time slopes for scaling, REAL(8)
-            TimeOff = fread(fid, 1, 'float64')  #;           % The time offsets for scaling, REAL(8)
+            TimeScl = fread(fid, 1, 'float64')[0]  #;           % The time slopes for scaling, REAL(8)
+            TimeOff = fread(fid, 1, 'float64')[0]  #;           % The time offsets for scaling, REAL(8)
         else:
-            TimeOut1 = fread(fid, 1, 'float64')  #;           % The first time in the time series, REAL(8)
-            TimeIncr = fread(fid, 1, 'float64')  #;           % The time increment, REAL(8)
+            TimeOut1 = fread(fid, 1, 'float64')[0]  #;           % The first time in the time series, REAL(8)
+            TimeIncr = fread(fid, 1, 'float64')[0]  #;           % The time increment, REAL(8)
 
         if FileID == FileFmtID_NoCompressWithoutTime:
             ColScl = np.ones ((NumOutChans, 1)) # The channel slopes for scaling, REAL(4)
@@ -428,7 +450,7 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
 
     time = channels[:,iTime]
     timeStart = time[0]
-    timeIncr  = time[1]-time[0]
+    timeIncr = (time[-1]-time[0])/(nT-1)
     dataWithoutTime = channels[:,1:]
         
     # Compute data range, scaling and offsets to convert to int16
@@ -445,7 +467,7 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
     ranges[ranges==0]=1  # range set to 1 for constant channel. In OpenFAST: /sqrt(epsilon(1.0_SiKi))
     ColScl  = np.single(int16Rng/ranges)
     ColOff  = np.single(int16Min - np.single(mins)*ColScl)
-    
+
     #Just available for fileID 
     if fileID not in [2,4]:
         print("current version just works with fileID = 2 or 4")

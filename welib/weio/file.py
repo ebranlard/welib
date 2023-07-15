@@ -37,13 +37,13 @@ class File(OrderedDict):
         # Calling children function
         self._read(**kwargs)
 
-    def write(self, filename=None):
+    def write(self, filename=None, **kwargs):
         if filename:
             self.filename = filename
         if not self.filename:
             raise Exception('No filename provided')
         # Calling children function
-        self._write()
+        self._write(**kwargs)
 
     def toDataFrame(self):
         return self._toDataFrame()
