@@ -19,36 +19,57 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
     if (p['prescribed_oscillations']):
         x[4] = 0.0
         x[5] = 0.0
-        x[6] = np.radians(50.0) + np.radians(10.0) * np.sin(2.0 * np.pi * 0.4 * t)
+        x[6] = -np.radians(10.0) * np.sin(2.0 * np.pi * 0.4 * t)
         x[7] = 0.0
         x[8] = 0.0
-        x[9] = 2.0 * np.pi * 0.4 * np.radians(10.0) * np.cos(2.0 * np.pi * 0.4 * t)
+        x[9] = -2.0 * np.pi * 0.4 * np.radians(10.0) * np.cos(2.0 * np.pi * 0.4 * t)
+        p['reference_aoa'] = np.radians(50.0)
 
-    xflap = x[4]
-    xedge = x[5]
-    theta = x[6]
-    xflap_dot = x[7]
-    xedge_dot = x[8]
+    x_s = x[4] # structural displacement in x
+    y_s = x[5] # structural displacement in y
+    # theta = x[6]
+    theta = -x[6] + p['reference_aoa'] # angle used in aero model
+
+    xdot_s = x[7]
+    ydot_s = x[8]
     omega_struct = x[9] # omega in the coordinate system solved by right hand rule.
     omega_aero = -x[9] # omega in the aero model is signed to be positive for increasing angle of attack.
 
-    if (not p['prescribed_oscillations']):
-        # x[6] is around positive z axis, which is towards smaller aoa
-        theta = -x[6] + p['reference_aoa']
 
     # Calculate flow velocities at quarter and three quarter chord positions
-    Ux14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.sin(theta) + x[5] + U
-    Ux34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.sin(theta) + x[5] + U
+    Ux14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.sin(theta) + xdot_s + U
+    Ux34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.sin(theta) + xdot_s + U
                  
-    Uy14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.cos(theta) + x[4]
-    Uy34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.cos(theta) + x[4]
+    Uy14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.cos(theta) + ydot_s
+    Uy34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.cos(theta) + ydot_s
 
-    # TO DO : Update angles etc below this point using Ux14, Ux34, Uy14, Uy34. 
+    alpha_34 = np.arctan2(Uy34, Ux34) + theta
 
-    alpha_34 = np.arctan2( U - omega_struct * (0.75 - p['x_pitch']) * p['chord'] * np.sin(theta), omega_struct * (0.75 - p['x_pitch']) * p['chord'] * np.cos(theta) )
-    alpha_34 = theta
-    cldyn, cddyn, cmdyn = dynstall_mhh_outputs_simple(t, x[:4], U, U_dot, omega_aero, alpha_34, p)
-    force_SMD = np.dot( p['force_transform'], 0.5 * p['rho'] * U**2 * p['chord'] * np.r_[ cldyn, cddyn, cmdyn * p['chord'] + (p['x_pitch'] - 0.25) * (cldyn * np.cos(theta) + cddyn * np.sin(theta) )  ])
+    cldyn, cddyn, cmdyn = dynstall_mhh_outputs_simple(t, x[:4], np.sqrt(Ux14**2+Uy14**2), 
+                                                      U_dot, omega_aero, alpha_34, p)
+
+    # Calculate lift and drag on coordinate system relative to [Ux14, Uy14]
+    lift_drag_14 = 0.5*p['rho']*(Ux14**2 + Uy14**2) * p['chord'] * np.r_[cldyn, cddyn]
+
+    psi14 = np.arctan2(Uy14, Ux14) # angle of flow relative to coordinate system
+    
+    fx_fy = np.array([[-np.sin(psi14), np.cos(psi14)], [np.cos(psi14), np.sin(psi14)]]) @ lift_drag_14
+
+    # moment around pitch axis
+    # positive is nose down to match right hand rule, so flip sign of cmdyn term
+    # then add moments from fx and fy around pitch axis
+    mz = -0.5*p['rho']*(Ux14**2 + Uy14**2)*(p['chord']**2)*cmdyn \
+         -fx_fy[0]*(p['x_pitch'] - 0.25)*p['chord']*np.sin(theta)   \
+         -fx_fy[1]*(p['x_pitch'] - 0.25)*p['chord']*np.cos(theta)   \
+
+    force_SMD = p['force_transform'] @ np.hstack((fx_fy, mz))
+
+    # Ramp loads up slowly over the first few seconds
+    t_ramp = 5.0
+    if t < t_ramp:
+        ramp_scale = 3*(t / t_ramp)**2 - 2*(t/t_ramp)**3
+        
+        force_SMD = force_SMD *  ramp_scale
 
     # Parameters
     alpha0 = p['alpha0']
@@ -90,17 +111,16 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
     xdot[3] = -1/Tf                             * x4 + 1/Tf * fs_aF
 
     #Now for the derivatives of the SMD
-    xdot[4] = xflap_dot
-    xdot[5] = xedge_dot
-    xdot[6] = omega_struct
+    xdot[4:7] = x[7:10]
 
-    smd_acc = np.dot(p['m_inv'], force_SMD) - np.dot(p['m_inv c'], np.r_[xflap_dot, xedge_dot, omega_struct]) - np.dot(p['m_inv k'], np.r_[xflap, xedge, x[6]])
-    xdot[7], xdot[8], xdot[9] = smd_acc[0], smd_acc[1], smd_acc[2]
+    xdot[7:10] = np.dot(p['m_inv'], force_SMD) \
+              -np.dot(p['m_inv c'], x[7:10]) \
+              -np.dot(p['m_inv k'], x[4:7])
 
     if (p['prescribed_oscillations']):
         xdot[7] = 0.0
         xdot[8] = 0.0
-        xdot[9] = 2.0 * np.pi * 0.4 * np.radians(10.0) * np.sin(2.0 * np.pi * 0.4 * t)
+        xdot[9] = -2.0 * np.pi * 0.4 * np.radians(10.0) * np.sin(2.0 * np.pi * 0.4 * t)
 
 
     return xdot

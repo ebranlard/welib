@@ -261,7 +261,18 @@ def sviv_2d_prescribed_oscillations(u_infty, aoa_0):
     ax.legend()
     ax.set_title('FFA-W3-2011 - SMD - MGH dynamic stall model')
 
-def sviv_2d(u_infty):
+def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zeros(3), no_force=False, t_max=35.0):
+    """
+    Function for calculating response for a 3DOF system + unsteady aero model
+
+    Inputs:
+      u_infty - free stream flow
+      struct_file - file describing 3DOF structure
+      return_data - True returns time series info, false plots info and returns nothing
+      x0 - initial position coordinates. 
+      no_force - flag to remove forces and just have structural vibration
+    """
+
     radians=True
     #FFA-W3-211 airfoil Dyna Stall
     P=Polar.fromfile(os.path.join(MyDir,'../data/IEA-15-240-RWT_AeroDyn15_Polar_35.dat'),compute_params=True,to_radians=radians)
@@ -274,8 +285,8 @@ def sviv_2d(u_infty):
     U0         = u_infty
     chord      = 2.8480588747143942
     # Parameters
-    T           = 30.0 #10 seconds - might be arbitrary
-    t_max       = 30.0                 # simulation length
+    T           = t_max #10 seconds - might be arbitrary
+    t_max       = t_max                # simulation length
     dt          = T/5000                   # time step
     #XLIM        = np.array([0,40])
     XLIM        = np.array([-90,90])
@@ -290,7 +301,7 @@ def sviv_2d(u_infty):
 
     #Need to add SMD parameters here
 
-    iea15mw_sviv2d = yaml.load(open('chord_3dof.yaml'),Loader=yaml.UnsafeLoader)
+    iea15mw_sviv2d = yaml.load(open(struct_file),Loader=yaml.UnsafeLoader)
     p['x_pitch'] = -iea15mw_sviv2d['displacement'][0]
     m_matrix = np.array(iea15mw_sviv2d['mass_matrix']).reshape(3,3)
     m_inv = linalg.inv(m_matrix)
@@ -305,7 +316,10 @@ def sviv_2d(u_infty):
     p['reference_aoa'] = np.radians(iea15mw_sviv2d['angle'])
     p['prescribed_oscillations'] = False
 
-    y0_mhh = np.r_[ dynstall_mhh_steady_simple(u_infty, np.radians(50.0), p), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    if no_force:
+        p['force_transform'] = f_matrix*0.0
+
+    y0_mhh = np.r_[ dynstall_mhh_steady_simple(u_infty, np.radians(50.0), p), x0, 0.0, 0.0, 0.0]
     # Integration using solve_ivp
     sol_mhh = solve_ivp(lambda t,x: dynstall_mhh_dxdt_smd(t,x,u_infty,p), t_span=[0, t_max], y0=y0_mhh, t_eval=vt)
 
@@ -320,6 +334,12 @@ def sviv_2d(u_infty):
         alpha34_mhh[it] = theta
         Cl_mhh[it],Cd_mhh[it],Cm_mhh[it] = dynstall_mhh_outputs_simple(t,sol_mhh.y[:4,it], u_infty, 0.0, omega, alpha34_mhh[it], p)
 
+    # Optionally return data and don't plot
+    if return_data:
+        # xytheta, xytheta_dot
+        return vt, sol_mhh.y[4:7], sol_mhh.y[7:10]
+
+
     #Could return some combination of sol_mhh and Cl_mhh, Cd_mhh, Cm_mhh here for analysis
     print('alpha34_mhh:')
     print(alpha34_mhh)
@@ -333,8 +353,8 @@ def sviv_2d(u_infty):
     plt.tight_layout()
 
     fig = plt.figure()
-    plt.plot(vt, sol_mhh.y[4,:], label='Flap disp')
-    plt.plot(vt, sol_mhh.y[5,:], label='Edge disp')
+    plt.plot(vt, sol_mhh.y[4,:], label='x disp')
+    plt.plot(vt, sol_mhh.y[5,:], label='y disp')
     plt.legend(loc=0)
     plt.tight_layout()
 
@@ -370,9 +390,35 @@ def sviv_2d(u_infty):
     ax.legend()
     ax.set_title('FFA-W3-2011 - SMD - MGH dynamic stall model')
 
+    return vt, sol_mhh.y[4:7], sol_mhh.y[7:10]
 
 if __name__ == '__main__':
-    sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
+    # sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
     # sviv_2d(15.0)
     # prescribed_oscillations()
+
+    verify = True
+
+    if verify:
+        # Prescribed motion to match Cl verification
+        sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
+
+        # # Response without any aero forces verification
+        # x0 = np.array([0.1, 0.2, -.15])
+        # t, xytheta, xytheta_dot = sviv_2d(15.0, return_data=True, x0=x0, 
+        #                                      no_force=True, t_max=15.0)
+
+        # import modal # file with modal analysis functions
+        # xhist_a, vhist_a = modal.load_gen_time('chord_3dof.yaml', x0, t)
+        # modal.plot_compare(t, xytheta, xhist_a)
+
+        # # Run to static case at near 5 deg AoA
+        # t, xytheta, xytheta_dot = sviv_2d(15.0, return_data=False, 
+        #                                   struct_file='IEA15_aoa5_3dof.yaml', t_max=15.0)
+
+
+
     plt.show()
+
+
+
