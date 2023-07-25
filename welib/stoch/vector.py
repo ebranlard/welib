@@ -32,6 +32,8 @@ class StochasticVector():
             self.domain = np.zeros((self.d, 2))
             for idim in range(self.d):
                 self.domain[idim, :] = [xmin, xmax]
+        else:
+            self.domain = np.asarray(domain)
         assert(self.domain.shape == (self.d, 2))
 
     def reset_misc(self):
@@ -154,6 +156,37 @@ class StochasticVector():
         return ax
 
 
+    def meshgrid_pdf(self, x=None, i1=0, i2=1):
+        if x is None:
+            x = self.x_default
+        x1 = x[i1]
+        x2 = x[i2]
+        X1, X2 = np.meshgrid(x1,x2)
+        F = np.zeros(X1.shape)
+        x0 = np.zeros(self.d)
+        for ii1,xx1 in enumerate(x1):
+            for ii2,xx2 in enumerate(x2):
+                x0[i1] = xx1
+                x0[i2] = xx2
+                F[ii2,ii1] = self._f_pdf(*x0)
+        return X1, X2, F
+
+    def plot_pdf(self, x=None, ax=None, i1=0, i2=1, **kwargs):
+        if x is None:
+            x = self.x_default
+
+        # Get PDF on meshgrid
+        X1, X2, F = self.meshgrid_pdf(x, i1=i1, i2=i2)
+        if ax is None:
+            fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.contourf(X1,X2,F)
+        ax.set_xlabel(self.name+str(i1))
+        ax.set_ylabel(self.name+str(i2))
+        return ax, X1, X2, F
+
+
+
     def new_from_bijection(self, gradg=None, ginv=None, name='', xmin=-30, xmax=30, nDiscr=100):
         vec2 = StochasticVector(dimension=self.d, name=name, xmin=xmin, xmax=xmax, nDiscr=nDiscr)
         def f_pdf(*y):
@@ -163,6 +196,9 @@ class StochasticVector():
             Jac = gradg(x)
             detJ = np.linalg.det(Jac)
             fY =  fX * 1/abs(detJ)
+            if np.isnan(fY):
+                print('fY is NaN')
+                fY=0
             return fY
         vec2.set_pdf_f(f_pdf)
         return vec2
@@ -220,17 +256,17 @@ class StochasticVector():
         for i in range(self.d):
             sd.append('[{} ; {}]'.format(*self.domain[i]))
         s+='- domain  : {}\n'.format(' x '.join(sd) )
-        try:
-            mean      = self.mean
-            var       = self.var
-            corrcoeff = self.corrcoeff
-            check     = self.check_pdf()
-        except:
-            check     = np.nan
-            mean      = np.nan
-            var       = np.nan
-            corrcoeff = np.nan
-            pass
+#         try:
+        mean      = self.mean
+        var       = self.var
+        corrcoeff = self.corrcoeff
+        check     = self.check_pdf()
+#         except:
+#             check     = np.nan
+#             mean      = np.nan
+#             var       = np.nan
+#             corrcoeff = np.nan
+#             pass
         s+='* integral: {} \n'.format(np.around(check,4))
         s+='* mean    :  {} \n'.format(np.around(mean,4))
         s+='* var     : \n'

@@ -88,6 +88,65 @@ def gaussianNd_pdf(x, mu, C):
         return f
 
 
+# --------------------------------------------------------------------------------
+# --- Rayleigh 
+# --------------------------------------------------------------------------------
+def rayleigh_pdf(x, sig):
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>=0
+    x = x[bn]
+    f[bn]= x/sig**2 * np.exp(-x**2/(2*sig**2))
+    return f
+
+
+# --------------------------------------------------------------------------------
+# --- Gamma 
+# --------------------------------------------------------------------------------
+def gamma_pdf(x, alpha, beta):
+    import math
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>=0
+    x = x[bn]
+    f[bn]= beta**(alpha+1)/math.gamma(alpha+1) * x**alpha * np.exp(-beta*x)
+    return f
+
+
+# --------------------------------------------------------------------------------
+# --- Exponential 
+# --------------------------------------------------------------------------------
+def exponential_pdf(x, beta):
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>=0
+    x = x[bn]
+    f[bn]= beta * np.exp(-beta * x)
+    return f
+
+
+# --------------------------------------------------------------------------------
+# --- Weibull
+# --------------------------------------------------------------------------------
+def weibull_pdf(x, A, k, x0):
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>=x0
+    x=x[bn]-x0
+    f[bn]= k/A * (x/A)**(k-1) * np.exp(-(x/A)**k)
+    return f
+
+# --------------------------------------------------------------------------------
+# --- Lognormal
+# --------------------------------------------------------------------------------
+def lognormal_pdf(x, mu, sig):
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>0
+    x=x[bn]
+    f[bn]= 1/(np.sqrt(2*np.pi) * sig) * 1/x * np.exp( - ( np.log(x) - mu )**2 / (2*sig**2))
+    return f
+
 
 
 
