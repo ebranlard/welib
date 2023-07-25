@@ -78,9 +78,9 @@ def plot_compare(t, xytheta, xhist):
     Plot comparison between two different time series data sets
     """
 
-    print(t.shape)
-    print(xytheta.shape)
-    print(xhist.shape)
+    # print(t.shape)
+    # print(xytheta.shape)
+    # print(xhist.shape)
 
     fig,ax = plt.subplots(1, 1, sharey=False, figsize=(8.4,5.8)) # (6.4,4.8)
 

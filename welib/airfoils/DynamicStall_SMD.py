@@ -3,7 +3,7 @@ import pandas as pd
 from .Polar import Polar as Pol
 from .DynamicStall import *
 
-def dynstall_mhh_dxdt_smd(t, x, U, p):
+def dynstall_mhh_dxdt_smd(t, x, U, p, t_ramp=0.0):
 
     """ Time derivative of states for continous formulation for airfoil attached
     to 3-DOF Spring-Mass-Damper system at pitch axis"""
@@ -37,11 +37,11 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
 
 
     # Calculate flow velocities at quarter and three quarter chord positions
-    Ux14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.sin(theta) + xdot_s + U
-    Ux34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.sin(theta) + xdot_s + U
-                 
-    Uy14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.cos(theta) + ydot_s
-    Uy34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.cos(theta) + ydot_s
+    Ux14 = -(-omega_struct*p['chord']*(p['x_pitch']-0.25)*np.sin(theta) + xdot_s) + U
+    Ux34 = -(-omega_struct*p['chord']*(p['x_pitch']-0.75)*np.sin(theta) + xdot_s) + U
+                                                                              
+    Uy14 = -(-omega_struct*p['chord']*(p['x_pitch']-0.25)*np.cos(theta) + ydot_s)
+    Uy34 = -(-omega_struct*p['chord']*(p['x_pitch']-0.75)*np.cos(theta) + ydot_s)
 
     alpha_34 = np.arctan2(Uy34, Ux34) + theta
 
@@ -65,7 +65,6 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
     force_SMD = p['force_transform'] @ np.hstack((fx_fy, mz))
 
     # Ramp loads up slowly over the first few seconds
-    t_ramp = 5.0
     if t < t_ramp:
         ramp_scale = 3*(t / t_ramp)**2 - 2*(t/t_ramp)**3
         

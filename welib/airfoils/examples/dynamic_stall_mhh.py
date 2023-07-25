@@ -261,7 +261,8 @@ def sviv_2d_prescribed_oscillations(u_infty, aoa_0):
     ax.legend()
     ax.set_title('FFA-W3-2011 - SMD - MGH dynamic stall model')
 
-def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zeros(3), no_force=False, t_max=35.0):
+def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zeros(3), 
+            no_force=False, t_max=35.0, t_ramp=5.0):
     """
     Function for calculating response for a 3DOF system + unsteady aero model
 
@@ -321,7 +322,7 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
 
     y0_mhh = np.r_[ dynstall_mhh_steady_simple(u_infty, np.radians(50.0), p), x0, 0.0, 0.0, 0.0]
     # Integration using solve_ivp
-    sol_mhh = solve_ivp(lambda t,x: dynstall_mhh_dxdt_smd(t,x,u_infty,p), t_span=[0, t_max], y0=y0_mhh, t_eval=vt)
+    sol_mhh = solve_ivp(lambda t,x: dynstall_mhh_dxdt_smd(t,x,u_infty,p, t_ramp=t_ramp), t_span=[0, t_max], y0=y0_mhh, t_eval=vt)
 
     Cl_mhh = np.zeros_like(vt)
     Cd_mhh = np.zeros_like(vt)
@@ -341,8 +342,8 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
 
 
     #Could return some combination of sol_mhh and Cl_mhh, Cd_mhh, Cm_mhh here for analysis
-    print('alpha34_mhh:')
-    print(alpha34_mhh)
+    # print('alpha34_mhh:')
+    # print(alpha34_mhh)
 
     fig = plt.figure()
     plt.plot(vt, sol_mhh.y[0,:], label='x1')
@@ -394,28 +395,91 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
 
 if __name__ == '__main__':
     # sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
-    # sviv_2d(15.0)
+    # sviv_2d(50.0)
     # prescribed_oscillations()
 
-    verify = True
+    verify = False # Flag to run verification v. normal case
 
+    if not verify: 
+        
+        # # Default aoa case / structural file
+        # sviv_2d(50.0)
+
+        vel = 25 # m/s
+        aoa = 20 # deg
+        t_max = 50 # sec
+        t_ramp = 5.0 # sec
+
+        sviv_2d_path = '../../../../sviv_2d/' # default cloned in same repo
+
+        sys.path.append(os.path.join(sviv_2d_path, 'python/ConstructModel'))
+        import create_model_funs as create
+
+        struct_file = os.path.join(MyDir, './IEA15_aoa{}_3dof.yaml'.format(aoa))
+        bd_yaml = os.path.join(sviv_2d_path, 'python/bd_driver.BD.sum.yaml')
+        create.construct_IEA15MW_chord(bd_yaml, struct_file, aoa, node_interest=7)
+
+        import matplotlib
+        matplotlib.use('MacOSX') # Have to reset the backend after constructing model
+
+        sviv_2d(vel, struct_file=struct_file, t_max=t_max, t_ramp=t_ramp)
+ 
     if verify:
         # Prescribed motion to match Cl verification
         sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
 
-        # # Response without any aero forces verification
-        # x0 = np.array([0.1, 0.2, -.15])
-        # t, xytheta, xytheta_dot = sviv_2d(15.0, return_data=True, x0=x0, 
-        #                                      no_force=True, t_max=15.0)
+        # Response without any aero forces verification
+        x0 = np.array([0.1, 0.2, -.15])
+        t, xytheta, xytheta_dot = sviv_2d(15.0, return_data=True, x0=x0, 
+                                             no_force=True, t_max=15.0)
 
-        # import modal # file with modal analysis functions
-        # xhist_a, vhist_a = modal.load_gen_time('chord_3dof.yaml', x0, t)
-        # modal.plot_compare(t, xytheta, xhist_a)
+        import modal # file with modal analysis functions
+        xhist_a, vhist_a = modal.load_gen_time('chord_3dof.yaml', x0, t)
+        modal.plot_compare(t, xytheta, xhist_a)
 
-        # # Run to static case at near 5 deg AoA
-        # t, xytheta, xytheta_dot = sviv_2d(15.0, return_data=False, 
-        #                                   struct_file='IEA15_aoa5_3dof.yaml', t_max=15.0)
+        # Run to static case at near 5 deg AoA
+        static_vel = 15.0
+        static_file = 'IEA15_aoa5_3dof.yaml'
+        t, xytheta, xytheta_dot = sviv_2d(static_vel, return_data=True, 
+                                          struct_file=static_file, t_max=200.0)
+        static_xytheta = xytheta[:, -1]
 
+        P=Polar.fromfile(os.path.join(MyDir,'../data/IEA-15-240-RWT_AeroDyn15_Polar_35.dat'),
+                         compute_params=True,to_radians=True)
+
+        static_aoa = np.radians(5.0) - static_xytheta[-1]
+
+        cl = np.interp(static_aoa, P.alpha, P.cl)
+        cd = np.interp(static_aoa, P.alpha, P.cd)
+        cm = np.interp(static_aoa, P.alpha, P.cm)
+
+        # print([cl, cd, cm])
+        chord = 2.8480588747143942
+        rho = 1.225
+        x_pitch = 0.3109720214696021
+
+        lift_drag = 0.5*rho*static_vel**2*np.array([cl, cd])*chord
+        fx_fy = np.array([lift_drag[1], lift_drag[0]])
+
+        mz = -0.5*rho*(static_vel**2)*(chord**2)*cm \
+             -fx_fy[0]*(x_pitch - 0.25)*chord*np.sin(static_aoa)   \
+             -fx_fy[1]*(x_pitch - 0.25)*chord*np.cos(static_aoa)   \
+
+        forces = np.hstack((fx_fy, mz))
+
+
+        iea15mw_sviv2d = yaml.load(open(static_file),Loader=yaml.UnsafeLoader)
+        Tmat = np.array(iea15mw_sviv2d['force_transform_matrix']).reshape(3,3)
+        Kmat = np.array(iea15mw_sviv2d['stiffness_matrix']).reshape(3,3)
+
+        analytic_static = np.linalg.solve(Kmat, Tmat @ forces)
+ 
+        print('Analytic then dynamically simulated displacements for static case:')
+        print(analytic_static)
+        print(static_xytheta)
+
+        print('Norm Diff / norm analytic = {:e}'.format(np.linalg.norm(analytic_static-static_xytheta) \
+                                                        /np.linalg.norm(analytic_static)))
 
 
     plt.show()
