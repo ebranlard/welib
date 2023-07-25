@@ -315,12 +315,14 @@ def sviv_2d(u_infty):
     alpha34_mhh = np.zeros_like(vt)
     for it,t in enumerate(vt):
         omega = sol_mhh.y[9,it]
-        theta = sol_mhh.y[6,it] + p['reference_aoa']
+        theta = -sol_mhh.y[6,it] + p['reference_aoa']
         #alpha34_mhh[it] = np.arctan2( u_infty - omega * (0.75 - p['x_pitch']) * p['chord'] * np.sin(theta), omega * (0.75 - p['x_pitch']) * p['chord'] * np.cos(theta) )
         alpha34_mhh[it] = theta
         Cl_mhh[it],Cd_mhh[it],Cm_mhh[it] = dynstall_mhh_outputs_simple(t,sol_mhh.y[:4,it], u_infty, 0.0, omega, alpha34_mhh[it], p)
 
     #Could return some combination of sol_mhh and Cl_mhh, Cd_mhh, Cm_mhh here for analysis
+    print('alpha34_mhh:')
+    print(alpha34_mhh)
 
     fig = plt.figure()
     plt.plot(vt, sol_mhh.y[0,:], label='x1')
@@ -337,7 +339,7 @@ def sviv_2d(u_infty):
     plt.tight_layout()
 
     fig = plt.figure()
-    plt.plot(vt, sol_mhh.y[6,:] + p['reference_aoa'], label='Torsion disp - radians')
+    plt.plot(vt, -sol_mhh.y[6,:] + p['reference_aoa'], label='Torsion disp - radians')
     plt.plot(vt, alpha34_mhh, label='alpha34 - radians')
     plt.plot(vt, Cl_mhh, label='Cl')
     plt.legend(loc=0)
@@ -359,7 +361,7 @@ def sviv_2d(u_infty):
     ax.plot(P.alpha/deg_scale  , P.cl_fs  ,'k--',  label='Cl fully separated')
     ax.plot(P.alpha/deg_scale  , P.cl_inv ,'k-.',  label='Cl inviscid')
     col=fColrs(0)
-    ax.plot(np.degrees(sol_mhh.y[6,:] + p['reference_aoa']), Cl_mhh, ':' , color=col  , label='SMD')
+    ax.plot(np.degrees(-sol_mhh.y[6,:] + p['reference_aoa']), Cl_mhh, ':' , color=col  , label='SMD')
     ax.tick_params(direction='in')
     ax.set_xlabel('Alpha [deg]')
     ax.set_ylabel('Cl [-]')
@@ -370,7 +372,7 @@ def sviv_2d(u_infty):
 
 
 if __name__ == '__main__':
-    #sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
-    #sviv_2d(15.0)
-    prescribed_oscillations()
+    sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
+    # sviv_2d(15.0)
+    # prescribed_oscillations()
     plt.show()

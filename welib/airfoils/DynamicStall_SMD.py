@@ -29,14 +29,25 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
     theta = x[6]
     xflap_dot = x[7]
     xedge_dot = x[8]
-    omega = x[9]
+    omega_struct = x[9] # omega in the coordinate system solved by right hand rule.
+    omega_aero = -x[9] # omega in the aero model is signed to be positive for increasing angle of attack.
 
     if (not p['prescribed_oscillations']):
-        theta = x[6] + p['reference_aoa']
+        # x[6] is around positive z axis, which is towards smaller aoa
+        theta = -x[6] + p['reference_aoa']
 
-    alpha_34 = np.arctan2( U - omega * (0.75 - p['x_pitch']) * p['chord'] * np.sin(theta), omega * (0.75 - p['x_pitch']) * p['chord'] * np.cos(theta) )
+    # Calculate flow velocities at quarter and three quarter chord positions
+    Ux14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.sin(theta) + x[5] + U
+    Ux34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.sin(theta) + x[5] + U
+                 
+    Uy14 = -omega_struct*p['chord']*(p['x_pitch']-0.25)*np.cos(theta) + x[4]
+    Uy34 = -omega_struct*p['chord']*(p['x_pitch']-0.75)*np.cos(theta) + x[4]
+
+    # TO DO : Update angles etc below this point using Ux14, Ux34, Uy14, Uy34. 
+
+    alpha_34 = np.arctan2( U - omega_struct * (0.75 - p['x_pitch']) * p['chord'] * np.sin(theta), omega_struct * (0.75 - p['x_pitch']) * p['chord'] * np.cos(theta) )
     alpha_34 = theta
-    cldyn, cddyn, cmdyn = dynstall_mhh_outputs_simple(t, x[:4], U, U_dot, omega, alpha_34, p)
+    cldyn, cddyn, cmdyn = dynstall_mhh_outputs_simple(t, x[:4], U, U_dot, omega_aero, alpha_34, p)
     force_SMD = np.dot( p['force_transform'], 0.5 * p['rho'] * U**2 * p['chord'] * np.r_[ cldyn, cddyn, cmdyn * p['chord'] + (p['x_pitch'] - 0.25) * (cldyn * np.cos(theta) + cddyn * np.sin(theta) )  ])
 
     # Parameters
@@ -61,7 +72,7 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
 
 #     alphaE = u['alphaE'](t) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< HACK HACK TODO TODO TODO TODO TODO
 
-    Clp     = Cla * (alphaE-alpha0) + np.pi * Tu * omega      # Eq. 13
+    Clp     = Cla * (alphaE-alpha0) + np.pi * Tu * omega_aero      # Eq. 13
     alphaF  = x3/Cla+alpha0                                   # p. 13
     fs_aF   = F_st(alphaF)                                    # p. 13
     if(fs_aF<0):
@@ -81,9 +92,9 @@ def dynstall_mhh_dxdt_smd(t, x, U, p):
     #Now for the derivatives of the SMD
     xdot[4] = xflap_dot
     xdot[5] = xedge_dot
-    xdot[6] = omega
+    xdot[6] = omega_struct
 
-    smd_acc = np.dot(p['m_inv'], force_SMD) - np.dot(p['m_inv c'], np.r_[xflap_dot, xedge_dot, omega]) - np.dot(p['m_inv k'], np.r_[xflap, xedge, theta])
+    smd_acc = np.dot(p['m_inv'], force_SMD) - np.dot(p['m_inv c'], np.r_[xflap_dot, xedge_dot, omega_struct]) - np.dot(p['m_inv k'], np.r_[xflap, xedge, x[6]])
     xdot[7], xdot[8], xdot[9] = smd_acc[0], smd_acc[1], smd_acc[2]
 
     if (p['prescribed_oscillations']):
