@@ -288,7 +288,7 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
     # Parameters
     T           = t_max #10 seconds - might be arbitrary
     t_max       = t_max                # simulation length
-    dt          = T/5000                   # time step
+    dt          = 1e-3                   # time step
     #XLIM        = np.array([0,40])
     XLIM        = np.array([-90,90])
     YLIM        = np.array([-3,3])
@@ -405,10 +405,10 @@ if __name__ == '__main__':
         # # Default aoa case / structural file
         # sviv_2d(50.0)
 
-        vel = 25 # m/s
-        aoa = 20 # deg
-        t_max = 50 # sec
-        t_ramp = 5.0 # sec
+        vel = 50 # m/s
+        aoa = 50 # deg
+        t_max = 100 # sec
+        t_ramp = 0.0 # sec
 
         sviv_2d_path = '../../../../sviv_2d/' # default cloned in same repo
 
