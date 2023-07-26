@@ -19,7 +19,7 @@ import peak_filter_fit as pff
     
 
 
-def pff_summary(t, x, mode_shapes, nom_freq, dict, aoa,
+def pff_summary(t, x, mode_shapes, nom_freq, dict, aoa, vel,
                 half_bandwidth_frac=0.05, tstart=10, remove_end=7, reportnum=30):
     """
     Function to conduct PFF analysis on nc file data
@@ -42,6 +42,7 @@ def pff_summary(t, x, mode_shapes, nom_freq, dict, aoa,
 
     create_append_dict(dict, 'mode_shapes', mode_shapes.reshape(-1).tolist())
     create_append_dict(dict, 'aoa', float(aoa))
+    create_append_dict(dict, 'velocity', float(vel))
 
     if np.isnan(x).any():
         create_append_dict(dict,  'flap_mode_amp', (np.ones(reportnum)*np.nan).tolist())
@@ -91,18 +92,21 @@ def create_append_dict(dict, key, val):
 
 if __name__ == '__main__':
 
-    velocities = np.array([20, 40, 50])
+    # velocities = np.array([20, 40, 50])
+    velocities = (np.array(range(11))+2)*5.0
 
     aoa = 50 # deg
     t_max = 100 # sec
-    t_ramp = 0.0 # sec
+    t_ramp = 5.0 # sec
 
     # signal processing parameters
     t_start = 2.0*t_ramp+20 # time to start signal processing
     nominal_freq = (0.5065+0.6935)/2.0
-    half_bandwidth_frac = 0.05
+    half_bandwidth_frac = 0.2
+    remove_end = 20 # points to remove end effects
 
-    output = './initial_sweep_aoa50.yaml'
+    # output = './sweep_aoa50.yaml' # Used ramp of 0.0 sec
+    output = './sweep_aoa50_ramp5.yaml' # Used ramp of 5.0 sec
 
     ##########################
     # Create output dictionary
@@ -140,8 +144,8 @@ if __name__ == '__main__':
             # Do PFF analysis and augment data dictionary
             print('Need to do analysis here')
 
-            pff_summary(t, xytheta.T, mode_shapes, nominal_freq, dict, aoa,
-                       half_bandwidth_frac=half_bandwidth_frac, tstart=t_start)
+            pff_summary(t, xytheta.T, mode_shapes, nominal_freq, dict, aoa, vel,
+                       half_bandwidth_frac=half_bandwidth_frac, tstart=t_start, remove_end=remove_end)
 
     ##########################
     # save output dictionary 

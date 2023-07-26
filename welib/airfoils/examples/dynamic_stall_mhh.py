@@ -398,14 +398,14 @@ if __name__ == '__main__':
     # sviv_2d(50.0)
     # prescribed_oscillations()
 
-    verify = False # Flag to run verification v. normal case
+    verify = True # Flag to run verification v. normal case
 
     if not verify: 
         
         # # Default aoa case / structural file
         # sviv_2d(50.0)
 
-        vel = 50 # m/s
+        vel = 60 # m/s
         aoa = 50 # deg
         t_max = 100 # sec
         t_ramp = 0.0 # sec
@@ -422,8 +422,11 @@ if __name__ == '__main__':
         import matplotlib
         matplotlib.use('MacOSX') # Have to reset the backend after constructing model
 
-        sviv_2d(vel, struct_file=struct_file, t_max=t_max, t_ramp=t_ramp)
+        t, xytheta, xytheta_dot = sviv_2d(vel, struct_file=struct_file, t_max=t_max, t_ramp=t_ramp)
  
+        # Save a netcdf file for later use
+        np.savez('./ua_test.npz', x=xytheta.T, t=t)
+
     if verify:
         # Prescribed motion to match Cl verification
         sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
@@ -480,6 +483,7 @@ if __name__ == '__main__':
 
         print('Norm Diff / norm analytic = {:e}'.format(np.linalg.norm(analytic_static-static_xytheta) \
                                                         /np.linalg.norm(analytic_static)))
+
 
 
     plt.show()
