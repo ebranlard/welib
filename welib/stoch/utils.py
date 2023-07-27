@@ -14,6 +14,187 @@ from scipy.integrate import nquad
 from welib.tools.signal_analysis import correlation
 from welib.tools.spectral import fft_wrap
 
+
+
+
+def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True, 
+        method='ifft', fCutInput=None):
+    """ 
+    Generate a time series x, based on an single-sided autospectrum
+
+    INPUTS:
+     - tMax: maximum time of time series
+     - dt  : time increament 
+     - f_S: single-sided autospectrum function with interface:
+         - S_X_om = f_S(omega)   if angularFrequency is True
+         or
+         - S_X_f  = f_S(f)       if angularFrequency is False
+     - method: method used to generate the time series:
+         - 'ifft': inverse FFT (fastest)
+         - 'sum':  sum of cosines
+     - fCutInput: maximum frequency. If None, set based on dt/2
+
+    OUTPUTS:
+     - x: time series
+
+    """
+    from numpy.random import uniform
+    # -- Define frequencies and spectrum
+    fCut = (1./dt)/2      # Highest frequency    [Hz]
+    if fCutInput is not None:
+        fMax = fCutInput
+    else:
+        fMax = fCut
+ 
+    df = 1./tMax                  # Frequency resolution [Hz]
+    f = np.arange(0,fMax+df/2,df) # array of frequencies [Hz]
+    omega = 2*np.pi*f             # array of angular frequencies [rad/s]
+    t = np.arange(0,tMax+dt/2,dt)
+
+    # NOTE: this is evaluated here, because the ifft evaluates it elsewhere..
+    if angularFrequency:
+        S = np.array([f_S(omi) for omi in omega])
+    else:
+        S = np.array([f_S(fi) for fi in f])
+
+    if method=='sum':
+        # --- Method 1
+        if angularFrequency:
+            ap = np.sqrt(2*S*df*2*np.pi)      # amplitude  # TODO see if needed to adjust if angularFrequency
+        else:
+            ap = np.sqrt(2*S*df)      # amplitude  # TODO see if needed to adjust if angularFrequency
+        eps = uniform(0,2*np.pi,len(f))  # random phases between 0 and 2pi
+        u = np.zeros(t.shape)
+        for ai,oi,ei in zip(ap,omega,eps):
+            u += ai * np.cos(oi*t + ei)
+    elif method=='ifft':
+        # NOTE: The time series from the FFT will repeat itself at the middle. 
+        # So we need twice the number of frequencies! 
+        # Also, we use a double side spectrum
+        if angularFrequency:
+            # TODO Somehow the variance of first and last points are too high
+            # So we increas the target time vector
+            Ioffset=20
+            #tMax2 = tMax                   # TODO sort it out
+            #fMax=fMax*4
+            tMax2 = tMax+dt*(2*Ioffset)                 # TODO sort it out
+            fMax=fMax*4
+        else:
+            tMax2 = 4*tMax                     # TODO sort it out
+        df2 = 1/(tMax2)                 
+        f2 = np.arange(0,fMax+df2/2,df2)/2  # TODO sort it out
+        # --- Method 2
+        #  Value sets of two random normal distributed variables
+        N = int(tMax2* fMax + 1)
+        Nh= int(N/2) 
+        #print('N',N)
+        a = np.random.randn(Nh+1)
+        b = np.random.randn(Nh+1)
+        # First part of the complex vector
+        xlhalf1 = a + b * 1j  # TODO TODO the b does nto seem to have an impact
+        xlhalf1[0] = 0 # zero mean
+
+        omega = 2.*np.pi*f2[:Nh+1] 
+
+        #print('[WARN] Need to sort out ifft method for sample generation')
+        if angularFrequency:
+            Sw = np.array([f_S(omi) for omi in omega]) # TODO WHAT SHOULD BE DONE
+            #Sw = np.array([f_S(omi*2*np.pi) for omi in omega])
+        else:
+            #Sw = np.array([f_S(omi/(2*np.pi)) for omi in omega]) # TODO WHAT SHOULD BE DONE!
+            Sw = np.array([f_S(omi) for omi in omega])
+        if angularFrequency:
+            #sig = np.sqrt(tMax2/(2*np.pi)* Sw) # see a= np.sqrt(2*S*df)
+            sig = np.sqrt(tMax2*Sw) # see a= np.sqrt(2*S*df)
+            #sig = Sw #np.sqrt(2*df2*Sw) # see a= np.sqrt(2*S*df)
+            # TODO somehow the variance of the first and last points are too high
+            #sig[0] =sig[0]/20
+        else:
+            sig = np.sqrt(tMax2/(2*np.pi)* Sw) # see a= np.sqrt(2*S*df)
+#         sig = np.sqrt(tMax2/(1)* Sw) # see a= np.sqrt(2*S*df)
+#         sig = np.sqrt(2*Sw*df2) 
+        xlhalf1 *= sig
+
+        xlhalf2 = np.flipud(xlhalf1[1:])
+
+        # Total complex vector
+        xl=np.concatenate((xlhalf1,xlhalf2))
+
+
+
+        # Fourier inverse
+        u=np.fft.ifft(xl)
+
+#         import matplotlib.pyplot as plt
+#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#         ax.plot(np.real(xl )  , label='')
+# #         ax.plot(np.real(sig)   , label='sig')
+# #         ax.plot(np.real(a  ) , label='a')
+# #         ax.plot(np.real(Sw ) , label='Sw')
+#         ax.set_xlabel('')
+#         ax.set_ylabel('')
+#         ax.legend()
+#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#         ax.plot(np.real(u )  , label='re')
+#         ax.plot(np.imag(u )  , label='im')
+#         ax.plot(np.abs(u )  , label='ab')
+#         ax.plot(np.conjugate(u )*u,'--'  , label='z z*')
+# #         ax.plot(np.real(sig)   , label='sig')
+# #         ax.plot(np.real(a  ) , label='a')
+# #         ax.plot(np.real(Sw ) , label='Sw')
+#         ax.set_xlabel('')
+#         ax.set_ylabel('')
+#         ax.legend()
+#         plt.show()
+
+        # Remove zero imaginairy part and normalize
+        if angularFrequency:
+            Nh= len(t)-1 # TODO check consistency with Nh above
+            # NOTE: imaginary or real works equivalently
+            u=np.real(u)*fMax*np.sqrt(np.pi/2)
+            #u=np.imag(u)*fMax*np.sqrt(np.pi/2)
+            #u=u[20:Nh+21] 
+            #u=u[20:Nh+21] # TODO somehow the variance of the first and last points are too high
+
+#             import matplotlib.pyplot as plt
+#             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+#             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#             I=np.arange(len(u))
+#             I2=I[Ioffset:Nh+Ioffset+1]
+#             ax.plot(I,u      , label='')
+#             ax.plot(I2,u[I2] , label='')
+#             ax.set_xlabel('')
+#             ax.set_ylabel('')
+#             plt.show()
+
+            # TODO somehow the variance of the first and last points are too high
+            #u=u[0:Nh+1]
+            #u=u[3:Nh+4]
+            u=u[Ioffset:Nh+Ioffset+1]
+        else:
+            u=np.sqrt(2)*np.pi*fMax*np.real(u)
+            #u=fMax*np.real(u)/2
+            u=u[0:Nh+1]
+
+    u=u-np.mean(u)
+    return t, u, f, S
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def autocovariance_num(x, **kwargs):
     sigma2 = np.var(x)
     rho_XX, tau = correlation(x, **kwargs)

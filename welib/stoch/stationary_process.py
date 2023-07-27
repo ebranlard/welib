@@ -2,11 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import nquad
 
+from welib.tools.tictoc import Timer
+from welib.tools.spectral import fft_wrap
 from welib.stoch.utils import autocovariance_int
 from welib.stoch.utils import autocovariance_fft
 from welib.stoch.utils import autospectrum_int
 from welib.stoch.utils import autospectrum_fft
 from welib.stoch.utils import autocorrcoeff_num
+from welib.stoch.utils import sample_from_autospectrum
 
 class SampledStochasticProcess:
     def __init__(self, generator=None, name='', omega_max=10, tau_max=10, time_max=10, nDiscr=100,
@@ -44,6 +47,7 @@ class SampledStochasticProcess:
         self.kappa_XX = None
         self.rho_XX   = None
         self.S_X      = None
+        self.S_avg    = None
 
     @property
     def nSamples(self):
@@ -93,38 +97,83 @@ class SampledStochasticProcess:
         self.xi = xi
         return xi
 
-    def samples_stats(self, nTau=None):
+    def generate_samples_from_autospectrum(self, nSamples=1, time=None, method='ifft', **kwargs):
+        if time is None:
+            time = self.time_detault
+        self.time = time
+
+        tMax = time[-1]
+        dt = (time[-1]-time[0])/(len(time)-1)
+
+        xi=np.zeros((nSamples, len(time)))
+        if not self._f_S_X_th:
+            raise Exception('Provide an autospectrum function')
+        f_S = self._f_S_X_th
+        with Timer('Gen. samples from spectrum - {} ...'.format(method), writeBefore=True, silent=not self.verbose):
+            for i in range(nSamples):
+
+                #def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True, 
+                #        method='ifft', fCutInput=None):
+                _, xi[i,:], _, _ = sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True, method=method, **kwargs) 
+        self.xi = xi
+        return xi
+
+
+
+    def samples_stats(self, nTau=None, stats=None):
+        """ 
+        """
+        if stats is None:
+            stats=['correlation','avg_spectra']
         time = self.time
         xi   = self.xi
 
         dt=(time[-1]-time[0])/(len(time)-1)
 
-        mu_xi = np.mean(xi, axis=0)
-        var_xi = np.var(xi, axis=0)
+        # --- Basic stats
+        self.mu_xi  = np.mean(xi, axis = 0)
+        self.var_xi = np.var(xi, axis  = 0)
+
+
+        # --- Average spectra
+        if 'avg_spectra' in stats:
+            f0, S_X0, Info = fft_wrap(time, xi[0,:], output_type='psd', averaging='None', detrend=False)
+            S_i = np.zeros((self.nSamples, len(f0)))
+            with Timer('Samples spectra', writeBefore=True, silent=not self.verbose):
+                for i in range(self.nSamples):
+                    f, S_i[i,:], Info = fft_wrap(time, xi[i,:], output_type='psd', averaging='None', detrend=False)
+                S_avg = np.mean(S_i, axis=0)/(2*np.pi)
+            self.om_Savg    =  2*np.pi*f
+            self.S_avg      =  S_avg
         
-        if nTau is None:
-            nTau = len(time)
-        kappa_XXi = np.zeros((self.nSamples, nTau))
-        rho_XXi   = np.zeros((self.nSamples, nTau))
-        for i in range(self.nSamples):
-            if np.mod(i,10)==0:
-                print('Correlation', i, self.nSamples)
-            rho_XXi[i,:], tau = autocorrcoeff_num(xi[i,:], nMax=nTau, dt=dt, method='numpy')
-            kappa_XXi[i,:] = rho_XXi[i,:] * np.var(xi[i,:])
-            #, tau = autocovariance_num(xi[i,:], nMax=nTau, dt=dt, method='manual')
+        # --- Correlation
+        if 'correlation' in stats:
+            with Timer('Samples correlations', writeBefore=True, silent=not self.verbose):
+                if nTau is None:
+                    nTau = int(self.tau_max/dt)
+                    #nTau = len(time)
+                kappa_XXi = np.zeros((self.nSamples, nTau))
+                rho_XXi   = np.zeros((self.nSamples, nTau))
+                for i in range(self.nSamples):
+                    if np.mod(i,10)==0 and self.verbose:
+                        print('Correlation', i, self.nSamples)
+                    rho_XXi[i,:], tau = autocorrcoeff_num(xi[i,:], nMax=nTau, dt=dt, method='numpy')
+                    kappa_XXi[i,:] = rho_XXi[i,:] * np.var(xi[i,:])
+                    #, tau = autocovariance_num(xi[i,:], nMax=nTau, dt=dt, method='manual')
 
-        kappa_XX = np.mean(kappa_XXi, axis=0)
-        rho_XX = np.mean(rho_XXi, axis=0)
+            kappa_XX = np.mean(kappa_XXi, axis=0)
+            rho_XX = np.mean(rho_XXi, axis=0)
+            self._tau     =  tau      
+            self.kappa_XX =  kappa_XX 
+            self.rho_XX   =  rho_XX   
 
-        om, S_X = autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap')
+            # --- Autospectrum from kappa num..Not the best
+            # TODO this might not be right (factor 2 maybe?)
+            #om, S_X = autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap')
+            om, S_X = autospectrum_fft(tau, kappa_XX, onesided=True, method='rfft')
+            self._omega   =  om       
+            self.S_X      =  S_X      
 
-        self.mu_xi    =  mu_xi    
-        self.var_xi   =  var_xi   
-        self._tau     =  tau      
-        self.kappa_XX =  kappa_XX 
-        self.rho_XX   =  rho_XX   
-        self._omega   =  om       
-        self.S_X      =  S_X      
 
 
     # --------------------------------------------------------------------------------}
@@ -265,8 +314,13 @@ class SampledStochasticProcess:
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         if self.var_xi is not None: 
             ax.plot(self.time, self.var_xi , label='Variance')
+            ax.plot(self.time, self.time*0+np.mean(self.var_xi ), '--' ,c=(0.5,0.5,0.5))
+            if self.verbose:
+                print('>>> Mean Var num:', np.around(np.mean(self.var_xi ),4))
         if self._var_th is not None:
             ax.plot(self.time, self.time*0+self._var_th, 'k--' , label='Variance (th)')
+            if self.verbose:
+                print('>>> Mean Var th :', np.around(self._var_th,4))
         #ax.plot(time, var_xi , label='Variance')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('VarX(t)')
@@ -281,6 +335,8 @@ class SampledStochasticProcess:
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         if self.kappa_XX is not None: 
             ax.plot(self.tau, self.kappa_XX, label='kappa_mean')
+            if self.verbose:
+                print('>>> Correlation length num', np.around(np.trapz(self.kappa_XX, self.tau,4)))
 
         if self._f_kappa_XX_th is not None:
             #kappa_XX_th = self._f_kappa_XX_th(self.tau)
@@ -339,6 +395,11 @@ class SampledStochasticProcess:
             ax.plot(self.omega, self.S_X ,'o-', label='FFT (kappa_num)')
             if self.verbose:
                 print('>>> Spectrum integration num', np.around(np.trapz(self.S_X, self.omega),4))
+
+        if self.S_avg is not None:
+            ax.plot(self.om_Savg, self.S_avg ,'.-', label='FFT (avg)')
+            if self.verbose:
+                print('>>> Spectrum integration avg', np.around(np.trapz(self.S_avg, self.om_Savg),4))
 
         if self._f_S_X_th is not None:
             #S_X_th = self._f_S_X_th(self.omega)
