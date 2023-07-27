@@ -398,7 +398,7 @@ if __name__ == '__main__':
     # sviv_2d(50.0)
     # prescribed_oscillations()
 
-    verify = True # Flag to run verification v. normal case
+    verify = False # Flag to run verification v. normal case
 
     if not verify: 
         

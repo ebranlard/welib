@@ -142,8 +142,6 @@ if __name__ == '__main__':
 
         if t.shape[0] == xytheta.shape[1]:
             # Do PFF analysis and augment data dictionary
-            print('Need to do analysis here')
-
             pff_summary(t, xytheta.T, mode_shapes, nominal_freq, dict, aoa, vel,
                        half_bandwidth_frac=half_bandwidth_frac, tstart=t_start, remove_end=remove_end)
 
