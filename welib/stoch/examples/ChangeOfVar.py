@@ -25,7 +25,7 @@ def main():
     ginv = np.log
     varA2 = varA.new_from_bijection(gp=gp, ginv=ginv)
     ax2 = varA2.plot_pdf(y, sty='k')
-    varA2.check_pdf(y)
+    varA2.integral(y)
 
 
     var = StochasticVariable()
@@ -35,7 +35,7 @@ def main():
     #var2 = var.new_from_bijection(g, yvalues='linspace+input')
     var2 = var.new_from_bijection(g, yvalues='logspace')
     ax =var2.plot_pdf(sty='+', ax=ax2)
-    var2.check_pdf(y)
+    var2.integral(y)
     fy = 1/(np.sqrt(2*np.pi) * sig) * 1/y * np.exp( - ( np.log(y) - mu )**2 / (2*sig**2))
     ax.plot(y, fy, '--')
     ax.set_xlim([0, 2])
@@ -52,25 +52,25 @@ def main():
 # 
 #     varA = StochasticVariable()
 #     varA.set_pdf_f(f)
-#     varA.check_pdf()
+#     varA.integral()
 #     ax1 = varA.plot_pdf(x, sty='k')
 #     gp = lambda x: 3*x**2
 #     ginv = np.cbrt #ginv = lambda x: x**(1/3) # Approximate and give complex numbers 
 #     varA2 = varA.new_from_bijection(gp=gp, ginv=ginv)
 #     ax2 = varA2.plot_pdf(y, sty='k')
-#     varA2.check_pdf()
+#     varA2.integral()
 # 
 # 
 #     var = StochasticVariable()
 #     var.set_pdf(x, f(x))
 #     var.plot_pdf(ax=ax1, sty='+')
-#     var.check_pdf()
+#     var.integral()
 #     g = x**3
 #     var2 = var.new_from_bijection(g, yvalues='linspace+input')
 #     ax2=var2.plot_pdf(y, sty='+', ax=ax2)
 #     ax2.set_ylim([0,.1])
 #     ax2.set_xlim([-10,10])
-#     var2.check_pdf()
+#     var2.integral()
     
 
 
@@ -96,7 +96,7 @@ def main():
     ax.plot(y, fy2, 'k+')
     ax.set_xlim([0, 60])
     ax.set_ylim([0, 1])# 
-    var.check_pdf(y)
+    var.integral(y)
 
 
     # --- g=Fx(x) leads to the uniform distribution
@@ -112,3 +112,15 @@ def main():
 if __name__ == '__main__':
     main()
     plt.show()
+
+if __name__ == '__test__':
+    main()
+    # TODO test it
+    #np.testing.assert_almost_equal(vec2.mean, [0.,0.], 3)
+
+if __name__=="__export__":
+    pass
+    #main()
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)
+

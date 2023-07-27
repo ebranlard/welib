@@ -71,7 +71,7 @@ def main2(nDiscr=100):
     # Phi: Uniform
     vec2=None
     alpha=np.pi/3
-    f_pdf = lambda r,phi: rayleigh_pdf(r, sig=rsig) * uniform_pdf(phi, 0, 2*np.pi) # NOTE: independent
+    f_pdf = lambda r,phi: rayleigh_pdf(r, s=rsig) * uniform_pdf(phi, 0, 2*np.pi) # NOTE: independent
     vec = StochasticVector(dimension=2, name='Input - X', nDiscr=nDiscr, domain=[[0,10],[0,2*np.pi]])
     vec.set_pdf_f(f_pdf)
     ax = vec.plot_pdfs()

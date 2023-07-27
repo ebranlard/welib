@@ -40,7 +40,7 @@ class StochasticVector():
         self._means=None
         self._covar=None
 
-    def check_pdf(self):
+    def integral(self):
         if self._f_pdf is not None:
             integral, _ = nquad( self._f_pdf , self.domain)
             return integral
@@ -256,17 +256,16 @@ class StochasticVector():
         for i in range(self.d):
             sd.append('[{} ; {}]'.format(*self.domain[i]))
         s+='- domain  : {}\n'.format(' x '.join(sd) )
-#         try:
-        mean      = self.mean
-        var       = self.var
-        corrcoeff = self.corrcoeff
-        check     = self.check_pdf()
-#         except:
-#             check     = np.nan
-#             mean      = np.nan
-#             var       = np.nan
-#             corrcoeff = np.nan
-#             pass
+        try:
+            mean      = self.mean
+            var       = self.var
+            corrcoeff = self.corrcoeff
+            check     = self.integral()
+        except:
+            check     = np.nan
+            mean      = np.nan
+            var       = np.nan
+            corrcoeff = np.nan
         s+='* integral: {} \n'.format(np.around(check,4))
         s+='* mean    :  {} \n'.format(np.around(mean,4))
         s+='* var     : \n'
@@ -291,7 +290,7 @@ if __name__ == '__main__':
     vec = StochasticVector(dimension=2, name='X')
     vec.set_pdf_f(f_pdf)
     print(vec)
-#     vec.check_pdf()
+#     vec.integral()
 # 
 #     print('means'  ,np.around(vec.mean,2), mus)
 #     print('covar\n',np.around(vec.var,2), '\n', C)

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.integrate import nquad
 from scipy.integrate import cumtrapz
 
 
@@ -16,7 +17,7 @@ def interpsafe(x, xp, fp):
 # --- Numerical variable
 # --------------------------------------------------------------------------------{
 class StochasticVariable():
-    def __init__(self, name=''):
+    def __init__(self, name='', domain=None, nDiscr=100):
         self.name = name 
         # Definitions based on an array of the PDF
         self._pdf = None    # array
@@ -27,12 +28,27 @@ class StochasticVariable():
         self._f_pdf = None  # function
         self._f_cdf = None  # function
         # Definitions using stats
-        self._mean = None 
         self._data = None
+
+        # --- Storage to avoid recomputations 
+        self.reset_misc()
+
+        # --- Domain and discretization
+        self.nDiscr=nDiscr
+        if domain is None:
+            self.domain = [-30, 30]
+        else:
+            self.domain = np.asarray(domain)
+        assert(len(self.domain) == 2)
+
+    def reset_misc(self):
+        self._mean=None
+        self._var=None
 
     def from_data(self, data, pdfmethod='kde', nBins=50):
         """ stats """
         from welib.tools.stats import pdf_histogram, pdf_gaussian_kde
+        self.reset_misc()
         if pdfmethod=='histogram':
             x_pdf, pdf = pdf_histogram(data, nBins=nBins, norm=True, count=False)
         elif pdfmethod=='kde':
@@ -40,17 +56,26 @@ class StochasticVariable():
         else:
             raise NotImplementedError()
         # Set PDF
-        print('>>> x_pdf', x_pdf[0], x_pdf[-1])
-        print('>>> pdf nan', np.sum(np.isnan(pdf)))
+        #print('>>> x_pdf', x_pdf[0], x_pdf[-1])
+        #print('>>> pdf nan', np.sum(np.isnan(pdf)))
         self.set_pdf(x_pdf, pdf)
 
         self._data = data
 
-    def check_pdf(self, x=None):
-        if x is None:
-            x=np.linspace(-30,30,100)
-        integral = np.trapz(self.pdf(x), x)
-        print('>>> Integral', integral)
+    def integral(self, x=None):
+        """ Compute integral of PDF (should return 1)  """
+        if x is not None:
+            # We compute numerical integral
+            integral = np.trapz(self.pdf(x), x)
+        elif self._f_pdf is not None:
+            # We have a function for the pdf, we use more accurate nquad evaluation
+            integral, _ = nquad( self._f_pdf , [self.domain])
+        else:
+            # Numerical integral
+            if x is None:
+                x = self.x_default
+            integral = np.trapz(self.pdf(x), x)
+        return integral
 
     def sample(self, n, method='inverse-cdf'):
         # NOTE: we will not get much extremes out of this
@@ -61,6 +86,7 @@ class StochasticVariable():
         return s
 
     def set_pdf(self, x, pdf):
+        self.reset_misc()
         assert(len(x)==len(pdf))
         self._x_pdf = x
         self._pdf   = pdf
@@ -69,6 +95,7 @@ class StochasticVariable():
         self.set_cdf(x, cdf) # TODO sort out
 
     def set_pdf_f(self, f_pdf):
+        self.reset_misc()
         self._f_pdf = f_pdf
 
     def set_cdf(self, x, cdf):
@@ -101,29 +128,51 @@ class StochasticVariable():
 
     @property
     def mean(self):
-        if self._data is None:
+        if self._mean is not None:
+            return self._mean # already computed
+        if self._f_pdf is not None:
+            # Use nquad for more accurate calculation
+            xf = lambda x : x * self._f_pdf(x)
+            self._mean, _ = nquad( xf , [self.domain])
+        elif self._data is None:
+            # Use numerical integration
             x = self.x_default
-            return np.trapz(x * self.pdf(x) , x)
+            self._mean = np.trapz(x * self.pdf(x) , x)
         else:
-            return np.mean(self._data)
+            # Use the raw sampled data
+            self._mean =  np.mean(self._data)
+        return self._mean
 
     @property
     def var(self):
-        if self._data is None:
-            mu = self.mean
+        if self._var is not None:
+            return self._var # already computed
+
+        mu = self.mean
+        if self._f_pdf is not None:
+            # Use nquad for more accurate calculation
+            xxf = lambda x : (x-mu)*(x-mu) * self._f_pdf(x)
+            self._var, _ = nquad( xxf , [self.domain])
+        elif self._data is None:
+            # Use numerical integration
             x = self.x_default
-            return np.trapz((x-mu)**2 * self.pdf(x) , x)
+            self._var = np.trapz((x-mu)**2 * self.pdf(x) , x)
         else:
-            return np.var(self._data)
+            self._var = np.var(self._data)
+        return self._var
+
+    @property
+    def corrcoeff(self):
+        return 1 # self.var/(sigmas[j]*sigmas[k])
 
     @property
     def x_default(self):
         if self._x_pdf is None:
-            return np.linspace(-30,30,100)
+            return np.linspace(self.domain[0], self.domain[1], self.nDiscr)
         else:
             return self._x_pdf
 
-    def plot_pdf(self, x=None, ax=None, sty='-', label=None, **kwargs):
+    def plot_pdf(self, x=None, ax=None, sty='-', label=None, plot_mean=False, **kwargs):
         if x is None:
             x = self.x_default
         if label is None:
@@ -134,6 +183,8 @@ class StochasticVariable():
             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         ax.plot(x, pdf,   sty, label=label, **kwargs)
+        if plot_mean:
+            ax.axvline(self.mean, ls=':', c='k')
         #ax.set_xlabel('')
         ax.set_ylabel('Probability density function')
         return ax
@@ -151,6 +202,20 @@ class StochasticVariable():
         ax.set_ylabel('Cumulative density function')
         return ax
 
+    # --------------------------------------------------------------------------------
+    # --- Other variable
+    # --------------------------------------------------------------------------------
+    def cov(self, var2, f_XY):
+        """
+        Compute Cov(X,Y) = \int\int (x-mu_X)(y-mu_Y) f_XY(x,y) dx dy
+        NOTE: using vector is better for that as vectors contain f_XY
+        """
+        muX, muY = self.mean, var2.mean
+        # Integration of multidimension function
+        xxf = lambda x,y : (x-muX)*(y-muY) * f_XY(x,y)
+        cov = nquad( xxf , [self.domain, var2.domain])
+        return cov
+
     def new_from_bijection(self, g=None, x=None, gp=None, ginv=None, yvalues='input', split=None):
         """ 
         create variable y = g(x) 
@@ -164,7 +229,13 @@ class StochasticVariable():
 
         # --- Analytical way
         if gp is not None and ginv is not None and self._f_pdf is not None:
-            f_pdf = lambda y: self._f_pdf( ginv(y)  ) / np.abs(gp (ginv(y) ) )
+            #f_pdf = lambda y: self._f_pdf( ginv(y)  ) / np.abs(gp (ginv(y) ) )
+            def f_pdf(y):
+                 y = np.asarray(y)
+                 scale = np.abs(gp (ginv(y)) )
+                 inv_scale = np.zeros_like(y)
+                 inv_scale[scale>0] = 1/scale[scale>0]
+                 return self._f_pdf( ginv(y)  ) * inv_scale
             var = StochasticVariable()
             var.set_pdf_f(f_pdf)
             return var
@@ -282,6 +353,23 @@ class StochasticVariable():
 
 
         return var
+
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+        s+='- name    : {}\n'.format(self.name)
+        s+='- domain  : [{} ; {} ]\n'.format(self.domain[0], self.domain[1])
+        try:
+            mean      = self.mean
+            var       = self.var
+            check     = self.integral()
+        except:
+            check     = np.nan
+            mean      = np.nan
+            var       = np.nan
+        s+='* integral: {}\n'.format(np.around(check,5))
+        s+='* mean    : {}\n'.format(np.around(mean,5))
+        s+='* var     : {}\n'.format(np.around(var, 5))
+        return s
 
 
 

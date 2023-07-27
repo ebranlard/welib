@@ -12,6 +12,8 @@ def main():
     sigmas = [5,6]
     mus    = [0,3]
     rho=0.7
+    # TODO TODO Now we should use the class Vector for that and meshgrid_pdf.
+
 
     # --- joint probability density function
     x1 = np.linspace(-20,20,100)
@@ -26,7 +28,7 @@ def main():
     F1th = gaussian_pdf(x1, mus[0], sigmas[0]**2)
     F2th = gaussian_pdf(x2, mus[1], sigmas[1]**2)
 
-    # Joint disitribution if variables were independent
+    # Joint distribution if variables were independent
     _, _, F_indpt = gaussian2d_pdf_meshgrid(x1, x2, mus, sigmas, rho=0)
 #     F_indpt = (np.atleast_2d(F1th).T).dot(np.atleast_2d(F2th)).T
     F1_indpt = np.trapz(F_indpt.T, x2)
@@ -69,7 +71,20 @@ def main():
     ax.set_ylabel('')
     ax.legend()
     
+    fig.suptitle('Stochastic - Correlated variables')
 
 if __name__ == '__main__':
     main()
     plt.show()
+
+
+if __name__ == '__test__':
+    main()
+    # TODO test it
+    #np.testing.assert_almost_equal(vec2.mean, [0.,0.], 3)
+
+if __name__=="__export__":
+    main()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
+

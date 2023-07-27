@@ -6,13 +6,13 @@ Reference:
 
 """
 
-
+import math
 import numpy as np
 
 # --------------------------------------------------------------------------------
 # --- Uniform
 # --------------------------------------------------------------------------------
-def uniform_pdf(x, a, b):
+def uniform_pdf(x, a=0, b=1):
     f = np.zeros_like(x)
     bn = np.logical_and(x>=a,x<=b)
     f[bn]=1/(b-a)
@@ -21,7 +21,7 @@ def uniform_pdf(x, a, b):
 # --------------------------------------------------------------------------------
 # --- Normal/Gaussian 
 # --------------------------------------------------------------------------------
-def gaussian_pdf(x, mu, sig):
+def gaussian_pdf(x, mu=0, sig=1):
     return  1/( sig * np.sqrt(2*np.pi) ) * np.exp(-0.5 * (x-mu)**2/sig**2)
 
 
@@ -87,24 +87,21 @@ def gaussianNd_pdf(x, mu, C):
                 f = 1/( (2*np.pi)**(ndim/2) * np.sqrt(Cdet) ) * np.exp(-0.5 * (xp.T).dot(Cinv.dot(xp)))
         return f
 
-
-# --------------------------------------------------------------------------------
-# --- Rayleigh 
-# --------------------------------------------------------------------------------
-def rayleigh_pdf(x, sig):
-    x = np.asarray(x)
-    f = np.zeros_like(x)
-    bn = x>=0
-    x = x[bn]
-    f[bn]= x/sig**2 * np.exp(-x**2/(2*sig**2))
-    return f
-
-
 # --------------------------------------------------------------------------------
 # --- Gamma 
 # --------------------------------------------------------------------------------
-def gamma_pdf(x, alpha, beta):
-    import math
+def gamma_pdf(x, alpha=1, beta=2):
+    """ 
+
+    Note: Gamma function:
+       Gamma(x) = \int_0^\infty t^(x-1) exp(-t) dt
+       Gamma(x+1) = x \Gamma(x)
+       Gamma(n  ) = (n-1)!
+       Gamma(1  ) = 1
+       Gamma(2  ) = 1
+       Gamma(1/2) = sqrt(pi)
+
+    """
     x = np.asarray(x)
     f = np.zeros_like(x)
     bn = x>=0
@@ -116,7 +113,7 @@ def gamma_pdf(x, alpha, beta):
 # --------------------------------------------------------------------------------
 # --- Exponential 
 # --------------------------------------------------------------------------------
-def exponential_pdf(x, beta):
+def exponential_pdf(x, beta=1):
     x = np.asarray(x)
     f = np.zeros_like(x)
     bn = x>=0
@@ -128,7 +125,14 @@ def exponential_pdf(x, beta):
 # --------------------------------------------------------------------------------
 # --- Weibull
 # --------------------------------------------------------------------------------
-def weibull_pdf(x, A, k, x0):
+def weibull_pdf(x, A=1, k=2, x0=0):
+    """
+
+    NOTE: 
+      mu      = A \Gamma( 1 + 1/k)
+      sigma^2 = A^2 [  \Gamma( 1 + 2/k) - Gamma^2(1+1/k)  ]
+
+    """
     x = np.asarray(x)
     f = np.zeros_like(x)
     bn = x>=x0
@@ -136,10 +140,62 @@ def weibull_pdf(x, A, k, x0):
     f[bn]= k/A * (x/A)**(k-1) * np.exp(-(x/A)**k)
     return f
 
+def weibull_moments(A=1, k=2, x0=0):
+    m={}
+    m['mean']  = A * math.gamma(1+1/k) + x0
+    m['variance'] = A**2 * ( math.gamma(1+2/k) -  math.gamma(1+1/k)**2 )
+    return m
+
+# --------------------------------------------------------------------------------
+# --- Rayleigh 
+# --------------------------------------------------------------------------------
+# NOTE: Rayleigh is Weibull with k=2. 
+def rayleigh_pdf(x, s=3):
+    """ 
+    The notation "s", with A**2 = 2*s**2 is used here instead of "A"
+                           A    = sqrt(2) s
+    NOTE: s is not really sigma
+    """
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>=0
+    x = x[bn]
+    f[bn]= x/s**2 * np.exp(-x**2/(2*s**2))
+    return f
+
+def rayleigh_cdf(x, s=3):
+    x = np.asarray(x)
+    f = np.zeros_like(x)
+    bn = x>=0
+    x = x[bn]
+    F[bn]= 1- np.exp(-x**2/(2*s**2))
+    return f
+
+def rayleigh_moments(s=3):
+    """ 
+    The notation "s", with A**2 = 2*s**2 is used here instead of "A"
+                           A    = sqrt(2) s
+
+    Gamma(2) = 1
+    Gamma(1+1/2) = 1/2 sqrt(pi)
+
+    Therefore:
+      mu      = A \Gamma( 1 + 1/2)                 = s * sqrt(2 pi)/ 2
+      sigma^2 = A^2 [\Gamma(2) - Gamma^2(1+1/2)  ] = s**2 (  2 -  pi/2) 
+    """
+    m={}
+    m['mean']  = s* np.sqrt(2*np.pi) / 2
+    m['variance'] = s**2 * (2 - np.pi/2)
+    m['skewness'] = 2*np.sqrt(np.pi) * (np.pi-3)/ (4-np.pi)**(3/2)
+    m['kurtosis'] = -(6*np.pi**2-24*np.pi+16)/(4-np.pi)**2
+    m['median'] = s *np.sqrt(2*np.log(2))
+    m['mode'] = s
+    return m
+
 # --------------------------------------------------------------------------------
 # --- Lognormal
 # --------------------------------------------------------------------------------
-def lognormal_pdf(x, mu, sig):
+def lognormal_pdf(x, mu=0, sig=1):
     x = np.asarray(x)
     f = np.zeros_like(x)
     bn = x>0

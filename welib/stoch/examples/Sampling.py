@@ -38,3 +38,15 @@ def main():
 if __name__ == '__main__':
     main()
     plt.show()
+
+if __name__ == '__test__':
+    main()
+    # TODO test it
+    #np.testing.assert_almost_equal(vec2.mean, [0.,0.], 3)
+
+if __name__=="__export__":
+    pass
+    #main()
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)
+
