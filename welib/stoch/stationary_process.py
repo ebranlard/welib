@@ -295,10 +295,14 @@ class SampledStochasticProcess:
         if ax is None:
             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        if self.mu_xi: 
+        if self.mu_xi is not None: 
             ax.plot(self.time, self.mu_xi , label='Mean')
+            if self.verbose:
+                print('>>> Mean Mean num:', np.around(np.mean(self.mu_xi ),4))
         if self._mu_th is not None:
             ax.plot(self.time, self.time*0+self._mu_th, 'k--' , label='Mean (th)')
+            if self.verbose:
+                print('>>> Mean Mean th :', np.around(self._mu_th,4))
         #ax.plot(time, var_xi , label='Variance')
         #ax.plot(time, time*0+s**2, 'k--' , label='Variance (th)')
         ax.set_xlabel('Time [s]')

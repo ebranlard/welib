@@ -1,26 +1,110 @@
 """ 
+Tools for stochastic process, in particular, the methods:
+
+- sample_from_autospectrum: to generate a time series based on a spectrum
+- autocovariance_* : compute the autocoviariance
+- autospectrum_* : compute the autospectrum
 
 
 
-# TODO Look at
+# TODO for autocovariance look at
 # http://statsmodels.sourceforge.net/devel/generated/statsmodels.tsa.stattools.acovf.html http://statsmodels.sourceforge.net/devel/generated/statsmodels.tsa.stattools.ccovf.html
 """
 
 
 
 import numpy as np
-from scipy.integrate import nquad
-
-from welib.tools.signal_analysis import correlation
-from welib.tools.spectral import fft_wrap
+from numpy.random import uniform
 
 
+# --------------------------------------------------------------------------------
+# --- Helper functions for Time series generation from auto spectrum
+# --------------------------------------------------------------------------------
+def _getPhasesAmplitudesFactors(N1, phases=None, amplitudesFactors=None, randomAmplitudes=True):
+    if randomAmplitudes:
+        if amplitudesFactors is not None:
+            if len(amplitudesFactors)!=N1:
+                raise Exception('Length of amplitudes should be {}'.format(N1))
+            if amplitudesFactors[0]!=1:
+                raise Exception('First amplitudeFactor (for zero frequency) must be 1 by convention.')
+            U1 = amplitudesFactors
+        else:
+            U1 = uniform(0, 1, N1)  # amplitude
+            U1[0] = 1
+    else:
+        U1 = np.ones(N1)*np.exp(-1)
+
+    if phases is not None:
+        if len(phases)!=N1:
+            raise Exception('Length of phases should be half the length of time vector')
+        if phases[0]!=0:
+            raise Exception('First phase (for zero frequency) must be zero by convention.')
+        phi1 = phases
+    else:
+        phi1 = uniform(0, 2*np.pi, N1)  # random phases between 0 and 2pi
+        phi1[0] = 0
+    return phi1, U1
+
+def _getX1_sumcos(N, Sf_or_So, df_or_dom, phases=None, amplitudesFactors=None, randomAmplitudes=True):
+    N1 = len(Sf_or_So)
+    phi1, U1 = _getPhasesAmplitudesFactors(N1, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
+    A1 = np.sqrt(2*Sf_or_So * df_or_dom) 
+    A2 = np.sqrt(-2*np.log(U1))/np.sqrt(2)
+    A2[0]=1
+    a1 = A1 * A2 * np.exp(  1j * phi1)
+    X1 = N/2*a1
+    X1[0] = np.sqrt(2)*X1[0]
+    return X1, A1, A2, a1, phi1
+
+def _getX1_boxmuller(N, Sf_or_So, df_or_dom, phases=None, amplitudesFactors=None, randomAmplitudes=True):
+    # TODO This is the same as sumcos
+    # TODO I'm not sure whether we should use N or N1 different random numbers here
+    N1 = len(Sf_or_So)
+    phi1, U1 = _getPhasesAmplitudesFactors(N1, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
+    # Decomposition 1
+    A1 = np.sqrt(2 * df_or_dom * Sf_or_So) 
+    A2 = np.sqrt(-2*np.log(U1))/np.sqrt(2);
+    A2[0]=1
+    a1 = A1 * A2 * np.exp(1j * phi1)
+    X1 = N/2*a1
+    # Decomposition 2
+    A1_ = np.sqrt(N * df_or_dom * Sf_or_So/2)
+    W1_ = np.sqrt(N/2) * np.sqrt(-2*np.log(U1))*np.exp(1j * phi1)
+    X1_ = A1_*W1_
+    if np.max(np.abs(X1-X1_))>1e-10:
+        raise Exception('Problem in formulation')
+    X1[0] = np.sqrt(2)*X1[0]
+    return  X1, A1, A2, a1, phi1
+
+def _getX1_basic(N, Sf_or_So, df_or_dom):
+    N1 = len(Sf_or_So)
+    A1 = np.sqrt(2*Sf_or_So * df_or_dom) 
+    A2 = 1
+    phi1=0
+    a1 = A1 * A2 
+    X1 = N/2*a1
+    X1[0] = np.sqrt(2)*X1[0]
+    return X1, A1, A2, a1, phi1
 
 
+# --------------------------------------------------------------------------------
+# --- Main function for time series generation from auto spectrum 
+# --------------------------------------------------------------------------------
 def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True, 
-        method='ifft', fCutInput=None):
+        method='sumcos-irfft', 
+        seed=None, phases=None, amplitudesFactors=None, randomAmplitudes=True):
     """ 
     Generate a time series x, based on an single-sided autospectrum
+
+    INFO:
+        single-sided =  2 double-sided
+                S_X  = 2 S_XX
+
+    Fundamental relation of FFT/IFFT:
+        N = 1/ (dt * df)
+
+        exp ( i 2 pi k n / N  )  = exp ( i 2 pi  f_k t_n )   for k in [0..N-1], n in [0..N-1]
+
 
     INPUTS:
      - tMax: maximum time of time series
@@ -30,161 +114,100 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
          or
          - S_X_f  = f_S(f)       if angularFrequency is False
      - method: method used to generate the time series:
+         - 'sumcos-manual': 
+         - 'sumcos-irfft': 
+         - 'sumcos-idft-manual': 
+         - 'sumcos-idft-vectorized': 
+         - 'sumcos-idft-ifft': 
+         - 'boxmuller-*': 
          - 'ifft': inverse FFT (fastest)
-         - 'sum':  sum of cosines
-     - fCutInput: maximum frequency. If None, set based on dt/2
+     - randomAmplitudes:  if True, randomized the amplitudes (not only the phases) 
+     - phases: vector of phases (between 0 and 2pi) to use for all positive frequencies. 
+     - amplitudesFactors:  vectors of amplitudes (0,1) to use for all positive frequencies
 
     OUTPUTS:
+     - t: time vector
      - x: time series
+     - f_or_om: frequency in [Hz] if not angularFrequency, or in [rad/s] if angularFrequency
+     - Sf_or_So: Spectrum corresponding to f_or_om
 
     """
-    from numpy.random import uniform
+    methods = method.lower().strip().split('-')
+    # -- Define time vector
+    N  = int(np.round(tMax/dt)) + 1
+    t     = np.arange(0,tMax+dt/2,dt)
+    # -- Define frequencies and spectrum for single sided approaches
+    f1     = np.fft.rfftfreq(N, dt) # NOTE: when N is even, we have an extra frequency
+    fMax   = f1[-1]                 # approx (1/dt)/2  Highest frequency
+    df1    = 1/(dt*N)               # approx  1./tMax  Frequency resolution
+    N1     = len(f1)
+    omega1 = 2*np.pi*f1
     # -- Define frequencies and spectrum
-    fCut = (1./dt)/2      # Highest frequency    [Hz]
-    if fCutInput is not None:
-        fMax = fCutInput
-    else:
-        fMax = fCut
- 
-    df = 1./tMax                  # Frequency resolution [Hz]
-    f = np.arange(0,fMax+df/2,df) # array of frequencies [Hz]
-    omega = 2*np.pi*f             # array of angular frequencies [rad/s]
-    t = np.arange(0,tMax+dt/2,dt)
-
-    # NOTE: this is evaluated here, because the ifft evaluates it elsewhere..
     if angularFrequency:
-        S = np.array([f_S(omi) for omi in omega])
+        Sf_or_So  = np.array([f_S(omi)     for omi in omega1])
+        df_or_dom = 2*np.pi*df1
+        f_or_om   = omega1
     else:
-        S = np.array([f_S(fi) for fi in f])
+        Sf_or_So  = np.array([f_S(fi)      for fi in f1])
+        df_or_dom = df1
+        f_or_om   = f1
+    if seed is not None:
+        # Initialized random number generator
+        np.random.seed(seed)
+    
+    if methods[0] in ['sumcos', 'boxmuller']:
+        # --------------------------------------------------------------------------------
+        # --- SUM OF COSINES / Box-Muller
+        # --------------------------------------------------------------------------------
+        X1, A1, A2, a1, phi1 = _getX1_sumcos(N, Sf_or_So, df_or_dom, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
 
-    if method=='sum':
-        # --- Method 1
-        if angularFrequency:
-            ap = np.sqrt(2*S*df*2*np.pi)      # amplitude  # TODO see if needed to adjust if angularFrequency
+        if methods[1] == 'manual':
+            A1 = A1*A2
+            x = np.zeros(t.shape)
+            for ai,oi,ei in zip(A1,omega1,phi1):
+                x += ai * np.cos(oi*t + ei)
+
+        elif methods[1] == 'irfft' :
+            x = np.fft.irfft(X1, N)
+
+        elif methods[1] == 'idft':
+            from welib.tools.spectral import double_sided_DFT_real, check_DFT_real, IDFT
+
+            if np.mod(N,2)==0:
+                print('[WARN] IDFT introduces small error for now when N is even')
+                # Keep me: what we use to do:
+                #   f1 = np.fft.rfftfreq(N, dt)[:-1] # NOTE the last frequency should not be used
+            X = double_sided_DFT_real(X1, N=N)
+            check_DFT_real(X)
+            x = IDFT(X, method=methods[2])
+            x = np.real(x)
+
         else:
-            ap = np.sqrt(2*S*df)      # amplitude  # TODO see if needed to adjust if angularFrequency
-        eps = uniform(0,2*np.pi,len(f))  # random phases between 0 and 2pi
-        u = np.zeros(t.shape)
-        for ai,oi,ei in zip(ap,omega,eps):
-            u += ai * np.cos(oi*t + ei)
-    elif method=='ifft':
-        # NOTE: The time series from the FFT will repeat itself at the middle. 
-        # So we need twice the number of frequencies! 
-        # Also, we use a double side spectrum
-        if angularFrequency:
-            # TODO Somehow the variance of first and last points are too high
-            # So we increas the target time vector
-            Ioffset=20
-            #tMax2 = tMax                   # TODO sort it out
-            #fMax=fMax*4
-            tMax2 = tMax+dt*(2*Ioffset)                 # TODO sort it out
-            fMax=fMax*4
-        else:
-            tMax2 = 4*tMax                     # TODO sort it out
-        df2 = 1/(tMax2)                 
-        f2 = np.arange(0,fMax+df2/2,df2)/2  # TODO sort it out
-        # --- Method 2
-        #  Value sets of two random normal distributed variables
-        N = int(tMax2* fMax + 1)
-        Nh= int(N/2) 
-        #print('N',N)
-        a = np.random.randn(Nh+1)
-        b = np.random.randn(Nh+1)
+            NotImplementedError('Method {}'.format(method))
+
+    elif methods[0]=='randn':
+        # --------------------------------------------------------------------------------
+        # --- RANDOM NORMAL complex numbers 
+        # --------------------------------------------------------------------------------
+        X1_bas, A1, A2, a1, phi1 = _getX1_basic(N, Sf_or_So, df_or_dom)
+
+        a = np.random.randn(N1)
+        b = np.random.randn(N1)
         # First part of the complex vector
-        xlhalf1 = a + b * 1j  # TODO TODO the b does nto seem to have an impact
-        xlhalf1[0] = 0 # zero mean
+        X1_rand = (a + b * 1j )/np.sqrt(2)
+        X1_rand[0] = 1
+        X1 = X1_bas * X1_rand
 
-        omega = 2.*np.pi*f2[:Nh+1] 
+        x = np.fft.irfft(X1, N)
 
-        #print('[WARN] Need to sort out ifft method for sample generation')
-        if angularFrequency:
-            Sw = np.array([f_S(omi) for omi in omega]) # TODO WHAT SHOULD BE DONE
-            #Sw = np.array([f_S(omi*2*np.pi) for omi in omega])
-        else:
-            #Sw = np.array([f_S(omi/(2*np.pi)) for omi in omega]) # TODO WHAT SHOULD BE DONE!
-            Sw = np.array([f_S(omi) for omi in omega])
-        if angularFrequency:
-            #sig = np.sqrt(tMax2/(2*np.pi)* Sw) # see a= np.sqrt(2*S*df)
-            sig = np.sqrt(tMax2*Sw) # see a= np.sqrt(2*S*df)
-            #sig = Sw #np.sqrt(2*df2*Sw) # see a= np.sqrt(2*S*df)
-            # TODO somehow the variance of the first and last points are too high
-            #sig[0] =sig[0]/20
-        else:
-            sig = np.sqrt(tMax2/(2*np.pi)* Sw) # see a= np.sqrt(2*S*df)
-#         sig = np.sqrt(tMax2/(1)* Sw) # see a= np.sqrt(2*S*df)
-#         sig = np.sqrt(2*Sw*df2) 
-        xlhalf1 *= sig
+        #X = double_sided_DFT_real(X1, N=N)
+        #x=np.fft.ifft(X)
+        #x = np.real(x)
 
-        xlhalf2 = np.flipud(xlhalf1[1:])
+    else:
+        raise NotImplementedError('Method {}'.format(method))
 
-        # Total complex vector
-        xl=np.concatenate((xlhalf1,xlhalf2))
-
-
-
-        # Fourier inverse
-        u=np.fft.ifft(xl)
-
-#         import matplotlib.pyplot as plt
-#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-#         ax.plot(np.real(xl )  , label='')
-# #         ax.plot(np.real(sig)   , label='sig')
-# #         ax.plot(np.real(a  ) , label='a')
-# #         ax.plot(np.real(Sw ) , label='Sw')
-#         ax.set_xlabel('')
-#         ax.set_ylabel('')
-#         ax.legend()
-#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-#         ax.plot(np.real(u )  , label='re')
-#         ax.plot(np.imag(u )  , label='im')
-#         ax.plot(np.abs(u )  , label='ab')
-#         ax.plot(np.conjugate(u )*u,'--'  , label='z z*')
-# #         ax.plot(np.real(sig)   , label='sig')
-# #         ax.plot(np.real(a  ) , label='a')
-# #         ax.plot(np.real(Sw ) , label='Sw')
-#         ax.set_xlabel('')
-#         ax.set_ylabel('')
-#         ax.legend()
-#         plt.show()
-
-        # Remove zero imaginairy part and normalize
-        if angularFrequency:
-            Nh= len(t)-1 # TODO check consistency with Nh above
-            # NOTE: imaginary or real works equivalently
-            u=np.real(u)*fMax*np.sqrt(np.pi/2)
-            #u=np.imag(u)*fMax*np.sqrt(np.pi/2)
-            #u=u[20:Nh+21] 
-            #u=u[20:Nh+21] # TODO somehow the variance of the first and last points are too high
-
-#             import matplotlib.pyplot as plt
-#             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-#             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-#             I=np.arange(len(u))
-#             I2=I[Ioffset:Nh+Ioffset+1]
-#             ax.plot(I,u      , label='')
-#             ax.plot(I2,u[I2] , label='')
-#             ax.set_xlabel('')
-#             ax.set_ylabel('')
-#             plt.show()
-
-            # TODO somehow the variance of the first and last points are too high
-            #u=u[0:Nh+1]
-            #u=u[3:Nh+4]
-            u=u[Ioffset:Nh+Ioffset+1]
-        else:
-            u=np.sqrt(2)*np.pi*fMax*np.real(u)
-            #u=fMax*np.real(u)/2
-            u=u[0:Nh+1]
-
-    u=u-np.mean(u)
-    return t, u, f, S
-
-
-
-
-
+    return t, x, f_or_om, Sf_or_So
 
 
 
@@ -196,6 +219,7 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
 
 
 def autocovariance_num(x, **kwargs):
+    from welib.tools.signal_analysis import correlation
     sigma2 = np.var(x)
     rho_XX, tau = correlation(x, **kwargs)
     kappa_XX = rho_XX*sigma2
@@ -248,8 +272,20 @@ def autocovariance_fft(omega, S_X, onesidedIn=True):
 
     return tau, K_X
 
+def autocovariance_int(tau, f_S_X, omega_max):
+    """
+    Return autocovariance function
+    """
+    from scipy.integrate import nquad
+    K_XX = np.zeros(tau.shape) 
+    for i, taui in enumerate(tau):
+        integrand = lambda om : np.cos(om * taui) * f_S_X(om)
+        K_XX[i], _, _ = nquad(integrand, [[0, omega_max]] , full_output=1)
+    return K_XX
+
 
 def autocorrcoeff_num(x, **kwargs):
+    from welib.tools.signal_analysis import correlation
     rho_XX, tau = correlation(x, **kwargs)
     return rho_XX, tau
 
@@ -263,6 +299,7 @@ def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap'):
 
     """
     if method=='fft_wrap':
+        from welib.tools.spectral import fft_wrap
         f, S_X, Info = fft_wrap(tau, kappa_XX, output_type='amplitude', averaging='None', detrend=False)
         omega =2*np.pi * f
     else:
@@ -284,15 +321,13 @@ def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap'):
 
     return omega, S_X
 
-
-
-
 def autospectrum_int(omega, f_kappa, tau_max):
     """
     Return one-sided (S_X) or double-sided (S_XX) autospectrum:
       - Using numerical quadrature integration
       - Based on a "continuous" function kappa_XX(tau)
     """
+    from scipy.integrate import nquad
     S_X = np.zeros(omega.shape) 
     # for i, omi in enumerate(om_th):
     #     f_S_X_integrand = lambda tau : 1/np.pi * np.exp(-1j * omi * tau) * f_kappa(tau)
@@ -302,12 +337,3 @@ def autospectrum_int(omega, f_kappa, tau_max):
         S_X[i], _, _  = nquad(f_S_X_integrand, [[0, tau_max]] , full_output=1)
     return S_X
 
-def autocovariance_int(tau, f_S_X, omega_max):
-    """
-    Return autocovariance function
-    """
-    K_XX = np.zeros(tau.shape) 
-    for i, taui in enumerate(tau):
-        integrand = lambda om : np.cos(om * taui) * f_S_X(om)
-        K_XX[i], _, _ = nquad(integrand, [[0, omega_max]] , full_output=1)
-    return K_XX

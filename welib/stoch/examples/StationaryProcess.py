@@ -1,16 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy.random import seed
 
 from welib.stoch.distribution import*
 from welib.stoch.stationary_process import SampledStochasticProcess
 
-
-seed(12)
-
-stats=[]
-stats+=['avg_spectra']
-stats+=['correlation']
 
 # --------------------------------------------------------------------------------}
 # --- Harmonic process 
@@ -87,14 +80,15 @@ def expo(nDiscr=2000, verbose=True, nSamples=200):
     proc._f_S_X_th = lambda omega: sigma**2 * lambd *np.exp(-lambd*omega)
     proc._f_kappa_XX_th = lambda tau:  sigma**2 / (1+tau**2/lambd**2)
     proc._var_th = sigma**2
-    proc._mu_th = 0
+    proc._mu_th = np.sqrt(sigma**2 * lambd/ proc.time_detault[-1] *(2*np.pi) )
 
     # --- Samples
-    proc.generate_samples_from_autospectrum(nSamples=nSamples, method='ifft')
+    proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
     #proc.generate_samples_from_autospectrum(nSamples=100, method='sum')
     proc.samples_stats(stats=stats) #nTau = None)
     proc.plot_samples()
     proc.plot_var()
+    proc.plot_mean()
 
     # --- Computations
     S_X_i = proc.autospectrum_int(method='fft', nDiscr=30*nDiscr, tau_max=tau_max) # still need work
@@ -151,7 +145,7 @@ def bandedwhite(nDiscr=2000, verbose=True, nSamples=200):
 
 
     # --- Samples
-    proc.generate_samples_from_autospectrum(nSamples=nSamples, method='ifft')
+    proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
     #proc.generate_samples_from_autospectrum(nSamples=200, method='sum')
     proc.samples_stats(stats=stats) #nTau = None)
     proc.plot_samples()
@@ -233,17 +227,17 @@ def rational(nDiscr=6000, verbose=True, nSamples=200):
 
 
     # --- Samples
-    proc.generate_samples_from_autospectrum(nSamples=nSamples, method='ifft')
+    proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
     #proc.generate_samples_from_autospectrum(nSamples=100, method='sum')
     proc.samples_stats(stats=stats) #nTau = None)
     proc.plot_samples()
     proc.plot_var()
 
     # --- Computation from analytical variance
-    #S_X_i = proc.autospectrum_int  (method='fft', nDiscr=50*nDiscr) #, tau_max=tau_max) # still need work
-    #K_X_i = proc.autocovariance_int(method='fft') #, nDiscr=5000, omega_max=omega_max)
-    #S_X_i = proc.autospectrum_int  (method='quad')
-    #K_X_i = proc.autocovariance_int(method='quad')
+    S_X_i = proc.autospectrum_int  (method='fft', nDiscr=50*nDiscr) #, tau_max=tau_max) # still need work
+    K_X_i = proc.autocovariance_int(method='fft') #, nDiscr=5000, omega_max=omega_max)
+    S_X_i = proc.autospectrum_int  (method='quad')
+    K_X_i = proc.autocovariance_int(method='quad')
 
     # --- Autocovariance
     axK = proc.plot_autocovariance()
@@ -255,12 +249,25 @@ def rational(nDiscr=6000, verbose=True, nSamples=200):
 
 
 if __name__ == '__main__':
+    from numpy.random import seed
+    seed(12)
+    stats=[]
+    stats+=['avg_spectra']
+    # stats+=['correlation']
+    gen_method ='sumcos-irfft'
+
 #     bandedwhite()
 #     harmo()
 #     expo()
     rational()
     plt.show()
+
 if __name__ == '__test__':
+    stats=[]
+    stats+=['avg_spectra']
+    stats+=['correlation']
+    gen_method ='sumcos-irfft'
+
     bandedwhite(nDiscr = 100, verbose = False, nSamples=5)
     harmo      (nDiscr = 100, verbose = False, nSamples=5)
     expo       (nDiscr = 100, verbose = False, nSamples=5)
