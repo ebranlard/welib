@@ -12,21 +12,28 @@ from welib.stoch.utils import autocorrcoeff_num
 from welib.stoch.utils import sample_from_autospectrum
 
 class SampledStochasticProcess:
-    def __init__(self, generator=None, name='', omega_max=10, tau_max=10, time_max=10, nDiscr=100,
+    def __init__(self, params=None, generator=None, name='', omega_max=None, tau_max=None, time_max=None, nDiscr=100,
             verbose=False):
         self.name = name
         self.verbose = verbose
-
+        self.params = params if params is not None else {}
 
         # Default domains
+        time_max  = time_max   if time_max is not None else 10
+        tau_max   = tau_max    if tau_max is not None else 10
+        omega_max = omega_max  if omega_max is not None else 10
         self.omega_max  = omega_max
         self.tau_max    = tau_max
         self.time_max   = max(time_max,tau_max)
         self.nDiscr     = nDiscr
+        if verbose:
+            print('omega_max', omega_max)
+            print('tau_max  ', tau_max)
+            print('time_max ', time_max)
 
         # Sample generations using a generator
         self.generator = generator
-        self.time = None
+        self._time = None
 
         # Samples
         self.xi   = None  # nSamples x nTime
@@ -57,8 +64,6 @@ class SampledStochasticProcess:
 
     @property
     def time_detault(self):
-        if self.time is not None:
-            return self.time
         return np.linspace(0, self.time_max, self.nDiscr)
 
     @property
@@ -68,6 +73,13 @@ class SampledStochasticProcess:
     @property
     def omega_default(self):
         return np.linspace(0, self.omega_max, self.nDiscr)
+
+    @property
+    def time(self):
+        if self._time is not None:
+            return self._time
+        else:
+            return self.time_detault
 
     @property
     def tau(self):
@@ -90,7 +102,7 @@ class SampledStochasticProcess:
         """
         if time is None:
             time = self.time_detault
-        self.time = time
+        self._time = time
         xi=np.zeros((nSamples, len(time)))
         for i in range(nSamples):
             xi[i,:] = self.generator(time)
@@ -100,7 +112,7 @@ class SampledStochasticProcess:
     def generate_samples_from_autospectrum(self, nSamples=1, time=None, method='ifft', **kwargs):
         if time is None:
             time = self.time_detault
-        self.time = time
+        self._time = time
 
         tMax = time[-1]
         dt = (time[-1]-time[0])/(len(time)-1)
@@ -125,7 +137,7 @@ class SampledStochasticProcess:
         """
         if stats is None:
             stats=['correlation','avg_spectra']
-        time = self.time
+        time = self._time
         xi   = self.xi
 
         dt=(time[-1]-time[0])/(len(time)-1)
@@ -427,3 +439,181 @@ class SampledStochasticProcess:
         return ax
 
 
+    def __repr__(self):
+        s='<{} object with attributes>:\n'.format(type(self).__name__)
+        s+='- name     : {}\n'.format(self.name)
+        s+='- params   : {}\n'.format(self.params)
+        s+='- time_max : {}\n'.format(self.time_max)
+        s+='- tau_max  : {}\n'.format(self.tau_max)
+        s+='- _var_th  : {}\n'.format(self._var_th)
+        s+='- _mu_th   : {}\n'.format(self._mu_th)
+        x=self.time ; s+=' * time   : [{} ... {}],  d: {}, n: {} \n'.format(x[0], x[-1], x[1]-x[0], len(x))
+        x=self.tau  ; s+=' * tau    : [{} ... {}],  d: {}, n: {} \n'.format(x[0], x[-1], x[1]-x[0], len(x))
+        x=self.omega; s+=' * omega  : [{} ... {}],  d: {}, n: {} \n'.format(x[0], x[-1], x[1]-x[0], len(x))
+        s+='Main methods:\n'
+        s+='- generate_samples, generate_samples_from_autospectrum\n'
+        s+='- plot_samples, plot_mean, plot_var  (after `generate_samples`)\n'
+        s+='- plot_autocovariance, plot_autospectrum, plot_autocorrcoeff\n'
+        return s
+
+
+# --------------------------------------------------------------------------------
+# --- Predefined processes
+# --------------------------------------------------------------------------------
+class HarmonicProcess(SampledStochasticProcess):
+
+    def __init__(self, s, omega0, generator=None, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
+
+        def harmonic_process_realisation(time, s=1, omega0=2*np.pi):
+            r = np.random.rayleigh(scale=s, size=1)
+            p = np.random.uniform(low=0, high=2*np.pi, size=1)
+            x = r * np.cos(omega0 * time + p)
+            return x
+        # Distribution parameters
+        params = {'s':s, 'omega0':omega0}
+        
+        # Derived parameters
+        T = 1/(omega0/(2*np.pi))
+        tau_max   = 10*T      if tau_max is None   else tau_max
+        omega_max = 3*omega0  if omega_max is None else omega_max
+
+        # --- Initialize Process
+        generator = lambda time: harmonic_process_realisation(time, s=s, omega0=omega0)
+        SampledStochasticProcess.__init__(self, params=params, generator = generator, name='harmonic', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
+        # Theory
+        self._f_kappa_XX_th = lambda tau: s**2 * np.cos(omega0*tau)
+        self._var_th        = s**2  
+        self._mu_th         = 0
+
+class ExponentialProcess(SampledStochasticProcess):
+
+    def __init__(self, lambd, sigma, generator=None, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
+
+        # Distribution parameters
+        params = {'lambd':lambd, 'sigma':sigma}
+
+        # Derived parameters
+        omega_max = - 1/lambd* np.log( 1e-3/ (lambd*sigma**2)) if omega_max is None else omega_max
+        tau_max   = np.sqrt( lambd**2 * (sigma**2/1e-3-1))     if tau_max is None else tau_max
+        time_max  = 2*tau_max                                  if time_max is None else time_max
+     
+        # --- Initialize Process
+        SampledStochasticProcess.__init__(self, params=params, generator = generator, name='exponential', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
+        # Theory
+        self._f_S_X_th = lambda omega: sigma**2 * lambd *np.exp(-lambd*omega)
+        self._f_kappa_XX_th = lambda tau:  sigma**2 / (1+tau**2/lambd**2)
+        self._var_th = sigma**2
+        self._mu_th = np.sqrt(sigma**2 * lambd/ self.time_detault[-1] *(2*np.pi) )
+
+class BandedWhiteNoiseProcess(SampledStochasticProcess):
+
+    def __init__(self, omega0, zeta, sigma, generator=None, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
+
+        # Distribution parameters
+        params = {'omega0':omega0, 'zeta':zeta, 'sigma':sigma}
+
+        # Derived parameters
+        B    = 2*zeta*omega0
+        omega_1 = omega0-B/2
+        omega_2 = omega0+B/2
+        T = 1/(omega0/(2*np.pi))
+        tau_max = 20*T          if tau_max   is None else tau_max
+        time_max = 2*tau_max    if time_max  is None else time_max
+        omega_max = 2*omega_2   if omega_max is None else omega_max
+     
+        # --- Initialize Process
+        SampledStochasticProcess.__init__(self, params=params, generator = generator, name='BandedWhiteNoise', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
+
+        # Theory
+        def f_S_X_th(omega, omega0, B, sigma_X):
+            if omega>=omega0-B/2 and omega<=omega0+B/2:
+                return sigma_X**2/B
+            else:
+                return 0
+        def f_k_XX_th(tau, omega0, B, sigma_X):
+            if tau==0:
+                return sigma_X**2
+            else:
+                return sigma_X**2 / (B*tau) * ( np.sin((omega0+B/2)*tau) - np.sin((omega0-B/2)*tau)) 
+
+        self._f_kappa_XX_th = lambda tau:   f_k_XX_th(tau,  omega0=omega0, B=B, sigma_X=sigma)
+        self._f_S_X_th      = lambda omega: f_S_X_th(omega, omega0=omega0, B=B, sigma_X=sigma)
+        self._var_th = sigma**2
+        self._mu_th = 0
+
+class CutOffWhiteNoiseProcess(SampledStochasticProcess):
+
+    def __init__(self, B, sigma, generator=None, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
+
+        # Distribution parameters
+        params = {'B':B, 'sigma':sigma}
+
+        # Derived parameters
+        omega_max = B if omega_max is None else omega_max
+        tau_max   = B if tau_max is None else tau_max
+        time_max  = B if time_max is None else time_max
+     
+        # --- Initialize Process
+        SampledStochasticProcess.__init__(self, params=params, generator = generator, name='CutOffWhiteNoise', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
+
+        # Theory
+        def f_S_X_th(omega, B, sigma):
+            if omega>=-B/2 and omega<=B/2:
+                return 2* sigma**2/B
+            else:
+                return 0
+        def f_k_XX_th(tau, B, sigma):
+            if tau==0:
+                return sigma**2
+            else:
+                return 2 * sigma**2 / (B*tau) * (np.sin(B/2*tau)  )
+
+        self._f_kappa_XX_th = lambda tau:   f_k_XX_th(tau,  B=B, sigma=sigma)
+        self._f_S_X_th      = lambda omega: f_S_X_th(omega, B=B, sigma=sigma)
+        self._var_th = sigma**2
+        self._mu_th = 0
+
+
+
+if __name__ == '__main__':
+    stats=[]
+    stats+=['avg_spectra']
+    stats+=['correlation']
+    verbose = True
+    nSamples= 130
+    nDiscr=100 
+
+    # --- Harmonic process
+    s      = 4
+    omega0 = 2*np.pi
+    proc = HarmonicProcess(s=s, omega0=omega0, verbose=True, nDiscr=nDiscr)
+
+    # --- Samples
+    T = 1/(omega0/(2*np.pi))
+    time=np.linspace(0,40*T, 1000)
+    dt = (time[-1]-time[0])/(len(time)-1)
+    # NOTE: no autospectrum
+    xi = proc.generate_samples(nSamples=nSamples, time=time)
+    proc.samples_stats(stats=stats) #nTau = None)
+    proc.plot_samples()
+    proc.plot_var()
+    # proc.plot_mean()
+
+    # --- Computations
+    proc.autospectrum_int(method='quad')
+    proc.autospectrum_int(method='fft', nDiscr=20*proc.nDiscr, tau_max=proc.tau_max*3)
+    #proc.autocovariance_int(method='fft')
+
+    proc.plot_autocovariance()
+    # proc.plot_autocorrcoeff()
+
+    #
+    ax = proc.plot_autospectrum()
+    ax.plot([omega0,omega0], [0,proc._var_th] ,'k--'   , label='Theory', lw=2)
+    ax.set_xlabel(r'$\omega$ [rad/s]')
+    ax.set_ylabel(r'$S_X(\omega)$')
+    ax.set_xlim([0, 2*omega0])
+    ax.legend()
+
+
+    plt.show()

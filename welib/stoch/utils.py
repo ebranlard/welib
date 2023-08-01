@@ -191,8 +191,11 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
         # --------------------------------------------------------------------------------
         X1_bas, A1, A2, a1, phi1 = _getX1_basic(N, Sf_or_So, df_or_dom)
 
-        a = np.random.randn(N1)
-        b = np.random.randn(N1)
+        a = np.random.normal(size=N1)
+        b = np.random.normal(size=N1)
+        #mag = np.sqrt(a**2+b**2)
+        #phi = np.atan2(b,a)
+        #X1_rand = mag*np.exp(1j*phi) # TODO try that and compare to BoxMuller
         # First part of the complex vector
         X1_rand = (a + b * 1j )/np.sqrt(2)
         X1_rand[0] = 1
@@ -337,3 +340,19 @@ def autospectrum_int(omega, f_kappa, tau_max):
         S_X[i], _, _  = nquad(f_S_X_integrand, [[0, tau_max]] , full_output=1)
     return S_X
 
+
+
+def plot_pdf(y, method='histogram', n=100, 
+        ax=None, label=None, sty='-',# plot options
+        **kwargs):            # pdf options
+    from welib.tools.stats import pdf
+    import matplotlib.pyplot as plt
+    xi,yi = pdf(y, method=method, n = n, **kwargs)
+    if ax is None:
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    ax.plot(xi, yi, sty, label=label)
+#     ax.set_xlabel('')
+    ax.set_ylabel('Probability density function')
+#     ax.legend()   
+    return ax

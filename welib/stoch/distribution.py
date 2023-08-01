@@ -8,6 +8,7 @@ Reference:
 
 import math
 import numpy as np
+from numpy import sin, cos, exp, log, sqrt, pi
 
 # --------------------------------------------------------------------------------
 # --- Uniform
@@ -22,7 +23,21 @@ def uniform_pdf(x, a=0, b=1):
 # --- Normal/Gaussian 
 # --------------------------------------------------------------------------------
 def gaussian_pdf(x, mu=0, sig=1):
-    return  1/( sig * np.sqrt(2*np.pi) ) * np.exp(-0.5 * (x-mu)**2/sig**2)
+    return  1/( sig * sqrt(2*pi) ) * exp(-0.5 * (x-mu)**2/sig**2)
+
+def gaussian_cdf(x, mu=0, sig=1):
+    from scipy.special import erf
+    return  1/2 *( 1 + erf((x-mu)/(sig*sqrt(2)) ) )
+
+def gaussian_moments(mu=0, sig=1):
+    m={}
+    m['mean']     = mu
+    m['variance'] = sigma**2
+    m['skewness'] = 0
+    m['kurtosis'] = 0
+    m['median'] = mu
+    m['mode']   = mu
+    return m
 
 
 def gaussian2d_covar(sigmas, rho):
@@ -34,10 +49,10 @@ def gaussian2d_covar(sigmas, rho):
 
 def gaussian2d_pdf(x1, x2, mus, sigmas, rho=0):
     """ """
-    scale = 1/(2*np.pi*sigmas[0]*sigmas[1]*np.sqrt(1-rho**2))
+    scale = 1/(2*pi*sigmas[0]*sigmas[1]*sqrt(1-rho**2))
     xi1 = (x1 - mus[0])/sigmas[0]
     xi2 = (x2 - mus[1])/sigmas[1]
-    f = scale * np.exp(-0.5* (xi1**2-2*rho*xi1*xi2+xi2**2)/(1-rho**2) )
+    f = scale * exp(-0.5* (xi1**2-2*rho*xi1*xi2+xi2**2)/(1-rho**2) )
     return f
 
 
@@ -68,7 +83,7 @@ def gaussianNd_pdf(x, mu, C):
     x = np.asarray(x)
     if not hasattr(mu, '__len__'):
         # Standard 1d Gaussian
-        f = gaussian_pdf(x, mu, np.sqrt(C))
+        f = gaussian_pdf(x, mu, sqrt(C))
         return f
     else:
         ndim = len(mu)
@@ -79,12 +94,12 @@ def gaussianNd_pdf(x, mu, C):
         if len(x.shape)==1:
             # nsamp =1
             xp = (x.T-mu).T
-            f = 1/( (2*np.pi)**(ndim/2) * np.sqrt(Cdet) ) * np.exp(-0.5 * (xp.T).dot(Cinv.dot(xp)))
+            f = 1/( (2*pi)**(ndim/2) * sqrt(Cdet) ) * exp(-0.5 * (xp.T).dot(Cinv.dot(xp)))
         else:
             f = np.zeros(x.shape)
             Xp = (x.T-mu)
             for xp in Xp:
-                f = 1/( (2*np.pi)**(ndim/2) * np.sqrt(Cdet) ) * np.exp(-0.5 * (xp.T).dot(Cinv.dot(xp)))
+                f = 1/( (2*pi)**(ndim/2) * sqrt(Cdet) ) * exp(-0.5 * (xp.T).dot(Cinv.dot(xp)))
         return f
 
 # --------------------------------------------------------------------------------
@@ -106,7 +121,7 @@ def gamma_pdf(x, alpha=1, beta=2):
     f = np.zeros_like(x)
     bn = x>=0
     x = x[bn]
-    f[bn]= beta**(alpha+1)/math.gamma(alpha+1) * x**alpha * np.exp(-beta*x)
+    f[bn]= beta**(alpha+1)/math.gamma(alpha+1) * x**alpha * exp(-beta*x)
     return f
 
 
@@ -118,7 +133,7 @@ def exponential_pdf(x, beta=1):
     f = np.zeros_like(x)
     bn = x>=0
     x = x[bn]
-    f[bn]= beta * np.exp(-beta * x)
+    f[bn]= beta * exp(-beta * x)
     return f
 
 
@@ -137,13 +152,23 @@ def weibull_pdf(x, A=1, k=2, x0=0):
     f = np.zeros_like(x)
     bn = x>=x0
     x=x[bn]-x0
-    f[bn]= k/A * (x/A)**(k-1) * np.exp(-(x/A)**k)
+    f[bn]= k/A * (x/A)**(k-1) * exp(-(x/A)**k)
     return f
+
+def weibull_cdf(x, A=1, k=2, x0=0):
+    """ """
+    x = np.asarray(x)
+    F = np.zeros_like(x)
+    bn = x>=x0
+    x=x[bn]-x0
+    F[bn]= (1-exp( - (x/A)**k)  )
+    return F
 
 def weibull_moments(A=1, k=2, x0=0):
     m={}
     m['mean']  = A * math.gamma(1+1/k) + x0
     m['variance'] = A**2 * ( math.gamma(1+2/k) -  math.gamma(1+1/k)**2 )
+    m['median'] = A * (log(2)) **1/k  + x0
     return m
 
 # --------------------------------------------------------------------------------
@@ -160,16 +185,16 @@ def rayleigh_pdf(x, s=3):
     f = np.zeros_like(x)
     bn = x>=0
     x = x[bn]
-    f[bn]= x/s**2 * np.exp(-x**2/(2*s**2))
+    f[bn]= x/s**2 * exp(-x**2/(2*s**2))
     return f
 
 def rayleigh_cdf(x, s=3):
     x = np.asarray(x)
-    f = np.zeros_like(x)
+    F = np.zeros_like(x)
     bn = x>=0
     x = x[bn]
-    F[bn]= 1- np.exp(-x**2/(2*s**2))
-    return f
+    F[bn]= 1- exp(-x**2/(2*s**2))
+    return F
 
 def rayleigh_moments(s=3):
     """ 
@@ -184,11 +209,11 @@ def rayleigh_moments(s=3):
       sigma^2 = A^2 [\Gamma(2) - Gamma^2(1+1/2)  ] = s**2 (  2 -  pi/2) 
     """
     m={}
-    m['mean']  = s* np.sqrt(2*np.pi) / 2
-    m['variance'] = s**2 * (2 - np.pi/2)
-    m['skewness'] = 2*np.sqrt(np.pi) * (np.pi-3)/ (4-np.pi)**(3/2)
-    m['kurtosis'] = -(6*np.pi**2-24*np.pi+16)/(4-np.pi)**2
-    m['median'] = s *np.sqrt(2*np.log(2))
+    m['mean']  = s* sqrt(2*pi) / 2
+    m['variance'] = s**2 * (2 - pi/2)
+    m['skewness'] = 2*sqrt(pi) * (pi-3)/ (4-pi)**(3/2)
+    m['kurtosis'] = -(6*pi**2-24*pi+16)/(4-pi)**2
+    m['median'] = s *sqrt(2*log(2))
     m['mode'] = s
     return m
 
@@ -200,7 +225,7 @@ def lognormal_pdf(x, mu=0, sig=1):
     f = np.zeros_like(x)
     bn = x>0
     x=x[bn]
-    f[bn]= 1/(np.sqrt(2*np.pi) * sig) * 1/x * np.exp( - ( np.log(x) - mu )**2 / (2*sig**2))
+    f[bn]= 1/(sqrt(2*pi) * sig) * 1/x * exp( - ( log(x) - mu )**2 / (2*sig**2))
     return f
 
 

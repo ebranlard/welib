@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import nquad
 from scipy.integrate import cumtrapz
-
+# Local
+from welib.stoch.distribution import *
 
 
 def interpsafe(x, xp, fp):
@@ -17,8 +18,14 @@ def interpsafe(x, xp, fp):
 # --- Numerical variable
 # --------------------------------------------------------------------------------{
 class StochasticVariable():
-    def __init__(self, name='', domain=None, nDiscr=100):
+    """ 
+    StochasticVariable
+
+    """
+    def __init__(self, name='', params=None, domain=None, nDiscr=100):
         self.name = name 
+        self.params = params if params is not None else {}
+        self._np_generator = None
         # Definitions based on an array of the PDF
         self._pdf = None    # array
         self._x_pdf = None  # array
@@ -31,7 +38,7 @@ class StochasticVariable():
         self._data = None
 
         # --- Storage to avoid recomputations 
-        self.reset_misc()
+        self._reset_misc()
 
         # --- Domain and discretization
         self.nDiscr=nDiscr
@@ -41,20 +48,15 @@ class StochasticVariable():
             self.domain = np.asarray(domain)
         assert(len(self.domain) == 2)
 
-    def reset_misc(self):
+    def _reset_misc(self):
         self._mean=None
         self._var=None
 
-    def from_data(self, data, pdfmethod='kde', nBins=50):
+    def from_data(self, data, pdfmethod='kde', n=50):
         """ stats """
-        from welib.tools.stats import pdf_histogram, pdf_gaussian_kde
-        self.reset_misc()
-        if pdfmethod=='histogram':
-            x_pdf, pdf = pdf_histogram(data, nBins=nBins, norm=True, count=False)
-        elif pdfmethod=='kde':
-            x_pdf, pdf = pdf_gaussian_kde(data, bw='scott', nOut=nBins, cut=3, clip=(-np.inf,np.inf))
-        else:
-            raise NotImplementedError()
+        from welib.tools.stats import pdf
+        self._reset_misc()
+        x_pdf, pdf = pdf(data, method=pdfmethod, n=n)
         # Set PDF
         #print('>>> x_pdf', x_pdf[0], x_pdf[-1])
         #print('>>> pdf nan', np.sum(np.isnan(pdf)))
@@ -80,13 +82,20 @@ class StochasticVariable():
     def sample(self, n, method='inverse-cdf'):
         # NOTE: we will not get much extremes out of this
         #      It depends on the quality of the cdf, and the number of points used for the inverse
-        # --- Inverse method, use uniform distribution
-        u = np.random.uniform(low=0.0, high=1.0, size=n)
-        s = self.cdf_inv(u)
+        if method=='inverse-cdf':
+            # --- Inverse method, use uniform distribution
+            u = np.random.uniform(low=0.0, high=1.0, size=n)
+            s = self.cdf_inv(u)
+        elif method=='numpy':
+            if self._np_generator is None:
+                raise Exception('Set `_np_generator` first')
+            s = self._np_generator(n)
+        else:
+            raise NotImplementedError(f'Method {method}')
         return s
 
     def set_pdf(self, x, pdf):
-        self.reset_misc()
+        self._reset_misc()
         assert(len(x)==len(pdf))
         self._x_pdf = x
         self._pdf   = pdf
@@ -95,7 +104,7 @@ class StochasticVariable():
         self.set_cdf(x, cdf) # TODO sort out
 
     def set_pdf_f(self, f_pdf):
-        self.reset_misc()
+        self._reset_misc()
         self._f_pdf = f_pdf
 
     def set_cdf(self, x, cdf):
@@ -121,7 +130,10 @@ class StochasticVariable():
 
     def cdf_inv(self, F):
         # NOTE: we should do something to ensure 0 and 1 are at +/- inf for a Gaussian for instance 
-        x0 = np.linspace(self._x_cdf[0], self._x_cdf[-1], 10000)
+        x_cdf = self._x_cdf
+        if x_cdf is None:
+            x_cdf = self.domain
+        x0 = np.linspace(x_cdf[0], x_cdf[-1], 10000)
         cdf0 = self.cdf(x0)
         return interpsafe(F, cdf0, x0)
 
@@ -355,9 +367,10 @@ class StochasticVariable():
         return var
 
     def __repr__(self):
-        s='<{} object>:\n'.format(type(self).__name__)
+        s='<{} object with attributes>:\n'.format(type(self).__name__)
         s+='- name    : {}\n'.format(self.name)
         s+='- domain  : [{} ; {} ]\n'.format(self.domain[0], self.domain[1])
+        s+='- params  : {}\n'.format(self.params)
         try:
             mean      = self.mean
             var       = self.var
@@ -369,9 +382,54 @@ class StochasticVariable():
         s+='* integral: {}\n'.format(np.around(check,5))
         s+='* mean    : {}\n'.format(np.around(mean,5))
         s+='* var     : {}\n'.format(np.around(var, 5))
+        s+='Main methods:\n'
+        s+='- sample, pdf, cdf, cdf_inv\n'
+        s+='- plot_pdf, plot_cdf\n'
         return s
 
 
+# --------------------------------------------------------------------------------}
+# --- Predefined variables
+# --------------------------------------------------------------------------------{
+class NormalVariable(StochasticVariable):
+    def __init__(self, mu=0, sigma=1, name='', domain=None, nDiscr=100):
+        if domain is None:
+            domain = [mu-5*sigma, mu+5*sigma]
+        params = {'mu':mu, 'sigma':sigma}
+        StochasticVariable.__init__(self, params=params, name=name, domain=domain, nDiscr=nDiscr)
+        self.set_pdf_f(lambda x: gaussian_pdf(x, mu=mu, sig=sigma))
+        self.set_cdf_f(lambda x: gaussian_cdf(x, mu=mu, sig=sigma))
+        self._np_generator = lambda n: np.random.normal(mu, sigma, size=n)
+
+    def sample(self, n, method='numpy'):
+        from welib.stoch.generator import generateGaussianNoiseBoxMuller
+        if method=='boxmuller':
+            return generateGaussianNoiseBoxMuller(**self.params, size=n)
+        else:
+            return StochasticVariable.sample(self, n, method=method)
+
+class RayleighVariable(StochasticVariable):
+    def __init__(self, s=1, name='', domain=None, nDiscr=100):
+        if domain is None:
+            m = rayleigh_moments(s=s)
+            domain = [0, m['mean'] + 15*np.sqrt(m['variance']) ]
+        params = {'s':s}
+        StochasticVariable.__init__(self, params=params, name=name, domain=domain, nDiscr=nDiscr)
+        self.set_pdf_f(lambda x: rayleigh_pdf(x, s=s))
+        self.set_cdf_f(lambda x: rayleigh_cdf(x, s=s))
+        self._np_generator = lambda n: np.random.rayleigh(size=n, scale=s)
+
+
+class WeibullVariable(StochasticVariable):
+    def __init__(self, A=2, k=3, x0=0, name='', domain=None, nDiscr=100):
+        if domain is None:
+            m = weibull_moments(A=A, k=k, x0=x0)
+            domain = [x0, m['mean'] + 15*np.sqrt(m['variance']) ]
+        params = {'A':A, 'k':k, 'x0':x0}
+        StochasticVariable.__init__(self, params=params, name=name, domain=domain, nDiscr=nDiscr)
+        self.set_pdf_f(lambda x: weibull_pdf(x, A=A, k=k))
+        self.set_cdf_f(lambda x: weibull_cdf(x, A=A, k=k))
+        self._np_generator = lambda n: A*np.random.weibull(k, size=n) + x0
 
 
 if __name__ == '__main__':

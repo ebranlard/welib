@@ -2,37 +2,74 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from welib.stoch.distribution import*
-from welib.stoch.stationary_process import SampledStochasticProcess
+from welib.stoch.stationary_process import *
 
+
+# --------------------------------------------------------------------------------}
+# --- Rational auto-spectrum 
+# --------------------------------------------------------------------------------{
+def rational(nDiscr=6000, verbose=True, nSamples=200):
+    # Distribution parameters
+    m = 1
+    S0 = 1/np.pi
+    omega0 = 2*np.pi
+    zeta = 0.1 # NOTE: as zeta increase the spectral peak spreads, S_X(0) increases and the accuracy decreases somehow
+    # Derived parameters
+    sigma2= np.pi*S0/(2*zeta*omega0**3*m**2)
+    omegad = np.sqrt(1-zeta**2)*omega0
+    # Process integration parameters
+    omega_max= 10*omega0
+    tau_max  = 10*2*np.pi/(omega0) * 1/zeta # the smaller zeta, the longer we need
+    time_max = 4*tau_max
+    # --- Initialize Process
+    proc = SampledStochasticProcess(name='rational', omega_max=omega_max, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
+    # Theory
+    proc._f_S_X_th = lambda omega: 2*S0/m**2  / (omega**4 + 4*omega**2*omega0**2*zeta**2 - 2*omega**2*omega0**2+omega0**4)
+    #proc._f_S_X_th = lambda omega: np.real(2*S0/m**2  /( ( -omega**2 + 2*zeta*omega0*omega*1j +omega0**2) * ( -omega**2 - 2*zeta*omega0*omega*1j +omega0**2) ))
+    proc._f_kappa_XX_th = lambda tau:  sigma2 * np.exp(-zeta*omega0*np.abs(tau))*(np.cos(omegad*tau)+ zeta/(1-zeta**2)*np.sin(omegad*tau))
+    proc._var_th = sigma2
+    proc._mu_th = 0
+
+
+    # --- Samples
+    proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
+    #proc.generate_samples_from_autospectrum(nSamples=100, method='sum')
+    proc.samples_stats(stats=stats) #nTau = None)
+    proc.plot_samples()
+    proc.plot_var()
+
+    # --- Computation from analytical variance
+    S_X_i = proc.autospectrum_int  (method='fft', nDiscr=50*nDiscr) #, tau_max=tau_max) # still need work
+    K_X_i = proc.autocovariance_int(method='fft') #, nDiscr=5000, omega_max=omega_max)
+    S_X_i = proc.autospectrum_int  (method='quad')
+    K_X_i = proc.autocovariance_int(method='quad')
+
+    # --- Autocovariance
+    axK = proc.plot_autocovariance()
+    # --- Autospectrum
+    axS = proc.plot_autospectrum()
+    #axS.plot([omega0,omega0],[0, 2*S0/m**2 / (4*omega0**4*zeta**2)], 'k--')
+    axS.axvline(omega0, ls=':', c='k') # Remember, max is not exactly at omega0
+    #axS.set_xlim([0,2*omega0])
 
 # --------------------------------------------------------------------------------}
 # --- Harmonic process 
 # --------------------------------------------------------------------------------{
 def harmo(nDiscr=500, verbose=True, nSamples=500):
-    def harmonic_process_realisation(time, s=1, omega0=2*np.pi):
-        r = np.random.rayleigh(scale=s, size=1)
-        p = np.random.uniform(low=0, high=2*np.pi, size=1)
-        x = r * np.cos(omega0 * time + p)
-        return x
 
     # Distribution parameters
     s      = 4
     omega0 = 2*np.pi
 
+    # Derived parameters
     T = 1/(omega0/(2*np.pi))
     time=np.linspace(0,40*T, 1000)
     dt = (time[-1]-time[0])/(len(time)-1)
-
-    tau_max = 10*T # TODO
+    tau_max   = 10*T     # TODO
     omega_max = 3*omega0
 
-    # --- Initialize Process
-    generator = lambda time: harmonic_process_realisation(time, s=s, omega0=omega0)
-    proc = SampledStochasticProcess(generator = generator, name='harmonic', tau_max=tau_max, nDiscr=nDiscr, omega_max=omega_max, verbose=verbose)
-    # Theory
-    proc._f_kappa_XX_th = lambda tau: s**2 * np.cos(omega0*tau)
-    proc._var_th = s**2 #* (2 - np.pi/2)*2
-    proc._mu_th = 0
+    # Process
+    proc = HarmonicProcess(s=s, omega0=omega0, verbose=verbose, nDiscr=nDiscr, tau_max=tau_max, omega_max=omega_max)
 
     # --- Samples
     # NOTE: no autospectrum
@@ -63,24 +100,13 @@ def expo(nDiscr=2000, verbose=True, nSamples=200):
     # Distribution parameters
     lambd = 10
     sigma = 3
-#     lambd = 1
-#     sigma = 1
     # Process integration parameters
-    omega_max= - 1/lambd* np.log( 1e-3/ (lambd*sigma**2))
-    tau_max= np.sqrt( lambd**2 * (sigma**2/1e-3-1)) 
-    time_max = 2*tau_max
-    if verbose:
-        print('omega_max', omega_max)
-        print('tau_max  ', tau_max)
-        print('time_max ', time_max)
+    omega_max = - 1/lambd* np.log( 1e-3/ (lambd*sigma**2))
+    tau_max   = np.sqrt( lambd**2 * (sigma**2/1e-3-1))
+    time_max  = 2*tau_max
 
     # --- Initialize Process
-    proc = SampledStochasticProcess(name='exponential', omega_max=omega_max, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
-    # Theory
-    proc._f_S_X_th = lambda omega: sigma**2 * lambd *np.exp(-lambd*omega)
-    proc._f_kappa_XX_th = lambda tau:  sigma**2 / (1+tau**2/lambd**2)
-    proc._var_th = sigma**2
-    proc._mu_th = np.sqrt(sigma**2 * lambd/ proc.time_detault[-1] *(2*np.pi) )
+    proc = ExponentialProcess(lambd, sigma, omega_max=omega_max, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
 
     # --- Samples
     proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
@@ -105,7 +131,6 @@ def expo(nDiscr=2000, verbose=True, nSamples=200):
 #     axS.set_ylim([1e-4,125])
 
 
-
 # --------------------------------------------------------------------------------}
 # --- BAND-LIMITED WHITE NOISE 
 # --------------------------------------------------------------------------------{
@@ -121,28 +146,10 @@ def bandedwhite(nDiscr=2000, verbose=True, nSamples=200):
     T = 1/(omega0/(2*np.pi))
     tau_max = 20*T
     time_max = 2*tau_max
-    if verbose:
-        print('>>> tau_max', tau_max)
 
     # --- Initialize Process
-    proc = SampledStochasticProcess(name='band-limited-white-noise', omega_max=2*omega_2, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
-    # Theory
-    def f_S_X_th(omega, omega0, B, sigma_X):
-        if omega>=omega0-B/2 and omega<=omega0+B/2:
-            return sigma_X**2/B
-        else:
-            return 0
-    def f_k_XX_th(tau, omega0, B, sigma_X):
-        if tau==0:
-            return sigma_X**2
-        else:
-            return sigma_X**2 / (B*tau) * ( np.sin((omega0+B/2)*tau) - np.sin((omega0-B/2)*tau)) 
-
-    proc._f_kappa_XX_th = lambda tau:   f_k_XX_th(tau,  omega0=omega0, B=B, sigma_X=sigma)
-    proc._f_S_X_th      = lambda omega: f_S_X_th(omega, omega0=omega0, B=B, sigma_X=sigma)
-    proc._var_th = sigma**2
-    proc._mu_th = 0
-
+    proc = BandedWhiteNoiseProcess(omega0, zeta, sigma, omega_max=2*omega_2, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
+    print(proc)
 
     # --- Samples
     proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
@@ -191,61 +198,47 @@ def bandedwhite(nDiscr=2000, verbose=True, nSamples=200):
 #     axS.plot(om, np.real(S_X))
 #     axS.set_xlim([0,10])
 
-
-
-# --------------------------------------------------------------------------------}
-# --- Rational auto-spectrum 
-# --------------------------------------------------------------------------------{
-def rational(nDiscr=6000, verbose=True, nSamples=200):
+def bandedwhiteSym(nDiscr=2000, verbose=True, nSamples=200):
     # Distribution parameters
-    m = 1
-    S0 = 1/np.pi
-    omega0 = 2*np.pi
-    zeta = 0.1 # NOTE: as zeta increase the spectral peak spreads, S_X(0) increases and the accuracy decreases somehow
+    sigma = 1 
     # Derived parameters
-    sigma2= np.pi*S0/(2*zeta*omega0**3*m**2)
-    omegad = np.sqrt(1-zeta**2)*omega0
-    # Process integration parameters
-    omega_max= 10*omega0
-    tau_max  = 10*2*np.pi/(omega0) * 1/zeta # the smaller zeta, the longer we need
-    time_max = 4*tau_max
-    if verbose:
-        print('omega_max', omega_max)
-        print('tau_max  ', tau_max)
-        print('time_max  ',time_max)
-        print('sigma2   ', sigma2)
-
+    B = 2*np.pi*10  # [rad/s]
+    T = 1/(B/(2*np.pi))
+    tau_max = 30*T        # TODO
+    time_max = 2*tau_max  # TODO
+    omega_max = B
 
     # --- Initialize Process
-    proc = SampledStochasticProcess(name='rational', omega_max=omega_max, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
-    # Theory
-    proc._f_S_X_th = lambda omega: 2*S0/m**2  / (omega**4 + 4*omega**2*omega0**2*zeta**2 - 2*omega**2*omega0**2+omega0**4)
-    #proc._f_S_X_th = lambda omega: np.real(2*S0/m**2  /( ( -omega**2 + 2*zeta*omega0*omega*1j +omega0**2) * ( -omega**2 - 2*zeta*omega0*omega*1j +omega0**2) ))
-    proc._f_kappa_XX_th = lambda tau:  sigma2 * np.exp(-zeta*omega0*np.abs(tau))*(np.cos(omegad*tau)+ zeta/(1-zeta**2)*np.sin(omegad*tau))
-    proc._var_th = sigma2
-    proc._mu_th = 0
-
+    proc = CutOffWhiteNoiseProcess(B, sigma, omega_max=omega_max, tau_max=tau_max, nDiscr=nDiscr, verbose=verbose, time_max=time_max)
+    print(proc)
 
     # --- Samples
     proc.generate_samples_from_autospectrum(nSamples=nSamples, method=gen_method)
-    #proc.generate_samples_from_autospectrum(nSamples=100, method='sum')
+    #proc.generate_samples_from_autospectrum(nSamples=200, method='sum')
     proc.samples_stats(stats=stats) #nTau = None)
     proc.plot_samples()
     proc.plot_var()
+    # # proc.plot_mean(
 
-    # --- Computation from analytical variance
-    S_X_i = proc.autospectrum_int  (method='fft', nDiscr=50*nDiscr) #, tau_max=tau_max) # still need work
-    K_X_i = proc.autocovariance_int(method='fft') #, nDiscr=5000, omega_max=omega_max)
-    S_X_i = proc.autospectrum_int  (method='quad')
+    # --- Moments
+    moments = proc.autospectrum_moments(method='num')
+    moments2= proc.autospectrum_moments(method='quad')
+    if verbose:
+        print('Moments: ', [sigma**2 /( B*(j+1))*( (B/2)**(j+1) - (-B/2)**(j+1)) for j in range(4) ])
+        print('Moments: ', moments)
+        print('Moments: ', moments2)
+
+    # --- Computations from provided functions
+    S_X_i = proc.autospectrum_int(method='fft', nDiscr=10*nDiscr, tau_max=30)
+    K_X_i = proc.autocovariance_int(method='fft', omega_max=10*omega_max, nDiscr=5*nDiscr) # needs high res
+    S_X_i = proc.autospectrum_int(method='quad')
     K_X_i = proc.autocovariance_int(method='quad')
-
+    # 
+#     proc.plot_autocorrcoeff()
     # --- Autocovariance
     axK = proc.plot_autocovariance()
     # --- Autospectrum
     axS = proc.plot_autospectrum()
-    #axS.plot([omega0,omega0],[0, 2*S0/m**2 / (4*omega0**4*zeta**2)], 'k--')
-    axS.axvline(omega0, ls=':', c='k') # Remember, max is not exactly at omega0
-    #axS.set_xlim([0,2*omega0])
 
 
 if __name__ == '__main__':
@@ -253,13 +246,14 @@ if __name__ == '__main__':
     seed(12)
     stats=[]
     stats+=['avg_spectra']
-    # stats+=['correlation']
+#     stats+=['correlation']
     gen_method ='sumcos-irfft'
 
+    bandedwhiteSym()
 #     bandedwhite()
 #     harmo()
 #     expo()
-    rational()
+#     rational()
     plt.show()
 
 if __name__ == '__test__':
