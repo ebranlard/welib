@@ -28,7 +28,7 @@ function [ G ] = fGoldsteinFactor_Matlab( l_bar,B,vx )
     end
     R=1; % vx should go from 0 to 1
     w=1; % circulation is linear in w
-    G = fGoldtseinOkulovCirculation(l_bar*R,w,R,B,vx)*B/(2*pi*l_bar*R*w); 
+    G = fGoldsteinCirculation(l_bar*R,w,R,B,vx)*B/(2*pi*l_bar*R*w); 
     if(drop1)
         G=G(1:end-1);
     end
@@ -43,7 +43,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
-function [ GammaGoldstein] = fGoldtseinOkulovCirculation(l_bar,w,R,B,Vr)
+function [ GammaGoldstein] = fGoldsteinCirculation(l_bar,w,R,B,Vr)
 drop=0;
 if(Vr(1)==0)
    Vr=Vr(2:end);
