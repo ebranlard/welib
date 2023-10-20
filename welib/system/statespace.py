@@ -57,6 +57,13 @@ def B_reg(t,Minv,F):
     B[nDOF:,0] = np.dot(Minv,F)
     return B
 
+def Bu(Minv):
+    """ Return B matrix from assuming u is loads  """
+    nDOF=Minv.shape[0]
+    B = np.zeros((2*nDOF,1))
+    B[nDOF:,0] = Minv
+    return B
+
 def dxdt(q, t, A, M, vTime, vF): 
     B = B_interp(t, M, vTime, vF)
     dq = np.dot(A,q)+B
