@@ -14,10 +14,10 @@ try:
 except:
     hasFatpack=False
 
-def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
-    vf=None; Leq1=None; Leq_ref=None
+def main(study='sinusoid-frequency'):
+    vf=None; Leqr=None; Leq_ref=None
 
-    if Astudy:
+    if study=='sinusoid-amplitude':
         # --------------------------------------------------------------------------------
         # --- Dependency on amplitude 
         # --------------------------------------------------------------------------------
@@ -39,12 +39,12 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         ax.plot(vA, Leq_ref, 'k'  ,label='Theory')
-        ax.plot(vA, Leq    ,  'o' ,label='Windap')
+        ax.plot(vA, Leq    ,  'o' ,label='RFC')
         ax.set_xlabel('Amplitude, A [N]')
         ax.set_ylabel('Leq [N]')
         ax.legend()
 
-    if fstudy:
+    elif study=='sinusoid-frequency':
         # --------------------------------------------------------------------------------
         # --- Dependency on frequency
         # --------------------------------------------------------------------------------
@@ -65,8 +65,8 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         vT  = 1/vf
         T_max=np.max(vT*nT)
         vomega =vf*2*np.pi
-        Leq1    = np.zeros_like(vomega)
-        Leq2    = np.zeros_like(vomega)
+        Leqr    = np.zeros_like(vomega)
+        Leqf    = np.zeros_like(vomega)
         Leq_ref = np.zeros_like(vomega)
         for im,m in enumerate(vm):
             for it, (T,omega) in enumerate(zip(vT,vomega)):
@@ -78,15 +78,15 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
                 #time = np.linspace(0, T_max, nPerT*nT+1)
                 signal = A * np.sin(omega*time) # Mean does not matter 
                 T_all=time[-1]
-                Leq1[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+                Leqr[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
                 if hasFatpack:
-                    Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack')
+                    Leqf[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack')
 
             Leq_ref = 2*A*(vf*Teq)**(1/m)
             ax.plot(vf, Leq_ref/A,  'kd' , label ='Theory' if im==0 else None  )
-            ax.plot(vf, Leq1   /A,   'o' , label ='Windap m={}'.format(m))
+            ax.plot(vf, Leqr   /A,   'o' , label ='RFC m={}'.format(m))
             if hasFatpack:
-                ax.plot(vf, Leq2/A,  'k.' , label ='Fatpack' if im==0 else None)
+                ax.plot(vf, Leqf/A,  'k.' , label ='Fatpack' if im==0 else None)
         ax.set_xlabel('Frequency [Hz]')
         ax.set_ylabel(r'Equivalent load, $L_{eq}/A$ [-]')
         # ax.set_ylim([0,7])
@@ -94,7 +94,7 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         ax.legend()
         ax.set_title('Tools - Fatigue - Sinusoids')
 
-    if fstudy2:
+    elif study=='broadbandsinusoids-frequency':
         # --------------------------------------------------------------------------------
         # --- Dependency on frequency with a more "random" signal
         # --------------------------------------------------------------------------------
@@ -111,8 +111,8 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         vT  = 1/vf
         T_max=np.max(vT*nT)
         vomega =vf*2*np.pi
-        Leq1    = np.zeros_like(vomega)
-        Leq2    = np.zeros_like(vomega)
+        Leqr    = np.zeros_like(vomega)
+        Leqf    = np.zeros_like(vomega)
         Leq_ref = np.zeros_like(vomega)
 
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -144,15 +144,15 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
                 #ax1.set_xlabel('time')
 
                 T_all=time[-1]
-                Leq1[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+                Leqr[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
                 if hasFatpack:
-                    Leq2[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack')
+                    Leqf[it] = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack')
 
             Leq_ref = 2*A*(vf*Teq)**(1/m)
             ax.plot(vf, Leq_ref/A,  'k-' , label ='Theory' if im==0 else None  )
-            ax.plot(vf, Leq1   /A,   'o' , label ='Windap m={}'.format(m))
+            ax.plot(vf, Leqr   /A,   'o' , label ='RFC m={}'.format(m))
             if hasFatpack:
-                ax.plot(vf, Leq2/A,  'k.' , label ='Fatpack' if im==0 else None)
+                ax.plot(vf, Leqf/A,  'k.' , label ='Fatpack' if im==0 else None)
 
         ax.set_xlabel('Frequency [Hz]')
         ax.set_ylabel(r'Equivalent load, $L_{eq}/A$ [-]')
@@ -161,9 +161,9 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         ax.legend()
         ax.set_title('Tools - Fatigue - Sinusoids')
 
-    if sumSine:
+    elif study=='concat2sinusoids':
         # --------------------------------------------------------------------------------
-        # --- Sum of two sinusoids
+        # --- Concatenation of two sinusoids
         # --------------------------------------------------------------------------------
         m     = 2   # Wohler slope
         nPerT = 100 # Number of points per period
@@ -180,22 +180,23 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         time2 = np.linspace(0, nT2*T2, nPerT*nT2+1)
         signal1 = A1 * np.sin(2*np.pi/T1*time1)
         signal2 = A2 * np.sin(2*np.pi/T2*time2)
+        Leqf=0
         # --- Individual Leq
         print('----------------- SIGNAL 1')
-        Leq1 = equivalent_load(time1, signal1, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+        Leqr = equivalent_load(time1, signal1, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
         if hasFatpack:
-            Leq2 = equivalent_load(time1, signal1, m=m, Teq=Teq, bins=nBins, method='fatpack')
-        print('>>> Leq1   ',Leq1)
-        print('>>> Leq2   ',Leq2)
+            Leqf = equivalent_load(time1, signal1, m=m, Teq=Teq, bins=nBins, method='fatpack')
+        print('>>> Leqr   ',Leqr)
+        print('>>> Leqf   ',Leqf)
         DEL1 = (2*A1)**m * nT1/time1[-1]
         Leq_th = (DEL1)**(1/m)
         print('>>> Leq TH ',Leq_th)
         print('----------------- SIGNAL 2')
-        Leq1 = equivalent_load(time2, signal2, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+        Leqr = equivalent_load(time2, signal2, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
         if hasFatpack:
-            Leq2 = equivalent_load(time2, signal2, m=m, Teq=Teq, bins=nBins, method='fatpack')
-        print('>>> Leq1   ',Leq1)
-        print('>>> Leq2   ',Leq2)
+            Leqf = equivalent_load(time2, signal2, m=m, Teq=Teq, bins=nBins, method='fatpack')
+        print('>>> Leqr   ',Leqr)
+        print('>>> Leqf   ',Leqf)
         DEL2 = (2*A2)**m * nT2/time2[-1]
         Leq_th = (DEL2)**(1/m)
         print('>>> Leq TH ',Leq_th)
@@ -204,27 +205,129 @@ def main(Astudy=False, fstudy=True, fstudy2=False, sumSine=False):
         signal = np.concatenate((signal1, signal2))
         time   = np.concatenate((time1, time2+time1[-1]))
         T_all=time[-1]
-        Leq1 = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+        Leqr = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
         if hasFatpack:
-            Leq2 = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack')
-        print('>>> Leq1   ',Leq1)
-        print('>>> Leq2   ',Leq2)
+            Leqf = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack')
+        print('>>> Leqr   ',Leqr)
+        print('>>> Leqf   ',Leqf)
         DEL1 = (2*A1)**m * nT1/T_all  
         DEL2 = (2*A2)**m * nT2/T_all  
         Leq_th = (DEL1+DEL2)**(1/m)
         print('>>> Leq TH ',Leq_th)
 
+    elif study=='sum2sinusoids':
+        #def Leq2sine(A1,A2, tMax, )
+        # --------------------------------------------------------------------------------
+        # --- Sum of two sinusoids with separate frequencies f1<f2, A1>A2
+        # --------------------------------------------------------------------------------
+        m     = 10  # Wohler slope
+        nPerT = 500 # Number of points per period
+        Teq   = 1  # Equivalent period [s]
+        nBins = 100 # Number of bins
+        nT1   = 10 # Number of periods for frequency 1
+        T1 = 20
+        T2 = 1 
+        A1 = 5  # Amplitude
+        A2 = 1  # Amplitude
+        # --- Signals
+        time = np.linspace(0, nT1*T1, nPerT*nT1+1)
+        signal1 = A1 * np.sin(2*np.pi/T1*time)
+        signal2 = A2 * np.sin(2*np.pi/T2*time)
+        signal  = signal1 + signal2
+        Leqf=0
+        T_all = time [-1]
+        nT2 = int(T_all/T2)
+        f1=1/T1
+        f2=1/T2
+        # --- Individual Leq
+        print('----------------- SIGNAL 1')
+        Leqr = equivalent_load(time, signal1, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+        if hasFatpack:
+            print('---- Fatpack')
+            Leqf = equivalent_load(time, signal1, m=m, Teq=Teq, bins=nBins, method='fatpack')
+        print('>>> Leqr   ',Leqr)
+        print('>>> Leqf   ',Leqf)
+        DEL1 = (2*A1)**m * nT1/T_all  
+        Leq_th = (DEL1)**(1/m)
+        print('>>> Leq TH ',Leq_th)
+        print('----------------- SIGNAL 2')
+        Leqr = equivalent_load(time, signal2, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+        if hasFatpack:
+            print('---- Fatpack')
+            Leqf = equivalent_load(time, signal2, m=m, Teq=Teq, bins=nBins, method='fatpack')
+        print('>>> Leqr   ',Leqr)
+        print('>>> Leqf   ',Leqf)
+        DEL2 = (2*A2)**m * nT2/T_all  
+        Leq_th = (DEL2)**(1/m)
+        print('>>> Leq TH ',Leq_th)
+        print('----------------- SIGNAL sum')
+        epsA = A2/A1
+        epsf = f1/f2
+        print('>>> epsA   ',epsA*100, epsA**m)
+        print('>>> epsf   ',epsf*100)
+        print('>>> eps term',epsA**m / epsf)
+        Leqr = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='rainflow_windap')
+        if hasFatpack:
+            print('---- Fatpack')
+            Leqf = equivalent_load(time, signal, m=m, Teq=Teq, bins=nBins, method='fatpack', binStartAt0=True)
+        print('>>> Leqr   ',Leqr)
+        print('>>> Leqf   ',Leqf)
+        DEL1 = (2*A1+2*A2)**m * f1  # nT1/T_all  
+        DEL2 = (2*A2)**m * f2       #nT2/T_all  
+        Leq_th = (DEL1+DEL2)**(1/m)
+        print('>>> Leq TH ',Leq_th,'(approx)')
+        #Leq_1st= 2*A1 * f1**(1/m) * 3**(1/m) * (1+m*epsA+epsf/3)**(1/m)
+        Leq_form1 = 2*A1 * f1**(1/m) * ( ( 1 + epsA  )**m  + epsA**m * f2/f1  ) ** (1/m)
+        Leq_1st1  = 2*A1 * f1**(1/m)* (1 +epsA) 
+        Leq_1st2  = 2*A1 * f1**(1/m) * ( ( 1 +m *epsA) + 0*epsA**m * 1/epsf  ) ** (1/m)
+        print('>>> Leq TH ',Leq_1st1,'(1st order approx, neglecting second term then doing taylor)')
+        print('>>> Leq TH ',Leq_1st2,'(1st order approx of epsa)')
 
-    return vf, Leq1, Leq_ref
 
-vf, Leq, Leq_ref =  main(fstudy=True, sumSine=False)
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(time, signal, label='')
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+        ax.legend()
+        plt.show()      
+
+
+        #DEL1 = (2*A1)**m * nT1/time1[-1]
+        #DEL2 = (2*A2)**m * nT2/time2[-1]
+        #Leq_th = (DEL2)**(1/m)
+        #DEL1 = (2*A1)**m * nT1/T_all  
+        #DEL2 = (2*A2)**m * nT2/T_all  
+        #Leq_th = (DEL1+DEL2)**(1/m)
+        #print('>>> Leq TH ',Leq_th)
+
+#     elif study=='sinusoid-uncertainty':
+#         # --------------------------------------------------------------------------------
+#         # --- Adds 
+#         # --------------------------------------------------------------------------------
+
+
+    else:
+        NotImplementedError(study)
+
+
+    return vf, Leqr, Leq_ref
+
 
 if __name__ == '__main__':
+    #vf, Leq, Leq_ref =  main(study='sinusoid-amplitude')
+    vf, Leq, Leq_ref =  main(study='sinusoid-frequency')
+    #vf, Leq, Leq_ref =  main(study='concat2sinusoids')
+    #vf, Leq, Leq_ref =  main(study='sum2sinusoids')
     plt.show()
+
 if __name__=="__test__":
+    vf, Leq, Leq_ref =  main(study='sinusoid-frequency')
     np.testing.assert_array_almost_equal(Leq, Leq_ref,1)
+
 if __name__=="__export__":
     from welib.tools.repo import export_figs_callback
+    vf, Leq, Leq_ref =  main(study='sinusoid-frequency')
     export_figs_callback(__file__)
 
 

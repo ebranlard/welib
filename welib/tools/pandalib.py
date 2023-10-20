@@ -2,13 +2,12 @@ import pandas as pd
 import numpy as np
 import re
 
-from welib.tools.stats import bin_DF
 
 def pd_interp1(x_new, xLabel, df):
     """ Interpolate a panda dataframe based on a set of new value
     This function assumes that the dataframe is a simple 2d-table
     """
-    from welib.tools.signal_analysis import multiInterp
+    from pyFAST.tools.signal_analysis import multiInterp
     x_old = df[xLabel].values
     data_new=multiInterp(x_new, x_old, df.values.T)
     return pd.DataFrame(data=data_new.T, columns=df.columns.values)

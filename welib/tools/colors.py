@@ -194,7 +194,7 @@ def fColrs_hex(*args):
 def fGray(x):
     return [x,x,x]
 
-def fColrs(i=-1,n=-1,bBW=True):
+def fColrs(i=-1, n=-1, bBW=True, cmap=None):
     # Possible calls
     # M=fColrs()  : returns a nx3 matrix of RBG colors
     # C=fColrs(i) : cycle through colors, modulo the number of color
@@ -204,26 +204,33 @@ def fColrs(i=-1,n=-1,bBW=True):
     # % G=fColrs(i,n,0) : cycle through colors
 
     # Table of Color used
-    mcolrs=np.array([
-            MathematicaBlue,
-            MathematicaGreen,
-            ManuDarkRed,
-            ManuDarkOrange,
-            MathematicaLightBlue,
-            MathematicaLightGreen,
-            MathematicaLightRed,
-            ManuLightOrange,
-            Blue,
-            Green,
-            Red,
-            Yellow,
-            MatlabCyan,
-            MatlabMagenta ]);
+    if cmap is None:
+        mcolrs=np.array([
+                MathematicaBlue,
+                MathematicaGreen,
+                ManuDarkRed,
+                ManuDarkOrange,
+                MathematicaLightBlue,
+                MathematicaLightGreen,
+                MathematicaLightRed,
+                ManuLightOrange,
+                Blue,
+                Green,
+                Red,
+                Yellow,
+                MatlabCyan,
+                MatlabMagenta ]);
+    elif cmap=='darker':
+        mcolrs=np.array(
+                ['firebrick','darkgreen', MathematicaBlue, ManuDarkOrange], dtype=object )
+    else:
+        raise NotImplementedError()
+        
     # 
     if i==-1:
         return mcolrs
     elif (i!=-1 and n==-1):
-        return mcolrs[np.mod(i-1,len(mcolrs)),:];
+        return mcolrs[np.mod(i-1,len(mcolrs))];
     elif (i!=-1 and n!=-1):
         if bBW:
             if n==1:
@@ -231,7 +238,7 @@ def fColrs(i=-1,n=-1,bBW=True):
             else:
                 return [0.55,0.55,0.55]*(v-1)/(n-1); #grayscale
         else:
-            return mcolrs[mod(i-1,len(mcolrs,1)),:];
+            return mcolrs[mod(i-1,len(mcolrs,1))]
     else:
         return mcolrs
 

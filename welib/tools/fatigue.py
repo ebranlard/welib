@@ -37,6 +37,10 @@ __all__  = ['equivalent_load', 'find_range_count']
 __all__  += ['rainflow_astm', 'rainflow_windap','eq_load','eq_load_and_cycles','cycle_matrix','cycle_matrix2']
 
 
+class SignalConstantError(Exception):
+    pass
+
+
 def equivalent_load(time, signal, m=3, Teq=1, bins=100, method='rainflow_windap',
         meanBin=True, binStartAt0=False,
         outputMore=False, debug=False):
@@ -76,16 +80,30 @@ def equivalent_load(time, signal, m=3, Teq=1, bins=100, method='rainflow_windap'
     signal = signal[b]
     time   = time[b]
 
-    T = time[-1]-time[0] # time length of signal (s)
+    try:
+        if len(time)<=1:
+            raise Exception()
+        if type(time[0]) is np.datetime64:
+            T = T/np.timedelta64(1,'s') # or T.item().total_seconds()
+        else:
+            T = time[-1]-time[0] # time length of signal (s). Will fail for signal of length 1
+        if T==0:
+            raise Exception()
 
-    neq = T/Teq # number of equivalent periods, see Eq. (26) of [1]
+        neq = T/Teq # number of equivalent periods, see Eq. (26) of [1]
 
-    # --- Range (S) and counts (N)
-    N, S, bins = find_range_count(signal, bins=bins, method=method, meanBin=meanBin, binStartAt0=binStartAt0)
+        # --- Range (S) and counts (N)
+        N, S, bins = find_range_count(signal, bins=bins, method=method, meanBin=meanBin, binStartAt0=binStartAt0)
 
-    # --- get DEL 
-    DELi = S**m * N / neq
-    Leq = DELi.sum() ** (1/m)     # See e.g. eq. (30) of [1]
+        # --- get DEL 
+        DELi = S**m * N / neq
+        Leq = DELi.sum() ** (1/m)     # See e.g. eq. (30) of [1]
+
+    except:
+        if outputMore:
+            return np.nan, np.nan, np.nan, np.nan, np.nan
+        else:
+            return np.nan
 
     if debug:
         for i,(b,n,s,DEL) in enumerate(zip(bins, N, S, DELi)):
@@ -117,7 +135,11 @@ def find_range_count(signal, bins, method='rainflow_windap', meanBin=True, binSt
 
     if method in rainflow_func_dict.keys():
         rainflow_func = rainflow_func_dict[method]
-        N, S, S_bin_edges, _, _ = cycle_matrix(signal, ampl_bins=bins, mean_bins=1, rainflow_func=rainflow_func, binStartAt0=binStartAt0)
+        try:
+            N, S, S_bin_edges, _, _ = cycle_matrix(signal, ampl_bins=bins, mean_bins=1, rainflow_func=rainflow_func, binStartAt0=binStartAt0)
+        except SignalConstantError:
+            return np.nan, np.nan, np.nan
+
         S_bin_edges = S_bin_edges.flatten()
         N           = N.flatten()
         S           = S.flatten()
@@ -132,7 +154,7 @@ def find_range_count(signal, bins, method='rainflow_windap', meanBin=True, binSt
             ranges = fatpack.find_rainflow_ranges(signal)
         except IndexError:
             # Currently fails for constant signal
-            return np.nan
+            return np.nan, np.nan, np.nan
         # --- Legacy fatpack
         # if (not binStartAt0) and (not meanBin):
         #    N, S = fatpack.find_range_count(ranges, bins)
@@ -218,7 +240,7 @@ def check_signal(signal):
         if signal.shape[1] > 1:
             raise TypeError('signal must have one column only, not: ' + str(signal.shape[1]))
     if np.min(signal) == np.max(signal):
-        raise TypeError("Signal contains no variation")
+        raise SignalConstantError("Signal is constant, cannot compute DLC and range")
 
 
 def rainflow_windap(signal, levels=255., thresshold=(255 / 50)):
@@ -1167,8 +1189,34 @@ class TestFatigue(unittest.TestCase):
 
 
 
+    def test_eqload_cornercases(self):
+        try:
+            import fatpack
+            hasFatpack=True
+        except:
+            hasFatpack=False
+        # Signal of length 1
+        time=[0]; signal=[0]
+        Leq= equivalent_load(time, signal, m=3, Teq=1, bins=100, method='rainflow_windap')
+        np.testing.assert_equal(Leq, np.nan)
+            
+        # Datetime
+        time= [np.datetime64('2023-10-01'), np.datetime64('2023-10-02')]
+        signal= [0,1]
+        Leq= equivalent_load(time, signal, m=3, Teq=1, bins=100, method='rainflow_windap')
+        np.testing.assert_equal(Leq, np.nan)
+
+        # Constant signal
+        time =[0,1]
+        signal =[1,1]
+        Leq= equivalent_load(time, signal, m=3, Teq=1, bins=100, method='rainflow_windap')
+        np.testing.assert_equal(Leq, np.nan)
+        if hasFatpack:
+            Leq= equivalent_load(time, signal, m=3, Teq=1, bins=100, method='fatpack')
+            np.testing.assert_equal(Leq, np.nan)
 
 
 
 if __name__ == '__main__':
     unittest.main()
+
