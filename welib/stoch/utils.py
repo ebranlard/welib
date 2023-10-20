@@ -115,12 +115,11 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
          - S_X_f  = f_S(f)       if angularFrequency is False
      - method: method used to generate the time series:
          - 'sumcos-manual': 
-         - 'sumcos-irfft': 
+         - 'sumcos-irfft':  fastest
          - 'sumcos-idft-manual': 
          - 'sumcos-idft-vectorized': 
          - 'sumcos-idft-ifft': 
          - 'boxmuller-*': 
-         - 'ifft': inverse FFT (fastest)
      - randomAmplitudes:  if True, randomized the amplitudes (not only the phases) 
      - phases: vector of phases (between 0 and 2pi) to use for all positive frequencies. 
      - amplitudesFactors:  vectors of amplitudes (0,1) to use for all positive frequencies

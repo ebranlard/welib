@@ -55,6 +55,9 @@ class SampledStochasticProcess:
         self.rho_XX   = None
         self.S_X      = None
         self.S_avg    = None
+        self.x_pdf_xi = None
+        self.pdfs_xi  = None
+        self.pdf_xi   = None
 
     @property
     def nSamples(self):
@@ -63,11 +66,11 @@ class SampledStochasticProcess:
         return self.xi.shape[0]
 
     @property
-    def time_detault(self):
+    def time_default(self):
         return np.linspace(0, self.time_max, self.nDiscr)
 
     @property
-    def tau_detault(self):
+    def tau_default(self):
         return np.linspace(0, self.tau_max, self.nDiscr)
 
     @property
@@ -79,14 +82,14 @@ class SampledStochasticProcess:
         if self._time is not None:
             return self._time
         else:
-            return self.time_detault
+            return self.time_default
 
     @property
     def tau(self):
         if self._tau is not None:
             return self._tau
         else:
-            return self.tau_detault
+            return self.tau_default
 
     @property
     def omega(self):
@@ -95,13 +98,18 @@ class SampledStochasticProcess:
         else:
             return self.omega_default
 
+    def set_samples(self, time, xi):
+        assert(xi.shape[1]==len(time))
+        self._time = time
+        self.xi = xi
+
     def generate_samples(self, nSamples=1, time=None):
         """ 
         Generate time series samples for stochastic process X(t)
             x = generator(time): [array]
         """
         if time is None:
-            time = self.time_detault
+            time = self.time_default
         self._time = time
         xi=np.zeros((nSamples, len(time)))
         for i in range(nSamples):
@@ -109,9 +117,9 @@ class SampledStochasticProcess:
         self.xi = xi
         return xi
 
-    def generate_samples_from_autospectrum(self, nSamples=1, time=None, method='ifft', **kwargs):
+    def generate_samples_from_autospectrum(self, nSamples=1, time=None, method='sumcos-irfft', **kwargs):
         if time is None:
-            time = self.time_detault
+            time = self.time_default
         self._time = time
 
         tMax = time[-1]
@@ -132,13 +140,16 @@ class SampledStochasticProcess:
 
 
 
-    def samples_stats(self, nTau=None, stats=None):
+    def samples_stats(self, nTau=None, stats=None, nPDF=50, tTransient=-np.inf):
         """ 
         """
         if stats is None:
-            stats=['correlation','avg_spectra']
+            stats=['correlation','avg_spectra','pdf']
         time = self._time
-        xi   = self.xi
+        # removing transients
+        b= time>tTransient
+        time = time [b]
+        xi   = self.xi[:,b]
 
         dt=(time[-1]-time[0])/(len(time)-1)
 
@@ -146,6 +157,8 @@ class SampledStochasticProcess:
         self.mu_xi  = np.mean(xi, axis = 0)
         self.var_xi = np.var(xi, axis  = 0)
 
+        from welib.stoch.variable import StochasticVariable
+        var = StochasticVariable(name='VariableAfterSamplingX')
 
         # --- Average spectra
         if 'avg_spectra' in stats:
@@ -187,6 +200,32 @@ class SampledStochasticProcess:
             self.S_X      =  S_X      
 
 
+        # --- Averge pdfs
+        if 'pdf' in stats:
+            ymin = np.min(xi)
+            ymax = np.max(xi)
+            ybins = np.linspace(ymin, ymax, nPDF)
+            pdfs=np.zeros((self.nSamples, len(ybins)-1))
+            # TODO use welib.tools.stats when ready
+            def pdf_histogram(y,bins=50, norm=True, count=False):
+                yh, xh = np.histogram(y[~np.isnan(y)], bins=bins)
+                dx   = xh[1] - xh[0]
+                xh  = xh[:-1] + dx/2
+                if norm:
+                    yh=yh/np.trapz(yh,xh)
+                return xh,yh
+
+            for i in range(self.nSamples):
+                xb,yb = pdf_histogram(xi[i,:], bins=ybins)
+                pdfs[i,:] = yb 
+            self.pdfs_xi  = pdfs
+            yh =  np.mean(pdfs,axis=0)
+            yh = yh/np.trapz(yh,xb)
+            self.pdf_xi   = yh
+            self.x_pdf_xi = xb
+            var.set_pdf(xb, yh)
+        self.X_xi = var
+
 
     # --------------------------------------------------------------------------------}
     # --- Functions using analytical/lambda functions provided
@@ -195,7 +234,7 @@ class SampledStochasticProcess:
         if omega is None:
             omega = self.omega_default
         if tau_max is None:
-            #tau_max = np.max(self.time_detault)
+            #tau_max = np.max(self.time_default)
             tau_max = self.tau_max
 
         if not self._f_kappa_XX_th:
@@ -233,7 +272,7 @@ class SampledStochasticProcess:
 
     def autocovariance_int(self, tau=None, omega_max=None, method='quad', nDiscr=None):
         if tau is None:
-            tau = self.tau_detault
+            tau = self.tau_default
         if omega_max is None:
             omega_max = self.omega_max
 
@@ -293,12 +332,14 @@ class SampledStochasticProcess:
         if ax is None:
             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        for i in range(min(self.nSamples,maxSamples)):
+        nPlot = min(self.nSamples,maxSamples)
+        for i in range(nPlot):
             ax.plot(self.time, self.xi[i], label='')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('')
         #ax.legend()
-        ax.set_title(self.name)
+        ax.tick_params(direction='in')
+        ax.set_title(self.name + ' Samples realisations ({}/{}) '.format(nPlot, self.nSamples))
         return ax
 
 
@@ -320,7 +361,8 @@ class SampledStochasticProcess:
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('mu_X(t)')
         #ax.legend()
-        ax.set_title(self.name)
+        ax.tick_params(direction='in')
+        ax.set_title(self.name + ' Mean')
         return ax
 
     def plot_var(self, ax=None):
@@ -341,7 +383,8 @@ class SampledStochasticProcess:
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('VarX(t)')
         #ax.legend()
-        ax.set_title(self.name)
+        ax.tick_params(direction='in')
+        ax.set_title(self.name+ ' Variance')
         return ax
 
     def plot_autocovariance(self, ax=None):
@@ -370,7 +413,8 @@ class SampledStochasticProcess:
         ax.set_xlabel('Tau [s]')
         ax.set_ylabel('kappa_XX')
         ax.legend()
-        ax.set_title(self.name)
+        ax.tick_params(direction='in')
+        ax.set_title(self.name + 'Autocovariance')
         return ax
 
     def plot_autocorrcoeff(self, ax=None):
@@ -397,7 +441,8 @@ class SampledStochasticProcess:
         ax.set_xlabel('Tau [s]')
         ax.set_ylabel('rho_XX')
         ax.legend()
-        ax.set_title(self.name)
+        ax.tick_params(direction='in')
+        ax.set_title(self.name + ' autocorrelation coefficient')
         return ax
 
     
@@ -435,9 +480,26 @@ class SampledStochasticProcess:
         ax.set_xlabel(r'$\omega$ [rad/s]')
         ax.set_ylabel(r'$S_X(\omega)$')
         ax.legend()
-        ax.set_title(self.name)
+        ax.tick_params(direction='in')
+        ax.set_title(self.name + ' autospectrum')
         return ax
 
+    def plot_pdf(self, ax=None):
+        if ax is None:
+            fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        if self.x_pdf_xi is not None:
+            xb = self.x_pdf_xi
+            for i in range(self.nSamples):
+                yb = self.pdfs_xi[i,:]
+                ax.plot( xb, yb, c=(0.5,0.5,0.5), label='Samples' if i==0 else None)
+            ax.plot( xb, self.pdf_xi ,'k-', label='Average from samples')
+        ax.set_xlabel('x')
+        ax.set_ylabel('pdf')
+        ax.legend()
+        ax.tick_params(direction='in')
+        ax.set_title(self.name + ' pdf')
+        return ax
 
     def __repr__(self):
         s='<{} object with attributes>:\n'.format(type(self).__name__)
@@ -455,6 +517,17 @@ class SampledStochasticProcess:
         s+='- plot_samples, plot_mean, plot_var  (after `generate_samples`)\n'
         s+='- plot_autocovariance, plot_autospectrum, plot_autocorrcoeff\n'
         return s
+
+    def picklable(self):
+        def noneIfLambda(attr):
+            obj = getattr(self, attr)
+            if callable(obj): 
+                if obj.__name__ == "<lambda>" or str(obj).find('<locals>')>0:
+                    print('SampledStochasticProcess: picklable: removing ', attr)
+                    setattr(self, attr, None)
+
+        noneIfLambda('_f_kappa_XX_th')
+        noneIfLambda('_f_S_X_th')
 
 
 # --------------------------------------------------------------------------------
@@ -503,7 +576,7 @@ class ExponentialProcess(SampledStochasticProcess):
         self._f_S_X_th = lambda omega: sigma**2 * lambd *np.exp(-lambd*omega)
         self._f_kappa_XX_th = lambda tau:  sigma**2 / (1+tau**2/lambd**2)
         self._var_th = sigma**2
-        self._mu_th = np.sqrt(sigma**2 * lambd/ self.time_detault[-1] *(2*np.pi) )
+        self._mu_th = np.sqrt(sigma**2 * lambd/ self.time_default[-1] *(2*np.pi) )
 
 class BandedWhiteNoiseProcess(SampledStochasticProcess):
 
@@ -556,23 +629,65 @@ class CutOffWhiteNoiseProcess(SampledStochasticProcess):
         # --- Initialize Process
         SampledStochasticProcess.__init__(self, params=params, generator = generator, name='CutOffWhiteNoise', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
 
+
         # Theory
-        def f_S_X_th(omega, B, sigma):
+        self.setTh()
+
+    def setTh(self):
+        B     = self.params['B']
+        sigma = self.params['sigma']
+
+        def f_S_X_th(omega):
             if omega>=-B/2 and omega<=B/2:
                 return 2* sigma**2/B
             else:
                 return 0
-        def f_k_XX_th(tau, B, sigma):
+        def f_k_XX_th(tau):
             if tau==0:
                 return sigma**2
             else:
                 return 2 * sigma**2 / (B*tau) * (np.sin(B/2*tau)  )
 
-        self._f_kappa_XX_th = lambda tau:   f_k_XX_th(tau,  B=B, sigma=sigma)
-        self._f_S_X_th      = lambda omega: f_S_X_th(omega, B=B, sigma=sigma)
+        self._f_kappa_XX_th = f_k_XX_th
+        self._f_S_X_th      = f_S_X_th
         self._var_th = sigma**2
         self._mu_th = 0
 
+
+
+class KaimalProcess(SampledStochasticProcess):
+
+    def __init__(self, U0, sigma, L, generator=None, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
+        """ 
+         - U0    : mean wind speed
+         - sigma : standard deviation
+         - L     : length scale
+         """
+        from welib.wind.spectra import kaimal
+        # Distribution parameters
+        params = {'U0':U0, 'sigma':sigma, 'L':L}
+
+        # Derived parameters
+        omega_max = B if omega_max is None else omega_max
+        tau_max   = B if tau_max is None else tau_max
+        time_max  = B if time_max is None else time_max
+     
+        # --- Initialize Process
+        SampledStochasticProcess.__init__(self, params=params, generator = generator, name='Kaimal', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
+
+        # Theory
+        #f_S = lambda f_or_om: 
+        def f_S_X_th(omega): #, B, sigma):
+            return kaimal(omega, U0, sigma, L, angularFrequency=True)
+
+    #         def f_k_XX_th(tau, B, sigma):
+    #                 return 2 * sigma**2 / (B*tau) * (np.sin(B/2*tau)  )
+    # 
+    #         self._f_kappa_XX_th = lambda tau:   f_k_XX_th(tau,  B=B, sigma=sigma)
+        #self._f_S_X_th      = lambda omega: f_S_X_th(omega, B=B, sigma=sigma)
+        self._f_S_X_th      = f_S_X_th
+        self._var_th = sigma**2
+        self._mu_th = U0
 
 
 if __name__ == '__main__':
