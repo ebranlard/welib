@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from welib.FEM.fem_beam import *
-import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 from welib.tools.clean_exceptions import *
 
 MyDir=os.path.dirname(__file__)
@@ -65,7 +65,7 @@ def ModeShapesElastoDynTower(verbose=False):
         print('M_Tip\n',np.around(M_tip,2))
 
     TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
-    twr = weio.FASTInputFile(TwrFile).toDataFrame()
+    twr = FASTInputFile(TwrFile).toDataFrame()
     x   = twr['HtFract_[-]']*(TowerLen)
     m   = twr['TMassDen_[kg/m]']
     EIz = twr['TwFAStif_[Nm^2]']        # FA/Flap = IyOpenFAST = Iz(when x is axis)
