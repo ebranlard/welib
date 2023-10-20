@@ -65,6 +65,12 @@ class PickleFile(File):
             else:
                 self['data'] = data
 
+    def addDict(self, data):
+        self._setData(data)
+
+    def additem(self, key, data):
+        self[key]=data
+
     def read(self, filename=None, **kwargs):
         """ Reads the file self.filename, or `filename` if provided """
         # --- Standard tests and exceptions (generic code)

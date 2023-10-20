@@ -4,16 +4,31 @@
 import xarray as xr
 import numpy as np
 
-class AMRWind:
+class AMRWindFile(dict):
     """ 
     Read a AMR-Wind output file (.nc)
     """
 
-    def __init__(self, filename, timestep, output_frequency, **kwargs):
+    @staticmethod
+    def defaultExtensions():
+        """ List of file extensions expected for this fileformat"""
+        return ['.nc']
+
+    @staticmethod
+    def formatName():
+        """ Short string (~100 char) identifying the file format"""
+        return 'NetCDF plane sampling file from AMRWind'
+
+    @staticmethod
+    def priority(): return 60 # Priority in weio.read fileformat list between 0=high and 100:low
+
+    def __init__(self, filename=None, timestep=None, output_frequency=None, **kwargs):
         self.filename   = filename
         self.amrwind_dt = timestep
         self.output_dt  = timestep * output_frequency 
             
+        if filename:
+            self.read(**kwargs)
 
     def read(self, group_name):        
         """
@@ -22,7 +37,19 @@ class AMRWind:
         
         group_name : str,
             group name inside netcdf file that you want to read, e.g. p_slice
+
+        TODO: see if group_name can be avoided, and add a read_group function
         """   
+        # --- Standard tests and exceptions (generic code)
+        if filename:
+            self.filename = filename
+        if not self.filename:
+            raise Exception('No filename provided')
+        if not os.path.isfile(self.filename):
+            raise OSError(2,'File not found:',self.filename)
+        if os.stat(self.filename).st_size == 0:
+            raise Exception('File is empty:',self.filename)
+        
         
         ds = xr.open_dataset(self.filename,group=group_name)    
     
@@ -58,3 +85,41 @@ class AMRWind:
         ds.attrs = {"original file":self.filename}
         
         self.data = ds
+
+
+    def write(self, filename=None):
+        """ Rewrite object to file, or write object to `filename` if provided """
+        if filename:
+            self.filename = filename
+        if not self.filename:
+            raise Exception('No filename provided')
+        raise NotImplementedError()
+
+    def toDataFrame(self):
+        """ Returns object into one DataFrame, or a dictionary of DataFrames"""
+        # --- Example (returning one DataFrame):
+        #  return pd.DataFrame(data=np.zeros((10,2)),columns=['Col1','Col2'])
+        # --- Example (returning dict of DataFrames):
+        #dfs={}
+        #cols=['Alpha_[deg]','Cl_[-]','Cd_[-]','Cm_[-]']
+        #dfs['Polar1'] = pd.DataFrame(data=..., columns=cols)
+        #dfs['Polar1'] = pd.DataFrame(data=..., columns=cols)
+        # return dfs
+        raise NotImplementedError()
+
+    # --- Optional functions
+    def __repr__(self):
+        """ String that is written to screen when the user calls `print()` on the object. 
+        Provide short and relevant information to save time for the user. 
+        """
+        s='<{} object>:\n'.format(type(self).__name__)
+        s+='|Main attributes:\n'
+        s+='| - filename: {}\n'.format(self.filename)
+        # --- Example printing some relevant information for user
+        #s+='|Main keys:\n'
+        #s+='| - ID: {}\n'.format(self['ID'])
+        #s+='| - data : shape {}\n'.format(self['data'].shape)
+        s+='|Main methods:\n'
+        s+='| - read, write, toDataFrame, keys'
+        return s
+

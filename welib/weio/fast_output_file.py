@@ -235,23 +235,30 @@ def isBinary(filename):
 
 
 
-def load_ascii_output(filename, method='numpy'):
+def load_ascii_output(filename, method='numpy', encoding='ascii'):
 
 
     if method in ['forLoop','pandas']:
         from .file import numberOfLines
         nLines = numberOfLines(filename, method=2)
 
-    with open(filename) as f:
+    with open(filename, encoding=encoding, errors='ignore') as f:
         info = {}
         info['name'] = os.path.splitext(os.path.basename(filename))[0]
         # Header is whatever is before the keyword `time`
-        in_header = True
         header = []
-        while in_header:
+        maxHeaderLines=35
+        headerRead = False
+        for i in range(maxHeaderLines):
             l = f.readline()
             if not l:
                 raise Exception('Error finding the end of FAST out file header. Keyword Time missing.')
+            # Check for utf-16
+            if l[:3] == '\x00 \x00':
+                f.close()
+                encoding=''
+                print('[WARN] Attempt to re-read the file with encoding utf-16')
+                return load_ascii_output(filename=filename, method=method, encoding='utf-16')
             first_word = (l+' dummy').lower().split()[0]
             in_header=  (first_word != 'time') and  (first_word != 'alpha')
             if in_header:
@@ -260,6 +267,10 @@ def load_ascii_output(filename, method='numpy'):
                 info['description'] = header
                 info['attribute_names'] = l.split()
                 info['attribute_units'] = [unit[1:-1] for unit in f.readline().split()]
+                headerRead=True
+                break
+        if not headerRead:
+            raise WrongFormatError('Could not find the keyword "Time" or "Alpha" in the first {} lines of the file'.format(maxHeaderLines))
 
         nHeader = len(header)+1
         nCols = len(info['attribute_names'])
@@ -285,13 +296,13 @@ def load_ascii_output(filename, method='numpy'):
             data = np.zeros((nRows, nCols))
             for i in range(nRows):
                 l = f.readline().strip()
-                sp = np.array(l.split()).astype(np.float)
+                sp = np.array(l.split()).astype(float)
                 data[i,:] = sp[:nCols]
 
         elif method == 'listCompr':
             # --- Method 4 - List comprehension
             # Data, up to end of file or empty line (potential comment line at the end)
-            data = np.array([l.strip().split() for l in takewhile(lambda x: len(x.strip())>0, f.readlines())]).astype(np.float)
+            data = np.array([l.strip().split() for l in takewhile(lambda x: len(x.strip())>0, f.readlines())]).astype(float)
         else:
             raise NotImplementedError()
 
