@@ -8,7 +8,7 @@ from welib.weio.fast_input_file import FASTInputFile
 from welib.weio.fast_output_file import FASTOutputFile
 from welib.weio.turbsim_file import TurbSimFile
 
-from . import fastlib
+from welib.fast import postpro as fastlib
 
 # --------------------------------------------------------------------------------}
 # --- Small helper functions

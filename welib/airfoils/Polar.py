@@ -394,8 +394,11 @@ class Polar(object):
                     / cl_slope
                     * (1.6 * chord_over_r / 0.1267 * (a - chord_over_r ** expon) / (b + chord_over_r ** expon) - 1)
                 )
+                # Force fcl to stay non-negative
+                if fcl < 0.:
+                    fcl = 0.
             else:
-                fcl=1.0
+                fcl=0.0
         elif lift_method == "Snel":
             # Snel correction
             fcl = 3.0 * chord_over_r ** 2.0
@@ -727,7 +730,7 @@ class Polar(object):
         else:
             window = [-20, 20]
         try:
-            alpha0cn = _find_alpha0(alpha, cn, window, direction='up')
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='up', value_if_constant = 0.)
         except NoCrossingException:
             print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
             alpha0cn = _find_alpha0(alpha, cn, window, direction='down')
@@ -1262,17 +1265,17 @@ def _alpha_window_in_bounds(alpha, window):
     return window
 
 
-def _find_alpha0(alpha, coeff, window, direction='up'):
+def _find_alpha0(alpha, coeff, window, direction='up', value_if_constant = np.nan):
     """Finds the point where coeff(alpha)==0 using interpolation.
     The search is narrowed to a window that can be specified by the user. The default window is yet enough for cases that make physical sense.
     The angle alpha0 is found by looking at a zero up crossing in this window, and interpolation is used to find the exact location.
     """
     # Constant case or only one value
-    if np.all(coeff == coeff[0]) or len(coeff) == 1:
+    if np.all(abs((coeff - coeff[0])<1e-8)) or len(coeff) == 1:
         if coeff[0] == 0:
             return 0
         else:
-            return np.nan
+            return value_if_constant
     # Ensuring window is within our alpha values
     window = _alpha_window_in_bounds(alpha, window)
 

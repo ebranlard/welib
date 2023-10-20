@@ -128,3 +128,82 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
             print('[WARN] Signals missing and omitted for ColKeep:\n       '+'\n       '.join(ColKeepMiss))
         df=df[ColKeepSafe]
     return df
+
+def changeUnits(df, flavor='SI', inPlace=True):
+    """ Change units of a dataframe
+
+    # TODO harmonize with dfToSIunits in welib.fast.tools.lin.py !
+    """
+    def splitunit(s):
+        iu=s.rfind('[')
+        if iu>0:
+            return s[:iu], s[iu+1:].replace(']','')
+        else:
+            return s, ''
+    def change_units_to_WE(s, c):
+        """ 
+        Change units to wind energy units
+        s: channel name (string) containing units, typically 'speed_[rad/s]'
+        c: channel (array)
+        """
+        svar, u = splitunit(s)
+        u=u.lower()
+        scalings = {}
+        #        OLD      =     NEW
+        scalings['rad/s'] =  (30/np.pi,'rpm') # TODO decide
+        scalings['rad' ]  =   (180/np.pi,'deg')
+        scalings['n']     =   (1e-3, 'kN')
+        scalings['nm']    =   (1e-3, 'kNm')
+        scalings['n-m']   =   (1e-3, 'kNm')
+        scalings['n*m']   =   (1e-3, 'kNm')
+        scalings['w']     =   (1e-3, 'kW')
+        if u in scalings.keys():
+            scale, new_unit = scalings[u]
+            s = svar+'['+new_unit+']'
+            c *= scale
+        return s, c
+
+    def change_units_to_SI(s, c):
+        """ 
+        Change units to SI units
+        TODO, a lot more units conversion needed...will add them as we go
+        s: channel name (string) containing units, typically 'speed_[rad/s]'
+        c: channel (array)
+        """
+        svar, u = splitunit(s)
+        u=u.lower()
+        scalings = {}
+        #        OLD      =     NEW
+        scalings['rpm']   =  (np.pi/30,'rad/s') 
+        scalings['rad' ]  =   (180/np.pi,'deg')
+        scalings['deg/s' ] =   (np.pi/180,'rad/s')
+        scalings['kn']     =   (1e3, 'N')
+        scalings['knm']    =   (1e3, 'Nm')
+        scalings['kn-m']   =   (1e3, 'Nm')
+        scalings['kn*m']   =   (1e3, 'Nm')
+        scalings['kw']     =   (1e3, 'W')
+        if u in scalings.keys():
+            scale, new_unit = scalings[u]
+            s = svar+'['+new_unit+']'
+            c *= scale
+        return s, c
+
+    if not inPlace:
+        raise NotImplementedError()
+
+    if flavor == 'WE':
+        cols = []
+        for i, colname in enumerate(df.columns):
+            colname_new, df.iloc[:,i] = change_units_to_WE(colname, df.iloc[:,i])
+            cols.append(colname_new)
+        df.columns = cols
+    elif flavor == 'SI':
+        cols = []
+        for i, colname in enumerate(df.columns):
+            colname_new, df.iloc[:,i] = change_units_to_SI(colname, df.iloc[:,i])
+            cols.append(colname_new)
+        df.columns = cols
+    else:
+        raise NotImplementedError(flavor)
+    return df
+
