@@ -336,8 +336,10 @@ class TestFitting(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    #TestFitting().test_sinusoid()
+#     TestFitting().test_sinusoid()
+#     TestFitting().test_powerlaw_u_alpha()
     #TestFitting().test_secondorder_step()
+    #TestFitting().test_evalpowerlaw()
     unittest.main()
 
 
