@@ -30,12 +30,12 @@ JointID          JointXss               JointYss               JointZss  [Coordi
    3              0.00000                0.00000                50.00000
 ------------------- BASE REACTION JOINTS: 1/0 for Locked/Free DOF @ each Reaction Node ---------------------
              1   NReact      - Number of Joints with reaction forces; be sure to remove all rigid motion DOFs of the structure  (else det([K])=[0])
-RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss     [Global Coordinate System]
+RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss   !  [Global Coordinate System]
   (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
    1           1           1           1           1           1           1   ""
 ------- INTERFACE JOINTS: 1/0 for Locked (to the TP)/Free DOF @each Interface Joint (only Locked-to-TP implemented thus far (=rigid TP)) ---------
              1   NInterf     - Number of interface joints locked to the Transition Piece (TP):  be sure to remove all rigid motion dofs
-IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss     [Global Coordinate System]
+IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss   !  [Global Coordinate System]
   (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
    3           1           1           1           1           1           1
 ----------------------------------- MEMBERS --------------------------------------

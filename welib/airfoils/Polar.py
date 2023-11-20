@@ -1741,6 +1741,8 @@ def _find_linear_region(x, y, nMin, x0=None):
             iEnd = j + nMin
             if x0 is not None:
                 sl = np.linalg.lstsq(x[iStart:iEnd], y[iStart:iEnd], rcond=None)[0][0]
+                if not np.isscalar(sl):
+                    sl = sl[0]
                 slp[iStart, j] = sl
                 off[iStart, j] = x0
                 y_lin = x[iStart:iEnd] * sl

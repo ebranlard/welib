@@ -317,6 +317,7 @@ class StochasticVariable():
         gp0 = np.gradient(g, x0)
         y1 = np.min(g)
         yn = np.max(g)
+        pdf_yi = y0*0
 
         if yvalues=='input':
             yi = y0.copy()
@@ -333,7 +334,8 @@ class StochasticVariable():
         xi   = interpsafe(yi, y0, x0)  # xi = g^(-1)(yi)
         fxi  = self.pdf(xi)            # fX(xi) = fX(g-1(y)) 
         gpxi = interpsafe(xi, x0, gp0) # g'(xi) = g'(g-1(y)) 
-        pdf_yi = fxi * 1/np.abs(gpxi)  # fy= fX(xi)/|g'(xi)|
+        b = gpxi>0 
+        pdf_yi[b] = fxi[b] * 1/np.abs(gpxi[b])  # fy= fX(xi)/|g'(xi)|
 
 #         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
 #         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)

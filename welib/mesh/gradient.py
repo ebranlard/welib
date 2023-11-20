@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 
 def differ_stencil ( x0, o, p, x ):
@@ -15,7 +16,7 @@ def differ_stencil ( x0, o, p, x ):
     c = np.zeros(n)
     b[o] = 1
     c = vm_solve(n, dx, b)
-    fact = np.math.factorial(o)
+    fact = math.factorial(o)
     c *= fact
     return c
 

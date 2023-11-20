@@ -256,7 +256,11 @@ class TimeSeries(dict):
         if len(dt_bar)<=max(0.01*nt,1):
             # we assume a constant time step is used
             TI['tMin'] = self['time'][0]
-            TI['dt'  ] = mode(np.diff(self['time']))[0][0]
+            modes = mode(np.diff(self['time']))[0]
+            if np.isscalar(modes):
+                TI['dt'  ] = modes
+            else:
+                TI['dt'  ] = modes[0]
             TI['nt'  ] = nt
         else:
             TI['time'] = list(self['time'])

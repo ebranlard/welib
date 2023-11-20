@@ -124,7 +124,7 @@ a=6 # NOTE: increased amplitude here to see Effect of Wheeler
 
 for it, t in enumerate(time):
     # Wave kinematics
-    veta[it] = elevation2d(a, f, k, eps, t, x              = 0)
+    veta[it] = elevation2d(a, f, k, eps, t, x= 0)[0]
     z        = np.linspace(-h, veta[it], nz)
     u, du    = kinematics2d(a, f, k, eps, h, t, z, Wheeler = True, eta = veta[it])
     u0, du0  = kinematics2d(a, f, k, eps, h, t, z)

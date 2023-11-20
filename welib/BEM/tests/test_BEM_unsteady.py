@@ -64,7 +64,7 @@ class Test(unittest.TestCase):
                     bSwirl=bSwirl, CTcorrection=CTcorrection, swirlMethod=swirlMethod,
                     relaxation=relaxation, a_last=a_last)
             a_last = a
-            a_store[it]=a
+            a_store[it]=a[0]
 
             Vind_qs_p = np.array([-a[0]*V0[0], -aprime[0]*Vstr_p[1], 0])
             Vind_g    = R_p2g.dot(Vind_qs_p) # global
