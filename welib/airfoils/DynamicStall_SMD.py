@@ -37,6 +37,7 @@ def dynstall_mhh_dxdt_smd(t, x, U, p, t_ramp=0.0):
 
 
     # Calculate flow velocities at quarter and three quarter chord positions
+    # NOTE: the 3/4 looks suspicious
     Ux14 = -(-omega_struct*p['chord']*(p['x_pitch']-0.25)*np.sin(theta) + xdot_s) + U
     Ux34 = -(-omega_struct*p['chord']*(p['x_pitch']-0.75)*np.sin(theta) + xdot_s) + U
                                                                               

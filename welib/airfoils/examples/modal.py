@@ -5,7 +5,6 @@ Functions for verifying nalu wind outputs
 import numpy as np
 from scipy.linalg import eigh
 
-import yaml
 import matplotlib.pyplot as plt
 
 def modal_time_series(Mmat, Kmat, Cmat, x0, thist):
@@ -63,6 +62,7 @@ def modal_time_series(Mmat, Kmat, Cmat, x0, thist):
     return xhist,vhist
 
 def load_gen_time(struct_file, x0, thist):
+    import yaml
 
     iea15mw_sviv2d = yaml.load(open(struct_file),Loader=yaml.UnsafeLoader)
     Mmat = np.array(iea15mw_sviv2d['mass_matrix']).reshape(3,3)

@@ -1,4 +1,4 @@
-import sys, os, yaml
+import sys, os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
@@ -142,6 +142,7 @@ def prescribed_oscillations():
     ax.set_title('Airfoils - MGH dynamic stall model')
 
 def sviv_2d_prescribed_oscillations(u_infty, aoa_0):
+    import yaml
     radians=True
     #FFA-W3-211 airfoil Dyna Stall
     P=Polar.fromfile(os.path.join(MyDir,'../data/IEA-15-240-RWT_AeroDyn15_Polar_35.dat'),compute_params=True,to_radians=radians)
@@ -394,6 +395,7 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
     return vt, sol_mhh.y[4:7], sol_mhh.y[7:10]
 
 if __name__ == '__main__':
+    import yaml
     # sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
     # sviv_2d(50.0)
     # prescribed_oscillations()

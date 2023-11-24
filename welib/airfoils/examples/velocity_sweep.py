@@ -1,23 +1,5 @@
-import sys, os, yaml
+import sys, os
 import numpy as np
-
-from yaml.loader import SafeLoader 
-
-import dynamic_stall_mhh as mhh
-
-MyDir=os.path.dirname(__file__)
-
-##########################
-# Paths and additional imports from sviv_2d repo
-##########################
-
-sviv_2d_path = '../../../../sviv_2d/' # default cloned in same repo
-
-pff_path = os.path.join(MyDir, sviv_2d_path, 'python/PFF')
-sys.path.append(pff_path)
-import peak_filter_fit as pff
-    
-
 
 def pff_summary(t, x, mode_shapes, nom_freq, dict, aoa, vel,
                 half_bandwidth_frac=0.05, tstart=10, remove_end=7, reportnum=30):
@@ -91,6 +73,22 @@ def create_append_dict(dict, key, val):
 
 
 if __name__ == '__main__':
+    # TODO Not ready
+    import welib.airfoils.examples.dynamic_stall_mhh as mhh
+    from yaml.loader import SafeLoader 
+    import create_model_funs as create
+    MyDir=os.path.dirname(__file__)
+
+    ##########################
+    # Paths and additional imports from sviv_2d repo
+    ##########################
+    sviv_2d_path = '../../../../sviv_2d/' # default cloned in same repo
+    pff_path = os.path.join(MyDir, sviv_2d_path, 'python/PFF')
+    sys.path.append(pff_path)
+    import peak_filter_fit as pff
+
+
+
 
     # velocities = np.array([20, 40, 50])
     velocities = (np.array(range(11))+2)*5.0
@@ -118,7 +116,6 @@ if __name__ == '__main__':
     ##########################
 
     sys.path.append(os.path.join(sviv_2d_path, 'python/ConstructModel'))
-    import create_model_funs as create
 
     struct_file = os.path.join(MyDir, './IEA15_aoa{}_3dof.yaml'.format(aoa))
     bd_yaml = os.path.join(sviv_2d_path, 'python/bd_driver.BD.sum.yaml')
