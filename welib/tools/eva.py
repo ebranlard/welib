@@ -207,8 +207,8 @@ def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScali
     except that frequencies are returned instead of "Lambda"
 
     OUTPUTS:
-      Q, freq_0 if freq_out
-      Q, Lambda otherwise
+      - Q, freq_0  if freq_out
+      - Q, Lambda otherwise
     """
     return eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out, massScaling=massScaling)
 

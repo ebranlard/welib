@@ -12,12 +12,16 @@ class Test(unittest.TestCase):
     def test_numerical_jacobian(self):
         # --- Setup of same functions and their analytical jacobians
         def f_test(x, u):
+            x = np.asarray(x).flatten()
+            u = np.asarray(u).flatten()
             xdot=np.zeros(len(x))
             xdot[0] = x[0]**2 + x[2] + 3*u[0] 
             xdot[1] = x[1]**3            
             xdot[2] =             u[2]**3
             return xdot
         def f_testp(x, u, p):
+            x = np.asarray(x).flatten()
+            u = np.asarray(u).flatten()
             xdot=np.zeros(len(x))
             xdot[0] = x[0]**2 + x[2] + 3*u[0] 
             xdot[1] = x[1]**3                 + p[0]
@@ -25,11 +29,15 @@ class Test(unittest.TestCase):
             return xdot
         def jacx_test(x, u):
             jacx=np.zeros((x.shape[0],x.shape[0]))
+            x = np.asarray(x).flatten()
+            u = np.asarray(u).flatten()
             jacx[0,0] = 2*x[0];  jacx[0,2] = 1 
             jacx[1,1] = 3*x[1]**2; 
             return jacx
         def jacu_test(x, u):
             jacu=np.zeros((x.shape[0],u.shape[0]))
+            x = np.asarray(x).flatten()
+            u = np.asarray(u).flatten()
             jacu[0,0] = 3
             jacu[2,2] = 3*u[2]**2
             return jacu

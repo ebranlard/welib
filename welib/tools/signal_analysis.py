@@ -285,9 +285,16 @@ def applySampler(x_old, y_old, sampDict, df_old=None):
 #         #nw=400
 #         #u_new = moving_average(np.floor(np.linspace(0,3,nt+nw-1))*3+3.5, nw)
 #         return np.convolve(x, np.ones(w), 'valid') / w
-#     def moving_average(x,N,mode='same'):
-#        y=np.convolve(x, np.ones((N,))/N, mode=mode)
-#        return y
+def moving_average_conv(x, n,mode='same'):
+    x = np.asarray(x)
+    #n0 = len(x)
+    xaug = np.concatenate(([x[0]]*(n-1),x, [x[-1]]*(n-1))) # repeating first and last values
+    # TODO verify this
+    y = np.convolve(xaug, np.ones((n,))/n, mode=mode)
+    y = y [n-1:-n+1]
+    #y=np.convolve(x, np.ones((n,))/n, mode=mode)
+    return y
+    
 def moving_average(a, n=3) :
     """ 
     perform moving average, return a vector of same length as input
@@ -414,7 +421,7 @@ def zero_crossings(y, x=None, direction=None, bouncingZero=False):
 # --------------------------------------------------------------------------------}
 # --- Correlation  
 # --------------------------------------------------------------------------------{
-def correlation(x, nMax=80, dt=1, method='manual'):
+def correlation(x, nMax=80, dt=1, method='numpy'):
     """ 
     Compute auto correlation of a signal
     """
@@ -424,14 +431,18 @@ def correlation(x, nMax=80, dt=1, method='manual'):
 
 
     nvec   = np.arange(0,nMax)
-    sigma2 = np.var(x)
-    R    = np.zeros(nMax)
-    #R[0] =1
-    #for i,nDelay in enumerate(nvec[1:]):
-    #    R[i+1] = np.mean(  x[0:-nDelay] * x[nDelay:]  ) / sigma2
-    #    R[i+1] = np.corrcoef(x[:-nDelay], x[nDelay:])[0,1] 
+    if method=='manual':
+        sigma2 = np.var(x)
+        R    = np.zeros(nMax)
+        R[0] =1
+        for i,nDelay in enumerate(nvec[1:]):
+            R[i+1] = np.mean(  x[0:-nDelay] * x[nDelay:]  ) / sigma2
+            #R[i+1] = np.corrcoef(x[:-nDelay], x[nDelay:])[0,1] 
 
-    R= acf(x, nMax=nMax)
+    elif method=='numpy':
+        R= acf(x, nMax=nMax)
+    else:
+        raise NotImplementedError()
 
     tau = nvec*dt
     return R, tau

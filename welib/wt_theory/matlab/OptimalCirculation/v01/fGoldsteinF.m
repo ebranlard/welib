@@ -1,9 +1,9 @@
-function [ F ] = fGoldsteinOkulovF( H,B,r,N )
+function [ F ] = fGoldsteinF( H,B,r,N )
     R=1;
     w=1;
     Vr=(1/N:1/N:1)*R;
     KB=(Vr/R).^2./(H^2+(Vr/R).^2)  ;
-    GammaGoldstein = fGoldtseinOkulovCirculation(H,w,R,B,Vr)*B/(H*w);
+    GammaGoldstein = fGoldsteinCirculation(H,w,R,B,Vr)*B/(H*w);
     % tip loss factor
     F=GammaGoldstein'./KB;
     F=interp1(Vr,F,r);
@@ -19,7 +19,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  function [ GammaGoldstein] = fGoldtseinOkulovCirculation(l,w,R,B,Vr)
+  function [ GammaGoldstein] = fGoldsteinCirculation(l,w,R,B,Vr)
 %% Inititalization
 l_bar=l/R;
 VthetaB=(0:(B-1))*2*pi/B;  % [rad] Blade azimuthal angle

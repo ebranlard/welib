@@ -53,7 +53,10 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=No
     # Reading elastodyn file
     ED      = weio.read(EDfile)
     rootdir = os.path.dirname(EDfile)
-    bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
+    try:
+        bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
+    except:
+        bldfile = os.path.join(rootdir,ED['BldFile1'].strip('"')).replace('\\','/')
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     twr     = weio.read(twrfile)
     bld     = weio.read(bldfile)

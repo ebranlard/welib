@@ -1,4 +1,5 @@
-from .file  import File, WrongFormatError, BrokenFormatError, FileNotFoundError, EmptyFileError
+# --- Generic reader / fileformat detection
+from .file  import File, WrongFormatError, BrokenFormatError, FileNotFoundError, EmptyFileError, OptionalImportError
 from .file_formats  import FileFormat, isRightFormat
 import sys
 import os
@@ -16,6 +17,12 @@ _FORMATS=None
 def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     """ return list of fileformats supported by the library
     If userpath is provided, 
+
+    OUTPUTS:
+      if ignoreErrors is True:
+          formats,  errors
+      else:
+          formats
 
     """
     global _FORMATS
@@ -259,16 +266,5 @@ def read(filename, fileformat=None, **kwargs):
         F=fileformat.constructor(filename=filename)
     return F
 
-
-# --- For legacy code
-def FASTInputFile(*args,**kwargs):
-    from .fast_input_file import FASTInputFile as fi
-    return fi(*args,**kwargs)
-def FASTOutputFile(*args,**kwargs):
-    from .fast_output_file import FASTOutputFile as fo
-    return fo(*args,**kwargs)
-def CSVFile(*args,**kwargs):
-    from .csv_file import CSVFile as csv
-    return csv(*args,**kwargs)
 
 

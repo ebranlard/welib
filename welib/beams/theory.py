@@ -123,7 +123,7 @@ def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip',nMod
         # Solve for "lambda"
         B = np.zeros(nModes)
         for i in np.arange(nModes):
-            B[i] = sciopt.fsolve(freq_function, freq_guess(i))
+            B[i] = sciopt.fsolve(freq_function, freq_guess(i))[0]
         # Frequency
         freq = (B / L) ** 2 / (2 * np.pi) * np.sqrt(EI / (rho * A))
         # --- Mode shapes

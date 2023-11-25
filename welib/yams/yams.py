@@ -563,6 +563,7 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
             s_min=None, s_max=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
+            damp_zeta=None,
             name='dummy',
             algo=''
             ):
@@ -576,6 +577,7 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
         Body.__init__(B)
         GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
+                 damp_zeta=damp_zeta,
                  massExpected=massExpected,
                  int_method=int_method
                 )
@@ -808,6 +810,7 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
         # NOTE: TODO TODO TODO: This will result in "YAMSBeamBody to be called twice...)
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
                 # NOTE: r_O, r_b2g is lost here
+                damp_zeta=B.damp_zeta, # Important otherwise lost
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
                 massExpected=massExpected,

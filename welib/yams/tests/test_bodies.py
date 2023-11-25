@@ -4,7 +4,7 @@ import os
 import numpy as np
 from welib.yams.bodies import *
 from welib.yams.utils import *
-import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 
 MyDir=os.path.dirname(__file__)
 
@@ -17,7 +17,7 @@ class TestUtils(unittest.TestCase):
         np.set_printoptions(linewidth=300, precision=2)
         # read ElastoDyn file
         edFile=os.path.join(MyDir,'./../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore.dat')
-        ED = weio.FASTInputFile(edFile)
+        ED = FASTInputFile(edFile)
 
         #def __init__(self, name, mass, J, s_OG, R_b2g=np.eye(3), s_OP=None, r_O=[0,0,0]):
         theta_tilt_y = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST

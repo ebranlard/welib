@@ -7,25 +7,22 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 import welib.weio as io
 import welib.fast.postpro as postpro
-#import pyFAST.input_output as io 
-#import pyFAST.input_output.postpro as postpro
 
 def main():
 
     # Get current directory so this script can be called from any location
-    MyDir=os.path.dirname(__file__)
+    scriptDir=os.path.dirname(__file__)
 
     # --- Step 1: Read an openfast output file
-    outFile = os.path.join(MyDir,'../../../data/example_files/fastout_allnodes.outb')
+    outFile = os.path.join(scriptDir,'../../../data/example_files/fastout_allnodes.outb')
     df = io.fast_output_file.FASTOutputFile(outFile).toDataFrame()
 
     # --- Step2 : Average data and extrat the radial stations
     # Averaging here is done over 1 period (avgParam=1, avgMethod='periods')
     # To get the output radial stations, a .fst file is needed
-    fstFile = os.path.join(MyDir,'../../../data/NREL5MW/Main_Onshore.fst')
+    fstFile = os.path.join(scriptDir,'../../../data/NREL5MW/Main_Onshore.fst')
     out = postpro.spanwisePostPro(FST_In=fstFile, avgMethod='periods', avgParam=1, df=df)
     dfRad_ED=out['ED_bld']; dfRad_AD = out['AD']; dfRad_BD = out['BD']
 
