@@ -1,48 +1,47 @@
-import sys, os
+import sys
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from scipy import linalg
-
-MyDir=os.path.dirname(__file__)
-
+from scipy import linalg 
+# Local
 import welib.airfoils
 from welib.airfoils.Polar import *
 from welib.airfoils.DynamicStall import *
-from welib.airfoils.DynamicStall_SMD import *
+from welib.airfoils.DynamicStall_SMD import dynstall_mhh_dxdt_smd
+
+MyDir=os.path.dirname(__file__)
 # --------------------------------------------------------------------------------}
 # ---
 # --------------------------------------------------------------------------------{
 def prescribed_oscillations():
     radians=True
-    #FFA-W3-211 airfoil Dyna Stall
-    P=Polar.fromfile(os.path.join(MyDir,'../data/IEA-15-240-RWT_AeroDyn15_Polar_35.dat'),compute_params=True,to_radians=radians)
     #FFA-W3-241 airfoil Dyna Stall
     #P=Polar.fromfile(os.path.join(MyDir,'../data/FFA-W3-241-Re12M.dat'),compute_params=True,to_radians=radians)
-#    P=Polar(os.path.join(MyDir,'../data/DU21_A17.csv'), compute_params=True, radians=radians)
+    P=Polar(os.path.join(MyDir,'../data/DU21_A17.csv'), compute_params=True, radians=radians)
 
     if radians:
         deg_scale=np.pi/180
     else:
         deg_scale=1
 
-    K_omega    = 2.0 * np.pi * 4.0 * 2.8480588747143942 / (2.0 * 15.0)     # reduced frequency k=omega*c/(2U0)
-    U0         = 15.0
-    chord      = 2.8480588747143942 # gives a omega of 12.57 with k=0.1, U0=10
+    K_omega    = 0.1    # reduced frequency k=omega*c/(2U0)
+    U0         = 10
+    chord      = 0.1591 # gives a omega of 12.57 with k=0.1, U0=10
     DeltaAlpha = 10
     # Parameters
     omega       = 2*U0*K_omega/chord
-    T           = 10.0 #2*np.pi/omega
+    T           = 2*np.pi/omega 
     #omega=0
     tau_oye     = 4 * chord/U0
     #valpha_mean = [5,10,15,20,25,30,35,50,60,80,100,110,130,150]
-    valpha_mean = [50]
+    valpha_mean = [-12,-22,10]
     #valpha_mean = [20]
-    t_max       = T                  # simulation length
+    t_max       = 1.6*T                  # simulation length
     dt          = T/500                   # time step
     #XLIM        = np.array([0,40])
-    XLIM        = np.array([-90,90])
-    YLIM        = np.array([-3,3])
+    XLIM        = np.array([-40,40])
+    YLIM        = np.array([-2,2])
 
 
     # Derived params
@@ -53,8 +52,8 @@ def prescribed_oscillations():
 
     # Loop on alpham and time
     for ia,alpham in enumerate(valpha_mean):
-        valpha_t[ia,:]   = np.radians(alpham+DeltaAlpha*np.sin(omega*vt))
-        valpha_dot_t     = np.radians(DeltaAlpha*omega*np.cos(omega*vt) )
+        valpha_t[ia,:]   = (alpham+DeltaAlpha*np.sin(omega*vt))*deg_scale
+        valpha_dot_t     = (2*omega*np.cos(omega*vt) )*deg_scale
         fs_prev = P.fs_interp(alpham*deg_scale)# init with steady value
 
         # Oye's Parameters and Inputs
@@ -122,7 +121,6 @@ def prescribed_oscillations():
     ax.plot(P.alpha/deg_scale  , P.cl_fs  ,'k--',  label='Cl fully separated')
     ax.plot(P.alpha/deg_scale  , P.cl_inv ,'k-.',  label='Cl inviscid')
     iStart=np.argmin(np.abs(vt-(vt[-1]-T)))-1
-    iStart=0
     for ia,alpham in enumerate(valpha_mean):
         if ia==0:
             lbl1='Cl dynamic (Oye)'
@@ -142,7 +140,7 @@ def prescribed_oscillations():
     ax.set_title('Airfoils - MGH dynamic stall model')
 
 def sviv_2d_prescribed_oscillations(u_infty, aoa_0):
-    import yaml
+    import yaml # TODO use min_yaml from weio
     radians=True
     #FFA-W3-211 airfoil Dyna Stall
     P=Polar.fromfile(os.path.join(MyDir,'../data/IEA-15-240-RWT_AeroDyn15_Polar_35.dat'),compute_params=True,to_radians=radians)
@@ -274,6 +272,7 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
       x0 - initial position coordinates. 
       no_force - flag to remove forces and just have structural vibration
     """
+    import yaml # TODO use min_yaml from weio
 
     radians=True
     #FFA-W3-211 airfoil Dyna Stall
@@ -394,7 +393,7 @@ def sviv_2d(u_infty, struct_file='chord_3dof.yaml', return_data=False, x0=np.zer
 
     return vt, sol_mhh.y[4:7], sol_mhh.y[7:10]
 
-if __name__ == '__main__':
+def main_sviv():
     import yaml
     # sviv_2d_prescribed_oscillations(15.0, np.radians(50.0))
     # sviv_2d(50.0)
@@ -489,6 +488,18 @@ if __name__ == '__main__':
 
 
     plt.show()
-
-
+    
+    
+if __name__ == '__main__':
+    prescribed_oscillations()
+    #main_sviv() # Not Ready
+    
+    plt.show()
+    
+if __name__ == '__test__':
+    prescribed_oscillations()
+if __name__=="__export__":
+    prescribed_oscillations()
+    from welib.tools.repo import export_figs_callback
+    export_figs_callback(__file__)
 
