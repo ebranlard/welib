@@ -869,19 +869,42 @@ def modeNorms(q, iDOFstart=0, nDOF=6):
         MaxMag[i] = np.sum(np.abs(q[iDOFstart+i::nDOF]))
     return MaxMag
 
-def normalize_to_last(Q, Imodes, iDOFStart=0, nDOF=6):
-    for iimode, imode in enumerate(Imodes):
-        mag = modeNorms(Q[:,imode], iDOFStart, nDOF)[:int(nDOF/2)]
+def normalize_to_last(Q, Imodes=None, iDOFStart=0, nDOF=6, first_half=True, DOFscales=None, inplace=False):
+    """ 
+    Normalize modes based on the mode component that has the biggest magnitude
+    Then the modes are divided by the value at the tip so that this component is 1 at the tip.
+                         
+    This assumes that the magnitude of the DOFs are comparable...
+
+    See Also: identifyAndNormalizeModes, and merge...
+    """
+    # --- Default values
+    if Imodes is None:
+        Imodes = np.arange(Q.shape[1])
+    if DOFscales is None:
+        DOFscales = np.ones(nDOF)
+    if len(DOFscales)!=nDOF:
+        raise Exception('Length of DOFscales should be same as nDOF')
+
+    # ---
+    if not inplace:
+        Q = Q.copy()
+    for iiMode, iMode in enumerate(Imodes):
+        mag = modeNorms(Q[:,iMode], iDOFStart, nDOF)
+        if first_half:
+            # We only consider half of the DOFs (typically the three translations)
+            mag = mag[:int(nDOF/2)]
+        #
         if np.max(mag) ==0:
             print('>>> mag', mag)
             raise Exception('Problem in mode magnitude, all norms are 0.')
         iMax= np.argmax(mag);
-        v_= Q[iDOFStart+iMax::nDOF, imode];
+        v_= Q[iDOFStart+iMax::nDOF, iMode];
         if np.abs(v_[-1])>1e-9:
-            Q[:, imode]= Q[:, imode]/v_[-1]
+            Q[:, iMode]= Q[:, iMode]/v_[-1]
         else:
-            print('[WARN] fem_beam:normalize_to_last, mode {} has 0 amplitude at tip'.format(imode))
-            Q[:, imode]= Q[:, imode]/v_[-1]
+            print('[WARN] fem_beam:normalize_to_last, mode {} has 0 amplitude at tip'.format(iMode))
+            Q[:, iMode]= Q[:, iMode]/v_[-1]
     return Q
 
 def orthogonalizeModePair(Q1, Q2, iDOFStart=0, nDOF=6):
@@ -938,7 +961,7 @@ def identifyAndNormalizeModes(Q, nModes=None, element='frame3d', normalize=True,
         q=Q[:,i]
         mag = modeNorms(q, iDOFstart=0, nDOF=nDOF)
         idx= np.argsort(mag)[-1::-1]
-        iMax = idx[0] # DOF (between 1-6) with macimum component
+        iMax = idx[0] # DOF (between 1-6) with maximum component
         U = Q[iMax::nDOF,i] # Main component of the mode
         # Detect rigid body mode (0 or NaN frequencies), component constant and non-zero
         rigid=False
