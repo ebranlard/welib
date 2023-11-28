@@ -82,7 +82,7 @@ class FASTOutputFile(File):
     def __init__(self, filename=None, **kwargs):
         """ Class constructor. If a `filename` is given, the file is read. """
         # Data
-        self.filename = filename
+        self.filename    = filename
         self.data        = None  # pandas.DataFrame
         self.description = ''    # string
         if filename:
@@ -115,9 +115,9 @@ class FASTOutputFile(File):
         self['binary']=False
         try:
             if ext in ['.out','.elev','.dbg','.dbg2']:
-                self.data, info = load_ascii_output(self.filename)
+                self.data, info = load_ascii_output(self.filename, **kwargs)
             elif ext=='.outb':
-                self.data, info = load_binary_output(self.filename)
+                self.data, info = load_binary_output(self.filename, **kwargs)
                 self['binary']=True
             elif ext=='.elm':
                 F=CSVFile(filename=self.filename, sep=' ', commentLines=[0,2],colNamesLine=1)
@@ -127,10 +127,10 @@ class FASTOutputFile(File):
                 info['attribute_names']=self.data.columns.values
             else:
                 if isBinary(self.filename):
-                    self.data, info = load_binary_output(self.filename)
+                    self.data, info = load_binary_output(self.filename, **kwargs)
                     self['binary']=True
                 else:
-                    self.data, info = load_ascii_output(self.filename)
+                    self.data, info = load_ascii_output(self.filename, **kwargs)
                     self['binary']=False
         except MemoryError as e:    
             raise BrokenReaderError('FAST Out File {}: Memory error encountered\n{}'.format(self.filename,e))
@@ -215,10 +215,83 @@ class FASTOutputFile(File):
 
     def __repr__(self):
         s='<{} object> with attributes:\n'.format(type(self).__name__)
+        s+=' - filename:    {}\n'.format(filename)
         s+=' - data ({})\n'.format(type(self.data))
         s+=' - description: {}\n'.format(self.description)
         s+='and keys: {}\n'.format(self.keys())
         return s
+
+    # --------------------------------------------------------------------------------
+    # --- 2D fields 
+    # --------------------------------------------------------------------------------
+    @property
+    def driverFile(self):
+        try:
+            driver, FFKind = findDriverFile(self.filename, df=None)
+            return driver
+        except:
+            return None
+
+    def to2DFields(self, DeltaAzi=5, nPeriods=3, **kwargs):
+        import pydatview.fast.postpro as fastlib 
+
+        def insertName(ds, name, dims):
+            for var in ds.variables:
+                # Create a new name, for example, add "_new" to each variable name
+                if ds[var].dims == dims:
+                    #chan = var.split('_[')[0]
+                    #unit = var.split('_[')[1]
+                    #new_var = chan+name+'_['+unit
+                    new_var = name+'_'+var
+                    ds = ds.rename({var: new_var})
+            return ds
+        
+        driverFile = self.driverFile
+
+        if len(kwargs.keys())>0:
+            print('[WARN] FASTOutputFile: to2DFields: ignored keys: ',kwargs.keys())
+        # Sanity check
+        DeltaAzi=float(DeltaAzi)
+        df = self.toDataFrame()
+        # --- Time wise
+        ds_AD, ds_ED, ds_BD = fastlib.spanwisePostProRows(df, driverFile, si1='t', sir='r')
+        if ds_AD is None:
+            return None # No Hope
+        if 'r_[m]' in ds_AD.keys():
+            rcoords =ds_AD['r_[m]'].values
+            runit = 'm'
+        else:
+            rcoords =ds_AD['i/n_[-]'].values
+            runit = '-'
+        # Rename columns to make them unique
+        ds_AD = insertName(ds_AD, '(t,r)', ('t','r'))
+        try:
+            ds_AD.coords['t'] = ('t', df['Time_[s]'].values)
+        except:
+            pass
+        ds_AD.coords['r'] = ('r', rcoords)
+
+        # --- Azimuthal Radial postpro
+        psi = np.arange(0, 360+DeltaAzi/10, DeltaAzi)
+        dfPsi = fastlib.azimuthal_average_DF(df, psiBin=psi, periodic=True, nPeriods=nPeriods) #, tStart = time[-1]-20)
+        ds_AD2, ds_ED2, ds_BD2 = fastlib.spanwisePostProRows(dfPsi, driverFile, si1='psi', sir='r')
+        ds_AD2.coords['psi'] = ('psi', psi) # TODO hack from bin to bin edges...
+        ds_AD2.coords['r'] = ('r', rcoords)
+        # Rename columns to make them unique
+        ds_AD2= insertName(ds_AD2, '(psi,r)', ('psi','r'))
+
+        # --- Combine into one field (need unique variables and dimension)
+        ds_AD = ds_AD.merge(ds_AD2, compat='override')
+        ds_AD.r.attrs['unit'] = runit
+        ds_AD.t.attrs['unit'] = 's'
+        ds_AD.psi.attrs['unit'] = 'deg'
+        ds_AD.r.attrs['unit'] = runit
+# #         ds_AD = ds_AD.swap_dims(dims_dict={'it': 't'})
+# #         ds_AD = ds_AD.drop_vars('it')
+# #         ds_AD.coords['r'] = ('ir', rcoords)
+# #         ds_AD = ds_AD.swap_dims(dims_dict={'ir': 'r'})
+# #         ds_AD = ds_AD.drop_vars('ir')
+        return ds_AD
 
     # --------------------------------------------------------------------------------
     # --- Converters 
@@ -237,9 +310,9 @@ class FASTOutputFile(File):
         
         # NOTE: fileID=2 will chop the channels name of long channels use fileID4 instead
         channels = self.data
-        chanNames = self.info['attribute_names']
-        chanUnits = self.info['attribute_units']
-        descStr   = self.info['description']
+        chanNames = self.channels
+        chanUnits = self.units
+        descStr   = self.description
         if isinstance(descStr, list):
             descStr=(''.join(descStr[:2])).replace('\n','')
         writeBinary(filename, channels, chanNames, chanUnits, fileID=fileID, descStr=descStr)
@@ -266,7 +339,7 @@ def isBinary(filename):
 
 
 
-def load_ascii_output(filename, method='numpy', encoding='ascii'):
+def load_ascii_output(filename, method='numpy', encoding='ascii', **kwargs):
 
 
     if method in ['forLoop','pandas']:
@@ -340,7 +413,7 @@ def load_ascii_output(filename, method='numpy', encoding='ascii'):
     return data, info
 
 
-def load_binary_output(filename, use_buffer=False):
+def load_binary_output(filename, use_buffer=False, method='mix', **kwargs):
     """
     03/09/15: Ported from ReadFASTbinary.m by Mads M Pedersen, DTU Wind
     24/10/18: Low memory/buffered version by E. Branlard, NREL
@@ -348,21 +421,44 @@ def load_binary_output(filename, use_buffer=False):
     20/11/23: Improved performances using np.fromfile, by E. Branlard, NREL
     """
     StructDict = {
-            'uint8': ('B', 1, np.uint8), 
-            'int16':('h', 2, np.int16), 
-            'int32':('i', 4, np.int32), 
-            'float32':('f', 4, np.float32),
+            'uint8':   ('B', 1, np.uint8), 
+            'int16':   ('h', 2, np.int16), 
+            'int32':   ('i', 4, np.int32), 
+            'float32': ('f', 4, np.float32),
             'float64': ('d', 8, np.float64)
     }
+    def getFileSizeMB(filename):
+        return os.path.getsize(filename)/(1024.0**2)
 
-    def freadLegacy(fid, n, dtype):
+    def freadStruct(fid, n, dtype):
         fmt, nbytes, npdtype = StructDict[dtype]
         return struct.unpack(fmt * n, fid.read(nbytes * n))
 
-    def fread(fid, n, dtype):
+    def freadStructArray(fid, n, dtype):
+        fmt, nbytes, npdtype = StructDict[dtype]
+        return np.array(struct.unpack(fmt * n, fid.read(nbytes * n)))
+
+    def freadNumpy(fid, n, dtype):
         fmt, nbytes, npdtype = StructDict[dtype]
         return np.fromfile(fid, count=n, dtype=npdtype)      # Improved performances
-        #return struct.unpack(fmt * n, fid.read(nbytes * n))
+
+    if method=='numpy':
+        fread      = freadNumpy
+        freadLarge = freadNumpy
+    elif method=='struct':
+        fread      = freadStruct
+        freadLarge = freadStructArray
+    elif method=='mix':
+        fread      = freadStruct
+        freadLarge = freadNumpy
+    elif method=='optim':
+        # Decide on method on the fly
+        #MB = getFileSizeMB(filename)
+        use_buffer = False
+        fread      = freadStruct
+        freadLarge = freadNumpy
+    else:
+        raise NotImplementedError
 
     def freadRowOrderTableBuffered(fid, n, type_in, nCols, nOff=0, type_out='float64'):
         """ 
@@ -393,14 +489,13 @@ def load_binary_output(filename, use_buffer=False):
             while nIntRead<n:
                 nIntToRead = min(n-nIntRead, BufferSize)
                 nLinesToRead = int(nIntToRead/nCols)
-                #Buffer = np.array(struct.unpack(fmt * nIntToRead, fid.read(nbytes * nIntToRead)))
-                Buffer = np.fromfile(fid, count=nIntToRead, dtype=np.dtype(type_in)) # Improved performances
+                Buffer = freadLarge(fid, nIntToRead, type_in)
                 Buffer = Buffer.reshape(-1,nCols)
                 data[ nLinesRead:(nLinesRead+nLinesToRead),  nOff:(nOff+nCols)  ] = Buffer
                 nLinesRead = nLinesRead + nLinesToRead
                 nIntRead   = nIntRead   + nIntToRead
         except:
-            raise Exception('Read only %d of %d values in file:' % (nIntRead, n, filename))
+            raise Exception('Read only %d of %d values in file: %s' % (nIntRead, n, filename))
         return data
 
     with open(filename, 'rb') as fid:
@@ -432,8 +527,8 @@ def load_binary_output(filename, use_buffer=False):
             ColOff = np.zeros((NumOutChans, 1)) # The channel offsets for scaling, REAL(4)
         else:
             # NOTE: check why legacy is needed here (changes the results)
-            ColScl = freadLegacy(fid, NumOutChans, 'float32')  # The channel slopes for scaling, REAL(4)
-            ColOff = freadLegacy(fid, NumOutChans, 'float32')  # The channel offsets for scaling, REAL(4)
+            ColScl = fread(fid, NumOutChans, 'float32')  # The channel slopes for scaling, REAL(4)
+            ColOff = fread(fid, NumOutChans, 'float32')  # The channel offsets for scaling, REAL(4)
 
         LenDesc      = fread(fid, 1, 'int32')[0]     # The number of characters in the description string, INT(4)
         DescStrASCII = fread(fid, LenDesc, 'uint8')  # DescStr converted to ASCII
@@ -462,9 +557,9 @@ def load_binary_output(filename, use_buffer=False):
         else:
             # NOTE: unpacking huge data not possible on 32bit machines
             if FileID == FileFmtID_NoCompressWithoutTime:
-                PackedData = fread(fid, nPts, 'float64')  # read the channel data
+                PackedData = freadLarge(fid, nPts, 'float64')  # read the channel data
             else:
-                PackedData = fread(fid, nPts, 'int16')    # read the channel data
+                PackedData = freadLarge(fid, nPts, 'int16')    # read the channel data
 
             cnt = len(PackedData)
             if cnt < nPts:
@@ -711,6 +806,7 @@ def findDriverFile(filename, df=None):
 if __name__ == "__main__":
     scriptDir = os.path.dirname(__file__)
     B=FASTOutputFile(os.path.join(scriptDir, 'tests/example_files/FASTOutBin.outb'))
+    B.to2DFields()
     df=B.toDataFrame()
     B.writeDataFrame(df, os.path.join(scriptDir, 'tests/example_files/FASTOutBin_OUT.outb'))
     B.toOUTB(extension='.dat.outb')

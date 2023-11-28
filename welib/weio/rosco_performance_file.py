@@ -144,6 +144,22 @@ class ROSCOPerformanceFile(File):
         dfs['CQ'] = pd.DataFrame(np.column_stack((self['TSR'], self['CQ'])), columns=columns)
         return dfs
 
+    def to2DFields(self, **kwargs):
+        import xarray as xr
+        if len(kwargs.keys())>0:
+            print('[WARN] RoscoPerformance_CpCtCq: to2DFields: ignored keys: ',kwargs.keys())
+        s1 = 'TSR'
+        s2 = 'pitch'
+        ds = xr.Dataset(coords={s1: self['TSR'], s2: self['pitch']})
+        ds[s1].attrs['unit'] = '-'
+        ds[s2].attrs['unit'] = 'deg'
+        for var in ['CP','CT','CQ']:
+            M = self[var].copy()
+            M[M<0] = 0
+            ds[var] = ([s1, s2], M)
+            ds[var].attrs['unit'] = '-'
+        return ds
+
     # --- Optional functions
     def toAeroDisc(self, filename, R, csv=False, WS=None, omegaRPM=10):
         """ Convert to AeroDisc Format 

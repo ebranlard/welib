@@ -702,6 +702,51 @@ class TurbSimFile(File):
         #    pass
         return dfs
 
+    def to2DFields(self, nTOut=10, nYOut=3, nZOut=3, **kwargs):
+        import xarray as xr
+        if len(kwargs.keys())>0:
+            print('[WARN] TurbSimFile: to2DFields: ignored keys: ',kwargs.keys())
+        # Sanity check
+        nTOut = int(nTOut)
+        nYOut = int(nYOut)
+        nZOut = int(nZOut)
+        # 'u': velocity field, shape (3 x nt x ny x nz)
+        IT = list(np.arange(nTOut)) +  [len(self.t)-1]
+        IT = np.unique(IT)
+
+        IY = np.unique(np.linspace(0,len(self['y'])-1, nYOut).astype(int))
+        IZ = np.unique(np.linspace(0,len(self['z'])-1, nZOut).astype(int))
+        Fields=[]
+        # --- YZ planes
+        s1 = 'TSR'
+        s2 = 'pitch'
+        ds = xr.Dataset(coords={'t': self.t, 'y': self.y, 'z': self.z})
+        ds['t'].attrs['unit'] = 's'
+        ds['y'].attrs['unit'] = 'm'
+        ds['z'].attrs['unit'] = 'm'
+
+        for it in IT:
+            ds['u_t={:.2f}_[m/s]'.format(self.t[it])] = (['y','z'], np.squeeze(self['u'][0,it,:,:]))
+        for it in IT:
+            ds['v_t={:.2f}_[m/s]'.format(self.t[it])] = (['y','z'], np.squeeze(self['u'][1,it,:,:]))
+        for it in IT:
+            ds['w_t={:.2f}_[m/s]'.format(self.t[it])] = (['y','z'], np.squeeze(self['u'][2,it,:,:]))
+        # --- TZ planes
+        for iy in IY:
+            ds['u_y={:.2f}_[m/s]'.format(self['y'][iy])] = (['t','z'], np.squeeze(self['u'][0,:,iy,:]))
+        for iy in IY:
+            ds['v_y={:.2f}_[m/s]'.format(self['y'][iy])] = (['t','z'], np.squeeze(self['u'][1,:,iy,:]))
+        for iy in IY:
+            ds['w_y={:.2f}_[m/s]'.format(self['y'][iy])] = (['t','z'], np.squeeze(self['u'][2,:,iy,:]))
+        # --- TY planes
+        for iz in IZ:
+            ds['u_z={:.2f}_[m/s]'.format(self['z'][iz])] = (['t','y'], np.squeeze(self['u'][0,:,:,iz]))
+        for iz in IZ:
+            ds['v_z={:.2f}_[m/s]'.format(self['z'][iz])] = (['t','y'], np.squeeze(self['u'][1,:,:,iz]))
+        for iz in IZ:
+            ds['w_z={:.2f}_[m/s]'.format(self['z'][iz])] = (['t','y'], np.squeeze(self['u'][2,:,:,iz]))
+        return ds
+
     def toDataset(self):
         """
         Convert the data that was read in into a xarray Dataset
