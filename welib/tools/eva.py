@@ -198,7 +198,7 @@ def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None, sort=True):
 
 
 
-def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScaling=True):
+def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScaling=True, Imodes=None):
     """ 
     Eigenvalue analysis of a mechanical system
     M, K: mass, and stiffness matrices respectively
@@ -210,7 +210,14 @@ def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScali
       - Q, freq_0  if freq_out
       - Q, Lambda otherwise
     """
-    return eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out, massScaling=massScaling)
+    Q,l = eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out, massScaling=massScaling)
+    if Imodes is not None:
+        Q=Q[:,Imodes]
+        if len(l.shape)==2:
+            l=l[np.ix_(Imodes, Imodes)] # TODO 
+        else:
+            l=l[Imodes]
+    return Q,l
 
 
 def eigMCK(M, C, K, method='full_matrix', sort=True, normQ=None): 

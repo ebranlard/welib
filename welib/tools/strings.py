@@ -27,7 +27,12 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
         # --- Fixed number of digits
         if type(x)==int:
             raise NotImplementedError()
-        if digits==5:
+        if digits==6:
+            if abs(x)<1000000 and abs(x)>1e-7:
+                s= "{:.6f}".format(x)
+            else:
+               s= "{:.6e}".format(x)
+        elif digits==5:
             if abs(x)<100000 and abs(x)>1e-6:
                 s= "{:.5f}".format(x)
             else:
@@ -100,6 +105,15 @@ def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', c
         s=var+':'
         if newline:
             s+='\n'
+    # Corner cases, being nice to user..
+    if isinstance(M, str):
+        s+=M
+        return s
+    if not hasattr(M,'__len__'):
+        s+=pretty_num(M, digits=digits, nchar=nchar, align=align, center0=center0, xmin=xmin)
+        return s
+
+    M=np.atleast_2d(M)
     s+=sindent
     for iline,line in enumerate(M):
         s+= openChar+sepChar.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0, xmin=xmin)  for v in line ])+closeChar
