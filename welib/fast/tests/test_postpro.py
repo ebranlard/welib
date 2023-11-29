@@ -91,16 +91,25 @@ class Test(unittest.TestCase):
 
 
     def test_aziAverageDFADDriver(self):
+        # NOTE: this might change a bit in the future
         df = self.dfAD
-        psiBin = np.arange(0,360, 60)
+        psiBin = np.arange(0,361, 60)
+        # --- 
         dfAzi= azimuthal_average_DF(df, psiBin=psiBin, colPsi='Azimuth_[deg]', tStart=None, colTime='Time_[s]')
         np.testing.assert_almost_equal(dfAzi['Azimuth_[deg]'].iloc[0],   26.24, 2)
         np.testing.assert_almost_equal(dfAzi['AB1N010Fn_[N/m]'].iloc[3] , 1319.78052, 3)
-
-        # Might change...
-        np.testing.assert_array_almost_equal(dfAzi.index, [30,90,150,210,270])
-        np.testing.assert_almost_equal(dfAzi['Azimuth_[deg]'].iloc[-1], 261.12, 2)
-        np.testing.assert_almost_equal(dfAzi['AB1N010Ft_[N/m]'].iloc[-1], 217.0489  , 3)
+        np.testing.assert_almost_equal(dfAzi['Azimuth_[deg]'].iloc[4], 261.12, 2)
+        np.testing.assert_almost_equal(dfAzi['AB1N010Ft_[N/m]'].iloc[4], 217.0489  , 3)
+        np.testing.assert_array_almost_equal(dfAzi.index, [30,90,150,210,270,330])
+        # --- Periodic
+        dfAzi= azimuthal_average_DF(df, psiBin=psiBin, colPsi='Azimuth_[deg]', tStart=None, colTime='Time_[s]', periodic=True)
+        np.testing.assert_almost_equal(dfAzi['Azimuth_[deg]'].iloc[0],   26.24, 2)
+        np.testing.assert_almost_equal(dfAzi['AB1N010Fn_[N/m]'].iloc[3] , 1319.78052, 3)
+        np.testing.assert_almost_equal(dfAzi['Azimuth_[deg]'].iloc[4], 261.12, 2)
+        np.testing.assert_almost_equal(dfAzi['AB1N010Ft_[N/m]'].iloc[4], 217.0489  , 3)
+        np.testing.assert_array_almost_equal(dfAzi.index, [30,90,150,210,270,330,390])
+        # Check for periodicity
+        np.testing.assert_array_almost_equal(dfAzi.iloc[0], dfAzi.iloc[-1], 4)
 
 
 if __name__ == '__main__':

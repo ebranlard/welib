@@ -1567,7 +1567,7 @@ def bin_mean_DF(df, xbins, colBin ):
     df2       = df2.reindex(xmid)
     return df2
 
-def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, colTime='Time_[s]'):
+def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, colTime='Time_[s]', periodic=False, nPeriods=None):
     """ 
     Average a dataframe based on azimuthal value
     Returns a dataframe with same amount of columns as input, and azimuthal values as index
@@ -1575,17 +1575,74 @@ def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, c
     if psiBin is None: 
         psiBin = np.arange(0,360+1,10)
 
-    if tStart is not None:
-        if colTime not in df.columns.values:
-            raise Exception('The column `{}` does not appear to be in the dataframe'.format(colTime))
-        df=df[ df[colTime]>tStart].copy()
+    if nPeriods is not None:
+         tStart, tEnd = findPeriodTimeRange(df, nPeriods=nPeriods, filename='', colPsi=colPsi, colTime=colTime)
+         df=df[ np.logical_and( df[colTime]>tStart, df[colTime]<=tEnd) ].copy()
+    else:
+        if tStart is not None:
+            if colTime not in df.columns.values:
+                raise Exception('The column `{}` does not appear to be in the dataframe'.format(colTime))
+            df=df[ df[colTime]>tStart].copy()
 
     dfPsi= bin_mean_DF(df, psiBin, colPsi)
     if np.any(dfPsi['Counts']<1):
         print('[WARN] some bins have no data! Increase the bin size.')
 
+    if periodic:
+        # TODO, I should probably figure out a better way to do that 
+        I = dfPsi.index.values
+        DI = I[1]-I[0]
+        dfEnd = pd.DataFrame(data=dfPsi.loc[I[0:1]].values, columns=dfPsi.columns, index=[I[-1]+DI])
+        dfPsi = pd.concat([dfPsi, dfEnd], axis=0)
+
     return dfPsi
 
+
+def findPeriodTimeRange(df, nPeriods=3, filename='', colPsi=None, colTime=None):
+
+    if colTime is None:
+        sTAllowed = ['Time_[s]','Time [s]', 'Time']
+        sT = [s for s in sTAllowed if s in df.columns]
+        if len(sT)==0:
+            raise WELIBException('The dataframe must contain one of the following column: {}\n{}'.format(','.join(sTAllowed)),filename)
+        colTime = sT[0]
+
+    if colPsi is None:
+        sAAllowed = ['Azimuth_[deg]','Azimuth [deg]', 'Azimuth', 'Psi']
+        sA = [s for s in sAAllowed if s in df.columns]
+        if len(sA)==0:
+            raise WELIBException('The dataframe must contain one of the following columns: {}\n{}.'.format(','.join(sAAllowed),filename))
+        colPsi = sA[0]
+
+
+    time = df[colTime].values
+    timenoNA = time[~np.isnan(time)]
+
+    # NOTE: potentially we could average over each period and then average
+    psi=df[colPsi].values
+    _,iBef = _zero_crossings(psi-psi[-2],direction='up')
+    if len(iBef)==0:
+        _,iBef = _zero_crossings(psi-180,direction='up')
+    if len(iBef)==0:
+        print('[WARN] Not able to find a zero crossing!{}'.format(filename))
+        tEnd = time[-1]
+        iBef=[0]
+    else:
+        tEnd = time[iBef[-1]]
+
+    if nPeriods is None:
+        tStart=time[iBef[0]]
+    else:
+        nPeriods=int(nPeriods) 
+        if len(iBef)-1<nPeriods:
+            print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!{}'.format(len(iBef)-1,nPeriods, filename))
+            nPeriods=len(iBef)-1
+        if nPeriods==0:
+            tStart = time[0]
+            tEnd   = time[-1]
+        else:
+            tStart=time[iBef[-1-nPeriods]]
+    return tStart, tEnd
 
 def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColSort=None,stats=['mean'], filename=''):
     """
@@ -1623,34 +1680,8 @@ def averageDF(df,avgMethod='periods',avgParam=None,ColMap=None,ColKeep=None,ColS
             tStart =tEnd-avgParam
     elif avgMethod.lower()=='periods':
         # --- Using azimuth to find periods
-        sAAllowed = ['Azimuth_[deg]','Azimuth [deg]']
-        sA = [s for s in sAAllowed if s in df.columns]
-        if len(sA)==0:
-            raise WELIBException('The dataframe must contain one of the following columns: {}.\nYou cannot use the averaging method by `periods`, use `constantwindow` instead.\n{}'.format(','.join(sAAllowed),filename))
-        # NOTE: potentially we could average over each period and then average
-        psi=df[sA[0]].values
-        _,iBef = _zero_crossings(psi-psi[-2],direction='up')
-        if len(iBef)==0:
-            _,iBef = _zero_crossings(psi-180,direction='up')
-        if len(iBef)==0:
-            print('[WARN] Not able to find a zero crossing!{}'.format(filename))
-            tEnd = time[-1]
-            iBef=[0]
-        else:
-            tEnd = time[iBef[-1]]
+        tStart, tEnd = findPeriodTimeRange(df, nPeriods=avgParam, filename=filename, colPsi=None, colTime=sT[0])
 
-        if avgParam is None:
-            tStart=time[iBef[0]]
-        else:
-            avgParam=int(avgParam) 
-            if len(iBef)-1<avgParam:
-                print('[WARN] Not enough periods found ({}) compared to number requested to average ({})!{}'.format(len(iBef)-1,avgParam, filename))
-                avgParam=len(iBef)-1
-            if avgParam==0:
-                tStart = time[0]
-                tEnd   = time[-1]
-            else:
-                tStart=time[iBef[-1-avgParam]]
     elif avgMethod.lower()=='periods_omega':
         # --- Using average omega to find periods
         if 'RotSpeed_[rpm]' not in df.columns:
