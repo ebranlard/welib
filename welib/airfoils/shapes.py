@@ -1,3 +1,11 @@
+""" 
+
+Trailing edge:
+ - Blunt: | 
+ - Cusp:  = The tangent are the same
+ - Misc:  > 
+
+"""
 import os
 import numpy as np
 import pandas as pd
@@ -12,7 +20,7 @@ def normalize(x,y):
     return xc, yc
 
 class AirfoilShape():
-    def __init__(self, x=None, y=None, name=None, filename=None):
+    def __init__(self, x=None, y=None, name=None, filename=None, blunt=None):
         # 
         if filename is not None:
             import welib.weio as weio
@@ -51,6 +59,8 @@ class AirfoilShape():
         return self.x[i], self.y[i], i
 
     def split_surfaces(self):
+        """ 
+        """
         # TODO TODO Lot more work do be done here
         xLE, yLE, iLE = self.leading_edge ()
         xTE, yTE, iTE = self.trailing_edge()
@@ -71,9 +81,9 @@ class AirfoilShape():
         else:
             Il=I1
             Iu=I2
-
         xu = self.x[Iu]
         xl = self.x[Il]
+        #import pdb; pdb.set_trace()
         # Making sure x is increasing
         IIu = np.argsort(xu)
         IIl = np.argsort(xl)
@@ -94,12 +104,13 @@ class AirfoilShape():
         ax.plot(self.x, self.y, 'k.', label='All')
         ax.plot(xu, yu, 'o'         , label='Upper', markerfacecolor='none')
         ax.plot(xl, yl, 'd'         , label='Lower', markerfacecolor='none')
-        ax.plot(x0, y0, '--'  )
+        ax.plot(x0, y0, '--' , label='Camber line' )
         #ax.plot(x0, y0u, ':'  )
         #ax.plot(x0, y0l, '-.'  )
+        ax.legend()
         ax.set_xlabel('x')
         ax.set_ylabel('y')
-        ax.set_title(name)
+        ax.set_title(self.name)
         plt.axis ( 'equal' )
 
     def camberline(self):
@@ -200,5 +211,20 @@ def debug_slope():
     plt.show()
 
 if __name__ == '__main__':
+    from welib.airfoils.naca import naca_shape
+
+    digits='0022'
+    n=5
+    x, y = naca_shape(digits, chord=1, n=n)
+    print('x',x)
+    print('y',y)
+
+    arf = AirfoilShape(x=x, y=y, name='Naca'+digits)
+    print('x',arf.x)
+    print('y',arf.y)
+    arf.write('_Naca{}.csv'.format(digits), format='csv', delim=' ')
+    #arf.plot(digits)
+    arf.plot_surfaces()
+
     plt.show()
 

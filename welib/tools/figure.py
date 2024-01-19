@@ -2,6 +2,7 @@
 Tools to manipulate and export figures
 
 """
+import numpy as np
 from numpy import mod
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -59,6 +60,165 @@ def dotdash(p):
 #     seq = [2, 4, 7, 4]
     seq = [3, 4, 13, 4]
     p[0].set_dashes(seq)
+
+
+# --------------------------------------------------------------------------------}
+# --- Color bar 
+# --------------------------------------------------------------------------------{
+
+def axesBB(axes):
+    """ Bounding boxes of axes
+    p: x1, y1, x2, y2
+    """
+    pmin=[1,1,1,1]
+    pmax=[0,0,0,0]
+    for ax in np.asarray(axes).flatten():
+        chartBox = ax.get_position()
+        #x, y, w, h = chartBox.x0, chartBox.y0, chartBox.width, chartBox.height
+        #print('xywh',x,y,w,h)
+        p    = np.around(ax.get_position().get_points().flatten(),3) # BBox: x1, y1,  x2 y2
+        pmin = np.around([min(v1, v2) for v1,v2 in zip(pmin, p)] ,3)
+        pmax = np.around([max(v1, v2) for v1,v2 in zip(pmax, p)] ,3)
+    return pmin, pmax
+
+def add_colorbar(fig, commonBar=True, commonLevels=True, 
+        position='right',
+        size=2, pad=5,
+        title=None, title_kwargs=None,
+        levels=None, vmin=None, vmax=None, 
+        verbose=False,
+        mappables=None, cax=None):
+    """ 
+    Add colorbar(s) to figure axes
+
+    INPUTS:
+     - commonBar:  one colorbar for all the mappable
+     - commonLevels: use the same levels for all. 
+          NOTE: it's important to pass the levels to the mappable BEFORE.
+              e.g.:  contourf(x, y, M, levels=levels)
+     - size: 
+         when position in ['left']          colorbar width  in % of plot area width 
+         when positin in ['bottom', 'top']  colorbar height in % of plot area height 
+     - pad: 
+     - levels: levels passed to contourf, typically: linspace(0,10,100) or int
+    ADVANCED:
+      - cax : axis used for the colorbar itself)
+      - mappables: list of mappables, e.g. output of mappable=plt.contourf()
+
+    """
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    orientation = {'top':'horizontal','bottom':'horizontal','right':'vertical','left':'vertical'}[position]
+    # --- Misc init
+    axes = fig.get_axes()
+    axes_flat = np.asarray(axes).flatten()
+    fig = axes_flat[0].figure
+    # Get all contourf mappable objects
+    if mappables is None:
+        mappables=[]
+        for ax in axes_flat:
+            mappable = ax.collections
+            if len(mappable)!=1:
+                raise NotImplementedError('Number of mappable is not one for axis')
+            mappables.append(mappable[0])
+    assert(len(mappables)==len(axes_flat))
+
+    # --- Check consistencies between all plots
+    is_polar = any([isinstance(ax, plt.PolarAxes) for ax in axes_flat])
+    if verbose:
+        print('is_polar', is_polar, [isinstance(ax, plt.PolarAxes) for ax in axes_flat])
+    cmaps = [mappable.get_cmap().name for mappable in mappables]
+    if verbose:
+        print('cmaps', cmaps)
+
+    min_values = min(mappable.get_array().min() for mappable in mappables)
+    max_values = max(mappable.get_array().max() for mappable in mappables)
+    if verbose:
+        print('Super Min:',min_values)
+        print('Super Max:',max_values)
+    if levels is not None and not isinstance(levels, int):
+        vmax = np.max(levels)
+        vmin = np.min(levels)
+    else:
+        if vmin is None:
+            vmin=min_values
+        if vmax is None:
+            vmax=max_values
+
+    # --- Color range
+    if commonLevels:
+#        if levels is None:
+#            levels = np.linspace(vmin, vmax, 10)
+#        elif isinstance(levels, int):
+#            levels = np.linspace(vmin, vmax, levels)
+        if verbose:
+            print('>>> setting levels', [vmin, vmax])
+        for mappable in mappables:
+            mappable.set_clim([vmin, vmax])
+
+    if commonBar:
+        # --- Sanity checks
+        if len(np.unique(cmaps)) != 1:
+            raise Exception('Not all colormaps are the same', cmaps)
+        # --- Setup cax : axes where the colorbar will be placed
+        if cax is None:
+            # Compute Bounding box of plot
+            #p: x1, y1, x2, y2
+            pmin, pmax = axesBB(axes)
+            if verbose:
+                print('pmin:',pmin)
+                print('pmax:',pmax)
+            # Use bounding box to figure out where to put the colorbar
+            pad =pad/100 
+            w = size/100
+            plots_height = pmax[3]-pmin[1]
+            plots_width  = pmax[2]-pmin[0]
+            # BoundingBox: Left (x), Bottom (y), Width, Height
+            if position == 'right' :
+                BB = [pmax[2]+pad, pmin[1], w, plots_height]
+            elif position == 'left' :
+                BB = [pmin[0]-pad-w, pmin[1], w, plots_height]
+            elif position == 'bottom' :
+                BB = [pmin[0], max(pmin[1]-1.5*pad-w,0), plots_width, w]
+            elif position == 'top' :
+                BB = [pmin[0], pmax[3]+pad, plots_width, w]
+            cax = fig.add_axes(BB)
+            pcax = np.around(cax.get_position().get_points().flatten(),3)
+            if any(pcax>1): 
+                print('[WARN] Colorbar not fitting in plot area, use subplot_adjust to make room for it')
+            #print('pmin',pmin)
+            #print('pmax',pmax)
+            if verbose:
+                print('BB  ',BB)
+                print('pcax', pcax)
+
+        cbars = fig.colorbar(mappable, cax=cax, orientation=orientation)
+        if isinstance(title, list):
+            title = title[0]
+        if title is not None:
+            cbars.ax.set_title(title, **title_kwargs)
+    else:
+        # --- One CBar per plot
+        cbars = []
+        if not isinstance(title, list):
+            titles = [title] * len(mappables)
+        else:
+            titles = title
+        for ax,mappable,title in zip(axes_flat, mappables, titles):
+            is_polar = isinstance(ax, plt.PolarAxes)
+            if not is_polar:
+                # Don't know how to create a cax when axes is polar
+                divider = make_axes_locatable(ax)
+                if orientation=='vertical':
+                    cax = divider.append_axes("right", size= "{}%".format(size), pad="{}%".format(pad))
+                else:
+                    cax = divider.append_axes("bottom", size="{}%".format(size), pad="{}%".format(pad))
+            cbar = fig.colorbar(mappable, cax=cax, orientation=orientation)
+            if title is not None:
+                cbar.ax.set_title(title, **title_kwargs)
+            cbars.append(cbar)
+
+    return cbars
+
 
 # --------------------------------------------------------------------------------
 # --- Export library to help export figures

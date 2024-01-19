@@ -14,10 +14,12 @@ References:
 import numpy as np
 
 
-def naca_shape(digits, chord=1, n=151):
+def naca_shape(digits, chord=1, n=151, thickTEZero=False):
     """ 
     INPUTS:
      - digits: 4 digits string, e.g. '0012'
+     - thickTEZero: if true, forces the values at x=1 to be y=0
+                 The original NACA equations gives a non zero thickness at the trailing edge
 
     """
     if len(digits)!=4:
@@ -34,13 +36,18 @@ def naca_shape(digits, chord=1, n=151):
 
     # --- Symmetric airfoils
     x = np.linspace(0, 1, n)
-    y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1015 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
+    if not thickTEZero:
+        # Original NACA equation
+        y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1015 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
+    else:
+        # Small modifications to ensure the thickness is zero at the TE
+        y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1036 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
     x = np.concatenate((x, np.flip( x,0)))
     y = np.concatenate((y, np.flip(-y,0)))
 
     print(len(x))
 
-    # --- Sclae
+    # --- Scale
     x*=chord
     y*=chord
 

@@ -493,6 +493,21 @@ class FASTInputFileBase(File):
                 i+=1;
                 self.readBeamDynProps(lines,i)
                 return
+            elif line.upper().find('GLBDCM')>0:
+                # BeamDyn DCM has no label.....
+                self.addComment(lines[i]); i+=1
+                self.addComment(lines[i]); i+=1
+                d = getDict()
+                d['label'] = 'GlbDCM'
+                d['tabType'] = TABTYPE_NUM_NO_HEADER
+                nTabLines = 3
+                nHeaders = 0
+                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename, lines[i:i+nTabLines],nTabLines, i, nHeaders, tableType='num', nOffset=0)
+                i=i+3
+                self.data.append(d)
+                continue
+
+                #---The following 3 by 3 matrix is the direction cosine matirx ,GlbDCM(3,3),
             elif line.upper().find('OUTPUTS')>0:
                 if 'Points' in self.keys() and 'dtM' in self.keys():
                     OutList,i = parseFASTOutList(lines,i+1) 
@@ -827,6 +842,9 @@ class FASTInputFileBase(File):
                 if np.size(d['value'],0) > 0 :
                     s+='\n'
                     s+='\n'.join('\t'.join('{:15.0f}'.format(x) for x in y) for y in data)
+            elif d['tabType']==TABTYPE_NUM_NO_HEADER:
+                data = d['value']
+                s+='\n'.join('\t'.join( ('{:15.0f}'.format(x) if int(x)==x else '{:15.8e}'.format(x) )  for x in y) for y in d['value'])
             else:
                 raise Exception('Unknown table type for variable {}'.format(d))
             if i<len(self.data)-1:
@@ -1239,6 +1257,7 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
     Units = None
     
 
+    i = 0
     if len(lines)!=n+nHeaders+nOffset:
         raise BrokenFormatError('Not enough lines in table: {} lines instead of {}\nFile:{}'.format(len(lines)-nHeaders,n,filename))
     try:

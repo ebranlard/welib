@@ -341,7 +341,11 @@ def Ct_a(a, F=None, method='Glauert', ac=None, chi=0, convention='CtUn_aUn'):
                     c = getEmpiricalCoefficients(chi=chi, F=FF, method=method)
                     Ct[ia] =c[0] + c[1]*aa + c[2]*aa**2
         else:
-            raise NotImplementedError()
+            a0  = a
+            an  = a0/np.cos(chi)
+            Ctn = Ct_a(a= an, F = F, method = method, chi = chi, convention = 'CtUn_aUn')
+            Ct0 = Ctn * np.cos(chi)**2
+            Ct  = Ct0
 
     # --- Numerical inverses NOTE: only works for F scalar
     elif method=='HAWC2':

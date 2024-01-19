@@ -22,7 +22,9 @@ def curve_coord(line=None):
 
 
 def curve_extract(line,spacing,offset=None):
-    """ Extract points at equidistant space along a curve"""
+    """ Extract points at equidistant space along a curve
+    NOTE: curve_extract and curve_interp do basically the same, one uses "spacing", the other uses n
+    """
     x=line[:,0]
     y=line[:,1]
     if offset is None:
