@@ -6,7 +6,28 @@ from welib.airfoils.karman_trefftz import *
 scriptDir=os.path.dirname(__file__)
 
 class TestKT(unittest.TestCase):
-    def test_one(self):
+    def test_map(self):
+        # Simply test the mapping
+        n=7
+        theta = np.linspace(0, 2*np.pi, n+1)[:-1]
+        R = 2
+        Zin =-0.2+0.1j +  R*np.exp(1j * theta)
+
+        z, dzdZ = KT_comf_map(Zin, l=2, A=1)
+        Z, dZdz = KT_comf_map_inv(z, l=2, A=1)
+
+        # Should get the input back
+        np.testing.assert_almost_equal(Z, Zin, 5)
+        #np.testing.assert_almost_equal(np.real(Z), np.real(Zin), 5)
+        #np.testing.assert_almost_equal(np.imag(Z), np.imag(Zin), 5)
+
+        np.testing.assert_almost_equal(dZdz*dzdZ, np.ones_like(Zin), 5)
+
+        np.testing.assert_almost_equal(dzdZ[1],1.1119627+0.2333311j, 5)
+        np.testing.assert_almost_equal(dZdz[3],1.107292+0.2007260j, 5)
+
+
+    def test_airfoil(self):
         import matplotlib.pyplot as plt
 
         ## Parameters for Karman-Trefftz airfoil
@@ -19,7 +40,7 @@ class TestKT(unittest.TestCase):
         n = 100
         # --- 
         l = 2 - tau_deg / 180 # l = 2 - tau/np.pi
-        rc, beta, Gamma =  cyl_params(xc, yc, a=1, alpha=alpha, U0=U0)
+        rc, beta, Gamma =  cyl_params(xc, yc, A=1, alpha=alpha, U0=U0)
         nx = 100
         ny = 100
         XLIM = np.array([- 3.5,3.5])
@@ -41,6 +62,11 @@ class TestKT(unittest.TestCase):
         np.testing.assert_almost_equal(thickness, 1.006537, 5)
         np.testing.assert_almost_equal(np.max(Cp), 0.99947, 5)
         np.testing.assert_almost_equal(np.min(Cp),-2.0695, 5)
+
+        np.testing.assert_almost_equal(np.nanmin(U.flatten()), 0.030755, 5)
+        np.testing.assert_almost_equal(np.nanmin(V.flatten()),-0.362810, 5)
+        np.testing.assert_almost_equal(np.nanmax(U.flatten()), 1.695269, 5)
+        np.testing.assert_almost_equal(np.nanmax(V.flatten()), 1.156532, 5)
 
 
 
