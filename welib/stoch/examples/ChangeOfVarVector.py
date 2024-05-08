@@ -125,6 +125,6 @@ if __name__ == '__test__':
 
 
 if __name__=="__export__":
-    main(nDisc=100)
+    main(nDiscr=100)
     from welib.tools.repo import export_figs_callback
     export_figs_callback(__file__)

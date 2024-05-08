@@ -301,6 +301,7 @@ class AirfoilShape():
         ax.set_ylabel('y')
         ax.set_title(self.name)
         plt.axis ( 'equal' )
+        return ax
 
     def plot(self, first=True, orient=True, label=None, internal=False):
         if internal:
@@ -326,6 +327,7 @@ class AirfoilShape():
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         plt.axis ( 'equal' )
+        return ax
 
 
 

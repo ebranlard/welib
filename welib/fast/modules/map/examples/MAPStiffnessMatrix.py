@@ -14,7 +14,11 @@ import os
 from welib.fast.extract import extractMAPStiffnessFromLinFile
 from welib.tools.strings import printMat, printVec
 # pyMAP NOTE: both should have a similar interface
-from pymap import pyMAP  
+try:
+    from pymap import pyMAP  
+except:
+    print('[FAIL] pyMAP not found')
+    pass
 # from welib.moor.mappp import pyMAP
 
 scriptDir = os.path.dirname(__file__)
