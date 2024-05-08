@@ -1,6 +1,6 @@
 import numpy as np
 from welib.essentials import *
-# from welib.airfoils.karman_trefftz import *
+from welib.airfoils.shapes import *
     
 def vc_u(DX, DY, U0=1, R=1, Gamma=0, alpha=0, internal_flow=True):
     """
@@ -20,139 +20,155 @@ def vc_u(DX, DY, U0=1, R=1, Gamma=0, alpha=0, internal_flow=True):
 
 def KT_comf_map(Z, l=2, A=1):
     """ Karman Trefftz conformal map. Z: cylinder plane, z: airfoil plane"""
-    z = l * A * ((Z + A)**l + (Z - A)**l) / ((Z + A)** l - (Z - A)** l)
+    z    = l * A * ((Z + A)**l + (Z - A)**l) / ((Z + A)** l - (Z - A)** l)
     dzdZ = 4*(l*A)**2 * ( (Z-A)**(l-1)*(Z+A)**(l-1) )/( ((Z + A)**l - (Z-A)**l) ** 2)
     return z, dzdZ
 
 def KT_comf_map_inv(z, l=2, A=1):
     """ Inverse Karman Trefftz conformal map: Z: cylinder plane, z:airfoil plane"""
-    Z = - A *(((z-l)/(z+l))**(1/l) + 1) / ( ( ( (z-l)/(z+l) )**(1/l) )-1)
+    Z    = - A *(((z-l)/(z+l))**(1/l) + 1) / ( ( ( (z-l)/(z+l) )**(1/l) )-1)
     dZdz = 1/ (4*(l*A)**2 * ( (Z-A)**(l-1)*(Z+A)**(l-1) )/( ((Z + A)**l - (Z-A)**l) ** 2))
     return Z, dZdz
 
 def cyl_params(XC, YC, A=1, U0=0, alpha=0):
-    R = np.sqrt((A - XC) ** 2 + YC ** 2)
-    beta = np.arcsin(- YC /R)
+    """ Geometrical parameters of the Z-plane cylinder """
+    R     = np.sqrt((A - XC) ** 2 + YC ** 2)
+    beta  = np.arcsin(- YC /R)
     Gamma = 4 * np.pi * R * U0 * np.sin(beta - alpha)
     return R, beta, Gamma
 
-def KT_shape(XC, YC, l=2, A=1, n=100, thetaStart=0):
+def KT_shape(XC, YC, l=2, A=1, n=100, thetaStart=None):
     """
-    returns Karman-Trefftz profile coordinates
+    Returns Karman-Trefftz profile coordinates
     INPUT:
-    -  XC,YC:  Circle Center Location
-    -  n    :  Number of points along mapped foil surface
+     - XC,YC: Center of Cylinder (in Z-plane)
+     - l, A : Karman-Treffz parameters
+     - n    : Number of points along mapped foil surface
+    OUTPUTS:
+     - xa,ya: Coordinates of airfoil (in z-plane)
     """
-    ## Main parameters
-    R, beta, _ =  cyl_params(XC, YC, A=A)
-    print('>>> beta', beta)
-    # --- Circle
+    # Cylinder parameters
+    R, beta, Gamma =  cyl_params(XC, YC, A=A, U0=0, alpha=0)
+    # Cylinder coordinates in the Z-plane
     if thetaStart is None:
         theta = np.linspace(beta, -2*np.pi+beta, n+1)[:-1]
     else:
         theta = np.linspace(0, 2*np.pi, n+1)[:-1]
     ZC = (XC + 1j * YC)
-    Z_circ = ZC + R * np.exp(1j * theta)
-    # --- Karman-Trefftz Conformal map - Profile Shape
-    Zp, dZdz = KT_comf_map(Z_circ, l=l, A=A)
-    Xp = np.real(Zp)
-    Yp = np.imag(Zp)
-    return Xp, Yp
+    Z_cyl = ZC + R * np.exp(1j * theta)
+    # Transform back to the z-plane
+    za, dzdZ = KT_comf_map(Z_cyl, l=l, A=A)
+    xa = np.real(za)
+    ya = np.imag(za)
+    return xa, ya
 
-def KT_wall(xc, yc, l=2, a=1, U0=1, n=10, alpha=0, thetaStart=0):
+def KT_wall(XC, YC, l=2, A=1, n=10, U0=1, alpha=0, thetaStart=None):
     """ 
-    # OUTPUT:
-    #   X and Y coordinates of airfoil
-    #   Cp : pressure coeff at foil surface
-    #   Xg,Yg,Ug,Vg,CP : grid points, velocity field and  pressure coeff
-    # EXAMPLES:
-    #   [X_p,Y_p]    = fProfileKarmanTrefftz(xc,yc,l,n);
-    #   [X_p,Y_p,Cp] = fProfileKarmanTrefftz(xc,yc,l,n,U0,alpha_deg);
-    #   [X_p,Y_p,Cp,Ug,Vg,CP] = fProfileKarmanTrefftz(xc,yc,l,n,U0,alpha_deg,Xg,Yg);
+    Returns the Karman-Trefftz profile coordinates and pressure coefficient
+    on the wall surface.
 
+    INPUTS:
+     - XC,YC: Center of Cylinder [m]
+     - l, A : Karman-Treffz parameters
+     - n    : Number of points along mapped surface
+     - U0   : Freestream velocity [m/s]
+     - alpha: angle of attack [rad]
+    OUTPUTS:
+     - xa, ya:  coordinates of airfoil (in z-plane) [m]
+     - Cp_w : pressure coefficient at airfoil surface [-]
+     - u_w  : x-velocity at arifoil surface [m/s]
+     - v_w  : y-velocity at arifoil surface [m/s]
     """
-    rc, beta, Gamma =  cyl_params(xc, yc, A=a, U0=U0, alpha=alpha)
-    # --- Pressure distribution on the airfoil
-    print('Gamma', Gamma)
-    # Velocity at circle surface
+    # Cylinder parameters
+    R, beta, Gamma =  cyl_params(XC, YC, A=A, U0=U0, alpha=alpha)
+    # Cylinder coordinates in the Z-plane
     if thetaStart is None:
         theta = np.linspace(beta, -2*np.pi+beta, n+1)[:-1]
     else:
         theta = np.linspace(0, 2*np.pi, n+1)[:-1]
-    zc = (xc + 1j * yc)
-    z_circ = zc + rc * np.exp(1j * theta)
-    Zp, dZdz = KT_comf_map(z_circ, l=l, A=a)
-    Xp = np.real(Zp)
-    Yp = np.imag(Zp)
-    # ---- 
-    u_circ, v_circ = vc_u(np.real(z_circ)-xc, np.imag(z_circ)-yc, R=rc, U0=U0, alpha=alpha, Gamma=Gamma)
-    # Velocities, -Cp on surface
-    Zp, dZdz = KT_comf_map(z_circ, l=l, A=a)
-    W_circ = (u_circ - 1j * v_circ) / dZdz
-    U_circ =   np.real(W_circ)
-    V_circ = - np.imag(W_circ)
-    Q = np.sqrt(U_circ ** 2 + V_circ ** 2)
+    ZC    = (XC + 1j * YC)
+    Z_cyl = ZC + R * np.exp(1j * theta)
+    # Transform back to the z-plane
+    za, dzdZ = KT_comf_map(Z_cyl, l=l, A=A)
+    xa = np.real(za)
+    ya = np.imag(za)
+    # Velocities on cylinder surface in Z plane
+    U_cyl, V_cyl = vc_u(np.real(Z_cyl)-XC, np.imag(Z_cyl)-YC, R=R, U0=U0, alpha=alpha, Gamma=Gamma)
+    # Back to z-plane
+    w_cyl = (U_cyl - 1j * V_cyl) / dzdZ
+    u_cyl =   np.real(w_cyl)
+    v_cyl = - np.imag(w_cyl)
+    Q = np.sqrt(u_cyl ** 2 + v_cyl ** 2)
     Cp = 1 - (Q / U0) ** 2
-    return Xp, theta, Cp, U_circ, V_circ
+    return xa, ya, Cp, u_cyl, v_cyl
 
-
-def KT_flow(Xg, Yg, XC, YC, l=2, a=1, U0=1, alpha=0):
-
-    rc, beta, Gamma=  cyl_params(XC, YC, A=a, U0=U0, alpha=alpha)
-
-    Zg = Xg + 1j * Yg
-    z, dzdZ = KT_comf_map_inv(Zg, l=l, A=a)
-    x = np.real(z)
-    y = np.imag(z)
-    u, v = vc_u(x-XC, y-YC, R=rc, U0=U0, alpha=alpha, Gamma=Gamma, internal_flow=False)
-    W = (u - 1j*v) * dzdZ
-    Ug =   np.real(W)
-    Vg = - np.imag(W)
-    Q  = np.sqrt(Ug ** 2 + Vg ** 2)
+def KT_flow(x, y, XC, YC, l=2, A=1, U0=1, alpha=0):
+    # Cylinder parameters
+    R, _, Gamma =  cyl_params(XC, YC, A=A, U0=U0, alpha=alpha)
+    # Transform z to Z plane
+    z = x + 1j * y
+    Z, dZdz = KT_comf_map_inv(z, l=l, A=A)
+    X = np.real(Z)
+    Y = np.imag(Z)
+    # --- Compute cylinder velocity in Z-plane
+    U, V = vc_u(X-XC, Y-YC, R=R, U0=U0, alpha=alpha, Gamma=Gamma, internal_flow=False)
+    # Back to z-plane
+    w = (U - 1j*V) * dZdz
+    u =   np.real(w)
+    v = - np.imag(w)
+    Q  = np.sqrt(u ** 2 + v ** 2)
     CP = 1 - (Q / U0) ** 2
-    return Ug, Vg, CP 
+    return u, v, CP 
     
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    ## Parameters for Karman Trefftz airfoil
+    # --- Parameters
     U0 = 1
     alpha = 5*np.pi/180;
-    xc = - 0.2
-    yc = 0.1
+    XC      = -0.2              # X-coord of cylinder center in Z-plane
+    YC      = 0.1               # Y-coord of cylinder center in Z-plane
     tau_deg = 10
 #     xc = - 0.3
 #     yc = 0.1
 #     tau_deg = 20
 #     # ---  Display parameters
-    n = 100
+    n       = 300               # Number of points for airfoil
 
 
     # --- 
     l = 2 - tau_deg / 180 # l = 2 - tau/np.pi
-    rc, beta, _ =  cyl_params(xc, yc, A=1)
+    rc, beta, _ =  cyl_params(XC, YC, A=1)
     nx = 200
     ny = 200
 #     nx = 400
 #     ny = 400
     nStreamlines = 21
     XLIM = np.array([- 3.5,3.5])
-    YLIM = np.array([- 3,3])
+    YLIM = np.array([- 3.5,3.5])
 #     ## Main function call (with grid for contour plots, but not necessary)
-    Xg,Yg = np.meshgrid(np.linspace(XLIM[0],XLIM[1],nx), np.linspace(YLIM[0], YLIM[1], ny))
+    vx = np.linspace(XLIM[0],XLIM[1],nx)
+    vy = np.linspace(YLIM[0], YLIM[1], ny)
+    Xg,Yg = np.meshgrid(vx, vy)
 
-    Xp, Yp = KT_shape(xc, yc, l=l, n=n) # ,Xg,Yg)
-    XCp, theta, Cp, U_circ, V_circ = KT_wall(xc, yc, l=l, n=n, alpha=alpha) # ,Xg,Yg)
-    Ug, Vg, CP = KT_flow(Xg, Yg, xc, yc, l=l, U0=U0, alpha=alpha)
+    Xp, Yp = KT_shape(XC, YC, l=l, n=n) # ,Xg,Yg)
+    XCp, theta, Cp, U_circ, V_circ = KT_wall(XC, YC, l=l, n=n, alpha=alpha) # ,Xg,Yg)
+    Ug, Vg, CP = KT_flow(Xg, Yg, XC, YC, l=l, U0=U0, alpha=alpha)
 
     # 
     U, V, X, Y = Ug, Vg, Xg, Yg
     xa, ya = Xp, Yp
+    xmax=XLIM[1]
     chord=np.max(Xp)-np.min(Xp)
 
 
     CP[np.isnan(CP)]=1
     print('Cp min', np.min(Cp))
     print('Cp min/max', np.nanmin(CP.flatten()), np.nanmax(CP.flatten()))
+
+    # --- AirfoilShpae
+    arf = AirfoilShape(xa, ya)
+    arf.write('../vortilib/panelcodes/KarmanTrefftz-{}-NoScale.csv'.format(n), comment_char='',delim=',')
+    #arf.plot()
 
 
     # --- Plot
@@ -169,18 +185,41 @@ if __name__ == '__main__':
     ax.set_aspect('equal','box')
 
     ax = axes[1]
-    ax.plot((XCp - np.amin(XCp)) / (np.amax(XCp) - np.amin(XCp)), -Cp    , label='')
+    ax.plot((XCp - np.amin(XCp)) / (np.amax(XCp) - np.amin(XCp)), Cp    , label='')
     ax.set_xlabel('')
     ax.set_ylabel('-Cp')
-#     plt.title(sprintf('Karman-Trefftz C_p \alpha = %.1f deg.',alpha_deg))
-#     plt.xlim(np.array([0,1]))
-#     plt.axis('ij')
+    #     plt.title(sprintf('Karman-Trefftz C_p \alpha = %.1f deg.',alpha_deg))
+    #     plt.xlim(np.array([0,1]))
+    #     plt.axis('ij')
 
     ax=axes[2]
     im =ax.contourf(Xg, Yg, CP, 15)
     ax.fill(Xp, Yp  ) #  ,'k.-')
     ax.set_aspect('equal','box')
     fig.colorbar(im)
+
+
+    # Streamlines
+    ys = np.linspace(-xmax, xmax, 15)
+    start = np.array([ys*0-xmax, ys])
+    nLevels = 11
+    minSpeed = 0
+    maxSpeed = 2.0
+
+    Q = np.sqrt(U**2+V**2)
+    Speed = np.sqrt((U**2+V**2))/U0
+
+    # Plot
+    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    im = ax.contourf(X, Y, Speed, levels=np.linspace(minSpeed, maxSpeed, nLevels), vmin=minSpeed, vmax=maxSpeed)
+    cb=fig.colorbar(im)
+    cb.set_label(r'$\sqrt{u^2+v^2}/U_\text{ref}$')
+    sp = ax.streamplot(vx, vy, U, V, color='k',start_points=start.T, linewidth=0.7,density=30,arrowstyle='-')
+    ax.set_aspect('equal','box')
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.legend()
+
 #     fill(X_p,Y_p,'w')
 #     plt.plot(P(:,1) * chord + np.amin(X_p),P(:,2) * chord,'b.')
 #     plt.plot(P(1,1) * chord + np.amin(X_p),P(1,2) * chord,'bd')
@@ -239,6 +278,9 @@ if __name__ == '__main__':
     ax.plot(xa, ya, 'k',lw=3)
     ax.plot(xc, yc, 'k',lw=2)
     cb=fig.colorbar(im)
+
+
+
     ax.set_xlabel(r'$x/c$ [-]')
     ax.set_ylabel(r'$y/c$ [-]')
     ax.set_aspect('equal','box')

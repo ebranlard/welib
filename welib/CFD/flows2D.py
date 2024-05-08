@@ -1,4 +1,3 @@
-
 import numpy as np
 
 
@@ -51,22 +50,21 @@ def vorticity2D(u, v, x, y):
     Returns:
         omz (ndarray): 2D array of vorticity.
     """
-#     # Compute the derivatives of u and v with respect to y and x, respectively
-#     du_dy, du_dx = np.gradient(u, y, x, axis=(0,1))
-#     dv_dy, dv_dx = np.gradient(v, y, x, axis=(0,1))
+
     x_flat = np.sort(np.unique(x.flatten()))
     y_flat = np.sort(np.unique(y.flatten()))
 
+    # Compute the derivatives of u and v with respect to y and x, respectively
+    # Option 1
+    du_dy, du_dx = np.gradient(u, y_flat, x_flat, axis=(0,1))
+    dv_dy, dv_dx = np.gradient(v, y_flat, x_flat, axis=(0,1))
     # Compute the spatial derivatives of u with respect to y and v with respect to x
-    du_dy = np.gradient(u, y_flat, axis=0)
-    dv_dx = np.gradient(v, x_flat, axis=1)
+    # Option 2
+    #du_dy = np.gradient(u, y_flat, axis=0)
+    #dv_dx = np.gradient(v, x_flat, axis=1)
     
-    # Compute the spatial derivatives of v with respect to y and u with respect to x
-    #dv_dy = np.gradient(v, y_flat, axis=0)
-    #du_dx = np.gradient(u, x_flat, axis=1)
-    
-    # Compute vorticity (ωz) using the formula: ωz = dv/dx - du/dy
-    omz = dv_dx - du_dy
+    # Compute vorticity (ωz) using the formula: ωz = dv/dx - du/dy 
+    omz = dv_dx - du_dy 
     
     return omz
 

@@ -58,10 +58,16 @@ class TestKT(unittest.TestCase):
         thickness = np.max(Yp)-np.min(Yp)
 
         # --- 
-        np.testing.assert_almost_equal(chord, 4.0119868, 5)
-        np.testing.assert_almost_equal(thickness, 1.006537, 5)
-        np.testing.assert_almost_equal(np.max(Cp), 0.99947, 5)
-        np.testing.assert_almost_equal(np.min(Cp),-2.0695, 5)
+        # thetaStart=0
+        #np.testing.assert_almost_equal(chord, 4.0119868, 5)
+        #np.testing.assert_almost_equal(thickness, 1.006537, 5)
+        #np.testing.assert_almost_equal(np.max(Cp), 0.99947, 5)
+        #np.testing.assert_almost_equal(np.min(Cp),-2.0695, 5)
+        # thetaStart=Beta
+        np.testing.assert_almost_equal(chord, 4.01273, 5)
+        np.testing.assert_almost_equal(thickness, 1.006883, 5)
+        np.testing.assert_almost_equal(np.max(Cp), 0.99958, 5)
+        np.testing.assert_almost_equal(np.min(Cp),-2.07067, 5)
 
         np.testing.assert_almost_equal(np.nanmin(U.flatten()), 0.030755, 5)
         np.testing.assert_almost_equal(np.nanmin(V.flatten()),-0.362810, 5)
