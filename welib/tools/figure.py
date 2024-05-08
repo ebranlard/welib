@@ -261,7 +261,7 @@ def setFigureHeigth(height):
 
 def setFigurePath(path):
     if type(path)==list:
-        _global_params.path=path
+        _global_paramGeompath=path
     else:
         _global_params.path=[path]
     for i,p in enumerate(_global_params.path):
@@ -324,7 +324,7 @@ class FigureExporter:
             print(' ')
 
     @staticmethod
-    def export(fig,figformat,i=1,n=1,width=None,height=None,figNameLast='',script_name='',script_run_dir='',script_run_date='', print_latex=True, verbose=False):
+    def export(fig,figformat,i=1,n=1,width=None,height=None,figNameLast='',script_name='',script_run_dir='',script_run_date='', print_latex=True, verbose=False, twoByTwo=True):
         if i is None:
             i=1
         # params (for now, using global params)
@@ -376,26 +376,33 @@ class FigureExporter:
 
         # --- Generating latex code 
         if print_latex:
-            if mod(n,2)==0:
-                if mod(i,2)==0:
-                    FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
-            else:
-                if mod(i,2)==0:
-                    FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
+            if twoByTwo:
+                if mod(n,2)==0:
+                    if mod(i,2)==0:
+                        FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
                 else:
-                    if i==n:
-                        FigureExporter.print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date)
+                    if mod(i,2)==0:
+                        FigureExporter.print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date)
+                    else:
+                        if i==n:
+                            FigureExporter.print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date)
+            else:
+                FigureExporter.print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date)
 
         figNameLast=figName;
         return figNameLast, filename, title
 
 # --- Export call wrapper 
-def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
+def export(figformat, fig=None, i=None, width=None, height=None, print_latex=True, verbose=True, twoByTwo=True, path=None):
     import pylab
     import inspect
     import os
     import os.path
     import datetime
+    # --- Default argument:
+    if path is not None:
+        setFigurePath(path)
+
     frame=inspect.stack()[2]
     script_name=os.path.basename(frame[0].f_code.co_filename)
     script_run_dir=os.getcwd()
@@ -410,13 +417,13 @@ def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True, ve
         figures=[manager.canvas.figure for manager in pylab.matplotlib._pylab_helpers.Gcf.get_all_fig_managers()]
         figNameLast=''
         for i, figure in enumerate(figures):
-            figNameLast, filename, title=__exporter.export(fig=figure,figformat=figformat,i=(i+1),n=len(figures),width=width,height=height,figNameLast=figNameLast,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date,print_latex=print_latex, verbose=verbose)
+            figNameLast, filename, title=__exporter.export(fig=figure,figformat=figformat,i=(i+1),n=len(figures),width=width,height=height,figNameLast=figNameLast,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date,print_latex=print_latex, verbose=verbose, twoByTwo=twoByTwo)
             figNames.append(figNameLast)
             fileNames.append(filename)
             titles.append(title)
 
     else:
-        figNameLast, filename, title = __exporter.export(fig=fig,figformat=figformat,i=i,width=width,height=height,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date, print_latex=print_latex, verbose=verbose)
+        figNameLast, filename, title = __exporter.export(fig=fig,figformat=figformat,i=i,width=width,height=height,script_name=script_name,script_run_dir=script_run_dir,script_run_date=script_run_date, print_latex=print_latex, verbose=verbose, twoByTwo=twoByTwo)
         figNames.append(figNameLast)
         fileNames.append(filename)
         titles.append(title)
@@ -428,12 +435,12 @@ def export(figformat,fig=None,i=None,width=None,height=None,print_latex=True, ve
 
     return figNames, fileNames, titles
 
-def export2pdf(fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
-    return export('pdf',fig=fig,i=i,width=width,height=height,print_latex=print_latex, verbose=verbose)
-def export2png(fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
-    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex, verbose=verbose)
-def export2eps(fig=None,i=None,width=None,height=None,print_latex=True, verbose=True):
-    return export('png',fig=fig,i=i,width=width,height=height,print_latex=print_latex, verbose=verbose)
+def export2pdf(**kwargs):
+    return export('pdf',**kwargs)
+def export2png(**kwargs):
+    return export('png',**kwargs)
+def export2eps(**kwargs):
+    return export('png',**kwargs)
 
 
 # --------------------------------------------------------------------------------}

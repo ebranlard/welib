@@ -133,18 +133,18 @@ def panel_solve_vps(XP, YP, Ux, Uy, lift=True, iTE=0, curv_method='Menger', back
     VP = mids # Position of vortices
     CP = mids
     M = np.zeros((nCP,nV))
-    for j in range(nCP): # 
-        for i in range(nV):
+    for i in range(nCP): # 
+        for j in range(nV):
             if i==j:
                 # Self weight and curvature
                 # See Lewis
                 M[i,i] = sgn*(0.5 + curvature[i]*ds[i]/(4*np.pi))
             else:
-               rj = CP[j,:] # 
-               ri = VP[i,:] # 
-               dr = sgn * (rj-ri) 
+               ri = CP[i,:] # 
+               rj = VP[j,:] # 
+               dr = sgn * (ri-rj) 
                u,v = vp_u(dr[0], dr[1], Gamma=1, regParam=0, regMethod=None)
-               M[j,i] = (u*t_hat[j,0] + v*t_hat[j,1]) * ds[i]
+               M[i,j] = (u*t_hat[i,0] + v*t_hat[i,1]) * ds[j]
 
     # --- Back diagonal correction
     # See Lewis

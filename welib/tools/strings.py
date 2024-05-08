@@ -1,5 +1,35 @@
 import numpy as np
 
+def FAIL(msg):
+    try: 
+        from termcolor import cprint
+        cprint('[FAIL] ' + msg , 'red', attrs=['bold'], file=sys.stderr)
+    except:
+        HEADER = '\033[95m'
+        RED = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
+        UNDERLINE = '\033[4m'
+        print(RED+'[FAIL] ' + msg + ENDC)
+
+def WARN(msg):
+    try: 
+        from termcolor import cprint
+        cprint('[WARN] ' + msg , color='yellow', attrs=['bold'])
+    except:
+        ORAN = '\033[93m'
+        ENDC = '\033[0m'
+        print(ORAN+'[WARN] ' + msg + ENDC)
+
+def OK(msg):
+    try: 
+        from termcolor import cprint
+        cprint('[ OK ] ' + msg , 'green', attrs=['bold'])
+    except:
+        GREEN = '\033[92m'
+        ENDC = '\033[0m'
+        print(GREEN+'[ OK ] ' + msg + ENDC)
+
 def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=True):
     """ 
     Printing number with "pretty" formatting, either:

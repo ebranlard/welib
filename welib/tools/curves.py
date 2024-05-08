@@ -21,7 +21,7 @@ def curve_coord(line=None):
     return s
 
 
-def curve_extract(line,spacing,offset=None):
+def curve_extract(line, spacing, offset=None):
     """ Extract points at equidistant space along a curve
     NOTE: curve_extract and curve_interp do basically the same, one uses "spacing", the other uses n
     """
@@ -83,7 +83,7 @@ def curve_interp(x=None,y=None,n=3,line=None):
 # --------------------------------------------------------------------------------}
 # --- Streamlines and quiver 
 # --------------------------------------------------------------------------------{
-def lines_to_arrows(lines,n=5,spacing=None,normalize=True):
+def lines_to_arrows(lines, n=5, offset=None, spacing=None, normalize=True):
     """ Extract "streamlines" arrows from a set of lines 
     Either: `n` arrows per line
         or an arrow every `spacing` distance
@@ -99,9 +99,12 @@ def lines_to_arrows(lines,n=5,spacing=None,normalize=True):
         len(spacing)
     except:
         spacing=[spacing]*len(lines)
-
-    lines_s=[curve_extract(l,spacing=sp,offset=sp/2)         for l,sp in zip(lines,spacing)]
-    lines_e=[curve_extract(l,spacing=sp,offset=sp/2+0.01*sp) for l,sp in zip(lines,spacing)]
+    if offset is None:
+        lines_s=[curve_extract(l, spacing=sp, offset=sp/2)         for l,sp in zip(lines,spacing)]
+        lines_e=[curve_extract(l, spacing=sp, offset=sp/2+0.01*sp) for l,sp in zip(lines,spacing)]
+    else:
+        lines_s=[curve_extract(l, spacing=sp, offset=offset)         for l,sp in zip(lines,spacing)]
+        lines_e=[curve_extract(l, spacing=sp, offset=offset+0.01*sp) for l,sp in zip(lines,spacing)]
     arrow_x  = [l[i,0] for l in lines_s for i in range(len(l))]
     arrow_y  = [l[i,1] for l in lines_s for i in range(len(l))]
     arrow_dx = [le[i,0]-ls[i,0] for ls,le in zip(lines_s,lines_e) for i in range(len(ls))]
@@ -156,31 +159,26 @@ def seg_to_lines(seg):
         i=iEnd+1
     return lines
 
-def streamQuiver(ax,sp,*args,**kwargs):
+def streamQuiver(ax, sp, n=5, spacing=None, offset=None, normalize=True, **kwargs):
     """ Plot arrows from streamplot data  
     The number of arrows per streamline is controlled either by `spacing` or by `n`.
     See `lines_to_arrows`.
     """
-    # TODO this was changed for python 2.7
-    if 'spacing' in kwargs.keys():
-        spacing=kwargs['spacing']
-    else:
-        spacing=None
-    if 'n' in kwargs.keys():
-        n=kwargs['n']
-        del kwargs['n']
-    else:
-        n=5
-
     # --- Main body of streamQuiver
     # Extracting lines
-    seg   = sp.lines.get_segments() # list of (2, 2) numpy arrays
-    # lc = mc.LineCollection(seg,color='k',linewidth=0.7)
-    lines = seg_to_lines(seg)       # list of (N,2) numpy arrays
+    seg   = sp.lines.get_segments() 
+    if seg[0].shape==(2,2):
+        #--- Legacy)
+        # list of (2, 2) numpy arrays
+        # lc = mc.LineCollection(seg,color='k',linewidth=0.7)
+        lines = seg_to_lines(seg) # list of (N,2) numpy arrays
+    else:
+        lines = seg
+
     # Convert lines to arrows
-    ar_x, ar_y, ar_dx, ar_dy = lines_to_arrows(lines,spacing=spacing,n=n,normalize=True)
+    ar_x, ar_y, ar_dx, ar_dy = lines_to_arrows(lines, offset=offset, spacing=spacing, n=n, normalize=normalize)
     # Plot arrows
-    qv=ax.quiver(ar_x, ar_y, ar_dx, ar_dy, *args, **kwargs)
+    qv=ax.quiver(ar_x, ar_y, ar_dx, ar_dy, **kwargs)
     return qv
 
 
@@ -267,6 +265,87 @@ def example_streamquiver():
     plt.show()
 
 
+def point_in_contour(X, Y, contour, method='ray_casting'):
+    """
+    Checks if a point is inside a closed contour.
+ 
+    INPUTS:
+      - X: scalar or array of point coordinates
+      - Y: scalar or array of point coordinates
+      - contour: A numpy array shape (n x 2), of (x, y) coordinates representing the contour.
+            [[x1, y1]
+               ...
+             [xn, yn]]
+         or [(x1,y1), ... (xn,yn)]
+ 
+    OUTPUTS:
+      - logical or array of logical: True if the point is inside the contour, False otherwise.
+    """
+    def __p_in_c_ray(x, y, contour):
+        # --- Check if a point is inside a polygon using Ray Casting algorithm.
+        n = len(contour)
+        inside = False
+        p1x, p1y = contour[0]
+        for i in range(n+1):
+            p2x, p2y = contour[i % n]
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+        return inside
+
+    def __p_in_c_cv2(x, y, contour):
+       # --- CV2
+       import cv2 # pip install opencv-python
+       # NOTE: not working well...
+       contour = contour.reshape((-1,1,2))
+       dist = cv2.pointPolygonTest(contour.T, P, True)
+       if dist > 0:
+           return True
+       else:
+           return False
+    # --- End subfunctions
+
+    # --- Sanity
+    contour = np.asarray(contour)
+    assert(contour.shape[1]==2)
+
+    if np.isscalar(X):
+        # Check if the point is inside the bounding box of the contour.
+        if X > np.max(contour[:,0]) or X < np.min(contour[:,0]) or Y > np.max(contour[:,1]) or Y < np.min(contour[:,1]):
+            return False
+        if method=='cv2':
+            return __p_in_c_cv2(X, Y, contour)
+        elif method=='ray_casting':
+            return __p_in_c_ray(X, Y, contour)
+        else:
+            raise NotImplementedError()
+    # --- For arrays
+    #assert(X.shape==Y.shape)
+    shape_in = X.shape
+    Xf = np.array(X).flatten()
+    Yf = np.array(Y).flatten()
+    Bf = np.zeros(Xf.shape, dtype=bool)
+    if len(Xf)!=len(Yf):
+        raise Exception('point_in_contour: when array provided, X and Y must have the same length')
+    # Quickly eliminate pints outside of bounding box (vectorial calculation)
+    bbbox = (Xf <= np.max(contour[:,0])) & (Xf >= np.min(contour[:,0])) & (Yf <= np.max(contour[:,1])) & (Yf >= np.min(contour[:,1]))
+    Bf[bbbox] = True
+    for i, (x,y,b) in enumerate(zip(Xf, Yf, Bf)):
+        if b: # If in Bounding box, go into more complicated calculation
+            Bf[i] = __p_in_c_ray(x, y, contour)
+    B =  Bf.reshape(shape_in)
+    return B
+
+
+
+
 if __name__ == "__main__":
     TestCurves().test_curv_interp()
 #     unittest.main()
+
+

@@ -63,7 +63,7 @@ def export_figs_rec(maindir):
                         cprint('[INFO] No figure: {}'.format(fullpath), 'red')
     print('--------------------------------------------------------------')
     nCols= 5
-    nRow= np.int(np.ceil(len(TIT_MD)/nCols))
+    nRow= int(np.ceil(len(TIT_MD)/nCols))
     # --- print a summary
     print('Scripts with figures:')
     for f in HAS_FIG:

@@ -440,6 +440,18 @@ def hls_to_rgb(hls):
     return rgb
 
 
+def PRINT_COLORS(msg):
+    # See welib.tools.strings
+    HEADER = '\033[95m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    ORAN = '\033[93m'
+    GREEN = '\033[92m'
+    ENDC = '\033[0m'
+
+
+
 class TestColors(unittest.TestCase):
     def test_rgb_hsv(self):
         # --- Test Data 
