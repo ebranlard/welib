@@ -349,8 +349,6 @@ def cylinder_tang_u(Xcp,Ycp,Zcp,gamma_t=-1,R=1,z1=-2,z2=2,polar_out=True,epsilon
 # --------------------------------------------------------------------------------{
 class TestCylinder(unittest.TestCase):
     def test_VC_singularities(self):
-        import warnings
-        warnings.filterwarnings('error')
         # ---- r=1, z=0
         ur,uz=vc_tang_u(1,0,0)
         np.testing.assert_almost_equal(uz,-1/4)
@@ -409,8 +407,6 @@ class TestCylinder(unittest.TestCase):
 #         plt.show()
 
     def test_VC_multirotor(self):
-        import warnings
-        warnings.filterwarnings('error')
         # --- Typical values used
         U0      = 1
         R       = 1
@@ -615,4 +611,7 @@ if __name__ == "__main__":
 #     TestCylinder().test_singularities()
 #     TestCylinder().test_singularities()
 #     TestCylinder().test_rings()
-    unittest.main()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        unittest.main()

@@ -2,27 +2,47 @@
 2D vortex points 
 For 3D see VortexParticles
 
+Reference: 
+    [1] Branlard (2017) Wind turbine aerodynamics and vorticity-based methods
+
 """
 import numpy as np
 
 
-def vp_u(CP,Pv,Gamma=1,rcore=0,bViscous=False): 
+def vp_u(X, Y, Pv, Gamma=1, regParam=0, regMethod=None): 
     """ 
     Induced velocity by one 2D vortex point on one Control Point (CP)
     CP: position of control point
     Pv: position of vortex
     """
-    DP = CP - Pv
-    r2 = DP[0] ** 2 + DP[1] ** 2
-    t = np.array([- DP[1],DP[0]])
-    if bViscous:
-        U = Gamma * t[0] / r2 / (2 * np.pi) * (1 - np.exp(- r2 / rcore ** 2))
-        V = Gamma * t[1] / r2 / (2 * np.pi) * (1 - np.exp(- r2 / rcore ** 2))
-    else:
-        U = Gamma * t[0] / r2 / (2 * np.pi)
-        V = Gamma * t[1] / r2 / (2 * np.pi)
+    DX = X - Pv[0]
+    DY = Y - Pv[1]
+    r2 = DX ** 2 + DY ** 2
+    tX = -DY
+    tY =  DX
+    if regMethod is None:
+        U = Gamma/(2*np.pi) * tX/r2   # [1] Eq 32.7
+        V = Gamma/(2*np.pi) * tY/r2 
+    else:                  
+        U = Gamma/(2*np.pi) * tX/r2 * (1 - np.exp(- r2 / regParam ** 2))
+        V = Gamma/(2*np.pi) * tY/r2 * (1 - np.exp(- r2 / regParam ** 2))
     return U,V
 
+def vp_psi(x, y, Pv, Gamma=1):
+    """ Streamfunction from one 2D vortex point """
+    z = x-Pv[0] + (y-Pv[1]) * 1j
+    F=Gamma * -1j*np.log(z)    # [1] Eq. 32.6
+    psi = np.imag(F)  # [1] Eq. 32.5
+    #psi = -Gamma/(4*np.pi)*np.log(x**2+y**2)
+    return psi
+
+def vp_phi(x, y, Pv, Gamma=1):
+    """ Streamfunction from one 2D vortex point """
+    z = x-Pv[0] + (y-Pv[1]) * 1j
+    F=Gamma * -1j*np.log(z)    # [1] Eq. 32.6
+    phi = np.real(F)  # [1] Eq. 32.5
+    #phi = (Gamma/(2*np.pi)*np.arctan2(y,x)
+    return phi
 
 def vps_u(CP,XV,Gammas,SmoothModel=0,KernelOrder=2,SmoothParam=None):
     """

@@ -187,8 +187,6 @@ def ser_u_numerical(X,Y,vx,vy,U0,a,b):
 # --------------------------------------------------------------------------------{
 class TestSourceEllipsoid(unittest.TestCase):
     def test_SER_Transformations(self):
-        import warnings
-        warnings.filterwarnings('error')
         # --- Ellipse parameters
         a = 1
         b = 0.5*a
@@ -255,4 +253,7 @@ class TestSourceEllipsoid(unittest.TestCase):
 
 if __name__ == "__main__":
     #     TestSourceEllipsoid().test_SER_Transformations()
-    unittest.main()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        unittest.main()

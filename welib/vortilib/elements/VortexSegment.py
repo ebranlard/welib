@@ -129,8 +129,6 @@ def vs_u(Xcp, Ycp, Zcp, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegPa
 # --------------------------------------------------------------------------------{
 class TestVortexSegment(unittest.TestCase):
     def test_VS_RegFunctions(self):
-        import warnings
-#         warnings.filterwarnings('error')
         # --- One vortex segment
         Pa = np.array([[ 0, 0, -z0]])
         Pb = np.array([[ 0, 0,  z0]])
