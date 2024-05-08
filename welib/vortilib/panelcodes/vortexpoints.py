@@ -104,7 +104,7 @@ def backDiagonalCorrection(M, ds):
     return M
 
 
-def panel_solve_vps(XP, YP, Ux, Uy, lift=True, iTE=0, curv_method='Menger', backDiagCorr=True, verbose=False, GammaConvention='z'):
+def panel_solve_vps(XP, YP, Ux, Uy, hasLift=True, iTE=0, curv_method='Menger', backDiagCorr=True, verbose=False, GammaConvention='z'):
     """ 
     """
 
@@ -112,8 +112,8 @@ def panel_solve_vps(XP, YP, Ux, Uy, lift=True, iTE=0, curv_method='Menger', back
     n_hat, t_hat, mids, ds, curvature, ax =  airfoil_params(XP, YP, plot=False, ntScale=0.3, curv_method=curv_method)
 
     if verbose:
-        print('ds  ', ds)
-        print('crv ', curvature)
+        #print('ds  ', ds)
+        #print('crv ', curvature)
         print('crv ', np.max(curvature), np.min(curvature))
 #         curvature[0]  =curvature[1]
 #         curvature[-1] =-100
@@ -140,26 +140,28 @@ def panel_solve_vps(XP, YP, Ux, Uy, lift=True, iTE=0, curv_method='Menger', back
                 # See Lewis
                 M[i,i] = sgn*(0.5 + curvature[i]*ds[i]/(4*np.pi))
             else:
-               ri = CP[i,:] # 
-               rj = VP[j,:] # 
-               dr = sgn * (ri-rj) 
-               u,v = vp_u(dr[0], dr[1], Gamma=1, regParam=0, regMethod=None)
-               M[i,j] = (u*t_hat[i,0] + v*t_hat[i,1]) * ds[j]
+                ri = CP[i,:] # control point posision
+                rj = VP[j,:] # vortex point position
+                dr = sgn * (ri-rj) 
+                # Induced velocity Vij from one unit vortex point at one control point.
+                u,v = vp_u(dr[0], dr[1], Gamma=1, regParam=0, regMethod=None)
+                # Velocity projeted against the normal vector M[i,j] = Vij . t 
+                M[i,j] = (u*t_hat[i,0] + v*t_hat[i,1]) * ds[j]
 
     # --- Back diagonal correction
     # See Lewis
-    if lift:
+    if hasLift:
         if backDiagCorr:
             M = backDiagonalCorrection(M, ds)
 
-    # --- KUTTA condition
-    if lift: 
-        M, rhs = kutta(M, rhs, iTE)
+    # --- Kutta condition
+    if hasLift: 
+        M, rhs = kutta(M, rhs, iTE=iTE)
 
-    # --- SOLVE
+   # --- Solve (invert the system)
     gammas_r = np.linalg.solve(M, rhs)
 
-    if lift: 
+    if hasLift: 
         gammas = kutta_revert(gammas_r, iTE=iTE)
         rhs    = kutta_revert(rhs, iTE=iTE)
     else:
@@ -173,18 +175,18 @@ def panel_solve_vps(XP, YP, Ux, Uy, lift=True, iTE=0, curv_method='Menger', back
     out['x']    = XP
     out['y']    = YP
     out['theta'] = np.arctan2(YP, XP)
-    out['ds']   = ds
+    out['ds']   = ds        # Panel lengths
     out['n']    = n_hat
     out['t']    = t_hat
     out['CP']   = CP
-    out['VP']   = mids
+    out['VP']   = VP        # Vortex points
     out['curv'] = curvature
     out['theta_CP'] = np.arctan2(mids[:,1], mids[:,0])
 
     # ---
-    out['Gammas']  = Gammas
-    out['rhs']  = rhs
-
+    out['M']    = M         # System matrix
+    out['rhs']  = rhs       # Right hand side
+    out['Gammas']  = Gammas # Vortex points intensities
     # --- Output: Velocity at wall
     # TODO
     #Vtheta = gammas
@@ -215,7 +217,6 @@ def panel_solve_vps(XP, YP, Ux, Uy, lift=True, iTE=0, curv_method='Menger', back
 
     # --- Output: Stream function
     #psi = Ux*y - Uy*x + 1/(2*np.pi) * sum(gamma_i ds_i ln(r_ii))
-
     return gammas, out
 
 def VP_velocity(X, Y, Ux, Uy, VP, Gammas, regMethod=None, regParams=None):
@@ -277,7 +278,7 @@ if __name__ == '__main__':
         #import pdb; pdb.set_trace()
         XCp_th, YCp, Cp_theory, U_circ, V_circ = KT_wall(XC, YC, l=l, n=m-1, alpha=alpha) 
 
-        lift=abs(alpha)>0
+        hasLift=abs(alpha)>0
     elif case=='KT':
         m=300
         U0    = 1
@@ -289,7 +290,7 @@ if __name__ == '__main__':
         XP, YP = KT_shape(XC, YC, l=l, n=m) # ,Xg,Yg)
         XCp_th, YCp, Cp_theory, U_circ, V_circ = KT_wall(XC, YC, l=l, n=m-1, alpha=alpha) 
         iTE=0
-        lift=abs(alpha)>0
+        hasLift=abs(alpha)>0
     elif case=='cylinder':
         m=151
         U0    = 1
@@ -298,6 +299,7 @@ if __name__ == '__main__':
         theta   =-np.linspace(0,2*np.pi, m+1)
         theta_TE = np.arcsin(Gamma/(4*np.pi*U0*R))
         theta   += theta_TE
+        iTE=-1        
         iTE=0
         XP = R*np.cos(theta)
         YP = R*np.sin(theta)
@@ -307,7 +309,7 @@ if __name__ == '__main__':
         ge         = -Uth_theory
         Cp_theory  = 1-(Uth_theory)**2/U0**2
         XCp_th  = (XP[0:-1]+XP[1:])/2
-        lift=abs(Gamma)>0
+        hasLift   = abs(Gamma)>0
     elif case=='ellipse_lift':
         m=300
         U0    = 1
@@ -326,12 +328,14 @@ if __name__ == '__main__':
         iTE=0
         Cp_theory  = 1-(Uth_theory)**2/U0**2
         XCp_th  = (XP[0:-1]+XP[1:])/2
-        lift=abs(alpha)>0
+        hasLift =abs(alpha)>0
 
-    Ux    = U0*np.cos(alpha)
-    Uy    = U0*np.sin(alpha)
+    # --- Derived parameters
+    Vinf_x = U0*np.cos(alpha)
+    Vinf_y = U0*np.sin(alpha)
 
-    gammas, out = panel_solve_vps(XP, YP, Ux, Uy, lift=lift, iTE=iTE, curv_method=curv_method, verbose=True, backDiagCorr=backDiagCorr)
+    # --- Use the vortex panel method to find the vortex point intensities and Cp
+    gammas, out = panel_solve_vps(XP, YP, Vinf_x, Vinf_y, hasLift=hasLift, iTE=iTE, curv_method=curv_method, verbose=True, backDiagCorr=backDiagCorr)
     print('gammas:', gammas)
     print('>>> n', len(XP), case, 'alpha:',alpha*180/np.pi)
     ds_mean = np.mean(out['ds'])
@@ -379,13 +383,13 @@ if __name__ == '__main__':
 
 
     # --- CP num
-    #Uw, Vw = VP_velocity(XP, YP, Ux, Uy, out['VP'], out['Gammas'], regMethod=regMethod, regParams=regParams); Xw=XP
+    #Uw, Vw = VP_velocity(XP, YP, Vinf_x, Vinf_y, out['VP'], out['Gammas'], regMethod=regMethod, regParams=regParams); Xw=XP
 
     VP = out['VP']
     n_hat =out['n']
     ds  =out['ds']
     VP2 = VP + 1*(n_hat.T*ds).T 
-    Uw, Vw = VP_velocity(VP2[:,0], VP2[:,1], Ux, Uy, out['VP'], out['Gammas'], regMethod=regMethod, regParams=regParams); Xw=VP2[:,0]; Xw=VP[:,0]
+    Uw, Vw = VP_velocity(VP2[:,0], VP2[:,1], Vinf_x, Vinf_y, out['VP'], out['Gammas'], regMethod=regMethod, regParams=regParams); Xw=VP2[:,0]; Xw=VP[:,0]
 
     Q = np.sqrt(Uw**2+Vw**2)
     CP2 = 1-(Q**2/U0**2)
@@ -415,7 +419,7 @@ if __name__ == '__main__':
     vy = vg
     X, Y = np.meshgrid(vx, vy)
 
-    U, V   = VP_velocity(X, Y, Ux, Uy, out['VP'], out['Gammas'],regMethod=regMethod, regParams=regParams)
+    U, V   = VP_velocity(X, Y, Vinf_x, Vinf_y, out['VP'], out['Gammas'],regMethod=regMethod, regParams=regParams)
 
     # --- Plot velocity and streamlines from velocity field
     Speed = np.sqrt((U**2+V**2))/U0
