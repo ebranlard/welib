@@ -78,7 +78,7 @@ def hydroSim(fstFilename, plot=True, json=True, tMax=None):
     msy = MeshStorage(ymesh, time) # Store mesh at each time step
 
     # --- Time integration
-    with Timer('Time integration'):
+    with Timer('Time integration', silent=True):
         for it, t in enumerate(time):
             # Reference point motion
             q  = dfOF[qCol].iloc[it].values

@@ -3,6 +3,10 @@ import os
 import pandas as pd
 import numpy as np
 import re
+try:
+    from scipy.integrate import cumulative_trapezoid 
+except:
+    from scipy.integrate import cumtrapz as cumulative_trapezoid
 
 import welib.weio as weio
 from welib.common import WELIBException
@@ -1896,12 +1900,11 @@ def integrateMomentTS(r, F):
       - M: array nt x nr of integrated moment at each radial station
 
     """
-    import scipy.integrate as si
     # Compute \int_{r_j}^{r_n} f(r) dr, with "j" each column 
-    IF = np.fliplr(-si.cumtrapz(np.fliplr(F), r[-1::-1]))
+    IF = np.fliplr(-cumulative_trapezoid(np.fliplr(F), r[-1::-1]))
     # Compute \int_{r_j}^{r_n} f(r)*r dr, with "j" each column 
     FR  = F * r 
-    IFR = np.fliplr(-si.cumtrapz(np.fliplr(FR), r[-1::-1]))
+    IFR = np.fliplr(-cumulative_trapezoid(np.fliplr(FR), r[-1::-1]))
     # Compute x_j * \int_{r_j}^(r_n) f(r) * r dr
     R_IF = IF * r[:-1]
     # \int_{r_j}^(r_n) f(r) * (r-r_j) dr  = IF + IFR

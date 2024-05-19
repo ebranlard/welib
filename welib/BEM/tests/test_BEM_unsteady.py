@@ -143,7 +143,7 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(aprime4[-1], aprime[-1], 3)
 
         # --- Compare to OpenFAST results
-        print('TODO unstead unnittest')
+        #print('TODO unstead unnittest')
         ref=np.array([
                     [0.12484882167847558,-0.12484882167858927] ,
                     [0.07148941735475274,-0.07148941735475274] ,

@@ -161,7 +161,6 @@ def testStreamFunctionsForVortexDistribution(distribution='cylinder', plot=False
         #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         #ax.plot(r, 0.5*uz0[0,0]*r**2,'k-'    , label='psi th')
         #ax.plot(r,       psi[0,:]   ,'--'    , label='psi')
-        #ax.plot(r[1:], sciint.cumtrapz(r*uz[0,:], r), ':', label='psi2')
         #ax.set_xlabel('r')
         #ax.set_ylabel('psi')
         #ax.legend()

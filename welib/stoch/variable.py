@@ -1,7 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import nquad
-from scipy.integrate import cumtrapz
+try:
+    from scipy.integrate import cumulative_trapezoid 
+except:
+    from scipy.integrate import cumtrapz as cumulative_trapezoid
 # Local
 from welib.stoch.distribution import *
 
@@ -100,7 +103,7 @@ class StochasticVariable():
         self._x_pdf = x
         self._pdf   = pdf
         #
-        cdf = np.concatenate(( [0], cumtrapz(pdf, x) ) )
+        cdf = np.concatenate(( [0], cumulative_trapezoid(pdf, x) ) )
         self.set_cdf(x, cdf) # TODO sort out
 
     def set_pdf_f(self, f_pdf):

@@ -14,7 +14,10 @@ TODO:
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.integrate as sciint
+try:
+    from scipy.integrate import cumulative_trapezoid 
+except:
+    from scipy.integrate import cumtrapz as cumulative_trapezoid
 
 
 def velocity_from_streamfunction(psi, r, dr, dz):
@@ -101,7 +104,7 @@ def streamfunction(om, r, psi, ur, uz, dr, dz,
             psi2[0,:] = 0.5*uz[0,0]*r**2
         elif BC_Walls['west']==BC_Dir_uz:
             # - Dirichlet - uz known
-            psi2[0,1:] = sciint.cumtrapz(r*uz[0,:], r)
+            psi2[0,1:] = cumulative_trapezoid(r*uz[0,:], r)
         elif BC_Walls['west']==BC_Neu_ur0:
             # - Neumann - No radial flow: ur=0,  dpsi/dz = -r ur = 0 - First order
             #psi2[0,:] = psi2[1,:] 
@@ -122,7 +125,7 @@ def streamfunction(om, r, psi, ur, uz, dr, dz,
             psi2[nz-1,:] = 0.5*uz[0,0]*r**2
         elif BC_Walls['east']==BC_Dir_uz:
             # - Dirichlet - uz known
-            psi2[n1-1,1:] = sciint.cumtrapz(r*uz[nz-1,:], r)
+            psi2[n1-1,1:] = cumulative_trapezoid(r*uz[nz-1,:], r)
         elif BC_Walls['east']==BC_Neu_ur0:
             # - Neumann - no radial flow ur=0 - First order
             #psi2[nz-1,:] = psi2[nz-2,:]

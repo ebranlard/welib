@@ -50,7 +50,7 @@ def export_figs_rec(maindir):
                 if reobj.match(f):
                     print('--------------------------------------------------------------')
                     fullpath=os.path.join(root,f)
-                    print('Running example script: {}'.format(fullpath))
+                    print('Running: {}'.format(os.path.relpath(f, MyDir)))
                     plt.close('all')
                     n1=len(TIT_MD)
                     execfile(fullpath, {'__name__': '__export__', 'print': lambda *_:None})

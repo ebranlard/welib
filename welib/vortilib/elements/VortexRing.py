@@ -5,7 +5,6 @@ References:
 # --- General
 import unittest
 import numpy as np
-import numpy.matlib
 from scipy.special import ellipk, ellipe
 
 def ring_u_polar_singular(r,z,Gamma=-1,r0=1):

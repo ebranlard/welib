@@ -225,8 +225,6 @@ if __name__ == '__main__':
 #     a2(il)=fzero(@(a) 16*a^3-24*a^2+a*(9-3*x^2)-1+x^2,0.3,options);  %martin 8.1 combined from 4.32 and 4.38
 # end
 # aprime2=(1-3*a2)./(4*a2-1);
-# CP2=8./(vlambda2.^2).*cumtrapz(vlambda2,aprime2.*(1-a2).*vlambda2.^3);
-# CT2=8./(vlambda2.^2).*cumtrapz(vlambda2,a2.*(1-a2).*vlambda2);
 # toc()
 # 
 # %% and yet another way of doing it, the deterministic way
@@ -236,8 +234,6 @@ if __name__ == '__main__':
 # aprime3=(1-3*a3)./(4*a3-1);
 # vlambda3=sqrt(a3.*(1-a3)./(aprime3.*(1+aprime3)));
 # [vlambda3 Isort]=sort(vlambda3);% in fact not needed...
-# CP3=8./(vlambda3.^2).*cumtrapz(vlambda3,aprime3(Isort).*(1-a3(Isort)).*vlambda3.^3);
-# CT3=8./(vlambda3.^2).*cumtrapz(vlambda3,a3(Isort).*(1-a3(Isort)).*vlambda3);
 # a3=a3(Isort);
 # aprime3=aprime3(Isort);
 # toc()

@@ -21,7 +21,7 @@ class TestExamples(unittest.TestCase):
         files = glob.glob(os.path.join(MyDir,'../examples/[_a-zA-Z0-9]*.py'))
         for f in files:
             print('\n--------------------------------------------------------------')
-            print('Running example script: {}'.format(f))
+            print('Running: {}'.format(os.path.relpath(f, MyDir)))
             if hasattr(self,'subTest'):
                 with self.subTest(filename=os.path.basename(f)):
                     execfile(f, {'__name__': '__test__', 'print': lambda *_:None})

@@ -574,7 +574,7 @@ class FEMModel(GraphModel):
         if self.refPoint is not None:
             self.M_ref = rigidBodyMassMatrixAtP(mass, J_G, -np.array(self.refPoint)+np.array(Ref2COG))
 
-    def rigidBody(self):
+    def rigidBody(self, verbose=False):
         """ Extract rigid body mass without SSI
         Both "interface" and "reaction" nodes are fixed
         NOTE: effectively performs a Guyan reduction """
@@ -584,8 +584,9 @@ class FEMModel(GraphModel):
         # --- Perform Guyan reduction to get MBB
         Ileader = self.DOFc_Boundary
         Ifollow = self.DOFc_Internal
-        print('leader',Ileader)
-        print('follow',Ifollow)
+        if verbose:
+            print('leader',Ileader)
+            print('follow',Ifollow)
         Mr, Kr, Phi_G, Phi_CB, f_G, f_CB, I1, I2 = CraigBampton(self.MM, self.KK, Ileader=Ileader, Ifollow=Ifollow, nModesCB=0)
         #! --- Insert SSI from Mass and stiffness matrix again
         #CALL InsertSoilMatrices(Init%M, Init%K, p%NodesDOFred, Init, p, ErrStat2, ErrMsg2, Substract=.False.); if(Failed()) return

@@ -95,7 +95,7 @@ def htcToBeamDyn(HTCFile, bodyname, BDBldFileOut, BDMainFileOut=None, BDMainTemp
 
 def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BDMainTemplate=None, Mu = 1.0e-03, 
                    ref_axis='c2def-polyfit', poly_exp=[2,3,4,5], zref=None, Label='', bPlot=False,
-                   bNoOffset=False, bNoPreSweep=False, nRootZeros=0, bCGOnMeanLine=False):  # Experimental options
+                   bNoOffset=False, bNoPreSweep=False, nRootZeros=0, bCGOnMeanLine=False, verbose=False):  # Experimental options
     """
     Writes BeamDyn inputs files from two csv files derived from "Hawc2" inputs
 
@@ -283,7 +283,8 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
     # --- Writing BeamDyn blade file
     span=hwc['r_[m]'].values
     s_bar=span/span[-1]
-    print('Writing BeamDyn blade file:',BDBldFileOut)
+    if verbose:
+        print('Writing BeamDyn blade file:',BDBldFileOut)
     write_beamdyn_sections(BDBldFileOut,s_bar,lK,lM,Mu,Label=Label)
 
     # --- db
@@ -301,7 +302,8 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
         # TODO TODO 
         BD.data[BD.getID('kp_total')+1]['value']= '1 {}'.format(len(x_O))
 
-        print('Writing BeamDyn file:',BDMainFileOut)
+        if verbose:
+            print('Writing BeamDyn file:',BDMainFileOut)
         BD.write(BDMainFileOut)
 
 

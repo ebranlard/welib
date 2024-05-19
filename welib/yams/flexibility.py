@@ -1,5 +1,8 @@
 import numpy as np
-import scipy.integrate as sciint
+try:
+    from scipy.integrate import cumulative_trapezoid 
+except:
+    from scipy.integrate import cumtrapz as cumulative_trapezoid
 '''
 Flexible beam tools:
     - computation of generalized mass and stiffness matrix
@@ -23,7 +26,7 @@ def fcumtrapzlr(s_span, p):
     Useful to return the following:
          P(x) = \int_x^R p(r) dr
     """
-    P = - sciint.cumtrapz( p[-1::-1], s_span[-1::-1],)[-1::-1] 
+    P = - cumulative_trapezoid( p[-1::-1], s_span[-1::-1],)[-1::-1] 
     P = np.concatenate((P,[0]))
     return P
 
@@ -475,7 +478,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         # TODO TODO TODO m15 and m16 may need to be additive!
         # --- Variables for axial correction
         # FT=fcumtrapzlr(s_span,m);
-        FT = - sciint.cumtrapz( m[-1::-1], s_span[-1::-1],)[-1::-1] 
+        FT = - cumulative_trapezoid( m[-1::-1], s_span[-1::-1],)[-1::-1] 
         FT = np.concatenate((FT,[0]))
         if V_tot is None: 
             raise Exception('Please provide Vtot for axial correction'); end
@@ -1115,8 +1118,8 @@ def beamSectionLoads1D(z, p, Ftop=0, Mtop=0, s=1, F_lumped=None, method='plin'):
         Fsec[:]  = Ftop
         Msec[:]  = Mtop
         Fsec      += np.cumsum(F_lumped[-1::-1])[-1::-1]
-        Fsec[:-1] +=  - sciint.cumtrapz(p[-1::-1], zn)[-1::-1]    
-        Msec[:-1] +=  - sciint.cumtrapz(Fsec[-1::-1], zn)[-1::-1] 
+        Fsec[:-1] +=  - cumulative_trapezoid(p[-1::-1], zn)[-1::-1]    
+        Msec[:-1] +=  - cumulative_trapezoid(Fsec[-1::-1], zn)[-1::-1] 
 
     else:
         raise NotImplementedError()
@@ -1269,7 +1272,7 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m, U=None, V=None, K=None, a
     F_sec[0,:], M_sec[1,:] = beamSectionLoads1D(z, p_all[0,:], F_top[0], M_top[1], s=1,  F_lumped = F_lumped_all[0,:])
     F_sec[1,:], M_sec[0,:] = beamSectionLoads1D(z, p_all[1,:], F_top[1], M_top[0], s=-1, F_lumped = F_lumped_all[1,:])
     # Axial force
-    F_sec[2,:-1] =- sciint.cumtrapz(p_all[2, -1::-1], zn)[-1::-1] # NOTE: mostly m*acc, can use FXG
+    F_sec[2,:-1] =- cumulative_trapezoid(p_all[2, -1::-1], zn)[-1::-1] # NOTE: mostly m*acc, can use FXG
     F_sec[2,:] += F_top[2] 
     # Torsion moment
     M_sec[2,:] += M_top[2]  # TODO integrate external torsions - torsional inertias and contributions from sectionn loads due to lever arm of deflection

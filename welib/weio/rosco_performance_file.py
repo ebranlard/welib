@@ -104,7 +104,7 @@ class ROSCOPerformanceFile(File):
         # Write
         write_rotor_performance(self.filename, self['pitch'], self['TSR'], self['CP'],self['CT'], self['CQ'], self['WS'], TurbineName=self.name)
 
-    def checkConsistency(self):
+    def checkConsistency(self, verbose=False):
         """ 
         Check that data makes sense.
          in particular, check if CP=lambda CQ
@@ -119,10 +119,12 @@ class ROSCOPerformanceFile(File):
         TSR = np.tile(tsr.flatten(), (len(self['pitch']),1)).T
         if CQ is None and CP is not None:
             CQ = CP/TSR
-            print('[INFO] Computing CQ from CP')
+            if verbose:
+                print('[INFO] Computing CQ from CP')
         elif CQ is not None and CP is None:
             CP = CQ*TSR
-            print('[INFO] Computing CP from CQ')
+            if verbose:
+                print('[INFO] Computing CP from CQ')
         elif CQ is not None and CP is not None:
             pass
         else:

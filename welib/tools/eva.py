@@ -73,7 +73,7 @@ def polyeig(*A, sort=False, normQ=None):
     return X, e
 
 
-def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massScaling=True):
+def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massScaling=True, verbose=False):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -92,7 +92,8 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massS
             for j in range(M.shape[1]):
                 q_j = Q[:,j]
                 modalmass_j = np.dot(q_j.T,M).dot(q_j)
-                Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
+                if modalmass_j>0:
+                    Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
         Lambda=np.dot(Q.T,K).dot(Q)
     else:
         D,Q = linalg.eig(K)
@@ -125,7 +126,8 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massS
         bb = imm>0
         if sum(bb)>0:
             W=list(np.where(bb)[0])
-            print('[WARN] Found {:d} complex eigenvectors at positions {}/{}'.format(sum(bb),W,Q.shape[0]))
+            if verbose:
+                print('[WARN] Found {:d} complex eigenvectors at positions {}/{}'.format(sum(bb),W,Q.shape[0]))
         Lambda = np.real(Lambda)
 
     return Q,Lambda
