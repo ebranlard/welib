@@ -253,7 +253,7 @@ def autocovariance_num(x, **kwargs):
 
 
 def autocovariance_fft(omega, S_X, onesidedIn=True):
-    """ 
+    r""" 
      Return Kappa_XX autocovariance from oneside (S_X) or double sided (S_XX) spectrum
        - Using FFT
        - Based on discrete values of the S_X
@@ -291,8 +291,8 @@ def autocorrcoeff_num(x, **kwargs):
     rho_XX, tau = correlation(x, **kwargs)
     return rho_XX, tau
 
-def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap'):
-    """ 
+def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap', verbose=False):
+    r""" 
      Return one-sided (S_X) or double-sided (S_XX) autospectrum:
        - Using FFT
        - Based on discrete values of the auto-covariance kappa_XX.
@@ -305,7 +305,8 @@ def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap'):
         f, S_X, Info = fft_wrap(tau, kappa_XX, output_type='amplitude', averaging='None', detrend=False)
         omega =2*np.pi * f
     else:
-        print('[WARN] autospectrum_FFT might need work')
+        if verbose:
+            print('[WARN] autospectrum_FFT might need work')
         k = np.fft.rfft(kappa_XX)
         tau_max = tau[-1]
         n      = int(len(tau)/2)

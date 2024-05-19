@@ -19,8 +19,8 @@ class TestExamples(unittest.TestCase):
         # Add tests to class
         MyDir=os.path.dirname(__file__)
         files = glob.glob(os.path.join(MyDir,'../examples/[_a-zA-Z0-9]*.py'))
+        print('\n--------------------------------------------------------------')
         for f in files:
-            print('\n--------------------------------------------------------------')
             print('Running: {}'.format(os.path.relpath(f, MyDir)))
             if hasattr(self,'subTest'):
                 with self.subTest(filename=os.path.basename(f)):

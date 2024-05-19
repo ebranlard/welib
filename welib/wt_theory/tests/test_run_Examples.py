@@ -20,8 +20,8 @@ class TestExamples(unittest.TestCase):
         MyDir=os.path.dirname(__file__)
         files = glob.glob(os.path.join(MyDir,'../examples/[a-zA-Z_-]*.py'))
         import matplotlib.pyplot as plt
+        print('\n--------------------------------------------------------------')
         for f in files:
-            print('\n--------------------------------------------------------------')
             print('Running: {}'.format(os.path.relpath(f, MyDir)))
             if hasattr(self,'subTest'):
                 with self.subTest(filename=os.path.basename(f)):

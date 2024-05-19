@@ -248,7 +248,10 @@ def dAerodynMatrix(par, z, Omega, W, phi_f, phi_e, phi_t):
     rho = par['rho']
     # computer parameters
     lambda_ = z * Omega / W
-    alpha0  = np.arctan(1 / lambda_)
+    if lambda_!=0:
+        alpha0  = np.arctan(1 / lambda_)
+    else:
+        alpha0  = 0 # TODO
     psi0    = alpha0
     
     U0 = np.sqrt(W ** 2 + (z * Omega) ** 2)
