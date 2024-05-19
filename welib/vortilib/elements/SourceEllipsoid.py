@@ -185,7 +185,7 @@ def ser_u_numerical(X,Y,vx,vy,U0,a,b):
 # --------------------------------------------------------------------------------}
 # --- TESTS
 # --------------------------------------------------------------------------------{
-class TestSourceEllipsoid(unittest.TestCase):
+class TestSER(unittest.TestCase):
     def test_SER_Transformations(self):
         # --- Ellipse parameters
         a = 1

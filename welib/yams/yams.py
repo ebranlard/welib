@@ -549,7 +549,7 @@ class RigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
         B.s_G_inB = B.masscenter
         B.J_G_inB = B.masscenter_inertia
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, mass, -B.s_G_inB)
-        B.MM = rigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
+        B.MM = buildRigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
 
@@ -614,7 +614,7 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
         else:
             raise NotImplementedError()
 
-    def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
+    def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0, verbose=False):
         super(BeamBody,o).updateKinematics(x_0,R_0b,gz,v_0,a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
         if o.nf>0:
@@ -644,7 +644,8 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
                 o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
                 o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
             else:
-                print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
+                if verbose:
+                    print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
                 #raise NotImplementedError()
                 #o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
                 #o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);

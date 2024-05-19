@@ -31,7 +31,7 @@ __all__ += ['TestSpectral']
 # --------------------------------------------------------------------------------}
 # --- FFT wrap
 # --------------------------------------------------------------------------------{
-def fft_wrap(t,y,dt=None, output_type='amplitude',averaging='None',averaging_window='hamming',detrend=False,nExp=None, nPerDecade=None):
+def fft_wrap(t,y,dt=None, output_type='amplitude',averaging='None',averaging_window='hamming',detrend=False,nExp=None, nPerDecade=None, verbose=False):
     """ 
     Wrapper to compute FFT amplitude or power spectra, with averaging.
     INPUTS:
@@ -65,7 +65,8 @@ def fft_wrap(t,y,dt=None, output_type='amplitude',averaging='None',averaging_win
         relDiff = abs(dtDelta0-dt)/dt*100
         #if dtDelta0 !=dt:
         if relDiff>0.01:
-            print('[WARN] dt from tmax-tmin different from dt from t2-t1 {} {}'.format(dt, dtDelta0) )
+            if verbose:
+                print('[WARN] dt from tmax-tmin different from dt from t2-t1 {} {}'.format(dt, dtDelta0) )
     Fs = 1/dt
     if averaging =='none':
         frq, PSD, Info = psd(y, fs=Fs, detrend=detrend, return_onesided=True)
@@ -80,7 +81,8 @@ def fft_wrap(t,y,dt=None, output_type='amplitude',averaging='None',averaging_win
             nExp=int(np.log(nFFTAll)/np.log(2))-1
         nPerSeg=2**nExp
         if nPerSeg>n:
-            print('[WARN] Power of 2 value was too high and was reduced. Disable averaging to use the full spectrum.');
+            if verbose:
+                print('[WARN] Power of 2 value was too high and was reduced. Disable averaging to use the full spectrum.');
             nExp=int(np.log(nFFTAll)/np.log(2))-1
             nPerSeg=2**nExp
         if averaging_window=='hamming':

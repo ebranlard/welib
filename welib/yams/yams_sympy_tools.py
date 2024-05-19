@@ -264,7 +264,7 @@ def myjacobian(expr, var_list, value_list=None):
         jac = jac.subs(sub_list)
     return jac
 
-def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True):
+def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True, verbose=False):
     """ 
     Return a Taylor expansion of the expression at the operating point x0
     INPUTS:
@@ -336,7 +336,8 @@ def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True):
         myexpr = myexpr.subs(DT2Dummy)
 
         if myexpr.has(Derivative) and doSimplifyIfDeriv:
-            print('[WARN] Yams sympy linearize: Expression still contains derivative. Behavior might not be the right one. To be safe, we are running simplify on the expression.')
+            if verbose:
+                print('[WARN] Yams sympy linearize: Expression still contains derivative. Behavior might not be the right one. To be safe, we are running simplify on the expression.')
             #NOTE: if expressions contains diff(-x,t) it won't work (for instance after a substitution). We need it simplified to -diff(x,t)
             # We simplify expression
             myexpr0=myexpr0.simplify()

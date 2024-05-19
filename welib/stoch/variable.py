@@ -221,7 +221,7 @@ class StochasticVariable():
     # --- Other variable
     # --------------------------------------------------------------------------------
     def cov(self, var2, f_XY):
-        """
+        r"""
         Compute Cov(X,Y) = \int\int (x-mu_X)(y-mu_Y) f_XY(x,y) dx dy
         NOTE: using vector is better for that as vectors contain f_XY
         """
@@ -232,7 +232,7 @@ class StochasticVariable():
         return cov
 
     def new_from_bijection(self, g=None, x=None, gp=None, ginv=None, yvalues='input', split=None):
-        """ 
+        r""" 
         create variable y = g(x) 
 
         fY(y) dy = fX(x) dx

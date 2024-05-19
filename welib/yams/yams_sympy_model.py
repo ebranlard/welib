@@ -906,7 +906,7 @@ def findInputs(EOM, q):
     inputs = list(np.array(inputs)[II])
     return inputs
 
-def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs=None):
+def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs=None, verbose=False):
     """ Linearize the equations of motions using state "q" and derivatives
     The alternative is to use the kinematic equations using linearizer.linearize.
     """
@@ -922,7 +922,8 @@ def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs
     if noVel: 
         op_point0=[(qdi,0) for qdi in qd]
     op_point= op_point0+op_point # order might matter
-    print('>>> TODO linearize does not protect derivatives in substituion!')
+    if verbose:
+        print('>>> TODO linearize does not protect derivatives in substituion!')
     # use if isinstance sympy.core.function.Derivative
 
     # --- Inputs are dynamic symbols that are not coordinates
@@ -966,6 +967,10 @@ def forcingToPy(q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], d
     s += '    u:  inputs, dictionary with keys: {}\n'.format(inputs)
     s += '           where each values is a function of time\n'
     s += '    """\n'
+    s += '    if q is not None:\n'
+    s += '        q  = np.asarray(q).flatten()\n'
+    s += '    if qd is not None:\n'
+    s += '        qd  = np.asarray(qd).flatten()\n'
     s += '    if z is not None:\n'
     s += '        q  = z[0:int(len(z)/2)] \n'
     s += '        qd = z[int(len(z)/2): ] \n'
@@ -988,6 +993,8 @@ def MMToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
     s += '     q:  degrees of freedom, array-like: {}\n'.format(sdofs)
     s += '     p:  parameters, dictionary with keys: {}\n'.format(params)
     s += '    """\n'
+    s += '    if q is not None:\n'
+    s += '        q  = np.asarray(q).flatten()\n'
     s += '    if z is not None:\n'
     s += '        q  = z[0:int(len(z)/2)] \n'
     s += s0

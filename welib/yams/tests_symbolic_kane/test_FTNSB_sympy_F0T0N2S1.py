@@ -40,7 +40,7 @@ class TestF0T0N2S1(unittest.TestCase):
     def test_F0T0N2S1(self):
         #Test expression of mass and forcing
         model=main(unittest=True)
-        print('Gyroscope test not ready')
+        #print('Gyroscope test not ready')
 
 if __name__=='__main__':
     np.set_printoptions(linewidth=500)

@@ -138,7 +138,7 @@ class TestFitting(unittest.TestCase):
     # --------------------------------------------------------------------------------}
     # --- Testing of Predefined fitters 
     # --------------------------------------------------------------------------------{
-    def test_secondorder_impulse(self):
+    def test_2nd_impulse(self):
         A, omega0, zeta, B, t0 = 2, 2, 0.01, 100, 10
         x=np.linspace(0,50,1000)
         y=secondorder_impulse(x,(A,omega0, zeta, B, t0)) #0* + np.random.normal(0, 0.1, len(x))
@@ -149,7 +149,7 @@ class TestFitting(unittest.TestCase):
         np.testing.assert_almost_equal(omega0   ,fitter.model['coeffs']['omega'])
         np.testing.assert_almost_equal(zeta     ,fitter.model['coeffs']['zeta'])
 
-    def test_secondorder_step(self):
+    def test_2nd_step(self):
         A, omega0, zeta, B, t0 = 2, 2, 0.8, 100, 10
         x=np.linspace(0,50,1000)
         y=secondorder_step(x,(A,omega0, zeta, B, t0)) #0* + np.random.normal(0, 0.1, len(x))

@@ -131,7 +131,7 @@ def DCMtoOmega(DCM, ref_frame=None):
 # ---  
 # --------------------------------------------------------------------------------{
 class Taylor(object):
-    """ 
+    r""" 
     A Taylor object contains a Taylor expansion of a variable as function of q
         M = M^0 + \sum_j=1^nq M^1_j q_j
     where M, M^0, M^1_j are matrices of dimension nr x nc
@@ -429,7 +429,7 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------}
     # --- Connection between bodies
     # --------------------------------------------------------------------------------{
-    def connectTo(parent, child, type='Rigid', rel_pos=None, rel_pos_b=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False, ref_frame=None):
+    def connectTo(parent, child, type='Rigid', rel_pos=None, rel_pos_b=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False, ref_frame=None, verbose=False):
         """ 
         Define a connection between parent and child bodies
 
@@ -561,7 +561,8 @@ class YAMSBody(object):
                 rot_vars = rot_amounts
             for d in rot_vars:
                 if d!=0 and d!=1 and not exprHasFunction(d):
-                    print('>>> WARNING: Rotation amount variable is not a dynamic variable for joint connection, variable: {}'.format(d))
+                    if verbose:
+                        print('>>> WARNING: Rotation amount variable is not a dynamic variable for joint connection, variable: {}'.format(d))
                     #raise Exception('Rotation amount variable should be a dynamic variable for a joint connection, variable: {}'.format(d))
         else:
             raise Exception('Unsupported joint type: {}'.format(type))
@@ -1349,7 +1350,7 @@ class YAMSFlexibleBody(YAMSBody):
         return self.M
     
     def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded'):
-        """ Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
+        r""" Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
         inputs:
            omega: angular velocity of the body wrt to the inertial frame, expressed in body coordinates
            q,qd: generalied coordinates and speeds for this body

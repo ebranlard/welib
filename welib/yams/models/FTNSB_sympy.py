@@ -411,7 +411,8 @@ def get_model(model_name, **opts):
         else:
             ref.connectTo(rot, type='Rigid', rel_pos=(0,0,0), rot_amounts=(0,0,q_psi), rot_order='ZYX')
 
-        print('>>> TODO TODO hub radius, and precone')
+        if verbose:
+            print('>>> TODO TODO hub radius, and precone')
         for ib,bld in enumerate(blds): 
             print('x_RB', x_RB, 'z_RB',z_RB, psi_b[ib])
             rot.connectTo(bld, type='Rigid', rel_pos=(x_RB, -z_RB*sin(psi_b[ib]), z_RB*cos(psi_b[ib])), rot_amounts=(psi_b[ib], coneDOF, pitchDOF), rot_order='XYZ')
@@ -470,7 +471,8 @@ def get_model(model_name, **opts):
             fr, Mr, KM = stiffness6DOF(DOFs, ref.frame, label='KM', bDOFs=bFndDOFs, IKeep=KMoorKeep)
             body_loads  += [(fnd, (P_M,  fr))]
             body_loads  += [(fnd, (fnd.frame, Mr))]
-            print('>>> Adding mooring loads')
+            if verbose:
+                print('>>> Adding mooring loads')
 
         if opts['hydro_loads']:
             # Hydro force
@@ -481,10 +483,12 @@ def get_model(model_name, **opts):
             Mh = M_hx * ref.frame.x + M_hy * ref.frame.y + M_hz * ref.frame.z
             if model_name.find('hydroO')>1:
                 body_loads  += [(fnd, (P_O,  fh))] # NOTE: using P_O
-                print('>>> Adding hydro loads at Tower Origin')
+                if verbose:
+                    print('>>> Adding hydro loads at Tower Origin')
             else:
                 body_loads  += [(fnd, (P_0,  fh))] # NOTE: using P_0
-                print('>>> Adding hydro loads at Hydro 0-Point')
+                if verbose:
+                    print('>>> Adding hydro loads at Hydro 0-Point')
             body_loads  += [(fnd, (fnd.frame, Mh))] 
 
             ##P_0 = body.origin.locatenew('P_0', z_B0 * ref.frame.z) # 0- sea level <<<< Measured from T Does not work
@@ -524,7 +528,8 @@ def get_model(model_name, **opts):
                 grav_B       = (bld.masscenter, -bld.mass * gravity * ref.frame.z)
                 body_loads  += [(bld,grav_B)]  
 
-            print('>>>> TODO aero/misc loads on blades')
+            if verbose:
+                print('>>>> TODO aero/misc loads on blades')
         else:
             # Rotor loads
             grav_R = (rot.masscenter, -M_R * gravity * ref.frame.z)
@@ -545,7 +550,8 @@ def get_model(model_name, **opts):
             if opts['aero_forces']:
                 body_loads  += [(rot,fa_R)]
             if opts['aero_torques']:
-                print('>>> Adding aero torques ')
+                if verbose:
+                    print('>>> Adding aero torques ')
                 body_loads+=[(nac, Ma_R)]
 
     else:
@@ -563,7 +569,8 @@ def get_model(model_name, **opts):
             body_loads  += [(nac,thrustN)]
 
         if opts['aero_torques']:
-            print('>>> Adding aero torques 3')
+            if verbose:
+                print('>>> Adding aero torques 3')
             if opts['tiltShaft']:
                 # NOTE: for a rigid RNA we keep only M_y and M_z, no shaft torque
                 x_tilted = cos(tiltDOF) * nac.frame.x - sin(tiltDOF) * nac.frame.z

@@ -45,20 +45,20 @@ def extractVectFromSkew(M):
     return np.array([x,y,z])
 
 
-def rigidBodyMassMatrix(Mass, J, COG=None): # TODO change interface
-    """ Mass matrix for a rigid body (i.e. mass matrix) Eq.(15) of [1] 
+def buildRigidBodyMassMatrix(Mass, J_P, COG=None): 
+    """ 
+    Simply builds the mass matrix of a rigid body (i.e. mass matrix) Eq.(15) of [1] 
     INPUTS:
       - Mass: (scalar) mass of the body
-      - J: (3-vector or 3x3 matrix), diagonal coefficients or full inertia matrix at COG
+      - JP: (3x3 matrix) full inertia matrix at Point P
       - COG: (3-vector) x,y,z position of center of mass
     """
-    print('[WARN] yams.utils.rigidBodyMassMatrix: the interface of this function does not make much sense and should not be used')
     S=Mass*skew(COG)
     MM=np.zeros((6,6))
     MM[0:3,0:3] = Mass*np.eye(3);
     MM[0:3,3:6] = -S;
     MM[3:6,0:3] = S ; # transpose(S)=-S;
-    MM[3:6,3:6] = J ;
+    MM[3:6,3:6] = J_P ;
     return MM
 
 def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None):

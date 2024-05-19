@@ -9,7 +9,7 @@ from welib.weio.fast_input_deck import FASTInputDeck
 from welib.tools.signal_analysis import zero_crossings
 
 # ---
-def interp2d_pairs(*args,**kwargs):
+def interp2d_pairs(X, Y, Z, kind='cubic', **kwargs):
     """ Same interface as interp2d but the returned interpolant will evaluate its inputs as pairs of values.
     Inputs can therefore be arrays
 
@@ -29,7 +29,14 @@ def interp2d_pairs(*args,**kwargs):
         x,y = np.asarray(x), np.asarray(y)
         return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
     # Wrapping the scipy interp2 function to call out interpolant instead
-    return lambda x,y: interpolant(x,y,si.interp2d(*args,**kwargs))
+    # interp2d
+    #   For legacy code, nearly bug-for-bug compatible replacements are
+    #   `RectBivariateSpline` on regular grids, and `bisplrep`/`bisplev` for scattered 2D data.
+    #   
+    #   In new code, for regular grids use `RegularGridInterpolator` instead.
+    #   For scattered data, prefer `LinearNDInterpolator` or `CloughTocher2DInterpolator`.
+    #return lambda x,y: interpolant(x,y,si.RegularGridInterpolator((X,Y), Z, method=kind))
+    return lambda x,y: interpolant(x, y, si.interp2d(X, Y, Z, kind=kind))
 
 
 def Paero(WS, Pitch, Omega, R, rho, fCP):

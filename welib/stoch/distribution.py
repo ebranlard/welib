@@ -106,7 +106,7 @@ def gaussianNd_pdf(x, mu, C):
 # --- Gamma 
 # --------------------------------------------------------------------------------
 def gamma_pdf(x, alpha=1, beta=2):
-    """ 
+    r""" 
 
     Note: Gamma function:
        Gamma(x) = \int_0^\infty t^(x-1) exp(-t) dt
@@ -141,7 +141,7 @@ def exponential_pdf(x, beta=1):
 # --- Weibull
 # --------------------------------------------------------------------------------
 def weibull_pdf(x, A=1, k=2, x0=0):
-    """
+    r"""
 
     NOTE: 
       mu      = A \Gamma( 1 + 1/k)
@@ -197,7 +197,7 @@ def rayleigh_cdf(x, s=3):
     return F
 
 def rayleigh_moments(s=3):
-    """ 
+    r""" 
     The notation "s", with A**2 = 2*s**2 is used here instead of "A"
                            A    = sqrt(2) s
 

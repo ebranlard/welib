@@ -441,7 +441,15 @@ def interp2d_pairs(*args,**kwargs):
     def interpolant(x,y,f):
         x,y = np.asarray(x), np.asarray(y)
         return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
+
     # Wrapping the scipy interp2 function to call out interpolant instead
+    # interp2d
+    #   For legacy code, nearly bug-for-bug compatible replacements are
+    #   `RectBivariateSpline` on regular grids, and `bisplrep`/`bisplev` for scattered 2D data.
+    #   
+    #   In new code, for regular grids use `RegularGridInterpolator` instead.
+    #   For scattered data, prefer `LinearNDInterpolator` or `CloughTocher2DInterpolator`.
+    #return lambda x,y: interpolant(x,y,si.RectBivariateSpline(*args,**kwargs))
     return lambda x,y: interpolant(x,y,si.interp2d(*args,**kwargs))
 
 

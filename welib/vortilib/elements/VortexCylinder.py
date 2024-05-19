@@ -347,8 +347,8 @@ def cylinder_tang_u(Xcp,Ycp,Zcp,gamma_t=-1,R=1,z1=-2,z2=2,polar_out=True,epsilon
 # --------------------------------------------------------------------------------}
 # --- TESTS
 # --------------------------------------------------------------------------------{
-class TestCylinder(unittest.TestCase):
-    def test_VC_singularities(self):
+class TestCyl(unittest.TestCase):
+    def test_VC_sing(self):
         # ---- r=1, z=0
         ur,uz=vc_tang_u(1,0,0)
         np.testing.assert_almost_equal(uz,-1/4)
@@ -367,7 +367,7 @@ class TestCylinder(unittest.TestCase):
         np.testing.assert_almost_equal(uz,uze)
         np.testing.assert_almost_equal(ur,ure)
 
-    def test_VC_singularities_RadiusRotor(self):
+    def test_VC_sing_Rad(self):
         # Singularity when r=~R, z=0 
         # NOTE: test for exactly on the singularity done in test_VC_singularities
         Xcp = -63.00000000000001; Ycp = 0.0; Zcp = 0.0

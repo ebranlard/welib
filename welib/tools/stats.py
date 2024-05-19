@@ -46,7 +46,7 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', abs
             # Mean relative error
             eps     = float(mean_rel_err(t1, y1, t2, y2, method=method, absVal=absVal))
             stats['eps'] = eps
-            sStats+=['$\epsilon=$'+r'{:.1f}%'.format(eps)]
+            sStats+=[r'$\epsilon=$'+r'{:.1f}%'.format(eps)]
 
         elif s=='r2':
             # Rsquare

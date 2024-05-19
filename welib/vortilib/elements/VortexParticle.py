@@ -62,7 +62,7 @@ def vp_u(CPs, Pv, Alpha, RegFunction=0, RegParam=0):
 # --------------------------------------------------------------------------------}
 # --- TESTS
 # --------------------------------------------------------------------------------{
-class TestVortexParticles(unittest.TestCase):
+class TestVPart(unittest.TestCase):
     def test_VP_RegFunctions(self):
         # --- One vortex Particle
         # test, 0 on singularity
