@@ -106,7 +106,7 @@ def doublet_line_polar_u_num(rcp,zcp,dmz_dz,z0=0,zmax=1000,nQuad=100):
     return ur, uz
 
 def doublet_line_polar_u(rcp,zcp,dmz_dz, bSelfInd=False):
-    """
+    r"""
     Velocity field induced by a semi-infinite doublet line (on the z axis) of intensity `dmz_dz`
     Control points defined by polar coordinates `rcp` and `zcp`.
 
@@ -147,7 +147,7 @@ def doublet_line_polar_u(rcp,zcp,dmz_dz, bSelfInd=False):
     return ur, uz
 
 def doublet_line_u(Xcp,Ycp,Zcp,dmz_dz,m=0,L=np.inf):
-    """ 
+    r""" 
     Velocity field induced by a double line, of intensity [0,0,dmz/dz]
     The line is defined by the coordinates (x=mz,y=0,z)
     By default a semi-infinite line is assumed (L=np.inf)

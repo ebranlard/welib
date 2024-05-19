@@ -1,4 +1,4 @@
-"""
+r"""
 References:
     [1] Lamb - Hydrodynamics, p.141
     [2] Durand - Aerodynamic theory, Vol.1,  p.278

@@ -236,7 +236,7 @@ def detectFormat(filename, **kwargs):
             extMatch = True
         else:
             # Try patterns if present
-            extPatterns = [ef.replace('.','\.').replace('$','\$').replace('*','[.]*') for ef in myformat.extensions if '*' in ef]
+            extPatterns = [ef.replace('.',r'\.').replace('$',r'\$').replace('*',r'[.]*') for ef in myformat.extensions if '*' in ef]
             if len(extPatterns)>0:
                 extPatMatch = [re.match(pat, ext) is not None for pat in extPatterns]
                 extMatch = any(extPatMatch)

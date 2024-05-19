@@ -224,7 +224,7 @@ def mycollect(expr, var_list, evaluate=True, **kwargs):
     return d
 
 def myjacobian(expr, var_list, value_list=None):
-    """ Compute jacobian of expression, matrix or not. 
+    r""" Compute jacobian of expression, matrix or not. 
     Perform symbol substitution first to have support for derivatives
 
     J = [ \partial fi / \partial_xj ]_x0
@@ -435,7 +435,7 @@ def cleantex(expr):
         '\\end{matrix}\\right]':'\n\\end{bmatrix}\n' ,
         '\\operatorname{q_{T1}}':'q_{T1}',
         '\\operatorname{q_{T2}}':'q_{T2}',
-        '\operatorname{T_{a}}'  : 'T_a',
+        '\\operatorname{T_{a}}'  : 'T_a',
         '\\left(t \\right)'    : '(t)',
         '{(t)}': '(t)',
         '{d t}': '{dt}',
@@ -475,9 +475,9 @@ def cleantex(expr):
         '\\cos{\\left(\\phi_x \\right)}':'\\cos\\phi_x',
         '\\cos{\\left(\\phi_y \\right)}':'\\cos\\phi_y',
         '\\cos{\\left(\\phi_z \\right)}':'\\cos\\phi_z',
-        '\\left(\\dot{\\phi}_x\\right)^{2}':'\dot{\\phi}_x^2',
-        '\\left(\\dot{\\phi}_y\\right)^{2}':'\dot{\\phi}_y^2',
-        '\\left(\\dot{\\phi}_z\\right)^{2}':'\dot{\\phi}_z^2',
+        '\\left(\\dot{\\phi}_x\\right)^{2}':'\\dot{\\phi}_x^2',
+        '\\left(\\dot{\\phi}_y\\right)^{2}':'\\dot{\\phi}_y^2',
+        '\\left(\\dot{\\phi}_z\\right)^{2}':'\\dot{\\phi}_z^2',
         '\\\\':'\\\\ \n' 
         }
     for k in D_rep.keys():

@@ -34,7 +34,7 @@ def Pi(x, epsilon=None):
         return p
 
 def smooth_heaviside(x, k=1, rng=(-np.inf, np.inf), method='exp'):
-    """ 
+    r""" 
     Smooth approximation of Heaviside function where the step occurs between rng[0] and rng[1]:
        if rng[0]<rng[1]: then  f(<rng[0])=0, f(>=rng[1])=1
        if rng[0]>rng[1]: then  f(<rng[1])=1, f(>=rng[0])=0
@@ -125,7 +125,7 @@ def smooth_delta_inf(xx, e, method='gaussian'):
 
 
 def smooth_delta(x, e=1, rng=(-np.inf, np.inf), method='gaussian'):
-    """ 
+    r""" 
     Smooth approximation of delta function between rng[0] and rng[1]
     The integral over the range should be 1.
 

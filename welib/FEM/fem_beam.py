@@ -374,7 +374,7 @@ def cbeam_assembly(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=
 # --- Assembly dedicated to frame3d (data per element)
 # --------------------------------------------------------------------------------{
 def cbeam_assembly_frame3d(xNodes, E, G, me, EIxe, EIye, EIze, Kte, EAe, Ae, phi=None):
-    """
+    r"""
     Assembly a FEM model of a beam made of n elements (n+1 nodes)
     Node positions are given in 3D
     Element properties are given for each elements (n)

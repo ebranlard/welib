@@ -522,7 +522,7 @@ class YAMSModel(object):
         with Timer('Latex to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 if header:
-                    f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
+                    f.write('Model: {}, \n'.format(self.name.replace('_',r'\_')))
                     f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.coordinates)))
                     try:
                         f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAnglesUsed)))
@@ -825,7 +825,7 @@ class EquationsOfMotionQ(object):
         with Timer('Latex to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 if header:
-                    f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
+                    f.write('Model: {}, \n'.format(self.name.replace('_',r'\_')))
                     f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.q)))
                     try:
                         f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAnglesUsed)))

@@ -601,7 +601,7 @@ def a_k(k, chi=0, phi=0.1, F=None, method='Buhl', outputMore=False):
 
 
 def axialInductionFromGlauertMomentum(k, chi, phi=0.1, F=1, highThrustCorr=True):
-    """ 
+    r""" 
     Solve for `a` by equating blade element theory (BET) and momentum theory (MT) thrust
    
     At low loading, |k|<kc, Glauert's skew momentum theory is used:

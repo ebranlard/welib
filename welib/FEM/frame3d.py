@@ -111,7 +111,7 @@ def h(x, u_2, u_3, u_5, u_6, L):
 # --- Element formulation 
 # --------------------------------------------------------------------------------{
 def frame3d_KeMe(E,G,Kv,EA,EIx,EIy,EIz,L,A,Mass,T=0,R=None, main_axis='x'): 
-    """ 
+    r""" 
     Stiffness and mass matrices for Hermitian beam element with 6DOF per node
     Beam directed along x
 
