@@ -3,7 +3,11 @@ import matplotlib.pyplot as plt
 
 from welib.airfoils.karman_trefftz import *  
 
-def main(IPlot):
+def main(IPlot, nX=200, n=100):
+    """ 
+    n  = 100 # Number of points for airfoil
+    nX = 100 # Number of points for x vector
+    """
 
     # --- Parameters
     alpha = 10 *np.pi/180
@@ -15,7 +19,6 @@ def main(IPlot):
     A       = 1                 # Cylinder X-intersect in Z-plane [m]
 
     # Plotting parameters
-    n       = 100               # Number of points for airfoil
 
     # --- Derived parameters
     l = 2 - tau_deg / 180 # Karman-Trefftz "Lambda" parameter    
@@ -47,8 +50,8 @@ def main(IPlot):
         XLIM = np.array([-3.5, 3.5])
         YLIM = np.array([-3.5, 3.5])
         #     ## Main function call (with grid for contour plots, but not necessary)
-        vx = np.linspace(XLIM[0], XLIM[1], 200 )
-        vy = np.linspace(YLIM[0], YLIM[1], 200 )
+        vx = np.linspace(XLIM[0], XLIM[1], nX )
+        vy = np.linspace(YLIM[0], YLIM[1], nX+1 )
         X,Y = np.meshgrid(vx, vy)
         U, V, CP = KT_flow(X, Y, XC, YC, l=l, U0=U0, alpha=alpha)
         Speed = np.sqrt((U**2+V**2))/U0
@@ -108,8 +111,8 @@ def main(IPlot):
         XLIM = np.array([-3.5, 3.5])
         YLIM = np.array([-3.5, 3.5])
         #     ## Main function call (with grid for contour plots, but not necessary)
-        vx = np.linspace(XLIM[0], XLIM[1], 200 )
-        vy = np.linspace(YLIM[0], YLIM[1], 200 )
+        vx = np.linspace(XLIM[0], XLIM[1], nX )
+        vy = np.linspace(YLIM[0], YLIM[1], nX+1)
         X,Y = np.meshgrid(vx, vy)
         U, V, CP = KT_flow(X, Y, XC, YC, l=l, U0=U0, alpha=alpha)
         Speed = np.sqrt((U**2+V**2))/U0
@@ -188,13 +191,12 @@ def main(IPlot):
         from welib.CFD.flows2D import vorticity2D, circulation2D, flow_interp2D
         # --- Circulation contour
         print('>>> Circulation')
-        theta=np.linspace(0,2*np.pi,2000)
+        theta=np.linspace(0,2*np.pi, nX)
         r_circ = 2.6
         xc = r_circ*np.cos(theta)+0
         yc = r_circ*np.sin(theta)+0
-        with Timer('Interp'):
-            #uc, vc = flow_interp2D(xc, yc, U, V, X, Y, method='nearest', algo='TriInterpolator')
-            uc, vc = flow_interp2D(xc, yc, U, V, X, Y, method='nearest')
+        #uc, vc = flow_interp2D(xc, yc, U, V, X, Y, method='nearest', algo='TriInterpolator')
+        uc, vc = flow_interp2D(xc, yc, U, V, X, Y, method='nearest')
         Gamma  =  circulation2D(xc, yc, uc, vc, verbose=True)
         Cl     = -2*Gamma/(U0*chord)
 
@@ -204,7 +206,7 @@ if __name__ == '__main__':
     plt.show()
     
 if __name__ == '__test__':
-    main([0,1,2,3])
+    main([0,1,2,3], n=30, nX =50)
 if __name__=="__export__":
     main([4])
     from welib.tools.repo import export_figs_callback

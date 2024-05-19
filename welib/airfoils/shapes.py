@@ -231,7 +231,7 @@ class AirfoilShape():
     # --------------------------------------------------------------------------------
     # --- Functions that potentially change the data
     # --------------------------------------------------------------------------------
-    def _removeDuplicates(self, x=None, y=None, inPlace=False):
+    def _removeDuplicates(self, x=None, y=None, inPlace=False, verbose=False):
         """ remove duplicates in list of points """
         if x is None:
             x = self._x
@@ -243,7 +243,8 @@ class AirfoilShape():
             if self.closed and n2-n1==1:
                 pass # Normal case
             else:
-                print('[WARN] AirfoilShape: {} duplicate(s) removed: {}'.format(n1-n2, duplicate_points))
+                if verbose:
+                    print('[WARN] AirfoilShape: {} duplicate(s) removed: {}'.format(n1-n2, duplicate_points))
         if inPlace:
             self._x = xout
             self._y = yout

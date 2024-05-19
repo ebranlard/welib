@@ -176,7 +176,7 @@ class KalmanFilter(object):
     def nt(self):
         return len(self.time)
 
-    def setCleanValues(self,df,ColMap=None):
+    def setCleanValues(self,df,ColMap=None, verbose=False):
         if ColMap is None:
             ColMap=dict()
             for k in df.columns.values:
@@ -192,28 +192,33 @@ class KalmanFilter(object):
             try:
                 self.X_clean[lab]=df[ColMap[lab]].values
             except:
-                print('[WARN] Clean state not available      :', lab)
+                if verbose:
+                    print('[WARN] Clean state not available      :', lab)
         for i,lab in enumerate(self.XD_clean.columns):
             try:
                 self.XD_clean[lab]=df[ColMap[lab]].values
             except:
-                print('[WARN] Clean state not available      :', lab)
+                if verbose:
+                    print('[WARN] Clean state not available      :', lab)
 
         for i,lab in enumerate(self.sY):
             try:
                 self.Y_clean[lab]=df[ColMap[lab]].values
             except:
-                print('[WARN] Clean measurement not available:', lab)
+                if verbose:
+                    print('[WARN] Clean measurement not available:', lab)
         for i,lab in enumerate(self.sU):
             try:
                 self.U_clean[lab] =df[ColMap[lab]].values
             except:
-                print('[WARN] Clean output not available     :', lab)
+                if verbose:
+                    print('[WARN] Clean output not available     :', lab)
         for i,lab in enumerate(self.sS):
             try:
                 self.S_clean[lab] =df[ColMap[lab]].values
             except:
-                print('[WARN] Clean misc var not available   :', lab)
+                if verbose:
+                    print('[WARN] Clean misc var not available   :', lab)
 
     def setY(self,df,ColMap=None):
         if ColMap is None:
@@ -265,7 +270,7 @@ class KalmanFilter(object):
         return np.zeros(self.nX)
 
 
-    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', dataDict=None):
+    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', dataDict=None, verbose=False):
         """" 
          - Open a simulation result file
          - Use dt to discretize the KF
@@ -290,7 +295,7 @@ class KalmanFilter(object):
         # --- 
         KF.discretize(dt, method='exponential')
         KF.setTimeVec(time)
-        KF.setCleanValues(KF.df)
+        KF.setCleanValues(KF.df, verbose=verbose)
 
         # --- Estimate sigmas from measurements
         KF.sigX_c,KF.sigY_c = KF.sigmasFromClean(factor=1)

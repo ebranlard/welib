@@ -6,8 +6,6 @@ def vc_u(DX, DY, U0=1, R=1, Gamma=0, alpha=0, internal_flow=True):
     """
     2D Cylinder with possible free stream and circulation
     """
-    if alpha !=0:
-        print('[WARN] cylinder not ready for students')
     r     = np.sqrt(DX**2 + DY**2) # Radius at mesh locations
     theta = np.arctan2(DY, DX)          # 
     U = U0*np.cos(alpha) - (U0*((R/r)**2)*np.cos(2*theta - alpha))  - Gamma*np.sin(theta)/(2*np.pi*r)

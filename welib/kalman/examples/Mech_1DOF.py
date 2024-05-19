@@ -124,11 +124,11 @@ def main(tMax=100):
         KF.Y_hat.iloc[it+1,:]   = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
         KF.X_hat.iloc[it+1,:]   = x
         # --- Store extra info
-        KF.S_hat['eta'   ][it+1] = eta
-        KF.S_hat['M_sb'  ][it+1] = M_sb
-        KF.S_hat['GF'    ][it+1] = GF
-        KF.S_hat['qh_avg'][it+1] = qh_DC
-        KF.S_hat['qh'    ][it+1] = qh
+        KF.S_hat.loc[it+1, 'eta'   ] = eta
+        KF.S_hat.loc[it+1, 'M_sb'  ] = M_sb
+        KF.S_hat.loc[it+1, 'GF'    ] = GF
+        KF.S_hat.loc[it+1, 'qh_avg'] = qh_DC
+        KF.S_hat.loc[it+1, 'qh'    ] = qh
         # --- Propagation to next time step
         if np.mod(it,500) == 0:
             print('Time step %8.0f t=%10.3f ' % (it,KF.time[it]))

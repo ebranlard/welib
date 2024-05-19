@@ -84,15 +84,18 @@ class Polar(object):
             cd    = df['Cd'].values
             cm    = df['Cm'].values
             if 'fs' in df.keys():
-                print('[INFO] Using separating function from input file.')
+                if verbose:
+                    print('[INFO] Using separating function from input file.')
                 self.fs = df['fs'].values
                 self._fs_lock = True
             if 'Cl_fs' in df.keys():
-                print('[INFO] Using Cl fully separated from input file.')
+                if verbose:
+                    print('[INFO] Using Cl fully separated from input file.')
                 self.cl_fs =df['Cl_fs'].values
                 self._cl_fs_lock = True
             if 'Cl_inv' in df.keys():
-                print('[INFO] Using Cl inviscid from input file.')
+                if verbose:
+                    print('[INFO] Using Cl inviscid from input file.')
                 self.cl_inv = df['Cl_inv'].values
                 self._cl_inv_lock = True
                 # TODO we need a trigger if cl_inv provided, we should get alpha0 and slope from it
@@ -662,7 +665,7 @@ class Polar(object):
                 print("Angle encountered for which there is no CM table value " "(near +/-180 deg). Program will stop.")
         return cm_new
 
-    def unsteadyParams(self, window_offset=None, nMin=720):
+    def unsteadyParams(self, window_offset=None, nMin=720, verbose=False):
         """compute unsteady aero parameters used in AeroDyn input file
 
                 TODO Questions to solve:
@@ -732,7 +735,8 @@ class Polar(object):
         try:
             alpha0cn = _find_alpha0(alpha, cn, window, direction='up', value_if_constant = 0.)
         except NoCrossingException:
-            print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
+            if verbose:
+                print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
             alpha0cn = _find_alpha0(alpha, cn, window, direction='down')
 
         # checks for inppropriate data (like cylinders)
@@ -746,7 +750,8 @@ class Polar(object):
         try:
             a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="inflections")
         except NoStallDetectedException:
-            print('[WARN] Polar: Cn unsteady, cannot find stall based on inflections, using min and max')
+            if verbose:
+                print('[WARN] Polar: Cn unsteady, cannot find stall based on inflections, using min and max')
             a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="minmax")
 
         # --- cn slope
@@ -785,7 +790,8 @@ class Polar(object):
             a_f07_Upp = xInter[2]
             a_f07_Low = xInter[0]
         else:
-            print('[WARN] Polar: Cn unsteady, cn_f does not intersect cn 3 times. Intersections:{}.'.format(xInter))
+            if verbose:
+                print('[WARN] Polar: Cn unsteady, cn_f does not intersect cn 3 times. Intersections:{}.'.format(xInter))
             a_f07_Upp =  abs(xInter[0]) 
             a_f07_Low = -abs(xInter[0])
 
