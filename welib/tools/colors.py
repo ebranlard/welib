@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -132,6 +133,20 @@ def make_colormap(seq,values=None,name='CustomMap'):
     print(cdict)
     return mcolors.LinearSegmentedColormap(name, cdict)
 
+def cmap_colors(n, name='viridis'):
+    try:
+        cmap = matplotlib.colormaps[name]
+        COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,n)]
+        #Use ``matplotlib.colormaps[name]`` or ``matplotlib.colormaps.get_cmap(obj)
+    except:
+        try:
+            import matplotlib.cm
+            cmap = matplotlib.cm.get_cmap('viridis')
+            COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,n)]
+        except:
+            print('[WARN] colors.py: cmap_colors failed.')
+            COLRS = color_scales(n, color='blue')
+    return COLRS
 
 def color_scales(n, color='blue'):
     maps={

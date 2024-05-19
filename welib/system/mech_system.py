@@ -858,9 +858,6 @@ class MechSystem():
 def _plot(df, keys=None, label=None, title='', nPlotCols=1, axes=None, **kwargs):
     import matplotlib
     import matplotlib.pyplot as plt
-    #if COLRS is None:
-    #    cmap = matplotlib.cm.get_cmap('viridis')
-    #    COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
 
     time = df['Time_[s]'].values
     if keys is None:
