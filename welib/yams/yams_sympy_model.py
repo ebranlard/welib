@@ -72,14 +72,47 @@ class YAMSModel(object):
 
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
-        s+=' - coordinates:       {}\n'.format(self.coordinates)
+        s+=' - ref (inert. frame): <YAMSInertialbody> name:{}\n'.format(self.ref.name)
+        s+=' - coordinates      : {}\n'.format(self.coordinates)
+        s+=' - bodies           : list of length {}\n'.format(len(self.bodies))
+        s+=' - body_loads       : list of length {}\n'.format(len(self.body_loads))
+        s+=' - g_vect (gravity) : {}\n'.format(self.g_vect)
         s+=' - speeds:            {}\n'.format(self.speeds)
         s+=' - kdeqsSubs:         {}\n'.format(self.kdeqsSubs)
         s+=' - var:               {}\n'.format(self.var)
         s+=' - smallAnglesUsed  : {}\n'.format(self.smallAnglesUsed)
         s+=' - number of bodies : {}\n'.format(len(self.bodies))
         s+=' - opts             : {}\n'.format(self.opts)
+        s+=' * q (coordinates)\n'
+        s+=' * kdeqs (kinematic equations)\n'
         s+=' * loads            : {}\n'.format(self.loads)
+        s+=' - kane             : {}\n'.format('(need to call kaneEquations)')
+        s+=' - M (non-linear MM): {}\n'.format('(need to call mass_forcing_form)')
+        s+=' - F (non-linear F ): {}\n'.format('')
+        s+=' - M0 (linear MM)   : {}\n'.format('(need to call linearize)')
+        s+=' - K0 (linear K )   : {}\n'.format('')
+        s+=' - C0 (linear C )   : {}\n'.format('')
+        s+=' - B0 (linear F )   : {}\n'.format('')
+        s+='Useful functions:\n'
+        s+=' 1> kaneEquations(Mform="symbolic")\n'
+        s+=' 2> to_EOM(extraSubs=None, simplify=False)\n'
+        s+=' 2> mass_forcing_form(extraSubs=None, simplify=False)\n'
+        s+=' 3> linearize(op_point=None, noAcc=True, noVel=False, extraSubs=None)\n'
+        s+=' 1> EOM(self, Mform="symbolic", extraSubs=None):\n'
+        s+=' - smallAngleLinearize(op_point=None, noAcc=True, noVel=False, extraSubs=None)\n'
+        s+=' - smallAngleApproxEOM(angle_list, extraSubs=None, order=1)\n'
+        s+='Lower level functions\n'
+        s+=' - q_full()\n'
+        s+=' - coordinates_speed(self)\n'
+        s+=' - coordinates_acc(self)\n'
+        s+=' - addForce(body, point, force)\n'
+        s+=' - addMoment(body, frame, moment)\n'
+        s+=' - addPoint(P, frame=None)\n'
+        s+=' - exportPackage(path="", **kwargs)\n'
+        s+=' - toPython(extraSubs=None, variables=["MM"])\n'
+        s+=' - saveTex(name="", folder="./", **kwargs)\n'
+        s+=' - save(filename)\n'
+        s+=' - load(filename)\n'
         return s
 
     @property
@@ -367,6 +400,12 @@ class YAMSModel(object):
 
 
         return M,C,K,B
+
+    def mass_forcing_form(self, extraSubs=None, simplify=False):
+        EOM = self.to_EOM(extraSubs=extraSubs)
+        EOM.mass_forcing_form() # EOM.M and EOM.F
+        self.M = EOM.M
+        self.F = EOM.F
 
     def to_EOM(self, extraSubs=None, simplify=False):
         """ return a class to easily manipulate the equations of motion in place"""
@@ -726,10 +765,17 @@ class EquationsOfMotionQ(object):
         s+=' - input_vars: {}\n'.format(self.input_vars)
         s+=' - bodyReplaceDict: {}\n'.format(self.bodyReplaceDict)
         s+=' - smallAnglesUsed: {}\n'.format(self.smallAnglesUsed)
-        s+='attributes: EOM\n'.format(self.smallAnglesUsed)
-        s+='attributes: M,F          (call mass_forcing_form) \n'.format(self.smallAnglesUsed)
-        s+='attributes: M0,K0,C0,B0  (call linearize) \n'.format(self.smallAnglesUsed)
-        s+='methods that act on EOM in place (not M/F,M0): subs, simplify, trigsimp, expand\n'
+        s+=' - EOM\n'
+        s+=' - M,F          (call mass_forcing_form first) \n'
+        s+=' - M0,K0,C0,B0  (call linearize first) \n'
+        s+='Functions that act on EOM in place (not M/F,M0): subs, simplify, trigsimp, expand\n'
+        s+='Useful functions:\n'
+        s+=' - mass_forcing_form(extraSubs=None, simplify=False)\n'
+        s+=' - smallAngleApprox(angle_list, order=1, inPlace=False, newInstance=True)\n'
+        s+=' - linearize(op_point=None, noAcc=True, noVel=False, extraSubs=None, simplify=False)\n'
+        s+=' - saveTex()\n'
+        s+=' - toPython()\n'
+        s+=' - savePython()\n'
         return s
 
 

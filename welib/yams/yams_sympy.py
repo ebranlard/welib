@@ -991,6 +991,63 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
 
         # For harmony with flexible bodies
         self.shapeNormSubs= []
+
+    def bodyMassMatrix(self, form='regular', point='origin'):
+        """ Body mass matrix in body coordinates M'(q)
+        form is ['symbolic' , 'regular', 'TaylorExpanded']
+        """
+        self.M = zeros(6, 6)
+        # Mxx
+        self.M[0,0] = self.mass
+        self.M[1,1] = self.mass
+        self.M[2,2] = self.mass
+        print('>>> bodyMassMatrix for rigid bodies is in Beta')
+
+        if form=='TaylorExpanded':
+            """ Return the term of the mass matrix at a given order.
+            For order 1, terms are different for each dof"""
+            # TODO
+            self.M[0,0] = 0
+            self.M[1,1] = 0
+            self.M[2,2] = 0
+            # Mrx, Mxr
+            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            # Mrr
+            self.M[3:6,3:6] = self.J.get(dof,order)
+
+        elif form=='regular':
+            from welib.yams.utils import buildRigidBodyMassMatrix 
+            self.M[0,0] = self.mass
+            self.M[1,1] = self.mass
+            self.M[2,2] = self.mass
+            self.s_G_inB
+            s_OG = self.masscenter_pos_local
+            s_OG_ = s_OG.to_matrix(self.frame)
+            self.M =  buildRigidBodyMassMatrix(self.mass, self.origin_inertia_matrix, s_OG_, symb=True) 
+
+        elif form=='symbolic':
+            # Mxr
+            for i in np.arange(0,3):
+                for j in np.arange(3,6):
+                    self.M[i,j]=Symbol('M_{}{}{}'.format(self.name_for_var,i+1,j+1))
+            self.M[0,3]=0
+            self.M[1,4]=0
+            self.M[2,5]=0
+            # Mrr
+            char='xyz'
+            for i in np.arange(3,6):
+                for j in np.arange(3,6):
+                    self.M[i,j]=Symbol('J_{}{}{}'.format(self.name_for_var,char[i-3],char[j-3]))
+            # Symmetry
+            for i in np.arange(0,6+nq):
+                for j in np.arange(0,6+nq):
+                    self.M[j,i]=self.M[i,j]
+            pass
+        else:
+            raise NotImplementedError()
+        return self.M
+
             
     def inertiaIsInPrincipalAxes(self):
         """ enforce the fact that the frame is along the principal axes"""
@@ -1010,10 +1067,14 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     @property    
     def origin_inertia(self):
         return self.parallel_axis(self.origin)
+
+    @property    
+    def origin_inertia_matrix(self):
+        return self.origin_inertia.to_matrix(self.frame)
     
     @property    
     def inertia_matrix(self):
-        """ Returns inertia matrix in body frame"""
+        """ Returns inertia matrix in body frame at mass center"""
         J_G= self.parallel_axis(self.masscenter)
         return J_G.to_matrix(self.frame)
 
@@ -1061,8 +1122,11 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         except:
             s+=' * masscenter_acc_inertial: {}\n'.format('unknown')
 
-        s+='Useful getters: origin_inertia, inertia_matrix\n'
+        s+='Useful getters: origin_inertia, inertia_matrix, origin_inertia_matrix\n'
+        s+='                masscenter_inertia\n'
         s+='Useful setters: noMass, noInertia, setGcoord\n'
+        s+='Useful functions:\n'
+        s+='  - bodyMassMatrix(q=None, form="TaylorExpanded", order=None, dof=None)\n'
         return s
 
 
@@ -1170,6 +1234,8 @@ class YAMSFlexibleBody(YAMSBody):
         s+=' - uc    :       {}\n'.format(self.uc)
         s+=' - alpha :       {}\n'.format(self.alpha)
         s+=' - directions:   {}\n'.format(self.directions)
+        s+='Useful functions:\n'
+        s+='  - bodyMassMatrix(form="regular", point="origin")\n'
         return s
 
 

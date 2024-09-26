@@ -26,15 +26,17 @@ def eye(n):
 
 
 def skew(x):
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
-    #S = Matrix(np.zeros((3,3)).astype(int))
-    if hasattr(x,'shape') and len(x.shape)==2:
-        if x.shape[0]==3:
-            return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
-        else:
-            raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
-    else:
-        return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
+    #""" Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
+    from welib.yams.utils import skew as skew_general
+    return skew_general(x, symb=True)
+    ##S = Matrix(np.zeros((3,3)).astype(int))
+    #if hasattr(x,'shape') and len(x.shape)==2:
+    #    if x.shape[0]==3:
+    #        return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
+    #    else:
+    #        raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
+    #else:
+    #    return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 # --------------------------------------------------------------------------------}
 # --- PYDY VIZ related...

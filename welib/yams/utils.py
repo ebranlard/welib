@@ -9,17 +9,27 @@ import numpy as np
 from numpy import cos ,sin
 from welib.yams.rotations import R_x, R_y, R_z
 
-def Matrix(m):
-    return np.asarray(m)
+# def Matrix(m):
+#     return np.asarray(m)
 
-def skew(x):
+def skew(x, symb=False):
     """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v 
     [ 0, -z , y]
     [ z,  0 ,-x]
     [-y,  x , 0]
     """
-    x=np.asarray(x).ravel()
-    return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
+    if not symb:
+        x=np.asarray(x).ravel()
+        return np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
+    else:
+        from sympy import Matrix
+        if hasattr(x,'shape') and len(x.shape)==2:
+            if x.shape[0]==3:
+                return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
+            else:
+                raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
+        else:
+            return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 def skew2(x):
     """ Returns the skew(x).skew(x) 
@@ -45,7 +55,7 @@ def extractVectFromSkew(M):
     return np.array([x,y,z])
 
 
-def buildRigidBodyMassMatrix(Mass, J_P, COG=None): 
+def buildRigidBodyMassMatrix(Mass, J_P, COG=None, symb=False): 
     """ 
     Simply builds the mass matrix of a rigid body (i.e. mass matrix) Eq.(15) of [1] 
     INPUTS:
@@ -53,15 +63,21 @@ def buildRigidBodyMassMatrix(Mass, J_P, COG=None):
       - JP: (3x3 matrix) full inertia matrix at Point P
       - COG: (3-vector) x,y,z position of center of mass
     """
-    S=Mass*skew(COG)
-    MM=np.zeros((6,6))
-    MM[0:3,0:3] = Mass*np.eye(3);
+    if symb:
+        from sympy import zeros, Matrix
+        MM = zeros(6,6)
+    else:
+        MM = np.zeros((6,6));
+    S = Mass*skew(COG, symb=symb)
+    MM[0,0] = Mass
+    MM[1,1] = Mass
+    MM[2,2] = Mass
     MM[0:3,3:6] = -S;
     MM[3:6,0:3] = S ; # transpose(S)=-S;
     MM[3:6,3:6] = J_P ;
     return MM
 
-def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None):
+def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None, symb=False):
     """ 
     Rigid body mass matrix (6x6) at a given reference point: 
       the center of gravity (if Ref2COG is None) 
@@ -79,6 +95,7 @@ def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None):
     OUTPUTS:
       - M66 (6x6) : rigid body mass matrix at COG or given point 
     """
+    # TODO SYMPY
     # Default values
     if m is None: m=0
     if Ref2COG is None: Ref2COG=(0,0,0)
