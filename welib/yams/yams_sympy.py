@@ -273,6 +273,16 @@ class YAMSBody(object):
 
         self.viz_opts={}
 
+    @property
+    def name(self):
+        """The name of the body."""
+        return self._name
+
+    @name.setter
+    def name(self,name):
+        """The name of the body."""
+        self._name=name
+
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
         s+=' - origin:       {}\n'.format(self.origin)
@@ -933,7 +943,8 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         
         """
         # YAMS Body creates a default "origin", "masscenter", and "frame"
-        YAMSBody.__init__(self, name)
+        # We give the properties to SympyRigidBody later below
+        super().__init__(name =name)
         
         if name_for_var is None:
             name_for_var = name
@@ -975,9 +986,11 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             
         #inertia: dyadic : (inertia(frame, *list), point)
         if J_at_Origin:
+            self._inertia_point = self.origin
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.origin)
             print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NOTE: inertia at origin')
         else:
+            self._inertia_point = self.origin
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
             
         # --- Position of COG in body frame
@@ -985,9 +998,12 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             rho_G=symbols('x_G_'+name_for_var+ ', y_G_'+name_for_var+ ', z_G_'+name_for_var)
         self.setGcoord(rho_G)
         self.masscenter.set_vel(self.frame, 0 * self.frame.x)
-            
         # Init Sympy Rigid Body 
-        SympyRigidBody.__init__(self, name, self.masscenter, self.frame, mass, _inertia)
+        #SympyRigidBody.__init__(self, name, self.masscenter, self.frame, mass, _inertia)
+        self.mass = mass # Need to be  before inertia
+        #self.masscenter # already defined
+        #self.frame # already defined
+        self.inertia = _inertia
 
         # For harmony with flexible bodies
         self.shapeNormSubs= []
