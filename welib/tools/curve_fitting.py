@@ -685,7 +685,7 @@ class FunctionFitter():
         def middleOfBounds(i):
             """ return middle of bounds for parameter `i`"""
             bLow  = bounds[0][i]
-            bHigh = bounds[0][2]
+            bHigh = bounds[1][i]
             if (bLow,bHigh)==(-np.inf,np.inf):
                 p_i=0
             elif bLow==-np.inf:

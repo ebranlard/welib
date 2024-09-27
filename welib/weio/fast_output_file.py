@@ -40,7 +40,6 @@ except:
     print('CSVFile not available')
 
 
-
 FileFmtID_WithTime              = 1 # File identifiers used in FAST
 FileFmtID_WithoutTime           = 2
 FileFmtID_NoCompressWithoutTime = 3
@@ -151,7 +150,8 @@ class FASTOutputFile(File):
                 cols=[n+'_['+u.replace('sec','s')+']' for n,u in zip(info['attribute_names'], info['attribute_units'])]
         else:
             cols=info['attribute_names']
-
+        self.description = info.get('description', '')
+        self.description = ''.join(self.description) if isinstance(self.description,list) else self.description
         if isinstance(self.data, pd.DataFrame):
             self.data.columns = cols
         else:
@@ -175,10 +175,15 @@ class FASTOutputFile(File):
         else:
             # ascii output
             with open(self.filename,'w') as f:
+                f.write(self.description) # add description to the begining of the file
                 f.write('\t'.join(['{:>10s}'.format(c)         for c in self.channels])+'\n')
                 f.write('\t'.join(['{:>10s}'.format('('+u+')') for u in self.units])+'\n')
                 # TODO better..
-                f.write('\n'.join(['\t'.join(['{:10.4f}'.format(y[0])]+['{:10.3e}'.format(x) for x in y[1:]]) for y in self.data]))
+                if self.data is not None:
+                    if isinstance(self.data, pd.DataFrame) and not self.data.empty:
+                        f.write('\n'.join(['\t'.join(['{:10.4f}'.format(y.iloc[0])]+['{: .5e}'.format(x) for x in y.iloc[1:]]) for _, y in self.data.iterrows()]))
+                    else: # in case data beeing array or list of list.
+                        f.write('\n'.join(['\t'.join(['{:10.4f}'.format(y)]+['{: .5e}'.format(x) for x in y]) for y in self.data]))
 
     @property
     def channels(self):
@@ -215,7 +220,7 @@ class FASTOutputFile(File):
 
     def __repr__(self):
         s='<{} object> with attributes:\n'.format(type(self).__name__)
-        s+=' - filename:    {}\n'.format(filename)
+        s+=' - filename:    {}\n'.format(self.filename)
         s+=' - data ({})\n'.format(type(self.data))
         s+=' - description: {}\n'.format(self.description)
         s+='and keys: {}\n'.format(self.keys())

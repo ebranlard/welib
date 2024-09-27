@@ -19,7 +19,7 @@ class ROSCOPerformanceFile(File):
     
     Main methods
     ------------
-    - read, write, toDataFrame, keys
+    - read, write, toDataFrame, to2DFields, keys
     
     Examples
     --------
@@ -70,7 +70,7 @@ class ROSCOPerformanceFile(File):
 
         if self['pitch'] is not None:
             self.checkConsistency()
-
+        
     def read(self, filename=None, **kwargs):
         """ Reads the file self.filename, or `filename` if provided 
         stores data into self. 
