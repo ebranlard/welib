@@ -145,11 +145,11 @@ def fcalc(f, h, g, D, ap, CD, CM , rho, t, z, x, k, eps, phi, u_struct):
 
     # Morison
     P = (.5 * rho * CD * D * u * np.abs(u)) + (rho * CM * np.pi*(D**2)/4 * du) #N/m inline Force from wave
-    GF = np.trapz((P*phi.reshape(len(phi), 1)), z , axis = 0 ) #work - N       #Generalized force
+    GF = np.trapezoid((P*phi.reshape(len(phi), 1)), z , axis = 0 ) #work - N       #Generalized force
     M = P * (z.reshape(len(z), 1) + h) #Nm/m [N]
 
-    F_total = np.trapz(P, z, axis=0)                                           
-    M_total = np.trapz(M, z, axis=0) #[Nm]
+    F_total = np.trapezoid(P, z, axis=0)                                           
+    M_total = np.trapezoid(M, z, axis=0) #[Nm]
 
     return u, du, GF, P, M, F_total, M_total
 

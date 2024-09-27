@@ -3,6 +3,12 @@ try:
     from scipy.integrate import cumulative_trapezoid 
 except:
     from scipy.integrate import cumtrapz as cumulative_trapezoid
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
+
 '''
 Flexible beam tools:
     - computation of generalized mass and stiffness matrix
@@ -146,7 +152,7 @@ def GKBeamStiffnening(s_span, dU, gravity, m, Mtop=0, Omega=0, bSelfWeight=True,
             return np.sum(yy) 
     elif method=='trapz' or method=='Flex':
         def trapzs(yy,**args):
-            return np.trapz(yy, s_span)
+            return trapezoid(yy, s_span)
     else:
         raise NotImplementedError()
 
@@ -231,7 +237,7 @@ def GKBeamStiffneningSplit(s_G, s_span, dU, m, main_axis='x', method='trapz'):
         dr = np.ones(s_span.shape)
 
         def trapzs(yy,**args):
-            return np.trapz(yy, s_span)
+            return trapezoid(yy, s_span)
 
         fcumtrapzlrs = fcumtrapzlr
 
@@ -353,7 +359,7 @@ def GKBeam(s_span, EI, ddU, bOrth=False, method='trapz'):
             return np.sum(yy) 
     elif method=='trapz' or method=='Flex':
         def trapzs(yy,**args):
-            return np.trapz(yy, s_span)
+            return trapezoid(yy, s_span)
             #return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
     else:
         raise NotImplementedError()
@@ -859,7 +865,7 @@ def shapeIntegrals(s_G, s_span, m, U, dU, ddU, method='trapz', EI=None):
         # Speed up integration along the span, using integration weight
         def trapzs(yy,**args):
             #return np.sum(yy*IW) # NOTE: this is equivalent to trapezoidal integration
-            return np.trapz(yy, s_span)
+            return trapezoid(yy, s_span)
 
 
     p     = dict()
@@ -1108,8 +1114,8 @@ def beamSectionLoads1D(z, p, Ftop=0, Mtop=0, s=1, F_lumped=None, method='plin'):
             zabove = z[Iabove]
             pabove = p[Iabove]
             Fabove = F_lumped[Iabove]
-            Fsec[i]=np.trapz(pabove, zabove) + Ftop + np.sum(Fabove)
-            Msec[i]=np.trapz(pabove*(zabove-zcur), zabove)+Ftop*(z[-1]-zcur) + np.sum(Fabove*(zabove-zcur))
+            Fsec[i]=trapezoid(pabove, zabove) + Ftop + np.sum(Fabove)
+            Msec[i]=trapezoid(pabove*(zabove-zcur), zabove)+Ftop*(z[-1]-zcur) + np.sum(Fabove*(zabove-zcur))
         Msec+=Mtop
 
     elif method=='cumtrapz':
@@ -1460,7 +1466,7 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     Gr, Ge, Oe, Oe6 = IT['Gr'], IT['Ge'], IT['Oe'], IT['Oe6']
 
     # Beam COG
-    s_COG = np.trapz(m*s_G0,s_span)/MM[0,0]
+    s_COG = trapezoid(m*s_G0,s_span)/MM[0,0]
 
     # J at COG
     J_O  = MM[3:6, 3:6]

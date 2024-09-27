@@ -23,16 +23,16 @@ def main():
     print('Error norm:', np.linalg.norm(F-F_gen))
 
     # --- Marginal distributions
-    F1 = np.trapz(F.T, x2)
-    F2 = np.trapz(F, x1)
+    F1 = np.trapezoid(F.T, x2)
+    F2 = np.trapezoid(F, x1)
     F1th = gaussian_pdf(x1, mus[0], sigmas[0]**2)
     F2th = gaussian_pdf(x2, mus[1], sigmas[1]**2)
 
     # Joint distribution if variables were independent
     _, _, F_indpt = gaussian2d_pdf_meshgrid(x1, x2, mus, sigmas, rho=0)
 #     F_indpt = (np.atleast_2d(F1th).T).dot(np.atleast_2d(F2th)).T
-    F1_indpt = np.trapz(F_indpt.T, x2)
-    F2_indpt = np.trapz(F_indpt, x1)
+    F1_indpt = np.trapezoid(F_indpt.T, x2)
+    F2_indpt = np.trapezoid(F_indpt, x1)
 
 
     # --- Contour

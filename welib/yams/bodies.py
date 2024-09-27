@@ -17,6 +17,11 @@ __all__ = ['Body','InertialBody','RigidBody','FlexibleBody']
 # --- For harmony with sympy
 import numpy as np
 from numpy import eye, cross, cos ,sin
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
 def Matrix(m):
     return np.asarray(m)
 def zeros(m,n):
@@ -408,7 +413,7 @@ class BeamBody(FlexibleBody):
                 #FirstMom = sum(p['BElmntMass']*p['RNodes'])
                 return np.array(S/self.mass)
             else:
-                return  np.trapz(self.m*self.s_G0,self.s_span)/self.mass
+                return  trapezoid(self.m*self.s_G0,self.s_span)/self.mass
         else:
             return np.array([0,0,0])
 

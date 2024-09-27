@@ -845,7 +845,7 @@ def insert_extra_columns_AD(dfRad, tsAvg, vr=None, rho=None, R=None, nB=None, ch
             Ct=nB*Fx/(0.5 * rho * 2 * U0**2 * np.pi * vr)
             Ct[vr<0.01*R] = 0
             dfRad[sB+'Ctloc_[-]'] = Ct
-            CT=2*np.trapz(vr_bar*Ct,vr_bar)
+            CT=2*np.trapezoid(vr_bar*Ct,vr_bar)
             dfRad[sB+'CtAvg_[-]']= CT*np.ones(vr.shape)
         except:
             pass
@@ -1878,7 +1878,7 @@ def integrateMoment(r, F):
     """
     M = np.zeros(len(r)-1)
     for ir,_ in enumerate(r[:-1]):
-        M[ir] = np.trapz(F[ir:]*(r[ir:]-r[ir]), r[ir:]-r[ir])
+        M[ir] = np.trapezoid(F[ir:]*(r[ir:]-r[ir]), r[ir:]-r[ir])
     return M
 
 def integrateMomentTS(r, F):

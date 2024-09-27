@@ -211,7 +211,7 @@ def pdf_histogram(y,nBins=50, norm=True, count=False):
     else:
         yh  = yh / (nBins*dx) 
     if norm:
-        yh=yh/np.trapz(yh,xh)
+        yh=yh/np.trapezoid(yh,xh)
     return xh,yh
 
 def pdf_gaussian_kde(data, bw='scott', nOut=100, cut=3, clip=(-np.inf,np.inf)):

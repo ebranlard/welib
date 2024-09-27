@@ -135,7 +135,7 @@ class Structure():
         #         vL = x[0] * vy1c
         #         U  =        s.Twr.PhiU[0][0,:]
         #         GF_soft=0
-        #         GF_soft+= np.trapz(+U*k*Fz_inE   , s.Twr.s_span)
+        #         GF_soft+= np.trapezoid(+U*k*Fz_inE   , s.Twr.s_span)
         #         GF_soft+=          -vL*Fz_inE*ux1c
 
         My_inE = 0

@@ -130,12 +130,12 @@ for it, t in enumerate(time):
     u0, du0  = kinematics2d(a, f, k, eps, h, t, z)
     # Wave loads with Wheeler
     p_tot  = inline_load(u, du, D, CD  , CM  , rho)
-    vF[it] = np.trapz(p_tot            , z) # [N]
-    vM[it] = np.trapz(p_tot * (z-z_ref), z) # [Nm]
+    vF[it] = np.trapezoid(p_tot            , z) # [N]
+    vM[it] = np.trapezoid(p_tot * (z-z_ref), z) # [Nm]
     # Wave loads without Wheeler
     p_tot0 = inline_load(u0, du0, D, CD  , CM  , rho)
-    vF0[it] = np.trapz(p_tot0            , z) # [N]
-    vM0[it] = np.trapz(p_tot0 * (z-z_ref), z) # [Nm]
+    vF0[it] = np.trapezoid(p_tot0            , z) # [N]
+    vM0[it] = np.trapezoid(p_tot0 * (z-z_ref), z) # [Nm]
 
 # Plot
 fig, axes = plt.subplots(3, 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)

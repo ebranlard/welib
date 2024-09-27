@@ -13,6 +13,11 @@ from scipy.interpolate import interp1d
 import copy
 import pandas as pd
 import matplotlib.pyplot as plt
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
 
 
 
@@ -1311,19 +1316,19 @@ class UnsteadyBEM():
         M_rxF_i = np.cross(r_center2nodes, F_i) # Force lever arm contribution to moments
         if self.bUseCm:
             # Important contribution in cone/prebend
-            # QMz = np.trapz(self.Mm[it,:]*np.sin(cant), r_p)
+            # QMz = trapezoid(self.Mm[it,:]*np.sin(cant), r_p)
             M_i += M_rxF_i 
         else:
             M_i = M_rxF_i 
 
         # Integrate forces
-        self.BAeroF_i[it, :nB , 0] = np.trapz(F_i[:,:,0], sBldNodes)
-        self.BAeroF_i[it, :nB , 1] = np.trapz(F_i[:,:,1], sBldNodes)
-        self.BAeroF_i[it, :nB , 2] = np.trapz(F_i[:,:,2], sBldNodes)
+        self.BAeroF_i[it, :nB , 0] = trapezoid(F_i[:,:,0], sBldNodes)
+        self.BAeroF_i[it, :nB , 1] = trapezoid(F_i[:,:,1], sBldNodes)
+        self.BAeroF_i[it, :nB , 2] = trapezoid(F_i[:,:,2], sBldNodes)
         # Integrate moments and add force contrib
-        self.BAeroM_i[it, :nB , 0] = np.trapz(M_i[:,:,0], sBldNodes)
-        self.BAeroM_i[it, :nB , 1] = np.trapz(M_i[:,:,1], sBldNodes)
-        self.BAeroM_i[it, :nB , 2] = np.trapz(M_i[:,:,2], sBldNodes)
+        self.BAeroM_i[it, :nB , 0] = trapezoid(M_i[:,:,0], sBldNodes)
+        self.BAeroM_i[it, :nB , 1] = trapezoid(M_i[:,:,1], sBldNodes)
+        self.BAeroM_i[it, :nB , 2] = trapezoid(M_i[:,:,2], sBldNodes)
         # Sum over blade
         self.RtAeroF_i[it, :3] =  np.sum(self.BAeroF_i[it, : , :],axis=0)
         self.RtAeroM_i[it, :3] =  np.sum(self.BAeroM_i[it, : , :],axis=0)
@@ -1340,9 +1345,9 @@ class UnsteadyBEM():
         #            QMz = np.zeros(nB)
         #
 # #       m%AllOuts( RtAeroPwr ) = omega * m%AllOuts( RtAeroMxh )
-        #self.BladeThrust[it,:] = np.trapz(self.Fn[it,:]    , r_p)       # Normal to rotor plane
-        #self.BladeTorque[it,:] = np.trapz(self.Ft[it,:]*r_p, r_p) + QMz[:]  # About shaft 
-        #self.Thrust[it] = np.sum(self.BladeThrust[it,:])            # Normal to rotor plane
+        #self.BladeThrust[it,:] = trapezoid(self.Fn[it,:]    , r_p)       # Normal to rotor plane
+        #self.BladeTorque[it,:] = trapezoid(self.Ft[it,:]*r_p, r_p) + QMz[:]  # About shaft 
+        #self.Thrust[it] = np.sum(trapezoiddeThrust[it,:])            # Normal to rotor plane
         #self.Torque[it] = np.sum(self.BladeTorque[it,:])
         self.Thrust[it] = self.RtAeroF_r[it,0]
         self.Torque[it] = self.RtAeroM_r[it,0] # NOTE: coord sys
@@ -1359,9 +1364,9 @@ class UnsteadyBEM():
                 #         RES.BladeFlap[idB] = sum(np.multiply(np.multiply(Rotor.dr,(np.transpose(Pn) * np.cos(np.pi/180*cone))),(r - rhub)))
                 #         RES.BladeEdge[idB] = sum(np.multiply(np.multiply(np.multiply(Rotor.dr,np.transpose(Pt)),(r * np.cos(np.pi/180*cone))),(r - rhub)))
                 # ### Torque momentum at hub
-                # #RES.BladeFlap(idB)=trapz([Rotor.r;R],[Rotor.r.*(Pz*0+Pn);0]);
-                # #RES.BladeEdge(idB)=trapz([Rotor.r;R],[Rotor.r.*(Py*0+Pt);0]);
-                #  #### Returning Aerodynamic Forces
+                # #RES.BladeFlap(idB)=trapezoidotor.r;R],[Rotor.r.*(Pz*0+Pn);0]);
+                # #RES.BladeEdge(idB)=trapezoidotor.r;R],[Rotor.r.*(Py*0+Pt);0]);
+                #  #### Returning AerotrapezoidForces
                 #  RES.Flap = sum(RES.BladeFlap)
                 #  RES.Edge = sum(RES.BladeEdge)
         return xd1

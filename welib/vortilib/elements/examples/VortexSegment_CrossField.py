@@ -72,7 +72,7 @@ def main():
         Ut = Uy * np.cos(theta) - Ux * np.sin(theta)
         U_th = Gamma*(L/2)/(2*np.pi*r * np.sqrt(r**2 + (L/2)**2))
         print(Ut[:3], U_th)
-        #GammaCalc = r* np.trapz(Ut,theta)
+        #GammaCalc = r* np.trapezoid(Ut,theta)
         GammaCalc = 2*np.pi * r*Ut[0] 
         return  GammaCalc
 

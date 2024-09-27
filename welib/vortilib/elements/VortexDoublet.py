@@ -302,25 +302,25 @@ def I30_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = 1/ r2**(3/2)
-    return np.trapz(dI, zp)
+    return np.trapezoid(dI, zp)
 
 def I50_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = 1/ r2**(5/2)
-    return np.trapz(dI, zp)
+    return np.trapezoid(dI, zp)
 
 def I51_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = zp/ r2**(5/2)
-    return np.trapz(dI, zp)
+    return np.trapezoid(dI, zp)
 
 def I52_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = zp**2/ r2**(5/2)
-    return np.trapz(dI, zp)
+    return np.trapezoid(dI, zp)
 
 
 # --------------------------------------------------------------------------------}

@@ -71,7 +71,7 @@ class StochasticVariable():
         """ Compute integral of PDF (should return 1)  """
         if x is not None:
             # We compute numerical integral
-            integral = np.trapz(self.pdf(x), x)
+            integral = np.trapezoid(self.pdf(x), x)
         elif self._f_pdf is not None:
             # We have a function for the pdf, we use more accurate nquad evaluation
             integral, _ = nquad( self._f_pdf , [self.domain])
@@ -79,7 +79,7 @@ class StochasticVariable():
             # Numerical integral
             if x is None:
                 x = self.x_default
-            integral = np.trapz(self.pdf(x), x)
+            integral = np.trapezoid(self.pdf(x), x)
         return integral
 
     def sample(self, n, method='inverse-cdf'):
@@ -152,7 +152,7 @@ class StochasticVariable():
         elif self._data is None:
             # Use numerical integration
             x = self.x_default
-            self._mean = np.trapz(x * self.pdf(x) , x)
+            self._mean = np.trapezoid(x * self.pdf(x) , x)
         else:
             # Use the raw sampled data
             self._mean =  np.mean(self._data)
@@ -171,7 +171,7 @@ class StochasticVariable():
         elif self._data is None:
             # Use numerical integration
             x = self.x_default
-            self._var = np.trapz((x-mu)**2 * self.pdf(x) , x)
+            self._var = np.trapezoid((x-mu)**2 * self.pdf(x) , x)
         else:
             self._var = np.var(self._data)
         return self._var

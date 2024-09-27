@@ -120,12 +120,12 @@ if __name__ == '__main__':
         ax.tick_params(direction='in')
         ax.autoscale(enable=True, axis='both', tight=True)
 
-        print('Integration Kaimal:', np.trapz(Sf, freq))
-        print('Integration Gener1:', np.trapz(S_fft, f_fft))
+        print('Integration Kaimal:', np.trapezoid(Sf, freq))
+        print('Integration Gener1:', np.trapezoid(S_fft, f_fft))
         Sf[0]    = 0
         S_fft[0] = 0
-        print('Integration Kaimal:', np.trapz(Sf, freq))
-        print('Integration Gener1:', np.trapz(S_fft, f_fft))
+        print('Integration Kaimal:', np.trapezoid(Sf, freq))
+        print('Integration Gener1:', np.trapezoid(S_fft, f_fft))
         print('Sigma2            :', np.var(u))
     
     plt.show()

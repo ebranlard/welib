@@ -59,8 +59,8 @@ if __name__=='__main__':
             t, u, freq, S, f_fft, S_fft = generateTSPlot(method=method, randomAmplitudes=False)
         S[0]     = 0
         S_fft[0] = 0
-        print('Integration Kaimal:', np.trapz(S, freq))
-        print('Integration       :', np.trapz(S_fft, f_fft))
+        print('Integration Kaimal:', np.trapezoid(S, freq))
+        print('Integration       :', np.trapezoid(S_fft, f_fft))
         print('Sigma^2           :', np.var(u))
     plt.show()
 

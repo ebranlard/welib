@@ -10,6 +10,10 @@ import os
 from numpy import pi, cos, exp, sqrt, sin, arctan2, arccos
 from scipy.interpolate import interp1d
 import pandas as pd
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 # --------------------------------------------------------------------------------}
@@ -592,15 +596,15 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         BEM.Cp      = BEM.Cq*lambda_r
 
         # --- Integral quantities per blade
-        BEM.Mz    = np.trapz(BEM.MzLn, r)
+        BEM.Mz    = trapezoid(BEM.MzLn, r)
         QMz = nB * BEM.Mz * np.sin(cone*np.pi/180)
 
         # --- Integral quantities for rotor
         # TODO integration variable might need to be rPolar
-        BEM.Torque = nB * np.trapz(rPolar * BEM.Pt, r) + QMz # Rotor shaft torque [N]
-        BEM.Thrust = nB * np.trapz(         BEM.Pn, r) # Rotor shaft thrust [N]
-        BEM.Flap   = np.trapz( BEM.Pn * (r - rhub), r) # Flap moment at blade root [Nm]
-        BEM.Edge   = np.trapz( BEM.Pt * (r - rhub), r) # Edge moment at blade root [Nm]
+        BEM.Torque = nB * trapezoid(rPolar * BEM.Pt, r) + QMz # Rotor shaft torque [N]
+        BEM.Thrust = nB * trapezoid(         BEM.Pn, r) # Rotor shaft thrust [N]
+        BEM.Flap   = trapezoid( BEM.Pn * (r - rhub), r) # Flap moment at blade root [Nm]
+        BEM.Edge   = trapezoid( BEM.Pt * (r - rhub), r) # Edge moment at blade root [Nm]
         BEM.Power = Omega * BEM.Torque
         BEM.CP = BEM.Power  / (0.5 * rho * V0**3 * pi * R**2) # TODO ref area with coning
         BEM.CT = BEM.Thrust / (0.5 * rho * V0**2 * pi * R**2)

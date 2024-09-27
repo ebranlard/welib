@@ -19,8 +19,8 @@ def inline_load(u, du, D, CD, CM, rho):
     p_drag    = .5 * rho * CD * D * u * np.abs(u)
     p_inertia = rho * CM * np.pi*(D**2)/4 * du 
 #     dM_ref  = P * (z-zref)                # [Nm/m] 
-#     F_total = np.trapz(P, z, axis=0)      # [N] integrated load
-#     M_total = np.trapz(dM_ref, z, axis=0) # [Nm]
+#     F_total = np.trapezoid(P, z, axis=0)      # [N] integrated load
+#     M_total = np.trapezoid(dM_ref, z, axis=0) # [Nm]
 
     return p_drag + p_inertia
 
@@ -60,8 +60,8 @@ def monopileHydroLoads1D(ai, fi, ki, epsi, h, t, z, x, D, CD, CM, rho, u_struct)
     dM_hydro = p_hydro * (z-z_ref)
 
     # Integration of loads
-    F_hydro    = np.trapz(p               , zWet) # [N]
-    M_sb_hydro = np.trapz(p * (zWet-z_ref), zWet) # Sea bed moment [Nm]
+    F_hydro    = np.trapezoid(p               , zWet) # [N]
+    M_sb_hydro = np.trapezoid(p * (zWet-z_ref), zWet) # Sea bed moment [Nm]
 
     return u, du, p_hydro, dM_hydro, F_hydro, M_sb_hydro
 
