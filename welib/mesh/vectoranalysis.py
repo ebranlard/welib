@@ -19,9 +19,8 @@ def matlab_gradient_2d(F,*args,**kwargs):
     call syntax:
        gradient(F) or gradient(F,dx,dy) or gradient(F,x,y)
     """
-    G=np.gradient(F.T,*args,**kwargs)
-    G[0]=G[0].T
-    G[1]=G[1].T
+    G = np.gradient(F.T,*args,**kwargs)
+    G = (G[0].T, G[1].T)
     return G
 
 def matlab_div_2d(*args):

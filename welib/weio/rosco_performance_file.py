@@ -421,7 +421,7 @@ def write_rotor_performance(txt_filename, pitch, TSR, CP, CT, CQ, WS=None, Turbi
     file.close()
 
 
-def interp2d_pairs(*args,**kwargs):
+def interp2d_pairs(X,Y,Z,**kwargs):
     """ Same interface as interp2d but the returned interpolant will evaluate its inputs as pairs of values.
     Inputs can therefore be arrays
 
@@ -437,20 +437,20 @@ def interp2d_pairs(*args,**kwargs):
     author: E. Branlard
     """
     import scipy.interpolate as si
-    # Internal function, that evaluates pairs of values, output has the same shape as input
-    def interpolant(x,y,f):
-        x,y = np.asarray(x), np.asarray(y)
-        return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
-
     # Wrapping the scipy interp2 function to call out interpolant instead
-    # interp2d
-    #   For legacy code, nearly bug-for-bug compatible replacements are
-    #   `RectBivariateSpline` on regular grids, and `bisplrep`/`bisplev` for scattered 2D data.
-    #   
-    #   In new code, for regular grids use `RegularGridInterpolator` instead.
-    #   For scattered data, prefer `LinearNDInterpolator` or `CloughTocher2DInterpolator`.
-    #return lambda x,y: interpolant(x,y,si.RectBivariateSpline(*args,**kwargs))
-    return lambda x,y: interpolant(x,y,si.interp2d(*args,**kwargs))
+    # --- OLD
+    # Internal function, that evaluates pairs of values, output has the same shape as input
+    #def interpolant(x,y,f):
+    #    x,y = np.asarray(x), np.asarray(y)
+    #    return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
+    #return lambda x,y: interpolant(x,y,si.interp2d(*args,**kwargs))
+    # --- NEW
+    Finterp = si.RegularGridInterpolator((X,Y), Z.T, **kwargs)
+    #r = si.RectBivariateSpline(X, Y, Z.T)
+    def interpolant(x,y):
+        x,y = np.asarray(x), np.asarray(y)
+        return Finterp((x,y))
+    return interpolant
 
 
 if __name__ == '__main__':

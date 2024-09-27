@@ -143,15 +143,14 @@ def cmap_colors(n, name='viridis'):
     try:
         cmap = matplotlib.colormaps[name]
         COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,n)]
-        #Use ``matplotlib.colormaps[name]`` or ``matplotlib.colormaps.get_cmap(obj)
     except:
-        try:
-            import matplotlib.cm
-            cmap = matplotlib.cm.get_cmap('viridis')
-            COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,n)]
-        except:
-            print('[WARN] colors.py: cmap_colors failed.')
-            COLRS = color_scales(n, color='blue')
+#         try:
+#             import matplotlib.cm
+#             cmap = matplotlib.cm.get_cmap('viridis')
+#             COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,n)]
+#     except:
+        print('[WARN] colors.py: cmap_colors failed.')
+        COLRS = color_scales(n, color='blue')
     return COLRS
 
 def color_scales(n, color='blue'):
@@ -371,7 +370,10 @@ def rgb_to_hls(rgb):
 
     maxc  = rgb.max(-1) #  maxc = max(r, g, b)
     minc  = rgb.min(-1) #  minc = min(r, g, b)
-    delta = rgb.ptp(-1) # max-min
+    try:
+        delta = np.ptp(rgb, -1) # max-min
+    except:
+        delta = rbg.ptp(-1) # max-min
 
     # --- Lightness
     hls[...,1] = (minc+maxc)/2.0

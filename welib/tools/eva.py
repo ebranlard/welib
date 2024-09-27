@@ -247,7 +247,7 @@ def eigMCK(M, C, K, method='full_matrix', sort=True, normQ=None):
         freq_0      = np.sqrt(np.diag(Lambda))/(2*np.pi)
         betaMat     = np.dot(Q,C).dot(Q.T)
         xi          = (np.diag(betaMat)*np.pi/(2*np.pi*freq_0))
-        xi[xi>2*np.pi] = np.NAN
+        xi[xi>2*np.pi] = np.nan
         zeta        = xi/(2*np.pi)
         freq_d      = freq_0*np.sqrt(1-zeta**2)
 
