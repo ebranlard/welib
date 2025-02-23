@@ -56,7 +56,7 @@ def main(nTheta=25, verbose=False):
 
     coords = fst.fst_vt['ac_data']
     # bld = fst.fst_vt['AeroDynBlade']['BldAeroNodes']
-    bld = fst.fst_vt['AeroDynBlade'].toDataFrame()
+    bld = fst.fst_vt['AeroDynBlade'][0].toDataFrame()
 
 
     # --- Interpolating to more radial stations
