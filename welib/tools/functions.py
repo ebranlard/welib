@@ -96,7 +96,7 @@ def smooth_heaviside(x, k=1, rng=(-np.inf, np.inf), method='exp'):
 
 
 def smooth_delta_inf(xx, e, method='gaussian'):
-    """ 
+    r""" 
     Smooth approximation of delta function between -inf and inf
 
     INPUTS: 

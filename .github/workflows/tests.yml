@@ -29,15 +29,13 @@ jobs:
             python: xvfb-run python3
             pip_arg: ""
           - os: ubuntu-latest
-            python-version: 3.12
+            python-version: 3.13
             python: xvfb-run python3
             pip_arg: ""
-          - os: macos-11
-            python-version: 3.9
+          - os: macos-latest
             python: python3
             pip_arg: ""
-          - os: windows-2019
-            python-version: 3.9
+          - os: windows-latest
             python: python
             pip_arg: --user
     runs-on: ${{ matrix.os }}
