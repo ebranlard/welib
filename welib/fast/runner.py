@@ -200,6 +200,7 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
         discard_if_ext_present=None,
         dispatch=False,
         stdOutToFile=False,
+        preCommands=None,
         echo=True):
     """ Write one or several batch file, all paths are written relative to the batch file directory.
     The batch file will consist of lines of the form:
@@ -255,6 +256,8 @@ def writeBatch(batchfile, fastfiles, fastExe=None, nBatches=1, pause=False, flag
             if not echo:
                 if os.name == 'nt':
                     f.write('@echo off\n')
+            if preCommands is not None:
+                f.write(preCommands+'\n')
             for ff in fastfiles:
                 ff_abs = os.path.abspath(ff)
                 ff_rel = os.path.relpath(ff_abs, batchdir)

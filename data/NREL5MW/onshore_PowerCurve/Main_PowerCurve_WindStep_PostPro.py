@@ -15,10 +15,12 @@ import matplotlib.pyplot as plt
 import sys
 
 import welib.weio as io
+import welib.fast.fastlib as fastlib
 from welib.weio.fast_output_file import FASTOutputFile
+from welib.essentials import *
 #import pyFAST.input_output as io
 
-def powerCurvePostProWindStep(outfile, ColMap={}, tWindow=20, WS=None, KeepAll=False, sWS='WS_[m/s]', sTime='Time_[s]'):
+def powerCurvePostProWindStep(outfile, ColMap={}, tWindow=20, WS=None, KeepAll=False, sWS='WS_[m/s]', sWSRaw='Wind1VelX_[m/s]', sTime='Time_[s]', dataDict=None):
     def renameCol(x):
         for k,v in ColMap.items():
             if x==v:
@@ -26,23 +28,14 @@ def powerCurvePostProWindStep(outfile, ColMap={}, tWindow=20, WS=None, KeepAll=F
         return x
 
     # --- Reading wind and output file
-    print('Reading input...')
+    print('Reading input...', outfile)
     df = FASTOutputFile(outfile).toDataFrame()
-    #print(df.columns.values)
-    # --- Applying column map
-    if len(ColMap)>0:
-        for k,v in ColMap.items():
-            if v=='':
-                v=k
-            if v not in df.columns.values:
-                raise Exception('Column `{}` not found in output file, cannot apply column mapping'.format(v))
-        df.rename(columns=renameCol,inplace=True)
     #units=['('s.split('[')[1].split(']')[0] for s in df.columns.values
     # --- Our main values
-    for v in [sWS, sTime]:
+    for v in [sWSRaw, sTime]:
         if v not in df.columns.values:
             raise Exception('Column `{}` need to be present in data. Please provide a column map to define it'.format(v))
-    vWS = np.round(df[sWS].values,2)
+    vWS = np.round(df[sWSRaw].values,2)
     t   = df[sTime].values
     # --- Finding unique WS values if not provided
     if WS is None:
@@ -59,17 +52,22 @@ def powerCurvePostProWindStep(outfile, ColMap={}, tWindow=20, WS=None, KeepAll=F
             tEnd = t[iEnd]
             tStart = t[iEnd]-tWindow
             IWindow=(t>tStart) & (t<tEnd)
-            print('WS:{:4.2f} - t: {:6.1f}-{:6.1f} - nValues:{}'.format(ws,tStart,tEnd,len(IWindow)))
+            #print('WS:{:4.2f} - t: {:6.1f}-{:6.1f} - nValues:{}'.format(ws,tStart,tEnd,len(IWindow)))
             MeanValues = pd.DataFrame(df[IWindow].mean()).transpose()
             if i==0:
                 result = MeanValues.copy()
             else:
-                result = pd.concat((result, MeanValues), axis=0, ignore_index=True)
+                #result=result.append(MeanValues, ignore_index=True)
+                result = pd.concat([result, MeanValues], ignore_index=True)
 
     # --- Sorting by WS
-    result[sWS]=np.round(result[sWS],2)
-    result.sort_values([sWS],inplace=True)
+    result[sWSRaw]=np.round(result[sWSRaw],2)
+    result.sort_values([sWSRaw],inplace=True)
     result.reset_index(drop=True,inplace=True) 
+    
+    # --- Apply column map
+    dataDict['U'] = result[sWSRaw].values
+    result = fastlib.remap_df(result, ColMap, bColKeepNewOnly=False, dataDict=dataDict)
     
     # --- Eliminating unnecessary columns
     if len(ColMap)>0 and (not KeepAll):
@@ -83,7 +81,17 @@ def powerCurvePostProWindStep(outfile, ColMap={}, tWindow=20, WS=None, KeepAll=F
     return result 
 
 if __name__=='__main__':
-    # --- FAST
+    TipRad=63
+    PreCone=-2.5
+    rho = 1.225
+    prebendTip = -3.2815226E-04
+    R_proj = TipRad*np.cos(PreCone*np.pi/180) - prebendTip*np.sin(PreCone*np.pi/180)
+    A = np.pi*R_proj**2
+    data={}
+    data['rho'] = rho
+    data['A'] = A
+    data['R'] = R_proj
+    # --- FAST OLD OPER
     ColMap = {}        
     ColMap['WS_[m/s]']         = 'Wind1VelX_[m/s]'
     ColMap['RotSpeed_[rpm]']   = 'RotSpeed_[rpm]'
@@ -91,8 +99,8 @@ if __name__=='__main__':
     ColMap['GenSpeed_[rpm]']   = ''
     ColMap['GenPower_[kW]']    = 'GenPwr_[kW]'
     ColMap['GenTorque_[kN-m]'] = 'GenTq_[kN-m]'
-    ColMap['RtAeroFxh_[kN]']   = 'RtAeroFxh_[N]'   # <<<<<<<<<<<<<<< 1000
-    ColMap['RtAeroMxh_[kN-m]'] = 'RtAeroMxh_[N-m]' # <<<<<<<<<<<<<<< 1000
+    ColMap['RtAeroFxh_[kN]']   = '{RtAeroFxh_[N]}/1e3'
+    ColMap['RtAeroMxh_[kN-m]'] = '{RtAeroMxh_[N-m]}/1e3'
     ColMap['RotThrust_[kN]']   = ''
     ColMap['RotTorq_[kN-m]']   = ''
     ColMap['TTDspFA_[m]']      = ''
@@ -101,18 +109,59 @@ if __name__=='__main__':
     ColMap['RtAeroCt_[-]']      = ''
     ColMap['RtTSR_[-]']      = ''
 
+    
+    # --- ROTORSE-LIKE OPER    
+    ColMap = {}        
+    # Trying to respect how WEIS Output operating conditions
+    ColMap['Wind_[m/s]']        = 'Wind1VelX_[m/s]'
+    ColMap['Pitch_[deg]']       = 'BldPitch1_[deg]'
+
+    ColMap['Power_[MW]']        = '{GenPwr_[kW]}/1e3'
+    ColMap['Aero_Power_[MW]']   = '{RtAeroPwr_[W]}/1e6'  
+    ColMap['CP_[-]']            = '{Power_[MW]}     *1e6/(1/2*rho*A*U**3)'
+    ColMap['Aero_CP_[-]']       = '{Aero_Power_[MW]}*1e6/(1/2*rho*A*U**3)'
+    ColMap['RtAeroCp_[-]']      = ''
+
+    ColMap['Rotor_Speed_[rpm]'] = 'RotSpeed_[rpm]'
+    ColMap['GenSpeed_[rpm]']    = ''
+    ColMap['Tip_Speed_[m/s]']   = '{RotSpeed_[rpm]}*2*np.pi/60*R'
+
+    ColMap['Thrust_[MN]']       = '{RotThrust_[kN]}/1e3'
+    ColMap['Aero_Thrust_[MN]']  = '{RtAeroFxh_[N]}/1e6'
+
+    ColMap['CT_[-]']            = '{Thrust_[MN]}     *1e6/(1/2*rho*A*U**2)'
+    ColMap['Aero_CT_[-]']       = '{Aero_Thrust_[MN]}*1e6/(1/2*rho*A*U**2)'
+    ColMap['RtAeroCt_[-]']      = ''
+
+    ColMap['Torque_[MNm]']      = '{RotTorq_[kN-m]}/1e3'
+    ColMap['GenTorque_[MNm]']   = '{GenTq_[kN-m]}/1e3  '
+    ColMap['Aero_Torque_[MNm]'] = '{RtAeroMxh_[N-m]}/1e6'
+
+    ColMap['CQ_[-]']            = '{Torque_[MNm]}     *1e6/(1/2*rho*A*U**2*R)'
+    ColMap['Aero_CQ_[-]']       = '{Aero_Torque_[MNm]}*1e6/(1/2*rho*A*U**2*R)'
+
+    ColMap['Blade_Moment_[MNm]'] = '{RootMyc1_[kN-m]}/1e3'
+    ColMap['Blade_Moment_Coefficient_[-]'] = '{RootMyc1_[kN-m]}*1e3/(1/2*rho*A*U**2*R)'
+
+    ColMap['R_ref_[m]']          = '{ones}* R'
+    ColMap['TSR_[-]']            = '{RotSpeed_[rpm]}*2*np.pi/60*R/U'
+    ColMap['RtTSR_[-]']          = ''
+
+    ColMap['TTDspFA_[m]']        = ''
+    ColMap['TTDspSS_[m]']        = ''
+
+
     OutFiles =[]
-    OutFiles +=['PowerCurve_Onshore_Flexible_ROSCO.outb']
-    OutFiles +=['PowerCurve_Onshore_Rigid_ROSCO.outb']
-    OutFiles +=['PowerCurve_Onshore_Flexible_Discon.outb']
-    OutFiles +=['PowerCurve_Onshore_Rigid_Discon.outb']
+    OutFiles +=['_PowerCurve_Onshore_Flexible_Discon.outb']
+    OutFiles +=['_PowerCurve_Onshore_Flexible_ROSCO.outb']
+    OutFiles +=['_PowerCurve_Onshore_Rigid_Discon.outb']
+    OutFiles +=['_PowerCurve_Onshore_Rigid_ROSCO.outb']
     for OutFile in OutFiles:
-        result = powerCurvePostProWindStep(OutFile, tWindow=20, ColMap=ColMap)
-        result['RtAeroFxh_[kN]']    /=1000
-        result['RtAeroMxh_[kN-m]']  /=1000
+        result = powerCurvePostProWindStep(OutFile, tWindow=20, ColMap=ColMap, sWS='Wind_[m/s]', dataDict=data)
         operFile = OutFile.replace('.outb','.csv').replace('.out','.csv')
         operFile = operFile.replace('PowerCurve','NREL5MW_Oper')
-        result.to_csv(operFile, sep='\t', index=False)
+        print('Writing: ', operFile)        
+        result.to_csv(operFile, sep=',', index=False)
 
 
 if __name__=='__test__':

@@ -153,6 +153,7 @@ class Polar(object):
         s+='                    cl_fs_interp, cl_inv_interp,                 \n'
         s+='                    interpolant \n'
         s+='                    plot, extrapolate\n'
+        s+='                    toAeroDyn\n'
         return s
 
 
@@ -665,7 +666,7 @@ class Polar(object):
                 print("Angle encountered for which there is no CM table value " "(near +/-180 deg). Program will stop.")
         return cm_new
 
-    def unsteadyParams(self, window_offset=None, nMin=720, verbose=False):
+    def unsteadyParams(self, window_offset=None, nMin=720, verbose=False, dictOut=False):
         """compute unsteady aero parameters used in AeroDyn input file
 
                 TODO Questions to solve:
@@ -741,7 +742,10 @@ class Polar(object):
 
         # checks for inppropriate data (like cylinders)
         if len(np.unique(cl)) == 1:
-            return (alpha0, 0.0, 0.0, 0.0, 0.0, 0.0, cd0, cm0)
+            if dictOut:
+                return {'alpha0':0, 'alpha1':0, 'alpha2':0, 'C_nalpha':0, 'Cn1':0, 'Cn2':0, 'Cd0':cd0, 'cm0':cm0}
+            else:
+                return (alpha0, 0.0, 0.0, 0.0, 0.0, 0.0, cd0, cm0)
 
         # --- cn "inflection" or "Max" points
         # These point are detected from slope changes of cn, positive of negative inflections
@@ -854,8 +858,24 @@ class Polar(object):
             print('[WARN] Polar: alpha0<alpha2, changing alpha2..')
             alpha2 = alpha0 - deltaAlpha
             #raise Exception('alpha0 must be greater than alpha2')
-
-        return (alpha0, alpha1, alpha2, cnSlope, cn1, cn2, cd0, cm0)
+        
+        if dictOut:
+            d = {}
+            # Setting unsteady parameters
+            if np.isnan(alpha0):
+                d['alpha0'] = 0
+            else:
+                d['alpha0'] = np.around(alpha0, 4)
+            d['alpha1']    = np.around(alpha1, 4) # TODO approximate
+            d['alpha2']    = np.around(alpha2, 4) # TODO approximate
+            d['C_nalpha']  = np.around(cnSlope ,4)
+            d['Cn1']       = np.around(cn1, 4)    # TODO verify
+            d['Cn2']       = np.around(cn2, 4)
+            d['Cd0']       = np.around(cd0, 4)
+            d['Cm0']       = np.around(cm0, 4)
+            return d
+        else:
+            return (alpha0, alpha1, alpha2, cnSlope, cn1, cn2, cd0, cm0)
 
     def unsteadyparam(self, alpha_linear_min=-5, alpha_linear_max=5):
         """compute unsteady aero parameters used in AeroDyn input file
@@ -1084,6 +1104,7 @@ class Polar(object):
         return Cl, fs_dyn
 
     def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None, unsteadyParams=True):
+        # TODO find a way to handle multiple polars, might need a separate class for "Polars"
         from welib.weio.fast_input_file import ADPolarFile
         cleanComments=comment is not None
         # Read a template file for AeroDyn polars
@@ -1096,28 +1117,14 @@ class Polar(object):
         else:
             ADpol = ADPolarFile(templateFile)
 
-
-
         # --- Updating the AD polar file 
         ADpol['Re'] = Re # TODO UNKNOWN
 
         # Compute unsteady parameters
         if unsteadyParams:
-            (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=self.unsteadyParams()
-
-            # Setting unsteady parameters
-            if np.isnan(alpha0):
-                ADpol['alpha0'] = 0
-            else:
-                ADpol['alpha0'] = np.around(alpha0, 4)
-            ADpol['alpha1']    = np.around(alpha1, 4) # TODO approximate
-            ADpol['alpha2']    = np.around(alpha2, 4) # TODO approximate
-            ADpol['C_nalpha']  = np.around(cnSlope ,4)
-            ADpol['Cn1']       = np.around(cn1, 4)    # TODO verify
-            ADpol['Cn2']       = np.around(cn2, 4)
-            ADpol['Cd0']       = np.around(cd0, 4)
-            ADpol['Cm0']       = np.around(cm0, 4)
-
+            d = self.unsteadyParams(dictOut=True)
+            for k,v in d.items():
+                ADpol[k] = v
         # Setting polar 
         PolarTable = np.column_stack((self.alpha, self.cl, self.cd, self.cm))
         ADpol['NumAlf'] = self.cl.shape[0]
