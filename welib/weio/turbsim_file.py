@@ -768,7 +768,7 @@ class TurbSimFile(File):
         """
         from xarray import IndexVariable, DataArray, Dataset
         
-        print('[TODO] pyFAST.input_output.turbsim_file.toDataset: merge with function toDataSet')
+        print('[TODO] openfast_toolbox.io.turbsim_file.toDataset: merge with function toDataSet')
 
         y      = IndexVariable("y", self.y, attrs={"description":"lateral coordinate","units":"m"})
         zround = np.asarray([np.round(zz,6) for zz in self.z]) #the open function here returns something like *.0000000001 which is annoying
@@ -795,8 +795,8 @@ class TurbSimFile(File):
         """
         import xarray as xr
         
-        print('[TODO] pyFAST.input_output.turbsim_file.toDataSet: should be discontinued')        
-        print('[TODO] pyFAST.input_output.turbsim_file.toDataSet: merge with function toDataset')        
+        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: should be discontinued')        
+        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: merge with function toDataset')        
 
         if datetime:
             timearray = pd.to_datetime(self['t'], unit='s', origin=pd.to_datetime('2000-01-01 00:00:00'))
@@ -850,7 +850,7 @@ class TurbSimFile(File):
             height to be written to turbsim as the reference height. if none is given, it is taken as the vertical centerpoint of the slice
         """
         try:
-            from pyFAST.input_output.amrwind_file import AMRWindFile
+            from welib.weio.amrwind_file import AMRWindFile
         except:
             try:
                 from .amrwind_file import AMRWindFile
