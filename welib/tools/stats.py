@@ -266,7 +266,7 @@ def pdf_sns(y,nBins=50):
 # --------------------------------------------------------------------------------}
 # --- Binning 
 # --------------------------------------------------------------------------------{
-def bin_DF(df, xbins, colBin, stats='mean'):
+def bin_DF(df, xbins, colBin, stats=None):
     """ 
     Perform bin averaging of a dataframe
     INPUTS:
@@ -277,21 +277,34 @@ def bin_DF(df, xbins, colBin, stats='mean'):
        binned dataframe, with additional columns 'Counts' for the number 
 
     """
+    if stats is None:
+        stats=['mean']
     if colBin not in df.columns.values:
         raise Exception('The column `{}` does not appear to be in the dataframe'.format(colBin))
     xmid      = (xbins[:-1]+xbins[1:])/2
     df['Bin'] = pd.cut(df[colBin], bins=xbins, labels=xmid ) # Adding a column that has bin attribute
-    if stats=='mean':
-        df2       = df.groupby('Bin', observed=False).mean()                     # Average by bin
-    elif stats=='std':
-        df2       = df.groupby('Bin', observed=False).std()                     # std by bin
-    # also counting
+    dfs=[]
+    df3  = df.groupby('Bin', observed=False)
+    for stat in stats:
+        if stat=='mean':
+            df2  = df3.mean()  # mean by bin
+        elif stat=='std':
+            df2  = df3.std()   # std by bin
+        elif stat=='min':
+            df2  = df3.min()   # min by bin
+        elif stat=='max':
+            df2  = df3.max()   # min by bin
+        else:
+            raise NotImplementedError(f'Stat {stat}')
+        df2  = df2.reindex(xmid) # Just in case some bins are missing (will be nan)
+        dfs.append(df2)
+    # Adding counts to first df
     df['Counts'] = 1
     dfCount=df[['Counts','Bin']].groupby('Bin', observed=False).sum()
-    df2['Counts'] = dfCount['Counts']
-    # Just in case some bins are missing (will be nan)
-    df2       = df2.reindex(xmid)
-    return df2
+    dfs[0]['Counts'] = dfCount['Counts']
+    return dfs
+
+
 
 def bin_signal(x, y, xbins=None, stats='mean', nBins=None):
     """ 

@@ -426,37 +426,90 @@ def zero_crossings(y, x=None, direction=None, bouncingZero=False):
 # --------------------------------------------------------------------------------}
 # --- Correlation  
 # --------------------------------------------------------------------------------{
-def correlation(x, nMax=80, dt=1, method='numpy'):
+def autoCorrCoeff(x, nMax=None, dt=1, method='corrcoef'):
     """ 
     Compute auto correlation of a signal
+     - nMax: number of values to return
     """
-
-    def acf(x, nMax=20):
-        return np.array([1]+[np.corrcoef(x[:-i], x[i:])[0,1]  for i in range(1, nMax)])
-
-
-    nvec   = np.arange(0,nMax)
+    x    = x.copy() - np.mean(x)
+    var  = np.var(x)
+    n    = len(x)
+    if nMax is None:
+        nMax = n
+    rvec = np.arange(0,nMax)
     if method=='manual':
-        sigma2 = np.var(x)
-        R    = np.zeros(nMax)
-        R[0] =1
-        for i,nDelay in enumerate(nvec[1:]):
-            R[i+1] = np.mean(  x[0:-nDelay] * x[nDelay:]  ) / sigma2
-            #R[i+1] = np.corrcoef(x[:-nDelay], x[nDelay:])[0,1] 
+        rho    = np.zeros(nMax)
+        rho[0] =1
+        for i,nDelay in enumerate(rvec[1:]):
+            rho[i+1] = np.mean(  x[0:-nDelay] * x[nDelay:]  ) / var
 
-    elif method=='numpy':
-        R= acf(x, nMax=nMax)
+    elif method=='manual-roll':
+        rho    = np.zeros(len(rvec))
+        for i,r in enumerate(rvec):
+            shifted_x = np.roll(x, int(r)) #Shift x by tau
+            rho[i] = np.mean(x * shifted_x) / var
+
+    elif method=='corrcoef':
+        rho = np.array([1]+[np.corrcoef(x[:-i], x[i:])[0,1]  for i in range(1, nMax)])
+
+    elif method=='correlate':
+        rho = np.correlate(x, x, mode='full')[-n:] / (var * n)
+        rho = rho[:nMax]
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(method)
 
-    tau = nvec*dt
-    return R, tau
+    tau = rvec*dt
+    return rho, tau
+
+def correlation(*args, **kwargs):
+    print('[WARN] welib.tools.signal_analysis.correlation will be deprecated use autoCorrCoeff')
+    return autoCorrCoeff(*args, **kwargs)
 # Auto-correlation comes in two versions: statistical and convolution. They both do the same, except for a little detail: The statistical version is normalized to be on the interval [-1,1]. Here is an example of how you do the statistical one:
 # 
 # 
 # def autocorr(x):
 #     result = numpy.correlate(x, x, mode='full')
 #     return result[result.size/2:]
+
+    
+def xCorrCoeff(x1, x2, t=None, nMax=None, method='manual'):    
+    """ 
+    Compute cross-correlation coefficient of a signal
+    """
+    x1 = x1.copy()-np.mean(x1)
+    x2 = x2.copy()-np.mean(x2)
+    sigma1 = np.std(x1)
+    sigma2 = np.std(x2)
+    # Only if x1 and x2 have the same length for now
+    N1 = min(len(x1), len(x2))
+    if nMax is None:
+        nMax = len(x1)
+    if t is None:
+        t = np.array(range(N1))
+    if method=='subset-tauPos':
+        # Only if x1 and x2 have the same length
+        rho    = np.zeros(nMax)
+        rvec = np.arange(0,nMax)
+        for i,r in enumerate(rvec):
+            rho[i] = np.mean(  x1[:N1-r] * x2[r:]  ) / (sigma1*sigma2)
+    elif method=='manual':
+        rvec = np.array(range(-nMax+1,nMax))
+        rho   = np.zeros(len(rvec))
+        # TODO two for loops for pos and neg..
+        for i,r in enumerate(rvec):
+            if r>=0:
+                t11, x11 = t [0:N1-r], x1[0:N1-r]
+                t22, x22 = t [r:]   , x2[r:] 
+            else:
+                r=abs(r)
+                t22, x22 = t [0:N1-r], x2[0:N1-r]
+                t11, x11 = t [r:]   , x1[r:] 
+            rho[i] = np.mean(x11*x22) / (sigma1*sigma2)
+    else:
+        raise NotImplementedError(method)
+
+    tau = rvec * (t[1]-t[0])
+    return rho, tau
 
 
 
