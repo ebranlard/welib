@@ -14,6 +14,10 @@ from welib.stoch.utils import sample_from_autospectrum
 class SampledStochasticProcess:
     def __init__(self, params=None, generator=None, name='', omega_max=None, tau_max=None, time_max=None, nDiscr=100,
             verbose=False):
+        """ 
+        Describe ME!!!
+
+        """
         self.name = name
         self.verbose = verbose
         self.params = params if params is not None else {}
@@ -122,18 +126,16 @@ class SampledStochasticProcess:
             time = self.time_default
         self._time = time
 
-        tMax = time[-1]
-        dt = (time[-1]-time[0])/(len(time)-1)
 
         xi=np.zeros((nSamples, len(time)))
         if not self._f_S_X_th:
             raise Exception('Provide an autospectrum function')
         f_S = self._f_S_X_th
+        # TODO Merge this with generator
+        tMax = time[-1]
+        dt = (time[-1]-time[0])/(len(time)-1)
         with Timer('Gen. samples from spectrum - {} ...'.format(method), writeBefore=True, silent=not self.verbose):
             for i in range(nSamples):
-
-                #def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True, 
-                #        method='ifft', fCutInput=None):
                 _, xi[i,:], _, _ = sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True, method=method, **kwargs) 
         self.xi = xi
         return xi
@@ -182,7 +184,7 @@ class SampledStochasticProcess:
                 for i in range(self.nSamples):
                     if np.mod(i,10)==0 and self.verbose:
                         print('Correlation', i, self.nSamples)
-                    rho_XXi[i,:], tau = autocorrcoeff_num(xi[i,:], nMax=nTau, dt=dt, method='numpy')
+                    rho_XXi[i,:], tau = autocorrcoeff_num(xi[i,:], nMax=nTau, dt=dt, method='corrcoef')
                     kappa_XXi[i,:] = rho_XXi[i,:] * np.var(xi[i,:])
                     #, tau = autocovariance_num(xi[i,:], nMax=nTau, dt=dt, method='manual')
 
@@ -327,14 +329,14 @@ class SampledStochasticProcess:
     # --------------------------------------------------------------------------------}
     # --- Plots 
     # --------------------------------------------------------------------------------{
-    def plot_samples(self, ax=None, maxSamples=5):
+    def plot_samples(self, ax=None, maxSamples=5, **kwargs):
         # --- Plot realisations
         if ax is None:
             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         nPlot = min(self.nSamples,maxSamples)
         for i in range(nPlot):
-            ax.plot(self.time, self.xi[i], label='')
+            ax.plot(self.time, self.xi[i], **kwargs)
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('')
         #ax.legend()
@@ -657,28 +659,36 @@ class CutOffWhiteNoiseProcess(SampledStochasticProcess):
 
 class KaimalProcess(SampledStochasticProcess):
 
-    def __init__(self, U0, sigma, L, generator=None, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
+    def __init__(self, U0, sigma, L, omega_max=None, tau_max=None, time_max=None, nDiscr=100, verbose=False, **kwargs):
         """ 
          - U0    : mean wind speed
          - sigma : standard deviation
          - L     : length scale
          """
         from welib.wind.spectra import kaimal
+        from welib.wind.windsim import pointTSKaimal
+        from welib.stoch.utils import sample_from_autospectrum
+
         # Distribution parameters
         params = {'U0':U0, 'sigma':sigma, 'L':L}
 
         # Derived parameters
-        omega_max = B if omega_max is None else omega_max
-        tau_max   = B if tau_max is None else tau_max
-        time_max  = B if time_max is None else time_max
-     
+        f_S_X_th = lambda omega: kaimal(omega, U0, sigma, L, angularFrequency=True)
+        # TODO merge this with generate sample and generate samples from auto_spectrum
+        # Alternative: use def pointTSKaimal(tMax, dt, U0, sigma, L, angularFrequency=False, **kwargs):
+        def kaimal_generator(time):
+            tMax = time[-1]
+            dt = (time[-1]-time[0])/(len(time)-1)
+            _, xi, _, _ = sample_from_autospectrum(tMax=tMax, dt=dt, f_S=f_S_X_th, angularFrequency=True)
+            return xi+U0
+
         # --- Initialize Process
-        SampledStochasticProcess.__init__(self, params=params, generator = generator, name='Kaimal', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
+        SampledStochasticProcess.__init__(self, params=params, generator = kaimal_generator, name='Kaimal', omega_max=omega_max, tau_max=tau_max, time_max=time_max, nDiscr=nDiscr, verbose=verbose, **kwargs)
 
         # Theory
         #f_S = lambda f_or_om: 
-        def f_S_X_th(omega): #, B, sigma):
-            return kaimal(omega, U0, sigma, L, angularFrequency=True)
+        #def f_S_X_th(omega): #, B, sigma):
+        #    return kaimal(omega, U0, sigma, L, angularFrequency=True)
 
     #         def f_k_XX_th(tau, B, sigma):
     #                 return 2 * sigma**2 / (B*tau) * (np.sin(B/2*tau)  )

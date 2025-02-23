@@ -20,71 +20,51 @@ from numpy.random import uniform
 # --------------------------------------------------------------------------------
 # --- Helper functions for Time series generation from auto spectrum
 # --------------------------------------------------------------------------------
-def _getPhasesAmplitudesFactors(N1, phases=None, amplitudesFactors=None, randomAmplitudes=True):
+def _getPhasesAmplitudesFactors(Nf, phases=None, amplitudesFactors=None, randomAmplitudes=True):
+    """ return uniformly distributed phases and ampitudes """
     if randomAmplitudes:
         if amplitudesFactors is not None:
-            if len(amplitudesFactors)!=N1:
-                raise Exception('Length of amplitudes should be {}'.format(N1))
-            if amplitudesFactors[0]!=1:
-                raise Exception('First amplitudeFactor (for zero frequency) must be 1 by convention.')
-            U1 = amplitudesFactors
+            if len(amplitudesFactors)!=Nf:
+                raise Exception('Length of amplitudes should be {}'.format(Nf))
+            if amplitudesFactors[0]!=np.exp(-1) :
+                raise Exception('First amplitudeFactor (for zero frequency) must be exp-1 by convention.')
+            AU = amplitudesFactors
+            AU[0] = np.exp(-1) # safety
         else:
-            U1 = uniform(0, 1, N1)  # amplitude
-            U1[0] = 1
+            AU = uniform(0, 1, Nf)  # amplitude
+            AU[0] = np.exp(-1) # used to be 1
     else:
-        U1 = np.ones(N1)*np.exp(-1)
+        AU = np.ones(Nf)*np.exp(-1)
 
     if phases is not None:
-        if len(phases)!=N1:
+        if len(phases)!=Nf:
             raise Exception('Length of phases should be half the length of time vector')
         if phases[0]!=0:
             raise Exception('First phase (for zero frequency) must be zero by convention.')
-        phi1 = phases
+        phiU = phases
     else:
-        phi1 = uniform(0, 2*np.pi, N1)  # random phases between 0 and 2pi
-        phi1[0] = 0
-    return phi1, U1
+        phiU = uniform(0, 2*np.pi, Nf)  # random phases between 0 and 2pi
+        phiU[0] = 0
+    return phiU, AU
 
-def _getX1_sumcos(N, Sf_or_So, df_or_dom, phases=None, amplitudesFactors=None, randomAmplitudes=True):
-    N1 = len(Sf_or_So)
-    phi1, U1 = _getPhasesAmplitudesFactors(N1, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
-    A1 = np.sqrt(2*Sf_or_So * df_or_dom) 
-    A2 = np.sqrt(-2*np.log(U1))/np.sqrt(2)
-    A2[0]=1
-    a1 = A1 * A2 * np.exp(  1j * phi1)
-    X1 = N/2*a1
-    X1[0] = np.sqrt(2)*X1[0]
-    return X1, A1, A2, a1, phi1
+def _getX_sumcos(N, Sf_or_So, df_or_dom, phases=None, amplitudesFactors=None, randomAmplitudes=True):
+    """ Note same a Box Muller method"""
+    Nf = len(Sf_or_So)
+    phi, U = _getPhasesAmplitudesFactors(Nf, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
+    A1 = np.sqrt(2 * Sf_or_So * df_or_dom) 
+    A2 = np.sqrt(-np.log(U)) #A2[0]=1
+    A = A1 * A2  
+    X = N/2 * A * np.exp(1j * phi)
+    X[0] = np.sqrt(2)*X[0]
+    return X, A, phi
 
-def _getX1_boxmuller(N, Sf_or_So, df_or_dom, phases=None, amplitudesFactors=None, randomAmplitudes=True):
-    # TODO This is the same as sumcos
-    # TODO I'm not sure whether we should use N or N1 different random numbers here
-    N1 = len(Sf_or_So)
-    phi1, U1 = _getPhasesAmplitudesFactors(N1, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
-    # Decomposition 1
-    A1 = np.sqrt(2 * df_or_dom * Sf_or_So) 
-    A2 = np.sqrt(-2*np.log(U1))/np.sqrt(2);
-    A2[0]=1
-    a1 = A1 * A2 * np.exp(1j * phi1)
-    X1 = N/2*a1
-    # Decomposition 2
-    A1_ = np.sqrt(N * df_or_dom * Sf_or_So/2)
-    W1_ = np.sqrt(N/2) * np.sqrt(-2*np.log(U1))*np.exp(1j * phi1)
-    X1_ = A1_*W1_
-    if np.max(np.abs(X1-X1_))>1e-10:
-        raise Exception('Problem in formulation')
-    X1[0] = np.sqrt(2)*X1[0]
-    return  X1, A1, A2, a1, phi1
-
-def _getX1_basic(N, Sf_or_So, df_or_dom):
-    N1 = len(Sf_or_So)
-    A1 = np.sqrt(2*Sf_or_So * df_or_dom) 
-    A2 = 1
-    phi1=0
-    a1 = A1 * A2 
-    X1 = N/2*a1
-    X1[0] = np.sqrt(2)*X1[0]
-    return X1, A1, A2, a1, phi1
+def _getX_basic(N, Sf_or_So, df_or_dom):
+    Nf = len(Sf_or_So)
+    A = np.sqrt(2 * Sf_or_So * df_or_dom) 
+    phi=0
+    X = N/2 * A * np.exp(1j * phi)
+    X[0] = np.sqrt(2)*X[0]
+    return X, A, phi
 
 
 # --------------------------------------------------------------------------------
@@ -135,21 +115,22 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
     # -- Define time vector
     N  = int(np.round(tMax/dt)) + 1
     t     = np.arange(0,tMax+dt/2,dt)
+    #print('N', N, 'len(t)',len(t))
     # -- Define frequencies and spectrum for single sided approaches
-    f1     = np.fft.rfftfreq(N, dt) # NOTE: when N is even, we have an extra frequency
-    fMax   = f1[-1]                 # approx (1/dt)/2  Highest frequency
+    fp     = np.fft.rfftfreq(N, dt) # NOTE: when N is even, we have an extra frequency
+    fMax   = fp[-1]                 # approx (1/dt)/2  Highest frequency
     df1    = 1/(dt*N)               # approx  1./tMax  Frequency resolution
-    N1     = len(f1)
-    omega1 = 2*np.pi*f1
+    Nf     = len(fp)
+    omega1 = 2*np.pi*fp
     # -- Define frequencies and spectrum
     if angularFrequency:
         Sf_or_So  = np.array([f_S(omi)     for omi in omega1])
         df_or_dom = 2*np.pi*df1
         f_or_om   = omega1
     else:
-        Sf_or_So  = np.array([f_S(fi)      for fi in f1])
+        Sf_or_So  = np.array([f_S(fi)      for fi in fp])
         df_or_dom = df1
-        f_or_om   = f1
+        f_or_om   = fp
     if seed is not None:
         # Initialized random number generator
         np.random.seed(seed)
@@ -158,16 +139,16 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
         # --------------------------------------------------------------------------------
         # --- SUM OF COSINES / Box-Muller
         # --------------------------------------------------------------------------------
-        X1, A1, A2, a1, phi1 = _getX1_sumcos(N, Sf_or_So, df_or_dom, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
+        X, A1, phi1 = _getX_sumcos(N, Sf_or_So, df_or_dom, phases=phases, amplitudesFactors=amplitudesFactors, randomAmplitudes=randomAmplitudes)
 
         if methods[1] == 'manual':
-            A1 = A1*A2
+            A1 = A1
             x = np.zeros(t.shape)
             for ai,oi,ei in zip(A1,omega1,phi1):
                 x += ai * np.cos(oi*t + ei)
 
         elif methods[1] == 'irfft' :
-            x = np.fft.irfft(X1, N)
+            x = np.fft.irfft(X, N)
 
         elif methods[1] == 'idft':
             from welib.tools.spectral import double_sided_DFT_real, check_DFT_real, IDFT
@@ -175,8 +156,8 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
             if np.mod(N,2)==0:
                 print('[WARN] IDFT introduces small error for now when N is even')
                 # Keep me: what we use to do:
-                #   f1 = np.fft.rfftfreq(N, dt)[:-1] # NOTE the last frequency should not be used
-            X = double_sided_DFT_real(X1, N=N)
+                #   fp = np.fft.rfftfreq(N, dt)[:-1] # NOTE the last frequency should not be used
+            X = double_sided_DFT_real(X, N=N)
             check_DFT_real(X)
             x = IDFT(X, method=methods[2])
             x = np.real(x)
@@ -188,21 +169,21 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
         # --------------------------------------------------------------------------------
         # --- RANDOM NORMAL complex numbers 
         # --------------------------------------------------------------------------------
-        X1_bas, A1, A2, a1, phi1 = _getX1_basic(N, Sf_or_So, df_or_dom)
+        X_bas, A1, phi1 = _getX_basic(N, Sf_or_So, df_or_dom)
 
-        a = np.random.normal(size=N1)
-        b = np.random.normal(size=N1)
+        a = np.random.normal(size=Nf)
+        b = np.random.normal(size=Nf)
         #mag = np.sqrt(a**2+b**2)
         #phi = np.atan2(b,a)
-        #X1_rand = mag*np.exp(1j*phi) # TODO try that and compare to BoxMuller
+        #X_rand = mag*np.exp(1j*phi) # TODO try that and compare to BoxMuller
         # First part of the complex vector
-        X1_rand = (a + b * 1j )/np.sqrt(2)
-        X1_rand[0] = 1
-        X1 = X1_bas * X1_rand
+        X_rand = (a + b * 1j )/np.sqrt(2)
+        X_rand[0] = 1
+        X = X_bas * X_rand
 
-        x = np.fft.irfft(X1, N)
+        x = np.fft.irfft(X, N)
 
-        #X = double_sided_DFT_real(X1, N=N)
+        #X = double_sided_DFT_real(X, N=N)
         #x=np.fft.ifft(X)
         #x = np.real(x)
 
@@ -221,9 +202,9 @@ def sample_from_autospectrum(tMax, dt, f_S, angularFrequency=True,
 
 
 def autocovariance_num(x, **kwargs):
-    from welib.tools.signal_analysis import correlation
+    from welib.tools.signal_analysis import autoCorrCoeff
     sigma2 = np.var(x)
-    rho_XX, tau = correlation(x, **kwargs)
+    rho_XX, tau = autoCorrCoeff(x, **kwargs)
     kappa_XX = rho_XX*sigma2
 #     autoCov = 0
 #     for i in np.arange(0, N-k):
@@ -287,8 +268,8 @@ def autocovariance_int(tau, f_S_X, omega_max):
 
 
 def autocorrcoeff_num(x, **kwargs):
-    from welib.tools.signal_analysis import correlation
-    rho_XX, tau = correlation(x, **kwargs)
+    from welib.tools.signal_analysis import autoCorrCoeff
+    rho_XX, tau = autoCorrCoeff(x, **kwargs)
     return rho_XX, tau
 
 def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap', verbose=False):
@@ -300,6 +281,8 @@ def autospectrum_fft(tau, kappa_XX, onesided=True, method='fft_wrap', verbose=Fa
       S_X(\omega) = 2 S_XX(\omega)
 
     """
+    if onesided is False:
+        raise NotImplementedError()
     if method=='fft_wrap':
         from welib.tools.spectral import fft_wrap
         f, S_X, Info = fft_wrap(tau, kappa_XX, output_type='amplitude', averaging='None', detrend=False)

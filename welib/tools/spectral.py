@@ -204,14 +204,9 @@ def psd(y, fs=1.0, detrend ='constant', return_onesided=True):
         m=0;
 
     n = len(y) 
-    if n%2==0:
-        nhalf = int(n/2+1)
-    else:
-        nhalf = int((n+1)/2)
-
-    frq = np.arange(nhalf)*fs/n;
+    frq = np.fft.rfftfreq(len(y), 1/fs) # [Hz] # <<< TODO
     Y   = np.fft.rfft(y-m) #Y = np.fft.fft(y) 
-    PSD = abs(Y[range(nhalf)])**2 /(n*fs) # PSD
+    PSD = abs(Y)**2 /(n*fs) # PSD
     PSD[1:-1] = PSD[1:-1]*2;
     class InfoClass():
         pass
@@ -224,6 +219,13 @@ def psd(y, fs=1.0, detrend ='constant', return_onesided=True):
     Info.LOvlp = 0
     Info.nFFT  = len(Y)
     Info.nseg  = 1
+    #Info ={'df': frq[1]-frq[0], 'fmax': frq[-1]}
+    #Info['LFreq'] = len(frq)
+    #Info['LSeg']  = len(Y)
+    #Info['LWin']  = len(Y)
+    #Info['LOvlp'] = 0
+    #Info['nFFT']  = len(Y)
+    #Info['nseg']  = 1
     return frq, PSD, Info
 
 
@@ -1088,6 +1090,73 @@ def DFT(x, method='vectorized'):
     
     return X
 
+def rDFT(x, method='vectorized'):
+    """
+    Calculate the real to complex Discrete Fourier Transform  (DFT) of real signal x
+    """
+    N = len(x)
+
+    if method=='naive':
+        Np = nhalf_rfft(N)
+        X = np.zeros(Np, dtype=complex)
+        for k in range(Np):
+            for n in np.arange(N):
+                X[k] += x[n] * np.exp(-1j * 2*np.pi * k * n / N)
+    elif method=='vectorized':
+        Np = nhalf_rfft(N)
+        n = np.arange(N)
+        k = np.arange(Np)
+        k = k.reshape((Np, 1)) # k*n will be of shape (Np x N)
+        e = np.exp(-2j * np.pi * k * n / N)
+        X = np.dot(e, x)
+    elif method=='fft':
+        X = np.fft.rfft(x)
+    else:
+        raise NotImplementedError()
+    
+    return X
+
+def IrDFT(X, N=None, method='vectorized'):
+    """
+    Calculate the real to complex Discrete Fourier Transform  (DFT) of real signal x
+    """
+    if N is None:
+        N = (len(X)-1)*2
+    Np = len(X) - (1 if N % 2 == 0 else 0)
+    if method=='naive':
+        x = np.zeros(N, dtype=float)
+        # Compute each time-domain point n
+        for n in range(N):
+            value = X[0].real  # DC component
+            # Sum over the positive frequency components
+            for k in range(1, Np):
+                angle = 2 * np.pi * k * n / N
+                value += 2 * (X[k].real * np.cos(angle) - X[k].imag * np.sin(angle))
+            # Handle the Nyquist frequency only if N is even
+            if N % 2 == 0:
+                value += X[-1].real * np.cos(np.pi * n)
+            x[n] = value
+        x /= N  # Normalize by N
+    elif method=='vectorized':
+        n = np.arange(N).reshape((N, 1)) # shape: N x 1
+        k = np.arange(1,Np)              # shape: 1 x Np
+        angles = 2 * np.pi * k * n / N   # shape  N x Np
+        e_real  = 2*np.cos(angles)
+        e_imag  =-2*np.sin(angles)
+        x = np.dot(e_real, X[1:Np].real) + np.dot(e_imag, X[1:Np].imag) + X[0].real
+        if N % 2 == 0:
+            x += X[-1].real * np.cos(np.pi * n.flatten()) 
+        x = x/N
+
+    elif method=='ifft':
+        x = np.fft.irfft(X, N)
+
+    else:
+        raise NotImplementedError(method)
+    
+    return x
+
+
 def IDFT(X, method='vectorized'):
     """
     Calculate the Inverse Discrete Fourier Transform  (IDFT) of complex coefficients X
@@ -1185,8 +1254,31 @@ def DFT_freq(time=None, N=None, T=None, doublesided=True):
     else:
         # single sided
         fMax = nhalf_pos * df
-        #freq = np.arange(0, fMax+df/2, df)
         freq = np.arange(nhalf_pos+1)*df
+        #freq = np.arange(0, fMax+df/2, df)
+        # NOTE: this is different behavior that rDFT_freq..
+    return freq
+
+def rDFT_freq(time=None, N=None, T=None):
+    """ 
+    Return frequencies for "real DFT"
+    NOTE: for real FFT, the max frequency is always 1/2*dt!
+    INPUTS:
+      - time: 1d array of time
+      OR
+      - N: number of time values
+      - T: time length of signal
+    """
+    if time is not None:
+        N = len(time)
+        T = time[-1]-time[0]
+    dt = T/(N-1)
+    df = 1/(dt*N)
+    # single sided
+    fMax = 1/(2*dt)
+    freq = np.arange(0, fMax+df/2, df)
+    if np.mod(N,2)==1:
+        freq=freq[:-1]
     return freq
 
 def IDFT_time(freq=None, doublesided=True):
@@ -1255,6 +1347,9 @@ def nhalf_fft(N):
         nhalf_pos = int((N-1)/2)
         nhalf_neg = -nhalf_pos
     return nhalf_pos, nhalf_neg
+
+def nhalf_rfft(N):
+    return N//2 +1
 
 
 def check_DFT_real(X):
@@ -1387,8 +1482,50 @@ class TestSpectral(unittest.TestCase):
         x_back2 = IDFT(X0, method='vectorized')
         np.testing.assert_almost_equal(x_back1, x_back0, 10)
         np.testing.assert_almost_equal(x_back2, x_back0, 10)
-
         np.testing.assert_almost_equal(x_back0, x, 10)
+
+    def compare_with_npfftr(self, time, x):
+        # Compare lowlevels functions with npfft
+        # Useful to make sure the basic math is correct
+        N    = len(time)
+        dt   = (time[-1]-time[0])/(N-1)
+        tMax = time[-1]
+
+        # --- Test frequency, dt/df/N-relationships
+        fhalf0               = np.fft.rfftfreq(N, dt)
+        fhalf1               = rDFT_freq(time)
+        df = 1/(N*dt)
+        np.testing.assert_almost_equal(fhalf0[1]-fhalf0[0], df, 10) # Delta f
+        if N%2 == 0:
+            np.testing.assert_almost_equal(fhalf0[-1],  1/(2*dt), 10) # fmax
+        else:
+            np.testing.assert_almost_equal(fhalf0[-1],  1/(2*dt)-df/2, 10) # fmax
+        np.testing.assert_almost_equal(fhalf0     , fhalf1, 10)
+        # --- Test DFT methods
+        X0 = rDFT(x, method='fft')
+        X1 = rDFT(x, method='naive')
+        X2 = rDFT(x, method='vectorized')
+        np.testing.assert_almost_equal(X1, X0, 10)
+        np.testing.assert_almost_equal(X2, X0, 10)
+        # --- Test IDFT methods
+        x_back0 = IrDFT(X0, method='ifft' , N=N)
+        x_back1 = IrDFT(X0, method='naive', N=N)
+        x_back2 = IrDFT(X0, method='vectorized', N=N)
+        np.testing.assert_almost_equal(x_back1, x_back0, 10)
+        np.testing.assert_almost_equal(x_back2, x_back0, 10)
+        np.testing.assert_almost_equal(x_back0, x, 10)
+
+    def test_lowlevel_fftr_even(self):
+        # Test lowlevel functions
+        time = np.linspace(0,10,16) # NOTE: need a power of two for fft_py
+        x = self.default_signal(time, mean=0)
+        self.compare_with_npfftr(time, x)
+
+    def test_lowlevel_fftr_odd(self):
+        # Test lowlevel functions
+        time = np.linspace(0,10,17) 
+        x = self.default_signal(time, mean=0)
+        self.compare_with_npfftr(time, x)
 
     def test_lowlevel_fft_even(self):
         # Test lowlevel functions
@@ -1436,9 +1573,11 @@ class TestSpectral(unittest.TestCase):
         #plt.show()
     
 if __name__ == '__main__':
+    from welib.tools.clean_exceptions import *
     #TestSpectral().test_fft_binning()
     #TestSpectral().test_ifft()
     #TestSpectral().test_lowlevel_fft_even()
     #TestSpectral().test_lowlevel_fft_odd()
+    #TestSpectral().test_lowlevel_fftr_even()
+    #TestSpectral().test_lowlevel_fftr_odd()
     unittest.main()
-

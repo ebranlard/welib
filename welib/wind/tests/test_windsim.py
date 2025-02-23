@@ -33,6 +33,8 @@ class Test(unittest.TestCase):
             np.testing.assert_almost_equal(u1[2],  9.05015524, 6)
             np.testing.assert_almost_equal(u1[35], 9.10152196, 6)
 
+            np.testing.assert_almost_equal(np.mean(u1), U0)
+
 
 
 

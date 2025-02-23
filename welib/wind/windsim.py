@@ -21,7 +21,13 @@ def pointTS(f, S, **kwargs):
     return t, u, f, S
 
 
-def pointTSKaimal(tMax, dt, U0, sigma, L, angularFrequency=False, **kwargs):
+def pointTSKaimalWrap(time, U0=8, sigma=1, L=300, **kwargs):
+    tMax = time[-1]
+    dt = (time[-1]-time[0])/(len(time)-1)
+    t, u, f, Sf = pointTSKaimal(tMax, dt, U0=8, sigma=1, L=300, angularFrequency=False, **kwargs)
+    return u
+
+def pointTSKaimal(tMax, dt, U0=8, sigma=1, L=300, angularFrequency=False, **kwargs):
     """
     Generate a wind time series at a single point based on the Kaimal spectrum.
 
