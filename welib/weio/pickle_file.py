@@ -48,7 +48,7 @@ class PickleFile(File):
     def __init__(self, filename=None, data=None, **kwargs):
         """ Class constructor. If a `filename` is given, the file is read. """
         self.filename = filename
-        if filename and not data:
+        if filename and data is None:
             self.read(**kwargs)
         if data is not None:
             self._setData(data)

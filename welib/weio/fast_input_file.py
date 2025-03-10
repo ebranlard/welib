@@ -775,7 +775,7 @@ class FASTInputFileBase(File):
                     #print('label>',d['label'],'<',type(d['label']),line);
                     if i>3: # first few lines may be comments, we allow it
                         #print('Line',i,'Label:',d['label'])
-                        raise WrongFormatError('Special Character found in Label: `{}`, for line: `{}`'.format(d['label'],line))
+                        raise WrongFormatError('Special Character found in Label: `{}`, for line: `{}`. File: {}'.format(d['label'], line, self.filename))
                 if len(d['label'])==0:
                     nWrongLabels +=1
             if nComments>len(lines)*0.35:
@@ -846,7 +846,7 @@ class FASTInputFileBase(File):
             if d['isComment']:
                 s+='{}'.format(d['value'])
             elif d['tabType']==TABTYPE_NOT_A_TAB:
-                if isinstance(d['value'], list):
+                if isinstance(d['value'], list) or isinstance(d['value'],np.ndarray):
                     sList=', '.join([str(x) for x in d['value']])
                     s+=toStringVLD(sList, d['label'], d['descr'])
                 else:
@@ -982,6 +982,13 @@ class FASTInputFileBase(File):
                     Cols = Cols + ShapeCols
 
                 name=d['label']
+                if 'AFCoeff' in name:
+                    if '_' in name:
+                        i = int(name.split('_')[1])
+                        Re = self['Re_'+str(i)]
+                    else:
+                        Re = self['Re']
+                    name = 'AFCoeff_Re{:.2f}'.format(Re)
 
                 if name=='DampingCoeffs':
                     pass
@@ -1994,16 +2001,22 @@ class ADPolarFile(FASTInputFileBase):
                 self.data[i]['label'] = labFull
 
     def _toDataFrame(self):
+        # --- We rely on parent class, it has an if statement for AFCoeff already...
         dfs = FASTInputFileBase._toDataFrame(self)
         if not isinstance(dfs, dict):
             dfs={'AFCoeff':dfs}
 
-        for k,df in dfs.items():
+        # --- Adding more columns
+        for i,(k,df) in enumerate(dfs.items()):
             sp = k.split('_')
-            if len(sp)==2:
-                labOffset='_'+sp[1]
+            if len(dfs)>1:
+                labOffset='_'+str(i+1)
             else:
                 labOffset=''
+            #if len(sp)==2:
+            #    labOffset='_'+sp[1]
+            #else:
+            #    labOffset=''
             alpha = df['Alpha_[deg]'].values*np.pi/180.
             Cl    = df['Cl_[-]'].values
             Cd    = df['Cd_[-]'].values
@@ -2142,7 +2155,7 @@ class ADPolarFile(FASTInputFileBase):
         for i in range(1, self['NumTabs']+1):
             offset=f'_{i}' if self['NumTabs']>1 else ''
             M = self['AFCoeff'+offset]
-            pol = Polar(alpha=M[:,0], cl=M[:,1], cd=M[:,2], cm=M[:,3], radians=False)
+            pol = Polar(alpha=M[:,0], cl=M[:,1], cd=M[:,2], cm=M[:,3], radians=False, name=os.path.basename(self.filename)+f'_Table{i}')
             d = pol.unsteadyParams(dictOut=True)
             for k,v in d.items():
                 self[k+offset] = v
