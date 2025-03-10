@@ -10,6 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from welib.tools.curves import *
 # NOTE: consider using shapely for more operations
 # try:
 #     import shapely
@@ -335,113 +336,113 @@ class AirfoilShape():
 # --------------------------------------------------------------------------------
 # --- Contour tools 
 # --------------------------------------------------------------------------------
-# NOTE: merge with tools/curve.py
-
-def contour_length_scale(x, y):
-    """ return representative length scale of contour """
-    lx = np.max(x)-np.min(x)
-    ly = np.max(y)-np.min(y)
-    return  max(lx, ly)
-
-def contour_isClosed(x, y, reltol=_DEFAULT_REL_TOL):
-    """ Return true if contour is closed """
-    l = contour_length_scale(x, y)
-    return np.abs(x[0]-x[-1])<l*reltol or np.abs(y[0]-y[-1])<l*reltol
-
-def contour_remove_duplicates(x, y, reltol=_DEFAULT_REL_TOL):
-    l = contour_length_scale(x, y)
-    unique_points = []
-    duplicate_points = []
-    for x,y in zip(x, y):
-        if all(np.sqrt((x-p[0])**2 + (y-p[1])**2) > reltol*l for p in unique_points):
-            unique_points.append((x,y))
-        else:
-            duplicate_points.append((x,y))
-    x = np.array([p[0] for p in unique_points])
-    y = np.array([p[1] for p in unique_points])
-    return x, y, duplicate_points
-
-def close_contour(x, y, reltol=_DEFAULT_REL_TOL, force=False):
-    """ Close contour, unless it's already closed, alwasys do it if force is True"""
-    isClosed = contour_isClosed(x, y, reltol=reltol)
-    if isClosed or force:
-        x = np.append(x, x[0])
-        y = np.append(y, y[0])
-    return x, y
-    
-def reloop_contour(x, y, i):
-    """
-    Reloop a contour array so that it starts at a specific index.
-    NOTE: duplicates should preferably be removed
-    INPUTS:
-    - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
-    - i: Index where the relooped contour should start.
-    OUTPUTS:
-    - Relooped contour array.
-    """
-    #relooped_contour = np.concatenate((contour_array[i:], contour_array[:i]))
-    x2 = np.concatenate((x[i:], x[:i]))
-    y2 = np.concatenate((y[i:], y[:i]))
-    return x2, y2
-
-def opposite_contour(x, y, reltol = _DEFAULT_REL_TOL):
-    """
-    Make a clockwise contour counterclockwise and vice versa
-    INPUTS:
-    - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
-    OUTPUTS:
-    - opposite contour
-    """
-    isClosed = contour_isClosed(x, y, reltol=reltol)
-    if not isClosed:
-        # we close the contour
-        x, y = close_contour(x, y, force=True, reltol=reltol)
-    xopp=x[-1::-1]
-    yopp=y[-1::-1]
-    # If it was not closed, we remove duplicates
-    if not isClosed:
-        xopp, yopp, dupli = contour_remove_duplicates(xopp, yopp, reltol=reltol)
-    return xopp, yopp
-
-def contour_orientation(x, y):
-    """
-    Determine if a contour is clockwise or counterclockwise.
-    
-    INPUTS:
-    - x: 1D array containing the x-coordinates of the contour nodes.
-    - y: 1D array containing the y-coordinates of the contour nodes.
-    
-    OUTPUTS:
-    - 'clockwise' if the contour is clockwise, 'counterclockwise' if it's counterclockwise.
-    """
-    # Compute the signed area
-    signed_area = np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
-    
-    # Determine orientation
-    if signed_area > 0:
-        return 'counterclockwise'
-    elif signed_area < 0:
-        return 'clockwise'
-    else:
-        return 'undetermined'
-
-
-
-def find_closest(X, Y, point, xlim=None, ylim=None):
-    """Return closest point(s), using norm2 distance 
-    if xlim and ylim is provided, these are used to make the data non dimensional.
-    """
-    # NOTE: this will fail for datetime
-    if xlim is not None:
-        x_scale = (xlim[1]-xlim[0])**2
-        y_scale = (ylim[1]-ylim[0])**2
-    else:
-        x_scale = 1
-        y_scale = 1
-
-    norm2 = ((X-point[0])**2)/x_scale + ((Y-point[1])**2)/y_scale
-    ind = np.argmin(norm2, axis=0)
-    return X[ind], Y[ind], ind
+# NOTE: merged with tools/curve.py
+# 
+# def contour_length_scale(x, y):
+#     """ return representative length scale of contour """
+#     lx = np.max(x)-np.min(x)
+#     ly = np.max(y)-np.min(y)
+#     return  max(lx, ly)
+# 
+# def contour_isClosed(x, y, reltol=_DEFAULT_REL_TOL):
+#     """ Return true if contour is closed """
+#     l = contour_length_scale(x, y)
+#     return np.abs(x[0]-x[-1])<l*reltol or np.abs(y[0]-y[-1])<l*reltol
+# 
+# def contour_remove_duplicates(x, y, reltol=_DEFAULT_REL_TOL):
+#     l = contour_length_scale(x, y)
+#     unique_points = []
+#     duplicate_points = []
+#     for x,y in zip(x, y):
+#         if all(np.sqrt((x-p[0])**2 + (y-p[1])**2) > reltol*l for p in unique_points):
+#             unique_points.append((x,y))
+#         else:
+#             duplicate_points.append((x,y))
+#     x = np.array([p[0] for p in unique_points])
+#     y = np.array([p[1] for p in unique_points])
+#     return x, y, duplicate_points
+# 
+# def close_contour(x, y, reltol=_DEFAULT_REL_TOL, force=False):
+#     """ Close contour, unless it's already closed, alwasys do it if force is True"""
+#     isClosed = contour_isClosed(x, y, reltol=reltol)
+#     if isClosed or force:
+#         x = np.append(x, x[0])
+#         y = np.append(y, y[0])
+#     return x, y
+#     
+# def reloop_contour(x, y, i):
+#     """
+#     Reloop a contour array so that it starts at a specific index.
+#     NOTE: duplicates should preferably be removed
+#     INPUTS:
+#     - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
+#     - i: Index where the relooped contour should start.
+#     OUTPUTS:
+#     - Relooped contour array.
+#     """
+#     #relooped_contour = np.concatenate((contour_array[i:], contour_array[:i]))
+#     x2 = np.concatenate((x[i:], x[:i]))
+#     y2 = np.concatenate((y[i:], y[:i]))
+#     return x2, y2
+# 
+# def opposite_contour(x, y, reltol = _DEFAULT_REL_TOL):
+#     """
+#     Make a clockwise contour counterclockwise and vice versa
+#     INPUTS:
+#     - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
+#     OUTPUTS:
+#     - opposite contour
+#     """
+#     isClosed = contour_isClosed(x, y, reltol=reltol)
+#     if not isClosed:
+#         # we close the contour
+#         x, y = close_contour(x, y, force=True, reltol=reltol)
+#     xopp=x[-1::-1]
+#     yopp=y[-1::-1]
+#     # If it was not closed, we remove duplicates
+#     if not isClosed:
+#         xopp, yopp, dupli = contour_remove_duplicates(xopp, yopp, reltol=reltol)
+#     return xopp, yopp
+# 
+# def contour_orientation(x, y):
+#     """
+#     Determine if a contour is clockwise or counterclockwise.
+#     
+#     INPUTS:
+#     - x: 1D array containing the x-coordinates of the contour nodes.
+#     - y: 1D array containing the y-coordinates of the contour nodes.
+#     
+#     OUTPUTS:
+#     - 'clockwise' if the contour is clockwise, 'counterclockwise' if it's counterclockwise.
+#     """
+#     # Compute the signed area
+#     signed_area = np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
+#     
+#     # Determine orientation
+#     if signed_area > 0:
+#         return 'counterclockwise'
+#     elif signed_area < 0:
+#         return 'clockwise'
+#     else:
+#         return 'undetermined'
+# 
+# 
+# 
+# def find_closest(X, Y, point, xlim=None, ylim=None):
+#     """Return closest point(s), using norm2 distance 
+#     if xlim and ylim is provided, these are used to make the data non dimensional.
+#     """
+#     # NOTE: this will fail for datetime
+#     if xlim is not None:
+#         x_scale = (xlim[1]-xlim[0])**2
+#         y_scale = (ylim[1]-ylim[0])**2
+#     else:
+#         x_scale = 1
+#         y_scale = 1
+# 
+#     norm2 = ((X-point[0])**2)/x_scale + ((Y-point[1])**2)/y_scale
+#     ind = np.argmin(norm2, axis=0)
+#     return X[ind], Y[ind], ind
 
 
 

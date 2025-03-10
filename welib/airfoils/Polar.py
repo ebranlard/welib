@@ -43,7 +43,7 @@ class Polar(object):
 
     def __init__(self, filename=None, alpha=None, cl=None, cd=None, cm=None, Re=None, 
             compute_params=False, radians=None, cl_lin_method='max',
-            fformat='auto', verbose=False):
+            fformat='auto', verbose=False, name=None):
         """Constructor
 
         Parameters
@@ -103,6 +103,12 @@ class Polar(object):
             if nLocks>0 and nLocks<3:
                 raise Exception("For now, input files are assumed to have all or none of the columns: (fs, cl_fs, and cl_inv). Otherwise, we\'ll have to ensure consitency, and so far we dont...")
 
+        if name is None:
+            if filename is None:
+                name='unknown'
+            else:
+                name = os.path.basename(filename)
+        self.name =name
         self.Re = Re
         self.alpha = np.array(alpha)
         if cl is None:
@@ -734,11 +740,11 @@ class Polar(object):
         else:
             window = [-20, 20]
         try:
-            alpha0cn = _find_alpha0(alpha, cn, window, direction='up', value_if_constant = 0.)
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='up', value_if_constant = 0., name=self.name)
         except NoCrossingException:
             if verbose:
                 print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
-            alpha0cn = _find_alpha0(alpha, cn, window, direction='down')
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='down', name=self.name)
 
         # checks for inppropriate data (like cylinders)
         if len(np.unique(cl)) == 1:
@@ -998,7 +1004,7 @@ class Polar(object):
         # print(self.cl)
         # print(window)
 
-        return _find_alpha0(self.alpha, self.cl, window)
+        return _find_alpha0(self.alpha, self.cl, window, name=self.name)
 
     def linear_region(self, delta_alpha0=4, method_linear_fit="max"):
         cl_slope, alpha0 = self.cl_linear_slope()
@@ -1278,7 +1284,7 @@ def _alpha_window_in_bounds(alpha, window):
     return window
 
 
-def _find_alpha0(alpha, coeff, window, direction='up', value_if_constant = np.nan):
+def _find_alpha0(alpha, coeff, window, direction='up', value_if_constant = np.nan, name=''):
     """Finds the point where coeff(alpha)==0 using interpolation.
     The search is narrowed to a window that can be specified by the user. The default window is yet enough for cases that make physical sense.
     The angle alpha0 is found by looking at a zero up crossing in this window, and interpolation is used to find the exact location.
@@ -1299,12 +1305,11 @@ def _find_alpha0(alpha, coeff, window, direction='up', value_if_constant = np.na
     alpha_zc, i_zc, s_zc = _zero_crossings(x=alpha, y=coeff, direction=direction)
 
     if len(alpha_zc) > 1:
-        print('WARN: Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
-        print('>>> Using second zero')
+        print('[WARN] Polar: {}:  Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}]. Using second zero.'.format(name, len(alpha_zc),window[0],window[1]))
         alpha_zc=alpha_zc[1:]
         #raise Exception('Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
     elif len(alpha_zc) == 0:
-        raise NoCrossingException('Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(window[0],window[1]))
+        raise NoCrossingException('Polar: {}:  Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(name, window[0],window[1]))
 
     alpha0 = alpha_zc[0]
     return alpha0
@@ -1427,7 +1432,7 @@ def polar_params(alpha, cl, cd, cm):
        alpha_sl_neg = 0.
        alpha_sl_pos = 0.
     else:
-        alpha0 = _find_alpha0(alpha, cl, [np.radians(-5), np.radians(20)])
+        alpha0 = _find_alpha0(alpha, cl, [np.radians(-5), np.radians(20)], name=self.name)
 
         # Find positive angle of attack stall limit alpha_sl_pos
         alpha_sl_pos=20.*np.pi/180
@@ -1536,7 +1541,7 @@ def polar_params(alpha, cl, cd, cm):
 
 
 
-def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRadians=False, radians=False):
+def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRadians=False, radians=False, name=''):
     """ 
     Find slope of linear region
     Outputs: a 2-tuplet of:
@@ -1570,7 +1575,7 @@ def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRa
     else:
         windowAlpha0 = [-30, 30]
     windowAlpha0 = _alpha_window_in_bounds(alpha, windowAlpha0)
-    alpha0 = _find_alpha0(alpha, cl, windowAlpha0)
+    alpha0 = _find_alpha0(alpha, cl, windowAlpha0, name=name)
 
     # Constant case or only one value
     if np.all(cl == cl[0]) or len(cl) == 1:

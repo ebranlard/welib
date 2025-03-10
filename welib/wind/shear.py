@@ -1,32 +1,6 @@
-
-# --------------------------------------------------------------------------------}
-# --- Curve fitting 
-# --------------------------------------------------------------------------------{
-# def fit_powerlaw_u_alpha(x, y, z_ref=100, p0=(10,0.1)):
-#     """ 
-#     p[0] : u_ref
-#     p[1] : alpha
-#     """
-#     pfit, _ = so.curve_fit(lambda x, *p : p[0] * (x / z_ref) ** p[1], x, y, p0=p0)
-#     y_fit = pfit[0] * (x / z_ref) ** pfit[1]
-#     coeffs_dict=OrderedDict([('u_ref',pfit[0]),('alpha',pfit[1])])
-#     formula = '{u_ref} * (z / {z_ref}) ** {alpha}'
-#     fitted_fun = lambda xx: pfit[0] * (xx / z_ref) ** pfit[1]
-#     return y_fit, pfit, {'coeffs':coeffs_dict,'formula':formula,'fitted_function':fitted_fun}
-
-
-# {'label':'Power law (alpha)', 'handle':powerlaw_alpha, 'id':'predef: powerlaw_alpha',
-# 'formula':'{u_ref} * (z / {z_ref}) ** {alpha}',
-# 'coeffs' : 'alpha=0.1',          # Order important
-# 'consts' : 'u_ref=10, z_ref=100',
-# 'bounds' : 'alpha=(-1,1)'},
-# {'label':'Power law (alpha,u)', 'handle':powerlaw_u_alpha, 'id':'predef: powerlaw_u_alpha',
-# 'formula':'{u_ref} * (z / {z_ref}) ** {alpha}',
-# 'coeffs': 'alpha=0.1, u_ref=10', # Order important
-# 'consts': 'z_ref=100',
-# 'bounds': 'u_ref=(0,inf), alpha=(-1,1)'},
-
-
+import pandas as pd
+# Local 
+import numpy as np
 # --- Power law 
 #    case (WindProfileType_PL)
 def powerlaw(z, alpha, z_ref, U_ref):
@@ -60,15 +34,43 @@ def linshear(z, slope, z_ref, U_ref, L_ref=None):
         U = U_ref + slope*(z - z_ref)
     return U
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-# Local 
-import weio
 
+
+# --------------------------------------------------------------------------------}
+# --- Curve fitting 
+# --------------------------------------------------------------------------------{
+def fit_powerlaw_u_alpha(z, u, z_ref=100, p0=(10,0.1)):
+    """ 
+    p[0] : u_ref
+    p[1] : alpha
+    """
+    from collections import OrderedDict
+    import scipy.optimize as so
+    pfit, _ = so.curve_fit(lambda xx, *p : p[0] * (xx / z_ref) ** p[1], z, u, p0=p0)
+    u_fit = pfit[0] * (z / z_ref) ** pfit[1]
+    coeffs_dict=OrderedDict([('u_ref',pfit[0]),('alpha',pfit[1])])
+    formula = '{u_ref} * (z / {z_ref}) ** {alpha}'
+    fitted_fun = lambda xx: pfit[0] * (xx / z_ref) ** pfit[1]
+    return u_fit, pfit, {'coeffs':coeffs_dict,'formula':formula,'fitted_function':fitted_fun}
+
+def fit_powerlaw_alpha(z, u, z_ref, u_ref, p0=(0.1)):
+    """ 
+        x is z
+        y is u
+    p[0] : alpha
+    """
+    from collections import OrderedDict
+    import scipy.optimize as so
+    pfit, _ = so.curve_fit(lambda xx, *p : u_ref * (xx / z_ref) ** p[0], z, u, p0=p0)
+    u_fit = u_ref * (z / z_ref) ** pfit[0]
+    coeffs_dict=OrderedDict([('alpha',pfit[0])])
+    formula = '{u_ref} * (z / {z_ref}) ** {alpha}'
+    fitted_fun = lambda xx: u_ref * (xx / z_ref) ** pfit[0]
+    return u_fit, pfit, {'coeffs':coeffs_dict,'formula':formula,'fitted_function':fitted_fun}
 
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
     z=np.linspace(0,400)
     z_ref = 150
     U_ref = 8

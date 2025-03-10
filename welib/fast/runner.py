@@ -113,7 +113,7 @@ def run_cmd(input_file_or_arglist, exe, wait=True, showOutputs=False, showComman
     p.exe            = exe
     return p
 
-def runBatch(batchfiles, showOutputs=True, showCommand=True, verbose=True):
+def runBatch(batchfiles, showOutputs=True, showCommand=True, verbose=True, newWindow=False, closeWindow=True):
     """ 
     Run one or several batch files
     TODO: error handling, status, parallel
@@ -131,16 +131,26 @@ def runBatch(batchfiles, showOutputs=True, showCommand=True, verbose=True):
         batchfile = batchfile.strip()
         batchfile = batchfile.replace('\\','/')
         batchDir  = os.path.dirname(batchfile)
+        batchfileRel = os.path.relpath(batchfile, batchDir)
         if showCommand:
-            print('>>>> Running batch file:', batchfile)
+            print('>>>> Running batch file:', batchfileRel)
             print('           in directory:', batchDir)
-        try:
-            os.chdir(batchDir)
-            returncode=subprocess.call([batchfile], stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
-        except:
-            os.chdir(curDir)
-            returncode=-10
-        return returncode
+
+        if newWindow:
+            # --- Launch a new window (windows only for now)
+            cmdflag= '/c' if closeWindow else '/k'
+            subprocess.Popen(f'start cmd {cmdflag} {batchfileRel}', shell=True, cwd=batchDir)
+            return 0
+        else:
+            # --- We wait for outputs
+            try:
+                os.chdir(batchDir)
+                batchDir  = os.path.join(curDir, batchDir)
+                returncode=subprocess.call([batchfileRel], stdout=STDOut, stderr=subprocess.STDOUT, shell=shell)
+            except:
+                os.chdir(curDir)
+                returncode=-10
+            return returncode
 
     shell=False
     if isinstance(batchfiles,list):

@@ -70,13 +70,14 @@ def vorticity2D(u, v, x, y):
 
 def flow_interp2D(xi, yi, u, v, x, y, method='linear', algo='griddata'):
     """
+    The flow may be known on a grid or not.
     INPUTS:
      -  xi (ndarray): Values where velocity is to be recomputed
      -  yi (ndarray): Values where velocity is to be recomputed
-     -  u (ndarray): 2D array of x-component velocities.
-     -  v (ndarray): 2D array of y-component velocities.
-     -  x (ndarray): 2D array of x coordinates.
-     -  y (ndarray): 2D array of y coordinates.
+     -  u (ndarray): 1D or 2D array of x-component velocities.
+     -  v (ndarray): 1D or 2D array of y-component velocities.
+     -  x (ndarray): 1D or 2D array of x coordinates.
+     -  y (ndarray): 1D or 2D array of y coordinates.
      -  method : linear, cubic, nearest
         
     Returns:
@@ -84,6 +85,10 @@ def flow_interp2D(xi, yi, u, v, x, y, method='linear', algo='griddata'):
     """
     import scipy.interpolate as scint
     from matplotlib.tri import Triangulation, LinearTriInterpolator
+    x = np.asarray(x)
+    y = np.asarray(y)
+    u = np.asarray(u)
+    v = np.asarray(v)
     if algo=='griddata':
         x=x.flatten()
         y=y.flatten()
@@ -110,4 +115,7 @@ def flow_interp2D(xi, yi, u, v, x, y, method='linear', algo='griddata'):
     else:
         raise NotImplementedError()
     return Ui, Vi
+
+
+
 

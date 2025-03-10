@@ -10,11 +10,25 @@ In particular:
 
 import numpy as np
 import unittest
+_DEFAULT_REL_TOL=0.001
 
-def curve_coord(line=None):
+def get_line(x, y, close_it=False):
+    if close_it:
+        x, y = close_contour(x, y)
+
+    line = np.zeros((len(x), 2))
+    line[:,0] = x
+    line[:,1] = y
+    return line
+    #return np.array([x,y]).T
+
+def curve_coord(x=None, y=None, line=None):
     """ return curvilinear coordinate """
-    x=line[:,0]
-    y=line[:,1]
+    if line is not None:
+        x = line[:,0]
+        y = line[:,1]
+    x = np.asarray(x)
+    y = np.asarray(y)
     s     = np.zeros(x.shape)
     s[1:] = np.sqrt((x[1:]-x[0:-1])**2+ (y[1:]-y[0:-1])**2)
     s     = np.cumsum(s)                                  
@@ -30,7 +44,7 @@ def curve_extract(line, spacing, offset=None):
     if offset is None:
         offset=spacing/2
     # Computing curvilinear length
-    s = curve_coord(line)
+    s = curve_coord(line=line)
     offset=np.mod(offset,s[-1]) # making sure we always get one point
     # New (equidistant) curvilinear coordinate
     sExtract=np.arange(offset,s[-1],spacing)
@@ -40,19 +54,23 @@ def curve_extract(line, spacing, offset=None):
     return np.array([xx,yy]).T
 
 
-def curve_interp(x=None,y=None,n=3,line=None):
+def curve_interp(x=None, y=None, n=3, s=None, line=None):
     """ Interpolate a curves to equidistant curvilinear space between points
 
     INPUTS:
       either:
-        x,y : 1d arrays 
-      or
-        line: (n_in x 2) array
-      n : number of points to interpolate
+       -  x,y : 1d arrays 
+        or
+       -  line: (n_in x 2) array
+      either
+        - n : number of points to interpolate
+         or
+        - s : array of curvilinear coordinates where well interpolate
     """
+    # --- Sanitization
     MatOut=False
     if line is None:
-        line = np.array([x,y]).T
+        line = get_line(x,y)
     else:
         x=line[:,0]
         y=line[:,1]
@@ -64,20 +82,225 @@ def curve_interp(x=None,y=None,n=3,line=None):
         raise Exception('Inputs should have the same length')
     if len(x)<2 or len(y)<2:
         if MatOut:
-            return np.array([x,y]).T
+            return get_line(x,y)
         else:
             return x,y
+
     # Computing curvilinear length
-    s = curve_coord(line)
-    # New (equidistant) curvilinear coordinate
-    sNorm=np.linspace(0,s[-1],n);
+    s_old = curve_coord(line=line)
+    if s is None:
+        # New (equidistant) curvilinear coordinate
+        sNorm = np.linspace(0, s_old[-1], n);
+    else:
+        # New curvilinear coordinate
+        if s[0]<s_old[0] or s[-1]>s_old[-1]:
+            raise Exception('curve_interp: Curvilinear coordinate needs to be between 0 and {}, currently it is between {} and {}'.format(s_old[-1], s[0], s[-1]))
+        sNorm = s
     # Interpolating based on new curvilinear coordinate
-    xx=np.interp(sNorm,s,x);
-    yy=np.interp(sNorm,s,y);
+    xx = np.interp(sNorm, s_old, x)
+    yy = np.interp(sNorm, s_old, y)
     if MatOut:
-        return np.array([xx,yy]).T
+        return get_line(xx, yy) 
     else:
         return xx,yy
+
+
+
+# --------------------------------------------------------------------------------
+# --- Contour tools 
+# --------------------------------------------------------------------------------
+# NOTE: merge with airfoils/shape.py
+
+def contour_length_scale(x, y):
+    """ return representative length scale of contour """
+    lx = np.max(x)-np.min(x)
+    ly = np.max(y)-np.min(y)
+    return  max(lx, ly)
+
+def contour_isClosed(x, y, reltol=_DEFAULT_REL_TOL):
+    """ Return true if contour is closed """
+    l = contour_length_scale(x, y)
+    return np.abs(x[0]-x[-1])<l*reltol or np.abs(y[0]-y[-1])<l*reltol
+
+def contour_remove_duplicates(x, y, reltol=_DEFAULT_REL_TOL):
+    l = contour_length_scale(x, y)
+    unique_points = []
+    duplicate_points = []
+    for x,y in zip(x, y):
+        if all(np.sqrt((x-p[0])**2 + (y-p[1])**2) > reltol*l for p in unique_points):
+            unique_points.append((x,y))
+        else:
+            duplicate_points.append((x,y))
+    x = np.array([p[0] for p in unique_points])
+    y = np.array([p[1] for p in unique_points])
+    return x, y, duplicate_points
+
+def close_contour(x, y, reltol=_DEFAULT_REL_TOL, force=False):
+    """ Close contour, unless it's already closed, alwasys do it if force is True"""
+    x = np.asarray(x)
+    y = np.asarray(y)
+    isClosed = contour_isClosed(x, y, reltol=reltol)
+    if isClosed or force:
+        x = np.append(x, x[0])
+        y = np.append(y, y[0])
+    return x, y
+    
+def reloop_contour(x, y, i):
+    """
+    Reloop a contour array so that it starts at a specific index.
+    NOTE: duplicates should preferably be removed
+    INPUTS:
+    - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
+    - i: Index where the relooped contour should start.
+    OUTPUTS:
+    - Relooped contour array.
+    """
+    #relooped_contour = np.concatenate((contour_array[i:], contour_array[:i]))
+    x2 = np.concatenate((x[i:], x[:i]))
+    y2 = np.concatenate((y[i:], y[:i]))
+    return x2, y2
+
+def opposite_contour(x, y, reltol = _DEFAULT_REL_TOL):
+    """
+    Make a clockwise contour counterclockwise and vice versa
+    INPUTS:
+    - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
+    OUTPUTS:
+    - opposite contour
+    """
+    isClosed = contour_isClosed(x, y, reltol=reltol)
+    if not isClosed:
+        # we close the contour
+        x, y = close_contour(x, y, force=True, reltol=reltol)
+    xopp=x[-1::-1]
+    yopp=y[-1::-1]
+    # If it was not closed, we remove duplicates
+    if not isClosed:
+        xopp, yopp, dupli = contour_remove_duplicates(xopp, yopp, reltol=reltol)
+    return xopp, yopp
+
+def contour_orientation(x, y):
+    """
+    Determine if a contour is clockwise or counterclockwise.
+    
+    INPUTS:
+    - x: 1D array containing the x-coordinates of the contour nodes.
+    - y: 1D array containing the y-coordinates of the contour nodes.
+    
+    OUTPUTS:
+    - 'clockwise' if the contour is clockwise, 'counterclockwise' if it's counterclockwise.
+    """
+    # Compute the signed area
+    signed_area = np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
+    
+    # Determine orientation
+    if signed_area > 0:
+        return 'counterclockwise'
+    elif signed_area < 0:
+        return 'clockwise'
+    else:
+        return 'undetermined'
+
+
+
+
+def closest_point(x0, y0, x, y):
+    """ return closest point to curve and index"""
+    i = np.argmin((x - x0)**2 + (y - y0)**2)
+    return x[i], y[i], i
+
+def find_closest(X, Y, point, xlim=None, ylim=None):
+    """Return closest point(s), using norm2 distance 
+    if xlim and ylim is provided, these are used to make the data non dimensional.
+    """
+    # NOTE: this will fail for datetime
+    if xlim is not None:
+        x_scale = (xlim[1]-xlim[0])**2
+        y_scale = (ylim[1]-ylim[0])**2
+    else:
+        x_scale = 1
+        y_scale = 1
+
+    norm2 = ((X-point[0])**2)/x_scale + ((Y-point[1])**2)/y_scale
+    ind = np.argmin(norm2, axis=0)
+    return X[ind], Y[ind], ind
+
+
+def point_in_contour(X, Y, contour, method='ray_casting'):
+    """
+    Checks if a point is inside a closed contour.
+ 
+    INPUTS:
+      - X: scalar or array of point coordinates
+      - Y: scalar or array of point coordinates
+      - contour: A numpy array shape (n x 2), of (x, y) coordinates representing the contour.
+            [[x1, y1]
+               ...
+             [xn, yn]]
+         or [(x1,y1), ... (xn,yn)]
+ 
+    OUTPUTS:
+      - logical or array of logical: True if the point is inside the contour, False otherwise.
+    """
+    def __p_in_c_ray(x, y, contour):
+        # --- Check if a point is inside a polygon using Ray Casting algorithm.
+        n = len(contour)
+        inside = False
+        p1x, p1y = contour[0]
+        for i in range(n+1):
+            p2x, p2y = contour[i % n]
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+        return inside
+
+    def __p_in_c_cv2(x, y, contour):
+       # --- CV2
+       import cv2 # pip install opencv-python
+       # NOTE: not working well...
+       contour = contour.reshape((-1,1,2))
+       dist = cv2.pointPolygonTest(contour.T, P, True)
+       if dist > 0:
+           return True
+       else:
+           return False
+    # --- End subfunctions
+
+    # --- Sanity
+    contour = np.asarray(contour)
+    assert(contour.shape[1]==2)
+
+    if np.isscalar(X):
+        # Check if the point is inside the bounding box of the contour.
+        if X > np.max(contour[:,0]) or X < np.min(contour[:,0]) or Y > np.max(contour[:,1]) or Y < np.min(contour[:,1]):
+            return False
+        if method=='cv2':
+            return __p_in_c_cv2(X, Y, contour)
+        elif method=='ray_casting':
+            return __p_in_c_ray(X, Y, contour)
+        else:
+            raise NotImplementedError()
+    # --- For arrays
+    #assert(X.shape==Y.shape)
+    shape_in = X.shape
+    Xf = np.array(X).flatten()
+    Yf = np.array(Y).flatten()
+    Bf = np.zeros(Xf.shape, dtype=bool)
+    if len(Xf)!=len(Yf):
+        raise Exception('point_in_contour: when array provided, X and Y must have the same length')
+    # Quickly eliminate pints outside of bounding box (vectorial calculation)
+    bbbox = (Xf <= np.max(contour[:,0])) & (Xf >= np.min(contour[:,0])) & (Yf <= np.max(contour[:,1])) & (Yf >= np.min(contour[:,1]))
+    Bf[bbbox] = True
+    for i, (x,y,b) in enumerate(zip(Xf, Yf, Bf)):
+        if b: # If in Bounding box, go into more complicated calculation
+            Bf[i] = __p_in_c_ray(x, y, contour)
+    B =  Bf.reshape(shape_in)
+    return B
 
 
 # --------------------------------------------------------------------------------}
@@ -94,7 +317,7 @@ def lines_to_arrows(lines, n=5, offset=None, spacing=None, normalize=True):
         if type(n) is int:
             n=[n]*len(lines)
         n=np.asarray(n)
-        spacing = [ curve_coord(l)[-1]/nn for l,nn in zip(lines,n)]
+        spacing = [ curve_coord(line=l)[-1]/nn for l,nn in zip(lines,n)]
     try:
         len(spacing)
     except:
@@ -264,82 +487,6 @@ def example_streamquiver():
     plt.axis('equal')
     plt.show()
 
-
-def point_in_contour(X, Y, contour, method='ray_casting'):
-    """
-    Checks if a point is inside a closed contour.
- 
-    INPUTS:
-      - X: scalar or array of point coordinates
-      - Y: scalar or array of point coordinates
-      - contour: A numpy array shape (n x 2), of (x, y) coordinates representing the contour.
-            [[x1, y1]
-               ...
-             [xn, yn]]
-         or [(x1,y1), ... (xn,yn)]
- 
-    OUTPUTS:
-      - logical or array of logical: True if the point is inside the contour, False otherwise.
-    """
-    def __p_in_c_ray(x, y, contour):
-        # --- Check if a point is inside a polygon using Ray Casting algorithm.
-        n = len(contour)
-        inside = False
-        p1x, p1y = contour[0]
-        for i in range(n+1):
-            p2x, p2y = contour[i % n]
-            if y > min(p1y, p2y):
-                if y <= max(p1y, p2y):
-                    if x <= max(p1x, p2x):
-                        if p1y != p2y:
-                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                        if p1x == p2x or x <= xinters:
-                            inside = not inside
-            p1x, p1y = p2x, p2y
-        return inside
-
-    def __p_in_c_cv2(x, y, contour):
-       # --- CV2
-       import cv2 # pip install opencv-python
-       # NOTE: not working well...
-       contour = contour.reshape((-1,1,2))
-       dist = cv2.pointPolygonTest(contour.T, P, True)
-       if dist > 0:
-           return True
-       else:
-           return False
-    # --- End subfunctions
-
-    # --- Sanity
-    contour = np.asarray(contour)
-    assert(contour.shape[1]==2)
-
-    if np.isscalar(X):
-        # Check if the point is inside the bounding box of the contour.
-        if X > np.max(contour[:,0]) or X < np.min(contour[:,0]) or Y > np.max(contour[:,1]) or Y < np.min(contour[:,1]):
-            return False
-        if method=='cv2':
-            return __p_in_c_cv2(X, Y, contour)
-        elif method=='ray_casting':
-            return __p_in_c_ray(X, Y, contour)
-        else:
-            raise NotImplementedError()
-    # --- For arrays
-    #assert(X.shape==Y.shape)
-    shape_in = X.shape
-    Xf = np.array(X).flatten()
-    Yf = np.array(Y).flatten()
-    Bf = np.zeros(Xf.shape, dtype=bool)
-    if len(Xf)!=len(Yf):
-        raise Exception('point_in_contour: when array provided, X and Y must have the same length')
-    # Quickly eliminate pints outside of bounding box (vectorial calculation)
-    bbbox = (Xf <= np.max(contour[:,0])) & (Xf >= np.min(contour[:,0])) & (Yf <= np.max(contour[:,1])) & (Yf >= np.min(contour[:,1]))
-    Bf[bbbox] = True
-    for i, (x,y,b) in enumerate(zip(Xf, Yf, Bf)):
-        if b: # If in Bounding box, go into more complicated calculation
-            Bf[i] = __p_in_c_ray(x, y, contour)
-    B =  Bf.reshape(shape_in)
-    return B
 
 
 
