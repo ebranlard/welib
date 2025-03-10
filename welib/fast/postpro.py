@@ -742,8 +742,9 @@ def spanwiseColAD(Cols):
         ADSpanMap['^[A]*'+sB+r'N(\d*)TnInd_\[-\]'  ]   =sB+'TnInd_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)AxInd_qs_\[-\]'  ]=sB+'AxInd_qs_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)TnInd_qs_\[-\]'  ]=sB+'TnInd_qs_[-]'  
-        ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_kp_qs\[-\]'  ]=sB+'BEM_kp_qs_[-]'  
-        ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_F_qs\[-\]'   ]=sB+'BEM_F_qs_[-]'  
+        ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_k_qs_\[-\]'  ]=sB+'BEM_k_qs_[-]'  
+        ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_kp_qs_\[-\]' ]=sB+'BEM_kp_qs_[-]'  
+        ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_F_qs_\[-\]'  ]=sB+'BEM_F_qs_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_CT_qs_\[-\]' ]=sB+'BEM_CT_qs_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)Chi_\[deg\]'     ]=sB+'Chi_[deg]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Cl_\[-\]'     ]   =sB+'Cl_[-]'   
@@ -831,7 +832,6 @@ def spanwiseColAD(Cols):
         ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_k_\[-\]'  ]   =sB+'BEM_k_qs_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_kp_\[-\]' ]   =sB+'BEM_kp_qs_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_F_\[-\]'  ]   =sB+'BEM_F_qs_[-]'  
-        ADSpanMap['^[A]*'+sB+r'N(\d*)BEM_k_qs\[-\]']   =sB+'BEM_k_qs_[-]'  
         ADSpanMap['^[A]*'+sB+r'N(\d*)AOA_\[deg\]'  ]   =sB+'Alpha_[deg]' # DBGOuts
         ADSpanMap['^[A]*'+sB+r'N(\d*)AIn_\[deg\]'  ]   =sB+'AxInd_[-]'   # DBGOuts NOTE BUG Unit
         ADSpanMap['^[A]*'+sB+r'N(\d*)ApI_\[deg\]'  ]   =sB+'TnInd_[-]'   # DBGOuts NOTE BUG Unit
@@ -917,7 +917,7 @@ def insert_extra_columns_AD(dfRad, tsAvg, vr=None, rho=None, R=None, nB=None, ch
 
 
 
-def spanwisePostPro(FST_In=None,avgMethod='constantwindow',avgParam=5,out_ext='.outb',df=None):
+def spanwisePostPro(FST_In=None, avgMethod='constantwindow', avgParam=5, out_ext='.outb', df=None):
     """
     Postprocess FAST radial data. 
     if avgMethod is not None: Average the time series, return a dataframe nr x nColumns
@@ -1635,12 +1635,12 @@ def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, c
     """ 
     Average a dataframe based on azimuthal value
     Returns a dataframe with same amount of columns as input, and azimuthal values as index
-    A list of dataframes is returned if multiple statistics are requested, e.g. mean, min, max, std
+    A list of dataframes is returned if multiple statistics are requested, e.g. avg, min, max, std
     INPUTS:
-      - stats: list of statistics to be computed, in: ['mean', 'max', 'min', 'std]
+      - stats: list of statistics to be computed, in: ['avg', 'max', 'min', 'std]
     """
     if stats is None:
-        stats=['mean']
+        stats=['avg']
 
     if psiBin is None: 
         psiBin = np.arange(0,360+1,10)
@@ -1654,7 +1654,7 @@ def azimuthal_average_DF(df, psiBin=None, colPsi='Azimuth_[deg]', tStart=None, c
                 raise Exception('The column `{}` does not appear to be in the dataframe'.format(colTime))
             df=df[ df[colTime]>tStart].copy()
 
-    dfsPsi= bin_DF(df, psiBin, colPsi, stats=stats) # Returns a list of df for each statistics, e.g. , min, max, mean, std
+    dfsPsi= bin_DF(df, psiBin, colPsi, stats=stats) # Returns a list of df for each statistics, e.g. , min, max, avg, std
     if np.any(dfsPsi[0]['Counts']<1):
         print('[WARN] some bins have no data! Increase the bin size.')
 
@@ -1722,7 +1722,7 @@ def averageDF(df, avgMethod='periods', avgParam=None, ColMap=None, ColKeep=None,
     See spanwisePostPro for documentation, same interface, just does it for one dataframe
     """
     if stats is None:
-        stats=['mean']
+        stats=['avg']
     def renameCol(x):
         for k,v in ColMap.items():
             if x==v:
@@ -1795,7 +1795,7 @@ def averageDF(df, avgMethod='periods', avgParam=None, ColMap=None, ColKeep=None,
     # StdValues  = df[IWindow].std()
     dfs = []
     for stat in stats:
-        if stat=='mean':
+        if stat=='avg' or stat=='mean':
             dfs.append (pd.DataFrame(df.iloc[IWindow].mean()).transpose() )
         elif stat=='min':
             dfs.append (pd.DataFrame(df.iloc[IWindow].min()).transpose() )
@@ -1927,7 +1927,7 @@ def averagePostPro(outFiles_or_DFs,avgMethod='periods',avgParam=None,
             try:
                 result.iloc[i] = MeanValues.iloc[0]
             except:
-                import pdb; pdb.set_trace()
+                raise 
 
 
     if len(invalidFiles)==len(outFiles_or_DFs):

@@ -278,7 +278,7 @@ def bin_DF(df, xbins, colBin, stats=None):
 
     """
     if stats is None:
-        stats=['mean']
+        stats=['avg']
     if colBin not in df.columns.values:
         raise Exception('The column `{}` does not appear to be in the dataframe'.format(colBin))
     xmid      = (xbins[:-1]+xbins[1:])/2
@@ -286,7 +286,7 @@ def bin_DF(df, xbins, colBin, stats=None):
     dfs=[]
     df3  = df.groupby('Bin', observed=False)
     for stat in stats:
-        if stat=='mean':
+        if stat=='avg' or stat=='mean':
             df2  = df3.mean()  # mean by bin
         elif stat=='std':
             df2  = df3.std()   # std by bin
