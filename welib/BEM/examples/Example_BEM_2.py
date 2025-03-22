@@ -86,11 +86,13 @@ def main(test=False):
 if __name__=="__main__":
     dfOut, dfRad = main(test=False)
     plt.show()
+
 if __name__=="__test__":
     dfOut, dfRad = main(test=True)
     np.testing.assert_almost_equal(dfOut['AeroPower_[kW]'].values[-5], 5710.6344, 3)
     np.testing.assert_almost_equal(dfRad['a_prime_[-]'].values[4], 0.1636598, 4)
     [os.remove(f) for f in glob.glob(os.path.join(MyDir,'_*.csv'))]
+
 if __name__=="__export__":
     main()
     from welib.tools.repo import export_figs_callback

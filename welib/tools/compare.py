@@ -30,10 +30,15 @@ def compare(o1,o2,Columns=None,tol=1e-8,n1='o1',n2='o2'):
         
     if isinstance(o1,pd.core.series.Series):
         b=compare_pandas_series(o1,o2,Columns=[],tol=tol,n1=n1,n2=n1)
+
     elif isinstance(o1,pd.core.frame.DataFrame):
         b=compare_pandas_df(o1,o2,Columns=[],tol=tol,n1=n1,n2=n1)
+
     elif isinstance(o1,np.ndarray):
         b=compare_ndarray(o1,o2,tol=tol,n1=n1,n2=n1)
+
+    elif isinstance(o1, dict):
+        b=compare_dict(o1,o2,tol=tol,n1=n1,n2=n1)
     else:
         raise Exception('Type not implemented yet in compare function {}'.format(type(o1)))
     return b
@@ -95,6 +100,12 @@ def compare_pandas_series(o1,o2,Columns=None,tol=1e-8,n1='o1',n2='o2'):
     b=False
     #b=compare_ndarray(o1.values,o2.values,tol=tol,n1='{}[{}]'.format(n1,col),n2='{}[[]]'.format(n1,col))
     return False
+
+def compare_dict(o1,o2,Columns=None,tol=1e-8,n1='o1',n2='o2'):
+    print('Compare dict not implemented, but Im pretty sure I did this at some point...')
+    # TODO
+    for k,v in o1.items():
+        print(k, v, o2[k])
 
 if __name__ == '__main__':
     a=np.linspace(0,1,10)

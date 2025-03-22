@@ -1,13 +1,23 @@
 """ 
 Set of utils useful for Structural and Multi-Body dynamics
 
+Reference:
+     [1]: Flexible multibody dynamics using joint coordinates and the Rayleigh-Ritz approximation: the general framework behind and beyond Flex
 """
 
 import numpy as np
-
 # --- Definitions to ease comparison with sympy versions
 from numpy import cos ,sin
 from welib.yams.rotations import R_x, R_y, R_z
+# --- Backward compatibility
+try:
+    from scipy.integrate import cumulative_trapezoid 
+except:
+    from scipy.integrate import cumtrapz as cumulative_trapezoid
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 # def Matrix(m):
 #     return np.asarray(m)
@@ -32,10 +42,15 @@ def skew(x, symb=False):
             return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 def skew2(x):
-    """ Returns the skew(x).skew(x) 
+    """ Returns the skew(x).skew(x)
          [ 0 -z  y]   [ 0 -z  y]   [  -y**2 - z**2  ,       xy       ,         xz      ]
     S2 = [ z  0 -x] . [ z  0 -x] = [       yx       , - x**2 - z**2  ,         yz      ]
          [-y  x  0]   [-y  x  0]   [       zx       ,       zy       ,   - x**2 - y**2 ]
+
+    S2 = - (np.dot(x, x) * np.eye(3) - np.outer(x, x))
+
+    # Skew2 =  [u~][u~] = - [u~]^T [u~] = - |u|^2 I + u u^T
+
     """
     x,y,z=np.asarray(x).flatten()
     return np.array( [
@@ -100,8 +115,8 @@ def rigidBodyMassMatrixAtP(m=None, J_G=None, Ref2COG=None, symb=False):
     if m is None: m=0
     if Ref2COG is None: Ref2COG=(0,0,0)
     if J_G is None: J_G=np.zeros((3,3))
-    if len(J_G.flatten()==3): J_G = np.eye(3).dot(J_G)
-
+    J_G = np.asarray(J_G)
+    if len(J_G.flatten())==3: J_G = np.diag(J_G.flatten())
     M66 = np.zeros((6,6))
     x,y,z = Ref2COG
     Jxx,Jxy,Jxz = J_G[0,:]
@@ -267,3 +282,81 @@ def transferLoadsZPoint(ls, z, phi_x, phi_y, phi_z, rot_type='default'):
     ld[4] = ls[4] + r[2] * ls[0] - r[0] * ls[2]
     ld[5] = ls[5] + r[0] * ls[1] - r[1] * ls[0]
     return ld
+
+
+
+
+
+# --------------------------------------------------------------------------------}
+# --- Rigid beam - Fle flexible beams see welib.yams.flexibility 
+# --------------------------------------------------------------------------------{
+def rigidBeamMassMatrix(s_OG, m, s_span=None, jxxG=None, point='O'):
+    r"""
+    Computes the 6x6 mass matrix for a rigid beam at point O
+    Eq.(2) from [1]
+    
+    INPUTS
+     - s_OG    : [m] 3 x nSpan , location of cross sections COG (assumed to be mean line of the beam)
+     - m      : [kg/m] cross section mass along the beam
+
+    OPTIONAL INPUTS:
+     - s_span : [m] span integration variable (e.g. s_G(1,:))
+     - jxxG   : [kg.m] second moment of inertia of cross section at the COG
+                       in a plane perpendicular to the mean line of the beam
+
+    OUTPUTS:
+      - MM: generalized mass matrix
+      - info: dictionary containing additional information:
+             - mass, location of COG
+    """
+    if s_span is None:
+        ds = np.linalg.norm(np.diff(s_OG, axis=1), axis=0)  # Compute segment lengths
+        s_span = np.concatenate(([0], np.cumsum(ds)))  # Compute curvilinear length
+
+    ## Speed up and improve integration along the span, using integration weight
+    #IW,_,_,IW_xm=integrationWeights(s_span,m)
+    def trapzs(yy, **kwargs):
+        return trapezoid(yy, s_span, **kwargs) 
+    
+    total_mass = trapzs(m)
+    s_COG = trapzs(s_OG * m, axis=1) / total_mass  # Center of gravity
+    
+    # Compute first moments of mass
+    first_moments = trapzs(m * s_OG, axis=1)
+    
+    # Compute inertia tensor at O and G
+    dJ_O = np.zeros((3, 3, len(s_span)))
+    dJ_G = np.zeros((3, 3, len(s_span)))
+    for i in range(s_OG.shape[1]):
+        r_OP = s_OG[:, i] #- s_OG[:,0]
+        r_GP = s_OG[:, i] - s_COG
+        dJ_O[:,:,i] =  - m[i] * skew2(r_OP)
+        dJ_G[:,:,i] =  - m[i] * skew2(r_GP)
+    J_G = trapzs(dJ_G)
+    J_O = trapzs(dJ_O)
+    
+    if jxxG is not None:
+        Jxx = trapzs(jxxG)
+    else:
+        Jxx = 0
+    
+    # --- Build mass matrix
+    MM = np.zeros((6, 6))
+    MM[:3, :3] = total_mass * np.eye(3)  # Translational mass
+    MM[3:, 3:] = J_O  # Rotational inertia
+    MM[3, 3] += Jxx  # Adding axial moment of inertia
+    MM[:3, 3:] = np.cross(-s_COG[:, None], MM[:3, :3], axis=0)  # Coupling terms
+    MM[3:, :3] = MM[:3, 3:].T
+    
+    info = {
+        "mass": total_mass,
+        "r_{}G".format(point): s_COG,
+        "J_G": J_G
+    }
+    
+    return MM, info
+
+
+if __name__ == '__main__':
+
+    pass

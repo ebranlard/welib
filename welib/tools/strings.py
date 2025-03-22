@@ -171,15 +171,44 @@ def printMat(M, var=None, **kwargs):
     M=np.asarray(M)
     print(prettyMat(M, var=var, **kwargs))
 
-def printVec(M, var, newline=False, **kwargs):
+def printVec(M, var=None, newline=False, **kwargs):
     # Being nice if the user calls it by swapping the two arguments
-    if not isinstance(var, str):
-        if isinstance(M, str):
-            # we swap 
-            M, var = var, M
+    if var is not None:
+        if not isinstance(var, str):
+            if isinstance(M, str):
+                # we swap 
+                M, var = var, M
     M=np.asarray(M)
     M=np.atleast_2d(M)
     print(prettyMat(M, var=var, newline=newline, **kwargs))
+
+def printDict(d, var=None, newline=False, digits=2, xmin=1e-16, **kwargs):
+    s=''
+    if var is not None:
+        if not isinstance(var, str):
+            raise Exception()
+        s=var+':'
+        if newline:
+            s+='\n'
+        print(s)
+    sindent='  '
+    for k,v in d.items():
+        var='{:s}{:20s}'.format(sindent, k)
+        if isinstance(v, str):
+            print('{}:{}'.format(var, v))
+        elif isinstance(v, int):
+            print('{}:{:d}'.format(var, v))
+        elif isinstance(v, float):
+            print('{}:{}'.format(var, pretty_num(v, digits=digits, xmin=xmin, **kwargs)))
+        elif isinstance(v, np.ndarray):
+            if len(v.shape)==1:
+                printVec(v, var, sindent=sindent, digits=digits, xmin=xmin, **kwargs)
+            else:
+                printMat(v, var, sindent=sindent+'   ', digits=digits, xmin=xmin, **kwargs)
+        else:
+            print('>>> printDict TYPE', type(v))
+#             sindentloc = print('{}{20s}:{}'.format(sindent, k, v)
+
 
 if __name__ == '__main__':
     f= 10.**np.arange(-8,8,1)

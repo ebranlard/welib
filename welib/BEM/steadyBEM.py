@@ -72,6 +72,11 @@ class SteadyBEM():
         self.WakeMod=1 # 0: no inductions, 1: BEM inductions
 #         self.bRoughProfiles = False # use rough profiles for input airfoil data
 
+        # 'Latest operating conditions:\n'
+        self.Omega0=None
+        self.pitch0=None
+        self.V0    =None
+
     def init_from_FAST(self, FASTFileName):
         # TODO unify with FASTFile2SteadyBEM(FASTFileName)
         from welib.weio.fast_input_deck import FASTInputDeck
@@ -198,6 +203,11 @@ class SteadyBEM():
         s+=' - bAIDrag   : {}\n'.format(self.bAIDrag   )
         s+=' - bTIDrag   : {}\n'.format(self.bTIDrag  )
         s+=' - WakeMod   : {}\n'.format(self.WakeMod  )
+        s+='Useful methods:\n'
+        s+=' - calcOutput(RPM, pitch, V0, ...): run BEM for given conditions\n'
+        s+=' - parametric (RPM, Pitch, V0, ...): run BEM for multiple conditions\n'
+        s+=' - findPitchForPowerCurve:\n'
+        s+=' - radialDataFrame / toDataFrame: radial data from last run\n'
         return s
 
 
@@ -367,6 +377,8 @@ class SteadyBEM():
     # --------------------------------------------------------------------------------{
     def radialDataFrame(self):
         return self.lastRun.radialDataFrame() # not very pretty
+    def toDataFrame(self):
+        return self.radialDataFrame()
 
 
 
@@ -375,23 +387,31 @@ class SteadyBEM():
 # --------------------------------------------------------------------------------{
 class SteadyBEM_Outputs:
 
-    def radialDataFrame(BEM):
+    def radialDataFrame(BEM, r_new=None):
         header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] fn_[N/m] ft_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uin_[m/s] uit_[m/s] u_turb_[m/s]'
         header=header.split()
         #header=' '.join(['{:14s}'.format(s) for s in header.split()])
         M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.fn,BEM.ft,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uin,BEM.uit,BEM.u_turb))
-        return pd.DataFrame(data=M, columns=header)
+        df = pd.DataFrame(data=M, columns=header)
+        if r_new is not None:
+            from welib.tools.pandalib import pd_interp1
+            return pd_interp1(r_new, 'r_[m]', df)
+        else:
+            return df
+
+    def toDataFrame(BEM):
+        return BEM.radialDataFrame() 
 
     def WriteRadialFile(BEM, filename):
         df = BEM.radialDataFrame()
         np.savetxt(filename, df.values, header=' '.join(['{:14s}'.format(s) for s in df.columns]), fmt='%14.7e',comments='#')
         #df.to_csv(filename, index=False, sep='\t')
 
-    def StoreIntegratedValues(BEM, df=None):
+    def integralDataFrame(BEM):
         S=pd.Series(dtype='float64')
         S['WS_[m/s]']         = BEM.V0
         S['RotSpeed_[rpm]']   = BEM.Omega *60/(2*np.pi)
-        S['Pitch_[deg]']      = BEM.Pitch
+        S['Pitch_[deg]']      = BEM.pitch
         S['AeroThrust_[kN]']  = BEM.Thrust/1000
         S['AeroTorque_[kNm]'] = BEM.Torque/1000
         S['AeroPower_[kW]']   = BEM.Power/1000
@@ -400,12 +420,45 @@ class SteadyBEM_Outputs:
         S['AeroCT_[-]']       = BEM.CT
         S['AeroCP_[-]']       = BEM.CP
         S['AeroCQ_[-]']       = BEM.CQ
-
-        if df is None:
-            df = pd.DataFrame([S])
-        else:
-            df = pd.concat((df, pd.DataFrame([S])))
+        df = pd.DataFrame([S])
         return df
+
+    def StoreIntegratedValues(BEM, df=None):
+        df_new = BEM.integralDataFrame()
+        if df is None:
+            return df_new
+        else:
+            df = pd.concat((df, df_new))
+            return df
+
+    def interpolate(BEM, r_new):
+        df = radialDataFrame(BEM, r_new)
+        # TODO update data
+        return df
+
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+        # Aero Data
+        s+='Operating conditions:\n'
+        s+=' - Omega     : {:10.2f} [rpm]\n'.format(self.Omega) # RPM
+        s+=' - pitch     : {:10.2f} [deg]\n'.format(self.pitch)
+        s+=' - V0        : {:10.2f} [m/s]\n'.format(self.V0)
+        s+='Integral data:\n'
+        s+=' - Power     : {:10.3f} MW\n'.format(self.Power/1e6)
+        s+=' - Thrust    : {:10.3f} MN\n'.format(self.Thrust/1e6)
+        s+=' - Flap      : {:10.3f} MNm\n'.format(self.Flap/1e6)
+        s+=' - Edge      : {:10.3f} MNm\n'.format(self.Edge/1e6)
+        s+=' - CP, CT, CQ:   {:.3f} {:.3f} {:.3f}\n'.format(self.CP, self.CT, self.CQ)
+
+        s+='Radial data: size {}\n'.format(len(self.r))
+        s+= ' - r, a, aprime, phi, alpha, Vrel, Un, Ut, uin, uit, u_turb\n'
+        s+= ' - Ct, Cq, Cp, cn, ct, Cl, Cd, fn, ft, F, Re, Gamma\n'
+        s+='Useful methods:\n'
+        s+=' - radialDataFrame / toDataFrame: radial data \n'
+        s+=' - intergralDataFrame: integral data (e.g. power) \n'
+        s+=' - StoreIntegratedValues(df): concatenate integral dataframes\n'
+        s+=' - WriteRadialFile(filename): write radial dataframe to file\n'
+        return s
 
 # --------------------------------------------------------------------------------}
 # --- Low level function  
@@ -544,7 +597,7 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         # Operating conditions
         BEM.R=R
         BEM.Omega = Omega
-        BEM.Pitch = pitch
+        BEM.pitch = pitch
         BEM.V0 = V0
 
         # --- Coefficients

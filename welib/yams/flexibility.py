@@ -409,6 +409,12 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
       - IT: dictionary containing inertial terms
     """
 
+    if s_span is None:
+        # Computing curvilinear coordinate
+        # NOTE: Flex only works well if beam mainly along x or z due to integration weights IW_xm
+        ds = np.linalg.norm(np.diff(s_G, axis=1), axis=0)  # Compute segment lengths
+        s_span = np.concatenate(([0], np.cumsum(ds)))  # Compute curvilinear length
+
     # --- Sanity check on method
     if method=='OpenFAST':
         dr = checkRegularNode(s_span)
@@ -433,7 +439,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
     if method=='OpenFAST':
         # OpenFAST integration is simple mid-rule summation
-        # NOTE: yy is hacked to include "dr" in it already
+        # NOTE: yy is hacked to include "dr" in it already (m <- m*dr)
         def trapzs(yy):
             return np.sum(yy) 
     else:
@@ -528,6 +534,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         
     # --- Mtt = - \int [~s][~s] dm  - Or: J, Mrr
     if method=='Flex':
+        # NOTE: Flex only works well if beam mainly along x or z due to integration weights IW_xm
         if main_axis=='x':
             s00= np.sum(IW_xm * s_G[0,:]);
             s01= np.sum(IW_xm * s_G[1,:]);
@@ -565,45 +572,47 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     #      [ z  0 -x]
     #      [-y  x  0]
     Mtg      = np.zeros((3,nf))
-    if method=='Flex':
+    if nf>0:
+        if method=='Flex':
+            if main_axis=='x':
+                for j in range(nf):
+                    Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
+                    Mtg[1,j] = trapzs(  (+s_G[2,:]*U[j][0,:]*m)) - sum(IW_xm*U[j][2,:]);
+                    Mtg[2,j] = trapzs(  (-s_G[1,:]*U[j][0,:]*m)) + sum(IW_xm*U[j][1,:]);
+            elif main_axis=='z':
+                for j in range(nf):
+                    Mtg[0,j] = -sum(IW_xm*U[j][1,:])+trapzs((+ s_G[1,:]*U[j][2,:])*m) 
+                    Mtg[1,j] =  sum(IW_xm*U[j][0,:])+trapzs((- s_G[0,:]*U[j][2,:])*m)
+                    Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:]   + s_G[0,:]*U[j][1,:])*m)
+        else:
+            # OpenFAST & trapz (unified via trapzs & m=melem)
+            for j in range(nf):
+                Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
+                Mtg[1,j] = trapzs(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
+                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)
         if main_axis=='x':
-            for j in range(nf):
-                Mtg[0,j] = trapzs(  (-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
-                Mtg[1,j] = trapzs(  (+s_G[2,:]*U[j][0,:]*m)) - sum(IW_xm*U[j][2,:]);
-                Mtg[2,j] = trapzs(  (-s_G[1,:]*U[j][0,:]*m)) + sum(IW_xm*U[j][1,:]);
+            Mtg[0,:] +=I_Jxx[:]
         elif main_axis=='z':
-            for j in range(nf):
-                Mtg[0,j] = -sum(IW_xm*U[j][1,:])+trapzs((+ s_G[1,:]*U[j][2,:])*m) 
-                Mtg[1,j] =  sum(IW_xm*U[j][0,:])+trapzs((- s_G[0,:]*U[j][2,:])*m)
-                Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:]   + s_G[0,:]*U[j][1,:])*m)
-    else:
-        # OpenFAST & trapz (unified via trapzs & m=melem)
-        for j in range(nf):
-            Mtg[0,j] = trapzs((-s_G[2,:]*U[j][1,:] + s_G[1,:]*U[j][2,:])*m)
-            Mtg[1,j] = trapzs(( s_G[2,:]*U[j][0,:] - s_G[0,:]*U[j][2,:])*m)
-            Mtg[2,j] = trapzs((-s_G[1,:]*U[j][0,:] + s_G[0,:]*U[j][1,:])*m)
-    if main_axis=='x':
-        Mtg[0,:] +=I_Jxx[:]
-    elif main_axis=='z':
-        Mtg[2,:] +=I_Jxx[:]
+            Mtg[2,:] +=I_Jxx[:]
 
     #print('Mtg\n',Mtg)
         
     # --- Mgg  = \int Phi^t Phi dm  =  Sum Upsilon_kl(i,i)  Or: Me
     Mgg = np.zeros((nf,nf))
-    if method=='OpenFAST' and U_untwisted is not None:
-        U0=U_untwisted[:,:,:]
-    else:
-        U0=U[:,:,:]
-    for i in range(nf):
-        for j in range(nf): # NOTE: we could remove cross couplings here
-            Mgg[i,j] = trapzs((U0[i][0,:]*U0[j][0,:] + U0[i][1,:]*U0[j][1,:] + U0[i][2,:]*U0[j][2,:])*m)
+    if nf>0:
+        if method=='OpenFAST' and U_untwisted is not None:
+            U0=U_untwisted[:,:,:]
+        else:
+            U0=U[:,:,:]
+        for i in range(nf):
+            for j in range(nf): # NOTE: we could remove cross couplings here
+                Mgg[i,j] = trapzs((U0[i][0,:]*U0[j][0,:] + U0[i][1,:]*U0[j][1,:] + U0[i][2,:]*U0[j][2,:])*m)
 
-    # Adding torsion contribution if any
-    Mgg=Mgg+np.diag(GMJxx)
-    if bOrth:
-        Mgg=Mgg*np.eye(nf)
-    #print('Mgg\n',Mgg)
+        # Adding torsion contribution if any
+        Mgg=Mgg+np.diag(GMJxx)
+        if bOrth:
+            Mgg=Mgg*np.eye(nf)
+        #print('Mgg\n',Mgg)
 
     # --- Build complete mass matrix
     MM = np.zeros((6+nf,6+nf))
