@@ -19,7 +19,7 @@ class Test(unittest.TestCase):
         yCP = R*np.sin(theta)
         
         # Panel method
-        sigmas, out = CSP_panel_solve(xCP, yCP, U0, 0)
+        sigmas, out = CCSP_panel_solve(xCP, yCP, U0, 0)
 
         # --- Tests
         theta_mid = out['theta_CP']
@@ -32,7 +32,7 @@ class Test(unittest.TestCase):
         # Flow rate should be zero
         x = R*2* np.cos(theta)
         y = R*2* np.sin(theta)
-        u, v = csp_velocity(x, y, out['SP'], sigmas=out['sigmas'])
+        u, v = ccsp_u(x, y, out['SP'], sigmas=out['sigmas'])
         Q = flowrate2D(x, y, u, v, verbose=False, ns=-1)
         np.testing.assert_almost_equal(Q, 0, 8)
         
@@ -50,7 +50,7 @@ class Test(unittest.TestCase):
             axes[1].legend()
             
             # --- Flow field
-            vel = lambda X, Y : csp_velocity(X, Y, out['SP'], out['sigmas'])
+            vel = lambda X, Y : ccsp_u(X, Y, out['SP'], out['sigmas'])
             X, Y, U, V =  flowfield2D(vel, xmax=3.5, nx=50, U0x=U0, L=R, rel=True)
             ax =  flowfield2D_plot(X, Y, U, V, ax=axes[2], minVal=0, maxVal=2, bounded=False, rel=True)
             ax.plot(xCP/R, yCP/R, 'k-',lw=3)

@@ -1,5 +1,5 @@
 """ 
-2D Source panel
+Constant Source Panel 2D (CSP)
 
 Reference: 
  [1] Anderson Fundamentals-of-aerodynamics-6-Edition, p.292
@@ -11,43 +11,117 @@ import unittest
 # --------------------------------------------------------------------------------}
 # --- Wrappers 
 # --------------------------------------------------------------------------------{
-def csp_velocity(X, Y, SP, sigmas, method=1):
+def ccsp_u(X, Y, SP, sigmas, method=1):
+    """ 
+    Contiguous Constant Source Panels 
+    Continguous => Panels are formed by consecutive points, can potentially form a closed loop
 
-    # --- Geometry
-    P     = SP
-    mids  = (P[:-1,:] + P[1:,:]) / 2
-    dP    = P[1:,:] - P[:-1,:]
-    ds    = np.linalg.norm(dP, axis= 1)
-    phi = np.atan2(dP[:,1], dP[:,0])
-    phi [phi<0] += 2*np.pi # Panel angles are assumed positive
-
+    INPUTS:
+     - X: nd-array of control point x-coordinates
+     - Y: nd-array of control point y-coordinates
+     - SP: (n,2)-array of source panels points
+     - sigmas: (n)-array of source panels intensities
+    """
     shp = X.shape
     X = X.flatten()
     Y = Y.flatten()
     U = np.zeros_like(X)
     V = np.zeros_like(X)
     if method==0:
+        # Optimized for many panels, few control points
+        # Geometry
+        dP    = SP[1:,:] - SP[:-1,:]
+        ds    = np.linalg.norm(dP, axis= 1)
+        phi = np.atan2(dP[:,1], dP[:,0])
+        phi [phi<0] += 2*np.pi # Panel angles are assumed positive
         for i in range(len(X)):
-            U[i], V[i] = csp_velN1_precomp(X[i],Y[i],SP[:,0],SP[:,1], phi, ds, sigmas)
+            U[i], V[i] = csp_uN1_precomp(X[i], Y[i], SP[:,0], SP[:,1], phi, ds, sigmas)
+    elif method==1:
+        # Optimized for many control points
+        for j in range(len(SP)-1): # Loop on panels
+            ui, vi = csp_u1N(X, Y, SP[j], SP[j+1], sigmas[j])
+            U+=ui
+            V+=vi
     else:
+        # Not optimized, for any method
         for i in range(len(X)):
             for j in range(len(SP)-1): # Loop on panels
-                ui, vi = csp_vel11((X[i],Y[i]), SP[j], SP[j+1], sigmas[j], method=method)
+                ui, vi = csp_u11((X[i],Y[i]), SP[j], SP[j+1], sigmas[j], method=method)
                 U[i]+=ui
                 V[i]+=vi
     U = U.reshape(shp)
     V = V.reshape(shp)
     return U, V
-#     for i in range(len(sigmas)):
-#         us, vs = csp_vel(SP[i,:], SP[i+1,:], (X, Y), sigma=sigmas[i])
 
 
+def csp_u1N(xCP, yCP, rS1, rS2, sigma=1, tol=1e-8):
+    """
+    Velocity induced on N control points by one panel
+
+    Formulate based on [2] p 268, but rotated in panel frame
+
+    INPUTS:
+     - xCP, yCP : position of control points , n-array
+     - rS1: position of panel start (2 values)
+     - rS2: position of panel ends  (2 values)
+    OUTPUTS:
+     - U, V: velocities at control points, n-array
+    """
+    U = np.zeros_like(xCP)
+    V = np.zeros_like(yCP)
+    xS1, yS1 = rS1
+    xS2, yS2 = rS2
+    
+    # --- Panel
+    dx = xS2 - xS1
+    dy = yS2 - yS1
+    L = np.sqrt(dx**2 + dy**2)
+    n_hat = np.array([-dy/L, dx/L])
+    t_hat = np.array([dx/L , dy/L])
+    phi = np.atan2(dy, dx)
+    phi = phi if phi>=0 else phi+2*np.pi # positive angles # phi=mod(phi, 2*pi)
+    # --- From panel points to CP
+    dX_r1 = xCP - xS1
+    dY_r1 = yCP - yS1
+    dX_r2 = xCP - xS2
+    dY_r2 = yCP - yS2
+    r12 = dX_r1**2 + dY_r1**2
+    r22 = dX_r2**2 + dY_r2**2
+    C = np.cos(phi)
+    S = np.sin(phi)
+    # --- Angles measured in panel frame
+    #  x = X cos phi + Y sin phi
+    #  y =-X sin phi + Y cos phi
+    dx_r1 = dX_r1*C +  dY_r1*S
+    dy_r1 =-dX_r1*S +  dY_r1*C
+    dx_r2 = dX_r2*C +  dY_r2*S
+    dy_r2 =-dX_r2*S +  dY_r2*C
+    theta1 = np.arctan2(dy_r1, dx_r1)
+    theta2 = np.arctan2(dy_r2, dx_r2)
+    theta1[theta1<0] +=2*np.pi
+    theta2[theta2<0] +=2*np.pi
+    dtheta = theta2 - theta1
+    # --- Check if the point is on the line using cross product
+    dX_r1 = xCP - xS1
+    dY_r1 = yCP - yS1
+    cross = dx * dY_r1 - dy * dX_r1 # Cross product 
+    dot = dx * dX_r1 + dy * dY_r1
+    bOnLine = abs(cross)<tol
+    bOnSeg = np.logical_and(- tol <= dot, dot <= L**2 + tol)
+    b = np.logical_and(bOnLine, bOnSeg)
+    U[b] =  0.5 * sigma * n_hat[0]
+    V[b] =  0.5 * sigma * n_hat[1]
+    Un = sigma / (2 * np.pi) * dtheta[~b]
+    Ut = sigma / (4 * np.pi) * np.log(r12[~b]/r22[~b])
+    U[~b] = Un*n_hat[0] + Ut*t_hat[0]
+    V[~b] = Un*n_hat[1] + Ut*t_hat[1]
+    return U, V
 
 
 # --------------------------------------------------------------------------------}
 # --- Low level implementations with precomputed angles and length
 # --------------------------------------------------------------------------------{
-def csp_vel11_precomp(xCP, yCP, xS1, yS1, phi, ds, sigma=1, tol=1e-8):
+def csp_u11_precomp(xCP, yCP, xS1, yS1, phi, ds, sigma=1, tol=1e-8):
     """
     Velocity induced on one control point by one panel
     For optimization, this function assumes that phi and ds have already been computed
@@ -109,7 +183,7 @@ def csp_vel11_precomp(xCP, yCP, xS1, yS1, phi, ds, sigma=1, tol=1e-8):
     v *= sigma/(2*np.pi)
     return u, v
 
-def csp_vel11(rCP, rS1, rS2, sigma=1, method=1, tol=1e-8):
+def csp_u11(rCP, rS1, rS2, sigma=1, method=1, tol=1e-8):
     """
     Global frame: X, Y, panel frame x, y
       x = X cos phi + Y sin phi
@@ -135,7 +209,7 @@ def csp_vel11(rCP, rS1, rS2, sigma=1, method=1, tol=1e-8):
         phi += 2*np.pi # Panel angles are assumed positive
 
     if method==0:
-        u,v = csp_vel11_precomp(xCP, yCP, xS1, yS1, phi, ds=L, sigma=sigma)
+        u,v = csp_u11_precomp(xCP, yCP, xS1, yS1, phi, ds=L, sigma=sigma)
     elif method ==1:
         # See [2] p 268 Rotated in Panel frame
         # --- From panel points to CP
@@ -199,7 +273,7 @@ def csp_vel11(rCP, rS1, rS2, sigma=1, method=1, tol=1e-8):
     return u, v
 
 
-def csp_velN1_precomp(xCP, yCP, xS, yS, phi, ds, sigmas):
+def csp_uN1_precomp(xCP, yCP, xS, yS, phi, ds, sigmas):
     """ 
     Velocity induced on one control point by N panels
 
@@ -213,7 +287,7 @@ def csp_velN1_precomp(xCP, yCP, xS, yS, phi, ds, sigmas):
     """
     u, v = 0, 0
     for j in range(len(xS)-1): # Loop on panels
-        ui, vi = csp_vel11_precomp(xCP,yCP, xS[j], yS[j], phi[j], ds[j], sigmas[j])
+        ui, vi = csp_u11_precomp(xCP,yCP, xS[j], yS[j], phi[j], ds[j], sigmas[j])
         u+=ui
         v+=vi
     return u, v
@@ -229,10 +303,18 @@ class Test(unittest.TestCase):
         PP1   = [-0.5,0.0]
         PP2   = [ 0.5,0.0]
         rCP = [0.,0]
-        u0 = csp_vel11(rCP, PP1, PP2, sigma=sigma, method=0)
-        u1 = csp_vel11(rCP, PP1, PP2, sigma=sigma, method=1)
+        u0 = csp_u11(rCP, PP1, PP2, sigma=sigma, method=0)
+        u1 = csp_u11(rCP, PP1, PP2, sigma=sigma, method=1)
         np.testing.assert_almost_equal(u0, (0, 5))
         np.testing.assert_almost_equal(u1, (0, 5))
+
+        # --- One panel on the x axis, many points on the segment
+        SP = np.vstack((PP1,PP2))
+        x = np.linspace(-0.5, 0.5, 10)
+        y = x*0+0
+        u, v = ccsp_u(x, y, SP, sigmas=[sigma], method=1)
+        np.testing.assert_almost_equal(u, [0]*len(x))
+        np.testing.assert_almost_equal(v, [sigma/2]*len(x))
 
     def test_CSP_flowrate(self):
 
@@ -247,7 +329,7 @@ class Test(unittest.TestCase):
         for R in [1.2]:
             x = R* np.cos(theta)
             y = R* np.sin(theta)
-            u, v = csp_velocity(x, y, SP, sigmas=[sigma], method=1)
+            u, v = ccsp_u(x, y, SP, sigmas=[sigma], method=1)
             #print('x', x)
             #print('y', y)
             #print('u', u)
@@ -260,7 +342,7 @@ class Test(unittest.TestCase):
         # Test that flow rate on the panel is half sigma l
         x= np.linspace(-1, 1, 10)
         y= x*0+0
-        u, v = csp_velocity(x, y, SP, sigmas=[sigma], method=1)
+        u, v = ccsp_u(x, y, SP, sigmas=[sigma], method=1)
         #print('x', x)
         #print('y', y)
         #print('u', u)
@@ -274,9 +356,9 @@ class Test(unittest.TestCase):
         from welib.CFD.flows2D import flowfield2D, flowfield2D_plot
         # --- One Panel - Comparison of methods including point sources
         sigma = 1
-        PP1   = np.array([-0.5,0])
-        PP2   = np.array([ 0.6,0.2])
-        SP = np.vstack((PP1,PP2))
+        PP1 = np.array([-0.5,0])
+        PP2 = np.array([ 0.6,0.2])
+        SP  = np.vstack((PP1,PP2))
 
         xmax = 1.5
         xs   = np.linspace(-xmax, xmax, 15)
@@ -287,9 +369,9 @@ class Test(unittest.TestCase):
 #         xs, ys = ys, xs
 
         # --- 
-        vel0 = lambda X, Y : csp_velocity(X, Y, SP, [sigma], method=0)
-        vel1 = lambda X, Y : csp_velocity(X, Y, SP, [sigma], method=1)
-        vel3 = lambda X, Y : csp_velocity(X, Y, SP, [sigma], method=10)
+        vel0 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=0)
+        vel1 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=1)
+        vel3 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=10)
 
         X, Y, U0, V0 =  flowfield2D(vel0, xmax=1.5, ymin=0.3, nx=15)
         X, Y, U1, V1 =  flowfield2D(vel1, xmax=1.5, ymin=0.3, nx=15)

@@ -10,9 +10,9 @@ from welib.vortilib.panelcodes.panel_tools import airfoil_params, plot_airfoil
 from welib.vortilib.elements.SourcePanel2D import *
 from welib.CFD.flows2D import *
 
-def CSP_panel_solve(XP, YP, Ux, Uy, lift=True, verbose=False):
+def CCSP_panel_solve(XP, YP, Ux, Uy, lift=True, verbose=False):
     r""" 
-    Solve the flow about a closed-loop surface using the source panel method.
+    Solve the flow about a contiguous (potentially closed-loop) surface using the source panel method.
 
     INPUTS:
      -XP, YP : coordinates of source points, assumed to go from TE to LE clockwise [m]
@@ -34,8 +34,6 @@ def CSP_panel_solve(XP, YP, Ux, Uy, lift=True, verbose=False):
     ds    = np.linalg.norm(dP, axis= 1)
     t_hat = dP / ds[:, np.newaxis]
     n_hat = ns * np.column_stack((-t_hat[:, 1], t_hat[:, 0]))
-    phi = np.atan2(dP[:,1], dP[:,0])
-    phi [phi<0] += 2*np.pi # Panel angles are assumed positive
 
     # Compute geometric integral
     Vinf =np.sqrt(Ux**2 + Uy**2)
@@ -47,57 +45,35 @@ def CSP_panel_solve(XP, YP, Ux, Uy, lift=True, verbose=False):
     CP = mids
     nCP = len(CP)
     M = np.zeros((nCP,nS))
-    J = np.zeros([nCP,nS]) 
     for i in range(nCP): # 
         for j in range(nS):
-            if (i == j): 
-                M[i,j] = 0.5  #  Pincipal value
-            else:
-                u,  v = csp_vel11_precomp(CP[i,0],CP[i,1], SP[j,0], SP[j,1], phi[j], ds[j])
-                M[i, j] = (u * n_hat[i, 0] + v * n_hat[i, 1] )
-                J[i, j] = (u * t_hat[i, 0] + v * t_hat[i, 1] )
+#             if (i == j): 
+#                 M[i,j] = 0.5  #  Principal value
+#             else:
+            u, v = csp_u11(CP[i,:], SP[j,:], SP[j+1,:])
+            M[i, j] = (u * n_hat[i, 0] + v * n_hat[i, 1] )
     # --- SOLVE
     sigmas = np.linalg.solve(M, rhs)
     assert(abs(sum(sigmas*ds))<1e-8) 
 
     # --- Outputs
     # Geometry
-    out['x']    = XP
-    out['y']    = YP
-    out['theta'] = np.arctan2(YP, XP)
-    out['ds']   = ds
-    out['n']    = n_hat
-    out['t']    = t_hat
-    out['CP']   = CP
-    out['SP']   = P
+    out['x']        = XP
+    out['y']        = YP
+    out['theta']    = np.arctan2(YP, XP)
+    out['ds']       = ds
+    out['n']        = n_hat
+    out['t']        = t_hat
+    out['CP']       = CP
+    out['SP']       = P
     out['theta_CP'] = np.arctan2(CP[:,1], CP[:,0])
-    out['rhs']  = rhs
-    out['sigmas']  = sigmas
+    out['rhs']      = rhs
+    out['sigmas']   = sigmas
 
     # --- Output: Velocity at wall
-    Vwall  = np.zeros( (nCP, 2) )
-    Vn     = np.zeros( nCP)
-    Vt     = np.zeros( nCP)
-    Vwall2 = np.zeros((nCP, 2))
-    for i in range(nCP): # 
-        for j in range(nS):
-            if (i == j): 
-                u, v = csp_vel11_precomp(CP[i,0], CP[i,1], SP[j,0], SP[j,1], phi[j], ds[j], sigmas[j])
-                # --- Using principal value
-                #un = 0.5 * sigmas[j] # Principal value
-                #ut = 0 # Note: Tangential velocity is zero on panel
-                #V = un*n_hat[i,:] + ut*t_hat[i,:]
-                #u, v= V[0], V[1]
-            else:
-                u, v = csp_vel11_precomp(CP[i,0], CP[i,1], SP[j,0], SP[j,1], phi[j], ds[j], sigmas[j])
-            Vwall[i,0] += u
-            Vwall[i,1] += v
-    
-    # Adding free stream
+    Vwall = np.asarray(ccsp_u(CP[:, 0], CP[:, 1], SP, sigmas)).T
     Vwall[:,0] += Ux
     Vwall[:,1] += Uy
-
-    #Vwall = np.asarray(csp_velocity(CP[:, 0], CP[:, 1], Ux, Uy, P, sigmas)).T
     out['Vwall'] = Vwall
     out['Un'] = Vwall[:,0]*n_hat[:,0] + Vwall[:,1]*n_hat[:,1]
     out['Ut'] = Vwall[:,0]*t_hat[:,0] + Vwall[:,1]*t_hat[:,1]
@@ -123,7 +99,7 @@ if __name__ == '__main__':
     yCP = R*np.sin(theta)
     
     # Panel method
-    sigmas, out = CSP_panel_solve(xCP, yCP, U0, 0)
+    sigmas, out = CCSP_panel_solve(xCP, yCP, U0, 0)
 
 
     # --- Plots
@@ -143,7 +119,7 @@ if __name__ == '__main__':
     axes[1].legend()
     
     # --- Flow field
-    vel = lambda X, Y : csp_velocity(X, Y, out['SP'], out['sigmas'])
+    vel = lambda X, Y : ccsp_u(X, Y, out['SP'], out['sigmas'])
     X, Y, U, V =  flowfield2D(vel, xmax=3.5, nx=50, U0x=U0, L=R, rel=True)
     ax =  flowfield2D_plot(X, Y, U, V, ax=axes[2], minVal=0, maxVal=2, bounded=False, rel=True)
     ax.plot(xCP/R, yCP/R, 'k-',lw=3)
