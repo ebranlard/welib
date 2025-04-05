@@ -195,9 +195,9 @@ def contour_orientation(x, y):
     
     # Determine orientation
     if signed_area > 0:
-        return 'counterclockwise'
+        return 'counterclockwise' # Positive about z
     elif signed_area < 0:
-        return 'clockwise'
+        return 'clockwise' # Negative about z
     else:
         return 'undetermined'
 

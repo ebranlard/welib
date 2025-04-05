@@ -5,6 +5,7 @@ Reference:
   [1] Branlard (2017) Wind turbine aerodynamics and vorticity-based methods
 """
 import numpy as np
+import unittest
 
 
 # --------------------------------------------------------------------------------}
@@ -136,4 +137,27 @@ def sp2d_phi(x, y, Ps, Sigma):
     phi = np.real(F)
     # phi = (Sigma/4/pi) * np.log(x**2+y**2);
     return phi
+
+
+# --------------------------------------------------------------------------------}
+# --- TESTS
+# --------------------------------------------------------------------------------{
+class TestSP(unittest.TestCase):
+    def test_SP_flowrate(self):
+        # Test that flow rate for a point source is Sigma
+        from welib.CFD.flows2D import flowrate2D
+        Sigma = 3
+        theta = np.linspace(0, 2*np.pi, 250, endpoint=True)
+        for R in [1, 2]:
+            x = R* np.cos(theta)
+            y = R* np.sin(theta)
+            u, v = sp2d_u(x, y, (0,0), Sigma=Sigma)
+            Q = flowrate2D(x, y, u, v, verbose=False)
+            np.testing.assert_almost_equal(Q, Sigma, 3)
+
+
+
+if __name__ == "__main__":
+    unittest.main()
+
 

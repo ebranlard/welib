@@ -128,7 +128,6 @@ def planform_wakerot(r, R, TSR_design, Cl_design, B=3):
 
 
 
-
 if __name__ == '__main__':
     # --------------------------------------------------------------------------------}
     # --- Blade planform,  No Wake Rot  and With Wake rot
