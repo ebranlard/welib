@@ -54,18 +54,23 @@ def curve_extract(line, spacing, offset=None):
     return np.array([xx,yy]).T
 
 
-def curve_interp(x=None, y=None, n=3, s=None, line=None):
+def curve_interp(x=None, y=None, n=3, s=None, ds=None, line=None, keepOri=False):
     """ Interpolate a curves to equidistant curvilinear space between points
 
     INPUTS:
-      either:
+     - either:
        -  x,y : 1d arrays 
         or
        -  line: (n_in x 2) array
-      either
+     - either
         - n : number of points to interpolate
          or
-        - s : array of curvilinear coordinates where well interpolate
+        - s : array of curvilinear coordinates where we'll interpolate
+         or
+        - ds : equispacing 
+      - keepOri: keep the original datapoints
+    OUTPUTS:
+      - x_new, y_new 
     """
     # --- Sanitization
     MatOut=False
@@ -88,21 +93,121 @@ def curve_interp(x=None, y=None, n=3, s=None, line=None):
 
     # Computing curvilinear length
     s_old = curve_coord(line=line)
-    if s is None:
+    if n is not None:
+        # --- Interpolate based on n, equidistant curvilinear coordinates
         # New (equidistant) curvilinear coordinate
-        sNorm = np.linspace(0, s_old[-1], n);
-    else:
-        # New curvilinear coordinate
+        s_new = np.linspace(0, s_old[-1], n);
+    elif s is not None:
+        # Use new curvilinear coordinate
         if s[0]<s_old[0] or s[-1]>s_old[-1]:
             raise Exception('curve_interp: Curvilinear coordinate needs to be between 0 and {}, currently it is between {} and {}'.format(s_old[-1], s[0], s[-1]))
-        sNorm = s
-    # Interpolating based on new curvilinear coordinate
-    xx = np.interp(sNorm, s_old, x)
-    yy = np.interp(sNorm, s_old, y)
+        s_new = s
+    elif ds is not None:
+        s_new = np.arange(0, s_old[-1], ds)
+    else:
+        raise NotImplementedError()
+
+    # --- Preseve original points if requeted
+    if keepOri:
+        if ds is not None:
+            # Call dedicated function, will maintain equispacing in between original points
+            s_new = equispace_preserving(s_old, ds)
+        else:
+            # Insert old points, and spread neightbors to make the insertion look uniform
+            s_new = insert_uniformly(s_new, s_old)
+        # Ensure all original s_old are in s_new
+        try:
+            assert np.allclose(np.isin(np.around(s_old,5), np.around(s_new,5)), True), "Some original points lost."
+        except:
+            print(s_old)
+            print(s_new)
+            print('[WARN] Some original points lost.')
+
+    # --- Interpolating based on new curvilinear coordinate
+    xx = np.interp(s_new, s_old, x)
+    yy = np.interp(s_new, s_old, y)
+
     if MatOut:
         return get_line(xx, yy) 
     else:
         return xx,yy
+
+def equispace_preserving(s_old, ds, tol=1e-8):
+    """ 
+    Attempts to keep a constant ds, but preserves original datapoint
+    """
+    s_new = [s_old[0]]
+    for i in range(len(s_old) - 1):
+        s0, s1 = s_old[i], s_old[i + 1]
+        seg_len = s1 - s0
+        s_new.append(s1)  # always keep original points
+        if seg_len > ds + tol:
+            ds_approx = seg_len/(int(seg_len/ds)+0)
+            inserted = np.arange(s0, s1+ds_approx/2, ds_approx)
+            #n_insert = int(np.floor(seg_len / ds))
+            #inserted = np.linspace(s0, s1, n_insert+1)
+            s_new += (inserted.tolist())[1:-1] 
+    s_new = np.array(sorted(set(s_new)))  # avoid duplicates, ensure increasing
+    return s_new
+
+def insert_uniformly(s, s_old, tol=1e-10, thresh=0.2):
+    """
+    Insert points from s_old into s, adjusting surrounding points to maintain local uniformity.
+    
+    Parameters:
+      - s: desired initial curvilinear grid (1D array)
+      - s_old: required curvilinear points to insert (1D array)
+    
+    Returns:
+      - s_new: adjusted curvilinear grid with all s_old inserted
+    """
+    s = list(np.sort(np.unique(s)))
+    s_old = np.sort(np.unique(s_old))
+
+    np.set_printoptions(linewidth=300, precision=3)
+    
+    for so in s_old:
+        if any(np.isclose(so, s, atol=tol)):
+            continue  # already present
+        
+        # Find where to insert
+        for j in range(len(s) - 1):
+            if s[j] < so < s[j + 1]:
+                break
+        else:
+            raise ValueError(f"s_old value {so} is outside the range of s.")
+
+        panel_length = s[j+1] - s[j]
+        threshold = thresh * panel_length
+
+        # Case 1: very close to s[j]
+        if abs(so - s[j]) < threshold:
+            s[j] = so
+            continue
+        # Case 2: very close to s[j+1]
+        if abs(so - s[j+1]) < threshold:
+            s[j+1] = so
+            continue
+         # Case 3: insert and shift up to 4 points if room
+        if j >= 2 and j + 2 < len(s):
+            d = (s[j+2] - s[j-1]) / 5
+            dr = (s[j+3] - so) / 3
+            dl = (so - s[j-2]) / 3
+            new_pts = [so - 2*dl, so - dl, so, so + dr, so + 2*dr]
+            s = s[:j-1] + new_pts + s[j+3:]
+        else:
+            if j < 1 or j + 2 >= len(s):
+                # Not enough neighbor to adjust..
+                s = s[:j+1] + [so] + s[j:] 
+            else:
+                # adjusting two neighbors
+                dr = (s[j + 2] - so) / 2
+                dl = (so - s[j-1]) / 2
+                new_pts = [so - dl, so, so + dr]
+                s = s[:j] + new_pts + s[j+2:] 
+        s = list(np.sort(np.unique(s)))  # clean up and sort
+    return np.array(s)
+
 
 
 

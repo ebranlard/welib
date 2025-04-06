@@ -151,7 +151,9 @@ def flow_interp2D(xi, yi, u, v, x, y, method='linear', algo='griddata'):
     return Ui, Vi
 
 
-def flowfield2D(function, xmax=1, ymax=None, xmin=None, ymin=None, nx = 50, ny = None, U0x=0, U0y=0, Vref=None, L=1, rel=False):
+def flowfield2D(function, xmax=1, ymax=None, xmin=None, ymin=None, nx = 50, ny = None, 
+                U0x=0, U0y=0, fU=None,
+                Vref=None, L=1, rel=False):
     """ Evaluate a function to get a velocity field on a grid
     INPUTS:
       - function: function with interface U,V = function(X,Y)
@@ -169,6 +171,9 @@ def flowfield2D(function, xmax=1, ymax=None, xmin=None, ymin=None, nx = 50, ny =
     vy = np.linspace(ymin, ymax, ny)
     X, Y = np.meshgrid(vx, vy)
     U, V = function(X, Y)
+
+    if fU is not None:
+        U0x, U0y = fU(X,Y)
     U += U0x
     V += U0y
     if rel:
@@ -186,12 +191,13 @@ def flowfield2D_plot(
         ax = None,
         minVal = None, maxVal = None, nLevels=11, bounded=False,
         ctOpts=None,
-        stOpts=None, xs=None, ys=None,
+        stOpts=None, xs=None, ys=None, streamStart=True,
         speed = True,
         xlabel =None,
         ylabel =None,
         clabel =None,
         rel = False,
+        equal=True,
         ):
     """ """
     import matplotlib.pyplot as plt
@@ -200,7 +206,7 @@ def flowfield2D_plot(
         ctOpts={}
     if stOpts is None:
         stOpts={}
-    for k, v in {'linewidth':0.7, 'density':30, 'arrowstyle':'->'}.items():
+    for k, v in {'linewidth':0.7, 'density':1, 'arrowstyle':'->'}.items():
         if k not in stOpts:
             stOpts.update({k:v})
     if clabel is None:
@@ -234,31 +240,39 @@ def flowfield2D_plot(
         Speed[Speed>maxVal] = maxVal
 
     #  --- Streamlines
-    if xs is None and ys is None:
-        ys = np.linspace(ymin, ymax, 15)
-        xs = ys*0 -xmax
-    elif xs is None:
-        xs = ys*0 -xmax
-    elif ys is None:
-        if not hasattr(xs,'__len__'):
-            xs = [xs]*15
-        ys = np.linspace(ymin, ymax, len(xs))
-    start = np.array([xs, ys])
-    start = np.array([[xi, yi ] for xi,yi in start.T if xmin<=xi<=xmax and ymin<=yi<=ymax]).T
-    if len(start)==0:
-        raise Exception('Streamlines are not within domain')
+    if streamStart:
+        if xs is None and ys is None:
+            ys = np.linspace(ymin, ymax, 15)
+            xs = ys*0 +xmin
+        elif xs is None:
+            xs = ys*0 +xmin
+        elif ys is None:
+            if not hasattr(xs,'__len__'):
+                xs = [xs]*15
+            ys = np.linspace(ymin, ymax, len(xs))
+        start = np.array([xs, ys])
+        start = np.array([[xi, yi ] for xi,yi in start.T if xmin<=xi<=xmax and ymin<=yi<=ymax]).T
+        if len(start)==0:
+            raise Exception('Streamlines are not within domain')
+        start=start.T
+    else:
+        start=None
 
     # --- Plot
     im = ax.contourf(X, Y, Speed, levels=np.linspace(minVal, maxVal, nLevels), vmin=minVal, vmax=maxVal, **ctOpts)
     cb = fig.colorbar(im)
     cb.set_label(clabel)
-    sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start.T, **stOpts)
-    #sp = ax.streamplot(vx, vy, U, V, color='k', linewidth=0.7,density=30,arrowstyle='-')
+    sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start, **stOpts)
+    #sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start.T, **stOpts)
+    #sp = ax.streamplot(vx, vy, U, V, color='k', linewidth=0.7, density=1) #, density=10)
     #qv = streamQuiver(ax, sp, spacing=1, offset=1.0, scale=40, angles='xy')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.set_aspect('equal','box')
+    if equal:
+        ax.set_aspect('equal','box')
     ax.tick_params(direction='in', top=True, right=True)
+    ax.set_xlim([xmin, xmax])
+    ax.set_ylim([ymin, ymax])
     return ax
 
 

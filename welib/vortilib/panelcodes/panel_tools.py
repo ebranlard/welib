@@ -60,8 +60,16 @@ def compute_curvature(X, Y, method='Menger'):
         curv[bNaN]=0
     return curv
 
+# --------------------------------------------------------------------------------}
+# --- Line / airfoil
+# --------------------------------------------------------------------------------{
+def plot_airfoil(*args, **kwargs):
+    return plot_line(*args, **kwargs)
 
-def airfoil_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger'):
+def airfoil_params(*args, **kwargs):
+    return line_params(*args, **kwargs)
+
+def line_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger', verbose=False):
     """ 
     Compute normals, tangents, midpoint and ds for an airfoil
     The coordinates are assumed to go from lower TE to upper TE clockwise
@@ -75,20 +83,24 @@ def airfoil_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger'):
       - ds   : array of panel length, size n
       - ax   : axis if a plot is generated
     """
-    nP = len(X)
-    normals  = np.zeros((nP-1,2))
-    tangents = np.zeros((nP-1,2))
-    mids     = np.zeros((nP-1,2))
-    ds       = np.zeros(nP-1)
-    for i in range(nP-1):
-        P1 = np.array((X[i],Y[i]))
-        P2 = np.array((X[i+1],Y[i+1]))
-        mids[i]     = (P1+P2)/2
-        dP          = P2-P1
-        ds[i]       = np.linalg.norm(dP)
-        tangents[i] = dP/ds[i]
-        normals[i]  = np.array( (-tangents[i,1], tangents[i,0]))
 
+    # --- Detect clockwise if close countour only
+    ns = -1 *np.sign(np.sum(X[:-1]*Y[1:] - X[1:]*Y[:-1]))
+    if ns==0:
+        print('[WARN] CCSP Not a closed contour')
+        ns =1
+    if verbose :
+        print('[INFO] Contour is {}'.format({-1:'counterclockwise', 1:'clockwise'}[ns])) 
+
+    # --- Geometry
+    P     = np.column_stack((X, Y))
+    mids  = (P[:-1,:] + P[1:,:]) / 2
+    dP    = P[1:,:] - P[:-1,:]
+    ds    = np.linalg.norm(dP, axis= 1)
+    t_hat = dP / ds[:, np.newaxis]
+    n_hat = ns * np.column_stack((-t_hat[:, 1], t_hat[:, 0]))
+    if any(ds<1e-8): 
+        raise Exception('Some Panels very small')
 
     curv = compute_curvature(X, Y, method=curv_method)
 
@@ -99,7 +111,7 @@ def airfoil_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger'):
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         ax.plot(X, Y)
         scale=maxDs*ntScale
-        for Pmid,t,n in zip(mids, tangents, normals):
+        for Pmid,t,n in zip(mids, t_hat, n_hat):
             ax.plot(  Pmid[0]+np.array([0, n[0]])*scale, Pmid[1]+np.array([0, n[1]])*scale, 'k')
             ax.plot(  Pmid[0]+np.array([0, t[0]])*scale, Pmid[1]+np.array([0, t[1]])*scale, 'k')
         ax.plot(X[0], Y[0], 's')
@@ -109,25 +121,31 @@ def airfoil_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger'):
         ax.set_ylabel('y [m]')
     else:
         ax = None
-    return normals, tangents, mids, ds, curv, ax
+    return n_hat, t_hat, mids, ds, curv, ax
 
 
-def plot_airfoil(X, Y, Uwall=None, ntScale=0.1, UScale=0.1, nt=True):
+    
+
+def plot_line(X, Y, Uwall=None, ntScale=0.1, UScale=0.1, nt=True, ax=None):
     import matplotlib.pyplot as plt
 
-    normals, tangents, mids, ds, _, _ = airfoil_params(X, Y, plot=False, curv_method='zero')
+    normals, tangents, mids, ds, _, _ = line_params(X, Y, plot=False, curv_method='zero')
 
-    fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-    ax.plot(X, Y)
+    if ax is None:
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    else:
+        fig = ax.figure
 
     maxDs = np.max(ds)
+
+    # --- Plot
+    ax.plot(X, Y)
 
     if Uwall is not None:
         scale=maxDs*UScale
         for i,(Pmid,t,n) in enumerate(zip(mids, tangents, normals)):
-            ax.plot(  Pmid[0]+np.array([0, Uwall[i,0]])*scale, Pmid[1]+np.array([0, Uwall[i,1]])*scale, 'k')
-
+            ax.plot(  Pmid[0]+np.array([0, Uwall[i,0]])*scale, Pmid[1]+np.array([0, Uwall[i,1]])*scale, 'r')
 
 
     if nt is not None:
@@ -141,5 +159,41 @@ def plot_airfoil(X, Y, Uwall=None, ntScale=0.1, UScale=0.1, nt=True):
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
 
+    return ax
+
+def line_params2(P1, P2, plot=False, ntScale=0.3, curv_method='Menger', verbose=False):
+    mids  = (P1 + P2) / 2
+    dP    = P2- P1
+    ds    = np.linalg.norm(dP, axis= 1)
+    t_hat = dP / ds[:, np.newaxis]
+    n_hat = np.column_stack((-t_hat[:, 1], t_hat[:, 0]))
+    if any(ds<1e-8): 
+        raise Exception('Some Panels very small')
+    return n_hat, t_hat, mids, ds, None, None
+
+def plot_line2(P1, P2, Uwall=None, ntScale=0.1, UScale=0.1, nt=True, ax=None):
+    from welib.tools.colors import python_colors
+
+    normals, tangents, mids, ds, _, _ = line_params2(P1,P2)
+
+    maxDs = np.max(ds)
+
+    # --- Plot
+    for j in range(len(P1)):
+        ax.plot([P1[j,0], P2[j,0]], [P1[j,1], P2[j,1]],'-', c= python_colors(1))
+
+    if Uwall is not None:
+        scale=maxDs*UScale
+        for i,(Pmid,t,n) in enumerate(zip(mids, tangents, normals)):
+            ax.plot(  Pmid[0]+np.array([0, Uwall[i,0]])*scale, Pmid[1]+np.array([0, Uwall[i,1]])*scale, 'r')
+
+    if nt is not None:
+        scale=maxDs*ntScale
+        for Pmid,t,n in zip(mids, tangents, normals):
+            ax.plot(  Pmid[0]+np.array([0, n[0]])*scale, Pmid[1]+np.array([0, n[1]])*scale, 'k')
+            ax.plot(  Pmid[0]+np.array([0, t[0]])*scale, Pmid[1]+np.array([0, t[1]])*scale, 'k')
+    ax.set_aspect('equal', 'box')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
     return ax
 

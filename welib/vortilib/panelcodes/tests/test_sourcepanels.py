@@ -19,7 +19,7 @@ class Test(unittest.TestCase):
         yCP = R*np.sin(theta)
         
         # Panel method
-        sigmas, out = CCSP_panel_solve(xCP, yCP, U0, 0)
+        sigmas, out = CCSP_panel_solve(xCP, yCP, Uxy=(U0, 0))
 
         # --- Tests
         theta_mid = out['theta_CP']
