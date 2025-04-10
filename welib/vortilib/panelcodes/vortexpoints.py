@@ -29,6 +29,21 @@ def vp_u(DX, DY, Gamma=1, regParam=0, regMethod=None):
         V[bOK] = Gamma/(2*np.pi) * tY[bOK]/r2[bOK] * (1 - np.exp(- r2[bOK] / regParam ** 2))
     return U,V
 
+def VP_velocity(X, Y, Ux, Uy, VP, Gammas, regMethod=None, regParams=None):
+    nV = len(Gammas)
+    if regParams is None:
+        regParams = [0]*nV
+    U = np.zeros_like(X)
+    V = np.zeros_like(Y)
+    for i in range(nV):
+        p = VP[i]
+        u, v = vp_u(X-p[0], Y-p[1], Gamma=Gammas[i], regMethod=regMethod, regParam=regParams[i])
+        U+=u
+        V+=v
+    U+=Ux
+    V+=Uy
+    return U, V
+
 
 def kutta(M, rhs, iTE=None, verbose=False):
     M2 = M.copy()
@@ -219,20 +234,6 @@ def panel_solve_vps(XP, YP, Ux, Uy, hasLift=True, iTE=0, curv_method='Menger', b
     #psi = Ux*y - Uy*x + 1/(2*np.pi) * sum(gamma_i ds_i ln(r_ii))
     return gammas, out
 
-def VP_velocity(X, Y, Ux, Uy, VP, Gammas, regMethod=None, regParams=None):
-    nV = len(Gammas)
-    if regParams is None:
-        regParams = [0]*nV
-    U = np.zeros_like(X)
-    V = np.zeros_like(Y)
-    for i in range(nV):
-        p = VP[i]
-        u, v = vp_u(X-p[0], Y-p[1], Gamma=Gammas[i], regMethod=regMethod, regParam=regParams[i])
-        U+=u
-        V+=v
-    U+=Ux
-    V+=Uy
-    return U, V
 
 
 if __name__ == '__main__':
