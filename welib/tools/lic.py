@@ -1,6 +1,6 @@
 import numpy as np
-from colors import adjust_color_lightness
-from curves import streamQuiver
+from welib.tools.colors import adjust_color_lightness
+from welib.tools.curves import streamQuiver
 try:
     from welib.tools.external.lic_internal  import line_integral_convolution
 except:

@@ -240,7 +240,7 @@ class FEMModel(GraphModel):
     # --------------------------------------------------------------------------------}
     # --- FEM
     # --------------------------------------------------------------------------------{
-    def assembly(self,  gravity=None, Elements=None,):
+    def assembly(self,  gravity=None, Elements=None):
         if Elements is None:
             Elements = self.Elements
         if gravity is None:

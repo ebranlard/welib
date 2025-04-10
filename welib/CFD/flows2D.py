@@ -190,8 +190,8 @@ def flowfield2D_plot(
         X, Y, U, V,
         ax = None,
         minVal = None, maxVal = None, nLevels=11, bounded=False,
-        ctOpts=None,
-        stOpts=None, xs=None, ys=None, streamStart=True,
+        ctOpts=None, cmap='viridis',
+        stOpts=None, xs=None, ys=None, nst=15, streamStart=True, streamlines=True,
         speed = True,
         xlabel =None,
         ylabel =None,
@@ -229,6 +229,12 @@ def flowfield2D_plot(
     ymax = np.max(Y.flatten())
     vx = X[0,:]
     vy = Y[:,0]
+    flipped=False
+    if len(np.unique(vx))==1:
+        vx = X[:,0]
+        vy = Y[0,:]
+        flipped=True
+
     # --- 
     Speed = np.sqrt((U**2+V**2))
     if minVal is None:
@@ -242,13 +248,13 @@ def flowfield2D_plot(
     #  --- Streamlines
     if streamStart:
         if xs is None and ys is None:
-            ys = np.linspace(ymin, ymax, 15)
+            ys = np.linspace(ymin, ymax, nst)
             xs = ys*0 +xmin
         elif xs is None:
             xs = ys*0 +xmin
         elif ys is None:
             if not hasattr(xs,'__len__'):
-                xs = [xs]*15
+                xs = [xs]*nst
             ys = np.linspace(ymin, ymax, len(xs))
         start = np.array([xs, ys])
         start = np.array([[xi, yi ] for xi,yi in start.T if xmin<=xi<=xmax and ymin<=yi<=ymax]).T
@@ -259,10 +265,14 @@ def flowfield2D_plot(
         start=None
 
     # --- Plot
-    im = ax.contourf(X, Y, Speed, levels=np.linspace(minVal, maxVal, nLevels), vmin=minVal, vmax=maxVal, **ctOpts)
+    im = ax.contourf(X, Y, Speed, levels=np.linspace(minVal, maxVal, nLevels), vmin=minVal, vmax=maxVal, cmap=cmap, **ctOpts)
     cb = fig.colorbar(im)
     cb.set_label(clabel)
-    sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start, **stOpts)
+    if flipped:
+        U=U.T
+        V=V.T
+    if streamlines:
+        sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start, **stOpts)
     #sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start.T, **stOpts)
     #sp = ax.streamplot(vx, vy, U, V, color='k', linewidth=0.7, density=1) #, density=10)
     #qv = streamQuiver(ax, sp, spacing=1, offset=1.0, scale=40, angles='xy')

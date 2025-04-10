@@ -18,6 +18,7 @@ def loglaw(z, z_0, z_ref, U_ref):
 #       else
 #          U = 0.0_ReKi
 #       end if
+    z = np.asarray(z)
     U = np.zeros_like(z)
     b = z>0
     # [IEC 61400-1 6.3.1.2 (10)]
