@@ -1,5 +1,9 @@
 
 import numpy as np
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 def bendingMode(s, ModeNr = None): 
@@ -418,7 +422,7 @@ def parameters():
     mt  = np.pi * (D ** 2 - d ** 2) / 4 * rhot
     h   = np.linspace(0,H,500)
     phi = bendingMode(h,1)
-    p['Mtot'] = p['Mn'] + np.trapezoid(phi**2 * mt, h) / phi[-1] ** 2 #M Equivalent nacelle and tower mass 290.6 ton
+    p['Mtot'] = p['Mn'] + trapezoid(phi**2 * mt, h) / phi[-1] ** 2 #M Equivalent nacelle and tower mass 290.6 ton
 
     return p
 

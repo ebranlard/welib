@@ -5,8 +5,10 @@ import numpy as np
 import re
 try:
     from scipy.integrate import cumulative_trapezoid 
+    from numpy import trapezoid
 except:
     from scipy.integrate import cumtrapz as cumulative_trapezoid
+    from numpy import trapz as trapezoid
 
 import welib.weio as weio
 from welib.common import WELIBException
@@ -896,10 +898,7 @@ def insert_extra_columns_AD(dfRad, tsAvg, vr=None, rho=None, R=None, nB=None, ch
             Ct=nB*Fx/(0.5 * rho * 2 * U0**2 * np.pi * vr)
             Ct[vr<0.01*R] = 0
             dfRad[sB+'Ctloc_[-]'] = Ct
-            try:
-                CT=2*np.trapezoid(vr_bar*Ct,vr_bar)
-            except:
-                CT=2*np.trapz(vr_bar*Ct,vr_bar)
+            CT=2*trapezoid(vr_bar*Ct,vr_bar)
             dfRad[sB+'CtAvg_[-]']= CT*np.ones(vr.shape)
         except:
             pass
@@ -1954,10 +1953,7 @@ def integrateMoment(r, F):
     """
     M = np.zeros(len(r)-1)
     for ir,_ in enumerate(r[:-1]):
-        try:
-            M[ir] = np.trapezoid(F[ir:]*(r[ir:]-r[ir]), r[ir:]-r[ir])
-        except:
-            M[ir] = np.trapz(F[ir:]*(r[ir:]-r[ir]), r[ir:]-r[ir])
+        M[ir] = trapezoid(F[ir:]*(r[ir:]-r[ir]), r[ir:]-r[ir])
     return M
 
 def integrateMomentTS(r, F):

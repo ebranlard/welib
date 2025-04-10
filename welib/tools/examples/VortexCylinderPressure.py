@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 from welib.vortilib.elements.VortexCylinder import vc_tang_u
 from welib.tools.fields    import *
 from welib.tools.functions import delta, Pi
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 def setPressure(p,X,R,x0,r0,p0):
@@ -186,15 +190,15 @@ def main():
 
     # --- Verity that integration over disk gives DeltaP
     i=np.argmin(np.abs(vr))
-    fx_int  = np.trapezoid(fx[i,:], vx)
-    fxb_int = np.trapezoid(fxb[i,:], vx)
+    fx_int  = trapezoid(fx[i,:], vx)
+    fxb_int = trapezoid(fxb[i,:], vx)
     print('Fx integration:', fx_int, fxb_int, 'DeltaP:',DeltaP)
 
     # --- Verity that vorticity integration across cylinder gives gamma_t
     i=np.argmin(np.abs(vx-1.0))
     bRp=vr>0
-    om_int      = np.trapezoid(omega[bRp,i], vr[bRp])
-    om_int_num  = np.trapezoid(omega_num[bRp,i], vr[bRp])
+    om_int      = trapezoid(omega[bRp,i], vr[bRp])
+    om_int_num  = trapezoid(omega_num[bRp,i], vr[bRp])
     print('omega integration:', om_int, om_int_num, 'gamma_t:',gamma_t)
 
 

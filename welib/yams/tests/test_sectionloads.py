@@ -4,6 +4,11 @@ import os
 from welib.yams.flexibility import *
 import welib.weio as weio
 
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
 MyDir=os.path.dirname(__file__)
 
 # --------------------------------------------------------------------------------}
@@ -25,8 +30,8 @@ class Test(unittest.TestCase):
         #F_lumped[int(n/2)]=1000
         #F_lumped[int(3*n/4)]=1000
 
-        F_tot = np.trapezoid(p,z) + F_top + np.sum(F_lumped)
-        M_tot = np.trapezoid(p*z ,z) + F_top*z[-1]
+        F_tot = trapezoid(p,z) + F_top + np.sum(F_lumped)
+        M_tot = trapezoid(p*z ,z) + F_top*z[-1]
 
         Fs, Ms   = beamSectionLoads1D(z, p, F_top, M_top, s=1, F_lumped=F_lumped, method='plin')
         Fs2, Ms2 = beamSectionLoads1D(z, p, F_top, M_top, s=1, F_lumped=F_lumped, method='manual')

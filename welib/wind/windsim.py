@@ -1,6 +1,10 @@
 import numpy as np
 from numpy.random import uniform
 from welib.stoch.utils import sample_from_autospectrum
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 def pointTS(f, S, **kwargs):
     """ 
@@ -126,12 +130,12 @@ if __name__ == '__main__':
         ax.tick_params(direction='in')
         ax.autoscale(enable=True, axis='both', tight=True)
 
-        print('Integration Kaimal:', np.trapezoid(Sf, freq))
-        print('Integration Gener1:', np.trapezoid(S_fft, f_fft))
+        print('Integration Kaimal:', trapezoid(Sf, freq))
+        print('Integration Gener1:', trapezoid(S_fft, f_fft))
         Sf[0]    = 0
         S_fft[0] = 0
-        print('Integration Kaimal:', np.trapezoid(Sf, freq))
-        print('Integration Gener1:', np.trapezoid(S_fft, f_fft))
+        print('Integration Kaimal:', trapezoid(Sf, freq))
+        print('Integration Gener1:', trapezoid(S_fft, f_fft))
         print('Sigma2            :', np.var(u))
     
     plt.show()

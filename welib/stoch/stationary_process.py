@@ -10,6 +10,10 @@ from welib.stoch.utils import autospectrum_int
 from welib.stoch.utils import autospectrum_fft
 from welib.stoch.utils import autocorrcoeff_num
 from welib.stoch.utils import sample_from_autospectrum
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 class SampledStochasticProcess:
     def __init__(self, params=None, generator=None, name='', omega_max=None, tau_max=None, time_max=None, nDiscr=100,
@@ -214,7 +218,7 @@ class SampledStochasticProcess:
                 dx   = xh[1] - xh[0]
                 xh  = xh[:-1] + dx/2
                 if norm:
-                    yh=yh/np.trapezoid(yh,xh)
+                    yh=yh/trapezoid(yh,xh)
                 return xh,yh
 
             for i in range(self.nSamples):
@@ -222,7 +226,7 @@ class SampledStochasticProcess:
                 pdfs[i,:] = yb 
             self.pdfs_xi  = pdfs
             yh =  np.mean(pdfs,axis=0)
-            yh = yh/np.trapezoid(yh,xb)
+            yh = yh/trapezoid(yh,xb)
             self.pdf_xi   = yh
             self.x_pdf_xi = xb
             var.set_pdf(xb, yh)
@@ -322,7 +326,7 @@ class SampledStochasticProcess:
                 integrand = lambda omega : omega**i * self._f_S_X_th(omega)
                 moments[i], _ = nquad(integrand, [[0, self.omega_max]] )
             else:
-                moments[i] = np.trapezoid( S_X * omega**i , omega)
+                moments[i] = trapezoid( S_X * omega**i , omega)
 
         return moments
 
@@ -397,21 +401,21 @@ class SampledStochasticProcess:
         if self.kappa_XX is not None: 
             ax.plot(self.tau, self.kappa_XX, label='kappa_mean')
             if self.verbose:
-                print('>>> Correlation length num', np.around(np.trapezoid(self.kappa_XX, self.tau,4)))
+                print('>>> Correlation length num', np.around(trapezoid(self.kappa_XX, self.tau,4)))
 
         if self._f_kappa_XX_th is not None:
             #kappa_XX_th = self._f_kappa_XX_th(self.tau)
             k_XX = [self._f_kappa_XX_th(t) for t in self.tau]
             ax.plot(self.tau, k_XX , 'k--', label='kappa theory')
             if self.verbose:
-                print('>>> Correlation length th ', np.around(np.trapezoid(k_XX, self.tau,4)))
+                print('>>> Correlation length th ', np.around(trapezoid(k_XX, self.tau,4)))
 
         for k,v in self._kappa_XX_th_i.items():
             tau, k_XX = self._kappa_XX_th_i[k]
             ax.plot(tau, k_XX,':'   , label=r'$\int S_X$ provided')
             ax.set_xlim([0,self.tau_max])
             if self.verbose:
-                print('>>> Correlation length {:s}'.format(k[:3]), np.around(np.trapezoid(k_XX, tau,4)))
+                print('>>> Correlation length {:s}'.format(k[:3]), np.around(trapezoid(k_XX, tau,4)))
         ax.set_xlabel('Tau [s]')
         ax.set_ylabel('kappa_XX')
         ax.legend()
@@ -457,19 +461,19 @@ class SampledStochasticProcess:
         if self.S_X is not None:
             ax.plot(self.omega, self.S_X ,'o-', label='FFT (kappa_num)')
             if self.verbose:
-                print('>>> Spectrum integration num', np.around(np.trapezoid(self.S_X, self.omega),4))
+                print('>>> Spectrum integration num', np.around(trapezoid(self.S_X, self.omega),4))
 
         if self.S_avg is not None:
             ax.plot(self.om_Savg, self.S_avg ,'.-', label='FFT (avg)')
             if self.verbose:
-                print('>>> Spectrum integration avg', np.around(np.trapezoid(self.S_avg, self.om_Savg),4))
+                print('>>> Spectrum integration avg', np.around(trapezoid(self.S_avg, self.om_Savg),4))
 
         if self._f_S_X_th is not None:
             #S_X_th = self._f_S_X_th(self.omega)
             S_X_th = [self._f_S_X_th(om) for om in self.omega]
             ax.plot(self.omega, S_X_th ,'k--', label='S_X(omega) provided')
             if self.verbose:
-                print('>>> Spectrum integration th ', np.around(np.trapezoid(S_X_th, self.omega),4))
+                print('>>> Spectrum integration th ', np.around(trapezoid(S_X_th, self.omega),4))
 
         for k,v in self._S_X_th_i.items():
             om, S_X = self._S_X_th_i[k]
@@ -478,7 +482,7 @@ class SampledStochasticProcess:
             #b = om>0
             ax.set_xlim([0,self.omega_max])
             if self.verbose:
-                print('>>> Spectrum integration {:s}'.format(k[:3]), np.around(np.trapezoid(S_X[b], om[b]),4))
+                print('>>> Spectrum integration {:s}'.format(k[:3]), np.around(trapezoid(S_X[b], om[b]),4))
         ax.set_xlabel(r'$\omega$ [rad/s]')
         ax.set_ylabel(r'$S_X(\omega)$')
         ax.legend()

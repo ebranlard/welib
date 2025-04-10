@@ -313,6 +313,10 @@ def rigidBeamMassMatrix(s_OG, m, s_span=None, jxxG=None, point='O'):
         ds = np.linalg.norm(np.diff(s_OG, axis=1), axis=0)  # Compute segment lengths
         s_span = np.concatenate(([0], np.cumsum(ds)))  # Compute curvilinear length
 
+    # ---Sanitization
+    s_span = np.asarray(s_span)
+    m      = np.asarray(m)
+
     ## Speed up and improve integration along the span, using integration weight
     #IW,_,_,IW_xm=integrationWeights(s_span,m)
     def trapzs(yy, **kwargs):

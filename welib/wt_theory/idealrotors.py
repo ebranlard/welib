@@ -17,6 +17,10 @@ References:
 import numpy as np
 from scipy.optimize import fsolve
 from welib.BEM.idealrotors import *
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 # --------------------------------------------------------------------------------}
 # --- Maximum power extraction from stream tube theory (STT)
@@ -81,8 +85,8 @@ def ADMTO_CP(lambda_, method='analytical'):
             lamb_ = np.linspace(0.00001, l , n)
             a_, ap_ = ADMTO_inductions(lamb_, method='analytical')
             if l>0:
-                #CT[i]=8/(l**2) * np.trapezoid(a_  *(1-a_) * lamb_   , lamb_) # [1] Eq. 9.80
-                CP[i]=8/(l**2) * np.trapezoid(ap_ *(1-a_) * lamb_**3, lamb_)  # [1] Eq. 9.82
+                #CT[i]=8/(l**2) * trapezoid(a_  *(1-a_) * lamb_   , lamb_) # [1] Eq. 9.80
+                CP[i]=8/(l**2) * trapezoid(ap_ *(1-a_) * lamb_**3, lamb_)  # [1] Eq. 9.82
     elif method == 'Wilson':
         # Results given by WilsonLissaman 1974 p57
         lambda_=np.array([0.5,      1, 1.5 ,   2 ,  2.5,  5  ,7.5  ,10])  #

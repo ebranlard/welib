@@ -625,6 +625,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
 
     IT=dict()
+    IT['s_span']  = s_span
     IT['Mxx'] = Mxx
     IT['Mtt'] = Mtt
     IT['Mxt'] = Mxt
@@ -638,6 +639,8 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         #        [ 0  -z   y ]
         # [s~] = [ z   0  -x ]
         #        [-y   x   0 ]
+
+        # We use the notation:   sxy = trapzs(  s_G_x *  Uj_y *m   ) ,etc
         # 
         #           [ syy+szz, -syx  , -szx     ]
         #  Gr_j =  2[ -sxy   ,sxx+szz, -szy     ]
@@ -646,23 +649,24 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         #           [-(syy+szz),    sxy    , sxz      ]
         #  Oe_j =   [   syx    ,-(sxx+szz), syz     ]
         #           [   szx    ,    szy   ,-(sxx+syy) ]
-        #           
+        #
+        #            'xx'          'yy'        'zz'       'xy'     'yz'     'xz'
         #  Oe6_j=  [-(syy+szz), -(sxx+szz), -(sxx+syy), sxy+syx, syz+szy, sxz+szx] 
         #
         # NOTE: for a straight blade along z:
-        #     s_Gx=0 (so sxx,sxy,sxz=0), 
-        #     s_Gy=0 (so syx,syy,syz=0) 
-        #     and no axial deflection Uz=0  (sxz,syz szz=0)
-        #        
-        #          [ 0   0  -szx ]
-        #  Gr_j = 2[ 0   0  -szy ]
-        #          [ 0   0   0   ]
-        # 
-        #          [ 0   0     0 ]
-        #  Oe_j =  [ 0   0     0 ]
-        #          [ szx szy   0 ]
-        # 
-        #  Oe6_j= [0, 0, 0, 0, szy, szx]
+        #          s_Gx=0 (so sxx, sxy, sxz=0), 
+        #          s_Gy=0 (so syx, syy, syz=0) 
+        #          and no axial deflection Uz=0  (sxz,syz szz=0)
+        #             
+        #               [ 0   0  -szx ]
+        #       Gr_j = 2[ 0   0  -szy ]
+        #               [ 0   0   0   ]
+        #      
+        #               [ 0   0     0 ]
+        #       Oe_j =  [ 0   0     0 ]
+        #               [ szx szy   0 ]
+        #      
+        #       Oe6_j= [0, 0, 0, 0, szy, szx]
         # 
         # NOTE: for M1 we use s=Uj, then for a straight blade along z:
         #           we mostly have Uz=0 (now meaning: szx, szy, szz=0 and sxz,syz,szz=0)
@@ -702,6 +706,13 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
         #     Ge_j =   2*\int [Phi]^t [~Phi_j]^t dm  = [2C5_jk']
         #     Ge_j =   2 Kr
         # [Phi]: 3xnf
+        #
+        # NOTE: For a straigth beam along z, Uj_z=0
+        #           Ge[j][k,0] =0
+        #           Ge[j][k,1] =0
+        #           Ge[j][k,2] =-2*( trapzs(U[k][0,:]*U[j][1,:]*m) - trapzs(U[k][1,:]*U[j][0,:]*m))	
+        #    
+        #    
         # TODO revisit this
         Ge = np.zeros((nf,nf,3))
         for j in range(nf):

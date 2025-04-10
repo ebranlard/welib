@@ -16,8 +16,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 try:
     from scipy.integrate import cumulative_trapezoid 
+    from numpy import trapezoid
 except:
     from scipy.integrate import cumtrapz as cumulative_trapezoid
+    from numpy import trapz as trapezoid
 
 
 def velocity_from_streamfunction(psi, r, dr, dz):
@@ -148,7 +150,7 @@ def streamfunction(om, r, psi, ur, uz, dr, dz,
             psi2[:,nr-1] = 0.5*uz[0,0]*r[nr-1]**2
         elif BC_Walls['north']==BC_Dir_uz:
             # - Dirichlet - freestream varying velocity
-            psi2[:,nr-1] = np.trapezoid(r*uz[0,:],r)
+            psi2[:,nr-1] = trapezoid(r*uz[0,:],r)
         elif BC_Walls['north']==BC_Neu_uz:
             # - Neumann - uz known:  dpsi/dr = r uz - First order
             #psi2[:,nr-1] = psi2[:,nr-2] + dr*uz[:,nr-1]*r[nr-1]

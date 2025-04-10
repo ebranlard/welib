@@ -7,6 +7,10 @@ Set of tools for statistics
 """
 import numpy as np
 import pandas as pd
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 # --------------------------------------------------------------------------------}
 # --- Stats measures 
@@ -212,7 +216,7 @@ def pdf_histogram(y,nBins=50, norm=True, count=False):
         yh  = yh / (nBins*dx) 
     if norm:
         try:
-            yh=yh/np.trapezoid(yh,xh)
+            yh=yh/trapezoid(yh,xh)
         except:
             yh=yh/np.trapz(yh,xh)
     return xh,yh

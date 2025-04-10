@@ -7,6 +7,10 @@ from welib.wind.windsim import *
 
 from welib.tools.spectral import fft_wrap
 import matplotlib.pyplot as plt
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 def generateTSPlot(method='sumcos-irfft', seed=12, randomAmplitudes=True):
     U0    = 8      # Wind speed [m/s], for Kaimal spectrum
@@ -59,8 +63,8 @@ if __name__=='__main__':
             t, u, freq, S, f_fft, S_fft = generateTSPlot(method=method, randomAmplitudes=False)
         S[0]     = 0
         S_fft[0] = 0
-        print('Integration Kaimal:', np.trapezoid(S, freq))
-        print('Integration       :', np.trapezoid(S_fft, f_fft))
+        print('Integration Kaimal:', trapezoid(S, freq))
+        print('Integration       :', trapezoid(S_fft, f_fft))
         print('Sigma^2           :', np.var(u))
     plt.show()
 

@@ -686,7 +686,13 @@ class FASTBeamBody(BeamBody):
             damp_zeta=damp_zeta[shapes]
             mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
             prop      = inp['BldProp']  
-            s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
+            if prop.shape[1] ==5:
+                #BlFract           StrcTwst       BMassDen        FlpStff        EdgStff
+                #  (-)              (deg)          (kg/m)         (Nm^2)         (Nm^2)
+                s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,2], prop[:,3], prop[:,4]
+            else:
+                # Old
+                s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
             """
             BldBodyStartAtRoot    BldBodyAndSpanStartAtR     BldBodyAndSpanStartAtR
                   /                          /                       /

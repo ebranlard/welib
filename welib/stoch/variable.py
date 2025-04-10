@@ -3,8 +3,10 @@ import matplotlib.pyplot as plt
 from scipy.integrate import nquad
 try:
     from scipy.integrate import cumulative_trapezoid 
+    from numpy import trapezoid
 except:
     from scipy.integrate import cumtrapz as cumulative_trapezoid
+    from numpy import trapz as trapezoid
 # Local
 from welib.stoch.distribution import *
 
@@ -71,7 +73,7 @@ class StochasticVariable():
         """ Compute integral of PDF (should return 1)  """
         if x is not None:
             # We compute numerical integral
-            integral = np.trapezoid(self.pdf(x), x)
+            integral = trapezoid(self.pdf(x), x)
         elif self._f_pdf is not None:
             # We have a function for the pdf, we use more accurate nquad evaluation
             integral, _ = nquad( self._f_pdf , [self.domain])
@@ -79,7 +81,7 @@ class StochasticVariable():
             # Numerical integral
             if x is None:
                 x = self.x_default
-            integral = np.trapezoid(self.pdf(x), x)
+            integral = trapezoid(self.pdf(x), x)
         return integral
 
     def sample(self, n, method='inverse-cdf'):
@@ -152,7 +154,7 @@ class StochasticVariable():
         elif self._data is None:
             # Use numerical integration
             x = self.x_default
-            self._mean = np.trapezoid(x * self.pdf(x) , x)
+            self._mean = trapezoid(x * self.pdf(x) , x)
         else:
             # Use the raw sampled data
             self._mean =  np.mean(self._data)
@@ -171,7 +173,7 @@ class StochasticVariable():
         elif self._data is None:
             # Use numerical integration
             x = self.x_default
-            self._var = np.trapezoid((x-mu)**2 * self.pdf(x) , x)
+            self._var = trapezoid((x-mu)**2 * self.pdf(x) , x)
         else:
             self._var = np.var(self._data)
         return self._var

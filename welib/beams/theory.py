@@ -1,6 +1,10 @@
 import numpy as np
 import scipy.optimize as sciopt
 
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 def UniformBeamDeflection(bc_type, loading_type, z, params):
@@ -48,7 +52,7 @@ def UniformBeamDeflection(bc_type, loading_type, z, params):
             # dz = z[-1]-z[-2]
             # dz_effective = dz+ dz/2
             # p *= (F/dz_effective)
-            FI = np.trapezoid(p, z)
+            FI = trapezoid(p, z)
             p *= F / FI
         
         elif loading_type == "uniform":

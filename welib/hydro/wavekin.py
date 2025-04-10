@@ -2,6 +2,10 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import fsolve
 
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 def wavenumber(f, h, g=9.81):   
     """ solves the dispersion relation, returns the wave number k
@@ -145,11 +149,11 @@ def fcalc(f, h, g, D, ap, CD, CM , rho, t, z, x, k, eps, phi, u_struct):
 
     # Morison
     P = (.5 * rho * CD * D * u * np.abs(u)) + (rho * CM * np.pi*(D**2)/4 * du) #N/m inline Force from wave
-    GF = np.trapezoid((P*phi.reshape(len(phi), 1)), z , axis = 0 ) #work - N       #Generalized force
+    GF = trapezoid((P*phi.reshape(len(phi), 1)), z , axis = 0 ) #work - N       #Generalized force
     M = P * (z.reshape(len(z), 1) + h) #Nm/m [N]
 
-    F_total = np.trapezoid(P, z, axis=0)                                           
-    M_total = np.trapezoid(M, z, axis=0) #[Nm]
+    F_total = trapezoid(P, z, axis=0)                                           
+    M_total = trapezoid(M, z, axis=0) #[Nm]
 
     return u, du, GF, P, M, F_total, M_total
 
