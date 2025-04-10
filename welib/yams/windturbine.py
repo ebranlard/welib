@@ -781,7 +781,10 @@ def rigidBlades(blds, hub=None, r_O=[0,0,0]):
 # --------------------------------------------------------------------------------}
 # --- Converters 
 # --------------------------------------------------------------------------------{
-def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, nSpanBld=None, algo='',
+def FASTWindTurbine(fstFilename, main_axis='z', 
+                    nSpanTwr=None, twrShapes=None, 
+                    nSpanBld=None, bldShapes=None,
+                    algo='',
         bldStartAtRotorCenter=True):
     """
     INPUTS:
@@ -851,6 +854,15 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     nac = RigidBody('Nac', M_nac, (0,JyyNac_atN,0), r_NGnac_inN, s_OP=[0,0,0])
 
     # --- Blades 
+    if bldShapes is None: 
+        bldShapes=[]
+        if ED['FlapDOF1']:
+            bldShapes+=[0]
+        if ED['FlapDOF2']:
+            bldShapes+=[1]
+        if ED['EdgeDOF']:
+            bldShapes+=[2]
+
     bldFile = weio.read(bldfile)
     m    = bldFile['BldProp'][:,3]
     jxxG=0*m
@@ -861,16 +873,19 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
     #    print('>>> windturbine.py: TODO: using unknown jxxG')
     nB = ED['NumBl']
     bld=np.zeros(nB,dtype=object)
-    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, nSpan=nSpanBld, gravity=gravity, algo=algo) 
+    bld[0] = FASTBeamBody(ED, bldFile, Mtop=0, main_axis=main_axis, jxxG=jxxG, shapes=bldShapes, spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, nSpan=nSpanBld, gravity=gravity, algo=algo) 
     if algo.lower()=='openfast':
         # Overwrite blade props until full compatibility implemented
         bld[0].MM[0,0]    = pBld['BldMass']
         bld[0].MM[1,1]    = pBld['BldMass']
         bld[0].MM[2,2]    = pBld['BldMass']
         # TODO TODO bldShapes
-        bld[0].MM [6:,6:] = pBld['Me']
-        bld[0].KK0[6:,6:] = pBld['Ke0'] # NOTE: Ke has no stiffening
-        bld[0].DD [6:,6:] = pBld['De']
+        if bldShapes==[0,1,2]:
+            bld[0].MM [6:,6:] = pBld['Me']
+            bld[0].KK0[6:,6:] = pBld['Ke0'] # NOTE: Ke has no stiffening
+            bld[0].DD [6:,6:] = pBld['De']
+        else:
+            raise NotImplementedError()
 
     for iB in range(nB-1):
         bld[iB+1]=copy.deepcopy(bld[0])
@@ -934,6 +949,7 @@ def FASTWindTurbine(fstFilename, main_axis='z', nSpanTwr=None, twrShapes=None, n
             twrShapes+=[2]
         if ED['TwSSDOF2']:
             twrShapes+=[3]
+
     twrFile = weio.read(twrfile)
     twr = FASTBeamBody(ED, twrFile, Mtop=M_RNA, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=algo, gravity=gravity) # TODO options
     twr_rigid  = twr.toRigidBody()

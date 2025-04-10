@@ -28,6 +28,9 @@ _defaultOpts={
     'mergeFndTwr':True, # Use one body for FND and TWR
     'tiltShaft':False, # Tilt shaft or nacelle
     'twrDOFDir':['x','y','x','y'], # Order in which the flexible DOF of the tower are set
+    'twr_tip_unit_deflect': False,  # True to directly set u_xT1c etc = 1
+    'twr_tip_rotate':True,          # False to set v_xY1c etc =0
+    'bld_predef_kind': 'bld-z',     # bld-z, bld-z-straight
     'collectiveBldDOF':False,      # Use the same degrees of freedom for all blades "collective"
     'linRot' : False,              #<<< Very important if True will assume that omegas are time derivatives of DOFs
     'rot_elastic_type':'Body',     #<<< Very important, SmallRot, or Body, will affect the rotation matrix
@@ -176,7 +179,7 @@ def get_model(model_name, **opts):
             twr = YAMSRigidBody('T', rho_G = [0,0,z_TG], J_form='diag') 
         elif nDOF_twr<=4:
             # Flexible tower
-            twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='twr-z')
+            twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='twr-z', tip_unit_deflect=opts['twr_tip_unit_deflect'],tip_rotate=opts['twr_tip_rotate'])
 
     # --- Nacelle rotor assembly
     blds = []
@@ -211,7 +214,7 @@ def get_model(model_name, **opts):
                         blds.append(B)
                 else:
                     for ib, b in enumerate(np.arange(opts['nB'])):
-                        B = YAMSFlexibleBody('B{:d}'.format(ib+1), nDOF_bld, directions=bldDOFDir, orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='bld-z',
+                        B = YAMSFlexibleBody('B{:d}'.format(ib+1), nDOF_bld, directions=bldDOFDir, orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind=opts['bld_predef_kind'],
                                 name_for_var='B')
                         blds.append(B)
         else:
@@ -523,6 +526,7 @@ def get_model(model_name, **opts):
     M_ax, M_ay, M_az = dynamicsymbols('M_x_a, M_y_a, M_z_a') # Aero torques
     if bFullRNA:
         if bBld:
+            # --- Flexible blade DOFs
             # Gravity on blades
             for ib,bld in enumerate(blds):
                 grav_B       = (bld.masscenter, -bld.mass * gravity * ref.frame.z)
@@ -531,7 +535,7 @@ def get_model(model_name, **opts):
             if verbose:
                 print('>>>> TODO aero/misc loads on blades')
         else:
-            # Rotor loads
+            # Rigid body Rotor loads at rotor center
             grav_R = (rot.masscenter, -M_R * gravity * ref.frame.z)
             body_loads  += [(rot,grav_R)]  
 
