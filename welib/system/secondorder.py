@@ -19,6 +19,20 @@ import numpy as np
 from numpy import sqrt, cos, sin, exp
 
 # --------------------------------------------------------------------------------}
+# --- Transfer function 
+# --------------------------------------------------------------------------------{
+def transferFunction(s, omega0, zeta, b=1, F0=1):
+    """ 
+    NOTE: For a mass spring damper (b=1/m):
+                     1                        1/m
+      H(s)  =  ---------------  =  --------------------------
+               m s^2 + c s + k      s^2 + 2 zeta om s + om^2
+    """
+    H =  b / ( s**2 + 2*zeta *omega0*s + omega0**2) 
+    return H
+
+
+# --------------------------------------------------------------------------------}
 # --- Unforced/homogeneous  responses
 # --------------------------------------------------------------------------------{
 
@@ -111,7 +125,39 @@ def step_response(time, omega0, zeta, b=1, t0=0, A=1, offset=0, q0=[0,0], both=F
 # --------------------------------------------------------------------------------}
 # --- Forced vibrations responses 
 # --------------------------------------------------------------------------------{
+def frequency_response(Omega, omega0, zeta, b=1, F0=1, method='analytical'):
+    """
 
+    NOTE: it can be shown that the response to a sinusoidal input: F0 sin(Omega t) 
+          is given by:
+             x = F0  |H(Omega j)| sin (Omega t + phi(Omega))
+
+             with: 
+                 H (s) the transfer function of the system
+
+                 phi = arctan( imag(H(Omega j) / real(H(Omega j) ) 
+
+    """
+    k_inv = b / omega**2  # 1/k for a mechanical system when b=1/m
+    x_steady = F0 * k_inv
+    if method=='analytical':
+        Hmag = k_inv / np.sqrt( (1-Omega**2/omega0**2)**2 + (2*zeta*Omega/omega0)**2   )
+        phi  = - np.arctan2( 2*zeta*Omega/omega0 , 1- (Omega**2)/(omega0**2) )*180/np.pi
+    elif method=='transferfunction':
+        # Alternative / general method
+        H = transferFunction(Omega*1j, omega0, zeta, b=b, F0=F0)
+        Hmag = np.abs(H)
+        phi  = np.angle(H)
+    elif method=='control':
+        import control as ct
+        num = b
+        den = [1, 2*zeta*omega0, omega0**2]
+        sys = ct.tf(num, den)
+        Hdat = sys.frequency_response(Omega)
+        H = Hdat.fresp[0,0,:]
+        Hmag, phi = np.abs(H), np.angle(H)*180/np.pi
+
+    return Hmag, phi, x_steady
 
 
 # --------------------------------------------------------------------------------}

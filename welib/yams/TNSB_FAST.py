@@ -17,7 +17,8 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=No
         spanFrom0=True, # TODO for legacy, we keep this for now..
         bladeMassExpected=None,
         gravity=None,
-        algo='' # TODO replace with OpenFAST
+        algo='', # TODO replace with OpenFAST
+        verbose=False
         ):
     """ 
     Returns the following structure
@@ -53,7 +54,10 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=No
     # Reading elastodyn file
     ED      = weio.read(EDfile)
     rootdir = os.path.dirname(EDfile)
-    bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
+    try:
+        bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
+    except:
+        bldfile = os.path.join(rootdir,ED['BldFile1'].strip('"')).replace('\\','/')
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
     twr     = weio.read(twrfile)
     bld     = weio.read(bldfile)
@@ -64,23 +68,29 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,nSpan_twr=No
     if nSpan_twr is None:
         if algo=='OpenFAST':
             nSpan_twr = ED['TwrNodes']
-            print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan_twr))
+            if verbose:
+                print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan_twr))
         else:
             nSpan_twr=101
-            print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan_twr))
+            if verbose:
+                print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan_twr))
     else:
         if algo=='OpenFAST':
-            print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan_twr))
+            if verbose:
+                print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan_twr))
     if nSpan_bld is None:
         if algo=='OpenFAST':
             nSpan_bld = ED['BldNodes']
-            print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
+            if verbose:
+                print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
         else:
             nSpan_bld=61
-            print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
+            if verbose:
+                print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
     else:
         if algo=='OpenFAST':
-            print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
+            if verbose:
+                print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
 
 
     ## --- Strucural and geometrical Inputs

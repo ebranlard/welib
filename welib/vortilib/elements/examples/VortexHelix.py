@@ -13,8 +13,6 @@ def Params(a=1/3,U0=10,Lambda=6,R=100,nB=3):
 
 def main():
     import matplotlib.pyplot as plt
-#     import warnings
-#     warnings.filterwarnings('error')
 
     # --------------------------------------------------------------------------------}
     # --- Radial survey on the lifting line 

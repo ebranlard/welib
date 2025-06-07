@@ -549,7 +549,7 @@ class RigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
         B.s_G_inB = B.masscenter
         B.J_G_inB = B.masscenter_inertia
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, mass, -B.s_G_inB)
-        B.MM = rigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
+        B.MM = buildRigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
 
@@ -563,6 +563,7 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
             s_min=None, s_max=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
+            damp_zeta=None,
             name='dummy',
             algo=''
             ):
@@ -576,6 +577,7 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
         Body.__init__(B)
         GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
+                 damp_zeta=damp_zeta,
                  massExpected=massExpected,
                  int_method=int_method
                 )
@@ -612,7 +614,7 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
         else:
             raise NotImplementedError()
 
-    def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0):
+    def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0, verbose=False):
         super(BeamBody,o).updateKinematics(x_0,R_0b,gz,v_0,a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
         if o.nf>0:
@@ -642,7 +644,8 @@ class BeamBody(GenericBeamBody, Body): # TODO rename to YAMSRecBeamBody
                 o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
                 o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
             else:
-                print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
+                if verbose:
+                    print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
                 #raise NotImplementedError()
                 #o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
                 #o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
@@ -808,6 +811,7 @@ class FASTBeamBody(BeamBody, GenericFASTBeamBody):
         # NOTE: TODO TODO TODO: This will result in "YAMSBeamBody to be called twice...)
         BeamBody.__init__(B, B.s_span, B.s_P0, B.m, B.PhiU, B.PhiV, B.PhiK, B.EI, jxxG=B.jxxG, s_G0=B.s_G0, 
                 # NOTE: r_O, r_b2g is lost here
+                damp_zeta=B.damp_zeta, # Important otherwise lost
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
                 massExpected=massExpected,

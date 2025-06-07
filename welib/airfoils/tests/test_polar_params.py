@@ -38,7 +38,7 @@ class TestPolarParams(unittest.TestCase):
         self.assertEqual(P.alpha0(window=[-10,-5]), -7.5)
         # Error when several zero crossing are found
         #self.assertRaises(Exception,P.alpha0, window=[-10,10])
-        print('\n\n>>>>> TODO alpha0 with no zero crossing was commented!!\n\n')
+        #print('\n\n>>>>> TODO alpha0 with no zero crossing was commented!!\n\n')
 
         # --- Polar with constant values 
         # non zero cl, alpha0 is nan

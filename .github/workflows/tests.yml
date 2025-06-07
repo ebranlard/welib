@@ -12,20 +12,30 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
-            python-version: 3.7
+#           - os: ubuntu-latest
+#             python-version: 3.7
+#             python: xvfb-run python3
+#             pip_arg: ""
+#           - os: ubuntu-latest
+#             python-version: 3.8
+#             python: xvfb-run python3
+#             pip_arg: ""
+          - os: ubuntu-latest
+            python-version: 3.9
             python: xvfb-run python3
             pip_arg: ""
-          - os: ubuntu-22.04
-            python-version: 3.8
+          - os: ubuntu-latest
+            python-version: 3.11
             python: xvfb-run python3
             pip_arg: ""
-          - os: macos-11
-            python-version: 3.8
+          - os: ubuntu-latest
+            python-version: 3.13
+            python: xvfb-run python3
+            pip_arg: ""
+          - os: macos-latest
             python: python3
             pip_arg: ""
-          - os: windows-2019
-            python-version: 3.8
+          - os: windows-latest
             python: python
             pip_arg: --user
     runs-on: ${{ matrix.os }}

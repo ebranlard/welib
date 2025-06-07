@@ -11,13 +11,13 @@ MyDir=os.path.dirname(__file__)
 # --------------------------------------------------------------------------------}
 # --- TESTS Wind Turbine, With OpenFAST Algo. Should give perfect match, but some TODOs
 # --------------------------------------------------------------------------------{
-class TestWindTurbSparOpenFAST(unittest.TestCase):
+class TestWTSparOF(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         # Read FAST structural model
         fstSim = os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst')
-        cls.WT = FASTWindTurbine(fstSim, algo='OpenFAST') #, bldStartAtRotorCenter=False )
+        cls.WT = FASTWindTurbine(fstSim, algo='OpenFAST', bldShapes=[0,1,2]) #, bldStartAtRotorCenter=False )
         cls.fstSim = fstSim
 
     def test_WT_00_bld(self):
@@ -130,7 +130,7 @@ class TestWindTurbSparOpenFAST(unittest.TestCase):
         np.testing.assert_almost_equal(rot.inertia[0,0], 38479110.193, 3) # TODO TODO TODO WRONG BECAUSE OF BLADE DEFINITION
 
 
-    def test_WT_50_Kinematics(self):
+    def test_WT_50_Kin(self):
         qDict   = {'Sg': 10.0, 'Sw':20.0, 'Hv': 5.0, 'R':0.0, 'P':0.3, 'Y':0, 'TFA1':1.0, 'TSS1':10.0,'TFA2':0, 'TSS2':0, 'Yaw':np.pi/8}
         qdDict  = {'Sg':  1.0, 'Sw': 2.0, 'Hv': 3.0, 'R':0.1, 'P':0.3, 'Y':0, 'TFA1':0.1, 'TSS1':0.2, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}
         qddDict = {'Sg':  0.1, 'Sw': 0.0, 'Hv': 0.2, 'R':0.01,'P':0.1, 'Y':0, 'TFA1':0.1, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}

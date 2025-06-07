@@ -57,6 +57,13 @@ def B_reg(t,Minv,F):
     B[nDOF:,0] = np.dot(Minv,F)
     return B
 
+def Bu(Minv):
+    """ Return B matrix from assuming u is loads  """
+    nDOF=Minv.shape[0]
+    B = np.zeros((2*nDOF,1))
+    B[nDOF:,0] = Minv
+    return B
+
 def dxdt(q, t, A, M, vTime, vF): 
     B = B_interp(t, M, vTime, vF)
     dq = np.dot(A,q)+B
@@ -1044,9 +1051,6 @@ class StateSpace(System):
 def _plot(df, keys=None, label=None, title='', nPlotCols=1, axes=None, **kwargs):
     import matplotlib
     import matplotlib.pyplot as plt
-    #if COLRS is None:
-    #    cmap = matplotlib.cm.get_cmap('viridis')
-    #    COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
 
     time = df['Time_[s]'].values
     if keys is None:

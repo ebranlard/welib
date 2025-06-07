@@ -3,6 +3,7 @@ import numpy as np
 import os
 from welib.yams.flexibility import *
 import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 
 MyDir=os.path.dirname(__file__)
 
@@ -116,7 +117,7 @@ class Test(unittest.TestCase):
         TowerHt=87.6;
         TowerBs=0;
         TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
-        twr = weio.FASTInputFile(TwrFile).toDataFrame()
+        twr = FASTInputFile(TwrFile).toDataFrame()
         z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m   = twr['TMassDen_[kg/m]']  
         nSpan = len(z)
@@ -189,13 +190,13 @@ class Test(unittest.TestCase):
         # --- Read data from NREL5MW Blade
         edFile=os.path.join(MyDir,'./../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore.dat')
         parentDir=os.path.dirname(edFile)
-        ed = weio.FASTInputFile(edFile)
+        ed = FASTInputFile(edFile)
         TipRad = ed['TipRad']
         HubRad = ed['HubRad']
         BldLen= TipRad-HubRad;
         BldFile = ed['BldFile(1)'].replace('"','')
         BldFile=os.path.join(parentDir,BldFile)
-        bld = weio.FASTInputFile(BldFile).toDataFrame()
+        bld = FASTInputFile(BldFile).toDataFrame()
         z   = bld['BlFract_[-]']*BldLen + HubRad
         m   = bld['BMassDen_[kg/m]']
         nSpan = len(z)

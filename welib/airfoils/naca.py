@@ -14,10 +14,14 @@ References:
 import numpy as np
 
 
-def naca_shape(digits, chord=1, n=151):
+def naca_shape(digits, chord=1, n=151, thickTEZero=False, pitch=0, xrot=0.25):
     """ 
     INPUTS:
      - digits: 4 digits string, e.g. '0012'
+     - thickTEZero: if true, forces the values at x=1 to be y=0
+                 The original NACA equations gives a non zero thickness at the trailing edge
+     - pitch: pitch angle, positive nose up (angle of attack) [rad]
+     - xrot: center of rotation for pitch (in chord coordinates) [-]
 
     """
     if len(digits)!=4:
@@ -34,13 +38,25 @@ def naca_shape(digits, chord=1, n=151):
 
     # --- Symmetric airfoils
     x = np.linspace(0, 1, n)
-    y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1015 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
-    x = np.concatenate((x, np.flip( x,0)))
-    y = np.concatenate((y, np.flip(-y,0)))
+    if not thickTEZero:
+        # Original NACA equation - the TE is not sharp
+        y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1015 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
+        # NOTE: the TE point will be repeated
+        xa = np.concatenate((x, np.flip( x     ,0)))
+        ya = np.concatenate((y, np.flip(-y     ,0)))
+    else:
+        # Small modifications to ensure the thickness is zero at the TE
+        y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1036 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
+        # NOTE: for a sharp trailing edge, we avoid repetition of the TE point
+        xa = np.concatenate((x, np.flip( x[:-1],0)))
+        ya = np.concatenate((y, np.flip(-y[:-1],0)))
 
-    print(len(x))
 
-    # --- Sclae
+    # --- Rotate
+    x = (xa-xrot)*np.cos(pitch) +        ya*np.sin(pitch) + xrot
+    y =        ya*np.cos(pitch) - (xa-xrot)*np.sin(pitch)
+
+    # --- Scale
     x*=chord
     y*=chord
 

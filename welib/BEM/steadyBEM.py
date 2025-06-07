@@ -10,6 +10,10 @@ import os
 from numpy import pi, cos, exp, sqrt, sin, arctan2, arccos
 from scipy.interpolate import interp1d
 import pandas as pd
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 # --------------------------------------------------------------------------------}
@@ -67,6 +71,11 @@ class SteadyBEM():
 #         self.bThicknessInterp = True # interpolate the input tabulated airfoil data for thickness variation
         self.WakeMod=1 # 0: no inductions, 1: BEM inductions
 #         self.bRoughProfiles = False # use rough profiles for input airfoil data
+
+        # 'Latest operating conditions:\n'
+        self.Omega0=None
+        self.pitch0=None
+        self.V0    =None
 
     def init_from_FAST(self, FASTFileName):
         # TODO unify with FASTFile2SteadyBEM(FASTFileName)
@@ -180,7 +189,7 @@ class SteadyBEM():
         s+=' - kinVisc   : {} [kg/m^3]\n'.format(self.kinVisc)
         # Latest operating conditions
         s+='Latest operating conditions:\n'
-        s+=' - Omega0    : {} [rpm]\n'.format(self.Omega0)
+        s+=' - Omega0    : {} [rpm]\n'.format(self.Omega0) # RPM
         s+=' - pitch0    : {} [deg]\n'.format(self.pitch0)
         s+=' - V0        : {} [m/s]\n'.format(self.V0)
         s+='Algorithm options:\n'
@@ -194,13 +203,19 @@ class SteadyBEM():
         s+=' - bAIDrag   : {}\n'.format(self.bAIDrag   )
         s+=' - bTIDrag   : {}\n'.format(self.bTIDrag  )
         s+=' - WakeMod   : {}\n'.format(self.WakeMod  )
+        s+='Useful methods:\n'
+        s+=' - calcOutput(RPM, pitch, V0, ...): run BEM for given conditions\n'
+        s+=' - parametric (RPM, Pitch, V0, ...): run BEM for multiple conditions\n'
+        s+=' - findPitchForPowerCurve:\n'
+        s+=' - radialDataFrame / toDataFrame: radial data from last run\n'
         return s
 
 
     def calcOutput(self, Omega=None, pitch=None, V0=None, cone=None,
             xdot=0, u_turb=0,
             a_init=None, ap_init=None,
-            verbose=False
+            verbose=False,
+            inductions=True
             ):
         """ 
         Compute output for current state variables and inputs.
@@ -243,7 +258,7 @@ class SteadyBEM():
             nItMax=self.nIt, aTol=self.aTol, bTipLoss=self.bTipLoss, bHubLoss=self.bHubLoss, 
             bAIDrag=self.bAIDrag, bTIDrag=self.bTIDrag, bSwirl=self.bSwirl, bUseCm=self.bUseCm, relaxation=self.relaxation, 
             algorithm=self.algorithm, verbose=verbose,
-            a_init=a_init, ap_init=ap_init)
+            a_init=a_init, ap_init=ap_init, inductions=inductions)
         return out
 
     def parametric(self, rotSpeed, pitch, windSpeed, outputFilename=None, radialBasename=None, plot=False, **kwargs):
@@ -362,6 +377,8 @@ class SteadyBEM():
     # --------------------------------------------------------------------------------{
     def radialDataFrame(self):
         return self.lastRun.radialDataFrame() # not very pretty
+    def toDataFrame(self):
+        return self.radialDataFrame()
 
 
 
@@ -370,23 +387,31 @@ class SteadyBEM():
 # --------------------------------------------------------------------------------{
 class SteadyBEM_Outputs:
 
-    def radialDataFrame(BEM):
-        header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] Pn_[N/m] Pt_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uia_[m/s] uit_[m/s] u_turb_[m/s]'
+    def radialDataFrame(BEM, r_new=None):
+        header='r_[m] a_[-] a_prime_[-] Ct_[-] Cq_[-] Cp_[-] cn_[-] ct_[-] phi_[deg] alpha_[deg] Cl_[-] Cd_[-] fn_[N/m] ft_[N/m] Vrel_[m/s] Un_[m/s] Ut_[m/s] F_[-] Re_[-] Gamma_[m^2/s] uin_[m/s] uit_[m/s] u_turb_[m/s]'
         header=header.split()
         #header=' '.join(['{:14s}'.format(s) for s in header.split()])
-        M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.Pn,BEM.Pt,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uia,BEM.uit,BEM.u_turb))
-        return pd.DataFrame(data=M, columns=header)
+        M=np.column_stack((BEM.r,BEM.a,BEM.aprime,BEM.Ct,BEM.Cq,BEM.Cp,BEM.cn,BEM.ct,BEM.phi,BEM.alpha,BEM.Cl,BEM.Cd,BEM.fn,BEM.ft,BEM.Vrel,BEM.Un,BEM.Ut,BEM.F,BEM.Re,BEM.Gamma,BEM.uin,BEM.uit,BEM.u_turb))
+        df = pd.DataFrame(data=M, columns=header)
+        if r_new is not None:
+            from welib.tools.pandalib import pd_interp1
+            return pd_interp1(r_new, 'r_[m]', df)
+        else:
+            return df
+
+    def toDataFrame(BEM):
+        return BEM.radialDataFrame() 
 
     def WriteRadialFile(BEM, filename):
         df = BEM.radialDataFrame()
         np.savetxt(filename, df.values, header=' '.join(['{:14s}'.format(s) for s in df.columns]), fmt='%14.7e',comments='#')
         #df.to_csv(filename, index=False, sep='\t')
 
-    def StoreIntegratedValues(BEM, df=None):
+    def integralDataFrame(BEM):
         S=pd.Series(dtype='float64')
         S['WS_[m/s]']         = BEM.V0
         S['RotSpeed_[rpm]']   = BEM.Omega *60/(2*np.pi)
-        S['Pitch_[deg]']      = BEM.Pitch
+        S['Pitch_[deg]']      = BEM.pitch
         S['AeroThrust_[kN]']  = BEM.Thrust/1000
         S['AeroTorque_[kNm]'] = BEM.Torque/1000
         S['AeroPower_[kW]']   = BEM.Power/1000
@@ -395,12 +420,45 @@ class SteadyBEM_Outputs:
         S['AeroCT_[-]']       = BEM.CT
         S['AeroCP_[-]']       = BEM.CP
         S['AeroCQ_[-]']       = BEM.CQ
-
-        if df is None:
-            df = pd.DataFrame([S])
-        else:
-            df = pd.concat((df, pd.DataFrame([S])))
+        df = pd.DataFrame([S])
         return df
+
+    def StoreIntegratedValues(BEM, df=None):
+        df_new = BEM.integralDataFrame()
+        if df is None:
+            return df_new
+        else:
+            df = pd.concat((df, df_new))
+            return df
+
+    def interpolate(BEM, r_new):
+        df = radialDataFrame(BEM, r_new)
+        # TODO update data
+        return df
+
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+        # Aero Data
+        s+='Operating conditions:\n'
+        s+=' - Omega     : {:10.2f} [rpm]\n'.format(self.Omega) # RPM
+        s+=' - pitch     : {:10.2f} [deg]\n'.format(self.pitch)
+        s+=' - V0        : {:10.2f} [m/s]\n'.format(self.V0)
+        s+='Integral data:\n'
+        s+=' - Power     : {:10.3f} MW\n'.format(self.Power/1e6)
+        s+=' - Thrust    : {:10.3f} MN\n'.format(self.Thrust/1e6)
+        s+=' - Flap      : {:10.3f} MNm\n'.format(self.Flap/1e6)
+        s+=' - Edge      : {:10.3f} MNm\n'.format(self.Edge/1e6)
+        s+=' - CP, CT, CQ:   {:.3f} {:.3f} {:.3f}\n'.format(self.CP, self.CT, self.CQ)
+
+        s+='Radial data: size {}\n'.format(len(self.r))
+        s+= ' - r, a, aprime, phi, alpha, Vrel, Un, Ut, uin, uit, u_turb\n'
+        s+= ' - Ct, Cq, Cp, cn, ct, Cl, Cd, fn, ft, F, Re, Gamma\n'
+        s+='Useful methods:\n'
+        s+=' - radialDataFrame / toDataFrame: radial data \n'
+        s+=' - intergralDataFrame: integral data (e.g. power) \n'
+        s+=' - StoreIntegratedValues(df): concatenate integral dataframes\n'
+        s+=' - WriteRadialFile(filename): write radial dataframe to file\n'
+        return s
 
 # --------------------------------------------------------------------------------}
 # --- Low level function  
@@ -410,7 +468,7 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         rho=1.225,KinVisc=15.68*10**-6,    # Environment
         nItMax=100, aTol=10**-6, bTipLoss=True, bHubLoss=False, bAIDrag=True, bTIDrag=True, bSwirl=True, bUseCm=True, relaxation=0.4, algorithm=None,
         verbose=False,
-        a_init=None, ap_init=None):
+        a_init=None, ap_init=None, inductions=True):
     """ Run the BEM main loop
         Inputs:
         -------
@@ -460,6 +518,9 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
     # --- Vectorized BEM algorithm
     # Radial inputs: a_init,ap_init,r,chord,fulltwist,sigma,lambda_r,fPolars
     a, aprime  = a_init, ap_init
+    if not inductions:
+        a      = a*0
+        aprime = aprime*0
 
 
     if True: # To match unsteady BEM indentation
@@ -515,8 +576,12 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
             # Storing last values
             a_last      = a
             aprime_last = aprime
-            a, aprime, CT_loc = _fInductionCoefficients(Vrel_norm_k, V0, F, cnForAI, ctForTI,
-                                                   lambda_r, sigma, phi_k, a_last=a_last, relaxation=relaxation, bSwirl=bSwirl, drdz=drdz, algorithm=algorithm)
+            if inductions:
+                    a, aprime, CT_loc = _fInductionCoefficients(Vrel_norm_k, V0, F, cnForAI, ctForTI,
+                                                           lambda_r, sigma, phi_k, a_last=a_last, relaxation=relaxation, bSwirl=bSwirl, drdz=drdz, algorithm=algorithm)
+            else:
+                CT_loc=None
+                pass
 
             if (iterations > 3 and (np.mean(np.abs(a-a_last)) + np.mean(np.abs(aprime - aprime_last))) < aTol):  # used to be on alpha
                 break
@@ -532,7 +597,7 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         # Operating conditions
         BEM.R=R
         BEM.Omega = Omega
-        BEM.Pitch = pitch
+        BEM.pitch = pitch
         BEM.V0 = V0
 
         # --- Coefficients
@@ -543,7 +608,7 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
         # --- Velocities
         BEM.a,BEM.aprime,BEM.phi, = a,aprime,phi_k
         BEM.Un,BEM.Ut,BEM.Vrel = Un_p,Ut_p,Vrel_norm_k
-        BEM.uia    = V0 * BEM.a
+        BEM.uin    = V0 * BEM.a
         BEM.uit    = Omega * r * BEM.aprime
         BEM.u_turb = np.ones(r.shape)*u_turb
         
@@ -566,41 +631,41 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
             BEM.cn = BEM.Cl * cos(BEM.phi) + BEM.Cd * sin(BEM.phi)
             BEM.ct = BEM.Cl * sin(BEM.phi) - BEM.Cd * cos(BEM.phi)
         if algorithm=='legacy':
-            BEM.Pn    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.cn *cCone    # [N/m]
-            BEM.Pt    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.ct           # [N/m] 
+            BEM.fn    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.cn *cCone    # [N/m]
+            BEM.ft    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.ct           # [N/m] 
         else:
-            BEM.Pn    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.cn   # [N/m]
-            BEM.Pt    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.ct   # [N/m] 
+            BEM.fn    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.cn   # [N/m]
+            BEM.ft    = 0.5 * rho * BEM.Vrel**2 * chord * BEM.ct   # [N/m] 
         if bUseCm:
             BEM.MzLn  = 0.5 * rho * BEM.Vrel**2 * chord**2 * BEM.Cm   # [Nm/m] 
         else:
-            BEM.Cm    = 0*BEM.Pn
-            BEM.MzLn  = 0*BEM.Pn
+            BEM.Cm    = 0*BEM.fn
+            BEM.MzLn  = 0*BEM.fn
         BEM.phi   = BEM.phi*180/pi                             # [deg]
         BEM.Re    = BEM.Vrel * chord / KinVisc / 10**6  # Reynolds number in Millions
         BEM.Gamma = 0.5 * BEM.Vrel * chord * BEM.Cl   # Circulation [m^2/s]
         # L = 0.5 * rho * Vrel_norm ** 2 * chord[e] * Cl
         # D = 0.5 * rho * Vrel_norm ** 2 * chord[e] * Cd
         # Radial quantities, "dr" formulation
-        BEM.ThrLoc   = dr * BEM.Pn
-        BEM.ThrLocLn =      BEM.Pn
-        BEM.TqLoc    = dr * BEM.Pt * rPolar
-        BEM.TqLocLn  =      BEM.Pt * rPolar
+        BEM.ThrLoc   = dr * BEM.fn
+        BEM.ThrLocLn =      BEM.fn
+        BEM.TqLoc    = dr * BEM.ft * rPolar
+        BEM.TqLocLn  =      BEM.ft * rPolar
         # TODO verify those below
         BEM.Ct       = nB * BEM.ThrLoc / (0.5 * rho * VHubHeight** 2 * (2*pi * rPolar * dr))
         BEM.Cq      = nB * BEM.TqLoc / (0.5 * rho * VHubHeight** 2 * (2*pi * rPolar)) * dr * rPolar
         BEM.Cp      = BEM.Cq*lambda_r
 
         # --- Integral quantities per blade
-        BEM.Mz    = np.trapz(BEM.MzLn, r)
+        BEM.Mz    = trapezoid(BEM.MzLn, r)
         QMz = nB * BEM.Mz * np.sin(cone*np.pi/180)
 
         # --- Integral quantities for rotor
         # TODO integration variable might need to be rPolar
-        BEM.Torque = nB * np.trapz(rPolar * BEM.Pt, r) + QMz # Rotor shaft torque [N]
-        BEM.Thrust = nB * np.trapz(         BEM.Pn, r) # Rotor shaft thrust [N]
-        BEM.Flap   = np.trapz( BEM.Pn * (r - rhub), r) # Flap moment at blade root [Nm]
-        BEM.Edge   = np.trapz( BEM.Pt * (r - rhub), r) # Edge moment at blade root [Nm]
+        BEM.Torque = nB * trapezoid(rPolar * BEM.ft, r) + QMz # Rotor shaft torque [N]
+        BEM.Thrust = nB * trapezoid(         BEM.fn, r) # Rotor shaft thrust [N]
+        BEM.Flap   = trapezoid( BEM.fn * (r - rhub), r) # Flap moment at blade root [Nm]
+        BEM.Edge   = trapezoid( BEM.ft * (r - rhub), r) # Edge moment at blade root [Nm]
         BEM.Power = Omega * BEM.Torque
         BEM.CP = BEM.Power  / (0.5 * rho * V0**3 * pi * R**2) # TODO ref area with coning
         BEM.CT = BEM.Thrust / (0.5 * rho * V0**2 * pi * R**2)
@@ -608,8 +673,8 @@ def calcSteadyBEM(Omega,pitch,V0,xdot,u_turb,
 
 
         if verbose:
-            print('Pn   ' , BEM.Pn)
-            print('Pt   ' , BEM.Pt)
+            print('fn   ' , BEM.fn)
+            print('ft   ' , BEM.ft)
             print('Power' , BEM.Power)
             print('Thrust', BEM.Power)
     return BEM

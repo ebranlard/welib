@@ -16,11 +16,12 @@ def main():
     Epsilon = 0.5*L
     nCPs=100
     CPs = np.zeros((nCPs,3))
-    CPs[:,0] = np.linspace(0,2*L,nCPs)
+    CPs[:,0] = np.linspace(0.0001, 2*L, nCPs)
     U0 = vp_u(CPs, PPart, Alpha, RegFunction=0, RegParam=Epsilon)
     U1 = vp_u(CPs, PPart, Alpha, RegFunction=1, RegParam=Epsilon)
     U2 = vp_u(CPs, PPart, Alpha, RegFunction=2, RegParam=Epsilon)
-    U_th = Alpha[2]*CPs[:,0]/(4*np.pi*np.sqrt(CPs[:,0]**2 + CPs[:,1]**2)**3)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        U_th = Alpha[2]*CPs[:,0]/(4*np.pi*np.sqrt(CPs[:,0]**2 + CPs[:,1]**2)**3)
 
 
 

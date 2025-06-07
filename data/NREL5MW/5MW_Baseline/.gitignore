@@ -1,0 +1,5 @@
+*.exp
+*.lib
+*.sln
+*.u2d
+*.dll

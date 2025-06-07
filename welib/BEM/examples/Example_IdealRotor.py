@@ -2,6 +2,9 @@
 Blade planform for "ideal rotor" without wake rotation (a'=0) or with wake rotation
 
 Equations obtained by simplifying the BEM equations (Cd=0, F=1)
+
+
+NOTE: Optimal CP, a and a' are given in welib/wt_theory/Examples/OptimalCP.py
 """
 
 import numpy as np
@@ -22,13 +25,13 @@ r     = np.linspace(r_hub, R, 100)
 r_bar = r/R
 
 # No Wake Rot
-chord, phi = planform_nowakerot(r, R, TSR, Cl, B)
+chord, phi,_,_ = planform_nowakerot(r, R, TSR, Cl, B)
 phi   = phi*180/np.pi
 twist = phi-phi[-1]
 chord_nw = chord
 twist_nw = twist
 # Wake Rot
-chord, phi = planform_wakerot(r, R, TSR, Cl, B)
+chord, phi,_,_ = planform_wakerot(r, R, TSR, Cl, B)
 phi    = phi*180/np.pi
 pitch0 = phi[-1] # pitch is set such that twist is 0 at blade tip, it's a choice 
 twist  = phi-pitch0

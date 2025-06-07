@@ -39,7 +39,7 @@ def main(tMax=100):
     MM = np.array([[4.936E+05]]) # Struct+AddedMass
     KK = np.array([[2.395E+07]])
     CC = KK*0.000
-    k_h_mm1 = k_h/MM[0]
+    k_h_mm1 = k_h/MM[0,0]
     #print('k_h/m',k_h_mm1)
 
 
@@ -56,7 +56,7 @@ def main(tMax=100):
     # State matrix A, and empty inputs/outputs B,C,D
     A,B,C,D = BuildSystem_Linear_MechOnly(MM, CC, KK, nP=len(sAug), nU=len(sInp), nY=len(sMeas), Fp=GF_hydro_z)
     # Setting B,C,D
-    B[1,0]=k_h_mm1 
+    B[1,0]=k_h_mm1
     C[:,:]=A[1,:] # Acceleration only
     D[0,0]=k_h_mm1
 
@@ -104,11 +104,12 @@ def main(tMax=100):
             if iEnd-iStart>1:
                 if algo=='1a' or algo=='1b':
                     qh_DC = np.mean(KF.X_hat['qh'][iStart:iEnd]) # Option 1: take mean from previous time
+                    raise 
                 elif algo=='2':
-                    qh_DC = x[KF.iX['qh']] # Option 2: use previous value
+                    qh_DC = x[KF.iX['qh']].values[0] # Option 2: use previous value
                 else:
                     qh_DC = 0  # Option 3: do not use an input
-                u[0] =  qh_DC
+                u['qh_mean'] =  qh_DC
 
         # --- Predictions of next time step based on current time step
         x,KF.P,_ = KF.estimateTimeStep(u,y,x,KF.P,KF.Q,KF.R)
@@ -123,11 +124,11 @@ def main(tMax=100):
         KF.Y_hat.iloc[it+1,:]   = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
         KF.X_hat.iloc[it+1,:]   = x
         # --- Store extra info
-        KF.S_hat['eta'   ][it+1] = eta
-        KF.S_hat['M_sb'  ][it+1] = M_sb
-        KF.S_hat['GF'    ][it+1] = GF
-        KF.S_hat['qh_avg'][it+1] = qh_DC
-        KF.S_hat['qh'    ][it+1] = qh
+        KF.S_hat.loc[it+1, 'eta'   ] = eta
+        KF.S_hat.loc[it+1, 'M_sb'  ] = M_sb
+        KF.S_hat.loc[it+1, 'GF'    ] = GF
+        KF.S_hat.loc[it+1, 'qh_avg'] = qh_DC
+        KF.S_hat.loc[it+1, 'qh'    ] = qh
         # --- Propagation to next time step
         if np.mod(it,500) == 0:
             print('Time step %8.0f t=%10.3f ' % (it,KF.time[it]))

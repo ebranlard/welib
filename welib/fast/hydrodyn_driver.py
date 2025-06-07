@@ -62,7 +62,7 @@ def hydroSimLinFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=
     fh = np.zeros((len(time), 6))
 
     # --- Time integration
-    with Timer('Time integration'):
+    with Timer('Time integration', silent=not verbose):
         for it, t in enumerate(time):
             # Reference point motion
             q   = dfOF[qCol].iloc[it].values
@@ -176,7 +176,7 @@ def hydroSimFromOpenFAST(fstFilename, tMax=None, optsM=None, plot=True, json=Tru
     msy = MeshStorage(ymesh, time) # Store mesh at each time step
 
     # --- Time integration
-    with Timer('Time integration'):
+    with Timer('Time integration', silent = not verbose):
         for it, t in enumerate(time):
             # Reference point motion (ED or HD!)
             q  = dfOF[qCol].iloc[it].values

@@ -9,7 +9,7 @@ from welib.weio.fast_input_deck import FASTInputDeck
 from welib.tools.signal_analysis import zero_crossings
 
 # ---
-def interp2d_pairs(*args,**kwargs):
+def interp2d_pairs(X, Y, Z, kind='cubic', **kwargs):
     """ Same interface as interp2d but the returned interpolant will evaluate its inputs as pairs of values.
     Inputs can therefore be arrays
 
@@ -25,11 +25,18 @@ def interp2d_pairs(*args,**kwargs):
     author: E. Branlard
     """
     # Internal function, that evaluates pairs of values, output has the same shape as input
-    def interpolant(x,y,f):
+    # --- OLD
+    #     def interpolant(x,y,f):
+    #         x,y = np.asarray(x), np.asarray(y)
+    #         return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
+    #return lambda x,y: interpolant(x, y, si.interp2d(X, Y, Z, kind=kind))
+    # --- NEW
+    Finterp = si.RegularGridInterpolator((X,Y), Z.T, method=kind)
+    #r = si.RectBivariateSpline(X, Y, Z.T)
+    def interpolant(x,y):
         x,y = np.asarray(x), np.asarray(y)
-        return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
-    # Wrapping the scipy interp2 function to call out interpolant instead
-    return lambda x,y: interpolant(x,y,si.interp2d(*args,**kwargs))
+        return Finterp((x,y))
+    return interpolant
 
 
 def Paero(WS, Pitch, Omega, R, rho, fCP):

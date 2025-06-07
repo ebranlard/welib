@@ -14,6 +14,10 @@ try:
 except:
     from elliptic import ellipticPiCarlson, ellipe, ellipk
     from VortexLine import vl_semiinf_u
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 # --------------------------------------------------------------------------------}
 # --- Helper function 
@@ -68,9 +72,9 @@ def svc_tang_u_polar(vr,vpsi,vz,gamma_t=-1,R=1,m=0,ntheta=180,polar_out=False):
             az = R * (R - r * np.cos(vtheta - psi))
             D = 2*gamma_t/(4*np.pi)/(np.multiply(np.sqrt(a),(2 * np.sqrt(a * c)+ b)))
             # Integrations
-            u_r[i]    = np.trapz((ar * np.sqrt(c)+ np.multiply(br,np.sqrt(a)))*D, vtheta)
-            u_psi[i]  = np.trapz((ap * np.sqrt(c)+ np.multiply(bp,np.sqrt(a)))*D, vtheta)
-            u_z[i]    = np.trapz((az * np.sqrt(c)+ np.multiply(bz,np.sqrt(a)))*D, vtheta)
+            u_r[i]    = trapezoid((ar * np.sqrt(c)+ np.multiply(br,np.sqrt(a)))*D, vtheta)
+            u_psi[i]  = trapezoid((ap * np.sqrt(c)+ np.multiply(bp,np.sqrt(a)))*D, vtheta)
+            u_z[i]    = trapezoid((az * np.sqrt(c)+ np.multiply(bz,np.sqrt(a)))*D, vtheta)
         # Reshaping to desired shape
         u_r   =  u_r.reshape(shape_in)   
         u_psi =  u_psi.reshape(shape_in)   
@@ -91,9 +95,9 @@ def svc_tang_u_polar(vr,vpsi,vz,gamma_t=-1,R=1,m=0,ntheta=180,polar_out=False):
 #             #D = 2*gamma_t/(4*np.pi)/(np.multiply(np.sqrt(a),(2 * np.sqrt(a * c)+ b)))
 #             D = -4*gamma_t/(np.sqrt(c)*4*np.pi)/(4*a*c-b**2)
 #             # Integrations
-#             u_x[i]    = np.trapz((b*bx-2*ax*c)*D, vtheta)
-#             u_y[i]    = np.trapz((b*by-2*ay*c)*D, vtheta)
-#             u_z[i]    = np.trapz((b*bz-2*az*c)*D, vtheta)
+#             u_x[i]    = trapezoid((b*bx-2*ax*c)*D, vtheta)
+#             u_y[i]    = trapezoid((b*by-2*ay*c)*D, vtheta)
+#             u_z[i]    = trapezoid((b*bz-2*az*c)*D, vtheta)
 
 
         bx, by = -R * np.cos(vtheta), -R * np.sin(vtheta)
@@ -108,9 +112,9 @@ def svc_tang_u_polar(vr,vpsi,vz,gamma_t=-1,R=1,m=0,ntheta=180,polar_out=False):
             az = R * (R - r * np.cos(vtheta - psi))
             D = 2*gamma_t/(4*np.pi)/(np.multiply(np.sqrt(a),(2 * np.sqrt(a * c)+ b)))
             # Integrations
-            u_x[i]    = np.trapz((ax * np.sqrt(c)+ np.multiply(bx,np.sqrt(a)))*D, vtheta)
-            u_y[i]    = np.trapz((ay * np.sqrt(c)+ np.multiply(by,np.sqrt(a)))*D, vtheta)
-            u_z[i]    = np.trapz((az * np.sqrt(c)+ np.multiply(bz,np.sqrt(a)))*D, vtheta)
+            u_x[i]    = trapezoid((ax * np.sqrt(c)+ np.multiply(bx,np.sqrt(a)))*D, vtheta)
+            u_y[i]    = trapezoid((ay * np.sqrt(c)+ np.multiply(by,np.sqrt(a)))*D, vtheta)
+            u_z[i]    = trapezoid((az * np.sqrt(c)+ np.multiply(bz,np.sqrt(a)))*D, vtheta)
 
         # Reshaping to desired shape
         u_x   =  u_x.reshape(shape_in)   
@@ -146,9 +150,9 @@ def svc_longi_u_polar(vr,vpsi,vz,gamma_l=-1,R=1,m=0,ntheta=180,polar_out=False):
             Den1 = np.sqrt(1 + r**2 + z**2 - 2*r* np.cos(vtheta - psi))
             Den2 = - z + m * np.cos(vtheta) + np.sqrt(1 + m ** 2) * np.sqrt(1 + r ** 2 + z ** 2 - 2 * r * np.cos(vtheta - psi)) - m * r * np.cos(psi)
             DenInv = gamma_l/(4*np.pi)/np.multiply(Den1,Den2)
-            u_r[i]   = np.trapz((  - m*z*np.sin(psi) + np.sin(vtheta-psi))*DenInv,vtheta)
-            u_psi[i] = np.trapz((r - m*z*np.cos(psi) - np.cos(vtheta-psi))*DenInv,vtheta)
-            u_z[i]   = np.trapz(m * (-np.sin(vtheta) + r*np.sin(psi))     *DenInv,vtheta)
+            u_r[i]   = trapezoid((  - m*z*np.sin(psi) + np.sin(vtheta-psi))*DenInv,vtheta)
+            u_psi[i] = trapezoid((r - m*z*np.cos(psi) - np.cos(vtheta-psi))*DenInv,vtheta)
+            u_z[i]   = trapezoid(m * (-np.sin(vtheta) + r*np.sin(psi))     *DenInv,vtheta)
         # Reshaping to input shape
         u_r   =  u_psi.reshape(shape_in) 
         u_psi =  u_psi.reshape(shape_in) 
@@ -161,9 +165,9 @@ def svc_longi_u_polar(vr,vpsi,vz,gamma_l=-1,R=1,m=0,ntheta=180,polar_out=False):
             Den1 = np.sqrt(1 + r**2 + z**2 - 2*r* np.cos(vtheta - psi))
             Den2 = - z + m * np.cos(vtheta) + np.sqrt(1 + m ** 2) * np.sqrt(1 + r ** 2 + z ** 2 - 2 * r * np.cos(vtheta - psi)) - m * r * np.cos(psi)
             DenInv = gamma_l/(4*np.pi)/np.multiply(Den1,Den2)
-            u_x[i]   = np.trapz(        (np.sin(vtheta) - r*np.sin(psi))  *DenInv,vtheta)
-            u_y[i]   = np.trapz((- m*z - np.cos(vtheta) + r*np.cos(psi))  *DenInv,vtheta)
-            u_z[i]   = np.trapz(m * (-np.sin(vtheta) + r*np.sin(psi))     *DenInv,vtheta)
+            u_x[i]   = trapezoid(        (np.sin(vtheta) - r*np.sin(psi))  *DenInv,vtheta)
+            u_y[i]   = trapezoid((- m*z - np.cos(vtheta) + r*np.cos(psi))  *DenInv,vtheta)
+            u_z[i]   = trapezoid(m * (-np.sin(vtheta) + r*np.sin(psi))     *DenInv,vtheta)
         # Reshaping to input shape
         u_x   =  u_x.reshape(shape_in)   
         u_y   =  u_y.reshape(shape_in)   
@@ -440,7 +444,7 @@ def fKxit(vr,m):
     Kxit_num=np.zeros(vr.shape)
     for ir in np.arange(len(vr)):
         r = vr[ir]
-        Kxit_num[ir] = 2 * r / np.pi * np.trapz(np.sin(2 * vtheta) ** 2.0 / (np.multiply(np.sqrt((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2),((r - np.cos(2 * vtheta)) ** 2 * np.cos(chi) ** 2 + np.sin(2 * vtheta) ** 2))), vtheta)
+        Kxit_num[ir] = 2 * r / np.pi * trapezoid(np.sin(2 * vtheta) ** 2.0 / (np.multiply(np.sqrt((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2),((r - np.cos(2 * vtheta)) ** 2 * np.cos(chi) ** 2 + np.sin(2 * vtheta) ** 2))), vtheta)
     
     return Kxit,Kxit_num,fOye
 
@@ -465,7 +469,7 @@ def fKzt(r,m,nout=2):
     # Coleman formula B.5 term 3 and 4  !!!!! Note the minus sign added
     vtheta = np.linspace(0,np.pi,1000)
     for ir,r in enumerate(vr):
-        Kztnum[ir] = - 1 / (np.pi) * r * np.sqrt(1 + m ** 2) / m * np.trapz(- 1.0 / (np.sqrt(1 + r ** 2 - 2 * r * np.cos(vtheta))) + np.sqrt(1 - 2 * r * np.cos(vtheta) + r ** 2) / (1 + r ** 2 - 2 * r * np.cos(vtheta) + m ** 2 * np.sin(vtheta) ** 2),vtheta)
+        Kztnum[ir] = - 1 / (np.pi) * r * np.sqrt(1 + m ** 2) / m * trapezoid(- 1.0 / (np.sqrt(1 + r ** 2 - 2 * r * np.cos(vtheta))) + np.sqrt(1 - 2 * r * np.cos(vtheta) + r ** 2) / (1 + r ** 2 - 2 * r * np.cos(vtheta) + m ** 2 * np.sin(vtheta) ** 2),vtheta)
 
     if nout==1:
         return Kzt
@@ -478,15 +482,15 @@ def fKzt(r,m,nout=2):
         # My formula Alternative form1
         vtheta = np.linspace(0,np.pi,1000)
         for ir,r in enumerate(vr):
-            Kztnum2[ir] = r * m * np.sqrt(1 + m ** 2) / np.pi * np.trapz(np.sin(vtheta) ** 2.0 / (np.multiply(np.sqrt(1 + r ** 2 - 2 * r * np.cos(vtheta)),(1 + r ** 2 - 2 * r * np.cos(vtheta) + m ** 2 * np.sin(vtheta) ** 2))),vtheta)
+            Kztnum2[ir] = r * m * np.sqrt(1 + m ** 2) / np.pi * trapezoid(np.sin(vtheta) ** 2.0 / (np.multiply(np.sqrt(1 + r ** 2 - 2 * r * np.cos(vtheta)),(1 + r ** 2 - 2 * r * np.cos(vtheta) + m ** 2 * np.sin(vtheta) ** 2))),vtheta)
         # My formula Alternative form3 (WEIRD RESULTS !!!!!!!!!!!!)
         vtheta = np.linspace(0,np.pi / 2,1000)
         for ir,r in enumerate(vr):
-            Kztnum3[ir] = 2 * r * np.sqrt(1 + m ** 2) * m / np.pi * np.trapz(np.sin(2 * vtheta) ** 2.0 / (np.multiply(np.sqrt((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2),((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2 + m ** 2 * np.sin(2 * vtheta) ** 2))),vtheta)
+            Kztnum3[ir] = 2 * r * np.sqrt(1 + m ** 2) * m / np.pi * trapezoid(np.sin(2 * vtheta) ** 2.0 / (np.multiply(np.sqrt((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2),((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2 + m ** 2 * np.sin(2 * vtheta) ** 2))),vtheta)
         # My formula Alternative form4
         vtheta = np.linspace(0,np.pi / 2,1000)
         for ir,r in enumerate(vr):
-            Kztnum4[ir] = 2 * r / np.pi * 1 * np.sin(chi) * np.trapz(np.sin(2 * vtheta) ** 2.0 / (np.multiply(np.sqrt((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2),((r - np.cos(2 * vtheta)) ** 2 * np.cos(chi) ** 2 + np.sin(2 * vtheta) ** 2))),vtheta)
+            Kztnum4[ir] = 2 * r / np.pi * 1 * np.sin(chi) * trapezoid(np.sin(2 * vtheta) ** 2.0 / (np.multiply(np.sqrt((1 + r) ** 2 - 4 * r * np.cos(vtheta) ** 2),((r - np.cos(2 * vtheta)) ** 2 * np.cos(chi) ** 2 + np.sin(2 * vtheta) ** 2))),vtheta)
         outputs=(Kzt,Kztnum,fOye,Kztnum2,Kztnum3,Kztnum4)
     return outputs[:nout]
     

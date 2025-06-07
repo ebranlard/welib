@@ -11,6 +11,10 @@ import distutils.dir_util
 import shutil 
 import stat
 import re
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 def spanwiseBD(tsAvg,vr,R,postprofile=None, IR=None):
@@ -138,7 +142,7 @@ def spanwiseAD(tsAvg,vr=None,rho=None,R=None,nB=None,chord=None,postprofile=None
             Ct=nB*Fx/(0.5 * rho * 2 * U0**2 * np.pi * r)
             Ct[vr<0.01*R] = 0
             dfRad[sB+'Ct_[-]'] = Ct
-            CT=2*np.trapz(vr_bar*Ct,vr_bar)
+            CT=2*trapezoid(vr_bar*Ct,vr_bar)
             dfRad[sB+'CtAvg_[-]']= CT*np.ones(r.shape)
         except:
             pass

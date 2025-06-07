@@ -5,7 +5,7 @@ These classes will be used for more advanced classes:
     - YAMS body for numerical yams
 """
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrixFromCOG
-from welib.yams.utils import rigidBodyMassMatrix 
+from welib.yams.utils import buildRigidBodyMassMatrix 
 from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GeneralizedMCK_PolyBeam
 from welib.yams.flexibility import checkRegularNode
@@ -17,6 +17,11 @@ __all__ = ['Body','InertialBody','RigidBody','FlexibleBody']
 # --- For harmony with sympy
 import numpy as np
 from numpy import eye, cross, cos ,sin
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
 def Matrix(m):
     return np.asarray(m)
 def zeros(m,n):
@@ -186,13 +191,13 @@ class RigidBody(Body):
     @property
     def mass_matrix(self):
         """ Body mass matrix at origin"""
-        return rigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
+        return buildRigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
 
     def mass_matrix_at(self, s_OP):
         """ Body mass matrix at a given point"""
         J = self.inertia_at(s_OP)
         s_PG = -np.asarray(s_OP)+ self._s_OG
-        return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
+        return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
         s='<RigidBody object>:\n'.format(self.name)
@@ -408,7 +413,7 @@ class BeamBody(FlexibleBody):
                 #FirstMom = sum(p['BElmntMass']*p['RNodes'])
                 return np.array(S/self.mass)
             else:
-                return  np.trapz(self.m*self.s_G0,self.s_span)/self.mass
+                return  trapezoid(self.m*self.s_G0,self.s_span)/self.mass
         else:
             return np.array([0,0,0])
 
@@ -500,7 +505,7 @@ class BeamBody(FlexibleBody):
         """ Body mass matrix at a ginve point"""
         J = self.inertia_at(s_OP)
         s_PG = -np.asarray(s_OP)+ self._s_OG
-        return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
+        return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
 
     def updateFlexibleKinematics(B, qe, qep, qepp=None):
@@ -681,7 +686,13 @@ class FASTBeamBody(BeamBody):
             damp_zeta=damp_zeta[shapes]
             mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
             prop      = inp['BldProp']  
-            s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
+            if prop.shape[1] ==5:
+                #BlFract           StrcTwst       BMassDen        FlpStff        EdgStff
+                #  (-)              (deg)          (kg/m)         (Nm^2)         (Nm^2)
+                s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,2], prop[:,3], prop[:,4]
+            else:
+                # Old
+                s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
             """
             BldBodyStartAtRoot    BldBodyAndSpanStartAtR     BldBodyAndSpanStartAtR
                   /                          /                       /

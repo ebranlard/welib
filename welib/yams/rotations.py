@@ -6,7 +6,8 @@ Rotation matrices for different rotational coordinates conventions:
  - BodyZYX :  
 """
 import numpy as np
-from numpy import cos, sin, tan, arccos, trace
+from numpy import cos, sin, tan, arccos, trace, arctan2
+from math import copysign
 
 # --- Definitions to ease comparison with sympy versions
 def Matrix(m):
@@ -223,12 +224,30 @@ def BodyZXZ_toEuler(phi, theta, psi):
 # --- Bryant angles XYZ
 # --------------------------------------------------------------------------------{
 def BodyXYZ_A(phi_x, phi_y, phi_z):
-    """ Transformation matrix body to global for rotation of type Body and order XYZ"""
+    """ Transformation matrix body to global/parent for rotation of type Body and order XYZ"""
+    cx = cos(phi_x);  sx = sin(phi_x)
+    cy = cos(phi_y);  sy = sin(phi_y)
+    cz = cos(phi_z);  sz = sin(phi_z)
     A = np.zeros((3,3))
-    A[0,:] = [cos(phi_y)*cos(phi_z),-sin(phi_z)*cos(phi_y),sin(phi_y)]
-    A[1,:] = [sin(phi_x)*sin(phi_y)*cos(phi_z)+sin(phi_z)*cos(phi_x),-sin(phi_x)*sin(phi_y)*sin(phi_z)+cos(phi_x)*cos(phi_z),-sin(phi_x)*cos(phi_y)]
-    A[2,:] = [sin(phi_x)*sin(phi_z)-sin(phi_y)*cos(phi_x)*cos(phi_z),sin(phi_x)*cos(phi_z)+sin(phi_y)*sin(phi_z)*cos(phi_x),cos(phi_x)*cos(phi_y)]
+    A[0,:] = [cy*cz          , -cy*sz              ,     sy]
+    A[1,:] = [sx*sy*cz+cx*sz , -sx*sy*sz + cx*cz   , -sx*cy]
+    A[2,:] = [sx*sz-sy*cx*cz ,  sx*cz     +cx*sy*sz,  cx*cy]
     return A
+
+
+def BodyXYZ_DCM(phi_x, phi_y, phi_z):
+    """ Transformation matrix global/parent to body for rotation of type Body and order XYZ
+
+    return BodyXYZ_A(phi_x, phi_y, phi_z).T
+    """
+    cx = cos(phi_x);  sx = sin(phi_x)
+    cy = cos(phi_y);  sy = sin(phi_y)
+    cz = cos(phi_z);  sz = sin(phi_z)
+    M = np.zeros((3,3))
+    M[0,:] = [ cy*cz , cx*sz+sx*sy*cz ,  sx*sz-cx*sy*cz]
+    M[1,:] = [-cy*sz , cx*cz-sx*sy*sz ,  sx*cz+cx*sy*sz]
+    M[2,:] = [ sy    ,      -sx*cy    ,        cx*cy   ]
+    return M
 
 def BodyXYZ_G(phi_x, phi_y, phi_z):
     """ Angular velocity matrix such that omega_global = G theta_dot for rotation of type Body and order XYZ"""
@@ -267,6 +286,45 @@ def BodyXYZ_toEuler(phi_x, phi_y, phi_z):
     Convert to Bryant angles to Euler parameters
     """
     return EulerP_fromA(BodyXYZ_A(phi_x,phi_y,phi_z))
+
+
+def BodyXYZ_fromA(A):
+    return BodyXYZ_fromDCM(A.T)
+
+def BodyXYZ_fromDCM(M):
+    """
+    Obtain the three angles phi_x, phi_y, phi_z such that  
+        M = BodyXYZ_DCM(phi_x, phi_y, phi_z):
+    Based on EulerExtract routine from OpenFAST
+    INPUTS:
+     - M: tranformation matrix from global/parent to body
+    OUTPUTS
+     - phi_x, phi_y, phi_z
+    """
+    phi=[0,0,0]
+    cy = np.sqrt( M[0,0]**2 + M[1,0]**2 ) 
+    if cy<1e-16:
+        phi[1] = arctan2( M[2,0], cy )
+        phi[2] = 0
+        phi[0] = arctan2(  M[1,2], M[1,1] )
+    else:
+        phi[2] = arctan2( -M[1,0], M[0,0] )
+        cz     = cos( phi[2] )
+        sz     = sin( phi[2] )
+        if abs(cz)<1e-16:
+            cy = copysign( cy, -M[1,0]/sz )
+        else:
+            cy = copysign( cy,  M[0,0]/cz )
+        phi[1] = arctan2( M[2,0], cy )
+        cz = cos( phi[2] )
+        sz = sin( phi[2] )
+        cx = sz*M[0,1] + cz*M[1,1]
+        sx = sz*M[0,2] + cz*M[1,2]
+        phi[0] = arctan2( sx, cx )
+    return phi
+
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Angles ZYX
@@ -317,41 +375,6 @@ def BodyZYX_toEuler(phi_x, phi_y, phi_z):
     """
     return EulerP_fromA(BodyXYZ_A(phi_x, phi_y, phi_z))
 
-
-
-
-# --------------------------------------------------------------------------------}
-# --- Rodriguez (OpenFAST functions)
-# --------------------------------------------------------------------------------{
-def Rodriguez_A(a):
-    """
-    ! calculates rotation matrix R to rotate unit vertical vector to direction of input vector `a`
-    a(3): input vector
-    R(3,3): rotation matrix from Rodrigues's rotation formula
-    """
-    factor = a.dot(a)
-    if factor==0:
-        return np.eye(3) # Return the identity if the vector is zero
-    if a[0]==0 and a[1]==0:   # return identity if vertical
-        R = np.eye(3)
-        if a[2] < 0:
-            R = -R
-    else:  
-        R = np.zeros((3,3))
-        vec = a/np.sqrt(factor) # normalize a
-        vec[2] += 1
-        factor = 2.0/(vec.dot(vec))
-        R[0,0] = factor*vec[0]*vec[0] - 1
-        R[0,1] = factor*vec[0]*vec[1]
-        R[0,2] = factor*vec[0]*vec[2]
-        R[1,0] = factor*vec[1]*vec[0]
-        R[1,1] = factor*vec[1]*vec[1] - 1
-        R[1,2] = factor*vec[1]*vec[2]
-        R[2,0] = factor*vec[2]*vec[0]
-        R[2,1] = factor*vec[2]*vec[1]
-        R[2,2] = factor*vec[2]*vec[2] - 1
-
-
 # --------------------------------------------------------------------------------}
 # --- Small Rotations
 # --------------------------------------------------------------------------------{
@@ -365,6 +388,20 @@ def smallRot_A(tx, ty, tz):
     R[1,:] =( tz,  1., -tx )
     R[2,:] =(-ty,  tx,  1. )
     return R
+
+# see also smallRot_OF below
+
+# --------------------------------------------------------------------------------}
+# --- OpenFAST interfaces 
+# --------------------------------------------------------------------------------{
+def EulerExtract(M):
+    return BodyXYZ_fromDCM(M)
+
+def EulerConstruct(phi_x, phi_y, phi_z):
+    return BodyXYZ_DCM(phi_x, phi_y, phi_z)
+
+def SmllRotTrans(theta1, theta2, theta3):
+    return smallRot_OF(theta1, theta2, theta3)
 
 
 def smallRot_OF(theta1, theta2, theta3):
@@ -441,4 +478,35 @@ def smallRot_OF(theta1, theta2, theta3):
         TransMat[1,2] = (  theta1*SqrdSum + theta23S )/ComDenom
         TransMat[2,1] = ( -theta1*SqrdSum + theta23S )/ComDenom
     return TransMat
+
+def Rodriguez_A(a):
+    """
+    ! calculates rotation matrix R to rotate unit vertical vector to direction of input vector `a`
+    a(3): input vector
+    R(3,3): rotation matrix from Rodrigues's rotation formula
+    """
+    factor = a.dot(a)
+    if factor==0:
+        return np.eye(3) # Return the identity if the vector is zero
+    if a[0]==0 and a[1]==0:   # return identity if vertical
+        R = np.eye(3)
+        if a[2] < 0:
+            R = -R
+    else:  
+        R = np.zeros((3,3))
+        vec = a/np.sqrt(factor) # normalize a
+        vec[2] += 1
+        factor = 2.0/(vec.dot(vec))
+        R[0,0] = factor*vec[0]*vec[0] - 1
+        R[0,1] = factor*vec[0]*vec[1]
+        R[0,2] = factor*vec[0]*vec[2]
+        R[1,0] = factor*vec[1]*vec[0]
+        R[1,1] = factor*vec[1]*vec[1] - 1
+        R[1,2] = factor*vec[1]*vec[2]
+        R[2,0] = factor*vec[2]*vec[0]
+        R[2,1] = factor*vec[2]*vec[1]
+        R[2,2] = factor*vec[2]*vec[2] - 1
+
+
+
 

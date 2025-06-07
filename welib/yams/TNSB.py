@@ -30,7 +30,7 @@ class Structure():
         self.theta_yaw      = theta_yaw
         self.bTiltBeforeNac = bTiltBeforeNac
 
-    def compute_RNA(s):
+    def compute_RNA(s, verbose=False):
         s.M_rot= sum([B.mass for B in s.Blds])
         s.M_RNA= s.M_rot + s.Sft.mass + s.Nac.mass;
         s.r_NGnac_inN = s.Nac.s_G_inB
@@ -81,7 +81,8 @@ class Structure():
 
 
         except:
-            print('[WARN] TNSB: Fail to compute RNA with new method, using legacy')
+            if verbose:
+                print('[WARN] TNSB: Fail to compute RNA with new method, using legacy')
             s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
             s.r_NGrna_inN = 1./s.M_RNA * (s.Nac.mass*s.r_NGnac_inN + s.Sft.mass*s.r_NGhub_inN +  s.M_rot*s.r_NGrot_inN)
 
@@ -134,7 +135,7 @@ class Structure():
         #         vL = x[0] * vy1c
         #         U  =        s.Twr.PhiU[0][0,:]
         #         GF_soft=0
-        #         GF_soft+= np.trapz(+U*k*Fz_inE   , s.Twr.s_span)
+        #         GF_soft+= trapezoid(+U*k*Fz_inE   , s.Twr.s_span)
         #         GF_soft+=          -vL*Fz_inE*ux1c
 
         My_inE = 0

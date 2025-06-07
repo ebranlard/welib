@@ -32,7 +32,7 @@ def EstimateKFTimeStep(u1,y1,z0,Xxd,Xud,Yx,Yu,P0,Q,R):
     return z1,P1,Kk
 
 
-def KFDiscretize(Xx,Xu,dt,method='exponential'):
+def KFDiscretize(Xx, Xu, dt, method='exponential', verbose=False):
     """ Discretize the continuous states matrices Xx, Xu
     
     "Real" system:
@@ -57,7 +57,8 @@ def KFDiscretize(Xx,Xu,dt,method='exponential'):
         # Using matrix exponential directly
         Xxd = expm(Xx * dt)
         if np.linalg.det(Xx) == 0:
-            print('[WARN] Matrix A is singular, using forward euler to discretize B matrix\n' % ())
+            if verbose:
+                print('[WARN] Matrix A is singular, using forward euler to discretize B matrix\n' % ())
             # Forward euler
             Xud = dt * Xu
         else:

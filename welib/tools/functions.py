@@ -1,6 +1,9 @@
 import numpy as np
-
 import matplotlib.pyplot as plt
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 def delta(x, epsilon=None):
     """ Dirac function"""
@@ -34,7 +37,7 @@ def Pi(x, epsilon=None):
         return p
 
 def smooth_heaviside(x, k=1, rng=(-np.inf, np.inf), method='exp'):
-    """ 
+    r""" 
     Smooth approximation of Heaviside function where the step occurs between rng[0] and rng[1]:
        if rng[0]<rng[1]: then  f(<rng[0])=0, f(>=rng[1])=1
        if rng[0]>rng[1]: then  f(<rng[1])=1, f(>=rng[0])=0
@@ -93,7 +96,7 @@ def smooth_heaviside(x, k=1, rng=(-np.inf, np.inf), method='exp'):
 
 
 def smooth_delta_inf(xx, e, method='gaussian'):
-    """ 
+    r""" 
     Smooth approximation of delta function between -inf and inf
 
     INPUTS: 
@@ -125,7 +128,7 @@ def smooth_delta_inf(xx, e, method='gaussian'):
 
 
 def smooth_delta(x, e=1, rng=(-np.inf, np.inf), method='gaussian'):
-    """ 
+    r""" 
     Smooth approximation of delta function between rng[0] and rng[1]
     The integral over the range should be 1.
 
@@ -163,9 +166,9 @@ def smooth_delta(x, e=1, rng=(-np.inf, np.inf), method='gaussian'):
         s0 = np.linspace(-1-1e-5,1-1e-5,100)
         x0 = -n*s0/(s0**2-1)
         if method=='frac': # further scaling adjustements
-            scale/=np.trapz(1/np.pi * (e/(x0**2+e**2)), s0)
+            scale/=trapezoid(1/np.pi * (e/(x0**2+e**2)), s0)
         elif method=='gaussian':
-            scale/=np.trapz(1./(2*np.sqrt(np.pi*e)) *np.exp( -x0**2/(4.*e)), s0)
+            scale/=trapezoid(1./(2*np.sqrt(np.pi*e)) *np.exp( -x0**2/(4.*e)), s0)
         elif method=='sin':
             scale*=n
         elif method=='exp-heaviside':
@@ -196,7 +199,7 @@ def smooth_delta(x, e=1, rng=(-np.inf, np.inf), method='gaussian'):
 #             x0[x0<-10] = -10
 #             k=e
 #             E = np.exp(-1*k*x0)
-#             scale/=np.trapz(1*k*E / (1+E)**2, s0)
+#             scale/=(1*k*E / (1+E)**2, s0)
 
 #             s= 2/(mx -mn) * (x-(mn+mx)/2) # transform compact support into ]-1,1[ 
     else:
@@ -241,7 +244,7 @@ if __name__=='__main__':
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
     for method in ['frac','gaussian']:
         D=smooth_delta_inf(x, e=epsilon, method=method)
-        print('Method {:15s}:  integral:{}'.format(method, np.trapz(D,x)))
+        print('Method {:15s}:  integral:{}'.format(method, trapezoid(D,x)))
         ax.plot(x, D/np.max(D), '-', label=method)
     ax.set_xlabel('x ')
     ax.set_ylabel('')
@@ -259,7 +262,7 @@ if __name__=='__main__':
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
     for method in ['frac','exp-heaviside','gaussian']:#, 'sin']:
         D=smooth_delta(x, e=epsilon, rng=rng, method=method )
-        print('Method {:15s}:  integral:{}'.format(method, np.trapz(D,x)))
+        print('Method {:15s}:  integral:{}'.format(method, trapezoid(D,x)))
         ax.plot(x, D/np.max(D), '-', label=method)
     ax.set_xlabel('x ')
     ax.set_ylabel('')
@@ -276,7 +279,7 @@ if __name__=='__main__':
     fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
     for epsilon in epsilons:
         D=smooth_delta(x, e=epsilon, rng=rng, method=method )
-        print('Epsilon {:8.5f}  integral:{}'.format(epsilon, np.trapz(D,x)))
+        print('Epsilon {:8.5f}  integral:{}'.format(epsilon, trapezoid(D,x)))
         ax.plot(x, D/np.max(D), '-', label=f'e={epsilon}')
     ax.set_xlabel('x ')
     ax.set_ylabel('')

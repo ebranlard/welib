@@ -1,7 +1,104 @@
 import numpy as np
 import scipy.optimize as sciopt
 
-def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip',nModes=4):
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
+
+def UniformBeamDeflection(bc_type, loading_type, z, params):
+    """ 
+    INPUTS: 
+     - bc_type: boundary condition type, currently, only clamped-free (cantilever)
+     - loading_type:  string to define loading type, either
+           - "point_load": need to provide "F" [N] in params
+           - "uniform" : need to provide loading "p0" [N/m] in params
+           - "decreasing" : linearly decreasing from p0 to 0
+           - "increasing" : linearly increasing from 0 to p0
+     - z     : array longitudinal positions along beam
+     - params: dictionary to define beam, with keys
+            -'L':  length of beam 
+            -'EI': stiffness
+            - other parameters based on loading type
+              
+    OUTPUTS:
+     - u: deflection
+     - theta: slope # TODO
+     - curvature: slope # TODO
+     - S : shear force along beam
+     - M : Moment along beam
+     - p : loading per unit length [N/m]
+    """
+
+    if bc_type =='clamped-free':
+        # ---  
+        L = params.get("L", np.max(z)) # Use max(z) if L not provided
+        EI = params["EI"]  # Flexural rigidity
+        
+        p     = np.zeros_like(z)
+        theta = np.zeros_like(z) # Slope 
+        kappa  = np.zeros_like(z) # Curvature
+        if loading_type == "point_load":
+            F = params["F"]
+            M = F * (L - z)
+            S = -F * np.ones_like(z)
+            u = (F * z**2 / (6 * EI)) * (3 * L - z)
+            #M0 = F * L
+            #umax = F * L**3 / (3 * EI)
+            # Put point load at the tip 
+            p[-1] = 1
+            p[-2] = 1
+            # dz = z[-1]-z[-2]
+            # dz_effective = dz+ dz/2
+            # p *= (F/dz_effective)
+            FI = trapezoid(p, z)
+            p *= F / FI
+        
+        elif loading_type == "uniform":
+            p0 = params["p0"]
+            M = (p0 / 2) * (L - z)**2
+            S = -p0 * (L - z)
+            u = (p0 / (24 * EI)) * (z**2) * (z**2 - 4 * L * z + 6 * L**2)
+            #M0 = (p0 / 2) * L**2
+            #umax = (15 * p0 * L**4) / (120 * EI)
+            p[:] = p0
+
+        elif loading_type == "decreasing":
+            # Decreasing from p0 to 0
+            p0 = params["p0"]
+            M = (p0 / 6) * (L - z)**3 / L
+            S = -(p0 / 2) * ((L - z)**2 / L)
+            u = (p0 / (120 * L * EI)) * z**2 * (10 * L**3 - 10 * z * L**2 + 5*L * z**2 - z**3)
+            #M0 = (p0 * L**2) / 6
+            #umax = (4 * p0 * L**4) / (120 * EI)
+
+            p = p0*((L-z)/L)
+
+        elif loading_type == "increasing":
+            # Increasing from 0 to p0
+            p0 = params["p0"]
+            M = p0 * (L - z)**2 * (1/2 - (L - z) / (6 * L))
+            S = (p0 / 2) * (  ( (z/L)**2 -1) * L)
+            u = (p0 / (120 * L * EI)) * z**2 * (20 * L**3 - 10 * z * L**2 + z**3)
+            #M0 = (p0 * L**2) / 3
+            #umax = (11 * p0 * L**4) / (120 * EI)
+
+            p = p0*(z/L)
+
+        else:
+            raise ValueError(f"Invalid loading type {loading_type}")
+    else:
+        raise ValueError(f"Invalid BC type {bc_type}")
+
+
+    return u, theta, kappa, S, M, p
+
+
+# --------------------------------------------------------------------------------}
+# --- Modes 
+# --------------------------------------------------------------------------------{
+def UniformBeamBendingModes(Type, EI, rho, A, L, w=None,x=None,Mtop=0,norm='tip',nModes=4):
     """
     returns Mode shapes and frequencies for a uniform beam in bending
 
@@ -123,7 +220,7 @@ def UniformBeamBendingModes(Type,EI,rho,A,L,w=None,x=None,Mtop=0,norm='tip',nMod
         # Solve for "lambda"
         B = np.zeros(nModes)
         for i in np.arange(nModes):
-            B[i] = sciopt.fsolve(freq_function, freq_guess(i))
+            B[i] = sciopt.fsolve(freq_function, freq_guess(i))[0]
         # Frequency
         freq = (B / L) ** 2 / (2 * np.pi) * np.sqrt(EI / (rho * A))
         # --- Mode shapes

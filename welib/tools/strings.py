@@ -1,5 +1,35 @@
 import numpy as np
 
+def FAIL(msg):
+    try: 
+        from termcolor import cprint
+        cprint('[FAIL] ' + msg , 'red', attrs=['bold'], file=sys.stderr)
+    except:
+        HEADER = '\033[95m'
+        RED = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
+        UNDERLINE = '\033[4m'
+        print(RED+'[FAIL] ' + msg + ENDC)
+
+def WARN(msg):
+    try: 
+        from termcolor import cprint
+        cprint('[WARN] ' + msg , color='yellow', attrs=['bold'])
+    except:
+        ORAN = '\033[93m'
+        ENDC = '\033[0m'
+        print(ORAN+'[WARN] ' + msg + ENDC)
+
+def OK(msg):
+    try: 
+        from termcolor import cprint
+        cprint('[ OK ] ' + msg , 'green', attrs=['bold'])
+    except:
+        GREEN = '\033[92m'
+        ENDC = '\033[0m'
+        print(GREEN+'[ OK ] ' + msg + ENDC)
+
 def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=True):
     """ 
     Printing number with "pretty" formatting, either:
@@ -27,7 +57,12 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
         # --- Fixed number of digits
         if type(x)==int:
             raise NotImplementedError()
-        if digits==5:
+        if digits==6:
+            if abs(x)<1000000 and abs(x)>1e-7:
+                s= "{:.6f}".format(x)
+            else:
+               s= "{:.6e}".format(x)
+        elif digits==5:
             if abs(x)<100000 and abs(x)>1e-6:
                 s= "{:.5f}".format(x)
             else:
@@ -100,6 +135,15 @@ def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', c
         s=var+':'
         if newline:
             s+='\n'
+    # Corner cases, being nice to user..
+    if isinstance(M, str):
+        s+=M
+        return s
+    if not hasattr(M,'__len__'):
+        s+=pretty_num(M, digits=digits, nchar=nchar, align=align, center0=center0, xmin=xmin)
+        return s
+
+    M=np.atleast_2d(M)
     s+=sindent
     for iline,line in enumerate(M):
         s+= openChar+sepChar.join([pretty_num(v, digits=digits, nchar=nchar, align=align, center0=center0, xmin=xmin)  for v in line ])+closeChar
@@ -127,15 +171,44 @@ def printMat(M, var=None, **kwargs):
     M=np.asarray(M)
     print(prettyMat(M, var=var, **kwargs))
 
-def printVec(M, var, newline=False, **kwargs):
+def printVec(M, var=None, newline=False, **kwargs):
     # Being nice if the user calls it by swapping the two arguments
-    if not isinstance(var, str):
-        if isinstance(M, str):
-            # we swap 
-            M, var = var, M
+    if var is not None:
+        if not isinstance(var, str):
+            if isinstance(M, str):
+                # we swap 
+                M, var = var, M
     M=np.asarray(M)
     M=np.atleast_2d(M)
     print(prettyMat(M, var=var, newline=newline, **kwargs))
+
+def printDict(d, var=None, newline=False, digits=2, xmin=1e-16, **kwargs):
+    s=''
+    if var is not None:
+        if not isinstance(var, str):
+            raise Exception()
+        s=var+':'
+        if newline:
+            s+='\n'
+        print(s)
+    sindent='  '
+    for k,v in d.items():
+        var='{:s}{:20s}'.format(sindent, k)
+        if isinstance(v, str):
+            print('{}:{}'.format(var, v))
+        elif isinstance(v, int):
+            print('{}:{:d}'.format(var, v))
+        elif isinstance(v, float):
+            print('{}:{}'.format(var, pretty_num(v, digits=digits, xmin=xmin, **kwargs)))
+        elif isinstance(v, np.ndarray):
+            if len(v.shape)==1:
+                printVec(v, var, sindent=sindent, digits=digits, xmin=xmin, **kwargs)
+            else:
+                printMat(v, var, sindent=sindent+'   ', digits=digits, xmin=xmin, **kwargs)
+        else:
+            print('>>> printDict TYPE', type(v))
+#             sindentloc = print('{}{20s}:{}'.format(sindent, k, v)
+
 
 if __name__ == '__main__':
     f= 10.**np.arange(-8,8,1)

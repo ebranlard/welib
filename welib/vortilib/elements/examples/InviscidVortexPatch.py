@@ -12,6 +12,10 @@ from welib.tools.colors import fColrs
 from welib.tools.clean_exceptions import *
 from welib.tools.curves import streamQuiver
 from welib.vortilib.elements.InviscidVortexPatch import *
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 def main():
 
@@ -120,7 +124,7 @@ if __name__=="__test__":
         Ut = Uy * np.cos(theta) - Ux * np.sin(theta)
         GammaTheory = ivp_Gamma([r], k=k)[0]
         #GammaCalc   = 2*np.pi * r*Ut[0]
-        GammaCalc = r* np.trapz(Ut,theta)
+        GammaCalc = r* trapezoid(Ut,theta)
         return  GammaCalc, GammaTheory
 
     np.testing.assert_almost_equal(*circulationSurvey(0.1))

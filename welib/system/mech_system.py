@@ -4,7 +4,7 @@ from numpy.linalg import inv
 from scipy.integrate import  solve_ivp #odeint
 from scipy.optimize import OptimizeResult as OdeResultsClass 
 from scipy.interpolate import interp1d
-from .statespace import StateMatrix
+from .statespace import StateMatrix, Bu
 
 
 # --------------------------------------------------------------------------------}
@@ -240,7 +240,7 @@ class MechSystem():
         else:
             raise Exception('Please specify a time series of force using `setForceTimeSeries` or a function using `setForceFunction` ')
 
-    def B_tilde(self,t,q):
+    def B_nl(self,t,q):
         """ 
         "B~" is the non-linear right hand side
             xdot = A~ x + B~
@@ -332,7 +332,7 @@ class MechSystem():
             # Using time integration methods of solve_ivp
             if self.has_A:
                 A=self.A
-                odefun = lambda t, q : np.dot(A,q)+self.B_tilde(t,q)
+                odefun = lambda t, q : np.dot(A,q)+self.B_nl(t,q)
             else:
                 odefun = self.dqdt
                 #odefun = lambda t, q : self.B(t,q)
@@ -348,7 +348,7 @@ class MechSystem():
         if self.has_A:
             q=q.reshape((-1,1))
             A=self.A_tilde
-            dqdt= np.dot(A,q)+self.B_tilde(t,q)
+            dqdt= np.dot(A,q)+self.B_nl(t,q)
             return dqdt
         else:
             dqdt_ = np.zeros(q.shape)
@@ -364,6 +364,10 @@ class MechSystem():
                 dqdt_[self.nDOF:,0] =  Minv.dot(F)
             return dqdt_
 
+
+    # --------------------------------------------------------------------------------}
+    # --- Linear system 
+    # --------------------------------------------------------------------------------{
     @property
     def A_tilde(self):
         """ 
@@ -375,6 +379,33 @@ class MechSystem():
             raise Exception('A matrix not a property when M is a function')
         else:
             return StateMatrix(self._Minv,self.C,self.K)
+
+    @property
+    def B_tilde(self):
+        """ 
+        "B~" is the linear right hand side assuming forces are linear and "inputs"
+            xdot = A~ x + B~ u ,  u=F
+        """
+        if self.M_is_func:
+            raise Exception('B matrix not a property when M is a function')
+        else:
+            return Bu(self._Minv) # will only work for constant M
+
+    def toLTI(self, linearize=False):
+        from welib.system.statespacelinear import LinearStateSpace
+        if self.M_is_func:
+            raise NotImplementedError()
+        if linearize:
+            # TODO if we inherit from system we could use system.linearize directly..
+            raise NotImplementedError()
+        A = self.A_tilde
+        B = self.B_tilde
+
+        syslin = LinearStateSpace(A=A, B=B)
+        #         def setStateInitialConditions(self,q0=None):
+        #         def setInputTimeSeries(self,vTime,vU):
+        #         def setInputFunction(self,fn):
+        return syslin
 
 
     # --------------------------------------------------------------------------------}
@@ -723,17 +754,18 @@ class MechSystem():
     def picklable(self):
         """ Make the object picklable..."""
         def noneIfLambda(attr):
-            obj = getattr(self, attr)
-            if callable(obj) and obj.__name__ == "<lambda>":
-                print('MechSystem: picklable: removing ', attr)
-                setattr(self, attr, None)
+            if hasattr(self,attr):
+                obj = getattr(self, attr)
+                if callable(obj) and obj.__name__ == "<lambda>":
+                    print('MechSystem: picklable: removing ', attr)
+                    setattr(self, attr, None)
         noneIfLambda('M')
         noneIfLambda('_fM')
         noneIfLambda('_fMinv')
         noneIfLambda('_force_fn')
 
 
-    def plot(self, fig=None, axes=None, label=None, res=None, calc='', qFactors=None, **kwargs):
+    def plot(self, fig=None, axes=None, label=None, res=None, df=None, sStates=None, calc='', qFactors=None, **kwargs):
         """ Simple plot of states after time integration"""
         if res is None:
             res=self.res
@@ -751,7 +783,8 @@ class MechSystem():
         axes = np.atleast_1d(axes)
         n=self.nDOF
 
-        df=self.res2DataFrame(sStates=None, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
+        if df is None:
+            df = self.res2DataFrame(res=res, sStates=sStates, Factors=qFactors, x0=None, xd0=None, calc=calc, sAcc=None, sForcing=None)
         for i,ax in enumerate(axes):
             if i+1>len(df.columns):
                 continue
@@ -825,9 +858,6 @@ class MechSystem():
 def _plot(df, keys=None, label=None, title='', nPlotCols=1, axes=None, **kwargs):
     import matplotlib
     import matplotlib.pyplot as plt
-    #if COLRS is None:
-    #    cmap = matplotlib.cm.get_cmap('viridis')
-    #    COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
 
     time = df['Time_[s]'].values
     if keys is None:

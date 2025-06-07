@@ -34,7 +34,10 @@ def export_figs_rec(maindir):
         os.mkdir('_figs')
     except:
         pass
-    print(FIG_MD)
+    FIG_MD.clear()
+    TIT_MD.clear()
+    HAS_FIG=[]
+    HAS_NOFIG=[]
     reobj = re.compile('[a-zA-Z0-9][a-zA-Z0-9_]*.py')
     for root,dirnames,filenames in os.walk(maindir):
         sp = re.split(r'/|\\', root)
@@ -47,18 +50,28 @@ def export_figs_rec(maindir):
                 if reobj.match(f):
                     print('--------------------------------------------------------------')
                     fullpath=os.path.join(root,f)
-                    print('Running example script: {}'.format(fullpath))
+                    print('Running: {}'.format(os.path.relpath(f, MyDir)))
                     plt.close('all')
                     n1=len(TIT_MD)
                     execfile(fullpath, {'__name__': '__export__', 'print': lambda *_:None})
                     n2=len(TIT_MD)
                     if n2>n1:
+                        HAS_FIG.append(fullpath)
                         cprint('[ OK ] {} figure(s)'.format(n2-n1), 'green')
                     else:
+                        HAS_NOFIG.append(fullpath)
                         cprint('[INFO] No figure: {}'.format(fullpath), 'red')
     print('--------------------------------------------------------------')
     nCols= 5
-    nRow= np.int(np.ceil(len(TIT_MD)/nCols))
+    nRow= int(np.ceil(len(TIT_MD)/nCols))
+    # --- print a summary
+    print('Scripts with figures:')
+    for f in HAS_FIG:
+        cprint(f, 'green')
+    print('Scripts without figures:')
+    for f in HAS_NOFIG:
+        cprint(f, 'red')
+    print('')
 
     # --- Generate markdown for README.md
     k=0

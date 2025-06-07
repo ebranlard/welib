@@ -1,5 +1,9 @@
 import numpy as np
 import unittest
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
     
 
 # --------------------------------------------------------------------------------}
@@ -106,7 +110,7 @@ def doublet_line_polar_u_num(rcp,zcp,dmz_dz,z0=0,zmax=1000,nQuad=100):
     return ur, uz
 
 def doublet_line_polar_u(rcp,zcp,dmz_dz, bSelfInd=False):
-    """
+    r"""
     Velocity field induced by a semi-infinite doublet line (on the z axis) of intensity `dmz_dz`
     Control points defined by polar coordinates `rcp` and `zcp`.
 
@@ -147,7 +151,7 @@ def doublet_line_polar_u(rcp,zcp,dmz_dz, bSelfInd=False):
     return ur, uz
 
 def doublet_line_u(Xcp,Ycp,Zcp,dmz_dz,m=0,L=np.inf):
-    """ 
+    r""" 
     Velocity field induced by a double line, of intensity [0,0,dmz/dz]
     The line is defined by the coordinates (x=mz,y=0,z)
     By default a semi-infinite line is assumed (L=np.inf)
@@ -302,25 +306,25 @@ def I30_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = 1/ r2**(3/2)
-    return np.trapz(dI, zp)
+    return trapezoid(dI, zp)
 
 def I50_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = 1/ r2**(5/2)
-    return np.trapz(dI, zp)
+    return trapezoid(dI, zp)
 
 def I51_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = zp/ r2**(5/2)
-    return np.trapz(dI, zp)
+    return trapezoid(dI, zp)
 
 def I52_num(x,y,z,m,nQuad=50000,zmax=5000):
     zp = np.linspace(0,zmax,nQuad)
     r2 = (x-m*zp)**2 + y**2 + (z-zp)**2
     dI = zp**2/ r2**(5/2)
-    return np.trapz(dI, zp)
+    return trapezoid(dI, zp)
 
 
 # --------------------------------------------------------------------------------}

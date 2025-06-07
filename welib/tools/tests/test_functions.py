@@ -1,6 +1,10 @@
 import unittest
 import numpy as np
 from welib.tools.functions import *
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 # --------------------------------------------------------------------------------}
 # ---  
@@ -54,14 +58,14 @@ class TestFunctions(unittest.TestCase):
             delta = smooth_delta(x, e=0.1, method=m)
             aae(delta[0] , 0, 2)
             aae(delta[-1], 0, 2)
-            aae(np.trapz(delta,x), 1, 2)
+            aae(trapezoid(delta,x), 1, 2)
         # finite support
         for m in ['gaussian','frac']:
             x     = np.linspace(-1,3,1000)
             delta = smooth_delta(x, rng=(0,2), e=0.1, method=m)
             aae(delta[0] , 0, 2)
             aae(delta[-1], 0, 2)
-            aae(np.trapz(delta,x), 1, 2)
+            aae(trapezoid(delta,x), 1, 2)
 
         # Heaviside derivative
         x = np.linspace(-1,3,100)

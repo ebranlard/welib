@@ -9,7 +9,7 @@ from welib.FEM.fem_beam import geometricalStiffening
 from welib.FEM.fem_beam import orthogonalizeModePair, normalize_to_last
 from welib.FEM.fem_beam import cbeam_assembly_frame3dlin, cbeam_frame3dlin_Kg
 from welib.FEM.frame3dlin import frame3dlin_Mcross, frame3dlin_Kg
-import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 from welib.system.eva import eig
 from welib.yams.sid import FEMBeam2SID
 
@@ -26,7 +26,7 @@ class Test(unittest.TestCase):
         TowerHt=87.6;
         TowerBs=0;
         TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
-        twr = weio.FASTInputFile(TwrFile).toDataFrame()
+        twr = FASTInputFile(TwrFile).toDataFrame()
         z = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m = twr['TMassDen_[kg/m]']  # mu
         EIy = twr['TwFAStif_[Nm^2]'] 

@@ -48,9 +48,9 @@ class PickleFile(File):
     def __init__(self, filename=None, data=None, **kwargs):
         """ Class constructor. If a `filename` is given, the file is read. """
         self.filename = filename
-        if filename and not data:
+        if filename and data is None:
             self.read(**kwargs)
-        if data:
+        if data is not None:
             self._setData(data)
             if filename:
                 self.write()
@@ -64,6 +64,12 @@ class PickleFile(File):
                 self.update(data.__dict__)
             else:
                 self['data'] = data
+
+    def addDict(self, data):
+        self._setData(data)
+
+    def additem(self, key, data):
+        self[key]=data
 
     def read(self, filename=None, **kwargs):
         """ Reads the file self.filename, or `filename` if provided """

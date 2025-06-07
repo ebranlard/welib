@@ -810,7 +810,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
     def __repr__(self):
         s=''
         s+='<ws_estimator.TabulatedWSEstimator object> \n'
-        s+=' - WS     : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.WS),np.max(self.WS),self.WS[1]-self.WS[0], len(self.WS))
+        #s+=' - WS     : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.WS),np.max(self.WS),self.WS[1]-self.WS[0], len(self.WS))
         s+=' - omega  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.omega),np.max(self.omega),self.omega[1]-self.omega[0], len(self.omega))
         s+=' - pitch  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.pitch) ,np.max(self.pitch) ,self.pitch[1]-self.pitch[0]  , len(self.pitch))
         s+=' - phiy   : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.phiy) ,np.max(self.phiy) ,self.phiy[1]-self.phiy[0]  , len(self.phiy))

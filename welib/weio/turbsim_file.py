@@ -58,7 +58,7 @@ class TurbSimFile(File):
         if filename:
             self.read(filename, **kwargs)
 
-    def read(self, filename=None, header_only=False):
+    def read(self, filename=None, header_only=False, tdecimals=8):
         """ read BTS file, with field: 
                      u    (3 x nt x ny x nz)
                      uTwr (3 x nt x nTwr)
@@ -98,11 +98,11 @@ class TurbSimFile(File):
                 self['uTwr'] = uTwr
         self['info'] = info
         self['ID']   = ID
-        self['dt']   = dt
+        self['dt']   = np.round(dt, tdecimals) # dt is stored in single precision in the TurbSim output
         self['y']    = np.arange(ny)*dy 
         self['y']   -= np.mean(self['y']) # y always centered on 0
         self['z']    = np.arange(nz)*dz +zBottom
-        self['t']    = np.arange(nt)*dt
+        self['t']    = np.round(np.arange(nt)*dt, tdecimals)
         self['zTwr'] =-np.arange(nTwr)*dz + zBottom
         self['zRef'] = zHub
         self['uRef'] = uHub
@@ -263,9 +263,9 @@ class TurbSimFile(File):
         """
         if iy0 is None:
             iy0,iz0 = ts.iMid
-        u = ts['u'][0,:,iy0,iz0]
-        v = ts['u'][1,:,iy0,iz0]
-        w = ts['u'][2,:,iy0,iz0]
+        u = ts['u'][0,:,iy0,iz0].copy()
+        v = ts['u'][1,:,iy0,iz0].copy()
+        w = ts['u'][2,:,iy0,iz0].copy()
         if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
@@ -279,9 +279,9 @@ class TurbSimFile(File):
         if ix0 is None:
             iy0,iz0 = ts.iMid
             ix0=int(len(ts['t'])/2)
-        u = ts['u'][0,ix0,:,iz0]
-        v = ts['u'][1,ix0,:,iz0]
-        w = ts['u'][2,ix0,:,iz0]
+        u = ts['u'][0,ix0,:,iz0].copy()
+        v = ts['u'][1,ix0,:,iz0].copy()
+        w = ts['u'][2,ix0,:,iz0].copy()
         if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
@@ -295,9 +295,9 @@ class TurbSimFile(File):
         if ix0 is None:
             iy0,iz0 = ts.iMid
             ix0=int(len(ts['t'])/2)
-        u = ts['u'][0,ix0,iy0,:]
-        v = ts['u'][1,ix0,iy0,:]
-        w = ts['u'][2,ix0,iy0,:]
+        u = ts['u'][0,ix0,iy0,:].copy()
+        v = ts['u'][1,ix0,iy0,:].copy()
+        w = ts['u'][2,ix0,iy0,:].copy()
         if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
@@ -308,7 +308,7 @@ class TurbSimFile(File):
     # --- Extracting plane data at one point
     # --------------------------------------------------------------------------------{
     def horizontalPlane(ts, z=None, iz0=None, removeMean=False):
-        """ return velocity components on a horizontal plane
+        """ return velocity components on a horizontal plane z=cst, (time x ny)
         If no z value is provided, returned at mid box 
         """
         if z is None and iz0 is None:
@@ -316,9 +316,9 @@ class TurbSimFile(File):
         elif z is not None:
             _, iz0 = ts.closestPoint(ts.y[0], z) 
 
-        u = ts['u'][0,:,:,iz0]
-        v = ts['u'][1,:,:,iz0]
-        w = ts['u'][2,:,:,iz0]
+        u = ts['u'][0,:,:,iz0].copy()
+        v = ts['u'][1,:,:,iz0].copy()
+        w = ts['u'][2,:,:,iz0].copy()
         if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
@@ -326,7 +326,7 @@ class TurbSimFile(File):
         return u, v, w
 
     def verticalPlane(ts, y=None, iy0=None, removeMean=False):
-        """ return velocity components on a vertical plane
+        """ return velocity components on a vertical plane y=cst, (time x nz)
         If no y value is provided, returned at mid box 
         """
         if y is None and iy0 is None:
@@ -334,14 +334,32 @@ class TurbSimFile(File):
         elif y is not None:
             iy0, _ = ts.closestPoint(y, ts.z[0]) 
 
-        u = ts['u'][0,:,iy0,:]
-        v = ts['u'][1,:,iy0,:]
-        w = ts['u'][2,:,iy0,:]
+        u = ts['u'][0,:,iy0,:].copy()
+        v = ts['u'][1,:,iy0,:].copy()
+        w = ts['u'][2,:,iy0,:].copy()
         if removeMean:
             u -= np.mean(u)
             v -= np.mean(v)
             w -= np.mean(w)
         return u, v, w
+
+    def normalPlane(ts, t=None, it0=None, removeMean=False):
+        """ return velocity components on a normal plane t=cst, (ny x nz)
+        """
+        if t is None and it0 is None:
+            it0 = 0
+        elif t is not None:
+            it0 = np.argmin(np.abs(self['t']-t))
+
+        u = ts['u'][0,it0,:,:].copy()
+        v = ts['u'][1,it0,:,:].copy()
+        w = ts['u'][2,it0,:,:].copy()
+        if removeMean:
+            u -= np.mean(u)
+            v -= np.mean(v)
+            w -= np.mean(w)
+        return u, v, w
+
 
     # --------------------------------------------------------------------------------}
     # --- Extracting average data
@@ -353,8 +371,9 @@ class TurbSimFile(File):
                    if 'mid', average the vertical profile at the middle y value
         """
         if y_span=='full':
+            # Compute statistics with respect to time first, then average over "y"
             m = np.mean(np.mean(self['u'][:,:,:,:], axis=1), axis=1)
-            s = np.std( np.std( self['u'][:,:,:,:], axis=1), axis=1)
+            s = np.mean(np.std( self['u'][:,:,:,:], axis=1), axis=1)
         elif y_span=='mid':
             iy, iz = self.iMid
             m = np.mean(self['u'][:,:,iy,:], axis=1)
@@ -647,6 +666,9 @@ class TurbSimFile(File):
 
         # Mid csd
         try:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore') #, category=DeprecationWarning)
             fc, chi_uu, chi_vv, chi_ww = self.csd_longi()
             cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
             data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
@@ -681,11 +703,72 @@ class TurbSimFile(File):
         #    pass
         return dfs
 
+    def to2DFields(self, nTOut=10, nYOut=3, nZOut=3, **kwargs):
+        import xarray as xr
+        if len(kwargs.keys())>0:
+            print('[WARN] TurbSimFile: to2DFields: ignored keys: ',kwargs.keys())
+        # Sanity check
+        nTOut = int(nTOut)
+        nYOut = int(nYOut)
+        nZOut = int(nZOut)
+        # 'u': velocity field, shape (3 x nt x ny x nz)
+        IT = list(np.arange(nTOut)) +  [len(self.t)-1]
+        IT = np.unique(IT)
+
+        IY = np.unique(np.linspace(0,len(self['y'])-1, nYOut).astype(int))
+        IZ = np.unique(np.linspace(0,len(self['z'])-1, nZOut).astype(int))
+        Fields=[]
+        # --- YZ planes
+        s1 = 'TSR'
+        s2 = 'pitch'
+        ds = xr.Dataset(coords={'t': self.t, 'y': self.y, 'z': self.z})
+        ds['t'].attrs['unit'] = 's'
+        ds['y'].attrs['unit'] = 'm'
+        ds['z'].attrs['unit'] = 'm'
+
+        ds['(y,z)_u_avg_[m/s]']= (['y','z'], np.squeeze(np.mean(self['u'][0,:,:,:], axis=0)))
+        ds['(y,z)_v_avg_[m/s]']= (['y','z'], np.squeeze(np.mean(self['u'][1,:,:,:], axis=0)))
+        ds['(y,z)_w_avg_[m/s]']= (['y','z'], np.squeeze(np.mean(self['u'][2,:,:,:], axis=0)))
+
+        ds['(t,y)_u_avg_[m/s]']= (['t','y'], np.squeeze(np.mean(self['u'][0,:,:,:], axis=2)))
+        ds['(t,y)_v_avg_[m/s]']= (['t','y'], np.squeeze(np.mean(self['u'][1,:,:,:], axis=2)))
+        ds['(t,y)_w_avg_[m/s]']= (['t','y'], np.squeeze(np.mean(self['u'][2,:,:,:], axis=2)))
+
+        ds['(t,z)_u_avg_[m/s]']= (['t','z'], np.squeeze(np.mean(self['u'][0,:,:,:], axis=1)))
+        ds['(t,z)_v_avg_[m/s]']= (['t','z'], np.squeeze(np.mean(self['u'][1,:,:,:], axis=1)))
+        ds['(t,z)_w_avg_[m/s]']= (['t','z'], np.squeeze(np.mean(self['u'][2,:,:,:], axis=1)))
+
+        for it in IT:
+            ds['(y,z)_u_t={:.2f}_[m/s]'.format(self.t[it])] = (['y','z'], np.squeeze(self['u'][0,it,:,:]))
+        for it in IT:
+            ds['(y,z)_v_t={:.2f}_[m/s]'.format(self.t[it])] = (['y','z'], np.squeeze(self['u'][1,it,:,:]))
+        for it in IT:
+            ds['(y,z)_w_t={:.2f}_[m/s]'.format(self.t[it])] = (['y','z'], np.squeeze(self['u'][2,it,:,:]))
+        # --- TZ planes
+        for iy in IY:
+            ds['(t,z)_u_y={:.2f}_[m/s]'.format(self['y'][iy])] = (['t','z'], np.squeeze(self['u'][0,:,iy,:]))
+        for iy in IY:
+            ds['(t,z)_v_y={:.2f}_[m/s]'.format(self['y'][iy])] = (['t','z'], np.squeeze(self['u'][1,:,iy,:]))
+        for iy in IY:
+            ds['(t,z)_w_y={:.2f}_[m/s]'.format(self['y'][iy])] = (['t','z'], np.squeeze(self['u'][2,:,iy,:]))
+        # --- TY planes
+        for iz in IZ:
+            ds['(t,y)_u_z={:.2f}_[m/s]'.format(self['z'][iz])] = (['t','y'], np.squeeze(self['u'][0,:,:,iz]))
+        for iz in IZ:
+            ds['(t,y)_v_z={:.2f}_[m/s]'.format(self['z'][iz])] = (['t','y'], np.squeeze(self['u'][1,:,:,iz]))
+        for iz in IZ:
+            ds['(t,y)_w_z={:.2f}_[m/s]'.format(self['z'][iz])] = (['t','y'], np.squeeze(self['u'][2,:,:,iz]))
+        return ds
+
     def toDataset(self):
         """
         Convert the data that was read in into a xarray Dataset
+        
+        # TODO SORT OUT THE DIFFERENCE WITH toDataSet
         """
         from xarray import IndexVariable, DataArray, Dataset
+        
+        print('[TODO] openfast_toolbox.io.turbsim_file.toDataset: merge with function toDataSet')
 
         y      = IndexVariable("y", self.y, attrs={"description":"lateral coordinate","units":"m"})
         zround = np.asarray([np.round(zz,6) for zz in self.z]) #the open function here returns something like *.0000000001 which is annoying
@@ -704,11 +787,55 @@ class TurbSimFile(File):
 
         return Dataset(data_vars=da, coords={"time":time,"y":y,"z":z})      
 
-    # Useful converters
-    def fromAMRWind_PD(self, filename, timestep, output_frequency, sampling_identifier, verbose=1, fileout=None, zref=None, xloc=None):
+    def toDataSet(self, datetime=False):
         """
-        Reads a AMRWind netcdf file, grabs a group of sampling planes (e.g. p_slice), 
+        Convert the data that was read in into a xarray Dataset
         
+        # TODO SORT OUT THE DIFFERENCE WITH toDataset
+        """
+        import xarray as xr
+        
+        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: should be discontinued')        
+        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: merge with function toDataset')        
+
+        if datetime:
+            timearray = pd.to_datetime(self['t'], unit='s', origin=pd.to_datetime('2000-01-01 00:00:00'))
+            timestr   = 'datetime'
+        else:
+            timearray = self['t']
+            timestr   = 'time'
+
+        ds = xr.Dataset(
+            data_vars=dict(
+                u=([timestr,'y','z'], self['u'][0,:,:,:]),
+                v=([timestr,'y','z'], self['u'][1,:,:,:]),
+                w=([timestr,'y','z'], self['u'][2,:,:,:]),
+            ),
+            coords={
+                timestr : timearray,
+                'y' : self['y'],
+                'z' : self['z'],
+            },
+        )
+
+        # Add mean computations
+        ds['up'] = ds['u'] - ds['u'].mean(dim=timestr)
+        ds['vp'] = ds['v'] - ds['v'].mean(dim=timestr)
+        ds['wp'] = ds['w'] - ds['w'].mean(dim=timestr)
+
+        if datetime:
+            # Add time (in s) to the variable list
+            ds['time'] = (('datetime'), self['t'])
+
+        return ds
+
+    # Useful converters
+    def fromAMRWind(self, filename, timestep, output_frequency, sampling_identifier, verbose=1, fileout=None, zref=None, xloc=None):
+        """
+        Reads a AMRWind netcdf file, grabs a group of sampling planes (e.g. p_slice),
+          return an instance of TurbSimFile, optionally write turbsim file to disk
+
+
         Parameters
         ----------
         filename : str,
@@ -723,15 +850,14 @@ class TurbSimFile(File):
             height to be written to turbsim as the reference height. if none is given, it is taken as the vertical centerpoint of the slice
         """
         try:
-            from weio.amrwind_file import AMRWind
+            from welib.weio.amrwind_file import AMRWindFile
         except:
             try:
-                from .amrwind_file import AMRWind
+                from .amrwind_file import AMRWindFile
             except:
-                from amrwind_file import AMRWind
+                from amrwind_file import AMRWindFile
                 
-        obj = AMRWind(filename,timestep,output_frequency)
-        obj.read(sampling_identifier)        
+        obj = AMRWindFile(filename,timestep,output_frequency, group_name=sampling_identifier)
 
         self["u"]          = np.ndarray((3,obj.nt,obj.ny,obj.nz)) 
         
@@ -759,11 +885,14 @@ class TurbSimFile(File):
         self['uRef'] = float(obj.data.u.sel(x=xloc).sel(y=0).sel(z=self["zRef"]).mean().values)
         self['zRef'], self['uRef'], bHub = self.hubValues()
         
-        fileout = filename.replace(".nc",".bts") if fileout is None else fileout
-        print("===> {0}".format(fileout))
-        self.write(fileout)    
+        if fileout is not None:
+            filebase = os.path.splitext(filename)[1]
+            fileout = filebase+".bts"
+            if verbose:
+                print("===> {0}".format(fileout))
+            self.write(fileout) 
     
-    def fromAMRWind(self, filename, dt, nt):
+    def fromAMRWind_legacy(self, filename, dt, nt, y, z, sampling_identifier='p_sw2'):
         """
         Convert current TurbSim file into one generated from AMR-Wind LES sampling data in .nc format
         Assumes:
@@ -772,20 +901,24 @@ class TurbSimFile(File):
 
         INPUTS:
           - filename: (string) full path to .nc sampling data file
-          - plane_label: (string) name of sampling plane group from .inp file (e.g. "p_sw2")
+          - sampling_identifier: (string) name of sampling plane group from .inp file (e.g. "p_sw2")
           - dt: timestep size [s]
           - nt: number of timesteps (sequential) you want to read in, starting at the first timestep available
+        INPUTS: TODO
           - y: user-defined vector of coordinate positions in y
           - z: user-defined vector of coordinate positions in z
           - uref: (float) reference mean velocity (e.g. 8.0 hub height mean velocity from input file)
           - zref: (float) hub height (e.t. 150.0)
         """
         import xarray as xr
+
+        print('[TODO] fromAMRWind_legacy: function might be unfinished. Merge with fromAMRWind')
+        print('[TODO] fromAMRWind_legacy: figure out y, and z from data (see fromAMRWind)')
         
         # read in sampling data plane
         ds = xr.open_dataset(filename,
                               engine='netcdf4',
-                              group=plane_label)
+                              group=sampling_identifier)
         ny, nz, _ = ds.attrs['ijk_dims']
         noffsets  = len(ds.attrs['offsets'])
         t         = np.arange(0, dt*(nt-0.5), dt)

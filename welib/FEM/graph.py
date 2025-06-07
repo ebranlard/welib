@@ -256,7 +256,11 @@ class TimeSeries(dict):
         if len(dt_bar)<=max(0.01*nt,1):
             # we assume a constant time step is used
             TI['tMin'] = self['time'][0]
-            TI['dt'  ] = mode(np.diff(self['time']))[0][0]
+            modes = mode(np.diff(self['time']))[0]
+            if np.isscalar(modes):
+                TI['dt'  ] = modes
+            else:
+                TI['dt'  ] = modes[0]
             TI['nt'  ] = nt
         else:
             TI['time'] = list(self['time'])
@@ -868,7 +872,7 @@ class GraphModel(object):
         return newElems
 
 
-    def divideElements(self, nPerElement, excludeDataKey='', excludeDataList=None, method='append', keysNotToCopy=None):
+    def divideElements(self, nPerElement, excludeDataKey='', excludeDataList=None, method='append', keysNotToCopy=None, verbose=False):
         """ divide all elements by nPerElement (add nodes and elements to graph)
 
         - excludeDataKey: is provided, will exclude elements such that e.data[key] in `excludeDataList`
@@ -910,7 +914,8 @@ class GraphModel(object):
                 newElements+=elems
                 memberElemIDs+= [e.ID for e in elems]
             else:
-                print('Not dividing element with ID {}, based on key `{}` with value `{}`'.format(elemID, excludeDataKey, E.data[excludeDataKey]))
+                if verbose:
+                    print('Not dividing element with ID {}, based on key `{}` with value `{}`'.format(elemID, excludeDataKey, E.data[excludeDataKey]))
             # We create a member
             m = Member(ID=elemID, elemIDs=memberElemIDs)
             self.Members.append(m)

@@ -62,6 +62,10 @@ def numerical_jacobian(f, op, arg_number, deltas, *f_args):
                     print('>>> f_op:',f_op)
                     raise Exception('Output of function is multidimensional (see above), whereas it should be array-like')
                 f_op = f_op[:,0]
+        try:
+            f_op = f_op.values
+        except:
+            pass
         for i in range(nx):
             if isinstance(f_op[i], np.ndarray) or isinstance(f_op[i], list):
                 print('>>> f_op:',f_op)

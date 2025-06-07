@@ -43,7 +43,7 @@ class Polar(object):
 
     def __init__(self, filename=None, alpha=None, cl=None, cd=None, cm=None, Re=None, 
             compute_params=False, radians=None, cl_lin_method='max',
-            fformat='auto', verbose=False):
+            fformat='auto', verbose=False, name=None):
         """Constructor
 
         Parameters
@@ -84,15 +84,18 @@ class Polar(object):
             cd    = df['Cd'].values
             cm    = df['Cm'].values
             if 'fs' in df.keys():
-                print('[INFO] Using separating function from input file.')
+                if verbose:
+                    print('[INFO] Using separating function from input file.')
                 self.fs = df['fs'].values
                 self._fs_lock = True
             if 'Cl_fs' in df.keys():
-                print('[INFO] Using Cl fully separated from input file.')
+                if verbose:
+                    print('[INFO] Using Cl fully separated from input file.')
                 self.cl_fs =df['Cl_fs'].values
                 self._cl_fs_lock = True
             if 'Cl_inv' in df.keys():
-                print('[INFO] Using Cl inviscid from input file.')
+                if verbose:
+                    print('[INFO] Using Cl inviscid from input file.')
                 self.cl_inv = df['Cl_inv'].values
                 self._cl_inv_lock = True
                 # TODO we need a trigger if cl_inv provided, we should get alpha0 and slope from it
@@ -100,6 +103,12 @@ class Polar(object):
             if nLocks>0 and nLocks<3:
                 raise Exception("For now, input files are assumed to have all or none of the columns: (fs, cl_fs, and cl_inv). Otherwise, we\'ll have to ensure consitency, and so far we dont...")
 
+        if name is None:
+            if filename is None:
+                name='unknown'
+            else:
+                name = os.path.basename(filename)
+        self.name =name
         self.Re = Re
         self.alpha = np.array(alpha)
         if cl is None:
@@ -150,6 +159,7 @@ class Polar(object):
         s+='                    cl_fs_interp, cl_inv_interp,                 \n'
         s+='                    interpolant \n'
         s+='                    plot, extrapolate\n'
+        s+='                    toAeroDyn\n'
         return s
 
 
@@ -394,8 +404,11 @@ class Polar(object):
                     / cl_slope
                     * (1.6 * chord_over_r / 0.1267 * (a - chord_over_r ** expon) / (b + chord_over_r ** expon) - 1)
                 )
+                # Force fcl to stay non-negative
+                if fcl < 0.:
+                    fcl = 0.
             else:
-                fcl=1.0
+                fcl=0.0
         elif lift_method == "Snel":
             # Snel correction
             fcl = 3.0 * chord_over_r ** 2.0
@@ -659,7 +672,7 @@ class Polar(object):
                 print("Angle encountered for which there is no CM table value " "(near +/-180 deg). Program will stop.")
         return cm_new
 
-    def unsteadyParams(self, window_offset=None, nMin=720):
+    def unsteadyParams(self, window_offset=None, nMin=720, verbose=False, dictOut=False):
         """compute unsteady aero parameters used in AeroDyn input file
 
                 TODO Questions to solve:
@@ -727,14 +740,18 @@ class Polar(object):
         else:
             window = [-20, 20]
         try:
-            alpha0cn = _find_alpha0(alpha, cn, window, direction='up')
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='up', value_if_constant = 0., name=self.name)
         except NoCrossingException:
-            print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
-            alpha0cn = _find_alpha0(alpha, cn, window, direction='down')
+            if verbose:
+                print("[WARN] Polar: Cn unsteady, cannot find zero crossing with up direction, trying down direction")
+            alpha0cn = _find_alpha0(alpha, cn, window, direction='down', name=self.name)
 
         # checks for inppropriate data (like cylinders)
         if len(np.unique(cl)) == 1:
-            return (alpha0, 0.0, 0.0, 0.0, 0.0, 0.0, cd0, cm0)
+            if dictOut:
+                return {'alpha0':0, 'alpha1':0, 'alpha2':0, 'C_nalpha':0, 'Cn1':0, 'Cn2':0, 'Cd0':cd0, 'cm0':cm0}
+            else:
+                return (alpha0, 0.0, 0.0, 0.0, 0.0, 0.0, cd0, cm0)
 
         # --- cn "inflection" or "Max" points
         # These point are detected from slope changes of cn, positive of negative inflections
@@ -743,7 +760,8 @@ class Polar(object):
         try:
             a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="inflections")
         except NoStallDetectedException:
-            print('[WARN] Polar: Cn unsteady, cannot find stall based on inflections, using min and max')
+            if verbose:
+                print('[WARN] Polar: Cn unsteady, cannot find stall based on inflections, using min and max')
             a_MaxUpp, cn_MaxUpp, a_MaxLow, cn_MaxLow = _find_max_points(alpha, cn, alpha0, method="minmax")
 
         # --- cn slope
@@ -782,7 +800,8 @@ class Polar(object):
             a_f07_Upp = xInter[2]
             a_f07_Low = xInter[0]
         else:
-            print('[WARN] Polar: Cn unsteady, cn_f does not intersect cn 3 times. Intersections:{}.'.format(xInter))
+            if verbose:
+                print('[WARN] Polar: Cn unsteady, cn_f does not intersect cn 3 times. Intersections:{}.'.format(xInter))
             a_f07_Upp =  abs(xInter[0]) 
             a_f07_Low = -abs(xInter[0])
 
@@ -845,8 +864,24 @@ class Polar(object):
             print('[WARN] Polar: alpha0<alpha2, changing alpha2..')
             alpha2 = alpha0 - deltaAlpha
             #raise Exception('alpha0 must be greater than alpha2')
-
-        return (alpha0, alpha1, alpha2, cnSlope, cn1, cn2, cd0, cm0)
+        
+        if dictOut:
+            d = {}
+            # Setting unsteady parameters
+            if np.isnan(alpha0):
+                d['alpha0'] = 0
+            else:
+                d['alpha0'] = np.around(alpha0, 4)
+            d['alpha1']    = np.around(alpha1, 4) # TODO approximate
+            d['alpha2']    = np.around(alpha2, 4) # TODO approximate
+            d['C_nalpha']  = np.around(cnSlope ,4)
+            d['Cn1']       = np.around(cn1, 4)    # TODO verify
+            d['Cn2']       = np.around(cn2, 4)
+            d['Cd0']       = np.around(cd0, 4)
+            d['Cm0']       = np.around(cm0, 4)
+            return d
+        else:
+            return (alpha0, alpha1, alpha2, cnSlope, cn1, cn2, cd0, cm0)
 
     def unsteadyparam(self, alpha_linear_min=-5, alpha_linear_max=5):
         """compute unsteady aero parameters used in AeroDyn input file
@@ -969,7 +1004,7 @@ class Polar(object):
         # print(self.cl)
         # print(window)
 
-        return _find_alpha0(self.alpha, self.cl, window)
+        return _find_alpha0(self.alpha, self.cl, window, name=self.name)
 
     def linear_region(self, delta_alpha0=4, method_linear_fit="max"):
         cl_slope, alpha0 = self.cl_linear_slope()
@@ -1075,6 +1110,7 @@ class Polar(object):
         return Cl, fs_dyn
 
     def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None, unsteadyParams=True):
+        # TODO find a way to handle multiple polars, might need a separate class for "Polars"
         from welib.weio.fast_input_file import ADPolarFile
         cleanComments=comment is not None
         # Read a template file for AeroDyn polars
@@ -1087,28 +1123,14 @@ class Polar(object):
         else:
             ADpol = ADPolarFile(templateFile)
 
-
-
         # --- Updating the AD polar file 
         ADpol['Re'] = Re # TODO UNKNOWN
 
         # Compute unsteady parameters
         if unsteadyParams:
-            (alpha0,alpha1,alpha2,cnSlope,cn1,cn2,cd0,cm0)=self.unsteadyParams()
-
-            # Setting unsteady parameters
-            if np.isnan(alpha0):
-                ADpol['alpha0'] = 0
-            else:
-                ADpol['alpha0'] = np.around(alpha0, 4)
-            ADpol['alpha1']    = np.around(alpha1, 4) # TODO approximate
-            ADpol['alpha2']    = np.around(alpha2, 4) # TODO approximate
-            ADpol['C_nalpha']  = np.around(cnSlope ,4)
-            ADpol['Cn1']       = np.around(cn1, 4)    # TODO verify
-            ADpol['Cn2']       = np.around(cn2, 4)
-            ADpol['Cd0']       = np.around(cd0, 4)
-            ADpol['Cm0']       = np.around(cm0, 4)
-
+            d = self.unsteadyParams(dictOut=True)
+            for k,v in d.items():
+                ADpol[k] = v
         # Setting polar 
         PolarTable = np.column_stack((self.alpha, self.cl, self.cd, self.cm))
         ADpol['NumAlf'] = self.cl.shape[0]
@@ -1262,17 +1284,17 @@ def _alpha_window_in_bounds(alpha, window):
     return window
 
 
-def _find_alpha0(alpha, coeff, window, direction='up'):
+def _find_alpha0(alpha, coeff, window, direction='up', value_if_constant = np.nan, name=''):
     """Finds the point where coeff(alpha)==0 using interpolation.
     The search is narrowed to a window that can be specified by the user. The default window is yet enough for cases that make physical sense.
     The angle alpha0 is found by looking at a zero up crossing in this window, and interpolation is used to find the exact location.
     """
     # Constant case or only one value
-    if np.all(coeff == coeff[0]) or len(coeff) == 1:
+    if np.all(abs((coeff - coeff[0])<1e-8)) or len(coeff) == 1:
         if coeff[0] == 0:
             return 0
         else:
-            return np.nan
+            return value_if_constant
     # Ensuring window is within our alpha values
     window = _alpha_window_in_bounds(alpha, window)
 
@@ -1283,12 +1305,11 @@ def _find_alpha0(alpha, coeff, window, direction='up'):
     alpha_zc, i_zc, s_zc = _zero_crossings(x=alpha, y=coeff, direction=direction)
 
     if len(alpha_zc) > 1:
-        print('WARN: Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
-        print('>>> Using second zero')
+        print('[WARN] Polar: {}:  Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}]. Using second zero.'.format(name, len(alpha_zc),window[0],window[1]))
         alpha_zc=alpha_zc[1:]
         #raise Exception('Cannot find alpha0, {} zero crossings of Coeff in the range of alpha values: [{} {}] '.format(len(alpha_zc),window[0],window[1]))
     elif len(alpha_zc) == 0:
-        raise NoCrossingException('Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(window[0],window[1]))
+        raise NoCrossingException('Polar: {}:  Cannot find alpha0, no zero crossing of Coeff in the range of alpha values: [{} {}] '.format(name, window[0],window[1]))
 
     alpha0 = alpha_zc[0]
     return alpha0
@@ -1411,7 +1432,7 @@ def polar_params(alpha, cl, cd, cm):
        alpha_sl_neg = 0.
        alpha_sl_pos = 0.
     else:
-        alpha0 = _find_alpha0(alpha, cl, [np.radians(-5), np.radians(20)])
+        alpha0 = _find_alpha0(alpha, cl, [np.radians(-5), np.radians(20)], name=self.name)
 
         # Find positive angle of attack stall limit alpha_sl_pos
         alpha_sl_pos=20.*np.pi/180
@@ -1520,7 +1541,7 @@ def polar_params(alpha, cl, cd, cm):
 
 
 
-def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRadians=False, radians=False):
+def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRadians=False, radians=False, name=''):
     """ 
     Find slope of linear region
     Outputs: a 2-tuplet of:
@@ -1554,7 +1575,7 @@ def cl_linear_slope(alpha, cl, window=None, method="max", nInterp=721, inputInRa
     else:
         windowAlpha0 = [-30, 30]
     windowAlpha0 = _alpha_window_in_bounds(alpha, windowAlpha0)
-    alpha0 = _find_alpha0(alpha, cl, windowAlpha0)
+    alpha0 = _find_alpha0(alpha, cl, windowAlpha0, name=name)
 
     # Constant case or only one value
     if np.all(cl == cl[0]) or len(cl) == 1:
@@ -1738,6 +1759,8 @@ def _find_linear_region(x, y, nMin, x0=None):
             iEnd = j + nMin
             if x0 is not None:
                 sl = np.linalg.lstsq(x[iStart:iEnd], y[iStart:iEnd], rcond=None)[0][0]
+                if not np.isscalar(sl):
+                    sl = sl[0]
                 slp[iStart, j] = sl
                 off[iStart, j] = x0
                 y_lin = x[iStart:iEnd] * sl

@@ -97,9 +97,6 @@ def vl_semiinf_straight_u(Xcp,Ycp,Zcp,Gamma_r=-1,polar_out=False):
 # --------------------------------------------------------------------------------{
 class TestVortexLine(unittest.TestCase):
     def test_VL_semi_inf(self):
-        import warnings
-        warnings.filterwarnings('error')
-
         # --- Semi-infinite line (along a vector e) and straight analytical one should return the same
         e = np.array([0,0,1])
         r=1
@@ -125,6 +122,9 @@ class TestVortexLine(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        unittest.main()
 
 
