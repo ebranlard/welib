@@ -187,7 +187,9 @@ def flowfield2D(function, xmax=1, ymax=None, xmin=None, ymin=None, nx = 50, ny =
     return X, Y, U, V
 
 def flowfield2D_plot(
-        X, Y, U, V,
+        X, Y,
+        U=None, V=None,
+        Speed=None,
         ax = None,
         minVal = None, maxVal = None, nLevels=11, bounded=False,
         ctOpts=None, cmap='viridis',
@@ -236,7 +238,8 @@ def flowfield2D_plot(
         flipped=True
 
     # --- 
-    Speed = np.sqrt((U**2+V**2))
+    if Speed is None: 
+        Speed = np.sqrt((U**2+V**2))
     if minVal is None:
         minVal = np.min(Speed.flatten())
     if maxVal is None:
@@ -268,11 +271,12 @@ def flowfield2D_plot(
     im = ax.contourf(X, Y, Speed, levels=np.linspace(minVal, maxVal, nLevels), vmin=minVal, vmax=maxVal, cmap=cmap, **ctOpts)
     cb = fig.colorbar(im)
     cb.set_label(clabel)
-    if flipped:
-        U=U.T
-        V=V.T
-    if streamlines:
-        sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start, **stOpts)
+    if U is not None:
+        if flipped:
+            U=U.T
+            V=V.T
+        if streamlines:
+            sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start, **stOpts)
     #sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start.T, **stOpts)
     #sp = ax.streamplot(vx, vy, U, V, color='k', linewidth=0.7, density=1) #, density=10)
     #qv = streamQuiver(ax, sp, spacing=1, offset=1.0, scale=40, angles='xy')

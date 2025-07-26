@@ -1,5 +1,7 @@
 """ 
-2D and 3D doublet point
+2D (and 3D TODO) doublet point
+
+TODO TODO TODO Look at VortexDoublet.py for 3D doubled
 
 Reference: 
     [1] Branlard (2017) Wind turbine aerodynamics and vorticity-based methods
@@ -11,26 +13,48 @@ import numpy as np
 # --------------------------------------------------------------------------------}
 # --- 2D 
 # --------------------------------------------------------------------------------{
-def dp2d_u(X, Y, Pd, Mu=1, alpha=0, regParam=0, regMethod=None, grad=False): 
+def dp2d_u(X, Y, Pd, Mu=1, alpha=0, regParam=0, regMethod=None, grad=False, orientation='z'): 
     """ 
-    Velocity from one double at multiple control points with coordinates X and Y
+    Velocity from one doublet at multiple control points with coordinates X and Y
+
     """
     DX = X - Pd[0]
     DY = Y - Pd[1]
-    theta = np.arctan2(DY, DX)
     r2 = DX ** 2 + DY ** 2
     rX =  DX
     rY =  DY
     tX = -DY
     tY =  DX
-    if regMethod is None:
-        k = Mu/r2 
-        U = k * (-rX*np.cos(alpha-theta) + tX*np.sin(alpha-theta))  # [1] Eq. 32.14
-        V = k * (-rY*np.cos(alpha-theta) + tY*np.sin(alpha-theta))
+    if orientation=='z': # TODO it might be x
+        # TODO: my guess is that the doublet points along z and might not be applicable 
+        #       ofr doublets that points along y like in Panel method
+        theta = np.arctan2(DY, DX)
+        if regMethod is None:
+            k = Mu/r2 
+            U = k * (-rX*np.cos(alpha-theta) + tX*np.sin(alpha-theta))  # [1] Eq. 32.14
+            V = k * (-rY*np.cos(alpha-theta) + tY*np.sin(alpha-theta))
+        else:
+            k = Mu/r2 * (1 - np.exp(- r2 / regParam ** 2))
+            U = k * (-rX*np.cos(alpha-theta) + tX*np.sin(alpha-theta))
+            V = k * (-rY*np.cos(alpha-theta) + tY*np.sin(alpha-theta))
+    elif orientation=='y':
+        # Integrand in KatzPlot (10.26)
+        r4 = r2**2
+        U= Mu/   np.pi  * (DX * DY)/ (r4)
+        V=-Mu/(2*np.pi) * (DX**2 - DY**2)/ (r4)
+        #print('X ', X)
+        #print('Y ', Y)
+        #print('DX ', DX)
+        #print('DY ', DY)
+        #print('Pd',Pd)
+        #print('U ', U)
+        #print('V ', V)
     else:
-        k = Mu/r2 * (1 - np.exp(- r2 / regParam ** 2))
-        U = k * (-rX*np.cos(alpha-theta) + tX*np.sin(alpha-theta))
-        V = k * (-rY*np.cos(alpha-theta) + tY*np.sin(alpha-theta))
+        raise NotImplementedError()
+        #   \v{u}(\v{r}_c) = 
+        #   - \frac{mu}{2\pi}  \frac{\v{\hat{m}}}{|\v{r}_c - \v{r}_p(s)|^2} 
+        #   + \frac{mu}{\pi}   \frac{\big[(\v{r}_c - \v{r}_p(s)) \cdot \v{\hat{m}}\big] \big(\v{r}_c - \v{r}_p(s)\big)}{|\v{r}_c - \v{r}_p(s)|^4} 
+
     return U, V
 
 
