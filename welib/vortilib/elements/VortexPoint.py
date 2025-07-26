@@ -11,9 +11,12 @@ import numpy as np
 
 def vp_u(X, Y, Pv, Gamma=1, regParam=0, regMethod=None): 
     """ 
-    Induced velocity by one 2D vortex point on one Control Point (CP)
-    CP: position of control point
-    Pv: position of vortex
+    Induced velocity by one 2D vortex point on one or many Control Points (CP)
+    INPUTS: 
+     - X, Y: position of control points (can be numpy array if many points)
+     - Pv: position of vortex
+     - Gamma is positive along z (not the aerospace convention)
+          For a lifting airfoil, Gamma is negative
     """
     DX = X - Pv[0]
     DY = Y - Pv[1]

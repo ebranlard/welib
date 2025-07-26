@@ -191,31 +191,42 @@ def cdp_u11(rCP, rS1, rS2, mu=1, method=1, tol=1e-8, principal=False, WARN=[0]):
         u, v = cdp_u11_kp(rCP, rS1, rS2, mu=mu, tol=tol, principal=principal)
     elif method == 2:
         u, v = cdp_u11_quad(rCP, rS1, rS2, mu=mu, tol=tol, principal=principal)
-    elif method ==10:
-        if WARN[0]<3:
+    elif method == 10:
+        if WARN[0] < 3:
             print('[WARN] Doublet Panel 2D - Method 10 only works for panels along x axis for now')
-            WARN[0]+=1
+            WARN[0] += 1
         from welib.vortilib.elements.DoubletPoint import dp2d_u
-        # We use point many point sources along the panel
+        # We use point many point doublet along the panel
         nS = 30
         xS1, yS1 = rS1
         xS2, yS2 = rS2
         xCP, yCP = rCP
         dx = xS2 - xS1
         dy = yS2 - yS1
-        L = np.sqrt(dx**2 + dy**2)
-        dl = L/nS        
-        Mu = mu*dl
-        P = np.linspace(rS1, rS2, nS+1)
-        Ps  = (P[:-1,:] + P[1:,:]) / 2
-        u,v=0,0
+        L = np.sqrt(dx ** 2 + dy ** 2)
+        dl = L / nS
+        Mu = mu * dl
+        P = np.linspace(rS1, rS2, nS + 1)
+        Ps = (P[:-1, :] + P[1:, :]) / 2
+        u, v = 0, 0
         for i in range(nS):
             # TODO might not be applicable, Doublet points in wrong direction
             ui, vi = dp2d_u(xCP, yCP, Ps[i], Mu=Mu, orientation='y')
-            u+=ui
-            v+=vi        
+            u += ui
+            v += vi
+    elif method == 20:
+        # Two point vortices at the panel ends, strength = mu each, opposite sign
+        from welib.vortilib.elements.VortexPoint import vp_u
+        xCP, yCP = rCP
+        xS1, yS1 = rS1
+        xS2, yS2 = rS2
+        # The doublet panel is equivalent to two point vortices of strength +mu at S2 and -mu at S1
+        u2, v2 = vp_u(xCP, yCP, (xS1, yS1), Gamma=+mu)
+        u1, v1 = vp_u(xCP, yCP, (xS2, yS2), Gamma=-mu)
+        u = u1 + u2
+        v = v1 + v2
     else:
-        raise ValueError("Method must be 1 (Theoretical) or 2 (Quadrature) or 10")
+        raise ValueError("Method must be 1 (Theoretical) or 2 (Quadrature) or 10 or 20")
 
     return u, v
 
@@ -250,7 +261,6 @@ def cdp_u11_quad(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     cross = dx * dY_r1 - dy * dX_r1
     dot = dx * dX_r1 + dy * dY_r1
     
-
     phi = np.atan2(dy, dx)
     phi = phi if phi >= 0 else phi + 2 * np.pi
     
@@ -314,9 +324,6 @@ def cdp_u11_quad(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     result, _ = quad_vec(integrand_un_ut, 0, L)
     un, ut = result[0], result[1]
     u, v = un * n_hat + ut * t_hat 
-
-
-
     return u, v
 
 def cdp_u11_kp(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
@@ -415,10 +422,10 @@ class Test(unittest.TestCase):
 
         u1 = cdp_u11(rCP, PP1, PP2, mu=mu, method=1)
         u2 = cdp_u11(rCP, PP1, PP2, mu=mu, method=2)
-        #u3 = cdp_u11(rCP, PP1, PP2, mu=mu, method=10)
+        u4 = cdp_u11(rCP, PP1, PP2, mu=mu, method=20)
         np.testing.assert_almost_equal(u1, (0, PV_mid), decimal=6)
         np.testing.assert_almost_equal(u2, (0, PV_mid), decimal=6)
-        #np.testing.assert_almost_equal(u3, (0, PV_mid), decimal=6)
+        np.testing.assert_almost_equal(u4, (0, PV_mid), decimal=6)
 
         # --- One panel on x-axis - principal value with many points
         SP = np.vstack((PP1, PP2))
@@ -426,6 +433,10 @@ class Test(unittest.TestCase):
         y = x * 0 + 0
         u1 = ccdp_u(x, y, SP, mus=[mu])  # Only method 1
         u_ref = ([0] * len(x), mu/(2*np.pi)*(1/(x+0.5)-1/(x-0.5) ) ) # TODO TODO TODO SIGN CHANGED
+        # Also test method 20 for each point
+        for xi, yi, u_refi, v_refi in zip(x, y, u_ref[0], u_ref[1]):
+            u4, v4 = cdp_u11([xi, yi], PP1, PP2, mu=mu, method=20)
+            np.testing.assert_almost_equal([u4, v4], [u_refi, v_refi], decimal=6)
         np.testing.assert_almost_equal(u1, u_ref, decimal=6)
         
         # --- One tilted panel - principal value with one point
@@ -434,7 +445,9 @@ class Test(unittest.TestCase):
         rCP = [(PP1[0] + PP2[0])/2, (PP1[1] + PP2[1])/2]  # Midpoint
         u1 = cdp_u11(rCP, PP1, PP2, mu=mu, method=1, principal=True)
         u2 = cdp_u11(rCP, PP1, PP2, mu=mu, method=2, principal=True)
+        u4 = cdp_u11(rCP, PP1, PP2, mu=mu, method=20, principal=True)
         np.testing.assert_almost_equal(u1, u2, decimal=6)
+        np.testing.assert_almost_equal(u1, u4, decimal=6)
 
     def test_CDP_flowrate(self):
         # Test flow rate and circulation for a doublet panel
@@ -457,39 +470,56 @@ class Test(unittest.TestCase):
             y = R * np.sin(theta)
             u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
             u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
+            u4 = np.zeros_like(u1)
+            v4 = np.zeros_like(v1)
+            for i in range(len(x)):
+                u4[i], v4[i] = cdp_u11([x[i], y[i]], PP1, PP2, mu=mu, method=20)
             Gamma1 = circulation2D(x, y, u1, v1, verbose=False)
             Gamma2 = circulation2D(x, y, u2, v2, verbose=False)
+            Gamma4 = circulation2D(x, y, u4, v4, verbose=False)
             Q1 = flowrate2D(x, y, u1, v1, verbose=False, ns=-1)
             Q2 = flowrate2D(x, y, u2, v2, verbose=False, ns=-1)
+            Q4 = flowrate2D(x, y, u4, v4, verbose=False, ns=-1)
             np.testing.assert_almost_equal(Gamma1, 0, decimal=8)
             np.testing.assert_almost_equal(Gamma2, 0, decimal=8)
+            np.testing.assert_almost_equal(Gamma4, 0, decimal=8)
             np.testing.assert_almost_equal(Q1, 0, decimal=8)
             np.testing.assert_almost_equal(Q2, 0, decimal=8)
+            np.testing.assert_almost_equal(Q4, 0, decimal=8)
 
         # Contour centered on one extremity, we should get mu
         for R in [0.8]:
-            x = R * np.cos(theta)-0.5
+            x = R * np.cos(theta) - 0.5
             y = R * np.sin(theta)
             u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
             u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
+            u4 = np.zeros_like(u1)
+            v4 = np.zeros_like(v1)
+            for i in range(len(x)):
+                u4[i], v4[i] = cdp_u11([x[i], y[i]], PP1, PP2, mu=mu, method=20)
             Gamma1 = circulation2D(x, y, u1, v1, verbose=False)
             Gamma2 = circulation2D(x, y, u2, v2, verbose=False)
+            Gamma4 = circulation2D(x, y, u4, v4, verbose=False)
             np.testing.assert_almost_equal(Gamma1, mu, decimal=4)
             np.testing.assert_almost_equal(Gamma2, mu, decimal=4)
-            #print('>>> Gamma', Gamma1, Gamma2)
+            np.testing.assert_almost_equal(Gamma4, mu, decimal=4)
 
         # Contour centered on other extremity, we should get -mu
         for R in [0.8]:
-            x = R * np.cos(theta)+0.5
+            x = R * np.cos(theta) + 0.5
             y = R * np.sin(theta)
             u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
             u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
+            u4 = np.zeros_like(u1)
+            v4 = np.zeros_like(v1)
+            for i in range(len(x)):
+                u4[i], v4[i] = cdp_u11([x[i], y[i]], PP1, PP2, mu=mu, method=20)
             Gamma1 = circulation2D(x, y, u1, v1, verbose=False)
             Gamma2 = circulation2D(x, y, u2, v2, verbose=False)
+            Gamma4 = circulation2D(x, y, u4, v4, verbose=False)
             np.testing.assert_almost_equal(Gamma1, mu, decimal=-4)
             np.testing.assert_almost_equal(Gamma2, mu, decimal=-4)
-
-            #np.testing.assert_almost_equal(Q2, 0, decimal=3)
+            np.testing.assert_almost_equal(Gamma4, mu, decimal=-4)
         
         # Test that flow rate on the panel is zero
         #x = np.linspace(-1, 1, 10)
@@ -519,14 +549,16 @@ class Test(unittest.TestCase):
 
         vel1 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=1)
         vel2 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=2)
-        #vel3 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=10)
+        vel4 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=20)
 
         X, Y, U1, V1 = flowfield2D(vel1, xmax=1.5, ymin=-1.3, nx=15)
         X, Y, U2, V2 = flowfield2D(vel2, xmax=1.5, ymin=-1.3, nx=15)
-        #X, Y, U3, V3 = flowfield2D(vel3, xmax=1.5, ymin=-1.3, nx=15)
+        X, Y, U4, V4 = flowfield2D(vel4, xmax=1.5, ymin=-1.3, nx=15)
 
         np.testing.assert_almost_equal(U1, U2, decimal=6)
         np.testing.assert_almost_equal(V1, V2, decimal=6)
+        np.testing.assert_almost_equal(U1, U4, decimal=6)
+        np.testing.assert_almost_equal(V1, V4, decimal=6)
 
         if plot:
             import matplotlib.pyplot as plt
@@ -540,6 +572,9 @@ class Test(unittest.TestCase):
 
             #ax = flowfield2D_plot(X, Y, U3, V3, bounded=True, xs=xs, ys=ys, ax=axes[2], maxVal=0.5, minVal=0)
             #ax.set_title('Numerical')
+
+            ax = flowfield2D_plot(X, Y, U4, V4, bounded=True, xs=xs, ys=ys, ax=axes[2], maxVal=0.5, minVal=0)
+            ax.set_title('Two points')
             plt.show()
 
     def test_CDP_crossing_points(self, plot=False):
@@ -573,19 +608,23 @@ class Test(unittest.TestCase):
             # Compute velocities for each method
             u1, v1 = np.zeros(n_points), np.zeros(n_points)
             u2, v2 = np.zeros(n_points), np.zeros(n_points)
+            u4, v4 = np.zeros(n_points), np.zeros(n_points)
             for i, rCP in enumerate(rCPs):
                 u1[i], v1[i] = cdp_u11(rCP, PP1, PP2, mu=mu, method=1)
                 u2[i], v2[i] = cdp_u11(rCP, PP1, PP2, mu=mu, method=2)
-                #u3[i], v3[i] = cdp_u11(rCP, PP1, PP2, mu=mu, method=10)
+                u4[i], v4[i] = cdp_u11(rCP, PP1, PP2, mu=mu, method=20)
 
             # Verify principal value at midpoint (s=0, index=n_points//2)
             expected = (-np.sin(phi)*PV_mid, np.cos(phi)*PV_mid)
             np.testing.assert_almost_equal([u1[n_points//2], v1[n_points//2]], expected, decimal=6)
             np.testing.assert_almost_equal([u2[n_points//2], v2[n_points//2]], expected, decimal=6)
+            np.testing.assert_almost_equal([u4[n_points//2], v4[n_points//2]], expected, decimal=6)
 
             # Compare methods
             np.testing.assert_almost_equal(u1, u2, decimal=6)
+            np.testing.assert_almost_equal(u1, u4, decimal=6)
             np.testing.assert_almost_equal(v1, v2, decimal=6)
+            np.testing.assert_almost_equal(v1, v4, decimal=6)
 
             if plot:
                 import matplotlib.pyplot as plt
@@ -604,11 +643,13 @@ class Test(unittest.TestCase):
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
                 ax1.plot(s, u1, 'r--', label='Theoretical')
                 ax1.plot(s, u2, 'g:', label='Quadrature')
+                ax1.plot(s, u4, 'b-.', label='Two points')
                 ax1.set_ylabel('u velocity')
                 ax1.legend()
                 ax1.grid(True)
                 ax2.plot(s, v1, 'r--', label='Theoretical')
                 ax2.plot(s, v2, 'g:', label='Quadrature')
+                ax2.plot(s, v4, 'b-.', label='Two points')
                 ax2.set_xlabel('s (along crossing line)')
                 ax2.set_ylabel('v velocity')
                 ax2.legend()
@@ -629,18 +670,20 @@ class Test(unittest.TestCase):
         rCP = [0.0, 0.5]  # Point above the panel
         u1, v1 = cdp_u11(rCP, PP1, PP2, mu=mu, method=1)
         u2, v2 = cdp_u11(rCP, PP1, PP2, mu=mu, method=2)
+        u4, v4 = cdp_u11(rCP, PP1, PP2, mu=mu, method=20)
         #u3, v3 = cdp_u11(rCP, PP1, PP2, mu=mu, method=10)
         #print(f"Debug point {rCP}:")
         #print(f"Method 1 (Theoretical): u={u1}, v={v1}")
         #print(f"Method 2 (Quadrature) : u={u2}, v={v2}")
         #print(f"Method 3 (Rieman sum) : u={u3}, v={v3}")
         np.testing.assert_almost_equal([u1, v1], [u2, v2], decimal=6)
+        np.testing.assert_almost_equal([u1, v1], [u4, v4], decimal=6)
         #np.testing.assert_almost_equal([u1, v1], [u3, v3], decimal=3)
 
 if __name__ == "__main__":
     #Test().test_CDP_debug_point()
-    #Test().test_CDP_flow()
-    #Test().test_CDP_crossing_points()
+    #Test().test_CDP_flow(plot=True)
+    #Test().test_CDP_crossing_points(plot=True)
     #Test().test_CDP_PrincipalValue()
     #Test().test_CDP_flowrate()
     unittest.main()

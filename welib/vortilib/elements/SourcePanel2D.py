@@ -514,6 +514,7 @@ class Test(unittest.TestCase):
             ax.set_title('Point Sources')
             plt.show()
 
+
     def test_CSP_crossing_points(self, plot=False):
         """
         Test velocity induced by a tilted panel at points crossing it at an angle through its midpoint.
