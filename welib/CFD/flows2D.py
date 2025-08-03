@@ -152,7 +152,7 @@ def flow_interp2D(xi, yi, u, v, x, y, method='linear', algo='griddata'):
 
 
 def flowfield2D(function, xmax=1, ymax=None, xmin=None, ymin=None, nx = 50, ny = None, 
-                U0x=0, U0y=0, fU=None,
+                Uxy=None, U0x=0, U0y=0, fU=None,
                 Vref=None, L=1, rel=False):
     """ Evaluate a function to get a velocity field on a grid
     INPUTS:
@@ -172,6 +172,8 @@ def flowfield2D(function, xmax=1, ymax=None, xmin=None, ymin=None, nx = 50, ny =
     X, Y = np.meshgrid(vx, vy)
     U, V = function(X, Y)
 
+    if Uxy is not None:
+        U0x, U0y = Uxy
     if fU is not None:
         U0x, U0y = fU(X,Y)
     U += U0x
@@ -245,8 +247,7 @@ def flowfield2D_plot(
     if maxVal is None:
         maxVal = np.max(Speed.flatten())
     if bounded:
-        Speed[Speed<minVal] = minVal
-        Speed[Speed>maxVal] = maxVal
+        Speed = np.clip(Speed.copy(), minVal, maxVal)
 
     #  --- Streamlines
     if streamStart:
@@ -273,8 +274,8 @@ def flowfield2D_plot(
     cb.set_label(clabel)
     if U is not None:
         if flipped:
-            U=U.T
-            V=V.T
+            U=U.copy().T
+            V=V.copy().T
         if streamlines:
             sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start, **stOpts)
     #sp = ax.streamplot(vx, vy, U, V, color='k', start_points=start.T, **stOpts)

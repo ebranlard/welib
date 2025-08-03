@@ -11,7 +11,7 @@ from scipy.integrate import quad, quad_vec
 # --------------------------------------------------------------------------------}
 # --- Wrappers 
 # --------------------------------------------------------------------------------{
-def csp_u(X, Y, SP1, SP2, sigmas, debug=False):
+def dcsp_u(X, Y, SP1, SP2, sigmas, debug=False):
     """ 
     Constant Source Panels, delimited by point 1 and 2 (can be discontinuous)
 
@@ -40,7 +40,7 @@ def csp_u(X, Y, SP1, SP2, sigmas, debug=False):
     return U, V
 
 
-def ccsp_u(X, Y, SP, sigmas, method=1, debug=False):
+def csp_u(X, Y, SP, sigmas, method=1, debug=False):
     """ 
     Contiguous Constant Source Panels 
     Continguous => Panels are formed by consecutive points, can potentially form a closed loop
@@ -411,7 +411,7 @@ class Test(unittest.TestCase):
         SP = np.vstack((PP1,PP2))
         x = np.linspace(-0.5, 0.5, 10)
         y = x*0+0
-        u0 = ccsp_u(x, y, SP, sigmas=[sigma]) # Only method 1
+        u0 = csp_u(x, y, SP, sigmas=[sigma]) # Only method 1
         u_ref = ([0]*len(x), [sigma/2]*len(x))
         np.testing.assert_almost_equal(u0, u_ref)
         
@@ -444,9 +444,9 @@ class Test(unittest.TestCase):
         for R in [1.2]:
             x = R* np.cos(theta)
             y = R* np.sin(theta)
-            u0, v0 = ccsp_u(x, y, SP, sigmas=[sigma], method=0)
-            u1, v1 = ccsp_u(x, y, SP, sigmas=[sigma], method=1)
-            u2, v2 = ccsp_u(x, y, SP, sigmas=[sigma], method=2)
+            u0, v0 = csp_u(x, y, SP, sigmas=[sigma], method=0)
+            u1, v1 = csp_u(x, y, SP, sigmas=[sigma], method=1)
+            u2, v2 = csp_u(x, y, SP, sigmas=[sigma], method=2)
             Q0 = flowrate2D(x, y, u0, v0, verbose=False, ns=-1)
             Q1 = flowrate2D(x, y, u1, v1, verbose=False, ns=-1)
             Q2 = flowrate2D(x, y, u2, v2, verbose=False, ns=-1)
@@ -457,9 +457,9 @@ class Test(unittest.TestCase):
         # Test that flow rate on the panel is half sigma l
         x= np.linspace(-1, 1, 10)
         y= x*0+0
-        u0, v0 = ccsp_u(x, y, SP, sigmas=[sigma], method=0)
-        u1, v1 = ccsp_u(x, y, SP, sigmas=[sigma], method=1)
-        u2, v2 = ccsp_u(x, y, SP, sigmas=[sigma], method=2)        
+        u0, v0 = csp_u(x, y, SP, sigmas=[sigma], method=0)
+        u1, v1 = csp_u(x, y, SP, sigmas=[sigma], method=1)
+        u2, v2 = csp_u(x, y, SP, sigmas=[sigma], method=2)        
         Q0 = flowrate2D(x, y, u0, v0, verbose=False, ns=1)
         Q1 = flowrate2D(x, y, u1, v1, verbose=False, ns=1)
         Q2 = flowrate2D(x, y, u2, v2, verbose=False, ns=1)
@@ -483,10 +483,10 @@ class Test(unittest.TestCase):
         ys = np.concatenate((ys,ys-2*dy))
 
         # --- 
-        vel0 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=0)
-        vel1 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=1)
-        vel2 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=2)
-        vel3 = lambda X, Y : ccsp_u(X, Y, SP, [sigma], method=10)
+        vel0 = lambda X, Y : csp_u(X, Y, SP, [sigma], method=0)
+        vel1 = lambda X, Y : csp_u(X, Y, SP, [sigma], method=1)
+        vel2 = lambda X, Y : csp_u(X, Y, SP, [sigma], method=2)
+        vel3 = lambda X, Y : csp_u(X, Y, SP, [sigma], method=10)
 
         X, Y, U0, V0 =  flowfield2D(vel0, xmax=1.5, ymin=0.3, nx=15)
         X, Y, U1, V1 =  flowfield2D(vel1, xmax=1.5, ymin=0.3, nx=15)

@@ -7,10 +7,10 @@ Reference:
 import numpy as np
 from welib.essentials import *
 from welib.vortilib.panelcodes.panel_tools import line_params, plot_line, line_params2
-from welib.vortilib.elements.SourcePanel2D import *
+from welib.vortilib.elements.SourcePanel2D import dcsp_u, csp_u, csp_u11
 
 
-def CCSP_panel_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
+def CSP_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
     r""" 
     Solve the flow about a contiguous (potentially closed-loop) surface using the source panel method.
 
@@ -54,7 +54,6 @@ def CCSP_panel_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
 #                 M[i,j] = 0.5  #  Principal value
 #             else:
             u, v = csp_u11(CP[i,:], SP[j,:], SP[j+1,:])
-            #u, v = ccsp_u([CP[i,0]], [CP[i,1]], SP[j:j+2,:], sigmas=[1])
             M[i,j] = (u*n_hat[i,0] + v*n_hat[i,1])
     # --- Right hand side
     Ux, Uy = fU(CP[:,0], CP[:,1])
@@ -79,11 +78,14 @@ def CCSP_panel_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
     out['CP']       = CP
     out['SP']       = SP
     out['theta_CP'] = np.arctan2(CP[:,1], CP[:,0])
+    # Output: System
     out['rhs']      = rhs
+    out['M']        = M
+    # Solution
     out['sigmas']   = sigmas
 
     # --- Output: Velocity at wall
-    Vwall = np.asarray(ccsp_u(CP[:, 0], CP[:, 1], SP, sigmas)).T
+    Vwall = np.asarray(csp_u(CP[:, 0], CP[:, 1], SP, sigmas)).T
     Vwall[:,0] += Ux
     Vwall[:,1] += Uy
     out['Vwall'] = Vwall
@@ -92,69 +94,8 @@ def CCSP_panel_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
     # --- Output: Cp
     out['Cp'] = 1 - (Vwall[:,0]**2 + Vwall[:,1]**2)/(Ux**2+Uy**2)
 
-    return sigmas, out
+    return out
 
-def CSP_panel_solve(SP1, SP2, Uxy=None, fU=None, verbose=False):
-    r""" 
-    Solve the flow about discontinuous panels using the source panel method.
-
-    INPUTS:
-     -SP1: first points of panels
-     -SP2: second points of panels
-     -U_xy: freestream velocity (2 values)
-     -fU: freestream velocity function, with interface U,V = fU(X,Y)  (vectorial)
-    OUTPUTS:
-     - out: storage for multiple variables, like Cp
-    """
-    out = {}
-    # --- Velocity function
-    if Uxy is not None:
-        fU =lambda X, Y : (X*0+Uxy[0], X*0+Uxy[1])
-
-    # --- Geometry
-    n_hat, t_hat, mids, ds, _, ax =  line_params2(SP1, SP2, plot=False, ntScale=0.3)
-
-
-
-    # --- Build matrix
-    CP = mids # Positions of control points
-    M = np.zeros((len(CP),len(SP1)))
-    for i in range(len(CP)):
-        for j in range(len(SP1)):
-            u, v = csp_u11(CP[i,:], SP1[j], SP2[j,:])
-            M[i,j] = (u*n_hat[i,0] + v*n_hat[i,1])
-    # --- Right hand side
-    Ux, Uy = fU(CP[:,0], CP[:,1])
-    rhs = -(Ux*n_hat[:,0] + Uy*n_hat[:,1])
-    #printMat(M)
-    #printMat(rhs)
-
-    # --- SOLVE
-    sigmas = np.linalg.solve(M, rhs)
-
-    # --- Outputs
-    # Geometry
-    out['ds']       = ds
-    out['n']        = n_hat
-    out['t']        = t_hat
-    out['CP']       = CP
-    out['SP1']      = SP1
-    out['SP2']      = SP2
-    out['theta_CP'] = np.arctan2(CP[:,1], CP[:,0])
-    out['rhs']      = rhs
-    out['sigmas']   = sigmas
-
-    # --- Output: Velocity at wall
-    Vwall = np.asarray(csp_u(CP[:, 0], CP[:, 1], SP1, SP2, sigmas)).T
-    Vwall[:,0] += Ux
-    Vwall[:,1] += Uy
-    out['Vwall'] = Vwall
-    out['Un'] = Vwall[:,0]*n_hat[:,0] + Vwall[:,1]*n_hat[:,1]
-    out['Ut'] = Vwall[:,0]*t_hat[:,0] + Vwall[:,1]*t_hat[:,1]
-    # --- Output: Cp
-    out['Cp'] = 1 - (Vwall[:,0]**2 + Vwall[:,1]**2)/(Ux**2+Uy**2)
-
-    return sigmas, out
 
 
 
@@ -163,8 +104,8 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from welib.CFD.flows2D import *    
     np.set_printoptions(linewidth=300, precision=3)
-    method='CCSP'
-    method='CSP'
+    method='CCSP' # Contiguous Source panels
+    method='DCSP'  # Discontinuous Source panels
     # --- Geometry
     m  = 151
     m  = 51
@@ -177,11 +118,11 @@ if __name__ == '__main__':
     
     # --- Panel method
     if method=='CCSP':
-        sigmas, out = CCSP_panel_solve(XP, YP, Uxy=(U0, 0))
+        sigmas, out = CSP_solve(XP, YP, Uxy=(U0, 0))
     else:
         SP1 = np.column_stack([XP[0:-1], YP[0:-1]])
         SP2 = np.column_stack([XP[1:]  , YP[1:]])
-        sigmas, out = CSP_panel_solve(SP1, SP2, Uxy=(U0, 0))
+        sigmas, out = CSP_disc_solve(SP1, SP2, Uxy=(U0, 0))
 
     # --- Theory
     theta_mid = out['theta_CP']
@@ -205,9 +146,9 @@ if __name__ == '__main__':
     
     # --- Flow field
     if method=='CCSP':
-        vel = lambda X, Y : ccsp_u(X, Y, out['SP'], out['sigmas'])
+        vel = lambda X, Y : csp_u(X, Y, out['SP'], out['sigmas'])
     else:
-        vel = lambda X, Y : csp_u(X, Y, SP1, SP2, out['sigmas'])
+        vel = lambda X, Y : dcsp_u(X, Y, SP1, SP2, out['sigmas'])
     X, Y, U, V =  flowfield2D(vel, xmax=3.5, nx=50, U0x=U0, L=R, rel=True)
     ax =  flowfield2D_plot(X, Y, U, V, ax=axes[2], minVal=0, maxVal=2, bounded=False, rel=True)
     ax.plot(XP/R, YP/R, 'k-',lw=3)

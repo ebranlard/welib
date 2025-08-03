@@ -15,7 +15,7 @@ import math
 # --------------------------------------------------------------------------------}
 # --- Wrappers 
 # --------------------------------------------------------------------------------{
-def cvp_u(X, Y, SP1, SP2, gammas, debug=False):
+def dcvp_u(X, Y, SP1, SP2, gammas, debug=False):
     """ 
     Constant Vortex Panels, delimited by point 1 and 2 (can be discontinuous)
 
@@ -43,7 +43,7 @@ def cvp_u(X, Y, SP1, SP2, gammas, debug=False):
     V = V.reshape(shp)
     return U, V
 
-def ccvp_u(X, Y, SP, gammas, method=1, debug=False):
+def cvp_u(X, Y, SP, gammas, method=1, debug=False):
     """ 
     Contiguous Constant Vortex Panels 
     Contiguous => Panels are formed by consecutive points, can potentially form a closed loop
@@ -360,7 +360,7 @@ def cvp_u11_kp(rCP, rS1, rS2, gamma=1, tol=1e-8, principal=False):
         u,v = un*n_hat + ut*t_hat
         return u, v
     # Velocity off the panel (Katz & Plotkin), 10.39 - 10.40
-    un =  - gamma / (4 * np.pi) *(np.log(r2C_2/r1C_2)) # NOTE: using opposive convention for sign
+    un =    gamma / (4 * np.pi) *(np.log(r1C_2/r2C_2)) # NOTE: using opposive convention for sign
     ut =  - gamma / (2 * np.pi) * (theta2 - theta1)
     u,v = un*n_hat + ut*t_hat
     return u, v
@@ -455,10 +455,10 @@ class Test(unittest.TestCase):
         xs = np.concatenate((xs, xs))
         ys = np.concatenate((ys, ys - 2 * dy))
 
-        vel0 = lambda X, Y: ccvp_u(X, Y, SP, [gamma], method=0)
-        vel1 = lambda X, Y: ccvp_u(X, Y, SP, [gamma], method=1)
-        vel2 = lambda X, Y: ccvp_u(X, Y, SP, [gamma], method=2)
-        vel4 = lambda X, Y: ccvp_u(X, Y, SP, [gamma], method=10)
+        vel0 = lambda X, Y: cvp_u(X, Y, SP, [gamma], method=0)
+        vel1 = lambda X, Y: cvp_u(X, Y, SP, [gamma], method=1)
+        vel2 = lambda X, Y: cvp_u(X, Y, SP, [gamma], method=2)
+        vel4 = lambda X, Y: cvp_u(X, Y, SP, [gamma], method=10)
 
         X, Y, U0, V0 = flowfield2D(vel0, xmax=1.5, ymin=-1.3, nx=15)
         X, Y, U1, V1 = flowfield2D(vel1, xmax=1.5, ymin=-1.3, nx=15)
@@ -495,10 +495,10 @@ class Test(unittest.TestCase):
         rCP = [0., 0]
         L = 1
 
-        u0 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
-        u1 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
-        u2 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
-        u4 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
+        u0 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
+        u1 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
+        u2 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
+        u4 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
         np.testing.assert_almost_equal(u0[0], gamma/2, decimal=6)
         np.testing.assert_almost_equal(u1[0], gamma/2, decimal=6)
         np.testing.assert_almost_equal(u2[0], gamma/2, decimal=6)
@@ -512,10 +512,10 @@ class Test(unittest.TestCase):
         SP = np.vstack((PP1, PP2))
         x = np.linspace(-0.25, 0.25, 10)
         y = x * 0 + 0
-        u0 = ccvp_u(x, y, SP, gammas=[gamma], method=0)
-        u1 = ccvp_u(x, y, SP, gammas=[gamma], method=1)
-        u2 = ccvp_u(x, y, SP, gammas=[gamma], method=2)
-        #u4 = ccvp_u(x, y, SP, gammas=[gamma], method=10)
+        u0 = cvp_u(x, y, SP, gammas=[gamma], method=0)
+        u1 = cvp_u(x, y, SP, gammas=[gamma], method=1)
+        u2 = cvp_u(x, y, SP, gammas=[gamma], method=2)
+        #u4 = cvp_u(x, y, SP, gammas=[gamma], method=10)
         u_ref = ([gamma/2]*len(x), [0] * len(x))
         np.testing.assert_almost_equal(u0, u_ref, decimal=6)
         np.testing.assert_almost_equal(u1, u_ref, decimal=6)
@@ -526,9 +526,9 @@ class Test(unittest.TestCase):
         PP1 = [-0.5, 0.2]
         PP2 = [0.5, 0.4]
         rCP = [(PP1[0] + PP2[0])/2, (PP1[1] + PP2[1])/2]  # Midpoint
-        u0 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=0, principal=True)
-        u1 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=1, principal=True)
-        u2 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=2, principal=True)
+        u0 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=0, principal=True)
+        u1 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=1, principal=True)
+        u2 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=2, principal=True)
         #u4 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=10, principal=True)
         np.testing.assert_almost_equal(u1, u2, decimal=6)
         np.testing.assert_almost_equal(u1, u0, decimal=6)
@@ -636,10 +636,10 @@ class Test(unittest.TestCase):
         for R in [1.5]:
             x = R * np.cos(theta)
             y = R * np.sin(theta)
-            u0, v0 = ccvp_u(x, y, SP, gammas=[gamma], method=0)
-            u1, v1 = ccvp_u(x, y, SP, gammas=[gamma], method=1)
-            u2, v2 = ccvp_u(x, y, SP, gammas=[gamma], method=2)
-            u4, v4 = ccvp_u(x, y, SP, gammas=[gamma], method=10)
+            u0, v0 = cvp_u(x, y, SP, gammas=[gamma], method=0)
+            u1, v1 = cvp_u(x, y, SP, gammas=[gamma], method=1)
+            u2, v2 = cvp_u(x, y, SP, gammas=[gamma], method=2)
+            u4, v4 = cvp_u(x, y, SP, gammas=[gamma], method=10)
 
             Gamma0 = circulation2D(x, y, u0, v0, verbose=False)
             Gamma1 = circulation2D(x, y, u1, v1, verbose=False)
@@ -666,10 +666,10 @@ class Test(unittest.TestCase):
         PP1 = np.array([-0.5, 0.0])
         PP2 = np.array([0.5, 0.0])
         rCP = [0.0, 0.5]  # Point above the panel
-        u0, v0 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
-        u1, v1 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
-        u2, v2 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
-        u4, v4 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
+        u0, v0 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
+        u1, v1 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
+        u2, v2 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
+        u4, v4 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
         #print(f"Method 1  (Theoretical): u={u1}, v={v1}")
         #print(f"Method 2  (Quadrature) : u={u2}, v={v2}")
         #print(f"Method 0  (Anderson  ) : u={u0}, v={v0}")

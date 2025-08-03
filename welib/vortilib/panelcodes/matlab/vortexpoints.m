@@ -31,7 +31,7 @@ function [U, V] = vortex_flow(DX, DY, Gamma, regParam, regMethod)
     end
 end
 
-function out = VP_panel_solve(x, y, Vinf_x, Vinf_y, hasLift)
+function out = VP_solve(x, y, Vinf_x, Vinf_y, hasLift)
     % Solve the flow about an airfoil using the vortex point method.
     % INPUTS:
     %  -x , y : airfoil points, assumed to go from TE to LE clockwise [m]
@@ -140,7 +140,7 @@ Vinf_x = U0*cos(alpha);
 Vinf_y = U0*sin(alpha);
 
 %% Use the vortex panel method to find the solution
-out = VP_panel_solve(xa, ya, Vinf_x, Vinf_y, hasLift);
+out = VP_solve(xa, ya, Vinf_x, Vinf_y, hasLift);
 
 
 if strcmp(case_option, 'file')
