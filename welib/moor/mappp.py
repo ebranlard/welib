@@ -1028,3 +1028,8 @@ def translateLoadsJacobian(JS, r0, FS0):
 
 
 Map=pyMAP # backward compatibility
+
+
+if __name__ == '__main__':
+    map = pyMAP()
+    print(map)
