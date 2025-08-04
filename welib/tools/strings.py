@@ -164,20 +164,13 @@ def printMat(M, var=None, **kwargs):
         printMat(M, 'M', digits=1, align='right')
     """
     # Being nice if the user calls it by swapping the two arguments
-    if not isinstance(var, str):
-        if isinstance(M, str):
-            # we swap 
-            M, var = var, M
+    var, M = _swapArgs(var, M)
     M=np.asarray(M)
     print(prettyMat(M, var=var, **kwargs))
 
 def printVec(M, var=None, newline=False, **kwargs):
     # Being nice if the user calls it by swapping the two arguments
-    if var is not None:
-        if not isinstance(var, str):
-            if isinstance(M, str):
-                # we swap 
-                M, var = var, M
+    var, M = _swapArgs(var, M)
     M=np.asarray(M)
     M=np.atleast_2d(M)
     print(prettyMat(M, var=var, newline=newline, **kwargs))
@@ -209,6 +202,44 @@ def printDict(d, var=None, newline=False, digits=2, xmin=1e-16, **kwargs):
             print('>>> printDict TYPE', type(v))
 #             sindentloc = print('{}{20s}:{}'.format(sindent, k, v)
 
+
+def prettyVar(val, var=None, key_fmt='{:15s}', digits=2, xmin=1e-16, **kwargs):
+    s=''
+    if var is not None:
+        s+=key_fmt.format(var)+': '
+    # Corner cases, being nice to user..
+    if isinstance(val, str):
+        s+=val
+        return s
+    if not hasattr(val,'__len__'):
+        s+=pretty_num(val, digits=digits, **kwargs)
+        return s
+
+def printVar(val, var=None, key_fmt='{:15s}', digits=2, xmin=1e-16, **kwargs):
+    var, val = _swapArgs(var, val)
+    s = prettyVar(val, var=var, key_fmt=key_fmt, digits=digits, xmin=xmin, **kwargs)
+    print(s)
+
+def printVarTex(val, var=None, key_fmt='{:15s}', digits=2, xmin=1e-16, **kwargs):
+    var, val = _swapArgs(var, val)
+    s = ''
+    if var is not None:
+        var='$'+var+'$'
+        s += key_fmt.format(var) + '&'   
+    if isinstance(val, str):
+        s+=val
+    elif not hasattr(val,'__len__'):
+        s+=pretty_num(val, digits=digits, **kwargs)
+    s+='\\\\'
+    return print(s)
+
+
+def _swapArgs(var, val):
+    if var is not None:
+        if not isinstance(var, str):
+            if isinstance(val, str):
+                val, var = var, val # we swap 
+    return var, val
 
 if __name__ == '__main__':
     f= 10.**np.arange(-8,8,1)

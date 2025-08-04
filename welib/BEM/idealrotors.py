@@ -12,6 +12,48 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 
+def ADMTO_inductions(lambda_, method='analytical'):
+    # NOTE: this is in welib.wt_theory.idealrotors
+    """
+    Actuator disc momentum theory optimal (ADMTO) induction factors
+    See e.g. [1] Section 9.5.4
+    """
+    def eq_a_lambda_optim(a, lambda_r):
+         return 16*a**3 - 24*a**2 + a*(9-3*lambda_r**2) - 1 + lambda_r**2 # [1] Eq. 9.85
+
+    lambda_ = np.asarray(lambda_)
+    a       = np.zeros_like(lambda_)
+    ap      = np.zeros_like(lambda_)
+
+    bValid = lambda_>0
+    bZero  = lambda_==0
+
+    if method=='fzero':
+        for i,lambda_r in enumerate(lambda_):
+            if lambda_r==0:
+                a[i] = 1/4
+            else:
+                a[i] = fsolve(eq_a_lambda_optim, 0.33, args=(lambda_r))[0]
+
+    elif method =='analytical':
+        a[bValid] = 1/2 * (1 - np.sqrt(1+lambda_[bValid]**2) * np.sin ( 1/3*np.arctan(1/lambda_[bValid]) )  ) # [1] Eq. 9.86
+    elif method =='analytical2':
+        phi   = 2./3. * np.arctan(1./(lambda_[bValid]))
+        a[bValid] = 1/(1+ np.sin(phi)**2/(  (1-np.cos(phi))*np.cos(phi)   ) )
+
+    else:
+        raise NotImplementedError()
+
+    # Limits:
+    a[bZero] = 1/4
+    ap[bValid] = (1-3*a[bValid])/(4*a[bValid]-1) # [1] Eq. 9.84, only true for optimal
+    #ap= 1/2*(-1+np.sqrt(1+4/lambda_r**2 * a * (1-a)))    # Always true 
+    ap[bZero]  = np.nan
+
+
+    return a, ap
+
+
 def ADwr_CPopt_a_lambdar_eq(a, lambda_r):
     """ 
     Actuator disk with wake rotation, for optimal CP we need a'(1-a) to be max
@@ -29,47 +71,45 @@ def ADwr_CPopt_a_lambdar_eq(a, lambda_r):
         chord = 8*np.pi * r/(B*Cl_design) * (1-np.cos(phi))
         sigma = B*chord / (2*np.pi*r)
         a = 1/(1+4*np.sin(phi)**2 / (sigma * Cl_design * np.cos(phi)) )
-
+        also, can be written :
+        a = 1/(1+ np.sin(phi)**2/(  (1-np.cos(phi))*np.cos(phi)   ) )
     """
-
     return 16 * a**3 - 24 * a**2 + a * (9 - 3 * lambda_r**2)+  lambda_r**2 -1
 
 def planform_ClCd(r, R,  TSR_design, Cl_design, Cd_design, B=3):
     """ 
     NOTE:  a and aprime will be the same as planfrom_wakerot
-           They are not changed by Cd or F becasue they are "actuator disc" inductions
+           They are not changed by Cd or F because they are "actuator disc" inductions
     """
 
     lambda_r =r/R * TSR_design
 
-    # Axial induction factor from optimal CP maximization of a'(1-a)
-    a = np.zeros(len(r))
-    for i, tsr in enumerate(lambda_r):
-        a[i] = fsolve(lambda aa: ADwr_CPopt_a_lambdar_eq(aa, tsr), 0.3)[0]
+    ## Axial induction factor from optimal CP maximization of a'(1-a)
+    #a = np.zeros(len(r))
+    #for i, tsr in enumerate(lambda_r):
+    #    a[i] = fsolve(lambda aa: ADwr_CPopt_a_lambdar_eq(aa, tsr), 0.3)[0]
 
-    # analytical solution
+    ## analytical solution
     phi   = 2./3. * np.arctan(1./(lambda_r))
-    a2 = 1/(1+ np.sin(phi)**2/(  (1-np.cos(phi))*np.cos(phi)   ) )
-    np.testing.assert_almost_equal(a, a2, 13)
+    #a2 = 1/(1+ np.sin(phi)**2/(  (1-np.cos(phi))*np.cos(phi)   ) )
+    #np.testing.assert_almost_equal(a, a2, 13)
 
-    
-    # Tangential induction based on orthogonality of induced velocity for an AD
-    aprime  = (1 - 3 * a) / (4 * a - 1)                     # Only true for optimal rotor
-    #aprime2= 1/2*(-1+np.sqrt(1+4/lambda_r**2 * a * (1-a))) # Always true 
-    #np.testing.assert_almost_equal(aprime, aprime2, 13)
+    #
+    ## Tangential induction based on orthogonality of induced velocity for an AD
+    #aprime  = (1 - 3 * a) / (4 * a - 1)                     # Only true for optimal rotor
+    ##aprime2= 1/2*(-1+np.sqrt(1+4/lambda_r**2 * a * (1-a))) # Always true 
+    ##np.testing.assert_almost_equal(aprime, aprime2, 13)
+
+    a, ap = ADMTO_inductions(lambda_r, method='analytical')
 
 #     phi    = np.arctan((1 - a) / ((1 + aprime) * lambda_r))   # radians
-
-
-
-
     cn     = Cl_design * np.cos(phi) + Cd_design * np.sin(phi)
     F      = (2/np.pi) * np.arccos(np.exp(-B / 2 * (R - r) / (r * np.sin(phi))))
     #c      = (8 * np.pi * R * F * a * lambda_r * (np.sin(phi))**2) / ((1 - a) * B * TSR_design * Cn)
     chord  = a/(1-a) * (8 * np.pi * F * r * (np.sin(phi))**2) / (B*cn)
 
     phi *= 180/np.pi            # [deg]
-    return chord, phi,  a, aprime 
+    return chord, phi,  a, ap 
 
 
 def planform_nowakerot(r, R, TSR_design, Cl_design, B=3):
@@ -146,7 +186,7 @@ if __name__ == '__main__':
     chord_nw, phi_nw, a, ap = planform_nowakerot(r, R, TSR, Cl, B)
     twist_nw = phi_nw-phi_nw[-1] # Alternative: remove alpha_d!
     # Wake Rot
-    chord_wr, phi_wr = planform_wakerot(r, R, TSR, Cl, B)
+    chord_wr, phi_wr, a_wr, ap_wr = planform_wakerot(r, R, TSR, Cl, B)
     twist_wr = phi_wr-phi_wr[-1] # Alternative: remove alpha_d!
 
     import matplotlib.pyplot as plt
@@ -179,7 +219,6 @@ if __name__ == '__main__':
     ax.legend()
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
-    fig.save()
 
     plt.show()
 
