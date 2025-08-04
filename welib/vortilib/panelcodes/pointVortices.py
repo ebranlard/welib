@@ -234,6 +234,7 @@ def PV_solve(XP, YP, Uxy=None, fU=None, hasLift=True, iTE=0, curv_method='Menger
     out['rhs']      = rhs       # Right hand side
     out['M']        = M         # System matrix
     # Output: Solution
+    out['gammas']  = gammas # Vortex points intensities
     out['Gammas']  = Gammas # Vortex points intensities
     # --- Output: Velocity at wall
 
@@ -269,7 +270,7 @@ if __name__ == '__main__':
     case = 'file'
 #     case = 'KT' # To debug...
 #     case = 'cylinder'
-#     case = 'ellipse_lift'
+    case = 'ellipse_lift'
     alpha=0
     ge=None
     Cp_theory = None
@@ -341,10 +342,11 @@ if __name__ == '__main__':
         hasLift   = abs(Gamma)>0
     elif case=='ellipse_lift':
         m=300
+        m=40
         U0    = 1
         major=1
         ratio=0.05
-        alpha = 30*np.pi/180
+        alpha = 10*np.pi/180
         theta   =-np.linspace(0,2*np.pi, m+1)
         abyr= np.sqrt((1.-ratio)/(1.+ratio))# ! see Lewis p 50
         XP = 0.5*major       *(np.cos(theta))
