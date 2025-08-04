@@ -112,10 +112,10 @@ def main(test=False):
     Z,X=np.meshgrid(z,x)
     Y=Z*0;
     ur,uz = vc_tang_u(X,Y,Z,gamma_t,R)
-    print('CT0',CT0,'gamma_t',gamma_t/U0)
+    #print('CT0',CT0,'gamma_t',gamma_t/U0)
 
     urout,uzout=vc_tang_u([1.1*R],[0],[0.1*R],gamma_t,R)
-    print('>>uzout',(uzout+U0)/U0)
+    #print('>>uzout',(uzout+U0)/U0)
 
     # --- Plot the contours of axial induction
     levels=[0.5,0.6,0.7,0.8,0.9,0.95,0.98,0.99,1.01,1.1]
@@ -165,13 +165,9 @@ def main(test=False):
 
 class Test(unittest.TestCase):
     def test_Article_Induction_NonYaw(self):
-        import sys
-        if sys.version_info >= (3, 0):
-            main(test=True)
-        else:
-            print('Test skipped due to travis display error')
+        main(test=True)
 
 if __name__ == "__main__":
-    main()
+    main(test=False)
 
 

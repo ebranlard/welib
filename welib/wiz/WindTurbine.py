@@ -301,21 +301,21 @@ class WindTurbine:
         if len(self.gamma_t)==1:
             # --- Tangential and longi - ONE Cylinder only
             for iY,Y in enumerate(Ylist):
-                if tang and (self.gamma_t!=0):
+                if tang and (self.gamma_t[0]!=0):
                     if np.abs(self.chi)>1e-7:
                         if Model =='VC':
-                            uxc0,uyc0,uzc0 = svc_tang_u(Xc0,Y,Zc0,gamma_t=self.gamma_t,R=self.R,m=m,polar_out=False)
+                            uxc0,uyc0,uzc0 = svc_tang_u(Xc0,Y,Zc0,gamma_t=self.gamma_t[0],R=self.R,m=m,polar_out=False)
                         else:
                             raise NotImplementedError('Model '+Model + ', with yaw.')
                     else:
                         if Model =='VC':
-                                uxc0,uyc0,uzc0 = vc_tang_u        (Xc0,Y,Zc0, gamma_t=self.gamma_t, R=self.R, polar_out=False)
+                                uxc0,uyc0,uzc0 = vc_tang_u        (Xc0,Y,Zc0, gamma_t=self.gamma_t[0], R=self.R, polar_out=False)
                         elif Model =='VCFF':
-                            uxc0,uyc0,uzc0 = vc_tang_u_doublet(Xc0,Y,Zc0, gamma_t=self.gamma_t, R=self.R, polar_out=False,r_bar_Cut=R_far_field)
+                            uxc0,uyc0,uzc0 = vc_tang_u_doublet(Xc0,Y,Zc0, gamma_t=self.gamma_t[0], R=self.R, polar_out=False,r_bar_Cut=R_far_field)
                         elif Model =='VD':
-                            uxc0,uyc0,uzc0 = doublet_line_u(Xc0, Y, Zc0, dmz_dz = self.gamma_t * self.R**2 * np.pi)
+                            uxc0,uyc0,uzc0 = doublet_line_u(Xc0, Y, Zc0, dmz_dz = self.gamma_t[0] * self.R**2 * np.pi)
                         elif Model =='SS':
-                            uzc0 = ss_u          (Xc0, Y, Zc0, gamma_t=self.gamma_t, R=self.R)
+                            uzc0 = ss_u          (Xc0, Y, Zc0, gamma_t=self.gamma_t[0], R=self.R)
                             uxc0=uzc0*0
                             uyc0=uzc0*0
                         else:

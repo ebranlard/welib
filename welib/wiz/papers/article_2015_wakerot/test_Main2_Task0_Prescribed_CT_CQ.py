@@ -6,6 +6,7 @@ Reproduces the figures from
 """
 
 # --- General
+import os
 import matplotlib.pyplot as plt
 import unittest
 import numpy as np
@@ -31,7 +32,7 @@ def main(test=False):
     Omega = Lambda * U0 / R
     vr_bar = np.linspace(0.005,0.995,nCyl)
     # -- Setting up Cq
-    df=weio.read('MadsenAD.csv').toDataFrame()
+    df=weio.read(os.path.join(os.path.dirname(__file__), 'MadsenAD.csv')).toDataFrame()
     Cq_AD = df['Cq']
     va_AD = df['Va']
     vt_AD = df['Vt']
@@ -103,9 +104,7 @@ def main(test=False):
 
 class Test(unittest.TestCase):
     def test_Article_WakeRot_Prescribed_CT_CQ(self):
-#         import sys
-#         if sys.version_info >= (3, 0):
-        main(test=False)
+        main(test=True)
 
 if __name__ == "__main__":
     main()

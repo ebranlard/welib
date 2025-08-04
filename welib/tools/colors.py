@@ -136,7 +136,7 @@ def make_colormap(seq,values=None,name='CustomMap'):
         cdict['blue'].append((v, b1, b2))
         if hasAlpha:
             cdict['alpha'].append((v, a1, a2))
-    print(cdict)
+    #print(cdict)
     return mcolors.LinearSegmentedColormap(name, cdict)
 
 def cmap_colors(n, name='viridis'):
