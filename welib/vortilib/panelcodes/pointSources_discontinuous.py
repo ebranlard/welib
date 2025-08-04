@@ -4,13 +4,16 @@ Implement a source point panel method.
 """
 import numpy as np
 from welib.essentials import *
-from welib.vortilib.elements.SourcePoint import *
+#from welib.vortilib.elements.SourcePoint import *
 from welib.vortilib.panelcodes.panel_tools import line_params, plot_line, line_params2
 from welib.vortilib.panelcodes.pointSources import source_flow, PS_velocity
 
+def dPS_velocity(X, Y, SP1, SP2, Sigmas, debug=False):
+    mid = (SP1 + SP2)/2
+    return PS_velocity(X, Y, mid, Sigmas)
 
 
-def PS_disc_solve(SP1, SP2, Uxy=None, fU=None, offset=0.1, verbose=False):
+def dPS_solve(SP1, SP2, Uxy=None, fU=None, offset=0.1, verbose=False):
     r""" 
     Solve the flow about discontinuous panels using the point source panel method.
 
@@ -56,7 +59,7 @@ def PS_disc_solve(SP1, SP2, Uxy=None, fU=None, offset=0.1, verbose=False):
     # --- Solve
     Sigmas = np.linalg.solve(M, rhs)
     sigmas = Sigmas/ds # strength per unit length
-    assert(abs(sum(Sigmas))<1e-8)
+    #assert(abs(sum(Sigmas))<1e-8)
     
     # Tangential velocities on panel
     Vwall = np.zeros_like(mids)

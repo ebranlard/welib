@@ -105,6 +105,7 @@ def sp2d_u(X, Y, Ps, Sigma=1, U0=0, regParam=0, regMethod=None, grad=False):
     U += U0
     return U, V
 
+
 # % TODO: below it's optimized for many sources and few control points, formulas can be nicer for many CPs and loop on sources
 # SIG=repmat(Sigmas(:)',1,ndim); % Sources intensities repeated for vectorial multiplication
 # % loop on control point

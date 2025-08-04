@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 from welib.vortilib.panelcodes.panel_tools import panel_geometry
+from welib.vortilib.elements.LinearVortexPanel2D import lvp_u11 # TODO
 
 def LVP_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False, alpha=None, x_Cm_ref=0.25):
     """
@@ -202,36 +203,6 @@ def build_influence_matrix_KP(CO, PT1, PT2, TH):
                 HOLDB    =  U2*np.cos(TH[i]) + W2*np.sin(TH[i])
     return A, B
 
-def lvp_u11(rCP, rS1, rS2, gamma1=1, gamma2=0, tol=1e-12):
-    # TODO BUGGY DEBUG ME
-    xCP, yCP = rCP
-    x1, y1   = rS1
-    x2, y2   = rS2
-    dx       = x2 - x1
-    dy       = y2 - y1
-    L        = np.hypot(dx, dy)
-    if L < tol: return 0.0, 0.0
-    C        = dx / L
-    S        = dy / L
-    xC =  (xCP - x1) * C + (yCP - y1) * S
-    yC = -(xCP - x1) * S + (yCP - y1) * C
-    xA, xB = 0.0, L
-    yA, yB = 0.0, 0.0
-    def I1(xa, xb, y):
-        return np.arctan2(xb - xC, y - yC) - np.arctan2(xa - xC, y - yC)
-    def I2(xa, xb, y):
-        ra2 = (xa - xC)**2 + (y - yC)**2
-        rb2 = (xb - xC)**2 + (y - yC)**2
-        return 0.5 * np.log(rb2 / ra2)
-    I1v = I1(xA, xB, yA)
-    I2v = I2(xA, xB, yA)
-    u_panel = (gamma1 * I1v + (gamma2 - gamma1) * ((xB - xC) * I1v - L * I2v) / L) / (2 * np.pi)
-    v_panel = (gamma1 * I2v + (gamma2 - gamma1) * ((xB - xC) * I2v + L * I1v) / L) / (2 * np.pi)
-    u =  u_panel * C - v_panel * S
-    v =  u_panel * S + v_panel * C
-    return u, v
-
-
 
 if __name__ == "__main__":
     from welib.vortilib.panelcodes.panel_tools import plot_Cp, plot_pressure_force_bars
@@ -276,6 +247,6 @@ if __name__ == "__main__":
     #df_num = pd.DataFrame(data=np.column_stack([x, Cp]), columns=['x','Cp'])
     #df_num.to_csv(os.path.join(scriptDir,'CP_output_new.csv'))
 
-    ax = plot_Cp(CP, Cp, Cp_ref=Cp_ref, simple=False, label='linear vortex')
+    ax = plot_Cp(CP[:,0], Cp, Cp_ref=Cp_ref, simple=False, label='linear vortex')
 
     plt.show()

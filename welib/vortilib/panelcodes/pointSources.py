@@ -46,7 +46,6 @@ def PS_velocity(X, Y, SP, Sigmas, debug=False):
         U+=us
         V+=vs
     return U, V
-sp_u = PS_velocity
 
 
 def PS_solve(XP, YP, Uxy=None, fU=None, verbose=False, offset=0.1):
@@ -137,7 +136,7 @@ def PS_solve(XP, YP, Uxy=None, fU=None, verbose=False, offset=0.1):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from welib.CFD.flows2D import *    
-    from welib.vortilib.panelcodes.pointSources_discontinuous import PS_disc_solve
+    from welib.vortilib.panelcodes.pointSources_discontinuous import dPS_solve
     from welib.vortilib.panelcodes.panel_examples import getCase
     method='CSP'
     #method='DSP'
@@ -158,7 +157,7 @@ if __name__ == '__main__':
     else:
         SP1 = np.column_stack([XP[0:-1], YP[0:-1]])
         SP2 = np.column_stack([XP[1:]  , YP[1:]])
-        out = PS_disc_solve(SP1, SP2, Uxy=(U0, 0), offset=offset)
+        out = dPS_solve(SP1, SP2, Uxy=(U0, 0), offset=offset)
    
     # --- Plots   
     fig, axes = plt.subplots(1, 4, figsize=(10, 3.5))

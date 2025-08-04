@@ -28,7 +28,7 @@ class Test(unittest.TestCase):
 
         if plot:
             plot_pressure_force_bars(out['CP'], out['Cp'], out['n'], scale=0.1, ax=None)
-            plot_Cp(out['CP'], out['Cp'], Cp_ref=cas['Cp'])
+            plot_Cp(out['CP'][:,0], out['Cp'], Cp_ref=cas['Cp'])
 
             # --- Flow field
             #PP  = np.column_stack((cas['XP'], cas['YP']))

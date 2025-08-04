@@ -50,54 +50,66 @@ def getCase(case, solver=None, mid_out=None, **kwargs):
         out['maxVal']    =  1.5 *out['U0'] # For velocity field
 
     # --------------------------------------------------------------------------------}
-    # --- Lifting cases 
+    # --- Lifting or nonlfting cases
     # --------------------------------------------------------------------------------{
-    elif case=='VonDeVooren_lift': # Sharp
+    elif case in ['VonDeVooren_lift', 'VonDeVooren']: # Sharp
         # Test case 2 - Van de Vooren (Katz Plotkin)
         # NUMBER OF AIRFOIL PANELS, M    :   90
         # THE ANGLE OF ATTACK IN DEGREES :   5
         # THICKNESS COEFF. Eps (<1)      :   0.075
         # T.E. ANGLE COEFF. K (1-2)      :   1.90555555555
-        default_opts={'alpha':5*np.pi/180, 'U0':1}
+        alpha=0
+        if 'lift' in case :
+            alpha=5
+        default_opts={'alpha':alpha*np.pi/180, 'U0':1}
         out = _opts(default_opts, kwargs)
         airfoil_file = os.path.join(scriptDir,'data/VonDeVooren_esp0.075_k1.906_AFOIL2.csv')
         df = pd.read_csv(airfoil_file)
         out['XP'], out['YP'] = df['x'].values, df['y'].values
         out['Uxy'] = (out['U0']*np.cos(out['alpha']), out['U0']*np.sin(out['alpha'])) # Freestream velocity vector [m/s]
-        # ref
-        if solver is None:
-            df_ref = pd.read_csv(os.path.join(scriptDir, 'data/VonDeVooren_Cp_theory.csv')) # KatzPlotkin example - VanDeVooren
-        elif solver=='LVP':
-            df_ref  = pd.read_csv(os.path.join(scriptDir, 'data/VonDeVooren_Cp_lvortex.csv')) # KatzPlotkin example - VanDeVooren
-        else:
-            raise NotImplementedError(solver)
-        out['x'] = df_ref['x']
-        out['Cp'] = df_ref['Cp']
-        # Mid
-        if mid_out: 
-            x = df_ref['x'] .values
-            Cp = df_ref['Cp'] .values
-            out['x'] = (x[1:] + x[:-1])/2
-            out['Cp'] = (Cp[1:] + Cp[:-1])/2
 
-    elif case=='NACA2412_lift': # Slighlty blunt
+        if alpha==5:
+            # ref
+            if solver is None:
+                df_ref = pd.read_csv(os.path.join(scriptDir, 'data/VonDeVooren_Cp_theory.csv')) # KatzPlotkin example - VanDeVooren
+            elif solver=='LVP':
+                df_ref  = pd.read_csv(os.path.join(scriptDir, 'data/VonDeVooren_Cp_lvortex.csv')) # KatzPlotkin example - VanDeVooren
+            else:
+                raise NotImplementedError(solver)
+            out['x'] = df_ref['x']
+            out['Cp'] = df_ref['Cp']
+            # Mid
+            if mid_out: 
+                x = df_ref['x'] .values
+                Cp = df_ref['Cp'] .values
+                out['x'] = (x[1:] + x[:-1])/2
+                out['Cp'] = (Cp[1:] + Cp[:-1])/2
+
+    elif case in ['NACA2412',  'NACA2412_lift']: # Slighlty blunt
         # Test case 3 - XFoil NACA 2412 PPAR N 170 P 4 T 1 R 1
-        default_opts={'alpha':5*np.pi/180, 'U0':1}
+        alpha=0
+        if 'lift' in case :
+            alpha=5
+        default_opts={'alpha':alpha*np.pi/180, 'U0':1}
         out = _opts(default_opts, kwargs)
         airfoil_file = os.path.join(scriptDir,'data/NACA2412.txt')
         df = pd.read_csv(airfoil_file)
         out['XP'], out['YP'] = df['x'].values, df['y'].values
         out['Uxy'] = (out['U0']*np.cos(out['alpha']), out['U0']*np.sin(out['alpha'])) # Freestream velocity vector [m/s]
-
-        import pickle
-        with open(os.path.join(scriptDir, 'tests/LSN_LV1_NACA2412.pkl'), 'rb') as f:
-            data = pickle.load(f) 
-            for k,v in data.items():
-                out[k] = v
-        out['Cp'] = data['Cp']
+        
+        if alpha==5:
+            import pickle
+            with open(os.path.join(scriptDir, 'tests/LSN_LV1_NACA2412.pkl'), 'rb') as f:
+                data = pickle.load(f) 
+                for k,v in data.items():
+                    out[k] = v
+            out['Cp'] = data['Cp']
 
     else:
         raise NotImplementedError(case)
+
+    if 'Cp' not in out:
+        out['Cp'] = None
 
     return out 
 

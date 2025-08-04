@@ -7,8 +7,9 @@ Reference:
 import numpy as np
 from welib.essentials import *
 from welib.vortilib.panelcodes.panel_tools import line_params, plot_line, line_params2
-from welib.vortilib.elements.SourcePanel2D import dcsp_u, csp_u, csp_u11
+from welib.vortilib.elements.SourcePanel2D import csp_u, csp_u11
 
+# NOTE: if velocity is needed, use csp_u
 
 def CSP_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
     r""" 
@@ -103,6 +104,11 @@ def CSP_solve(XP, YP, Uxy=None, fU=None, closed=True, verbose=False):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from welib.CFD.flows2D import *    
+
+    # Discontinuous for comparison
+    from welib.vortilib.panelcodes.constantSourcePanels_discontinuous import dCSP_solve
+    from welib.vortilib.elements.SourcePanel2D import dcsp_u
+
     np.set_printoptions(linewidth=300, precision=3)
     method='CCSP' # Contiguous Source panels
     method='DCSP'  # Discontinuous Source panels
@@ -122,7 +128,7 @@ if __name__ == '__main__':
     else:
         SP1 = np.column_stack([XP[0:-1], YP[0:-1]])
         SP2 = np.column_stack([XP[1:]  , YP[1:]])
-        sigmas, out = CSP_disc_solve(SP1, SP2, Uxy=(U0, 0))
+        sigmas, out = dCSP_solve(SP1, SP2, Uxy=(U0, 0))
 
     # --- Theory
     theta_mid = out['theta_CP']

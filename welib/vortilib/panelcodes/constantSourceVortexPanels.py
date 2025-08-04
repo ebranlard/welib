@@ -206,7 +206,7 @@ if __name__ == '__main__':
     n_hat = out['n']
 
     plot_pressure_force_bars(CP, Cp, n_hat, scale=0.1, ax=None)
-    plot_Cp(CP, Cp)
+    plot_Cp(CP[:,0], Cp)
 
     # --- Flow field
     PP  = np.column_stack((XP, YP))

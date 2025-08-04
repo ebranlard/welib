@@ -1,5 +1,10 @@
+import numpy as np
+from welib.vortilib.panelcodes.panel_tools import line_params2
+from welib.vortilib.elements.SourcePanel2D import dcsp_u, csp_u11
 
-def SP_disc_panel_solve(SP1, SP2, Uxy=None, fU=None, verbose=False):
+# NOTE: if velocity is needed, use dcsp_u
+
+def dCSP_solve(SP1, SP2, Uxy=None, fU=None, verbose=False):
     r""" 
     Solve the flow about discontinuous panels using the source panel method.
 
@@ -50,7 +55,7 @@ def SP_disc_panel_solve(SP1, SP2, Uxy=None, fU=None, verbose=False):
     out['sigmas']   = sigmas
 
     # --- Output: Velocity at wall
-    Vwall = np.asarray(csp_u(CP[:, 0], CP[:, 1], SP1, SP2, sigmas)).T
+    Vwall = np.asarray(dcsp_u(CP[:, 0], CP[:, 1], SP1, SP2, sigmas)).T
     Vwall[:,0] += Ux
     Vwall[:,1] += Uy
     out['Vwall'] = Vwall

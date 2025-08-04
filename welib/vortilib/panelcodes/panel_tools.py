@@ -267,19 +267,19 @@ def plot_pressure_force_bars(CP, Cp, n_hat, scale=0.1, ax=None):
     return ax
 
 
-def plot_Cp(CP, Cp, ax=None, Cp_ref=None, simple=True, label=None, sty='--'):
+def plot_Cp(x, Cp, ax=None, Cp_ref=None, simple=True, label=None, sty='--'):
     # --- Plot Cp
     if ax is None:
         fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
     midIndS = int(np.floor(len(Cp)/2))                                          # Airfoil middle index for VPM data
 
     if Cp_ref is not None:
-        ax.plot(CP[:, 0], Cp_ref[:],  'k-', label='Reference Cp')
+        ax.plot(x, Cp_ref[:],  'k-', label='Reference Cp')
     if simple:
-        ax.plot(CP[:, 0], Cp, sty, label=label)
+        ax.plot(x, Cp, sty, label=label)
     else:
-        ax.plot(CP[midIndS+1:len(CP), 0],Cp[midIndS+1:len(CP)], 'ks', markerfacecolor='b', label=label+' Upper' if label is not None else 'Upper')
-        ax.plot(CP[0:midIndS, 0],        Cp[0:midIndS],         'ks', markerfacecolor='r', label=label+' Lower' if label is not None else 'Lower')
+        ax.plot(x[midIndS+1:len(x)],Cp[midIndS+1:len(CP)], 'ks', markerfacecolor='b', label=label+' Upper' if label is not None else 'Upper')
+        ax.plot(x[0:midIndS       ],        Cp[0:midIndS], 'ks', markerfacecolor='r', label=label+' Lower' if label is not None else 'Lower')
 
 
     # ax.set_xlim([0,1])

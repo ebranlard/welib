@@ -50,7 +50,7 @@ class Test(unittest.TestCase):
         fU =lambda X, Y : (X*0+Vinf_x, X*0+Vinf_y) # External velocity function
 
         # --- Panel method
-        gammas, out = VPts_panel_solve(XP, YP, fU=fU, hasLift=hasLift, iTE=iTE, curv_method=curv_method, backDiagCorr=backDiagCorr)
+        out = PV_solve(XP, YP, fU=fU, hasLift=hasLift, iTE=iTE, curv_method=curv_method, backDiagCorr=backDiagCorr)
         CP = out['CP']
 
         ds_mean = np.mean(out['ds'])
@@ -65,7 +65,7 @@ class Test(unittest.TestCase):
             ax=axes[0]
             if ge is not None:
                 ax.plot(VP[:,0], ge    , 'k-', label='Theory')
-            ax.plot(out['VP'][:,0], gammas, '--', label='gammas')
+            ax.plot(out['VP'][:,0], out['gammas'], '--', label='gammas')
             ax=axes[1]
             if theta_mid is not None:
                 ax.plot(theta_mid, Uth_theory, 'k-', label='Utheta')
@@ -129,7 +129,7 @@ class Test(unittest.TestCase):
         fU =lambda X, Y : (X*0+Vinf_x, X*0+Vinf_y) # External velocity function
 
         # --- Panel method
-        gammas, out = VPts_panel_solve(XP, YP, fU=fU, hasLift=hasLift, iTE=iTE, curv_method=curv_method, backDiagCorr=backDiagCorr)
+        out = PV_solve(XP, YP, fU=fU, hasLift=hasLift, iTE=iTE, curv_method=curv_method, backDiagCorr=backDiagCorr)
         CP = out['CP']
 
         ds_mean = np.mean(out['ds'])
@@ -144,7 +144,7 @@ class Test(unittest.TestCase):
             ax=axes[0]
             if ge is not None:
                 ax.plot(VP[:,0], ge    , 'k-', label='Theory')
-            ax.plot(out['VP'][:,0], gammas, '--', label='gammas')
+            ax.plot(out['VP'][:,0], out['gammas'], '--', label='gammas')
             ax=axes[1]
             if theta_mid is not None:
                 ax.plot(theta_mid, Uth_theory, 'k-', label='Utheta')

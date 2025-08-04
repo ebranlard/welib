@@ -29,7 +29,7 @@ def vp_u(DX, DY, Gamma=1, regParam=0, regMethod=None):
         V[bOK] = Gamma/(2*np.pi) * tY[bOK]/r2[bOK] * (1 - np.exp(- r2[bOK] / regParam ** 2))
     return U,V
 
-def VPts_velocity(X, Y, Ux, Uy, VP, Gammas, regMethod=None, regParams=None):
+def PV_velocity(X, Y, Ux, Uy, VP, Gammas, regMethod=None, regParams=None):
     nV = len(Gammas)
     if regParams is None:
         regParams = [0]*nV
@@ -119,7 +119,7 @@ def backDiagonalCorrection(M, ds):
     return M
 
 
-def VPts_panel_solve(XP, YP, fU=None, hasLift=True, iTE=0, curv_method='Menger', backDiagCorr=True, verbose=False, GammaConvention='z', closed=True):
+def PV_solve(XP, YP, Uxy=None, fU=None, hasLift=True, iTE=0, curv_method='Menger', backDiagCorr=True, verbose=False, GammaConvention='z', closed=True):
     """ 
     Solve panel method for a given geometry and external velocity
 
@@ -129,6 +129,9 @@ def VPts_panel_solve(XP, YP, fU=None, hasLift=True, iTE=0, curv_method='Menger',
      - out: storage for multiple variables, like Cp
     """
     out = {}
+    # --- Velocity function
+    if Uxy is not None:
+        fU =lambda X, Y : (X*0+Uxy[0], X*0+Uxy[1])
 
     # --- Geometry
     #n_hat, t_hat, mids, ds, curvature, ax =  airfoil_params(XP, YP, plot=False, ntScale=0.3, curv_method=curv_method)
@@ -257,7 +260,7 @@ def VPts_panel_solve(XP, YP, fU=None, hasLift=True, iTE=0, curv_method='Menger',
 
     # --- Output: Stream function
     #psi = Ux*y - Uy*x + 1/(2*np.pi) * sum(gamma_i ds_i ln(r_ii))
-    return gammas, out
+    return out
 
 
 
@@ -362,8 +365,8 @@ if __name__ == '__main__':
     fU =lambda X, Y : (X*0+Vinf_x, X*0+Vinf_y) # External velocity function
 
     # --- Use the vortex panel method to find the vortex point intensities and Cp
-    gammas, out = VPts_panel_solve(XP, YP, fU=fU, hasLift=hasLift, iTE=iTE, curv_method=curv_method, verbose=True, backDiagCorr=backDiagCorr)
-    print('gammas:', gammas)
+    out = PV_solve(XP, YP, fU=fU, hasLift=hasLift, iTE=iTE, curv_method=curv_method, verbose=True, backDiagCorr=backDiagCorr)
+    print('gammas:', out['gammas'])
     print('>>> n', len(XP), case, 'alpha:',alpha*180/np.pi)
     ds_mean = np.mean(out['ds'])
     print('>>> ds mean', ds_mean)
@@ -380,7 +383,7 @@ if __name__ == '__main__':
     ax=axes[0]
     if ge is not None:
         ax.plot(VP[:,0], ge    , 'k-', label='Theory')
-    ax.plot(out['VP'][:,0], gammas, '--', label='gammas')
+    ax.plot(out['VP'][:,0], out['gammas'], '--', label='gammas')
     ax=axes[1]
     if theta_mid is not None:
         ax.plot(theta_mid, Uth_theory, 'k-', label='Utheta')
@@ -416,7 +419,7 @@ if __name__ == '__main__':
     n_hat =out['n']
     ds  =out['ds']
     VP2 = VP + 1*(n_hat.T*ds).T 
-    Uw, Vw = VPts_velocity(VP2[:,0], VP2[:,1], Vinf_x, Vinf_y, out['VP'], out['Gammas'], regMethod=regMethod, regParams=regParams); Xw=VP2[:,0]; Xw=VP[:,0]
+    Uw, Vw = PV_velocity(VP2[:,0], VP2[:,1], Vinf_x, Vinf_y, out['VP'], out['Gammas'], regMethod=regMethod, regParams=regParams); Xw=VP2[:,0]; Xw=VP[:,0]
 
     Q = np.sqrt(Uw**2+Vw**2)
     CP2 = 1-(Q**2/U0**2)
@@ -446,7 +449,7 @@ if __name__ == '__main__':
     vy = vg
     X, Y = np.meshgrid(vx, vy)
 
-    U, V   = VPts_velocity(X, Y, Vinf_x, Vinf_y, out['VP'], out['Gammas'],regMethod=regMethod, regParams=regParams)
+    U, V   = PV_velocity(X, Y, Vinf_x, Vinf_y, out['VP'], out['Gammas'],regMethod=regMethod, regParams=regParams)
 
     # --- Plot velocity and streamlines from velocity field
     Speed = np.sqrt((U**2+V**2))/U0

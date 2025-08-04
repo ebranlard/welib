@@ -7,7 +7,7 @@ from welib.CFD.flows2D import flowrate2D, flowfield2D, flowfield2D_plot
 from welib.vortilib.panelcodes.panel_tools import plot_line
 from welib.vortilib.panelcodes.panel_examples import getCase
 from welib.vortilib.panelcodes.pointSources import PS_solve, PS_velocity
-from welib.vortilib.panelcodes.pointSources_discontinuous import PS_disc_solve
+from welib.vortilib.panelcodes.pointSources_discontinuous import dPS_solve
 
 scriptDir = os.path.dirname(__file__)
 
@@ -30,7 +30,7 @@ class Test(unittest.TestCase):
                 else:
                     SP1 = np.column_stack([cas['XP'][0:-1], cas['YP'][0:-1]])
                     SP2 = np.column_stack([cas['XP'][1:]  , cas['YP'][1:]])
-                    out = PS_disc_solve(SP1, SP2, Uxy=cas['Uxy'], offset=offset)
+                    out = dPS_solve(SP1, SP2, Uxy=cas['Uxy'], offset=offset)
            
                 # --- Tests
                 #print('MaxError ',np.max(np.abs(Cp_theory-out['Cp'])))
