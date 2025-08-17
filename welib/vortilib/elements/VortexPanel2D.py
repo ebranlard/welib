@@ -274,7 +274,7 @@ def cvp_u11_quad(rCP, rS1, rS2, gamma=1, tol=1e-8, principal=False):
     cross = dx * y1C - dy * x1C
     dot   = dx * x1C + dy * y1C
     if principal or (abs(cross) < tol and 0 - tol <= dot <= L**2 + tol):
-        ut = gamma/2
+        ut = -gamma/2 # TODO TODO TODO TODO TODO TODO TODO TODO sign
         un = 0
         u, v = un * n_hat + ut * t_hat 
         return u, v
@@ -282,7 +282,7 @@ def cvp_u11_quad(rCP, rS1, rS2, gamma=1, tol=1e-8, principal=False):
     def integrand_un_ut(s):
         ss = s/L
         x_minus_x0 = x_1C*(1-ss) + x_2C * ss
-        denom =  (x_minus_x0**2 + y_1C**2 )
+        denom =  (x_minus_x0**2 + y_1C**2)
         ut = - gamma / (2 * np.pi) * y_1C / denom
         un =   gamma / (2 * np.pi) * x_minus_x0 / denom # TODO sign
         return np.array( [un, ut] )
@@ -355,7 +355,7 @@ def cvp_u11_kp(rCP, rS1, rS2, gamma=1, tol=1e-8, principal=False):
     cross = dx * y1C - dy * x1C
     dot   = dx * x1C + dy * y1C
     if principal or (abs(cross) < tol and 0 - tol <= dot <= L**2 + tol):
-        ut = gamma/2
+        ut = -gamma/2 # TODO TODO TODO TODO TODO TODO TODO TODO sign
         un = 0
         u,v = un*n_hat + ut*t_hat
         return u, v
@@ -399,7 +399,7 @@ def cvp_u11_anderson(rCP, rS1, rS2, gamma=1, tol=1e-8, principal=False):
         # Tangential and normal unit vectors
         n_hat = np.array([-dy/L, dx/L])
         t_hat = np.array([ dx/L, dy/L])
-        ut    = gamma/2
+        ut    = -gamma/2 # TODO TODO TODO TODO TODO TODO TODO TODO sign
         un    = 0
         u, v  = un*n_hat + ut*t_hat
         return u, v
@@ -495,13 +495,13 @@ class Test(unittest.TestCase):
         rCP = [0., 0]
         L = 1
 
-        u0 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
-        u1 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
-        u2 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
-        u4 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
-        np.testing.assert_almost_equal(u0[0], gamma/2, decimal=6)
-        np.testing.assert_almost_equal(u1[0], gamma/2, decimal=6)
-        np.testing.assert_almost_equal(u2[0], gamma/2, decimal=6)
+        u0 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
+        u1 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
+        u2 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
+        u4 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
+        np.testing.assert_almost_equal(u0[0], -gamma/2, decimal=6)
+        np.testing.assert_almost_equal(u1[0], -gamma/2, decimal=6)
+        np.testing.assert_almost_equal(u2[0], -gamma/2, decimal=6)
         #np.testing.assert_almost_equal(u4[0], gamma/2, decimal=6) # No hope
         np.testing.assert_almost_equal(u0[1], 0, decimal=6)
         np.testing.assert_almost_equal(u1[1], 0, decimal=6)
@@ -516,7 +516,7 @@ class Test(unittest.TestCase):
         u1 = cvp_u(x, y, SP, gammas=[gamma], method=1)
         u2 = cvp_u(x, y, SP, gammas=[gamma], method=2)
         #u4 = cvp_u(x, y, SP, gammas=[gamma], method=10)
-        u_ref = ([gamma/2]*len(x), [0] * len(x))
+        u_ref = ([-gamma/2]*len(x), [0] * len(x))
         np.testing.assert_almost_equal(u0, u_ref, decimal=6)
         np.testing.assert_almost_equal(u1, u_ref, decimal=6)
         np.testing.assert_almost_equal(u2, u_ref, decimal=6)
@@ -526,9 +526,9 @@ class Test(unittest.TestCase):
         PP1 = [-0.5, 0.2]
         PP2 = [0.5, 0.4]
         rCP = [(PP1[0] + PP2[0])/2, (PP1[1] + PP2[1])/2]  # Midpoint
-        u0 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=0, principal=True)
-        u1 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=1, principal=True)
-        u2 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=2, principal=True)
+        u0 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=0, principal=True)
+        u1 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=1, principal=True)
+        u2 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=2, principal=True)
         #u4 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=10, principal=True)
         np.testing.assert_almost_equal(u1, u2, decimal=6)
         np.testing.assert_almost_equal(u1, u0, decimal=6)
@@ -549,7 +549,7 @@ class Test(unittest.TestCase):
         L = np.sqrt(dx**2 + dy**2)
         midpoint = np.array([(PP1[0] + PP2[0])/2, (PP1[1] + PP2[1])/2])
 
-        PV_mid = gamma/2
+        PV_mid = -gamma/2
 
         # Define points crossing the panel at 45 degrees through the midpoint
         n_points = 41
@@ -604,14 +604,14 @@ class Test(unittest.TestCase):
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
                 ax1.plot(s, u0, 'k.', label='Anderson')
                 ax1.plot(s, u1, 'r--', label='Theoretical')
-                ax1.plot(s, u2, 'g:', label='Quadrature')
+                ax1.plot(s, u2, 'g:d', label='Quadrature')
                 ax1.plot(s, u4, 'b-.', label='Riemann sum')
                 ax1.set_ylabel('u velocity')
                 ax1.legend()
                 ax1.grid(True)
                 ax2.plot(s, v0, 'k.', label='Anderson')
                 ax2.plot(s, v1, 'r--', label='Theoretical')
-                ax2.plot(s, v2, 'g:', label='Quadrature')
+                ax2.plot(s, v2, 'g:d', label='Quadrature')
                 ax2.plot(s, v4, 'b-.', label='Rieman sum')
                 ax2.set_xlabel('s (along crossing line)')
                 ax2.set_ylabel('v velocity')
@@ -621,7 +621,7 @@ class Test(unittest.TestCase):
         if plot:
             plt.show()
 
-    def test_CVP_flowrate(self):
+    def test_CVP_flowrate_circulation(self):
         # Test flow rate and circulation for a vortex panel
         from welib.CFD.flows2D import flowrate2D
         from welib.CFD.flows2D import circulation2D
@@ -666,10 +666,10 @@ class Test(unittest.TestCase):
         PP1 = np.array([-0.5, 0.0])
         PP2 = np.array([0.5, 0.0])
         rCP = [0.0, 0.5]  # Point above the panel
-        u0, v0 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
-        u1, v1 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
-        u2, v2 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
-        u4, v4 = dcvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
+        u0, v0 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=0)
+        u1, v1 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=1)
+        u2, v2 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=2)
+        u4, v4 = cvp_u11(rCP, PP1, PP2, gamma=gamma, method=10)
         #print(f"Method 1  (Theoretical): u={u1}, v={v1}")
         #print(f"Method 2  (Quadrature) : u={u2}, v={v2}")
         #print(f"Method 0  (Anderson  ) : u={u0}, v={v0}")
@@ -684,5 +684,5 @@ if __name__ == "__main__":
     #Test().test_CVP_flow(plot=True)
     #Test().test_CVP_PrincipalValue()
     #Test().test_CVP_crossing_points(plot=True)
-    #Test().test_CVP_flowrate()
+    #Test().test_CVP_flowrate_circulation()
     unittest.main()
