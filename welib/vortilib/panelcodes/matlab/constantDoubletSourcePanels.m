@@ -37,8 +37,8 @@ if nargin==0
     % OR 
     AirfoilPoints=readmatrix('../data/VonDeVooren_esp0.075_k1.906_AFOIL2.csv'); % HACK important, they have chord 0f 2 => different everything, AI, Cl, g etc
 
-    [ptDS, coDS,CpDS,Cl,GammaDS,SigDS,AI ] = fPanelCode2DDoubletSourcePot( AirfoilPoints,U0,param.alpha,2 );
-    [ptD, coD,CpD,Cl,GammaD,AID,rhsD ] = fPanelCode2DDoublet( AirfoilPoints,U0,param.alpha );
+    [ptDS, coDS,CpDS,Cl,GammaDS,SigDS,AI ] = constantDoubletSourcePanelsPot( AirfoilPoints,U0,param.alpha,2 );
+    %[ptD, coD,CpD,Cl,GammaD,AID,rhsD ] = constantDoubletPanels( AirfoilPoints,U0,param.alpha );
     %     AID(end+1,:)=0;
     alpha=param.alpha;
 

@@ -94,6 +94,9 @@ def getCase(case, solver=None, mid_out=None, **kwargs):
         out = _opts(default_opts, kwargs)
         airfoil_file = os.path.join(scriptDir,'data/NACA2412.txt')
         df = pd.read_csv(airfoil_file)
+        mid = (df['x'].values[1:] + df['x'].values[:-1]) / 2
+        out['x_ref'] = mid
+
         out['XP'], out['YP'] = df['x'].values, df['y'].values
         out['Uxy'] = (out['U0']*np.cos(out['alpha']), out['U0']*np.sin(out['alpha'])) # Freestream velocity vector [m/s]
         

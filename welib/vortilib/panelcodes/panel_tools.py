@@ -267,14 +267,16 @@ def plot_pressure_force_bars(CP, Cp, n_hat, scale=0.1, ax=None):
     return ax
 
 
-def plot_Cp(x, Cp, ax=None, Cp_ref=None, simple=True, label=None, sty='--'):
+def plot_Cp(x, Cp, ax=None, Cp_ref=None, simple=True, label=None, sty='--', x_ref=None):
     # --- Plot Cp
     if ax is None:
         fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
     midIndS = int(np.floor(len(Cp)/2))                                          # Airfoil middle index for VPM data
 
     if Cp_ref is not None:
-        ax.plot(x, Cp_ref[:],  'k-', label='Reference Cp')
+        if x_ref is None:
+            x_ref = x
+        ax.plot(x_ref, Cp_ref[:],  'k-', label='Reference Cp')
     if simple:
         ax.plot(x, Cp, sty, label=label)
     else:

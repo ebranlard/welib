@@ -33,7 +33,9 @@ if nargin==0
     [ AirfoilPoints PS SS ~] = fProfileVanDeVooren( param.t_rel,param.tau,1,param.n,2,U0,param.alpha); % to get Cp
     % OR 
     AirfoilPoints=readmatrix('../data/VonDeVooren_esp0.075_k1.906_AFOIL2.csv'); % HACK important, they have chord 0f 2 => different everything, AI, Cl, g etc
-
+    
+    %AirfoilPoints=readmatrix('../data/NACA2412.txt'); % HACK important, they have chord 0f 2 => different everything, AI, Cl, g etc
+    
     chord=1;off=0.5;
     alpha=param.alpha;
     inverseMethod=2;
@@ -143,7 +145,9 @@ for i=1:m;
     end; j=m+1;
 
     %     INCLUDE THE INFLUENCE OF THE WAKE PANEL
-    r=sqrt((co(i,1)-pt2(m,1)).^2 +(co(i,2)-pt2(m,2)).^2);
+    pw1=pt2(m,:);
+    pw1=[1,0];
+    r=sqrt((co(i,1)-pw1(1))^2 +(co(i,2)-pw1(2))^2);
 
     u=1/(2*pi).*(co(i,2)./(r.^2));
     w=-1/(2*pi).*(co(i,1)-pt2(m,1))./(r.^2);
@@ -300,14 +304,14 @@ if nargin==0
 
 
     figure,hold all
-    plot(x_ref, Cp_ref,'k'),axis ij
-    plot(pt2(1:end-1,1)/chord+off,cp(1:end-1),'+'),axis ij
+    %plot(x_ref, Cp_ref,'k'),axis ij
+    plot(pt2(1:end,1)/chord+off,cp(1:end),'--+'),axis ij
     plot(pt2(1:end-1,1)/chord+off,cp2,'.'),axis ij
     legend('Theory', 'Cp 1', 'Cp2')
     % plot(pt2(1:end-1,1),cppot,'d'),axis ij
 %     plot(pt2(1:end-1,1),cppot2,'d'),axis ij
-    xlim([0 1])
-    ylim([-1.8 1])
+    %xlim([0 1])
+    %ylim([-1.8 1])
     
     keyboard
 

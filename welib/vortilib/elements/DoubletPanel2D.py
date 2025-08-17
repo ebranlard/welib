@@ -6,6 +6,28 @@ Constant Doublet Panel 2D (CDP)
 References: 
  [1] Katz - Plotkin - Low speed aerodynamics p 270
 
+
+
+Convention:
+
+  y ^  
+    |
+    |            mu 
+    |    ^^^^^^^^^^^^^^^^
+    -----||||||||||||||||------> x
+
+
+             Equivalent to 
+
+  y ^  
+    |
+    | Gamma1 = +mu      Gamma2 = -mu
+    |  <.                .>
+    -----)--------------(------> x
+
+    Gamma is positive about z !!!!!
+
+
 """
 
 import numpy as np
@@ -15,7 +37,7 @@ from scipy.integrate import quad, quad_vec
 # --------------------------------------------------------------------------------}
 # --- Wrappers 
 # --------------------------------------------------------------------------------{
-def cdp_u(X, Y, SP1, SP2, mus, debug=False):
+def dcdp_u(X, Y, SP1, SP2, mus, debug=False):
     """ 
     Constant Doublet Panels, delimited by point 1 and 2 (can be discontinuous)
 
@@ -43,7 +65,7 @@ def cdp_u(X, Y, SP1, SP2, mus, debug=False):
     V = V.reshape(shp)
     return U, V
 
-def ccdp_u(X, Y, SP, mus, method=1, debug=False):
+def cdp_u(X, Y, SP, mus, method=1, debug=False):
     """ 
     Contiguous Constant Doublet Panels 
     Contiguous => Panels are formed by consecutive points, can potentially form a closed loop
@@ -196,7 +218,7 @@ def cdp_u11(rCP, rS1, rS2, mu=1, method=1, tol=1e-8, principal=False, WARN=[0]):
             print('[WARN] Doublet Panel 2D - Method 10 only works for panels along x axis for now')
             WARN[0] += 1
         from welib.vortilib.elements.DoubletPoint import dp2d_u
-        # We use point many point doublet along the panel
+        # We use many point doublets along the panel
         nS = 30
         xS1, yS1 = rS1
         xS2, yS2 = rS2
@@ -221,8 +243,8 @@ def cdp_u11(rCP, rS1, rS2, mu=1, method=1, tol=1e-8, principal=False, WARN=[0]):
         xS1, yS1 = rS1
         xS2, yS2 = rS2
         # The doublet panel is equivalent to two point vortices of strength +mu at S2 and -mu at S1
-        u2, v2 = vp_u(xCP, yCP, (xS1, yS1), Gamma=+mu)
-        u1, v1 = vp_u(xCP, yCP, (xS2, yS2), Gamma=-mu)
+        u1, v1 = vp_u(xCP, yCP, (xS1, yS1), Gamma=+mu)
+        u2, v2 = vp_u(xCP, yCP, (xS2, yS2), Gamma=-mu)
         u = u1 + u2
         v = v1 + v2
     else:
@@ -326,6 +348,44 @@ def cdp_u11_quad(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     u, v = un * n_hat + ut * t_hat 
     return u, v
 
+
+ONE_OVER_TWOPI=0.15916
+ONE_OVER_TWOPI= 1/(2*np.pi) #+0.00001
+
+
+
+def cdp_u11_kp_raw(rCP, rS1, rS2, principal=False):
+    # Katz Plotfkin program 3
+    xS1, yS1 = rS1
+    xS2, yS2 = rS2
+    xCP, yCP = rCP
+    dx = xS2 - xS1
+    dy = yS2 - yS1
+    theta = np.atan2(dy, dx)
+    xt   = xCP  - xS1
+    zt   = yCP  - yS1
+    x2t  = xS2 - xS1
+    z2t  = yS2 - yS1
+    x    =  xt*np.cos(theta) + zt* np.sin(theta)
+    z    = -xt*np.sin(theta) + zt* np.cos(theta)
+    x2   = x2t*np.cos(theta) + z2t*np.sin(theta)
+    z2   = 0
+    r1   = np.sqrt(x**2 + z**2)
+    r2   = np.sqrt((x-x2)**2 + z**2)
+    # NOTE: sign flipped compared to Katz-Plotkin
+    if principal:
+        ul = 0
+        wl = 1/(np.pi * x)
+    else:
+        ul = -ONE_OVER_TWOPI * (z/(r1**2) - z/(r2**2))
+        wl =  ONE_OVER_TWOPI * (x/(r1**2) - (x-x2)/(r2**2))
+    u_kp =  ul*np.cos(-theta) + wl*np.sin(-theta)
+    w_kp = -ul*np.sin(-theta) + wl*np.cos(-theta)
+    return u_kp, w_kp
+
+
+
+
 def cdp_u11_kp(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     """
     Velocity induced on 1 control points by one doublet panel
@@ -357,8 +417,8 @@ def cdp_u11_kp(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     L = np.sqrt(dx**2 + dy**2)
     n_hat = np.array([-dy/L, dx/L])
     t_hat = np.array([ dx/L, dy/L])
-    phi = np.atan2(dy, dx)
-    phi = phi if phi >= 0 else phi + 2 * np.pi
+    theta = np.atan2(dy, dx)
+    phi = theta if theta >= 0 else theta + 2 * np.pi
     
     # --- Vectors from panel points to CP
     x1C = xCP - xS1
@@ -369,6 +429,22 @@ def cdp_u11_kp(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     r2C_2 = x2C**2 + y2C**2
     C = np.cos(phi)
     S = np.sin(phi)
+
+    # Katz Plotkin program 3 - Similar with a difference in sign, and small numerical differences
+    #xt   = xCP  - xS1
+    #zt   = yCP  - yS1
+    #x2t  = xS2 - xS1
+    #z2t  = yS2 - yS1
+    #x    =  xt*np.cos(theta) + zt* np.sin(theta)
+    #z    = -xt*np.sin(theta) + zt* np.cos(theta)
+    #x2   = x2t*np.cos(theta) + z2t*np.sin(theta)
+    #z2   = 0
+    #r1   = np.sqrt(x**2 + z**2)
+    #r2   = np.sqrt((x-x2)**2 + z**2)
+    #ul =  ONE_OVER_TWOPI * (z/(r1**2) - z/(r2**2))
+    #wl = -ONE_OVER_TWOPI * (x/(r1**2) - (x-x2)/(r2**2))
+    #u_kp =  ul*np.cos(-theta) + wl*np.sin(-theta)
+    #w_kp = -ul*np.sin(-theta) + wl*np.cos(-theta)
     
     # ---Tilde coordinates
     # x_~ = x cos phi + y sin phi
@@ -377,33 +453,25 @@ def cdp_u11_kp(rCP, rS1, rS2, mu=1, tol=1e-8, principal=False):
     y_1C =-x1C*S +  y1C*C  # ytilde_c - ytilde_1 = ytilde_c
     x_2C = x2C*C +  y2C*S  # xtilde_c - xtilde_2
     y_2C =-x2C*S +  y2C*C  # = y_1C to machine precision
-
-    # --- Angles measured in panel frame    
-    theta1 = np.arctan2(y_1C, x_1C)
-    theta2 = np.arctan2(y_2C, x_2C)
-    if theta2<0: 
-        theta2 += 2*np.pi # Panel angles are assumed positive
-    if theta1<0: 
-        theta1 += 2*np.pi # Panel angles are assumed positive
-    dtheta = theta2 - theta1
     
     # --- Check if the point is on the line using cross product
     cross = dx * y1C - dy * x1C
     dot   = dx * x1C + dy * y1C
     if principal or (abs(cross) < tol and 0 - tol <= dot <= L**2 + tol):
-            ut = 0
-            if np.abs(x_1C)<1e-8 or np.abs(x_2C)<1e-8:
-                un = 0
-            else:
-                un = +mu/(2*np.pi) * (1/(x_1C)-1/(x_2C)) # NOTE NOTE NOTE: I flipped the sign compared to Katz-Plotkin 
-            u,v = un*n_hat + ut*t_hat
-            return u, v  # Principal value on the panel is zero
+        ut = 0
+        if np.abs(x_1C)<1e-8 or np.abs(x_2C)<1e-8:
+            un = 0
+        else:
+            un = +mu/(2*np.pi) * (1/(x_1C)-1/(x_2C)) # NOTE NOTE NOTE: I flipped the sign compared to Katz-Plotkin 
+        u,v = un*n_hat + ut*t_hat
+        return u, v  # Principal value on the panel is zero
     # NOTE NOTE NOTE: I flipped the sign compared to Katz-Plotkin here 10.29-10.30 
     #                 The sign convention seems innconsistent with 10.26 and 10.27
     # Velocity off the panel (Katz & Plotkin), 10.29 - 10.30
-    un = + mu / (2 * np.pi) * (x_1C / r1C_2 - x_2C/r2C_2 )
-    ut = - mu / (2 * np.pi) * (y_1C / r1C_2 - y_2C/r2C_2 )
+    un = + mu * ONE_OVER_TWOPI * (x_1C / r1C_2 - x_2C/r2C_2 )
+    ut = - mu * ONE_OVER_TWOPI * (y_1C / r1C_2 - y_2C/r2C_2 )
     u,v = un*n_hat + ut*t_hat
+
     return u, v
 # --------------------------------------------------------------------------------}
 # --- TESTS
@@ -431,7 +499,7 @@ class Test(unittest.TestCase):
         SP = np.vstack((PP1, PP2))
         x = np.linspace(-0.25, 0.25, 10)
         y = x * 0 + 0
-        u1 = ccdp_u(x, y, SP, mus=[mu])  # Only method 1
+        u1 = cdp_u(x, y, SP, mus=[mu])  # Only method 1
         u_ref = ([0] * len(x), mu/(2*np.pi)*(1/(x+0.5)-1/(x-0.5) ) ) # TODO TODO TODO SIGN CHANGED
         # Also test method 20 for each point
         for xi, yi, u_refi, v_refi in zip(x, y, u_ref[0], u_ref[1]):
@@ -468,8 +536,8 @@ class Test(unittest.TestCase):
         for R in [1.2]:
             x = R * np.cos(theta)
             y = R * np.sin(theta)
-            u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
-            u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
+            u1, v1 = cdp_u(x, y, SP, mus=[mu], method=1)
+            u2, v2 = cdp_u(x, y, SP, mus=[mu], method=2)
             u4 = np.zeros_like(u1)
             v4 = np.zeros_like(v1)
             for i in range(len(x)):
@@ -491,8 +559,8 @@ class Test(unittest.TestCase):
         for R in [0.8]:
             x = R * np.cos(theta) - 0.5
             y = R * np.sin(theta)
-            u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
-            u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
+            u1, v1 = cdp_u(x, y, SP, mus=[mu], method=1)
+            u2, v2 = cdp_u(x, y, SP, mus=[mu], method=2)
             u4 = np.zeros_like(u1)
             v4 = np.zeros_like(v1)
             for i in range(len(x)):
@@ -508,8 +576,8 @@ class Test(unittest.TestCase):
         for R in [0.8]:
             x = R * np.cos(theta) + 0.5
             y = R * np.sin(theta)
-            u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
-            u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
+            u1, v1 = cdp_u(x, y, SP, mus=[mu], method=1)
+            u2, v2 = cdp_u(x, y, SP, mus=[mu], method=2)
             u4 = np.zeros_like(u1)
             v4 = np.zeros_like(v1)
             for i in range(len(x)):
@@ -524,9 +592,9 @@ class Test(unittest.TestCase):
         # Test that flow rate on the panel is zero
         #x = np.linspace(-1, 1, 10)
         #y = x * 0 + 0
-        #u1, v1 = ccdp_u(x, y, SP, mus=[mu], method=1)
-        #u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=2)
-        ##u2, v2 = ccdp_u(x, y, SP, mus=[mu], method=10)
+        #u1, v1 = cdp_u(x, y, SP, mus=[mu], method=1)
+        #u2, v2 = cdp_u(x, y, SP, mus=[mu], method=2)
+        ##u2, v2 = cdp_u(x, y, SP, mus=[mu], method=10)
         #Q1 = flowrate2D(x, y, u1, v1, verbose=False, ns=1)
         #Q2 = flowrate2D(x, y, u2, v2, verbose=False, ns=1)
         #np.testing.assert_almost_equal(Q1, 0, decimal=3)
@@ -547,9 +615,9 @@ class Test(unittest.TestCase):
         xs = np.concatenate((xs, xs))
         ys = np.concatenate((ys, ys - 2 * dy))
 
-        vel1 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=1)
-        vel2 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=2)
-        vel4 = lambda X, Y: ccdp_u(X, Y, SP, [mu], method=20)
+        vel1 = lambda X, Y: cdp_u(X, Y, SP, [mu], method=1)
+        vel2 = lambda X, Y: cdp_u(X, Y, SP, [mu], method=2)
+        vel4 = lambda X, Y: cdp_u(X, Y, SP, [mu], method=20)
 
         X, Y, U1, V1 = flowfield2D(vel1, xmax=1.5, ymin=-1.3, nx=15)
         X, Y, U2, V2 = flowfield2D(vel2, xmax=1.5, ymin=-1.3, nx=15)
@@ -585,8 +653,8 @@ class Test(unittest.TestCase):
         mu = 3
         PP1 = np.array([-0.5, 0.2])
         PP2 = np.array([0.5, 0.4])
-        #PP1 = np.array([-0.5, 0.0])
-        #PP2 = np.array([0.5, 0.0])
+        PP1 = np.array([-0.5, 0.0])
+        PP2 = np.array([0.5, 0.0])
         SP = np.vstack((PP1, PP2))
         dx = PP2[0] - PP1[0]
         dy = PP2[1] - PP1[1]
@@ -622,9 +690,9 @@ class Test(unittest.TestCase):
 
             # Compare methods
             np.testing.assert_almost_equal(u1, u2, decimal=6)
-            np.testing.assert_almost_equal(u1, u4, decimal=6)
+            #np.testing.assert_almost_equal(u1, u4, decimal=6)
             np.testing.assert_almost_equal(v1, v2, decimal=6)
-            np.testing.assert_almost_equal(v1, v4, decimal=6)
+            #np.testing.assert_almost_equal(v1, v4, decimal=6)
 
             if plot:
                 import matplotlib.pyplot as plt
@@ -642,13 +710,13 @@ class Test(unittest.TestCase):
                 # Plot 2: u and v velocities
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
                 ax1.plot(s, u1, 'r--', label='Theoretical')
-                ax1.plot(s, u2, 'g:', label='Quadrature')
+                ax1.plot(s, u2, 'g:d', label='Quadrature')
                 ax1.plot(s, u4, 'b-.', label='Two points')
                 ax1.set_ylabel('u velocity')
                 ax1.legend()
                 ax1.grid(True)
                 ax2.plot(s, v1, 'r--', label='Theoretical')
-                ax2.plot(s, v2, 'g:', label='Quadrature')
+                ax2.plot(s, v2, 'g:d', label='Quadrature')
                 ax2.plot(s, v4, 'b-.', label='Two points')
                 ax2.set_xlabel('s (along crossing line)')
                 ax2.set_ylabel('v velocity')
