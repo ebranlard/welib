@@ -775,7 +775,7 @@ class FASTInputFileBase(File):
                     #print('label>',d['label'],'<',type(d['label']),line);
                     if i>3: # first few lines may be comments, we allow it
                         #print('Line',i,'Label:',d['label'])
-                        raise WrongFormatError('Special Character found in Label: `{}`, for line: `{}`. File: {}'.format(d['label'], line, self.filename))
+                        raise WrongFormatError('Special Character found in Label: `{}`, for line: `{}`'.format(d['label'],line))
                 if len(d['label'])==0:
                     nWrongLabels +=1
             if nComments>len(lines)*0.35:

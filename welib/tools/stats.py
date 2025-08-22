@@ -283,6 +283,8 @@ def bin_DF(df, xbins, colBin, stats=None):
     """
     if stats is None:
         stats=['avg']
+    if not isinstance(stats, list):
+        stats=[stats]
     if colBin not in df.columns.values:
         raise Exception('The column `{}` does not appear to be in the dataframe'.format(colBin))
     xmid      = (xbins[:-1]+xbins[1:])/2
@@ -310,7 +312,7 @@ def bin_DF(df, xbins, colBin, stats=None):
 
 
 
-def bin_signal(x, y, xbins=None, stats='mean', nBins=None):
+def bin_signal(x, y, xbins=None, stats=None, nBins=None):
     """ 
     Perform bin averaging of a signal
     INPUTS:
@@ -321,13 +323,20 @@ def bin_signal(x, y, xbins=None, stats='mean', nBins=None):
       - xBinned, yBinned
 
     """
+    if stats is None:
+        stats=['avg']
+    if not isinstance(stats, list):
+        stats=[stats]
     if xbins is None:
         xmin, xmax = np.min(x), np.max(x)
         dx = (xmax-xmin)/nBins
         xbins=np.arange(xmin, xmax+dx/2, dx)
     df = pd.DataFrame(data=np.column_stack((x,y)), columns=['x','y'])
-    df2 = bin_DF(df, xbins, colBin='x', stats=stats)
-    return df2['x'].values, df2['y'].values
+    dfs = bin_DF(df, xbins, colBin='x', stats=stats)
+    if len(stats)>1:
+        raise NotImplementedError('bin_signal for multiple stats')
+    else:
+        return dfs[0]['x'].values, dfs[0]['y'].values
 
 
 
@@ -390,7 +399,7 @@ def azimuthal_average_DF(df, psiBin=np.arange(0,360+1,10), colPsi='Azimuth_[deg]
             raise Exception('The column `{}` does not appear to be in the dataframe'.format(colTime))
         df=df[ df[colTime]>tStart].copy()
 
-    dfPsi= bin_DF(df, psiBin, colPsi, stats='mean')
+    dfPsi= bin_DF(df, psiBin, colPsi, stats=['avg'])[0]
     if np.any(dfPsi['Counts']<1):
         print('[WARN] some bins have no data! Increase the bin size.')
 
@@ -407,7 +416,7 @@ def azimuthal_std_DF(df, psiBin=np.arange(0,360+1,10), colPsi='Azimuth_[deg]', t
             raise Exception('The column `{}` does not appear to be in the dataframe'.format(colTime))
         df=df[ df[colTime]>tStart].copy()
 
-    dfPsi= bin_DF(df, psiBin, colPsi, stats='std')
+    dfPsi= bin_DF(df, psiBin, colPsi, stats=['std'])[0]
     if np.any(dfPsi['Counts']<1):
         print('[WARN] some bins have no data! Increase the bin size.')
 

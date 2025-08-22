@@ -412,6 +412,19 @@ class WindTurbine:
         s+=' - yaw_err: {} deg\n'.format(self.yaw_error*180/np.pi)
         if not short:
             s+=' - wd     : {} deg\n'.format(self.yaw_wind*180/np.pi)
+            if self.chi is not None:
+                s+=' - chi: {} ({} deg)\n'.format(self.chi, self.chi*180/np.pi)
+            else:
+                s+=' - chi: {}\n'.format(self.chi)
+            s+=' - Model: {} \n'.format(self.Model)
+            s+=' - Gamma_r: {} \n'.format(self.Gamma_r)
+            s+=' - Lambda : {} \n'.format(self.Lambda)
+            if self.gamma_t is None:
+                s+=' - gamma_t: {} \n'.format(self.gamma_t)
+            elif len(self.gamma_t)==1:
+                s+=' - gamma_t: {} \n'.format(self.gamma_t)
+            else:
+                s+=' - gamma_t: [{},..,{}] ({}) \n'.format(self.gamma_t[0], self.gamma_t[-1], len(self.gamma_t))
             s+=' - e_shaft: {}\n'.format(np.round(self.e_shaft_g.T,4))
             s+=' - yaw_pos: {} deg\n'.format(self.yaw_pos  *180/np.pi)
             s+=' - yaw_err: {} deg\n'.format((-self.yaw_wind+self.yaw_pos)*180/np.pi)
@@ -419,6 +432,7 @@ class WindTurbine:
             s+=' - T_c2wt : \n{}\n'.format(np.round(self.T_c2wt,4))
             s+=' - T_wt2g : \n{}\n'.format(np.round(self.T_wt2g,4))
             s+=' - T_c2g  : \n{}\n'.format(np.round(np.dot(self.T_wt2g,self.T_c2wt),4))
+
         return s
 
     def __repr__(self):
