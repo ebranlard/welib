@@ -7,3 +7,4 @@ pandas; python_version<="3.0"
 chardet
 scipy
 sympy
+pyyaml

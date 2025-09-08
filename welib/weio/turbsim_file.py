@@ -445,7 +445,7 @@ class TurbSimFile(File):
         try:
             import scipy.signal as sig
         except:
-            import pydatview.tools.spectral as sig
+            import welib.tools.spectral as sig
         u, v, w = ts._latline(ix0=ix0, iz0=iz0, removeMean=True)
         t       = ts['t']
         dt      = t[1]-t[0]
@@ -462,7 +462,7 @@ class TurbSimFile(File):
         try:
             import scipy.signal as sig
         except:
-            import pydatview.tools.spectral as sig
+            import welib.tools.spectral as sig
         t       = ts['t']
         dt      = t[1]-t[0]
         fs      = 1/dt
@@ -483,7 +483,7 @@ class TurbSimFile(File):
         try:
             import scipy.signal as sig
         except:
-            import pydatview.tools.spectral as sig
+            import welib.tools.spectral as sig
         if iy0 is None:
             iy0,iz0 = ts.iMid
         u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)
