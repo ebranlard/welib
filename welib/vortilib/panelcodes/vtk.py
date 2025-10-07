@@ -97,7 +97,6 @@ def LatticeToPanlConnectivity(LatticePoints):
     #    pts = LatticePoints
     pts = LatticePoints
     nSpan, nDepth, _ = pts.shape
-    print('nSpan', nSpan, 'nDepth', nDepth)
     Points = pts.reshape(-1, 3)
     Connectivity = []
     for i in range(nSpan-1):

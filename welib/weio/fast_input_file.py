@@ -271,7 +271,7 @@ class FASTInputFileBase(File):
             d = self.data[i]
             if d['label'].lower()==label.lower():
                 I.append(i)
-        if len(I)<0:
+        if len(I)==0:
             raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
         else:
             return I
@@ -1139,6 +1139,32 @@ def strIsInt(s):
 def strToBool(s):
     return s.lower() in ['true','t']
 
+def addToList(l,value):
+    if l is None:
+        l = value
+    elif isinstance(l,int):
+        if strIsInt(value):
+            l = [l, value]
+    elif isinstance(l,float):
+        if strIsFloat(value):
+            l = [l, value]
+    elif isinstance(l,str):
+        if isStr(value):
+            l = [l, value]
+    elif isinstance(l,bool):
+        if strIsBool(value):
+            l = [l, value]
+    else:
+        if   isinstance(l[0],int)   and strIsInt(value):
+                l.append(value)
+        elif isinstance(l[0],float) and strIsFloat(value):
+                l.append(value)
+        elif isinstance(l[0],str)   and isStr(value):
+                l.append(value)
+        elif isinstance(l[0],bool)  and strIsBool(value):
+                l.append(value)
+    return l
+
 def hasSpecialChars(s):
     # fast allows for parenthesis
     # For now we allow for - but that's because of BeamDyn geometry members 
@@ -1244,17 +1270,22 @@ def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
             _merge_value(splits)
             s=splits[0]
 
-            if strIsInt(s):
-                d['value']=int(s)
-                if allowSpaceSeparatedList and len(splits)>1:
-                    if strIsInt(splits[1]):
-                        d['value']=splits[0]+ ' '+splits[1]
-            elif strIsFloat(s):
-                d['value']=float(s)
-            elif strIsBool(s):
-                d['value']=strToBool(s)
-            else:
-                d['value']=s
+            # The loop below assumes allowSpaceSeparatedList is true
+            allowSpaceSeparatedList = True
+
+            for s in splits:
+                if strIsInt(s):
+                    d['value'] = addToList(d['value'],int(s))
+                elif strIsFloat(s):
+                    d['value'] = addToList(d['value'],float(s))
+                elif strIsBool(s):
+                    d['value'] = addToList(d['value'],strToBool(s))
+                else:
+                    d['value'] = addToList(d['value'], s)
+                    # For strings, only the first one should be printed
+                    break
+                if not allowSpaceSeparatedList:
+                    break
             iNext=1
 
         # Extracting label (TODO, for now only second split)
@@ -1436,8 +1467,8 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
                 if l.startswith('---'):
                     raise BrokenFormatError('Error reading line {} while reading table. Is the variable `{}` set correctly?'.format(iStart+i+1, varNumLines))
                 if len(v) != nCols:
-                    # Discarding SubDyn special cases
-                    if ColNames[-1].lower() not in ['cosmid', 'ssifile']:
+                    # Discarding SubDyn special cases. Also discarding Mod_AmbWind=1 where position of turbines do not need to be specified
+                    if ColNames[-1].lower() not in ['cosmid', 'ssifile', 'dz_high']:
                         print('[WARN] {}: Line {}: Number of data is different than number of column names. Column Names: {}'.format(filename,iStart+1+i, ColNames))
                 if i==nHeaders+nOffset:
                     if len(v)>nCols:

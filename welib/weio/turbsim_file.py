@@ -544,7 +544,7 @@ class TurbSimFile(File):
             print('New std : {:7.3f}  (target: {:7.3f}, old: {:7.3f})'.format(new_std2 , new_std , old_std))
 
     def makePeriodic(self):
-        """ Make the box periodic in the streamwise direction by mirroring it """
+        """ Make the box periodic in the streamwise direction by mirroring it - Periodic is ID=8"""
         nDim, nt0, ny, nz = self['u'].shape
         u = self['u'].copy()
         del self['u']
@@ -768,7 +768,7 @@ class TurbSimFile(File):
         """
         from xarray import IndexVariable, DataArray, Dataset
         
-        print('[TODO] openfast_toolbox.io.turbsim_file.toDataset: merge with function toDataSet')
+        print('[TODO] turbsim_file.toDataset: merge with function toDataSet')
 
         y      = IndexVariable("y", self.y, attrs={"description":"lateral coordinate","units":"m"})
         zround = np.asarray([np.round(zz,6) for zz in self.z]) #the open function here returns something like *.0000000001 which is annoying
@@ -795,8 +795,8 @@ class TurbSimFile(File):
         """
         import xarray as xr
         
-        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: should be discontinued')        
-        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: merge with function toDataset')        
+        print('[TODO] turbsim_file.toDataSet: should be discontinued')        
+        print('[TODO] turbsim_file.toDataSet: merge with function toDataset')        
 
         if datetime:
             timearray = pd.to_datetime(self['t'], unit='s', origin=pd.to_datetime('2000-01-01 00:00:00'))

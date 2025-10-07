@@ -6,90 +6,62 @@ import os
 from welib.tools.tictoc import Timer
 import welib.weio as weio
 from vtk import VTK_Misc, WrVTK_Lattice
+#from welib.vortilib.elements.VortexSegment import vs_u_raw
 
 # Constants
 PI = 3.141592654
 RCUT = 1.0e-10
-
-# Parameters
-PARAMS = {
-    'NTMAX': 640,  # Max time steps
-    'nChord': 4,    # Max chordwise panels
-    'NSMAX': 13,   # Max spanwise panels
-}
 
 # Global data
 class GLOBAL_DATA:
     def __init__(self):
         self.SNO = None
         self.CSO = None
-        self.GAMA1J = None
-        self.QF = None  # Wing nodes
-        self.CP = None
-        self.A = None
+         # Wing nodes
+        self.CP = None # Control points
+        self.AA = None
         self.DW = None
-        self.GAMA1 = None
-        self.DLY = None
-        self.GAMA = None # Wing Gammas
-        self.DL = None
-        self.DP = None
-        self.DS = None
-        self.DLT = None
-        self.DD = None
-        self.A1 = None
-        self.QW = None     # Wake nodes
-        self.VORTIC = None # Wake vorticity Gammas
-        self.UVW = None
-        self.QW1 = None
-        self.VORT1 = None
-        self.US = None
+        self.Gamma_LS = None # Wing Gammas
+        self.Gamma_LS_prev = None # Wing Gammas
+        self.Area = None
+        self.dLT = None
+        self.Uind_wake_on_wake = None
         self.WW = None
-        self.WTS = None
-        self.IP = None
-        self.SX = 0.0
-        self.SZ = 0.0
-        self.CS1 = 0.0
-        self.SN1 = 0.0
-        self.DXW = 0.0
+        self.Uind_wake_on_LS = None
         self.nChord = 0
-        self.NS = 0
-        self.nChord = 0
-        self.nSpan_half = 0
+        self.nSpan = 0
+        # --- Wake
+        self.Gamma_NW = None # Wake vorticity Gammas
+        self.r_NW = None     # Wake nodes (was QW)
 
-    def initialize_arrays(self, nChord, nSpan_half, NTMAX):
+    def initialize_arrays(self, nChord, nSpan, NTMAX):
+        self.nChord = nChord
+        self.nSpan  = nSpan 
         # Spanwise arrays
-        self.DLY = np.zeros(nSpan_half)
-        self.US  = np.zeros(nSpan_half)
         # Chord arrays
         self.SNO = np.zeros(nChord + 1)
         self.CSO = np.zeros(nChord + 1)
-        self.GAMA1J = np.zeros(nChord + 1)
-        # 
-        self.QF = np.zeros((nChord + 1, nSpan_half + 1, 3))
-        self.CP = np.zeros((nChord, nSpan_half, 3))
-        self.GAMA = np.zeros((nChord, nSpan_half))
-        self.DL = np.zeros((nChord, nSpan_half))
-        self.DP = np.zeros((nChord, nSpan_half))
-        self.DS = np.zeros((nChord, nSpan_half))
-        self.DLT = np.zeros((nChord, nSpan_half))
-        self.DD = np.zeros((nChord, nSpan_half))
-        self.A1 = np.zeros((nChord, nSpan_half))
-        self.QW = np.zeros((NTMAX, nSpan_half + 1, 3))
-        self.VORTIC = np.zeros((NTMAX, nSpan_half))
-        self.UVW = np.zeros((NTMAX, nSpan_half + 1, 3))
-        self.QW1 = np.zeros((NTMAX, nSpan_half + 1, 3))
-        self.VORT1 = np.zeros((NTMAX, nSpan_half))
-        self.WTS = np.zeros((nChord, nSpan_half))
+        # Lifting surface
+        self.QF              = np.zeros((nChord + 1, nSpan + 1, 3))
+        self.CP              = np.zeros((nChord, nSpan, 3))
+        self.Gamma_LS        = np.zeros((nChord, nSpan))
+        self.Gamma_LS_prev   = np.zeros((nChord, nSpan))
+        self.Area            = np.zeros((nChord, nSpan))
+        self.dLT             = np.zeros((nChord, nSpan))
+        self.Uind_wake_on_LS = np.zeros((nChord, nSpan, 3))
+        # Wake
+        self.r_NW     = np.zeros((NTMAX, nSpan + 1, 3))
+        self.Gamma_NW = np.zeros((NTMAX, nSpan))
+        self.Uind_wake_on_wake = np.zeros((NTMAX, nSpan + 1, 3))
         # System arrays
-        self.WW    = np.zeros(nChord * nSpan_half)
-        self.A     = np.zeros((nChord * nSpan_half, nChord * nSpan_half))
-        self.DW    = np.zeros(nChord * nSpan_half)
-        self.GAMA1 = np.zeros(nChord * nSpan_half)
-        self.IP    = np.zeros(nChord * nSpan_half, dtype=np.int32)
-
-# Instantiate global data
-
-def vortex(X, Y, Z, X1, Y1, Z1, X2, Y2, Z2, GAMA):
+        self.WW    = np.zeros(nChord * nSpan)
+        self.AA    = np.zeros((nChord * nSpan, nChord * nSpan))
+        self.DW    = np.zeros(nChord * nSpan)
+        
+def vs_u_raw(CP, P1, P2, GAMA, **kwargs):
+    X, Y, Z = CP
+    X1, Y1, Z1 = P1
+    X2, Y2, Z2 = P2
     R1R2X = (Y - Y1) * (Z - Z2) - (Z - Z1) * (Y - Y2)
     R1R2Y = -((X - X1) * (Z - Z2) - (Z - Z1) * (X - X2))
     R1R2Z = (X - X1) * (Y - Y2) - (Y - Y1) * (X - X2)
@@ -97,83 +69,124 @@ def vortex(X, Y, Z, X1, Y1, Z1, X2, Y2, Z2, GAMA):
     R1 = np.sqrt((X - X1)**2 + (Y - Y1)**2 + (Z - Z1)**2)
     R2 = np.sqrt((X - X2)**2 + (Y - Y2)**2 + (Z - Z2)**2)
     if R1 < RCUT or R2 < RCUT or SQUARE < RCUT:
-        return 0.0, 0.0, 0.0
+        return np.array([0.0, 0.0, 0.0])
     R0R1 = (X2 - X1) * (X - X1) + (Y2 - Y1) * (Y - Y1) + (Z2 - Z1) * (Z - Z1)
     R0R2 = (X2 - X1) * (X - X2) + (Y2 - Y1) * (Y - Y2) + (Z2 - Z1) * (Z - Z2)
     COEF = GAMA / (4.0 * PI * SQUARE) * (R0R1 / R1 - R0R2 / R2)
     U = R1R2X * COEF
     V = R1R2Y * COEF
     W = R1R2Z * COEF
-    return U, V, W
+    return np.array([U, V, W])
 
-def wake(X, Y, Z, IT, Gammas, QW, NS):
-    U = 0.0
-    V = 0.0
-    W = 0.0
-    I1 = IT - 1
-    for I in range(I1):
-        for J in range(NS):
-            Gamma = Gammas[I, J]
-            U1, V1, W1 = vortex(X, Y, Z, QW[I, J, 0], QW[I, J, 1], QW[I, J, 2], QW[I+1, J, 0], QW[I+1, J, 1], QW[I+1, J, 2], Gamma)
-            U2, V2, W2 = vortex(X, Y, Z, QW[I+1, J, 0], QW[I+1, J, 1], QW[I+1, J, 2], QW[I+1, J+1, 0], QW[I+1, J+1, 1], QW[I+1, J+1, 2], Gamma)
-            U3, V3, W3 = vortex(X, Y, Z, QW[I+1, J+1, 0], QW[I+1, J+1, 1], QW[I+1, J+1, 2], QW[I, J+1, 0], QW[I, J+1, 1], QW[I, J+1, 2], Gamma)
-            U4, V4, W4 = vortex(X, Y, Z, QW[I, J+1, 0], QW[I, J+1, 1], QW[I, J+1, 2], QW[I, J, 0], QW[I, J, 1], QW[I, J, 2], Gamma)
+def UI_from_wake(CP, IT, r_NW, Gammas_NW, flip=False):
+    if flip:
+        CP = CP.copy()
+        CP[1] *= -1
+    U = np.zeros(3)
+    for I in range(IT):
+        for J in range(Gammas_NW.shape[1]):
+            Gamma = Gammas_NW[I, J]
+            U1 = vs_u_raw(CP, r_NW[I  , J   , :], r_NW[I+1, J  , :], Gamma, rcut_den=RCUT, rcut_norm=RCUT)
+            U2 = vs_u_raw(CP, r_NW[I+1, J   , :], r_NW[I+1, J+1, :], Gamma, rcut_den=RCUT, rcut_norm=RCUT)
+            U3 = vs_u_raw(CP, r_NW[I+1, J+1 , :], r_NW[I  , J+1, :], Gamma, rcut_den=RCUT, rcut_norm=RCUT)
+            U4 = vs_u_raw(CP, r_NW[I  , J+1 , :], r_NW[I  , J  , :], Gamma, rcut_den=RCUT, rcut_norm=RCUT)
             U += U1 + U2 + U3 + U4
-            V += V1 + V2 + V3 + V4
-            W += W1 + W2 + W3 + W4
-    return U, V, W
+    if flip:
+        U[1] *= -1
+    return U
 
-def veloce(X, Y, Z, IT, GD):
-    X1 = (X - GD.SX) * GD.CS1 + (Z - GD.SZ) * GD.SN1
-    Y1 = Y
-    Z1 = -(X - GD.SX) * GD.SN1 + (Z - GD.SZ) * GD.CS1
-    U1, V1, W1 = wake(X,  Y, Z, IT, GD.VORTIC, GD.QW, GD.nSpan_half)
-    U2, V2, W2 = wake(X, -Y, Z, IT, GD.VORTIC, GD.QW, GD.nSpan_half)
-    U3, V3, W3 = wing(X1,  Y1, Z1, GD.GAMA, GD.QF)
-    U4, V4, W4 = wing(X1, -Y1, Z1, GD.GAMA, GD.QF)
-    U = U1 + U2 + GD.CS1 * (U3 + U4) - GD.SN1 * (W3 + W4)
-    V = V1 - V2 + V3 - V4
-    W = W1 + W2 + GD.SN1 * (U3 + U4) + GD.CS1 * (W3 + W4)
-    return U, V, W
+def UI_from_all(CP, IT, r_NW, Gamma_NW, r_LS, Gamma_LS):
+    U1 = UI_from_wake(CP , IT, r_NW, Gamma_NW)
+    U2 = UI_from_wake(CP, IT, r_NW, Gamma_NW, flip=True)
+    U3 = UI_from_wing(CP, Gamma_LS, r_LS)
+    U4 = UI_from_wing(CP, Gamma_LS, r_LS, flip=True)
+    U = U1 + U2 + U3 + U4
+    return U
 
-def wing(X, Y, Z, GAMA, QF, A1=None, SNO=None, CSO=None):
-    U = 0.0
-    V = 0.0
-    W = 0.0
-    for I in range(QF.shape[0]-1):
-        for J in range(QF.shape[1]-1):
-            U1, V1, W1 = vortex(X, Y, Z, QF[I, J, 0], QF[I, J, 1], QF[I, J, 2], QF[I, J+1, 0], QF[I, J+1, 1], QF[I, J+1, 2], GAMA[I, J])
-            U2, V2, W2 = vortex(X, Y, Z, QF[I, J+1, 0], QF[I, J+1, 1], QF[I, J+1, 2], QF[I+1, J+1, 0], QF[I+1, J+1, 1], QF[I+1, J+1, 2], GAMA[I, J])
-            U3, V3, W3 = vortex(X, Y, Z, QF[I+1, J+1, 0], QF[I+1, J+1, 1], QF[I+1, J+1, 2], QF[I+1, J, 0], QF[I+1, J, 1], QF[I+1, J, 2], GAMA[I, J])
-            U4, V4, W4 = vortex(X, Y, Z, QF[I+1, J, 0], QF[I+1, J, 1], QF[I+1, J, 2], QF[I, J, 0], QF[I, J, 1], QF[I, J, 2], GAMA[I, J])
+def UI_mat_from_wing(CP, Gamma_LS, r_LS, n_hat, flip=False):
+    if flip:
+        CP = CP.copy()
+        CP[1] *= -1
+
+    nChord, nSpan = Gamma_LS.shape[0:2]
+    Un = np.zeros((nChord, nSpan))
+
+    for I in range(r_LS.shape[0]-1):
+        for J in range(r_LS.shape[1]-1):
+            U1 = vs_u_raw(CP, r_LS[I  , J  , :], r_LS[I  , J+1, :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U2 = vs_u_raw(CP, r_LS[I  , J+1, :], r_LS[I+1, J+1, :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U3 = vs_u_raw(CP, r_LS[I+1, J+1, :], r_LS[I+1, J  , :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U4 = vs_u_raw(CP, r_LS[I+1, J  , :], r_LS[I  , J  , :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U = U1 + U2 + U3 + U4
+            Un[I, J] = U[0] * n_hat[I, J, 0] + U[2] * n_hat[I, J, 2]
+    return Un
+
+
+def UI_from_wing(CP, Gamma_LS, r_LS, flip=False):
+    if flip:
+        CP = CP.copy()
+        CP[1] *= -1
+    U = np.zeros(3)
+    for I in range(r_LS.shape[0]-1):
+        for J in range(r_LS.shape[1]-1):
+            U1 = vs_u_raw(CP, r_LS[I  , J  , :], r_LS[I  , J+1, :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U2 = vs_u_raw(CP, r_LS[I  , J+1, :], r_LS[I+1, J+1, :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U3 = vs_u_raw(CP, r_LS[I+1, J+1, :], r_LS[I+1, J  , :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U4 = vs_u_raw(CP, r_LS[I+1, J  , :], r_LS[I  , J  , :], Gamma_LS[I, J], rcut_den=RCUT, rcut_norm=RCUT)
             U0 = U1 + U2 + U3 + U4
-            V0 = V1 + V2 + V3 + V4
-            W0 = W1 + W2 + W3 + W4
-            if A1 is not None:
-                A1[I, J] = U0 * SNO[I] + W0 * CSO[I]
             U += U0
-            V += V0
-            W += W0
-    return U, V, W
+    if flip:
+        U[1] *= -1
+    return U
 
-def wingl(X, Y, Z, GAMA, QF):
-    U = 0.0
-    V = 0.0
-    W = 0.0
-    for I in range(QF.shape[0]-1):
-        for J in range(QF.shape[1]-1):
-            U2, V2, W2 = vortex(X, Y, Z, QF[I, J+1, 0], QF[I, J+1, 1], QF[I, J+1, 2], QF[I+1, J+1, 0], QF[I+1, J+1, 1], QF[I+1, J+1, 2], GAMA[I, J])
-            U4, V4, W4 = vortex(X, Y, Z, QF[I+1, J, 0], QF[I+1, J, 1], QF[I+1, J, 2], QF[I, J, 0], QF[I, J, 1], QF[I, J, 2], GAMA[I, J])
+def UI_from_wing_trailed(CP, Gamma, r_LS, flip=False):
+    if flip:
+        CP = CP.copy()
+        CP[1] *= -1
+    U = np.zeros(3)
+    for I in range(r_LS.shape[0]-1):
+        for J in range(r_LS.shape[1]-1):
+            U2 = vs_u_raw(CP, r_LS[I  , J+1, :], r_LS[I+1, J+1, :], Gamma[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            U4 = vs_u_raw(CP, r_LS[I+1, J  , :], r_LS[I  , J  , :], Gamma[I, J], rcut_den=RCUT, rcut_norm=RCUT)
+            #print(f"WG{I+1:5d}{J+1:5d}{Gamma[I, J]:15.6f}")
+            #print(f"WQ{I+1:5d}{J+1:5d}{r_LS[I, J+1, 0]:15.6f}{r_LS[I, J+1, 1]:15.6f}{r_LS[I, J+1, 2]:15.6f}")
+            #print(f"WQ{I+1:5d}{J+1:5d}{r_LS[I+1, J, 0]:15.6f}{r_LS[I+1, J, 1]:15.6f}{r_LS[I+1, J, 2]:15.6f}")
+            #print(f"WQ{I+1:5d}{J+1:5d}{r_LS[I+1, J+1, 0]:15.6f}{r_LS[I+1, J+1, 1]:15.6f}{r_LS[I+1, J+1, 2]:15.6f}")
+            #print(f"WX{I+1:5d}{J+1:5d}{CP[0]:15.6f}{CP[1]:15.6f}{CP[2]:15.6f}")
+            #print(f"WU{I+1:5d}{J+1:5d}{U2[0]:15.6f} {U2[1]:15.6f} {U2[2]:15.6f}")
             U += U2 + U4
-            V += V2 + V4
-            W += W2 + W4
-    I = QF.shape[0]-2
-    for J in range(QF.shape[1]-1):
-        U3, V3, W3 = vortex(X, Y, Z, QF[I+1, J+1, 0], QF[I+1, J+1, 1], QF[I+1, J+1, 2], QF[I+1, J, 0], QF[I+1, J, 1], QF[I+1, J, 2], GAMA[I, J])
+    I = r_LS.shape[0]-2
+    for J in range(r_LS.shape[1]-1):
+        U3 = vs_u_raw(CP, r_LS[I+1, J+1, :], r_LS[I+1, J, :], Gamma[I, J], rcut_den=RCUT, rcut_norm=RCUT)
         U += U3
-        V += V3
-        W += W3
-    return U, V, W
+    if flip:
+        U[1] *= -1
+#   subroutine WINGL(X, Y, Z, GAMA, U, V, W)
+#     ! Calculate induced velocity for induced drag calculation
+#     U = 0.0_MK
+#     V = 0.0_MK
+#     W = 0.0_MK
+#     do I = 1, NC
+#       do J = 1, NS
+#         call VORTEX(X, Y, Z, QF(I,J+1,1), QF(I,J+1,2), QF(I,J+1,3), QF(I+1,J+1,1), QF(I+1,J+1,2), QF(I+1,J+1,3), GAMA(I,J), U2, V2, W2)
+#         call VORTEX(X, Y, Z, QF(I+1,J,1), QF(I+1,J,2), QF(I+1,J,3), QF(I,J,1), QF(I,J,2), QF(I,J,3), GAMA(I,J), U4, V4, W4)
+#         U = U + U2 + U4
+#         V = V + V2 + V4
+#         W = W + W2 + W4
+#       end do
+#     end do
+#     ! Add influence of latest unsteady wake element
+#     I = NC
+#     do J = 1, NS
+#       call VORTEX(X, Y, Z, QF(I+1,J+1,1), QF(I+1,J+1,2), QF(I+1,J+1,3), QF(I+1,J,1), QF(I+1,J,2), QF(I+1,J,3), GAMA(I,J), U3, V3, W3)
+#       U = U + U3
+#       V = V + V3
+#       W = W + W3
+#     end do
+#   end subroutine WINGL
+
+
+    return np.array(U)
 
 def rectangularWingPanelling(nChord, nSpan,  bSpan, chord, vSpan=None, vChord=None, NW_length=0.5):
     if vSpan is not None:
@@ -183,25 +196,22 @@ def rectangularWingPanelling(nChord, nSpan,  bSpan, chord, vSpan=None, vChord=No
         vSpan = np.linspace(0, bSpan, nSpan+1)
         vChord = np.linspace(0, chord, nChord+1)
 
-    S = bSpan * chord
-    AR = 2.0 * bSpan**2 / S
-
     vChord_QP = vChord+0.25*chord/nChord
     vSpan_CP  = (vSpan[:-1] + vSpan[1:]) / 2
     vChord_CP = (vChord_QP[:-1] + vChord_QP[1:]) / 2
 
-    QF = np.zeros((nChord + 1, nSpan + 1, 3))
+    r_LS = np.zeros((nChord + 1, nSpan + 1, 3))
     CP = np.zeros((nChord, nSpan, 3))
-    DS = np.zeros((nChord, nSpan))
+    Area = np.zeros((nChord, nSpan))
     for J in range(nSpan+1):
         for I in range(nChord+1):
-            QF[I, J, 0] = vChord_QP[I]
-            QF[I, J, 1] = vSpan[J]
-            QF[I, J, 2] = 0
+            r_LS[I, J, 0] = vChord_QP[I]
+            r_LS[I, J, 1] = vSpan[J]
+            r_LS[I, J, 2] = 0
     # Last chord point governed by NW_length
-    QF[nChord, :, 0] = chord + NW_length
-    QF[nChord, :, 1] = vSpan
-    QF[nChord, :, 2] = 0 
+    r_LS[nChord, :, 0] = chord + NW_length
+    r_LS[nChord, :, 1] = vSpan
+    r_LS[nChord, :, 2] = 0 
 
     for J in range(nSpan):
         for I in range(nChord):
@@ -211,321 +221,514 @@ def rectangularWingPanelling(nChord, nSpan,  bSpan, chord, vSpan=None, vChord=No
     # Compute differential surface areas
     for J in range(nSpan):
         for I in range(nChord):
-            DS[I, J] = (vChord[I+1]- vChord[I]) * (vSpan[J+1]- vSpan[J])
-    return QF, CP, DS, vSpan, vChord, S, AR
+            Area[I, J] = (vChord[I+1]- vChord[I]) * (vSpan[J+1]- vSpan[J])
+    return r_LS, CP, Area, vSpan, vChord
 
-def rotateWing(QF, CP, ALFA):
-    nChord, nSpan = CP.shape[0], CP.shape[1]
-    # Rotate coordinates
-    SIN, COS = np.sin(-ALFA), np.cos(-ALFA)
-    for I in range(nChord+1):
-        for J in range(nSpan+1):
-            QF1 = QF[I, J, 0]
-            QF[I, J, 0] = QF1 * COS - QF[I, J, 2] * SIN
-            QF[I, J, 2] = QF1 * SIN + QF[I, J, 2] * COS
-    for I in range(nChord):
-        for J in range(nSpan):
-            CP1 = CP[I, J, 0]
-            CP[I, J, 0] = CP1 * COS - CP[I, J, 2] * SIN
-            CP[I, J, 2] = CP1 * SIN + CP[I, J, 2] * COS
-    return QF, CP
+def rotAndTrans_abs(P0, theta, translation=(0,0,0)):
+    """
+    Positive Rotation about y
+    ------------------------- 
+    [X_rot] =  [ C  S ] [X]
+    [Z_rot] =  [-S  C ] [Z]
+    Change of coordinate from local to inertial:
+    [X]  =  [ C  S ] [x] 
+    [Z]i =  [-S  C ] [z]b
+    """
+    P = np.zeros_like(P0)
+    CS = np.cos(theta)
+    SN = np.sin(theta)
+    P[:,:, 0] =  P0[:, :, 0] * CS + P0[:, :, 2] * SN + translation[0]
+    P[:,:, 1] =  P0[:, :, 1]                         + translation[1]
+    P[:,:, 2] = -P0[:, :, 0] * SN + P0[:, :, 2] * CS + translation[2]
+    return P
 
+def rotAndTrans_abs_opp(P0, theta, translation=(0,0,0)):
+    # NOTE: I disaggree with this sign convention
+    P = np.zeros_like(P0)
+    CS = np.cos(theta)
+    SN = np.sin(theta)
+    P[:,:, 0] = P0[:, :, 0] * CS - P0[:, :, 2] * SN + translation[0]
+    P[:,:, 1] = P0[:, :, 1]                         + translation[1]
+    P[:,:, 2] = P0[:, :, 0] * SN + P0[:, :, 2] * CS + translation[2]
+    return P
 
-def computeA(ALFA, GD):
+def inertial_to_body_theta(Vi, theta):
+    Vb = np.zeros_like(Vi)
+    CS = np.cos(theta)
+    SN = np.sin(theta)
+    Vb[0] = Vi[0] * CS - Vi[2] * SN
+    Vb[1] = Vi[1]
+    Vb[2] = Vi[0] * SN + Vi[2] * CS
+    return Vb
+
+def computeA(CP, r_LS, GD, n_hat):
     # --- Compute A
     K = 0
-    for I in range(GD.nChord):
-        for J in range(GD.nSpan_half):
-            U, V, W = wing(GD.CP[I, J, 0], GD.CP[I, J, 1], GD.CP[I, J, 2], GD.GAMA, GD.QF, GD.A1, GD.SNO, GD.CSO)
+    nChord, nSpan = CP.shape[0:2]
+    Gamma_LS = np.ones((nChord, nSpan)) # Unit circulation
+    A  = np.zeros((nChord * nSpan, nChord * nSpan))
+    for I in range(nChord):
+        for J in range(nSpan):
+            A1 = UI_mat_from_wing(CP[I, J, :], Gamma_LS, r_LS, n_hat)
             L = 0
-            for I1 in range(GD.nChord):
-                for J1 in range(GD.nSpan_half):
-                    GD.A[K, L] = GD.A1[I1, J1]
+            for I1 in range(nChord):
+                for J1 in range(nSpan):
+                    A[K, L] = A1[I1, J1]
                     L += 1
-            U, V, W = wing(GD.CP[I, J, 0], -GD.CP[I, J, 1], GD.CP[I, J, 2], GD.GAMA, GD.QF, GD.A1, GD.SNO, GD.CSO)
+            A1 = UI_mat_from_wing(CP[I,J, :], Gamma_LS, r_LS, n_hat, flip=True)
             L = 0
-            for I1 in range(GD.nChord):
-                for J1 in range(GD.nSpan_half):
-                    GD.A[K, L] += GD.A1[I1, J1]
+            for I1 in range(nChord):
+                for J1 in range(nSpan):
+                    A[K, L] += A1[I1, J1]
                     L += 1
             K += 1
+    return A
 
 
-def main(nChord=4, nSpan_half=13, nStep=10, chord=1, span=8.0, outputDir=''):
+def panlInfo(r, spanFirst=True):
+    if not spanFirst:
+        r   = np.transpose(r, (1, 0, 2))  # (nSpan, nDepth, 3)
+    nSpanP1, nChordP1, _ = r.shape
+    nSpan = nSpanP1- 1
+    nChord = nChordP1- 1
+    Tang = np.zeros((nSpan, nChord, 3))
+    Norm = np.zeros((nSpan, nChord, 3))
+    Orth = np.zeros((nSpan, nChord, 3))
+    dl   = np.zeros((nSpan, nChord, 3))
+    Area = np.zeros((nSpan, nChord))
+    for iChord in range(nChord):
+        for iSpan in range(nSpan):
+            P1     = r[iSpan  , iChord  , :]
+            P2     = r[iSpan  , iChord+1, :]
+            P3     = r[iSpan+1, iChord+1, :]
+            P4     = r[iSpan+1, iChord  , :]
+            P8     = (P1+P4)/2
+            P6     = (P2+P3)/2
+            P5     = (P1+P2)/2
+            P7     = (P4+P3)/2
+            P9     = 0.75*P1+0.25*P2
+            P10    = 0.75*P4+0.25*P3
+            DP1    = P6-P8
+            DP2    = P10-P9
+            DP3    = P7-P5
+            Tang[iSpan, iChord] = (DP1)/np.linalg.norm(DP1) # tangential unit vector, along chord
+            Norm[iSpan, iChord] = np.cross(DP1,DP2)
+            Norm[iSpan, iChord] /= np.linalg.norm(Norm[iSpan, iChord])
+            dl  [iSpan, iChord]  = DP2
+            Orth[iSpan, iChord]  = np.cross(Norm[iSpan, iChord], Tang[iSpan, iChord]) # orthogonal vector to N and T
+            Area[iSpan] = np.linalg.norm(np.cross(DP1,DP3))
+    if not spanFirst:
+        Norm = np.transpose(Norm, (1, 0, 2))
+        Tang = np.transpose(Tang, (1, 0, 2))
+        Orth = np.transpose(Orth, (1, 0, 2))
+        dl   = np.transpose(dl, (1, 0, 2))
+        Area = np.transpose(Area, (1, 0))
+    return Norm, Tang, Orth, Area, dl
+
+
+def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5, 
+         omega_pitch=0, A_pitch=0,
+         omega_heave=0, A_heave=0, 
+         U0=10.0, U0_wind=0, U0_body=0, rho=1.0, outputDir='', simName='default', motionType='body',
+         debug_print=False
+         ):
+    
+
+    V_wind_i = np.zeros(3) # Wind velocity in inertial frame
+    U0_body_b = 0
+
+    if motionType=='body':
+        U0_body_b = U0
+    elif motionType=='wind':
+        U0_body_b = 0
+        V_wind_i[0]  = U0
+    elif motionType=='mixed':
+        V_wind_i[0]  = U0_wind
+        U0_body_b = U0_body
+        U0 = U0_wind # We chose wind as a ref velocity
+    else:
+        raise NotImplementedError('Unknown motionType '+motionType)
+
+
     GD = GLOBAL_DATA()
-    GD.nChord     = nChord
-    GD.nSpan_half = nSpan_half 
     # Initialize arrays
-    GD.initialize_arrays(GD.nChord, GD.nSpan_half, PARAMS['NTMAX'])
+    GD.initialize_arrays(nChord, nSpan, nStep)
 
-    # Input data
-    RO = 1.0
-    BH = 0.0
-    OM = 0.0
-    VINF = 10.0
-
-    chord = 1.0
-    B = span/2.0 # TODO
+    # --- Derived parameters
+    Vref = U0
+    VINF = U0 # TODO
+    span_half = span/2.0 # TODO
     DX = chord / GD.nChord
-    ALFA1 = 5.0
-    ALFAO = 0.0
-    ALFA = (ALFA1 + ALFAO) * PI / 180.0
-    DT = DX / VINF / 4.0
+    alpha = alpha * PI / 180.0
+    DT = DX / Vref / 4.0
     T = -DT
-    NW_length = 0.3 * VINF * DT
+    NW_length = 0.3 * Vref * DT
 
-    # Initialize constants
-    K = 0
-    for I in range(GD.nChord):
-        for J in range(GD.nSpan_half):
-            GD.WW[K] = 0.0
-            GD.DLT[I, J] = 0.0
-            GD.VORTIC[I, J] = 0.0
-            GD.VORT1[I, J] = 0.0
-            GD.GAMA[I, J] = 1.0  # For influence matrix calculations
-            K += 1
+    S_half = span_half * chord
+    AR = 2.0 * span_half**2 / S_half
+
+    # --- Reference data for wing
+    CL_ref = 2.0 * PI * alpha / (1.0 + 2.0 / AR)
+    if abs(CL_ref) < 1.0e-20:
+        CL_ref = CL
+    FG_ref = (0.5 * Vref * S_half) * CL_ref
 
     # --- Wing geometry
     # Mesh wing and calculate collocation points
-    GD.QF, GD.CP, GD.DS, vSpan, vChord, S, AR = rectangularWingPanelling(GD.nChord, GD.nSpan_half, bSpan = B, chord=chord, NW_length=NW_length)
-    GD.QF, GD.CP = rotateWing(GD.QF, GD.CP, ALFA)
+    GD.r_LS, GD.CP, GD.Area, vSpan, vChord = rectangularWingPanelling(GD.nChord, GD.nSpan, bSpan = span_half, chord=chord, NW_length=NW_length)
+    # GD.r_LS2, GD.CP2 = rotAndTrans(GD.r_LS, -alpha, )
+    GD.r_LS = rotAndTrans_abs(GD.r_LS, alpha) # Positive rotation about y
+    GD.CP    = rotAndTrans_abs(GD.CP , alpha)
     GD.dl_LL = np.diff(vSpan)
+    Norm0, Tang0, Orth0, Area0, dl0 = panlInfo(GD.r_LS, spanFirst=False)
 
-    if nChord==4 and nSpan_half==13 and span==8:
-        np.testing.assert_almost_equal(S, 4.0)
-        np.testing.assert_almost_equal(GD.QF[0,:,0], [0.06226217]*14)
-        np.testing.assert_almost_equal(GD.QF[1,:,0], [0.3113108]*14)
-        np.testing.assert_almost_equal(GD.QF[-1,:,0], [1.0148733]*14) 
-        np.testing.assert_almost_equal(GD.QF[:,0,1], [0]*5 )
-        np.testing.assert_almost_equal(GD.QF[:,1,1], [0.3076923]*5 )
-        np.testing.assert_almost_equal(GD.QF[:,-1,1], [4]*5 )
-        np.testing.assert_almost_equal(np.unique(GD.QF[:,:,2]), [-0.08878991, -0.07081404, -0.04902511, -0.02723617, -0.00544723])
-        np.testing.assert_almost_equal(GD.CP[0,:,0], [0.1867865]*13)
-        np.testing.assert_almost_equal(GD.CP[1,:,0], [0.4358352]*13)
-        np.testing.assert_almost_equal(GD.CP[-1,:,0], [0.9339325]*13) 
-        np.testing.assert_almost_equal(GD.CP[:,0,1], [0.1538462]*4)
-        np.testing.assert_almost_equal(np.unique(GD.CP[:,:,2]), [-0.0817085, -0.0599196, -0.0381306, -0.0163417])
-        np.testing.assert_almost_equal(GD.DS.flatten(), [0.0769231]*13*4)
+    # Backup Initial position for rigid body motion
+    GD.CP0 = GD.CP.copy()
+    GD.r_LS0 = GD.r_LS.copy()
 
+    if nChord==4 and nSpan==13 and span==8:
+        test_geometry(GD, S_half)
+
+    # --- Output initial geometry to screen
+    print("-" * 56)
+    print(f" alpha: {alpha*180/np.pi:10.2f}  span_half : {span_half:10.2f}  C : {chord:13.2f}")
+    print(f" Heave  : {omega_heave:10.2f}rad/s   A: {A_heave:13.2f} k={omega_heave*chord/(2*U0)}")
+    print(f" S_half : {S_half:10.2f}  AR : {AR:13.2f}")
+    print(f" nChord : {GD.nChord:10d}  NS : {GD.nSpan:10d} \n")
+    # Ensure output directory exists
+    os.makedirs("_outputs", exist_ok=True)
+    os.makedirs("_vtk", exist_ok=True)
+    with open("_outputs/uLS_{}.csv".format(simName), "w") as f:
+        f.write("#SX,T,SZ,VINF,TETA,OMEGA,CL,L,CM,CD,CL_rel,Gamma_rel,omT\n")
 
     # --- Compute A
     # TODO, could that change? NOTE: some local inclination was added in original code
-    GD.SNO[:GD.nChord] = np.sin(ALFA)
-    GD.CSO[:GD.nChord] = np.cos(ALFA)
-    computeA(ALFA, GD)
+    GD.SNO[:GD.nChord] = np.sin(alpha)
+    GD.CSO[:GD.nChord] = np.cos(alpha)
+    GD.AA = computeA(GD.CP0, GD.r_LS0, GD, Norm0)
+    if debug_print:
+        for K in range(GD.AA.shape[0]):
+            for L in range(GD.AA.shape[1]):
+                print(f"AA {K+1:5d} {L+1:5d} {GD.AA[K, L]:15.6f}")
 
-    # Output initial geometry
-    print("-" * 56)
-    print(f" ALFA: {ALFA1:10.2f}  B : {B:10.2f}  C : {chord:13.2f}")
-    print(f" S : {S:10.2f}  AR : {AR:13.2f}")
-    print(f" nChord : {GD.nChord:10d}  NS : {GD.nSpan_half:10d} \n")
-    NC1 = GD.nChord + 1
-    NS1 = GD.nSpan_half + 1
+    # --- Main time-stepping loop
+    for IT in range(nStep):
 
-    # Ensure output directory exists
-    os.makedirs("_outputs", exist_ok=True)
-    with open("_outputs/uLS.csv", "w") as f:
-        f.write("#SX,T,SZ,VINF,TETA,OMEGA,CL,L,CM,CD,CL_rel,Gamma_rel\n")
+        # --- Wake rollup calculation between T and T+DT  - Update Continuous States from T to T+DT
+        # Freestream rollup contribution
+        GD.Uind_wake_on_wake[:, :, 0] = V_wind_i[0]
+        GD.Uind_wake_on_wake[:, :, 1] = V_wind_i[1]
+        GD.Uind_wake_on_wake[:, :, 2] = V_wind_i[2]
+        # Wake self-induced contribution
+        IT_loc = IT-1
+        if IT_loc >= 1:
+            IW = 0
+            NWMAX = 5    # Max wake roll up elements
+            if IT_loc >= NWMAX-1:
+                IW = IT_loc - NWMAX + 1
+            for iAge in range(IW, IT_loc):
+                for iSpan in range(GD.nSpan+1):
+                    U = UI_from_all(GD.r_NW[iAge, iSpan, :], IT_loc, GD.r_NW, GD.Gamma_NW, GD.r_LS, GD.Gamma_LS)
+                    GD.Uind_wake_on_wake[iAge, iSpan, :] += U
+        GD.r_NW += GD.Uind_wake_on_wake*DT #GD.r_NW[IW-1:IT-1, :nSpanP1, :] += GD.Uind_wake_on_wake[IW-1:IT-1, :nSpanP1, :]*DT
 
-
-
-
-    GD.rWingh= np.zeros_like(GD.QF)
-    # Main time-stepping loop
-    for IT in range(1, nStep + 1):
         T += DT
 
-        # Path information
-        GD.SX = -VINF * T
-        DSX = -VINF
-        SZ = BH * np.sin(OM * T)
-        DSZ = BH * OM * np.cos(OM * T)
-        TETA = 0.0
-        OMEGA = 0.0
-        VINF = -np.cos(TETA) * DSX - np.sin(TETA) * DSZ
-        GD.SN1 = np.sin(TETA)
-        GD.CS1 = np.cos(TETA)
-        WT = GD.SN1 * DSX - GD.CS1 * DSZ
-        GD.SNO[:GD.nChord] = np.sin(ALFA) # NOTE: add local inclination
-        GD.CSO[:GD.nChord] = np.cos(ALFA)
+        # --- Rigid body motion - Positions at t+DT - Inputs at T+DT
+        # Absolute structural displacement of body origin in inertial frame
+        rO_str_i = np.zeros(3) 
+        rO_str_i[0] = -U0_body_b * T # We are going along negative x
+        rO_str_i[2] = A_heave * np.sin(omega_heave * T)
+        # V0_str_i = dr0/dt - Absolute structural velocity of body origin in inertial frame
+        # TODO there is a choice as to what U0_body_b means. It sounds like KP defines it ias always along x_body
+        VO_str_i = np.zeros(3) 
+        VO_str_i[0] = - U0_body_b  # TODO or V0_str_b[0] = -U0_body_b
+        VO_str_i[2] = A_heave * omega_heave * np.cos(omega_heave * T)
+
+        # Rotate
+        TETA = A_pitch * np.sin(omega_pitch * T) # Pitch angle, NOTE: I THINK IT'S USING A NEGATIVE CONVENTION
+        SN1 = np.sin(TETA)
+        CS1 = np.cos(TETA)
+        # ###  VINF = -np.cos(TETA) * DSX - np.sin(TETA) * DSZ # TODO COMMENTED OUT
+        VO_str_b = inertial_to_body_theta(VO_str_i, TETA)
+        VO_str_b[0] =- U0_body_b # TODO TODO HACK
 
 
-        GD.rWingh[:,:, 0] = GD.QF[:, :, 0] * GD.CS1 - GD.QF[:, :, 2] * GD.SN1 + GD.SX
-        GD.rWingh[:,:, 1] = GD.QF[:, :, 1]
-        GD.rWingh[:,:, 2] = GD.QF[:, :, 0] * GD.SN1 + GD.QF[:, :, 2] * GD.CS1 + SZ
+        # NOTE: I DISAGREE WITH THIS, LIKELY WRONG TETA CONVENTION
+        WT = - ( - SN1 * VO_str_i[0] + CS1 * VO_str_i[2])
 
+        # DSX = -VINF
+        # DSZ = BH * OM * cos(OM * T)
+        # WT =  SN1 * DSX - CS1 * DSZ
 
+        GD.SNO[:GD.nChord] = np.sin(alpha) # NOTE: add local inclination
+        GD.CSO[:GD.nChord] = np.cos(alpha)
 
-
-
+        GD.r_LS = rotAndTrans_abs_opp(GD.r_LS0, TETA, rO_str_i) # TODO I think convention is wrong for TETA
+        GD.CP   = rotAndTrans_abs_opp(GD.CP0  , TETA, rO_str_i)
 
         # Vectorized wake shedding points
-        GD.QW[IT-1, :, 0] = GD.QF[NC1-1, :, 0] * GD.CS1 - GD.QF[NC1-1, :, 2] * GD.SN1 + GD.SX
-        GD.QW[IT-1, :, 1] = GD.QF[NC1-1, :, 1]
-        GD.QW[IT-1, :, 2] = GD.QF[NC1-1, :, 0] * GD.SN1 + GD.QF[NC1-1, :, 2] * GD.CS1 + SZ
+        GD.r_NW[IT, :, :] = GD.r_LS[GD.nChord, :, :]  # Last wing point is first NW point
 
-        # Aerodynamic calculations
+        # --- Solving circulation on LS and NW at T+DT - Solve Constraint at T+DT
+        # Induced velocities on LS
         K = 0
-        if IT > 1:
+        if IT > 0:
             for I in range(GD.nChord):
-                for J in range(GD.nSpan_half):
-                    W11 = 0.0
-                    XX1 = GD.CP[I, J, 0] * GD.CS1 - GD.CP[I, J, 2] * GD.SN1 + GD.SX
-                    ZZ1 = GD.CP[I, J, 0] * GD.SN1 + GD.CP[I, J, 2] * GD.CS1 + SZ
-                    U, V, W =    wake(XX1,  GD.CP[I, J, 1], ZZ1, IT, GD.VORTIC, GD.QW, GD.nSpan_half)
-                    U1, V1, W1 = wake(XX1, -GD.CP[I, J, 1], ZZ1, IT, GD.VORTIC, GD.QW, GD.nSpan_half)
+                for J in range(GD.nSpan):
+                    U =  UI_from_wake(GD.CP[I, J, :], IT,  GD.r_NW, GD.Gamma_NW)
+                    U1 = UI_from_wake(GD.CP[I, J, :], IT,  GD.r_NW, GD.Gamma_NW, flip=True)
                     U = U + U1
-                    W = W + W1
-                    U11 = U * GD.CS1 + W * GD.SN1
-                    W11 = -U * GD.SN1 + W * GD.CS1
-                    GD.WW[K] = U11 * GD.SNO[I] + W11 * GD.CSO[I]
-                    GD.DW[K] = -VINF * GD.SNO[I] + GD.CP[I, J, 0] * OMEGA - WT
-                    GD.WTS[I, J] = W11
+                    # From inertial to non-pitched body frame
+                    U11, _, W11 = inertial_to_body_theta(U, -TETA) # TODO WRONG CONVENTION
+                    #U11 =  U[0] * CS1 + U[2] * SN1 # Theta projection if any pitching
+                    #W11 = -U[0] * SN1 + U[2] * CS1
+                    # From body-frame to normal of each panel
+                    # OK: Un = u|b * sin("alpha") + w|b * cos("alpha")
+                    GD.WW[K] = U11 * GD.SNO[I] + W11 * GD.CSO[I] # np.dot( Norm0[I,J], (U11, 0, W11))
+                    GD.Uind_wake_on_LS[I, J, 2] = W11 # NOTE: projected by theta
                     K += 1
-        else:
-            for I in range(GD.nChord):
-                for J in range(GD.nSpan_half):
-                    W11 = 0.0
-                    GD.DW[K] = -VINF * GD.SNO[I] + GD.CP[I, J, 0] * OMEGA - WT
-                    GD.WTS[I, J] = W11
-                    K += 1
-
-        # Solve the linear system
-        K1 = GD.nChord * GD.nSpan_half
-        GD.GAMA1[:K1] = GD.DW[:K1] - GD.WW[:K1]
-        if IT == 1:
-            LU, PIV = lu_factor(GD.A[:K1, :K1])
-        GD.GAMA1[:K1] = lu_solve((LU, PIV), GD.GAMA1[:K1])
-
-        # Wing vortex lattice listing
+        # RHS - 
         K = 0
         for I in range(GD.nChord):
-            for J in range(GD.nSpan_half):
-                GD.GAMA[I, J] = GD.GAMA1[K]
+            for J in range(GD.nSpan):
+                # NOTE: this is about -n it seems
+                # NOTE: MANU: I DISAGREE WITH MOST OF THE TERMS BELOW
+                #   - NOTE: omega r below is for rotation about origin (LE), with r taken at t=0 where the angle of attack is already included
+                GD.DW[K] = 0
+                GD.DW[K] += -VINF * GD.SNO[I]    # -V0_str_i . n_hat, OK only if V0_str_b[0] = VINF
+                # GD.DW[K] += VO_str_b[0] * GD.SNO[I]  # V0_str_i . n_hat, OK only if V0_str_b[0] = VINF
+                # GD.DW[K] += - V_wind_b[0] * GD.SNO[I] - V_wind_b[2] * GD.CSO[I] # - Vwind . n_hat
+
+                GD.DW[K] += GD.CP0[I, J, 0] * omega_pitch  # I DISAGREE, it should be CP0 before rotation by alpha
+                GD.DW[K] += - WT # TODO I THINK IT NEEDS further projection using SNO and CSO
                 K += 1
 
-        # Wake shedding
-        GD.VORTIC[IT-1, :GD.nSpan_half] = GD.GAMA[GD.nChord-1, :]
-        GD.VORTIC[IT, :GD.nSpan_half] = 0.0
+        # Solve the linear system
+        RHS = GD.DW - GD.WW # NOTE: I'd like the opposite, but that's likely because of the Gamma Convention of KP
+        if IT == 0:
+            LU, PIV = lu_factor(GD.AA)
+        Gamma_LS_flat = lu_solve((LU, PIV), RHS)
+        # Reshape the solution on the lifting surface lattice
+        GD.Gamma_LS = Gamma_LS_flat.reshape(GD.nChord, GD.nSpan)
+        # Assign Circulation of first Near wake panel to match Kutta condition
+        GD.Gamma_NW[IT, :] = GD.Gamma_LS[GD.nChord-1, :]
 
-        # Wake rollup calculation
-        IW = 1
-        NWMAX = 5    # Max wake roll up elements
-        if IT >= 2:
-            if IT >= NWMAX:
-                IW = IT - NWMAX + 1
-            for I in range(IW-1, IT-1):
-                for J in range(NS1):
-                    U, V, W = veloce(GD.QW[I, J, 0], GD.QW[I, J, 1], GD.QW[I, J, 2], IT, GD)
-                    GD.UVW[I, J, :] = [U * DT, V * DT, W * DT]
-            GD.QW[IW-1:IT-1, :NS1, :] += GD.UVW[IW-1:IT-1, :NS1, :]
+        if debug_print:
+            for K in range(nSpan * nChord):
+                print(f"K {IT+1:4d} {K+1:4d} {GD.DW[K]:10.4f} {GD.WW[K]:10.4f} {Gamma_LS_flat[K]:10.4f}")
+            if IT == 9:
+                raise ValueError("Test failed")
 
-        # Force calculations
-        FL = FD = FM = FG = 0.0
-        QUE = 0.5 * RO * VINF * VINF
-        for J in range(GD.nSpan_half):
-            SIGMA = 0.0
-            SIGMA1 = 0.0
-            GD.DLY[J] = 0.0
-            for I in range(GD.nChord):
-                if I == 0:
-                    GAMAIJ = GD.GAMA[I, J]
-                else:
-                    GAMAIJ = GD.GAMA[I, J] - GD.GAMA[I-1, J]
-                DXM = (GD.QF[I, J, 0] + GD.QF[I, J+1, 0]) / 2.0
-                SIGMA1 = (0.5 * GAMAIJ + SIGMA) * DX
-                SIGMA = GD.GAMA[I, J]
-                DFDT = (SIGMA1 - GD.DLT[I, J]) / DT
-                GD.DLT[I, J] = SIGMA1
-                GD.DL[I, J] = RO * (VINF * GAMAIJ + DFDT) * GD.dl_LL[J] * GD.CSO[I]
-                U1, V1, W1 = wingl(GD.CP[I, J, 0],  GD.CP[I, J, 1], GD.CP[I, J, 2], GD.GAMA, GD.QF)
-                U2, V2, W2 = wingl(GD.CP[I, J, 0], -GD.CP[I, J, 1], GD.CP[I, J, 2], GD.GAMA, GD.QF)
-                W8 = W1 + W2
-                CTS = -(GD.WTS[I, J] + W8) / VINF
-                DD1 = RO * GD.dl_LL[J] * DFDT * GD.SNO[I]
-                DD2 = RO * GD.dl_LL[J] * VINF * GAMAIJ * CTS
-                GD.DD[I, J] = DD1 + DD2
-                GD.DP[I, J] = GD.DL[I, J] / GD.DS[I, J] / QUE
-                GD.DLY[J] += GD.DL[I, J]
-                FL += GD.DL[I, J]
-                FD += GD.DD[I, J]
-                FM += GD.DL[I, J] * DXM
-                FG += GAMAIJ * GD.dl_LL[J]
-        CL = FL / (QUE * S)
-        CD = FD / (QUE * S)
-        CM = FM / (QUE * S * chord)
-        CLOO = 2.0 * PI * ALFA / (1.0 + 2.0 / AR)
-        if abs(CLOO) < 1.0e-20:
-            CLOO = CL
-        CLT = CL / CLOO
-        CFG = FG / (0.5 * VINF * S) / CLOO
 
+
+        # --- Force calculations - CalcOutput at T+DT
+        FL, FD, FM, CL, CD, CM, Fl, Fd, Fm, dL_IJ, dD_IJ, dM_IJ, FG = LS_calcForce(rho, chord, Vref, S_half, DT, DX, GD.Gamma_LS, GD.r_LS, GD.CP, GD.Gamma_LS_prev, GD, TETA)
+        # Write force to screen and output file
+        CLT = CL / CL_ref
+        CFG = FG / FG_ref
         # Output results
-        #print(f"{IT}/{nStep}")
-        #print(f" T={T:10.2f}  SX={GD.SX:10.2f}  SZ={SZ:10.2f}  VINF={VINF:10.2f}  TETA={TETA:10.2f}  OMEGA={OMEGA:10.2f}")
-        print(f",CL={CL:10.4f}  L={FL:10.4f}  CM={CM:10.4f}  CD={CD:10.4f}  L/L(INF)={CLT:10.4f}  GAMA/GAMA(INF)={CFG:10.4f}")
-        with open("_outputs/uLS.csv", "a") as f:
-            f.write(f"{-GD.SX},{T},{SZ},{VINF},{TETA},{OMEGA},{CL},{FL},{CM},{CD},{CLT},{CFG}\n")
+        #print(f" T={T:10.2f}  SX={rO_str_i[0]:10.2f}  SZ={rO_str_i[2]:10.2f}  VINF={VINF:10.2f}  TETA={TETA:10.2f}  OMEGA={omega_pitch:10.2f}")
+        print(f"CL={CL:10.4f}  L={FL:10.4f}  CM={CM:10.4f}  CD={CD:10.4f}  L/L(INF)={CLT:10.4f}  GAMA/GAMA(INF)={CFG:10.4f}")
+        with open("_outputs/uLS_{}.csv".format(simName) , "a") as f:
+            f.write(f"{-rO_str_i[0]},{T},{rO_str_i[2]},{Vref},{TETA},{omega_pitch},{CL},{FL},{CM},{CD},{CLT},{CFG},{np.mod(omega_heave*T, 2*np.pi)}\n")
 
-        # After updating GD.QW and GD.VORTIC for the current time step IT:
-        #write_wing_vtk(IT, GD, outputDir=outputDir)
-        #write_wake_vtk(IT, GD, outputDir=outputDir)
-    print("[ OK ] Program 16")
+        # After updating GD.QW and GD.Gamma_NW for the current time step IT:
+        write_wing_vtk(IT+1, GD, outputDir=outputDir, simName=simName)
+        write_wake_vtk(IT+1, GD, outputDir=outputDir, simName=simName)
 
-def write_wake_vtk(it, GD, outputDir=''):
+        # --- Prepare for next time step
+        GD.Gamma_LS_prev = GD.Gamma_LS
+
+
+def LS_calcForce(rho, chord, Vref, S_ref, dt, DX, Gamma_LS, r_LS, CP, Gamma_LS_prev, GD, TETA):
+    nChord, nSpan = Gamma_LS.shape
+    dL_IJ    = np.zeros((nChord, nSpan))
+    dD_IJ    = np.zeros((nChord, nSpan))
+    dM_IJ    = np.zeros((nChord, nSpan))
+    FG = 0.0
+    qdyn = 0.5 * rho * Vref * Vref # dynamic pressure
+    for J in range(nSpan):
+        for I in range(nChord):
+            # --- Lift
+            if I == 0:
+                dGamma_shed = Gamma_LS[I, J] # shed segment between two chordwise panels on LS
+                SIGMA1 = (0.5 * dGamma_shed ) * DX
+            else:
+                dGamma_shed = Gamma_LS[I, J] - Gamma_LS[I-1, J] # shed segment between two chordwise panels on LS
+                SIGMA1 = (0.5 * dGamma_shed + Gamma_LS[I-1, J]) * DX
+            DFDT = (SIGMA1 - GD.dLT[I, J]) / dt # some kind of DGamma/Dt
+            GD.dLT[I, J] = SIGMA1
+            dL_IJ[I, J] = rho * (Vref * dGamma_shed + DFDT) * GD.dl_LL[J] * GD.CSO[I]
+            # --- Drag
+            U = UI_from_wing_trailed(CP[I, J, :], Gamma_LS, r_LS)
+            U2 = UI_from_wing_trailed(CP[I, J, :], Gamma_LS, r_LS, flip=True)
+            _, _, W1 = inertial_to_body_theta(U, -TETA) # TODO WRONG CONVENTION
+            _, _, W2 = inertial_to_body_theta(U2, -TETA) # TODO WRONG CONVENTION
+            W8 = W1 + W2
+            #W8 = U[2] + U2[2]
+            Wtot = GD.Uind_wake_on_LS[I, J, 2] + W8 # Total downwash from wake and LS (trailed)
+            CTS = -Wtot / Vref
+            DD1 = rho * GD.dl_LL[J] * DFDT * GD.SNO[I]         # Drag from varying lift
+            DD2 = rho * GD.dl_LL[J] * Vref * dGamma_shed * CTS # Drag from downwash
+            dD_IJ[I, J] = DD1 + DD2
+            # Moment
+            DXM = (GD.r_LS0[I, J, 0] + GD.r_LS0[I, J+1, 0]) / 2.0 
+            dM_IJ[I,J] = dL_IJ[I, J] * DXM
+            # KJ force?
+            FG += dGamma_shed * GD.dl_LL[J]
+            # debug_print
+            #print(f"Drag{I+1:4}{J+1:4}{DFDT:10.3f}{DD1:10.3f}{GD.Uind_wake_on_LS[I, J, 2]:10.3f}{Gamma_LS[I,J]:10.3f}{W1:10.3f}{W2:10.3f}{W8:10.3f}{CTS:10.3f}{DD2:10.3f}")
+    # Spanwise forces
+    Fl = np.sum(dL_IJ, axis=0) # TODO check axis
+    Fd = np.sum(dD_IJ, axis=0) # TODO check axis
+    Fm = np.sum(dM_IJ, axis=0) # TODO check axis
+    # Total forces
+    FL = np.sum(dL_IJ.flatten())
+    FD = np.sum(dD_IJ.flatten())
+    FM = np.sum(dM_IJ.flatten())
+    # Force coefficients
+    CL = FL / (qdyn * S_ref)
+    CD = FD / (qdyn * S_ref)
+    CM = FM / (qdyn * S_ref * chord)
+    return FL, FD, FM, CL, CD, CM, Fl, Fd, Fm, dL_IJ, dD_IJ, dM_IJ, FG
+
+
+def write_wake_vtk(it, GD, outputDir='', simName='default'):
     """
     Write the current wake lattice and vorticity to a VTK file for visualization.
     """
     mvtk = VTK_Misc()
-    filename = os.path.join(outputDir, f"_vtk/_wake_{it:05d}.vtk")
-    # GD.QW shape: (NTMAX, NSMAX+1, 3)
-    # GD.VORTIC shape: (NTMAX, NSMAX)
-    # Reshape to match expected input (nSpan, nDepth, 3)
-    QW    = GD.QW[:it, :, :]
-    Gamma = GD.VORTIC[:it-1, :]
+    filename = os.path.join(outputDir, f"_vtk/{simName}_wake_{it:05d}.vtk")
+    # r_NW shape: (NTMAX, NSMAX+1, 3)
+    # Gamma_NW shape: (NTMAX, NSMAX)
+    QW    = GD.r_NW[:it, :, :]
+    Gamma = GD.Gamma_NW[:it-1, :]
     QWt   = np.transpose(QW, (1, 0, 2))
     Gammat = np.transpose(Gamma, (1, 0))
     WrVTK_Lattice(filename, mvtk, QWt, Gammat)
 
-def write_wing_vtk(it, GD, outputDir=''):
+def write_wing_vtk(it, GD, outputDir='', simName='default'):
     """
     Write the current lifting surface lattice and circulation to a VTK file for visualization.
     """
     mvtk     = VTK_Misc()
-    filename = os.path.join(outputDir, f"_vtk/_wing_{it:05d}.vtk")
+    filename = os.path.join(outputDir, f"_vtk/{simName}_wing_{it:05d}.vtk")
 
-    # GD.QF shape: (nChord+1, NSMAX+1, 3)
-    # GD.GAMA shape: (nChord, NSMAX)
-    # For time step it, use the current geometry and gamma
-    # Reshape QF to (nChord+1, NSMAX+1, 3) -> (nChord+1, NSMAX+1, 3) if not already
-    QF    = GD.rWingh[:GD.nChord+1, :GD.nSpan_half+1, :]  # (nChord, nSpan, 3)
-    Gamma  = GD.GAMA[:GD.nChord, :GD.nSpan_half]       # (nChord-1, nSpan-1)
-    QFt   = np.transpose(QF, (1, 0, 2))    # (nSpan, nDepth, 3)
+    rWing  = GD.r_LS[:GD.nChord+1, :GD.nSpan+1, :]  # (nChord, nSpan, 3)
+    Gamma = GD.Gamma_LS[:GD.nChord, :GD.nSpan]       # (nChord-1, nSpan-1)
+    rLSt   = np.transpose(rWing, (1, 0, 2))    # (nSpan, nDepth, 3)
     Gammat = np.transpose(Gamma, (1, 0))
-    WrVTK_Lattice(filename, mvtk, QFt, Gammat)
+    WrVTK_Lattice(filename, mvtk, rLSt, Gammat)
+
+
+
+def test_geometry(GD, S_half):
+    np.testing.assert_almost_equal(S_half, 4.0)
+    np.testing.assert_almost_equal(GD.r_LS0[0,:,0], [0.06226217]*14)
+    np.testing.assert_almost_equal(GD.r_LS0[1,:,0], [0.3113108]*14)
+    np.testing.assert_almost_equal(GD.r_LS0[-1,:,0], [1.0148733]*14) 
+    np.testing.assert_almost_equal(GD.r_LS0[:,0,1], [0]*5 )
+    np.testing.assert_almost_equal(GD.r_LS0[:,1,1], [0.3076923]*5 )
+    np.testing.assert_almost_equal(GD.r_LS0[:,-1,1], [4]*5 )
+    np.testing.assert_almost_equal(np.unique(GD.r_LS0[:,:,2]), [-0.08878991, -0.07081404, -0.04902511, -0.02723617, -0.00544723])
+    np.testing.assert_almost_equal(GD.CP0[0,:,0], [0.1867865]*13)
+    np.testing.assert_almost_equal(GD.CP0[1,:,0], [0.4358352]*13)
+    np.testing.assert_almost_equal(GD.CP0[-1,:,0], [0.9339325]*13) 
+    np.testing.assert_almost_equal(GD.CP0[:,0,1], [0.1538462]*4)
+    np.testing.assert_almost_equal(np.unique(GD.CP0[:,:,2]), [-0.0817085, -0.0599196, -0.0381306, -0.0163417])
+    np.testing.assert_almost_equal(GD.Area.flatten(), [0.0769231]*13*4)
+
+
 
 if __name__ == "__main__":
+
     scriptDir = os.path.dirname(os.path.abspath(__file__))
+
     if True:
-        with Timer():
-            main(nChord=4, nSpan_half=13, nStep=10, chord=1, span=8.0, outputDir=scriptDir)
-        # ---
         nt = 10
-        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS.csv')).toDataFrame()
-        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
+        with Timer():
+            # omega = 2 , k = 0.1
+            # omega =10 , k = 0.5
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_pitch =10, A_pitch=0.1745, outputDir=scriptDir, simName='pitch_AR=4_k=0.5', motionType='body')
+        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_pitch_AR=4_k=0.5.csv')).toDataFrame()
+        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_pitch_AR=4_k=0.5_ref.csv')).toDataFrame()
         np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
         np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
         np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
         np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
-    if False:
-        with Timer():
-            main(nChord=1, nSpan_half=3, nStep=50, chord=1, span=8.0, outputDir=scriptDir)
-        # ---
+        print('[ OK ] test pass')
+
+    if True:
         nt = 10
-        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS.csv')).toDataFrame()
-        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
+        with Timer():
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=8.0, outputDir=scriptDir, simName='acc_body', motionType='body')
+        # ---
+        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_acc_body.csv')).toDataFrame()
+        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
         np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
         np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
         np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
         np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
-    print('[ OK ] test pass')
+        print('[ OK ] test pass')
+
+        with Timer():
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=8.0, outputDir=scriptDir, simName='acc_wind', motionType='wind')
+        # ---
+        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_acc_wind.csv')).toDataFrame()
+        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
+        np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
+        print('[ OK ] test pass')
+
+    if True:
+        nt = 10
+        with Timer():
+            # omega = 2 , k = 0.1
+            # omega =10 , k = 0.5
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =10, A_heave=0.1, outputDir=scriptDir, simName='heave_AR=4_k=0.5_wind', motionType='wind')
+        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_wind.csv')).toDataFrame()
+        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_ref.csv')).toDataFrame()
+        np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
+        print('[ OK ] test pass')
+
+        with Timer():
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =10, A_heave=0.1, outputDir=scriptDir, simName='heave_AR=4_k=0.5_body', motionType='body')
+        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_body.csv')).toDataFrame()
+        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_ref.csv')).toDataFrame()
+        np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
+        print('[ OK ] test pass')
+
+    if True:
+        nt = 10
+        with Timer():
+            # omega = 2 , k = 0.1
+            # omega =10 , k = 0.5
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =2, A_heave=0.1, outputDir=scriptDir, simName='heave_AR=4_k=0.1')
+        df = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.1.csv')).toDataFrame()
+        df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.1_ref.csv')).toDataFrame()
+        np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
+        np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
+        print('[ OK ] test pass')
+
+    #if True:
+    #    with Timer():
+    #        main(nChord=1, nSpan=3, nStep=50, chord=1, span=8.0, outputDir=scriptDir)
+    #    # ---
+    #    nt = 10
+    #    df = weio.read(os.path.join(scriptDir, './_outputs/uLS.csv')).toDataFrame()
+    #    df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
+    #    np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
+    #    np.testing.assert_almost_equal(df['CD'].values[:nt], df_ref['CD'].values[:nt], 6)
+    #    np.testing.assert_almost_equal(df['CM'].values[:nt], df_ref['CM'].values[:nt], 6)
+    #    np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)

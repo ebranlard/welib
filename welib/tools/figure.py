@@ -8,10 +8,14 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import re
 
+# Article Plots
+# ax.tick_params(direction='in', top=True, right=True, labelright=False, labeltop=False, which='both')
+# ax.grid(True, linestyle=':', c=(0.5,0.5,0.5))
 # --- On load, set default rcParams
 def defaultRC():
     # --- Ticks
     # ax.tick_params(direction='in', top=True, right=True, labelright=False, labeltop=False, which='both')
+    # ax.grid(True, linestyle=':')
     mpl.rcParams['xtick.direction'] = 'in'
     mpl.rcParams['ytick.direction'] = 'in'
     mpl.rcParams['xtick.top']  = True
