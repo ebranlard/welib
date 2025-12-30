@@ -236,12 +236,12 @@ class FASTInputFileBase(File):
     def formatName():
         return 'FAST input file Base'
 
-    def __init__(self, filename=None, IComment=None, **kwargs):
+    def __init__(self, filename=None, IComment=None, verbose=False, **kwargs):
         self._size=None
         self.setData() # Init data
         if filename:
             self.filename = filename
-            self.read(IComment=IComment)
+            self.read(IComment=IComment, verbose=verbose)
 
     def setData(self, filename=None, data=None, hasNodal=False, module=None):
         """ Set the data of this object. This object shouldn't store anything else. """
@@ -373,7 +373,7 @@ class FASTInputFileBase(File):
         return [1] # Typical OpenFAST files have comment on second line [1]
 
 
-    def read(self, filename=None, IComment=None):
+    def read(self, filename=None, IComment=None, verbose=False):
         if filename:
             self.filename = filename
         if self.filename:
@@ -381,13 +381,26 @@ class FASTInputFileBase(File):
                 raise OSError(2,'File not found:',self.filename)
             if os.stat(self.filename).st_size == 0:
                 raise EmptyFileError('File is empty:',self.filename)
-            self._read(IComment=IComment)
+            self._read(IComment=IComment, verbose=verbose)
         else:  
             raise Exception('No filename provided')
 
-    def _read(self, IComment=None):
+    def _read(self, IComment=None, verbose=False):
         if IComment is None:
             IComment=[]
+
+
+
+        # TODO make all these classes
+        # --- Tables that can be detected based on the "Dimension Variables", after which we directly have the table
+        # SubDyn
+        NUMTAB_FROM_DIM_DIM_VAR  = ['NPropSetsCirc' , 'NPropSetsRec' , 'NXPropSets' , 'NSpringPropSets', 'NCablePropSets' , 'NRigidPropSets']
+        NUMTAB_FROM_DIM_VARNAME  = ['BeamProp'      , 'BeamPropRec'  , 'BeamPropX'  , 'SpringProp'     , 'CableProp'      , 'RigidProp'     ]
+        NUMTAB_FROM_DIM_NHEADER  = [2               , 2              , 2            ,  2               , 2                , 2               ]
+        NUMTAB_FROM_DIM_NOFFSET  = [0               , 0              , 0            ,  0               , 0                , 0               ]
+        NUMTAB_FROM_DIM_TYPE     = ['num'           , 'num'          , 'num'        , 'num'            , 'num'            , 'num'           ]
+
+
 
         # --- Tables that can be detected based on the "Value" (first entry on line)
         # TODO members for  BeamDyn with mutliple key point                                                                                                                                                                                                                                                                                                        ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
@@ -425,12 +438,12 @@ class FASTInputFileBase(File):
         NUMTAB_FROM_LAB_NOFFSET  += [ 0           , 0               , 0            , 0     ]
         NUMTAB_FROM_LAB_TYPE     += ['mix'        ,'mix'            ,'mix'         , 'mix']
         # SubDyn
-        NUMTAB_FROM_LAB_DETECT   += ['GuyanDampSize'     , 'YoungE'   , 'YoungE'    , 'EA'             , 'MatDens'       ]
-        NUMTAB_FROM_LAB_DIM_VAR  += [6                   , 'NPropSets', 'NXPropSets', 'NCablePropSets' , 'NRigidPropSets']
-        NUMTAB_FROM_LAB_VARNAME  += ['GuyanDampMatrix'   , 'BeamProp' , 'BeamPropX' , 'CableProp'      , 'RigidProp'     ]
-        NUMTAB_FROM_LAB_NHEADER  += [0                   , 2          , 2           , 2                , 2               ]
-        NUMTAB_FROM_LAB_NOFFSET  += [1                   , 0          , 0           , 0                , 0               ]
-        NUMTAB_FROM_LAB_TYPE     += ['num'               , 'num'      , 'num'       , 'num'            , 'num'           ]
+        NUMTAB_FROM_LAB_DETECT   += ['GuyanDampSize'   , 'YoungE' ]
+        NUMTAB_FROM_LAB_DIM_VAR  += [6                 ,  'NPropSets']
+        NUMTAB_FROM_LAB_VARNAME  += ['GuyanDampMatrix' ,  'BeamProp' ]
+        NUMTAB_FROM_LAB_NHEADER  += [0                 ,  2          ]
+        NUMTAB_FROM_LAB_NOFFSET  += [1                 ,  0          ]
+        NUMTAB_FROM_LAB_TYPE     += ['num'             ,  'num'      ]
         # OLAF
         NUMTAB_FROM_LAB_DETECT   += ['GridName'   ]
         NUMTAB_FROM_LAB_DIM_VAR  += ['nGridOut'   ]
@@ -443,7 +456,11 @@ class FASTInputFileBase(File):
         FILTAB_FROM_LAB_DIM_VAR  = ['NumFoil','NumAFfiles']
         FILTAB_FROM_LAB_VARNAME  = ['FoilNm' ,'AFNames']
 
+        TABTYPE={'num': TABTYPE_NUM_WITH_HEADER, 'mix':TABTYPE_MIX_WITH_HEADER, 'sdout': TABTYPE_NUM_SUBDYNOUT}
+
+
         # Using lower case to be more tolerant..
+        NUMTAB_FROM_DIM_DIM_VAR_L= [s.lower() for s in NUMTAB_FROM_DIM_DIM_VAR]
         NUMTAB_FROM_VAL_DETECT_L = [s.lower() for s in NUMTAB_FROM_VAL_DETECT]
         NUMTAB_FROM_LAB_DETECT_L = [s.lower() for s in NUMTAB_FROM_LAB_DETECT]                                         
         FILTAB_FROM_LAB_DETECT_L = [s.lower() for s in FILTAB_FROM_LAB_DETECT]
@@ -668,7 +685,8 @@ class FASTInputFileBase(File):
                     nTabLines = d['tabDimVar']
                 else:
                     nTabLines = self[d['tabDimVar']]
-                #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                if verbose:
+                    print('From val: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
                 d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders], nTabLines, i, nHeaders, tableType=tab_type, varNumLines=d['tabDimVar'])
                 _, d['descr'] = splitAfterChar(lines[i], '!')
                 i += nTabLines+nHeaders-1
@@ -681,6 +699,35 @@ class FASTInputFileBase(File):
                 del NUMTAB_FROM_VAL_NHEADER[ii] 
                 del NUMTAB_FROM_VAL_TYPE   [ii] 
                 del NUMTAB_FROM_VAL_DETECT_L[ii]  
+
+            elif isStr(labelRaw) and labelRaw in NUMTAB_FROM_DIM_DIM_VAR_L:
+                # --- Tables that can are right after their dimension variable
+                ii = NUMTAB_FROM_DIM_DIM_VAR_L.index(d['label'].lower())
+                # We store the current line (contains the dimension variable)
+                self.data.append(d)
+                i += 1
+
+                # Creating a new dictionary for the table
+                d = getDict()
+                d['label']     = NUMTAB_FROM_DIM_VARNAME[ii]+labOffset
+                d['tabDimVar'] = NUMTAB_FROM_DIM_DIM_VAR[ii]
+                d['tabType']   = TABTYPE[ NUMTAB_FROM_DIM_TYPE[ii] ] 
+                nHeaders       = NUMTAB_FROM_DIM_NHEADER[ii]
+                nTabLines      = self[d['tabDimVar']]
+                if verbose:
+                    print('From dim: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
+                d['descr'] = '' #
+                i += nTabLines+1-nOffset
+
+                del NUMTAB_FROM_DIM_DIM_VAR[ii] 
+                del NUMTAB_FROM_DIM_VARNAME[ii] 
+                del NUMTAB_FROM_DIM_NHEADER[ii] 
+                del NUMTAB_FROM_DIM_NOFFSET[ii] 
+                del NUMTAB_FROM_DIM_TYPE   [ii] 
+                del NUMTAB_FROM_DIM_DIM_VAR_L[ii]  
+
+
 
             elif isStr(labelRaw) and labelRaw in NUMTAB_FROM_LAB_DETECT_L:
                 ii      = NUMTAB_FROM_LAB_DETECT_L.index(labelRaw)
@@ -705,14 +752,10 @@ class FASTInputFileBase(File):
                 if d['label'].lower()=='afcoeff' :
                     d['tabType']        = TABTYPE_NUM_WITH_HEADERCOM
                 else:
-                    if tab_type=='num':
-                        d['tabType']   = TABTYPE_NUM_WITH_HEADER
-                    elif tab_type=='sdout':
-                        d['tabType']   = TABTYPE_NUM_SUBDYNOUT
-                    else:
-                        d['tabType']   = TABTYPE_MIX_WITH_HEADER
+                    d['tabType']   = TABTYPE [ tab_type ]
                 # Finding table dimension (number of lines)
                 tabDimVar = NUMTAB_FROM_LAB_DIM_VAR[ii]
+                nTabLines = np.nan
                 if isinstance(tabDimVar, int): # dimension hardcoded
                     d['tabDimVar'] = tabDimVar
                     nTabLines = d['tabDimVar']
@@ -730,12 +773,13 @@ class FASTInputFileBase(File):
                                 nTabLines = self[tabDimVar+labOffset]
                                 break
                             except KeyError:
-                                #print('Cannot determine table dimension using {}'.format(tabDimVar))
+                                print('Cannot determine table dimension using {}'.format(tabDimVar))
                                 # Hopefully this table has AUTO as well
                                 pass
-
+                
                 d['label']  += labOffset
-                #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                if verbose:
+                    print('From lab: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
                 d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
                 d['descr'] = '' #
                 i += nTabLines+1-nOffset
@@ -757,7 +801,8 @@ class FASTInputFileBase(File):
                 d['tabDimVar'] = FILTAB_FROM_LAB_DIM_VAR[ii]
                 d['tabType']   = TABTYPE_FIL
                 nTabLines = self[d['tabDimVar']]
-                #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                if verbose:
+                    print('From Fil: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
                 d['value'] = parseFASTFilTable(lines[i:i+nTabLines],nTabLines,i)
                 i += nTabLines-1
 
@@ -775,7 +820,7 @@ class FASTInputFileBase(File):
                     #print('label>',d['label'],'<',type(d['label']),line);
                     if i>3: # first few lines may be comments, we allow it
                         #print('Line',i,'Label:',d['label'])
-                        raise WrongFormatError('Special Character found in Label: `{}`, for line: `{}`'.format(d['label'],line))
+                        raise WrongFormatError('Special Character found in Label: `{}`, for line {}: `{}`'.format(d['label'],i, line))
                 if len(d['label'])==0:
                     nWrongLabels +=1
             if nComments>len(lines)*0.35:
@@ -1499,7 +1544,7 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             ColNames=None
             
     except Exception as e:    
-        raise BrokenFormatError('Line {}: {}'.format(iStart+i+1,e.args[0]))
+        raise BrokenFormatError('Line {}: {}. in file: {}'.format(iStart+i+1,e.args[0], filename))
     return Tab, ColNames, Units
 
 

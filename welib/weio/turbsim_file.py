@@ -442,10 +442,7 @@ class TurbSimFile(File):
         """ Compute lateral cross spectral density
         If no index is provided, computed at mid box 
         """
-        try:
-            import scipy.signal as sig
-        except:
-            import welib.tools.spectral as sig
+        import scipy.signal as sig
         u, v, w = ts._latline(ix0=ix0, iz0=iz0, removeMean=True)
         t       = ts['t']
         dt      = t[1]-t[0]
@@ -459,10 +456,7 @@ class TurbSimFile(File):
         """ Compute vertical cross spectral density
         If no index is provided, computed at mid box 
         """
-        try:
-            import scipy.signal as sig
-        except:
-            import welib.tools.spectral as sig
+        import scipy.signal as sig
         t       = ts['t']
         dt      = t[1]-t[0]
         fs      = 1/dt
@@ -480,10 +474,7 @@ class TurbSimFile(File):
         """ Coherence on a longitudinal line for different delta y and delta z
         compared to a given point with index iy0,iz0
         """
-        try:
-            import scipy.signal as sig
-        except:
-            import welib.tools.spectral as sig
+        import scipy.signal as sig
         if iy0 is None:
             iy0,iz0 = ts.iMid
         u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)

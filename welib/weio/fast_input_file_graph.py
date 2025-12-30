@@ -34,13 +34,16 @@ def subdynToGraph(sd, propToNodes=False, propToElem=False):
     -propToNodes: if True, the element properties are also transferred to the nodes for convenience.
                  NOTE: this is not the default because a same node can have two different diameters in SubDyn (it's by element)
     """
-    type2Color=[
-            (0.1,0.1,0.1), # Watchout based on background
-            (0.753,0.561,0.05),  # 1 Beam
-            (0.541,0.753,0.05),  # 2 Cable
-            (0.753,0.05,0.204),  # 3 Rigid
-            (0.918,0.702,0.125), # 3 Rigid
-        ]
+    type2Color={
+            0: (0.1,0.1,0.1), # Watchout based on background
+           '1': (0.753,0.561,0.05), # 1 Beam
+          '1c': (0.753,0.561,0.05), # 1 Beam
+          '1r': (0.553,0.361,0.05), # 1 Beam Rect
+          '2': (0.541,0.753,0.05),  # 2 Cable
+          '3': (0.753,0.05,0.204),  # 3 Rigid
+          '4': (0.918,0.702,0.125), # 4 Rigid
+          '5': (0.018,0.702,0.125), # 5 Spring
+        }
 
     Graph = GraphModel()
     # --- Properties
@@ -74,19 +77,24 @@ def subdynToGraph(sd, propToNodes=False, propToElem=False):
         Graph.addNode(node)
 
     # --- Elements
-    Members  = sd['Members'].astype(int)
-    PropSets = ['Beam','Cable','Rigid']
+    Members  = sd['Members']# .astype(int)
+    #[MType={1c:beam circ., 1r:beam rect., 2:cable, 3:rigid, 4:beam arb., 5:spring}. COMSID={-1:none}]
+    PropSets = {'1': 'Beam', '1c':'Beam', '1r':'BeamRect', '2': 'Cable', '3':'Rigid', '4':'BeamArb', '5':'Spring'} # NOTE: name must match propset table
     for ie,E in enumerate(Members):
-        Type=1 if len(E)==5 else E[5]
-        #elem= Element(E[0], E[1:3], propset=PropSets[Type-1], propIDs=E[3:5])
-        elem= Element(E[0], E[1:3], Type=PropSets[Type-1], propIDs=E[3:5], propset=PropSets[Type-1])
+        EE = E[0:5].astype(int)
+        Type='1' if len(E)==5 else E[5]
+        try:
+            Type = str(int(Type))
+        except:
+            Type = str(Type)
+        elem= Element(EE[0], EE[1:3], Type=PropSets[Type], propIDs=EE[3:5], propset=PropSets[Type])
         elem.data['object']='cylinder'
         elem.data['color'] = type2Color[Type]
         Graph.addElement(elem)
         # Nodal prop data
         if propToNodes:
             # NOTE: this is disallowed by default because a same node can have two different diameters in SubDyn (it's by element)
-            Graph.setElementNodalProp(elem, propset=PropSets[Type-1], propIDs=E[3:5])
+            Graph.setElementNodalProp(elem, propset=PropSets[Type], propIDs=EE[3:5])
         if propToElem:
             Graph.setElementNodalPropToElem(elem) # TODO, this shouldn't be needed
 
