@@ -23,12 +23,27 @@ except:
 from welib.yams.windturbine import rigidBlades
 
 class Structure():
-    def __init__(self,main_axis='x',theta_tilt=0,theta_yaw=0,theta_cone=0,bTiltBeforeNac=False):
+    def __init__(self, main_axis='x', theta_tilt=0, theta_yaw=0, theta_cone=0, bTiltBeforeNac=False):
         self.main_axis      = main_axis
         self.theta_tilt     = theta_tilt
         self.theta_cone     = theta_cone
         self.theta_yaw      = theta_yaw
         self.bTiltBeforeNac = bTiltBeforeNac
+
+        self.Grd  = None
+        self.Twr  = None
+        self.Yaw  = None
+        self.Nac  = None
+        self.Sft  = None
+        self.Blds = None
+        self.MM   = None
+        self.KK   = None
+        self.DD   = None
+        self.q    = None
+        self.r_ET_inE=None
+        self.r_TN_inT=None
+        self.r_NS_inN=None
+        self.r_SR_inS=None
 
     def compute_RNA(s, verbose=False):
         s.M_rot= sum([B.mass for B in s.Blds])
@@ -208,11 +223,24 @@ class Structure():
         print(s.Twr.alpha_couplings) # Time varying function of Twr.gzf
 
     def __repr__(self):
+        s='<{} object> with fields:\n'.format(type(self).__name__)
+        s+=f' - Grd Twr Yaw Nac Sft Bld: RigidBody or FASTBeamBody\n'
+        s+=f' - MM KK DD: matrices\n'
+        s+=f' - q : {self.q.flatten()}\n'
+        s+=f' - r_ET_inE: {self.r_ET_inE.flatten()}\n'
+        s+=f' - r_TN_inT: {self.r_TN_inT.flatten()}\n'
+        s+=f' - r_NS_inN: {self.r_NS_inN.flatten()}\n'
+        s+=f' - r_SR_inS: {self.r_SR_inS.flatten()}\n'
+        s+=f' - main_axis     : {self.main_axis}\n'
+        s+=f' - theta_tilt    : {self.theta_tilt}\n'
+        s+=f' - theta_cone    : {self.theta_cone}\n'
+        s+=f' - theta_yaw     : {self.theta_yaw}\n'
+        s+=f' - bTiltBeforeNac: {self.bTiltBeforeNac}\n'
         self.print_info()
         self.print_origins()
         self.print_RNA()
         self.print_couplings()
-        return ''
+        return s
 
 
 
@@ -224,7 +252,7 @@ class Structure():
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model automatically 
 # --------------------------------------------------------------------------------{
-def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_yaw=0,theta_cone_y=0,DEBUG=False,bTiltBeforeNac=False):
+def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_yaw=0,theta_cone_y=0,DEBUG=False,bTiltBeforeNac=False, fixedShaft=False):
     # TODO Gen
 
     if main_axis=='x':
@@ -254,7 +282,10 @@ def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS
     Grd.connectTo(Twr, Point=r_ET_inE, Type='Rigid')
     Twr.connectTo(Nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
     Twr.connectTo(Yaw, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
-    Nac.connectTo (Sft   , Point=r_NS_inN, Type='SphericalJoint',JointRotations=[Shaft_axis],RelOrientation = R_cs0, OrientAfter=False)
+    if fixedShaft:
+        Nac.connectTo (Sft   , Point=r_NS_inN, Type='Rigid', RelOrientation = R_cs0, OrientAfter=False)
+    else:
+        Nac.connectTo (Sft   , Point=r_NS_inN, Type='SphericalJoint',JointRotations=[Shaft_axis],RelOrientation = R_cs0, OrientAfter=False)
     for i,B in enumerate(Blds):
         psi_B= -i*2*np.pi/nB # 0 -2pi/2 2pi/3  or 0 pi
         if main_axis=='x':
@@ -311,11 +342,10 @@ def auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS
 # --------------------------------------------------------------------------------}
 # --- Manual assembly of a TNSB model 
 # --------------------------------------------------------------------------------{
-def manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_cone_y=0,DEBUG=False, bTiltBeforeNac=False):
+def manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_cone_y=0,DEBUG=False, bTiltBeforeNac=False, fixedShaft=False):
 
     # Main Parameters
     nDOF = len(q)
-    iPsi = Twr.nf # Index of DOF corresponding to azimuth
 #     CyT=- np.array([ Twr.PhiV[0][2,-1],  1.5065E-01, 0, 0]) # End value of shapes functions in y direction
     CxT=  np.zeros(Twr.nf)
     CyT=  np.zeros(Twr.nf)
@@ -416,7 +446,11 @@ def manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_i
 
     # ---------------------------------------------
     # Link N-S
-    q_psi = q[iPsi,0]
+    if fixedShaft:
+        q_psi = 0 # TODO potential azimuth..
+    else:
+        iPsi = Twr.nf # Index of DOF corresponding to azimuth
+        q_psi = q[iPsi,0]
     if main_axis=='x':
         R_NS     = R_z(q_psi + np.pi) 
     elif main_axis=='z':
@@ -425,11 +459,15 @@ def manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_i
         R_NS     = np.dot(R_y(theta_tilt_y),R_NS)
     R_ES     = np.dot(R_EN, R_NS)
     r_NS     = np.dot(R_EN, r_NS_inN)
-    Bx_NS    = np.array([[0],[0],[0]])
-    if main_axis=='x':
-        Bt_NS    = np.array([[0],[0],[1]])
-    elif main_axis=='z':
-        Bt_NS    = np.array([[1],[0],[0]])
+    if fixedShaft:
+        Bx_NS    = np.array([])
+        Bt_NS    = np.array([])
+    else:
+        Bx_NS    = np.array([[0],[0],[0]])
+        if main_axis=='x':
+            Bt_NS    = np.array([[0],[0],[1]])
+        elif main_axis=='z':
+            Bt_NS    = np.array([[1],[0],[0]])
     B_S      = fBMatRecursion(B_N,Bx_NS,Bt_NS,R_EN,r_NS)
     B_S_inS  = fB_inB(R_ES, B_S)
     BB_S_inS = fB_aug(B_S_inS, Sft.nf)
@@ -480,9 +518,10 @@ def manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_i
 
     # --- Final assembly
     MM = MM_B.copy()
+    if fixedShaft:
+        iPsi = MM_S.shape[1]-1
     MM[:iPsi+1,:iPsi+1] += MM_S
     MM[:Twr.nf,:Twr.nf] += MM_T + MM_N + MM_Y
-
     KK = KK_B
     KK[:iPsi+1,:iPsi+1] += KK_S
     KK[:Twr.nf,:Twr.nf] += KK_T + KK_N

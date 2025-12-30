@@ -1157,7 +1157,9 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m, U=None, V=None, K=None, a
         M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, 
         corrections=1,
         bSelfWeight=False,
-        main_axis='z'
+        main_axis='z',
+        nWARNS=[0],
+        debug=False
         ):
     """ 
     p_ext: loads along the beam (without inertia), shape: (3 x n) [N/m]
@@ -1200,7 +1202,9 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m, U=None, V=None, K=None, a
         #V[1,:] = gradient_regular(U[1,:], dx=s_span[1]-s_span[0], order=4)
         #V[2,:] = gradient_regular(U[2,:], dx=s_span[1]-s_span[0], order=4)
     if K is None:
-        print('[WARN] yams: flexibility: beamSectionLoads3D: computing K as gradient U')
+        if nWARNS[0]<5:
+            print('[WARN] yams: flexibility: beamSectionLoads3D: computing K as gradient V')
+            nWARNS[0]+=1
         K = np.zeros((3,nSpan)) 
         K[0,:] = np.gradient(V[0,:],  s_span, edge_order=2)
         K[1,:] = np.gradient(V[1,:],  s_span, edge_order=2)
@@ -1317,16 +1321,21 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m, U=None, V=None, K=None, a
     # Torsion correction
     if corrections>=2:
         M_sec[2,1:] +=- V[1,1:]*M_sec[0,1:]-V[0,1:]*M_sec[1,1:] # Mx = - Vy Mx - Vx My # TODO check sign
+    
+    if debug:
+        print('Debug in Flexibility beamSectionLoads3D')
+        import pdb; pdb.set_trace()
 
     # KEEP ME: M_y approximation
     #M_sec[1,0] = F_top[1]*z[-1] + M_top[1] # approximation
+    more = dict()
 
-    return F_sec, M_sec
+    return F_sec, M_sec, more
 
 
 
 def beamSectionLoadsFromShapeFunctions(x, xd, xdd, p_ext, F_top, M_top, s_span, PhiU, PhiV, m, 
-        M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, corrections=1, PhiK=None):
+        M_lumped=None, m_hydro=None, a_ext=None, F_ext_lumped=None, corrections=1, PhiK=None, debug=False):
     """ 
     Compute section loads along a beam represented by shape functions
     INPUTS:
@@ -1352,13 +1361,14 @@ def beamSectionLoadsFromShapeFunctions(x, xd, xdd, p_ext, F_top, M_top, s_span, 
         V         += x  [j] * PhiV[j] # Slopes
         #v_struct  += xd [j] * PhiU[j]
         a_struct  += xdd[j] * PhiU[j] # TODO base motion
+    K = None
     if PhiK is not None:
+        K = np.zeros(shapeDisp)
         for j in np.arange(nf):
             K += x[j] * PhiK[j] # Deflections
 
     return beamSectionLoads3D(p_ext=p_ext, F_top=F_top, M_top=M_top, s_span=s_span, m=m, U=U, V=V, K=K, a_struct=a_struct, 
-            M_lumped=M_lumped, m_hydro=m_hydro, a_ext=a_ext, F_ext_lumped=F_ext_lumped, corrections=corrections)
-    #return F_sec, M_sec
+            M_lumped=M_lumped, m_hydro=m_hydro, a_ext=a_ext, F_ext_lumped=F_ext_lumped, corrections=corrections, debug=debug)
 
 
 

@@ -8,7 +8,7 @@ from scipy.optimize import fsolve
 
 # --- Parameters
 L   = 100         # [m] Total monopile length
-h   = 50          # [m] Wather depth
+h   = 50          # [m] Water depth
 m   = 9000        # [kg/m] Mass per length
 rho = 7850        # [kg/m^3]
 E   = 2.1e+11 # [N/m2]

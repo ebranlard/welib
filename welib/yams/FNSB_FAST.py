@@ -9,6 +9,7 @@ from welib.yams.utils import *
 from welib.yams.TNSB import manual_assembly, auto_assembly
 
 import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 
 # --------------------------------------------------------------------------------}
 # --- Creating a FNSB model from a FAST model
@@ -16,11 +17,12 @@ import welib.weio as weio
 # TODO TODO TODO
 # TODO TODO TODO HARMONIZE WITH WINDTURBINE.PY AND TNSB..
 # TODO TODO TODO
-def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan_bld=None, bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+def FASTmodel2FNSB(FST_file, shapes_sub=[0,4], nShapes_bld=0, nSpan_sub=None, nSpan_bld=None, bHubMass=1, bNacMass=1, bBldMass=1, DEBUG=False, main_axis ='x', bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+        fixedShaft=False,
         spanFrom0=True, # TODO for legacy, we keep this for now..
         bladeMassExpected=None,
         gravity=None,
-        algo='' # TODO replace with OpenFAST
+        algo='', # TODO replace with OpenFAST
         ):
     """ 
     Returns the following structure
@@ -44,7 +46,7 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
     if ext.lower()!='.fst':
         raise Exception('FNSB requires a fst file as input')
 
-    FST=weio.read(FST_file)
+    FST=FASTInputFile(FST_file)
     rootdir = os.path.dirname(FST_file)
     EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
     if gravity is None:
@@ -55,17 +57,16 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
     subfile = os.path.join(rootdir,FST['SubFile'].strip('"')).replace('\\','/')
 
     # Reading elastodyn file
-    ED      = weio.read(EDfile)
+    ED      = FASTInputFile(EDfile)
     rootdir = os.path.dirname(EDfile)
     bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
     twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
-    #twr     = weio.read(twrfile)
-    bld     = weio.read(bldfile)
+    bld     = FASTInputFile(bldfile)
     if gravity is None:
        gravity = ED['gravity'] # Old interface, method above should work, so raise Exception here
 
     # Reading SubDyn file
-    sub     = weio.read(subfile)
+    sub     = FASTInputFile(subfile, verbose=False)
     nShapes_sub = len(shapes_sub)
     graph = sub.toGraph() # NOTE: this is repeated in bodies.py...
     graph.divideElements(sub['NDiv'])
@@ -109,7 +110,10 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
             print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
 
     nB = ED['NumBl']
-    nDOF = 1 + nShapes_sub + nShapes_bld * nB # +1 for Shaft
+    if fixedShaft:
+        nDOF = nShapes_sub + nShapes_bld * nB # 
+    else:
+        nDOF = 1 + nShapes_sub + nShapes_bld * nB # +1 for Shaft
     if q is None:
         q = np.zeros((nDOF,1)) # TODO, full account of q not done
 
@@ -247,9 +251,9 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
     r_TN_inT = r_FT_inF+r_TN_inT # assume that F and T are in system E here
 
     if assembly=='manual':
-        Struct = manual_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = manual_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, fixedShaft=fixedShaft)
     else:
-        Struct = auto_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = auto_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, fixedShaft=fixedShaft)
 
     # --- Initial conditions
     omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
@@ -271,8 +275,9 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
         for iDOF,iDOFfull in enumerate(shapes_sub):
             q_init[iDOF] = sub_init[iDOFfull]
 
-    q_init[iPsi]          = psi_init
-    q_init[nDOFMech+iPsi] = omega_init
+    if not fixedShaft:
+        q_init[iPsi]          = psi_init
+        q_init[nDOFMech+iPsi] = omega_init
 
     Struct.q_init = q_init
     if DEBUG:
