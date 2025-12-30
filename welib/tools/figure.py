@@ -224,6 +224,41 @@ def add_colorbar(fig, commonBar=True, commonLevels=True,
     return cbars
 
 
+
+def clone_axis(src, dst, legend=True, arrow=True, lim=True, label=True, title=True):
+    """Deep-copy all artists from src Axes into dst Axes."""
+    from matplotlib.patches import FancyArrowPatch
+    from matplotlib.patches import FancyArrow
+    for line in src.lines:
+        dst.plot( *line.get_data(), color=line.get_color(), linestyle=line.get_linestyle(), linewidth=line.get_linewidth(), marker=line.get_marker(), markersize=line.get_markersize(), alpha=line.get_alpha())
+
+    for col in src.collections:
+        dst.add_collection(col)
+
+    if arrow:
+        for p in src.patches:
+            if isinstance(p, FancyArrow):
+                dst.add_patch( FancyArrow( p._x, p._y, p._dx, p._dy, width=p._width, head_width=p._head_width, head_length=p._head_length, length_includes_head=p._length_includes_head, color=p.get_facecolor(), edgecolor=p.get_edgecolor(), linewidth=p.get_linewidth(), alpha=p.get_alpha()))
+            elif isinstance(p, FancyArrowPatch):
+                dst.add_patch( FancyArrowPatch( p.get_path().vertices[0], p.get_path().vertices[-1], arrowstyle=p.get_arrowstyle(), linewidth=p.get_linewidth(), color=p.get_edgecolor(), alpha=p.get_alpha()))
+
+    # Copy other elements if requested
+    if legend:
+        handles, labels = src.get_legend_handles_labels()
+        if labels:
+            dst.legend(handles, labels)
+    if lim:
+        ax2.set_xlim(ax.get_xlim())
+        ax2.set_ylim(ax.get_ylim())
+    if label:
+        ax2.set_xlabel(ax.get_xlabel())
+        ax2.set_ylabel(ax.get_ylabel())
+    if title:
+        ax2.set_title(ax.get_title())
+
+
+
+
 # --------------------------------------------------------------------------------
 # --- Export library to help export figures
 # --------------------------------------------------------------------------------

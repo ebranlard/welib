@@ -31,10 +31,14 @@ def interp2d_pairs(X, Y, Z, kind='cubic', **kwargs):
     #         return (si.dfitpack.bispeu(f.tck[0], f.tck[1], f.tck[2], f.tck[3], f.tck[4], x.ravel(), y.ravel())[0]).reshape(x.shape)
     #return lambda x,y: interpolant(x, y, si.interp2d(X, Y, Z, kind=kind))
     # --- NEW
+    xmin, xmax = np.min(X.flatten()), np.max(X.flatten())
+    ymin, ymax = np.min(Y.flatten()), np.max(Y.flatten())
     Finterp = si.RegularGridInterpolator((X,Y), Z.T, method=kind)
     #r = si.RectBivariateSpline(X, Y, Z.T)
     def interpolant(x,y):
         x,y = np.asarray(x), np.asarray(y)
+        x = np.clip(x, xmin, xmax)
+        y = np.clip(y, ymin, ymax)
         return Finterp((x,y))
     return interpolant
 

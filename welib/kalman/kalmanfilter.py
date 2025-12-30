@@ -1,3 +1,5 @@
+# TODO Change notations
+""" """
 from .kalman import *
 import numpy as np
 import pandas as pd
@@ -21,10 +23,10 @@ class KalmanFilter(object):
 
 
         # --- Defining index map for convenience
-        self.iX={lab: i   for i,lab in enumerate(self.sX)}
-        self.iY={lab: i   for i,lab in enumerate(self.sY)}
-        self.iU={lab: i   for i,lab in enumerate(self.sU)}
-        self.iS={lab: i   for i,lab in enumerate(self.sS)}
+        self.iX = {lab: i   for i,lab in enumerate(self.sX)}
+        self.iY = {lab: i   for i,lab in enumerate(self.sY)}
+        self.iU = {lab: i   for i,lab in enumerate(self.sU)}
+        self.iS = {lab: i   for i,lab in enumerate(self.sS)}
 
         # Standard deviations and covariance matrix
         self.sigX_c = None
@@ -169,14 +171,14 @@ class KalmanFilter(object):
     # --------------------------------------------------------------------------------}
     # --- TIME, Optional convenient methods if a time vector is already available
     # --------------------------------------------------------------------------------{
-    def setTimeVec(self,time):
-        self.time=time
+    def setTimeVec(self, time):
+        self.time = time
 
     @property
     def nt(self):
         return len(self.time)
 
-    def setCleanValues(self,df,ColMap=None, verbose=False):
+    def setCleanValues(self, df, ColMap=None, verbose=False):
         if ColMap is None:
             ColMap=dict()
             for k in df.columns.values:

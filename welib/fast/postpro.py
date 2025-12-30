@@ -1318,10 +1318,11 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
         df = fastlib.remap_df(df, ColumnMap, inplace=True)
 
     """
-    # Insert dataDict into namespace
-    if dataDict is not None:
-        for k,v in dataDict.items():
-            exec('{:s} = dataDict["{:s}"]'.format(k,k))
+    # Insert dataDict into namespace, doesnt work
+    #if dataDict is not None:
+    #    for k,v in dataDict.items():
+    #        print('>>>> SETTING ', k, dataDict[k])
+    #        exec('{:s} = dataDict["{:s}"]'.format(k,k))
 
 
     if not inPlace:
@@ -1361,7 +1362,7 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
                         bFail=True
                     else:
                         expr=expr.replace(item.group(0),'df[\''+col+'\']')
-                #print(k0, '=', expr)
+                #print(k, '=', expr)
                 if not bFail:
                     df[k]=eval(expr)
                     ColNew.append(k)

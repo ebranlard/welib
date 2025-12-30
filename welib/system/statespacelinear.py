@@ -355,15 +355,19 @@ class LinearStateSpace(StateSpace):
     # --- State equation
     # --------------------------------------------------------------------------------{
     def dqdt(self, t, q):
+        print('StateSpaceLinear dqdt is never called due to overload of StateSpace.dqdt')
         # NOTE: this can cause issues if q is not flat
         return np.dot(self.A, q) + np.dot(self.B, self.Inputs(t,q))
 
-    def dqdt_tqu(self, t, q, u):
+    def dqdt_tqu(self, t, q, u=None):
         # NOTE: this can cause issues if q is not flat
-        return np.dot(self.A, q) + np.dot(self.B, u)
+        if u is None:
+            return np.dot(self.A, q)
+        else:
+            return np.dot(self.A, q) + np.dot(self.B, u)
 
-    def RHS(self,t,q):
-        return self.dqdt(t,q)
+    def RHS(self, t, q, u=None):
+        return self.dqdt(t, q, u)
 
     # --------------------------------------------------------------------------------}
     # --- Outputs
@@ -738,13 +742,21 @@ class LinearStateSpace(StateSpace):
             raise Exception('File does not exist: {}'.format(pickleFile))
         d = pickle.load(open(pickleFile,'rb'))
         self.fromDataFrames(d['A'], d['B'], d['C'], d['D'])
-        self.setStateInitialConditions(d['q0'].values)
+        if 'q0' in d:
+            self.setStateInitialConditions(d['q0'].values)
+        else:
+            print('[WARN] StateSpaceLinear: no q0 present in pickle file. Setting it to 0.')
+            self.setStateInitialConditions() # 0
         try:
             self.qop_ = d['qop'].values
+            self.uop_ = d['uop'].values
+            self.yop_ = d['yop'].values
         except:
-            raise Exception('The pickle file is an old pickle file, please regenerate it: {}'.format(pickleFile))
-        self.uop_ = d['uop'].values
-        self.yop_ = d['yop'].values
+            print('[WARN] StateSpaceLinear: The pickle file is an old pickle file, please regenerate it: {}\n     Setting uop, qop and yop to 0.'.format(pickleFile))
+            self.qop_ = np.zeros(self.nStates)
+            self.uop_ = np.zeros(self.nInputs)
+            self.yop_ = np.zeros(self.nOutputs)
+            #raise Exception('The pickle file is an old pickle file, please regenerate it: {}'.format(pickleFile))
         return d
 
     def save(self, pickleFile, extraDict=None):
