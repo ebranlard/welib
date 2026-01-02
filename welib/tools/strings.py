@@ -1,4 +1,5 @@
 import sys
+import re
 import numpy as np
 from html import escape
 
@@ -40,7 +41,79 @@ _ATTRS_ANSI  = {
 }
 _RESET = '\033[0m'
 
+def latexStrip(s):
+    """ """
+    # Remove math mode $
+    s = s.replace('$', '')
+    
+    # Expanded replacement dictionary (LaTeX command without \, to Unicode)
+    latex_to_uni = {
+        # Greek lowercase (your originals + more)
+        'alpha': 'α', 'beta': 'β', 'gamma': 'γ', 'delta': 'δ', 'epsilon': 'ε', 'zeta': 'ζ',
+        'eta': 'η', 'theta': 'θ', 'iota': 'ι', 'kappa': 'κ', 'lambda': 'λ', 'mu': 'μ',
+        'nu': 'ν', 'xi': 'ξ', 'omicron': 'ο', 'pi': 'π', 'rho': 'ρ', 'sigma': 'σ',
+        'tau': 'τ', 'upsilon': 'υ', 'phi': 'φ', 'chi': 'χ', 'psi': 'ψ', 'omega': 'ω',
+        'varepsilon': 'ε', 'vartheta': 'ϑ', 'varkappa': 'ϰ', 'varrho': 'ϱ', 'varsigma': 'ς', 'varphi': 'ϕ',
+        
+        # Greek uppercase
+        'Gamma': 'Γ', 'Delta': 'Δ', 'Theta': 'Θ', 'Lambda': 'Λ', 'Xi': 'Ξ', 'Pi': 'Π',
+        'Sigma': 'Σ', 'Upsilon': 'Υ', 'Phi': 'Φ', 'Psi': 'Ψ', 'Omega': 'Ω',
+        
+        # Math operators and symbols
+        'pm': '±', 'mp': '∓', 'times': '×', 'div': '÷', 'ast': '*', 'star': '⋆', 'circ': '∘',
+        'bullet': '•', 'cdot': '⋅', 'cap': '∩', 'cup': '∪', 'uplus': '⊎', 'sqcap': '⊓', 'sqcup': '⊔',
+        'vee': '∨', 'wedge': '∧', 'oplus': '⊕', 'ominus': '⊖', 'otimes': '⊗', 'oslash': '⊘', 'odot': '⊙',
+        'bigcirc': '◯', 'amalg': '⨿', 'leq': '≤', 'geq': '≥', 'equiv': '≡', 'prec': '≺', 'succ': '≻',
+        'sim': '∼', 'simeq': '≃', 'approx': '≈', 'cong': '≅', 'neq': '≠', 'propto': '∝', 'parallel': '∥',
+        'perp': '⊥', 'in': '∈', 'ni': '∋', 'notin': '∉', 'subset': '⊂', 'supset': '⊃', 'subseteq': '⊆',
+        'supseteq': '⊇', 'nsubseteq': '⊈', 'nsupseteq': '⊉', 'emptyset': '∅', 'infty': '∞',
+        
+        # Arrows
+        'leftarrow': '←', 'rightarrow': '→', 'leftrightarrow': '↔', 'Leftarrow': '⇐', 'Rightarrow': '⇒',
+        'Leftrightarrow': '⇔', 'mapsto': '↦', 'hookleftarrow': '↩', 'hookrightarrow': '↪',
+        'longleftarrow': '⟵', 'longrightarrow': '⟶', 'longleftrightarrow': '⟷',
+        'Longleftarrow': '⟸', 'Longrightarrow': '⟹', 'Longleftrightarrow': '⟺',
+        
+        # Integrals, sums, etc.
+        'int': '∫', 'oint': '∮', 'sum': '∑', 'prod': '∏', 'coprod': '∐', 'partial': '∂', 'nabla': '∇',
+        
+        # Accents and diacritics (combining characters—apply after base char)
+        'acute': '\u0301', 'grave': '\u0300', 'ddot': '\u0308', 'tilde': '\u0303', 'bar': '\u0304',
+        'breve': '\u0306', 'check': '\u030c', 'hat': '\u0302', 'vec': '\u20d7', 'dot': '\u0307',
+        
+        # Misc
+        'ell': 'ℓ', 'Re': 'ℜ', 'Im': 'ℑ', 'wp': '℘', 'forall': '∀', 'exists': '∃', 'nexists': '∄',
+        'top': '⊤', 'bot': '⊥', 'angle': '∠', 'measuredangle': '∡', 'sphericalangle': '∢',
+        'therefore': '∴', 'because': '∵', 'dots': '…', 'cdots': '⋯', 'vdots': '⋮', 'ddots': '⋱'
+    }
+    # Apply replacements (escape backslash for literal match)
+    for cmd, uni in latex_to_uni.items():
+        s = s.replace(f'\\{cmd}', uni)
 
+
+    # Add more replacements as needed, e.g., s = s.replace(r'\mu', 'μ')
+    
+    # Strip \mathrm{} (roman font, not needed in terminal)
+    s = re.sub(r'\\mathrm\{([^}]*)\}', r'\1', s)
+    
+    # Convert simple superscripts like ^2 to Unicode
+    superscripts = {'0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹'}
+    s = re.sub(r'\^(\d)', lambda m: superscripts.get(m.group(1), m.group(0)), s)
+
+    # Add subscript support (similar to superscripts, for _2 or _{2})
+    subscripts = {'0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉'}
+    s = re.sub(r'_\{?(\d)\}?', lambda m: subscripts.get(m.group(1), m.group(0)), s)
+
+    # Simple fraction handling: \frac{a}{b} -> a/b (basic, no nesting)
+    s = re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'\1/\2', s)
+    
+    # Add spaces around operators =, -, / for readability
+    #for op in ['=', '-', '/']:
+    #    s = re.sub(rf'([^\s])({re.escape(op)})', rf'\1 \2', s)
+    #    s = re.sub(rf'({re.escape(op)})([^\s])', rf'\1 \2', s)
+    
+    
+    return s
 
 def cprint_local(msg, color=None, attrs=None, file=sys.stdout, end='\n'):
     color_code = _COLOR.get(color, '')

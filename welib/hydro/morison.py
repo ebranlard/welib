@@ -37,7 +37,7 @@ def inline_load(u_rel, a_wav, a_rel, D, rho, Cd, Cp=None, Ca=None, CM=None):
     if Ca is None and CM is not None:
         Cp = CM-1
         Ca = 1
-    p_FK      = rho * Cp * A * a_wav # Froude–Krylov (pressure)
+    p_FK      = rho * Cp * A * a_wav # Froude-Krylov (pressure)
     p_AM      = rho * Ca * A * a_rel  # Added-mass (relative acceleration)
     p_AM_wav  = rho * Ca * A * a_wav  # Added-mass (relative acceleration)
     p_AM_str  =-rho * Ca * A * a_str  # Added-mass (relative acceleration)
@@ -50,7 +50,7 @@ def inline_load(u_rel, a_wav, a_rel, D, rho, Cd, Cp=None, Ca=None, CM=None):
 
 
 
-def monopileHydroLoads1D(ai, fi, ki, epsi, h, t, z, x, D, rho, Cd, Cp, Ca, u_struct, a_struct=None, CM=None):  
+def monopileHydroLoads1D(t, ai, fi, ki, epsi, h, z, x, D, rho, Cd, Cp, Ca, u_struct, a_struct=None, CM=None):  
     """ 
     Compute hydrodynamic loads (Morison equation) on monopile
     Wave kinematics are computed on the fly at undeflected monopile position
@@ -58,13 +58,13 @@ def monopileHydroLoads1D(ai, fi, ki, epsi, h, t, z, x, D, rho, Cd, Cp, Ca, u_str
     Acceleration is optional as it may be accounted for elsewhere
 
     INPUTS:
-       fi  : (nf-array) frequencies, for wave kinematics
-       ai  : (nf-array) amplitudes
-       ki  : (nf-array) wave numbers
-       epsi: (nf-array) phases
-       h: water depth >0, the sea bed is at z=-h [m]
-       t: time [s]
-       z: (n-array) vertical positions defining monopile (and possibly tower) sections
+     - t: time, scalar [s]
+     - fi  : (nf-array) frequencies, for wave kinematics
+     - ai  : (nf-array) amplitudes
+     - ki  : (nf-array) wave numbers
+     - epsi: (nf-array) phases
+     - h: water depth >0, the sea bed is at z=-h [m]
+     - z: (n-array) vertical positions defining monopile (and possibly tower) sections
     """
     if a_struct is None:
         a_struct = np.zeros_like(u_struct)

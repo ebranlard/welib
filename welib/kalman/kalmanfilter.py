@@ -1,11 +1,12 @@
 # TODO Change notations
 """ """
 from .kalman import *
+import os
 import numpy as np
 import pandas as pd
 
 class KalmanFilter(object):
-    def __init__(self,sX0,sXa,sU,sY,sS=None, sXd=None):
+    def __init__(self, sX0, sXa, sU, sY, sS=None, sXd=None):
         sS = [] if sS is None else sS
         self.sX0 = sX0
         self.sXa = sXa
@@ -15,7 +16,7 @@ class KalmanFilter(object):
 
 
         #  State vector is States and Augmented states
-        self.sX=np.concatenate((self.sX0,self.sXa))
+        self.sX = np.concatenate((self.sX0, self.sXa))
 
         if sXd is None:
             sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
@@ -79,16 +80,16 @@ class KalmanFilter(object):
         s+='  sY  : {} \n'.format(self.sY)
         s+='  sS  : {} \n'.format(self.sS)
         if self.Xx is not None:
-            s+=' Xx: State-State Matrix  \n'
+            s+=' A: State-State Matrix (Xx) \n'
             s+=pretty_PrintMat(self.Xx)+'\n'
         if self.Xu is not None:
-            s+=' Xu: State-Input Matrix  \n'
+            s+=' B: State-Input Matrix (Xu) \n'
             s+=pretty_PrintMat(self.Xu)+'\n'
         if self.Yx is not None:
-            s+=' Yx: Output-State Matrix  \n'
+            s+=' C: Output-State Matrix (Yx) \n'
             s+=pretty_PrintMat(self.Yx)+'\n'
         if self.Yu is not None:
-            s+=' Yu: Output-Input Matrix  \n'
+            s+=' D: Output-Input Matrix (Yu) \n'
             s+=pretty_PrintMat(self.Yu)+'\n'
         return s
 
@@ -272,7 +273,7 @@ class KalmanFilter(object):
         return np.zeros(self.nX)
 
 
-    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', dataDict=None, verbose=False):
+    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', dataDict=None, verbose=False, raiseIfAbsent=False):
         """" 
          - Open a simulation result file
          - Use dt to discretize the KF
@@ -286,13 +287,19 @@ class KalmanFilter(object):
         import welib.weio as weio
 
         # --- Loading "Measurements"
+        if '.outb' in measFile:
+            if not os.path.exists(measFile):
+                measFile = measFile.replace('.outb', '.out')
+        if not os.path.exists(measFile):
+            if '.out' in measFile:
+                measFile = measFile.replace('.out', '.outb')
         df=weio.read(measFile).toDataFrame()
         df=df.iloc[::nUnderSamp,:]                      # reducing sampling
         if tRange is not None:
             df=df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
         time = df[timeCol].values
         dt   = (time[-1] - time[0])/(len(time)-1)
-        KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False, dataDict=dataDict)
+        KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False, dataDict=dataDict, raiseIfAbsent=raiseIfAbsent)
 
         # --- 
         KF.discretize(dt, method='exponential')
@@ -473,15 +480,23 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2'):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2', tRangeStats=None, printStats=False):
     from welib.tools.stats import comparison_stats
+    from welib.tools.strings import latexStrip
     import matplotlib
     import matplotlib.pyplot as plt
-    # --- Compare States
+    # --- Misc inits
     if COLRS is None:
         from welib.tools.colors import cmap_colors
         COLRS = cmap_colors(4, 'viridis')
+    if printStats:
+        import sys
+        if sys.platform.startswith('win'):
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
 
+
+    # --- Channel indices
     if channels is not None:
         sX=list(sX)
         I=[]
@@ -494,6 +509,16 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
             I=np.arange(len(sX))
     else:
         I=np.arange(len(sX))
+
+    # --- Time indices for stats
+    if tRangeStats is None:
+        IT = np.arange(0, len(time))
+    else:
+        IT = np.logical_and(time>tRangeStats[0], time<tRangeStats[1])
+        if len(IT)==0:
+            IT = np.arange(0, len(time))
+
+
 
     if fig is None:
 
@@ -510,6 +535,7 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
         axes = fig.axes
     axes=(np.asarray(axes).T).ravel()
     
+    # --- Plot request signals
     for j,i in enumerate(I):
         s  = sX[i]
         ax = axes[j]
@@ -521,13 +547,21 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
 
         if stats:
             if X_clean is not None:
-                _, sStats = comparison_stats(time, X_clean[s], time, X_hat[s], stats=stats)
+                _, sStats = comparison_stats(time[IT], X_clean[s][IT], time[IT], X_hat[s][IT], stats=stats, method='1-2')
                 Ylim = ax.get_ylim()
                 Xlim = ax.get_xlim()
                 ax.text(Xlim[0]*1.01 ,Ylim[0]+(Ylim[1]-Ylim[0])*0.82, sStats, fontsize=10)
+                if printStats:
+                    print(f"{s:10s} "+latexStrip(sStats))
+
+        if tRangeStats is not None:
+            ax.axvline(x = tRangeStats[0], color = 'k', ls='--')
+            ax.axvline(x = tRangeStats[1], color = 'k', ls='--')
 
         ax.set_ylabel(s)
         ax.tick_params(direction='in')
+
+
     axes[0].set_title(title)
     axes[-1].set_xlabel('Time [s]')
     axes[len(I)-1].legend()

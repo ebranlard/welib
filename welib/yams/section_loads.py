@@ -200,9 +200,8 @@ def beamSectionLoads3D(p_ext, F_top, M_top, s_span, m,
     # print('TODO TODO NEW Beam Section TODO Include')
     #    quadratic velocity terms
     #    Coriolis-type coupling
-    #    axial–bending coupling due to large deflection kinematics
+    #    axial bending coupling due to large deflection kinematics
     #    Reference tools keep at least first-order convective inertia, which produces small oscillations at wave frequency.
-    #    This is usually small but exactly the kind of “missing wiggles” you describe.
 
 
     p_all += p_corr

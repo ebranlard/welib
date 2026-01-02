@@ -1292,7 +1292,7 @@ def addToOutlist(OutList, Signals):
 # --------------------------------------------------------------------------------}
 # --- Generic df 
 # --------------------------------------------------------------------------------{
-def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, verbose=False):
+def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, verbose=False, raiseIfAbsent=False):
     """ 
     NOTE: see welib.tools.pandalib
 
@@ -1367,6 +1367,8 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
                     df[k]=eval(expr)
                     ColNew.append(k)
                 else:
+                    if raiseIfAbsent:
+                        raise Exception('Column not present in dataframe, cannot evaluate: ',expr)
                     print('[WARN] Column not present in dataframe, cannot evaluate: ',expr)
             else:
                 #print(k0,'=',v)
@@ -1401,6 +1403,8 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
 
     if len(ColMapMiss)>0:
         print('[FAIL] The following columns were not found in the dataframe:',ColMapMiss)
+        if raiseIfAbsent:
+            raise Exception('Column not present in dataframe, cannot evaluate: ',ColMapMiss)
         #print('Available columns are:',df.columns.values)
 
     if bColKeepNewOnly:

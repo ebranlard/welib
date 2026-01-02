@@ -269,10 +269,14 @@ def FASTmodel2FNSB(FST_file, shapes_sub=[0,4], nShapes_bld=0, nSpan_sub=None, nS
     Struct.FST = FST
     Struct.ED  = ED
     Struct.SD  = SD
-    Struct.WtrDens   = FST['WtrDens']
-    Struct.WtrDpth   = FST['WtrDpth']
-    Struct.Hydro     = FST['CompSeaSt']>0 and FST['CompHydro']>0
+    Struct.Hydro     = FST['CompHydro']>0 # FST['CompSeaSt']>0 and 
     Struct.HD        = DCK.fst_vt['HydroDyn']
+    try:
+        Struct.WtrDens   = FST['WtrDens']
+        Struct.WtrDpth   = FST['WtrDpth']
+    except:
+        Struct.WtrDens   = Struct.HD['WtrDens']
+        Struct.WtrDpth   = Struct.HD['WtrDpth']
 
     Struct.DampMat=DampMat
     Struct.RayleighCoeff=RayleighCoeff
