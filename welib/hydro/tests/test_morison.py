@@ -11,7 +11,7 @@ class Test(unittest.TestCase):
         h   = 30.  # water depth [m]
         rho = 1025 # water density
         D   = 6    # monopile diameter [m]
-        CD  = 1    # drag coefficient
+        Cd  = 1    # drag coefficient
         CM  = 2    # inertia coefficient
         a   = 3    # wave peak amplitude [m]
         eps = 0    # phase shift
@@ -23,10 +23,16 @@ class Test(unittest.TestCase):
         k    = wavenumber(f, h, g)
         eta  = elevation2d(a, f, k, eps, t)
         z = np.linspace(-h,eta,30)
-        u, du = kinematics2d(a, f, k, eps, h, t, z, Wheeler=True, eta=eta)
+        u_wave, a_wave = kinematics2d(a, f, k, eps, h, t, z, Wheeler=True, eta=eta)
+
+        # Relative motion
+        u_rel = u_wave# - u_struct
+        a_rel = a_wave# - a_struct
 
         # Wave loads with wheeler
-        p_tot     = inline_load(u, du, D, CD  , CM  , rho)
+
+        p_tot = inline_load(u_rel, a_wave, a_rel, D, rho, Cd, CM=CM)[0]
+#         p_tot = inline_load(u, du, D, CD  , CM  , rho)
 
         np.testing.assert_almost_equal(p_tot[-1], 60539.6349674)
 

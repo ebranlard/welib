@@ -2,6 +2,8 @@
 Tools for SubDyn
 
 - Setup a FEM model, compute Guyan and CB modes
+- Returns position of outputs nodes pointsMJ and pointsMNout
+- Returns average dataframe for each member outputs with proper coordinates
 - Get a dataframe with properties
 - More todo
 
@@ -214,7 +216,7 @@ class SubDyn:
                 s='M{}J{}'.format(ie+1, iN+1)
                 Joints.append([N.x,N.y,N.z])
                 labels.append(s)
-        df =pd.DataFrame(data=np.asarray(Joints), index=labels, columns=['x','y','z'])
+        df = pd.DataFrame(data=np.asarray(Joints), index=labels, columns=['x','y','z'])
         return df
 
     @property
@@ -417,6 +419,68 @@ class SubDyn:
                         element=element, BC=BC, M_tip=self.M_tip)
         return FEM
 
+
+    def beamSecOutputs(self, df, verbose=False):
+        """ 
+        Given an OpenFAST output dataFrame
+        return arrays of section loads and section motion for each height of a beam
+        INPUTS:
+         - df: OpenFAST output dataframe, e.g. FASTOutputFile('main.outb').toDataFrame()
+        OUTPUTS:
+         - zBeam: z nodes
+         - F_sec: array of shape (6 x nz x nt): Fx, Fy, Fz, Mx, My, Mz
+         - r_sec: array of shape (6 x nz x nt): tx, ty, tz, rx, ry, rz
+        """
+        df_columns_bkp = df.columns.copy()
+        df.columns = [  v.split('_[')[0].lower() for v in df.columns.values]  # Removing units
+
+        MN = self.pointsMN
+        MJ = self.pointsMJ
+        MNo= self.pointsMNout
+        zBeam = np.array(sorted(MN['z'].unique()))
+
+        F_sec = np.zeros((6,len(zBeam),len(df)))*np.nan
+        r_sec = np.zeros((6,len(zBeam),len(df)))*np.nan
+        # --- First Member outputs
+        if verbose:
+            print('MNo', len(MNo))
+        for iz, z in enumerate(zBeam):
+            inds = MNo.index[MNo['z'] == z]
+            if len(inds)==0:
+                continue
+            ind = inds[0].lower()  # first index found
+            F_sec[0, iz, :] = df['{}fkxe' .format(ind)] if '{}fkxe' .format(ind) in df.columns else np.nan
+            F_sec[1, iz, :] = df['{}fkye' .format(ind)] if '{}fkye' .format(ind) in df.columns else np.nan
+            F_sec[2, iz, :] = df['{}fkze' .format(ind)] if '{}fkze' .format(ind) in df.columns else np.nan
+            F_sec[3, iz, :] = df['{}mkxe' .format(ind)] if '{}mkxe' .format(ind) in df.columns else np.nan
+            F_sec[4, iz, :] = df['{}mkye' .format(ind)] if '{}mkye' .format(ind) in df.columns else np.nan
+            F_sec[5, iz, :] = df['{}mkze' .format(ind)] if '{}mkze' .format(ind) in df.columns else np.nan
+            r_sec[0, iz, :] = df['{}tdxss'.format(ind)] if '{}tdxss'.format(ind) in df.columns else np.nan
+            r_sec[1, iz, :] = df['{}tdyss'.format(ind)] if '{}tdyss'.format(ind) in df.columns else np.nan
+            r_sec[2, iz, :] = df['{}tdzss'.format(ind)] if '{}tdzss'.format(ind) in df.columns else np.nan
+            r_sec[3, iz, :] = df['{}rdxe' .format(ind)] if '{}rdxe' .format(ind) in df.columns else np.nan
+            r_sec[4, iz, :] = df['{}rdye' .format(ind)] if '{}rdye' .format(ind) in df.columns else np.nan
+            r_sec[5, iz, :] = df['{}rdze' .format(ind)] if '{}rdze' .format(ind) in df.columns else np.nan
+        # --- MJ All Out
+        # Erase if present)
+        if 'm1j1fkxe' in df:
+            if verbose:
+                print('MJ present')
+            for iz, z in enumerate(zBeam):
+                ind = MJ.index[MJ['z']==z][0].lower() # First index where height is found
+                F_sec[0, iz, :] = df['{}fkxe'.format(ind)] # Fx
+                F_sec[1, iz, :] = df['{}fkye'.format(ind)] # Fy
+                F_sec[2, iz, :] = df['{}fkze'.format(ind)] # Fz
+                F_sec[3, iz, :] = df['{}mkxe'.format(ind)] # Mx
+                F_sec[4, iz, :] = df['{}mkye'.format(ind)] # My
+                F_sec[5, iz, :] = df['{}mkze'.format(ind)] # Mz
+
+        # Restore columns
+        df.columns = df_columns_bkp
+
+        return zBeam, F_sec, r_sec
+
+
     def beamModes(self, nCB=8, FEM = None):
         """ Returns mode shapes for beam-like structures, like Spar/Monopile """
         import welib.FEM.fem_beam as femb
@@ -541,11 +605,15 @@ class SubDyn:
             p['s_P0'][2,:]=x-np.min(x)
             p['r_O']   = (df['x'].values[0], df['y'].values[0], df['z'].values[0])
             p['R_b2g'] = np.eye(3)
+        else:
+            raise NotImplementedError()
         p['m']  = df['m'].values
         p['EI'] = np.zeros((3,nSpan))
         if main_axis=='z':
             p['EI'][0,:]=df['E'].values*df['I'].values
             p['EI'][1,:]=df['E'].values*df['I'].values
+        else:
+            raise NotImplementedError()
         p['jxxG']  = df['rho']*df['Ip']          # TODO verify
         p['s_min'] = p['s_span'][0]
         p['s_max'] = p['s_span'][-1]

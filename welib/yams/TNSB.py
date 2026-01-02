@@ -29,6 +29,7 @@ class Structure():
         self.theta_cone     = theta_cone
         self.theta_yaw      = theta_yaw
         self.bTiltBeforeNac = bTiltBeforeNac
+        self.additional_properties=[] # for user output in __repr__, so I remember what we have in the object
 
         self.Grd  = None
         self.Twr  = None
@@ -48,8 +49,8 @@ class Structure():
     def compute_RNA(s, verbose=False):
         s.M_rot= sum([B.mass for B in s.Blds])
         s.M_RNA= s.M_rot + s.Sft.mass + s.Nac.mass;
-        s.r_NGnac_inN = s.Nac.s_G_inB
-        s.r_NGhub_inN = s.r_NS_inN + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.Sft.s_G_inB))
+        s.r_NGnac_inN = s.Nac.s_G_inB.ravel()
+        s.r_NGhub_inN = s.r_NS_inN.ravel() + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.Sft.s_G_inB))
 
         try:
             # --------------------------------------------------------------------------------}
@@ -108,7 +109,7 @@ class Structure():
         s.iPsi  = s.Twr.nf # Index of DOF corresponding to azimuth
 
         # Useful for load computation
-        s.r_NR_inN = s.r_NS_inN + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.r_SR_inS))
+        s.r_NR_inN = s.r_NS_inN.ravel() + np.dot(s.Nac.R_0b.T, np.dot(s.Sft.R_0b, s.r_SR_inS))
         s.gravity  = s.Twr.gravity
         s.compute_RNA()
         s.nDOF = len(s.q)
@@ -193,38 +194,11 @@ class Structure():
 
 
 
-    def print_info(s):
-        print('----------------------------------------------------------------')
-        print('main_axis :', s.main_axis)
-        print('gravity   :', s.gravity)
-        print('tilt      :', s.theta_tilt*180/np.pi)
-        print('cone      :', s.theta_cone*180/np.pi)
-        print('yaw       :', s.theta_yaw *180/np.pi)
 
-    def print_origins(s):
-        print('Origin T :',s.Twr.r_O.T)
-        print('Origin N :',s.Nac.r_O.T)
-        print('Origin R :',s.Blds[0].r_O.T)
-        print('Origin S :',s.Sft.r_O.T)
-
-    def print_RNA(s):
-        print('----------------- RNA ---------------------------------------')
-        print('M_RNA      ', s.M_RNA)
-        print('r_NGrna_inN', np.asarray(s.r_NGrna_inN).flatten())
-        print('     r_NGnac_inN ',np.asarray(s.r_NGnac_inN).flatten(), 'M_nac',s.Nac.mass)
-        print('     r_NGhub_inN ',np.asarray(s.r_NGhub_inN).flatten(), 'M_hub',s.Sft.mass)
-        print('     r_NGrot_inN ',np.asarray(s.r_NGrot_inN).flatten(), 'M_rot',s.M_rot)
-
-    def print_couplings(s):
-        print('---------------Couplings ---------------------------------------')
-        print('Constant: (Bhat_t)')
-        print(s.Twr.Bhat_t_bc) # Constant
-        print('Time varying:')
-        print(s.Twr.alpha_couplings) # Time varying function of Twr.gzf
 
     def __repr__(self):
-        s='<{} object> with fields:\n'.format(type(self).__name__)
-        s+=f' - Grd Twr Yaw Nac Sft Bld: RigidBody or FASTBeamBody\n'
+        s='<TNSB {} object> with fields:\n'.format(type(self).__name__)
+        s+=f' - Grd Twr Yaw Nac Sft Blds: RigidBody or FASTBeamBody\n'
         s+=f' - MM KK DD: matrices\n'
         s+=f' - q : {self.q.flatten()}\n'
         s+=f' - r_ET_inE: {self.r_ET_inE.flatten()}\n'
@@ -232,14 +206,28 @@ class Structure():
         s+=f' - r_NS_inN: {self.r_NS_inN.flatten()}\n'
         s+=f' - r_SR_inS: {self.r_SR_inS.flatten()}\n'
         s+=f' - main_axis     : {self.main_axis}\n'
-        s+=f' - theta_tilt    : {self.theta_tilt}\n'
-        s+=f' - theta_cone    : {self.theta_cone}\n'
-        s+=f' - theta_yaw     : {self.theta_yaw}\n'
+        s+=f' - theta_tilt    : {self.theta_tilt*180/np.pi} [deg] (but stored in rad)\n'
+        s+=f' - theta_cone    : {self.theta_cone*180/np.pi} [deg] (but stored in rad)\n'
+        s+=f' - theta_yaw     : {self.theta_yaw*180/np.pi}  [deg] (but stored in rad)\n'
         s+=f' - bTiltBeforeNac: {self.bTiltBeforeNac}\n'
-        self.print_info()
-        self.print_origins()
-        self.print_RNA()
-        self.print_couplings()
+        s+='----------------------------------------------------------------\n'
+        s+=f' * Origin T  : {self.Twr.r_O.T}\n'
+        s+=f' * Origin N  : {self.Nac.r_O.T}\n'
+        s+=f' * Origin R  : {self.Blds[0].r_O.T}\n'
+        s+=f' * Origin S  : {self.Sft.r_O.T}\n'
+        s+='----------------- RNA ---------------------------------------\n'
+        s+=f'M_RNA       {self.M_RNA:.4f}\n'
+        s+=f'r_NGrna_inN {np.asarray(self.r_NGrna_inN).flatten()}\n'
+        s+=f'     r_NGnac_inN {np.asarray(self.r_NGnac_inN).flatten().round(4)} M_nac {self.Nac.mass:.4f}\n'
+        s+=f'     r_NGhub_inN {np.asarray(self.r_NGhub_inN).flatten().round(4)} M_hub {self.Sft.mass:.4f}\n'
+        s+=f'     r_NGrot_inN {np.asarray(self.r_NGrot_inN).flatten().round(4)} M_rot {self.M_rot:.4f}\n'
+        s+='---------------Couplings ---------------------------------------\n'
+        s+='Constant: (Bhat_t)\n'
+        s+=str(self.Twr.Bhat_t_bc)+'\n'
+        s+='Time varying:\n'
+        s+=str(self.Twr.alpha_couplings)+'\n' # Time varying function of Twr.gzf
+        s+='---------------More --------------------------------------------\n'
+        s+= ' - Additional Props: {}\n'.format(self.additional_properties)
         return s
 
 

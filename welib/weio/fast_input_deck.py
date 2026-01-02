@@ -14,7 +14,7 @@ class FASTInputDeck(dict):
 
     @property
     def readlist_default(self):
-        return ['Fst','ED','SED','AD','ADdsk', 'BD','BDbld','EDtwr','EDbld','ADbld','AF','AC','OLAF','IW','HD','SeaSt','SrvD','SrvDdll','SrvDini', 'SD','MD']
+        return ['Fst','ED','SED','AD','ADdsk', 'BD','BDbld','EDtwr','EDbld','ADbld','AF','AC','OLAF','IW','HD','SS','SrvD','SrvDdll','SrvDini', 'SD','MD']
 
     def __init__(self, fullFstPath='', readlist=['all'], verbose=False):
         """Read FAST master file and read inputs for FAST modules
@@ -63,6 +63,7 @@ class FASTInputDeck(dict):
         self.fst_vt['AeroDynTower']      = None
         self.fst_vt['AeroDynPolar']      = None
         self.fst_vt['ServoDyn']          = None
+        self.fst_vt['SeaState']          = None
         self.fst_vt['DISCON_in']         = None
         self.fst_vt['HydroDyn']          = None
         self.fst_vt['MoorDyn']           = None
@@ -134,7 +135,7 @@ class FASTInputDeck(dict):
                 self.fst_vt['AeroDynBlade'].append(self._read(bld_file,'ADbld'))
             # OLAF
             hasOLAF = False
-            if 'WakeMod' in AD:
+            if 'Wake_Mod' in AD:
                 hasOLAF = AD['Wake_Mod']==3
             elif 'WakeMod' in AD:
                 hasOLAF = AD['WakeMod']==3
@@ -315,9 +316,9 @@ class FASTInputDeck(dict):
                 self.fst_vt['HydroDyn'] = self._read(self.fst_vt['Fst']['HydroFile'],'HD')
 
             # SeaState
-            if 'CompSeaSt' in self.fst_vt['Fst']:
+            if 'CompSeaSt' in self.fst_vt['Fst'].keys():
                 if self.fst_vt['Fst']['CompSeaSt']>0:
-                    self.fst_vt['SeaState'] = self._read(self.fst_vt['Fst']['SeaStFile'],'SeaSt')
+                    self.fst_vt['SeaState'] = self._read(self.fst_vt['Fst']['SeaStFile'],'SS')
 
             # SubDyn
             if self.fst_vt['Fst']['CompSub'] == 1:
@@ -345,10 +346,11 @@ class FASTInputDeck(dict):
         if self.AD is not None:
             self.AD.Bld1 = self.fst_vt['AeroDynBlade'][0]
             self.AD.AF  = self.fst_vt['af_data']
-        self.IW  = self.fst_vt['InflowWind']
-        self.BD  = self.fst_vt['BeamDyn']
-        self.BDbld  = self.fst_vt['BeamDynBlade']
-        self.SD  = self.fst_vt['SubDyn']
+        self.IW    = self.fst_vt['InflowWind']
+        self.BD    = self.fst_vt['BeamDyn']
+        self.BDbld = self.fst_vt['BeamDynBlade']
+        self.SD    = self.fst_vt['SubDyn']
+        self.SS    = self.fst_vt['SeaState']
 
     @ property
     def unusedNames(self):
@@ -377,7 +379,7 @@ class FASTInputDeck(dict):
         else:
             fullpath = os.path.join(self.FAST_directory, relfilepath)
         try:
-            data = FASTInputFile(fullpath)
+            data = FASTInputFile(fullpath, verbose=self.verbose)
             if self.verbose:
                 print('>>> Read: ',fullpath)
             self.inputFilesRead[shortkey] = fullpath

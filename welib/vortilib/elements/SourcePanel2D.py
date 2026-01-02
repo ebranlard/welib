@@ -376,7 +376,7 @@ def csp_u11_anderson(rCP, rS1, rS2, sigma=1, tol=1e-8, principal=False):
         if 0 - tol <= dot <= ds**2 + tol:
             return  CY * 0.5 * sigma, -CX * 0.5 * sigma # -sin phi = nx ,  cos phi = ny
         else:
-            print('>>> On line', xCP, yCP) # Mystery case
+            #print('>>> On line', xCP, yCP) # Mystery case
             return 0,0
     # --- 
     E  = np.sqrt(E2)

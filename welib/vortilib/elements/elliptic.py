@@ -150,7 +150,8 @@ def ellipticPiCarlson(n,m):
         n=np.array(n)
     if m.shape==(0,):
         return np.array([])
-    RF = ellipticRF(1-m)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        RF = ellipticRF(1-m)
     RJ = ellipticRJ(1-m,1-n)
     PI = RF + 1/3*n*RJ
     return PI

@@ -40,12 +40,18 @@ class Body(object):
         self.pos_global_init = np.asarray(r_O).ravel()
         self._R_b2g          = np.asarray(R_b2g)
         self.R_b2g_init      = np.asarray(R_b2g)
+        self.additional_properties = [] # List of string so that we remember the useful properties
 
         self._mass=None
         self.MM  = None # To be defined by children
 
     def __repr__(self):
-        s='<Generic Body object>:\n'
+        s='<Generic Body {} object>:\n'.format(self.name)
+        s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
+        s+=' - mass:                  {}\n'.format(self.mass)
+        s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
+        s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
+        s+=' - Additional Props: {}\n'.format(self.additional_properties)
         return s
 
     @property
@@ -200,8 +206,8 @@ class RigidBody(Body):
         return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
-        s='<RigidBody object>:\n'.format(self.name)
-        s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
+        s='<RigidBody object>:\n'
+        s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
@@ -210,6 +216,7 @@ class RigidBody(Body):
         s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+        s+=' - Additional Props: {}\n'.format(self.additional_properties)
         s+='Useful getters: inertia_at, mass_matrix\n'
         return s
 
@@ -632,8 +639,13 @@ class BeamBody(FlexibleBody):
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
-        s+=' - Properties: s_span, m, EI, Mtop, PhiU, PhiV, PhiW\n'
+        s+=' - Properties: s_span, m, EI, Mtop, s_G0, PhiU, PhiV, PhiK\n'
+        s+='               jxxG, s_P0, s_G\n'
+        s+='               bAxialCorr, bOrth, bStiffening\n'
+        s+='               Omega, gravity, int_method    \n'
+        s+='               damp_zeta, RayleighCoeff, DampMat\n'
         s+='               MM, KK, KK0, KKg, KKg_Mtop, KKg_self\n'
+        s+=' - Additional Props: {}\n'.format(self.additional_properties)
         s+='Usefull getters: inertia_at, mass_matrix_at, toRigidBody \n'
         return s
 
@@ -815,4 +827,9 @@ class FASTBeamBody(BeamBody):
                 massExpected=massExpected,
                 int_method=int_method
                 )
-        self.shapes=shapes
+        self.shapes = shapes
+        self.FASTInpuFile    = inp
+        self.additional_properties+=['shapes', 'FASTInpuFile']
+        if 'fnd' in name:
+            self.SD = sd
+            self.additional_properties+=['shapes', 'FASTInpuFile', 'SD']

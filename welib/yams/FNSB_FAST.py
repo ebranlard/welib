@@ -10,6 +10,7 @@ from welib.yams.TNSB import manual_assembly, auto_assembly
 
 import welib.weio as weio
 from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.fast_input_deck import FASTInputDeck
 
 # --------------------------------------------------------------------------------}
 # --- Creating a FNSB model from a FAST model
@@ -46,58 +47,37 @@ def FASTmodel2FNSB(FST_file, shapes_sub=[0,4], nShapes_bld=0, nSpan_sub=None, nS
     if ext.lower()!='.fst':
         raise Exception('FNSB requires a fst file as input')
 
-    FST=FASTInputFile(FST_file)
-    rootdir = os.path.dirname(FST_file)
-    EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
+    DCK = FASTInputDeck(FST_file)
+    FST = DCK.fst_vt['Fst']
+    ED  = DCK.fst_vt['ElastoDyn']
+    SD  = DCK.fst_vt['SubDyn']
+    bld  = DCK.fst_vt['ElastoDynBlade']
     if gravity is None:
         try:
            gravity = FST['gravity']
         except:
-           pass
-    subfile = os.path.join(rootdir,FST['SubFile'].strip('"')).replace('\\','/')
-
-    # Reading elastodyn file
-    ED      = FASTInputFile(EDfile)
-    rootdir = os.path.dirname(EDfile)
-    bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
-    twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
-    bld     = FASTInputFile(bldfile)
-    if gravity is None:
-       gravity = ED['gravity'] # Old interface, method above should work, so raise Exception here
+           gravity = ED['gravity'] # Old interface
 
     # Reading SubDyn file
-    sub     = FASTInputFile(subfile, verbose=False)
     nShapes_sub = len(shapes_sub)
-    graph = sub.toGraph() # NOTE: this is repeated in bodies.py...
-    graph.divideElements(sub['NDiv'])
+    graph = SD.toGraph() # NOTE: this is repeated in bodies.py...
+    graph.divideElements(SD['NDiv'])
     graph.sortNodesBy('z')
     df = graph.nodalDataFrame()
     zBot = np.min(df['z'])
     zTop = np.max(df['z'])
     RayleighCoeff=None
     DampMat=None
-    if sub['GuyanDampMod']==1:
+    if SD['GuyanDampMod']==1:
         # Rayleigh Damping
-        RayleighCoeff=sub['RayleighDamp']
+        RayleighCoeff=SD['RayleighDamp']
         #if RayleighCoeff[0]==0:
         #    damp_zeta=omega*RayleighCoeff[1]/2. 
-    elif sub['GuyanDampMod']==2:
+    elif SD['GuyanDampMod']==2:
         # Full matrix
-        DampMat = sub['GuyanDampMatrix']
+        DampMat = SD['GuyanDampMatrix']
         DampMat=DampMat[np.ix_(shapes,shapes)]
 
-
-    # --- Default arguments
-#     if nSpan_sub is None:
-#         if algo=='OpenFAST':
-#             nSpan_sub = 
-#             print('[INFO] FNSB_FAST: Using number of substructure nodes ({}) from OpenFAST Input file.'.format(nSpan_sub))
-#         else:
-#             nSpan_sub=101
-#             print('[INFO] FNSB_FAST: Using default number of substructure nodes ({}).'.format(nSpan_sub))
-#     else:
-#         if algo=='OpenFAST':
-#             print('[INFO] FNSB_FAST: Using user-specified number of substructure nodes ({}).'.format(nSpan_sub))
     if nSpan_bld is None:
         if algo=='OpenFAST':
             nSpan_bld = ED['BldNodes']
@@ -218,12 +198,12 @@ def FASTmodel2FNSB(FST_file, shapes_sub=[0,4], nShapes_bld=0, nSpan_sub=None, nS
     # Tower Body
     #   None for now
     # Substructure Body
-    Fnd = FASTBeamBody('substructure', ED, sub, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
+    Fnd = FASTBeamBody('substructure', ED, SD, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
     #print(Fnd)
     #print('Fnd MM\n',Fnd.MM[6:,6:])
     #print('Fnd KK\n',Fnd.KK[6:,6:])
     # HACK here because doesn't handle this for now
-    if sub['GuyanDampMod']==1:
+    if SD['GuyanDampMod']==1:
         Fnd.DD[6:,6:] = Fnd.MM[6:,6:]*RayleighCoeff[0] + Fnd.KK[6:,6:]*RayleighCoeff[1] 
 
 
@@ -285,10 +265,18 @@ def FASTmodel2FNSB(FST_file, shapes_sub=[0,4], nShapes_bld=0, nSpan_sub=None, nS
         print(q_init)
 
     # --- Useful data
-    Struct.ED=ED
+    Struct.DCK = DCK
+    Struct.FST = FST
+    Struct.ED  = ED
+    Struct.SD  = SD
+    Struct.WtrDens   = FST['WtrDens']
+    Struct.WtrDpth   = FST['WtrDpth']
+    Struct.Hydro     = FST['CompSeaSt']>0 and FST['CompHydro']>0
+    Struct.HD        = DCK.fst_vt['HydroDyn']
 
     Struct.DampMat=DampMat
     Struct.RayleighCoeff=RayleighCoeff
+    Struct.additional_properties +=['DCK', 'FST', 'ED', 'DampMat', 'RayleighCoeff', 'WaterDepth','Hydro']
 
 
     return Struct
