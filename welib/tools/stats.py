@@ -192,6 +192,8 @@ def mean_rel_err(t1=None, y1=None, t2=None, y2=None, method='meanabs', verbose=F
         # transform values from 1 to 2
         Min=min(np.nanmin(y1), np.nanmin(y2))
         Max=max(np.nanmax(y1), np.nanmax(y2))
+        if Max==Min:
+            Max=Min+1
         y1 = (y1-Min)/(Max-Min)+1
         y2 = (y2-Min)/(Max-Min)+1
         meanrelerr = np.nanmean(myabs(y2-y1)/np.abs(y1))*100

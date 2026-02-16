@@ -36,10 +36,8 @@ class Test(unittest.TestCase):
         dfAD2 = pd.DataFrame(data=np.vstack((Mf,Ml)), columns=cols)
 
         dfAD1 = out['AD']
-        col1 = dfAD1.columns.values
-        col2 = dfAD2.columns.values
-        col1.sort()
-        col2.sort()
+        col1 = sorted(dfAD1.columns)
+        col2 = sorted(dfAD2.columns)
         np.testing.assert_equal(col1, col2)
 
         dfAD1 = dfAD1.iloc[[0,18]]
@@ -52,10 +50,8 @@ class Test(unittest.TestCase):
         Ml   = np.array([0.971289,  0.051362,  0.250493, 0.254712,-0.053140, 17,61.191176])
         dfED2 = pd.DataFrame(data=np.vstack((Mf,Ml)), columns=cols)
         dfED1 = out['ED_bld']
-        col1 = dfED1.columns.values
-        col2 = dfED2.columns.values
-        col1.sort()
-        col2.sort()
+        col1 = sorted(dfAD1.columns)
+        col2 = sorted(dfAD2.columns)
         np.testing.assert_equal(col1, col2)
         dfED1 = dfED1.iloc[[0,16]]
         for c in cols:
@@ -71,10 +67,8 @@ class Test(unittest.TestCase):
         Mf    = np.array([0.032810 ,  59.699168 ,-39.653777 ,    1 ,  3.970000])
         Ml    = np.array([1.000000 , 963.398364 ,  0.448169 ,   51 ,120.999015])
         dfAD2 = pd.DataFrame(data= np.vstack((Mf,Ml)), columns = cols)
-        col1 = dfAD1.columns.values
-        col2 = dfAD2.columns.values
-        col1.sort()
-        col2.sort()
+        col1 = sorted(dfAD1.columns)
+        col2 = sorted(dfAD2.columns)
         np.testing.assert_equal(col1, col2)
         dfAD1 = dfAD1.iloc[[0,50]]
         for c in cols:

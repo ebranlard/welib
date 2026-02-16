@@ -54,12 +54,12 @@ class Test(unittest.TestCase):
             except weio.OptionalImportError:
                 nError += 0 # Optional..
                 if DEBUG:
-                    print('[FAIL] {:30s}\tOptional package missing'.format(os.path.basename(f)[:30]))
+                    print('[WARN] {:30s}\tOptional package missing'.format(os.path.basename(f)[:30]))
             except:
                 nError += 1
                 if DEBUG:
                     print('[FAIL] {:30s}\tException occurred'.format(os.path.basename(f)[:30]))
-                #raise 
+                raise 
 
         if nError>0:
             raise Exception('Some tests failed')
