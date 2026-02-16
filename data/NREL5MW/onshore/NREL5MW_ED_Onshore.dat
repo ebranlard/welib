@@ -72,7 +72,8 @@ False         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   TipMass(2)  - Tip-brake mass, blade 2 (kg)
           0   TipMass(3)  - Tip-brake mass, blade 3 (kg) [unused for 2 blades]
       56780   HubMass     - Hub mass (kg)
-     115926   HubIner     - Hub inertia about rotor axis [3 blades] or teeter axis [2 blades] (kg m^2)
+     115926   HubIner     - Hub inertia about rotor axis (2 or 3-blades) (kg m^2)
+          0   HubIner_Teeter - Hub inertia about teeter axis (2-blades) (kg m^2)
     534.116   GenIner     - Generator inertia about HSS (kg m^2)
      240000   NacMass     - Nacelle mass (kg)
 2.60789E+06   NacYIner    - Nacelle inertia about yaw axis (kg m^2)
@@ -81,6 +82,9 @@ False         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   PtfmRIner   - Platform inertia for roll tilt rotation about the platform CM (kg m^2)
           0   PtfmPIner   - Platform inertia for pitch tilt rotation about the platform CM (kg m^2)
           0   PtfmYIner   - Platform inertia for yaw rotation about the platform CM (kg m^2)
+          0   PtfmXYIner  - Platform xy moment of inertia about the platform CM (=-int(xydm)) (kg m^2)
+          0   PtfmYZIner  - Platform yz moment of inertia about the platform CM (=-int(yzdm)) (kg m^2)
+          0   PtfmXZIner  - Platform xz moment of inertia about the platform CM (=-int(xzdm)) (kg m^2)
 ---------------------- BLADE ---------------------------------------------------
          17   BldNodes    - Number of blade nodes (per blade) used for analysis (-)
 "../5MW_Baseline/NRELOffshrBsline5MW_Blade.dat"    BldFile(1)  - Name of file containing properties for blade 1 (quoted string)
@@ -95,6 +99,17 @@ False         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   TeetHStP    - Rotor-teeter hard-stop position (degrees) [used only for 2 blades and when TeetMod=1]
           0   TeetSSSp    - Rotor-teeter soft-stop linear-spring constant (N-m/rad) [used only for 2 blades and when TeetMod=1]
           0   TeetHSSp    - Rotor-teeter hard-stop linear-spring constant (N-m/rad) [used only for 2 blades and when TeetMod=1]
+---------------------- YAW-FRICTION --------------------------------------------
+          0   YawFrctMod  - Yaw-friction model {0: none, 1: friction independent of yaw-bearing force and bending moment, 2: friction with Coulomb terms depending on yaw-bearing force and bending moment, 3: user defined model} (switch)
+        300   M_CSmax     - Maximum static Coulomb friction torque (N-m) [M_CSmax when YawFrctMod=1; |Fz|*M_CSmax when YawFrctMod=2 and Fz<0]
+          0   M_FCSmax    - Maximum static Coulomb friction torque proportional to yaw bearing shear force (N-m) [sqrt(Fx^2+Fy^2)*M_FCSmax; only used when YawFrctMod=2]
+          0   M_MCSmax    - Maximum static Coulomb friction torque proportional to yaw bearing bending moment (N-m) [sqrt(Mx^2+My^2)*M_MCSmax; only used when YawFrctMod=2]
+         40   M_CD        - Dynamic Coulomb friction moment (N-m) [M_CD when YawFrctMod=1; |Fz|*M_CD when YawFrctMod=2 and Fz<0]
+          0   M_FCD       - Dynamic Coulomb friction moment proportional to yaw bearing shear force (N-m) [sqrt(Fx^2+Fy^2)*M_FCD; only used when YawFrctMod=2]
+          0   M_MCD       - Dynamic Coulomb friction moment proportional to yaw bearing bending moment (N-m) [sqrt(Mx^2+My^2)*M_MCD; only used when YawFrctMod=2]
+          0   sig_v       - Linear viscous friction coefficient (N-m/(rad/s))
+          0   sig_v2      - Quadratic viscous friction coefficient (N-m/(rad/s)^2)
+          0   OmgCut      - Yaw angular velocity cutoff below which viscous friction is linearized (rad/s)
 ---------------------- DRIVETRAIN ----------------------------------------------
         100   GBoxEff     - Gearbox efficiency (%)
          97   GBRatio     - Gearbox ratio (-)
@@ -212,11 +227,11 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "Q_GeAz"	Displacement of variable speed generator DOF
 "QD_DrTr"		Velocity of drivetrain rotational-flexibility DOF
 "QD_GeAz"		Velocity of variable speed generator DOF
-END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
----------------------- NODE OUTPUTS --------------------------------------------
-          1   BldNd_BladesOut  - Blades to output
-         99   BldNd_BlOutNd   - Blade nodes on each blade (currently unused)
-              OutList     - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx, ElastoDyn_Nodes tab for a listing of available output channels, (-)
+END of OutList section (the word "END" must appear in the first 3 columns of the last OutList line)
+====== Outputs for all blade stations (same ending as above for Spn1.... =========================== [optional section]
+          1   BldNd_BladesOut     - Number of blades to output all node information at.  Up to number of blades on turbine. (-)
+"All"         BldNd_BlOutNd       - Future feature will allow selecting a portion of the nodes to output.  Not implemented yet. (-)
+                  OutList             - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
 "TDx"    - local flapwise (translational) deflection (relative to the undeflected position) of node
 "TDy"    - local edgewise (translational) deflection (relative to the undeflected position) of node
 "MLxNT"  - Edgewise moment in local coordinate system (initial structural twist removed)
@@ -236,5 +251,5 @@ END of input file (the word "END" must appear in the first 3 columns of this las
 "FLz"    - local axial force at node
 "FLxNT"  - Flapwise shear force in local coordinate system (initial structural twist removed)
 "FlyNT"  - Edgewise shear force in local coordinate syst
-END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+END (the word "END" must appear in the first 3 columns of this last OutList line in the optional nodal output section)
+----------------------------------------------------------------

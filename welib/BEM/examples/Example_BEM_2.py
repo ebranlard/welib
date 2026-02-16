@@ -75,7 +75,7 @@ def main(test=False):
         ax.set_xlabel('Wind speed [m/s]')
         ax.set_ylabel('[-]')
         ax.legend()
-        ax.set_title('BEM Steady - Performance curve')
+        ax.set_title('BEM - Steady - Performance curve')
         ax.tick_params(direction='in')
 
 

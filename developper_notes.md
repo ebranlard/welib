@@ -75,3 +75,23 @@ make a pull request there.
  - setup build script (https://conda-forge.org/docs/maintainer/adding_pkgs.html). 
     see e.g. FLORIS (https://github.com/conda-forge/floris-feedstock/blob/master/recipe/meta.yaml).
  - make a pull request to https://github.com/conda-forge/staged-recipes/ 
+
+
+
+
+## Update figures
+```bash
+git checkout figs
+git merge dev
+copy _figs _figs_bkp   # make a backup of the figs folder for comparison
+make export
+git add _figs/*.png
+git commit -m "Update of figures"
+git push
+git checkout dev
+vimdiff README.md README_OUTPUT.md
+git add README.md
+git commit -m "Update of figures for README"
+```
+
+

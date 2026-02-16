@@ -697,7 +697,10 @@ def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', sta
         m   = bld['BMassDen_[kg/m]']               # mu
         EIy = bld['FlpStff_[Nm^2]']
         EIz = bld['EdgStff_[Nm^2]']               # TODO actually EIx, but FEM beams along x
-        phi = bld['PitchAxis_[-]']/(180)*np.pi 
+        if 'PitchAxis_[-]' in bld.keys():
+            phi = bld['PitchAxis_[-]']/(180)*np.pi 
+        else:
+            phi = m*0
         # --- Derived parameters
         phi= np.concatenate(([0], np.diff(phi))) #% add phi_abs(1) to pitch angle
         A  = m*0 + 100       # Area

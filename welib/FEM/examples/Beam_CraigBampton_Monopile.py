@@ -44,7 +44,7 @@ def MonopileFEM(TopMass=False, verbose=False):
     if UseSubDynModel:
         # --- Option 1 - Read data from SubDyn
         # Read SubDyn file
-        sdFilename=os.path.join(MyDir,'../../../data/Monopile/MT100_SD.dat')
+        sdFilename=os.path.join(MyDir,'../../../data/Monopile/MT100_Baseline/SD.dat')
         sd = weio.read(sdFilename)
         # Convert to "welib.fem.Graph" class to easily handle the model (overkill for a monopile)
         graph = sd.toGraph(propToNodes=True)

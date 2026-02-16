@@ -1,11 +1,9 @@
-------- ELASTODYN v1.03.* INPUT FILE -------------------------------------------
+------- ELASTODYN for OpenFAST INPUT FILE -------------------------------------------
 MonopileOnly
 ---------------------- SIMULATION CONTROL --------------------------------------
 False         Echo        - Echo input data to "<RootName>.ech" (flag)
           3   Method      - Integration method: {1: RK4, 2: AB4, or 3: ABM4} (-)
 "default"     DT          - Integration time step (s)
----------------------- ENVIRONMENTAL CONDITION ---------------------------------
-    9.80665   Gravity     - Gravitational acceleration (m/s^2)
 ---------------------- DEGREES OF FREEDOM --------------------------------------
 False         FlapDOF1    - First flapwise blade mode DOF (flag)
 False         FlapDOF2    - Second flapwise blade mode DOF (flag)
@@ -45,10 +43,10 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
 ---------------------- TURBINE CONFIGURATION -----------------------------------
           3   NumBl       - Number of blades (-)
         0.1   TipRad      - The distance from the rotor apex to the blade tip (meters)
-        0.0   HubRad      - The distance from the rotor apex to the blade root (meters)
-        0.0   PreCone(1)  - Blade 1 cone angle (degrees)
-        0.0   PreCone(2)  - Blade 2 cone angle (degrees)
-        0.0   PreCone(3)  - Blade 3 cone angle (degrees) [unused for 2 blades]
+          0   HubRad      - The distance from the rotor apex to the blade root (meters)
+          0   PreCone(1)  - Blade 1 cone angle (degrees)
+          0   PreCone(2)  - Blade 2 cone angle (degrees)
+          0   PreCone(3)  - Blade 3 cone angle (degrees) [unused for 2 blades]
           0   HubCM       - Distance from rotor apex to hub mass [positive downwind] (meters)
           0   UndSling    - Undersling length [distance from teeter pin to the rotor apex] (meters) [unused for 3 blades]
           0   Delta3      - Delta-3 angle for teetering rotors (degrees) [unused for 3 blades]
@@ -56,25 +54,26 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
          -1   OverHang    - Distance from yaw axis to rotor apex [3 blades] or teeter pin [2 blades] (meters)
           0   ShftGagL    - Distance from rotor apex [3 blades] or teeter pin [2 blades] to shaft strain gages [positive for upwind rotors] (meters)
           0   ShftTilt    - Rotor shaft tilt angle (degrees)
-        0.0   NacCMxn     - Downwind distance from the tower-top to the nacelle CM (meters)
-        0.0   NacCMyn     - Lateral  distance from the tower-top to the nacelle CM (meters)
-        0.0   NacCMzn     - Vertical distance from the tower-top to the nacelle CM (meters)
+          0   NacCMxn     - Downwind distance from the tower-top to the nacelle CM (meters)
+          0   NacCMyn     - Lateral  distance from the tower-top to the nacelle CM (meters)
+          0   NacCMzn     - Vertical distance from the tower-top to the nacelle CM (meters)
           0   NcIMUxn     - Downwind distance from the tower-top to the nacelle IMU (meters)
           0   NcIMUyn     - Lateral  distance from the tower-top to the nacelle IMU (meters)
-          0   NcIMUzn     - Vertical distance from the tower-top to the nacelle IMU (meters)
-        0.0   Twr2Shft    - Vertical distance from the tower-top to the rotor shaft (meters)
-        51.0   TowerHt     - Height of tower above ground level [onshore] or MSL [offshore] (meters)
-         50   TowerBsHt   - Height of tower base above ground level [onshore] or MSL [offshore] (meters)
-          0   PtfmCMxt    - Downwind distance from the ground level [onshore] or MSL [offshore] to the platform CM (meters)
-          0   PtfmCMyt    - Lateral distance from the ground level [onshore] or MSL [offshore] to the platform CM (meters)
-          0   PtfmCMzt    - Vertical distance from the ground level [onshore] or MSL [offshore] to the platform CM (meters)
-         50   PtfmRefzt   - Vertical distance from the ground level [onshore] or MSL [offshore] to the platform reference point (meters)
+         -1   NcIMUzn     - Vertical distance from the tower-top to the nacelle IMU (meters)
+          0   Twr2Shft    - Vertical distance from the tower-top to the rotor shaft (meters)
+       51.0   TowerHt     - Height of tower relative to ground level [onshore], MSL [offshore wind or floating MHK], or seabed [fixed MHK] (meters)
+         50   TowerBsHt   - Height of tower base relative to ground level [onshore], MSL [offshore wind or floating MHK], or seabed [fixed MHK] (meters)
+          0   PtfmCMxt    - Downwind distance from the ground level [onshore], MSL [offshore wind or floating MHK], or seabed [fixed MHK] to the platform CM (meters)
+          0   PtfmCMyt    - Lateral distance from the ground level [onshore], MSL [offshore wind or floating MHK], or seabed [fixed MHK] to the platform CM (meters)
+          0   PtfmCMzt    - Vertical distance from the ground level [onshore], MSL [offshore wind or floating MHK], or seabed [fixed MHK] to the platform CM (meters)
+         50   PtfmRefzt   - Vertical distance from the ground level [onshore], MSL [offshore wind or floating MHK], or seabed [fixed MHK] to the platform reference point (meters)
 ---------------------- MASS AND INERTIA ----------------------------------------
           0   TipMass(1)  - Tip-brake mass, blade 1 (kg)
           0   TipMass(2)  - Tip-brake mass, blade 2 (kg)
           0   TipMass(3)  - Tip-brake mass, blade 3 (kg) [unused for 2 blades]
           0   HubMass     - Hub mass (kg)
-          0   HubIner     - Hub inertia about rotor axis [3 blades] or teeter axis [2 blades] (kg m^2)
+          0   HubIner     - Hub inertia about rotor axis (2 or 3-blades) (kg m^2)
+          0   HubIner_Teeter - Hub inertia about teeter axis (2-blades) (kg m^2)
           0   GenIner     - Generator inertia about HSS (kg m^2)
           0   NacMass     - Nacelle mass (kg)
           0   NacYIner    - Nacelle inertia about yaw axis (kg m^2)
@@ -83,8 +82,11 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   PtfmRIner   - Platform inertia for roll tilt rotation about the platform CM (kg m^2)
           0   PtfmPIner   - Platform inertia for pitch tilt rotation about the platform CM (kg m^2)
           0   PtfmYIner   - Platform inertia for yaw rotation about the platform CM (kg m^2)
+          0   PtfmXYIner  - Platform xy moment of inertia about the platform CM (=-int(xydm)) (kg m^2)
+          0   PtfmYZIner  - Platform yz moment of inertia about the platform CM (=-int(yzdm)) (kg m^2)
+          0   PtfmXZIner  - Platform xz moment of inertia about the platform CM (=-int(xzdm)) (kg m^2)
 ---------------------- BLADE ---------------------------------------------------
-         10   BldNodes    - Number of blade nodes (per blade) used for analysis (-)
+       3    BldNodes    - Number of blade nodes (per blade) used for analysis (-)
 "ED_Blade_Light.dat"    BldFile(1)  - Name of file containing properties for blade 1 (quoted string)
 "ED_Blade_Light.dat"    BldFile(2)  - Name of file containing properties for blade 2 (quoted string)
 "ED_Blade_Light.dat"    BldFile(3)  - Name of file containing properties for blade 3 (quoted string) [unused for 2 blades]
@@ -97,6 +99,17 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   TeetHStP    - Rotor-teeter hard-stop position (degrees) [used only for 2 blades and when TeetMod=1]
           0   TeetSSSp    - Rotor-teeter soft-stop linear-spring constant (N-m/rad) [used only for 2 blades and when TeetMod=1]
           0   TeetHSSp    - Rotor-teeter hard-stop linear-spring constant (N-m/rad) [used only for 2 blades and when TeetMod=1]
+---------------------- YAW-FRICTION --------------------------------------------
+          0   YawFrctMod  - Yaw-friction model {0: none, 1: friction independent of yaw-bearing force and bending moment, 2: friction with Coulomb terms depending on yaw-bearing force and bending moment, 3: user defined model} (switch)
+          0   M_CSmax     - Maximum static Coulomb friction torque (N-m) [M_CSmax when YawFrctMod=1; |Fz|*M_CSmax when YawFrctMod=2 and Fz<0]
+          0   M_FCSmax    - Maximum static Coulomb friction torque proportional to yaw bearing shear force (N-m) [sqrt(Fx^2+Fy^2)*M_FCSmax; only used when YawFrctMod=2]
+          0   M_MCSmax    - Maximum static Coulomb friction torque proportional to yaw bearing bending moment (N-m) [sqrt(Mx^2+My^2)*M_MCSmax; only used when YawFrctMod=2]
+          0   M_CD        - Dynamic Coulomb friction moment (N-m) [M_CD when YawFrctMod=1; |Fz|*M_CD when YawFrctMod=2 and Fz<0]
+          0   M_FCD       - Dynamic Coulomb friction moment proportional to yaw bearing shear force (N-m) [sqrt(Fx^2+Fy^2)*M_FCD; only used when YawFrctMod=2]
+          0   M_MCD       - Dynamic Coulomb friction moment proportional to yaw bearing bending moment (N-m) [sqrt(Mx^2+My^2)*M_MCD; only used when YawFrctMod=2]
+          0   sig_v       - Linear viscous friction coefficient (N-m/(rad/s))
+          0   sig_v2      - Quadratic viscous friction coefficient (N-m/(rad/s)^2)
+          0   OmgCut      - Yaw angular velocity cutoff below which viscous friction is linearized (rad/s)
 ---------------------- DRIVETRAIN ----------------------------------------------
         100   GBoxEff     - Gearbox efficiency (%)
           1   GBRatio     - Gearbox ratio (-)
@@ -104,10 +117,10 @@ True         PtfmYDOF    - Platform yaw rotation DOF (flag)
           0   DTTorDmp    - Drivetrain torsional damper (N-m/(rad/s))
 ---------------------- FURLING -------------------------------------------------
 False         Furling     - Read in additional model properties for furling turbine (flag) [must currently be FALSE)
-"NA"          FurlFile    - Name of file containing furling properties (quoted string) [unused when Furling=False]
+"unused"      FurlFile    - Name of file containing furling properties (quoted string) [unused when Furling=False]
 ---------------------- TOWER ---------------------------------------------------
-        5   TwrNodes    - Number of tower nodes used for analysis (-)
-"ED_Tower100_Light.dat"    TwrFile     - Name of file containing tower properties (quoted string)
+        3   TwrNodes    - Number of tower nodes used for analysis (-)
+"ED_Tower_Light.dat"    TwrFile     - Name of file containing tower properties (quoted string)
 ---------------------- OUTPUT --------------------------------------------------
 False          SumPrint    - Print summary data to "<RootName>.sum" (flag)
           1   OutFile     - Switch to determine where output will be placed: {1: in module output file only; 2: in glue code output file only; 3: both} (currently unused)
@@ -116,10 +129,16 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
           0   TStart      - Time to begin tabular output (s) (currently unused)
           1   DecFact     - Decimation factor for tabular output {1: output every time step} (-) (currently unused)
           0   NTwGages    - Number of tower nodes that have strain gages for output [0 to 9] (-)
-              TwrGagNd    - List of tower nodes that have strain gages [1 to TwrNodes] (-) [unused if NTwGages=0]
+          0   TwrGagNd    - List of tower nodes that have strain gages [1 to TwrNodes] (-) [unused if NTwGages=0]
           0   NBlGages    - Number of blade nodes that have strain gages for output [0 to 9] (-)
-              BldGagNd    - List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
+          0   BldGagNd    - List of blade nodes that have strain gages [1 to BldNodes] (-) [unused if NBlGages=0]
               OutList     - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
+"NcIMUTAxs"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
+"NcIMUTAys"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
+"NcIMUTAzs"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
+"NcIMUTVxs"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
+"NcIMUTVys"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
+"NcIMUTVzs"               - Nacelle IMU translational accelerations (absolute) in the nonrotating, shaft coordinate system
 "TwrBsFxt"                - Fore-aft shear, side-to-side shear, and vertical forces at the base of the tower (platform)
 "TwrBsFyt"                - Fore-aft shear, side-to-side shear, and vertical forces at the base of the tower (platform)
 "TwrBsFzt"                - Fore-aft shear, side-to-side shear, and vertical forces at the base of the tower (platform)
@@ -182,5 +201,17 @@ True          TabDelim    - Use tab delimiters in text tabular output file? (fla
 "QD_R"		Velocity of platform roll tilt rotation DOF
 "QD_P"		Velocity of platform pitch tilt rotation DOF
 "QD_Y"		Velocity of platform yaw rotation DOF
-END of input file (the word "END" must appear in the first 3 columns of this last OutList line)
----------------------------------------------------------------------------------------
+"QD2_Sg"	Acceleration of platform horizontal surge translation DOF
+"QD2_Sw"	Acceleration of platform horizontal sway translation DOF
+"QD2_Hv"	Acceleration of platform vertical heave translation DOF
+"QD2_R"		Acceleration of platform roll tilt rotation DOF
+"QD2_P"		Acceleration of platform pitch tilt rotation DOF
+"QD2_Y"		Acceleration of platform yaw rotation DOF
+END of OutList section (the word "END" must appear in the first 3 columns of the last OutList line)
+====== Outputs for all blade stations (same ending as above for Spn1.... =========================== [optional section]
+          1   BldNd_BladesOut     - Number of blades to output all node information at.  Up to number of blades on turbine. (-)
+"All"         BldNd_BlOutNd       - Future feature will allow selecting a portion of the nodes to output.  Not implemented yet. (-)
+                  OutList             - The next line(s) contains a list of output parameters.  See OutListParameters.xlsx for a listing of available output channels, (-)
+END (the word "END" must appear in the first 3 columns of this last OutList line in the optional nodal output section)
+----------------------------------------------------------------
+
