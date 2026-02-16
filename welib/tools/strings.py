@@ -182,6 +182,15 @@ def cprint(msg, color=None, attrs=None, file=sys.stdout, end='\n'):
 def print_bold(msg, **kwargs):
     cprint(msg, attrs=['bold'], **kwargs)
 
+def print_green(msg, **kwargs):
+    cprint(msg, color='green', attrs=['bold'], **kwargs)
+
+def print_red(msg, **kwargs):
+    cprint(msg, color='red', attrs=['bold'], **kwargs)
+
+def print_yellow(msg, **kwargs):
+    cprint(msg, color='yellow', attrs=['bold'], **kwargs)
+
 def FAIL(msg, label='[FAIL] ', **kwargs):
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
     cprint(msg, color='red', attrs=['bold'], file=sys.stderr, **kwargs)

@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION='3.5.0'
+VERSION='4.2.0'
 
 
 EXTRAS = {

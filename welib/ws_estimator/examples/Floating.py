@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
-import weio
+import welib.weio as weio
 from welib.ws_estimator.tabulated_floating import *
 from welib.tools.figure import *
 

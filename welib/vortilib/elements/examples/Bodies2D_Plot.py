@@ -69,6 +69,7 @@ if __name__=="__test__":
     main()
     pass
 if __name__=="__export__":
-    main(whichPlots=[0])
-    from welib.tools.repo import export_figs_callback
-    export_figs_callback(__file__)
+    pass
+    #main(whichPlots=[0])
+    #from welib.tools.repo import export_figs_callback
+    #export_figs_callback(__file__)

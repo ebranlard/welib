@@ -82,7 +82,7 @@ def main(IPlot, nX=200, n=100):
         ax.set_aspect('equal','box')
         ax.set_xlabel('x [m]')
         ax.set_ylabel('y [m]')
-        ax.set_title('Airfoil - Karman-Trefftz Velocity Field')
+        ax.set_title('Airfoils - Karman-Trefftz Velocity Field')
 
 
     # --- Plot

@@ -43,7 +43,7 @@ def vs_u_raw(CP, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=No
     if nt is None:  
         # Regularization models, based on orthogonal distance to segment h2
         norm2_r0        = (xa - xb)**2 + (ya - yb)**2 + (za - zb)**2
-        norm2_crossprod = crossprod[0,0]**2 + crossprod[0,1]**2 + crossprod[0,2]**2
+        norm2_crossprod = crossprod[0]**2 + crossprod[1]**2 + crossprod[2]**2
         h2              = norm2_crossprod/norm2_r0 # Orthogonal distance (r1 x r2)/r0
         eps2 = h2/RegParam**2
         if RegFunction==1:

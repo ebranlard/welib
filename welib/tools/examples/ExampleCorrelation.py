@@ -29,7 +29,7 @@ ax.plot(tau,  R              ,'-o', label='Computed')
 ax.plot(tau, coeff**(tau/dt) ,'--' ,label=r'Theoretical -  c$^{\tau/dt}$') # analytical coeff^n trend
 ax.set_xlabel(r'$\tau$ [s]')
 ax.set_ylabel(r'$R(\tau)$ [-]')
-ax.set_title('Signal - Correlation coefficient')
+ax.set_title('Tools - Signal - Correlation coefficient')
 ax.legend()
 
 

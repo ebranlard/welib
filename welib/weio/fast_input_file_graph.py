@@ -331,7 +331,7 @@ def subdynSumToGraph(data, Graph=None):
 if __name__ == '__main__':
     from .fast_input_file import FASTInputFile
 
-    filename='../../_data/Monopile/MT100_SD.dat'
+    filename='../../data/Monopile/MT100_Baseline/SD.dat'
     # filename='../../_data/Monopile/TetraSpar_SubDyn_v3.dat'
 
     sd = FASTInputFile(filename)
