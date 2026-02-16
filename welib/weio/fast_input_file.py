@@ -54,6 +54,10 @@ class FASTInputFile(File):
         self._fixedfile = None
         self.basefile = FASTInputFileBase(filename, **kwargs) # Generic fileformat
 
+    def copy(self):
+        import copy
+        return copy.deepcopy(self)
+
     @property
     def fixedfile(self):
         if self._fixedfile is not None:
@@ -249,6 +253,10 @@ class FASTInputFileBase(File):
             self.filename = filename
             self.read(IComment=IComment, verbose=verbose)
 
+    def copy(self):
+        import copy
+        return copy.deepcopy(self)
+
     def setData(self, filename=None, data=None, hasNodal=False, module=None):
         """ Set the data of this object. This object shouldn't store anything else. """
         if data is None:
@@ -263,10 +271,10 @@ class FASTInputFileBase(File):
         self.labels = [ d['label'] for i,d in enumerate(self.data) if (not d['isComment']) and (i not in self._IComment)]
         return self.labels
 
-    def getID(self,label):
+    def getID(self, label):
         i=self.getIDSafe(label)
         if i<0:
-            raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
+            raise KeyError('Variable `' + str(label) +'` not found in FAST file:'+str(self.filename))
         else:
             return i
 
@@ -950,7 +958,7 @@ class FASTInputFileBase(File):
                 s+='{}'.format(d['value'])
             elif d['tabType']==TABTYPE_NOT_A_TAB:
                 if isinstance(d['value'], list) or isinstance(d['value'],np.ndarray):
-                    sList=', '.join([str(x) for x in d['value']])
+                    sList=', '.join([str(x) for x in np.atleast_1d(d['value'])])
                     s+=toStringVLD(sList, d['label'], d['descr'])
                 else:
                     s+=toStringVLD(d['value'],d['label'],d['descr'])
@@ -2043,7 +2051,9 @@ class ADPolarFile(FASTInputFileBase):
             self.addComment('! ')
             self.addComment('! ------------------------------------------------------------------------------')
             self.addValKey("DEFAULT", 'InterpOrd' , 'Interpolation order to use for quasi-steady table lookup {1=linear; 3=cubic spline; "default"} [default=3]')
+            self.addValKey(      0.2, 'RelThickness','The non-dimensional thickness of the airfoil (thickness/chord) [only used if UAMod=7] [default=0.2] (-)')
             self.addValKey(        1, 'NonDimArea', 'The non-dimensional area of the airfoil (area/chord^2) (set to 1.0 if unsure or unneeded)')
+            self.addValKey("unused" , 'BL_file'   , 'The file name including the boundary layer characteristics of the profile. Ignored if the aeroacoustic module is not called.')
             self.addValKey(        0, 'NumCoords' , 'The number of coordinates in the airfoil shape file.  Set to zero if coordinates not included.')
             self.addValKey( numTabs , 'NumTabs'   , 'Number of airfoil tables in this file.  Each table must have lines for Re and Ctrl.')
             # TODO multiple tables
@@ -2207,6 +2217,10 @@ class ADPolarFile(FASTInputFileBase):
 
     @comment.setter
     def comment(self, comment):
+        # Remove all comments
+        for i in self._IComment:
+            self.data[i]['value'] = '!'
+        # Replace based on numbers of lines
         splits = comment.split('\n')
         for i,com in zip(self._IComment, splits):
             self.data[i]['value'] = '! ' +com
@@ -2394,7 +2408,7 @@ class ExtPtfmFile(FASTInputFileBase):
         self.module='ExtPtfm'
 
 
-    def _read(self, IComment=None):
+    def _read(self, IComment=None, verbose=False):
         with open(self.filename, 'r', errors="surrogateescape") as f:
             lines=f.read().splitlines()
         detectAndReadExtPtfmSE(self, lines)

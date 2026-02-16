@@ -1,0 +1,29 @@
+
+Predictions were generated on 09-Oct-2018 at 09:15:01 using OpenFAST, compiled as a 64-bit application using double precision at commit v1.0.0
+ linked with  NWTC Subroutine Library; ElastoDyn; InflowWind; AeroDyn; ServoDyn
+
+Description from the FAST input file: SNL SWiFT FAST Model Input File, version 2.0 Created on 10-May-2018
+
+Time      	GenSpeed  
+(s)       	(rpm)     
+    0.0000	 9.441E+02
+    0.1000	 9.459E+02
+    0.2000	 9.519E+02
+    0.3000	 9.570E+02
+    0.4000	 9.627E+02
+    0.5000	 9.648E+02
+    0.6000	 9.707E+02
+    0.7000	 9.763E+02
+    0.8000	 9.820E+02
+    0.9000	 9.856E+02
+    1.0000	 9.906E+02
+    1.1000	 9.955E+02
+    1.2000	 9.999E+02
+    1.3000	 1.003E+03
+    1.4000	 1.008E+03
+    1.5000	 1.013E+03
+    1.6000	 1.017E+03
+    1.7000	 1.022E+03
+    1.8000	 1.027E+03
+    1.9000	 1.032E+03
+    2.0000	 1.036E+03

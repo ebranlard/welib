@@ -28,7 +28,6 @@ class FASTInputDeck(dict):
                  AC: airfoil coordinates (if present)
 
         """
-
         # Sanity
         if type(verbose) is not bool: 
             raise Exception('`verbose` arguments needs to be a boolean')
@@ -76,6 +75,7 @@ class FASTInputDeck(dict):
 
 
         self.ADversion=''
+        self.version=''
 
         # Read all inputs files
         if len(fullFstPath)>0:
@@ -132,7 +132,7 @@ class FASTInputDeck(dict):
             self.fst_vt['AeroDynBlade'] = []
             for i in range(nBlades):
                 bld_file = os.path.join(baseDir, self.fst_vt[key]['ADBlFile({})'.format(i+1)])
-                self.fst_vt['AeroDynBlade'].append(self._read(bld_file,'ADbld'))
+                self.fst_vt['AeroDynBlade'].append(self._read(bld_file,'ADbld', multiple=True))
             # OLAF
             hasOLAF = False
             if 'Wake_Mod' in AD:
@@ -161,8 +161,12 @@ class FASTInputDeck(dict):
                         baseDirCoord=os.path.dirname(af_filename)
                         if coordFile[0]=='@':
                             ac_filename = os.path.join(baseDirCoord,coordFile[1:])
-                            coords = self._read(ac_filename, 'AC')
+                            coords = self._read(ac_filename, 'AC', multiple=True)
                             self.fst_vt['ac_data'].append(coords)
+                        else:
+                            self.fst_vt['ac_data'].append(None)
+                    else:
+                        self.fst_vt['ac_data'].append(None)
 
         # --- Backward compatibility
         self.AD  = AD
@@ -356,7 +360,7 @@ class FASTInputDeck(dict):
     def unusedNames(self):
         return ['unused','nan','na','none']
 
-    def _read(self, relfilepath, shortkey):
+    def _read(self, relfilepath, shortkey, multiple=False):
         """ read any openfast input """
         relfilepath =clean_path(relfilepath)
         basename = os.path.basename(relfilepath)
@@ -382,7 +386,12 @@ class FASTInputDeck(dict):
             data = FASTInputFile(fullpath, verbose=self.verbose)
             if self.verbose:
                 print('>>> Read: ',fullpath)
-            self.inputFilesRead[shortkey] = fullpath
+            if multiple:
+                if shortkey not in self.inputFilesRead:
+                    self.inputFilesRead[shortkey] = []
+                self.inputFilesRead[shortkey] += [fullpath]
+            else:
+                self.inputFilesRead[shortkey] = fullpath
             return data
         except FileNotFoundError:
             print('[WARN] File not found '+fullpath)
@@ -512,8 +521,13 @@ class FASTInputDeck(dict):
         s+='AD version : '+self.ADversion+'\n'
         s+='fst_vt     : dict{'+','.join([k for k,v in self.fst_vt.items() if v is not None])+'}\n'
         s+='inputFiles : {}\n'.format(self.inputFiles)
-        s+='inputFilesRead : {}\n'.format(self.inputFilesRead)
-        s+='\n'
+        s+='inputFilesRead :\n'
+        for k,v in self.inputFilesRead.items():
+            if isinstance(v, list):
+                for i,l in enumerate(v):
+                    s+=' - {:5s}[{}]: {}\n'.format(k,i,l)
+            else:
+                s+=' - {:8s} : {}\n'.format(k,v)
         return s
 
 def clean_path(path):
