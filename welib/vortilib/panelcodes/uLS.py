@@ -5,7 +5,7 @@ from scipy.linalg import lu_factor, lu_solve
 import os
 from welib.tools.tictoc import Timer
 import welib.weio as weio
-from vtk import VTK_Misc, WrVTK_Lattice
+from welib.vortilib.panelcodes.vtk import VTK_Misc, WrVTK_Lattice
 #from welib.vortilib.elements.VortexSegment import vs_u_raw
 
 # Constants
@@ -329,8 +329,11 @@ def panlInfo(r, spanFirst=True):
 def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5, 
          omega_pitch=0, A_pitch=0,
          omega_heave=0, A_heave=0, 
+         dfMotion=None,
          U0=10.0, U0_wind=0, U0_body=0, rho=1.0, outputDir='', simName='default', motionType='body',
-         debug_print=False
+         omega_fact = 1,
+         debug_print=False,
+         vtk_out= False
          ):
     
 
@@ -361,16 +364,19 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
     DX = chord / GD.nChord
     alpha = alpha * PI / 180.0
     DT = DX / Vref / 4.0
+    if dfMotion is not None:
+        t_prescr = dfMotion['Time_[s]'].values
+        DT = (t_prescr[-1]-t_prescr[0])/(len(t_prescr)-1)
     T = -DT
-    NW_length = 0.3 * Vref * DT
 
-    S_half = span_half * chord
-    AR = 2.0 * span_half**2 / S_half
+    NW_length = 0.3 * Vref * DT
+    S_half    = span_half * chord
+    AR        = 2.0 * span_half**2 / S_half
 
     # --- Reference data for wing
     CL_ref = 2.0 * PI * alpha / (1.0 + 2.0 / AR)
     if abs(CL_ref) < 1.0e-20:
-        CL_ref = CL
+        CL_ref = 0.0001
     FG_ref = (0.5 * Vref * S_half) * CL_ref
 
     # --- Wing geometry
@@ -396,10 +402,13 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
     print(f" S_half : {S_half:10.2f}  AR : {AR:13.2f}")
     print(f" nChord : {GD.nChord:10d}  NS : {GD.nSpan:10d} \n")
     # Ensure output directory exists
-    os.makedirs("_outputs", exist_ok=True)
-    os.makedirs("_vtk", exist_ok=True)
-    with open("_outputs/uLS_{}.csv".format(simName), "w") as f:
-        f.write("#SX,T,SZ,VINF,TETA,OMEGA,CL,L,CM,CD,CL_rel,Gamma_rel,omT\n")
+    #os.makedirs("_outputs", exist_ok=True)
+    if vtk_out:
+        vtk_dir = os.path.join(outputDir, "_vtk")
+        os.makedirs(vtk_dir, exist_ok=True)
+    output_file = os.path.join(outputDir, f"{simName}.csv")
+    with open(output_file, "w") as f:
+        f.write("#SX,Time,SZ,VINF,th,dth,Cl,L,Cm,Cd,CL_rel,Gamma_rel,omT\n")
 
     # --- Compute A
     # TODO, could that change? NOTE: some local inclination was added in original code
@@ -446,7 +455,13 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
         VO_str_i[2] = A_heave * omega_heave * np.cos(omega_heave * T)
 
         # Rotate
-        TETA = A_pitch * np.sin(omega_pitch * T) # Pitch angle, NOTE: I THINK IT'S USING A NEGATIVE CONVENTION
+        OMEGA = 0
+        if dfMotion is None:
+            TETA = A_pitch * np.sin(omega_pitch * T) # Pitch angle, NOTE: I THINK IT'S USING A NEGATIVE CONVENTION
+            OMEGA = A_pitch * omega_pitch * np.cos(omega_pitch * T)
+        else:
+            TETA  = np.interp(T, t_prescr, dfMotion['th_[rad]']) + alpha
+            OMEGA = np.interp(T, t_prescr, dfMotion['dth_[rad/s]'])
         SN1 = np.sin(TETA)
         CS1 = np.cos(TETA)
         # ###  VINF = -np.cos(TETA) * DSX - np.sin(TETA) * DSZ # TODO COMMENTED OUT
@@ -500,7 +515,8 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
                 # GD.DW[K] += VO_str_b[0] * GD.SNO[I]  # V0_str_i . n_hat, OK only if V0_str_b[0] = VINF
                 # GD.DW[K] += - V_wind_b[0] * GD.SNO[I] - V_wind_b[2] * GD.CSO[I] # - Vwind . n_hat
 
-                GD.DW[K] += GD.CP0[I, J, 0] * omega_pitch  # I DISAGREE, it should be CP0 before rotation by alpha
+                #GD.DW[K] += GD.CP0[I, J, 0] * omega_pitch  # I DISAGREE, it should be CP0 before rotation by alpha # TODO it should be Omega body
+                GD.DW[K] += omega_fact *GD.CP0[I, J, 0] * OMEGA  # I DISAGREE, it should be CP0 before rotation by alpha # TODO it should be Omega body
                 GD.DW[K] += - WT # TODO I THINK IT NEEDS further projection using SNO and CSO
                 K += 1
 
@@ -528,14 +544,15 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
         CLT = CL / CL_ref
         CFG = FG / FG_ref
         # Output results
-        #print(f" T={T:10.2f}  SX={rO_str_i[0]:10.2f}  SZ={rO_str_i[2]:10.2f}  VINF={VINF:10.2f}  TETA={TETA:10.2f}  OMEGA={omega_pitch:10.2f}")
+        print(f"T={T:10.2f}  SX={rO_str_i[0]:10.2f}  SZ={rO_str_i[2]:10.2f}  VINF={VINF:10.2f}  TETA={TETA:10.2f}  OMEGA={OMEGA:10.2f}")
         print(f"CL={CL:10.4f}  L={FL:10.4f}  CM={CM:10.4f}  CD={CD:10.4f}  L/L(INF)={CLT:10.4f}  GAMA/GAMA(INF)={CFG:10.4f}")
-        with open("_outputs/uLS_{}.csv".format(simName) , "a") as f:
+        with open(output_file, "a") as f:
             f.write(f"{-rO_str_i[0]},{T},{rO_str_i[2]},{Vref},{TETA},{omega_pitch},{CL},{FL},{CM},{CD},{CLT},{CFG},{np.mod(omega_heave*T, 2*np.pi)}\n")
 
         # After updating GD.QW and GD.Gamma_NW for the current time step IT:
-        write_wing_vtk(IT+1, GD, outputDir=outputDir, simName=simName)
-        write_wake_vtk(IT+1, GD, outputDir=outputDir, simName=simName)
+        if vtk_out:
+            write_wing_vtk(IT+1, GD, outputDir=vtkDir, simName=simName)
+            write_wake_vtk(IT+1, GD, outputDir=vtkDir, simName=simName)
 
         # --- Prepare for next time step
         GD.Gamma_LS_prev = GD.Gamma_LS
@@ -599,7 +616,7 @@ def write_wake_vtk(it, GD, outputDir='', simName='default'):
     Write the current wake lattice and vorticity to a VTK file for visualization.
     """
     mvtk = VTK_Misc()
-    filename = os.path.join(outputDir, f"_vtk/{simName}_wake_{it:05d}.vtk")
+    filename = os.path.join(outputDir, f"{simName}_wake_{it:05d}.vtk")
     # r_NW shape: (NTMAX, NSMAX+1, 3)
     # Gamma_NW shape: (NTMAX, NSMAX)
     QW    = GD.r_NW[:it, :, :]
@@ -613,7 +630,7 @@ def write_wing_vtk(it, GD, outputDir='', simName='default'):
     Write the current lifting surface lattice and circulation to a VTK file for visualization.
     """
     mvtk     = VTK_Misc()
-    filename = os.path.join(outputDir, f"_vtk/{simName}_wing_{it:05d}.vtk")
+    filename = os.path.join(outputDir, f"{simName}_wing_{it:05d}.vtk")
 
     rWing  = GD.r_LS[:GD.nChord+1, :GD.nSpan+1, :]  # (nChord, nSpan, 3)
     Gamma = GD.Gamma_LS[:GD.nChord, :GD.nSpan]       # (nChord-1, nSpan-1)
@@ -646,13 +663,33 @@ def test_geometry(GD, S_half):
 if __name__ == "__main__":
 
     scriptDir = os.path.dirname(os.path.abspath(__file__))
+    outputDir = os.path.join(scriptDir, '_outputs/')
 
     if True:
+
+#     def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5, 
+#              omega_pitch=0, A_pitch=0,
+#              omega_heave=0, A_heave=0, 
+#              dfMotion=None,
+#              U0=10.0, U0_wind=0, U0_body=0, rho=1.0, outputDir='', simName='default', motionType='body',
+#              debug_print=False
+#              ):
+
+        dfMotion = weio.read('C:/Work/CFD_airfoil/nalu-cases/_results/cases_chirp_n24/S809/S809_re00.8_mean00_A01_UAA_motionTS.csv').toDataFrame()
+        print(dfMotion.keys())
+        dfMotion = dfMotion.iloc[::10]
+        nt = 1200
+        simName = 'uLS_chirp'
+        with Timer():
+            main(nChord=5, nSpan=3, nStep=nt, chord=1, span=12.0, U0=6, rho=1.2, alpha=0, dfMotion=dfMotion, outputDir=outputDir, simName=simName, motionType='body')
+#         df = weio.read(os.path.join(scriptDir, './_outputs/'+simName+'.csv')).toDataFrame()
+
+    if False:
         nt = 10
         with Timer():
             # omega = 2 , k = 0.1
             # omega =10 , k = 0.5
-            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_pitch =10, A_pitch=0.1745, outputDir=scriptDir, simName='pitch_AR=4_k=0.5', motionType='body')
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_pitch =10, A_pitch=0.1745, outputDir=outputDir, simName='uLS_pitch_AR=4_k=0.5', motionType='body')
         df = weio.read(os.path.join(scriptDir, './_outputs/uLS_pitch_AR=4_k=0.5.csv')).toDataFrame()
         df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_pitch_AR=4_k=0.5_ref.csv')).toDataFrame()
         np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
@@ -661,10 +698,10 @@ if __name__ == "__main__":
         np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
         print('[ OK ] test pass')
 
-    if True:
+    if False:
         nt = 10
         with Timer():
-            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=8.0, outputDir=scriptDir, simName='acc_body', motionType='body')
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=8.0, outputDir=outputDir, simName='uLS_acc_body', motionType='body')
         # ---
         df = weio.read(os.path.join(scriptDir, './_outputs/uLS_acc_body.csv')).toDataFrame()
         df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
@@ -675,7 +712,7 @@ if __name__ == "__main__":
         print('[ OK ] test pass')
 
         with Timer():
-            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=8.0, outputDir=scriptDir, simName='acc_wind', motionType='wind')
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=8.0, outputDir=outputDir, simName='uLS_acc_wind', motionType='wind')
         # ---
         df = weio.read(os.path.join(scriptDir, './_outputs/uLS_acc_wind.csv')).toDataFrame()
         df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_ref.csv')).toDataFrame()
@@ -685,12 +722,12 @@ if __name__ == "__main__":
         np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
         print('[ OK ] test pass')
 
-    if True:
+    if False:
         nt = 10
         with Timer():
             # omega = 2 , k = 0.1
             # omega =10 , k = 0.5
-            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =10, A_heave=0.1, outputDir=scriptDir, simName='heave_AR=4_k=0.5_wind', motionType='wind')
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =10, A_heave=0.1, outputDir=outputDir, simName='uLS_heave_AR=4_k=0.5_wind', motionType='wind')
         df = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_wind.csv')).toDataFrame()
         df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_ref.csv')).toDataFrame()
         np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
@@ -700,7 +737,7 @@ if __name__ == "__main__":
         print('[ OK ] test pass')
 
         with Timer():
-            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =10, A_heave=0.1, outputDir=scriptDir, simName='heave_AR=4_k=0.5_body', motionType='body')
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =10, A_heave=0.1, outputDir=outputDir, simName='uLS_heave_AR=4_k=0.5_body', motionType='body')
         df = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_body.csv')).toDataFrame()
         df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.5_ref.csv')).toDataFrame()
         np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
@@ -709,12 +746,12 @@ if __name__ == "__main__":
         np.testing.assert_almost_equal(df['Gamma_rel'].values[:nt], df_ref['Gamma_rel'].values[:nt], 6)
         print('[ OK ] test pass')
 
-    if True:
+    if False:
         nt = 10
         with Timer():
             # omega = 2 , k = 0.1
             # omega =10 , k = 0.5
-            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =2, A_heave=0.1, outputDir=scriptDir, simName='heave_AR=4_k=0.1')
+            main(nChord=4, nSpan=13, nStep=nt, chord=1, span=4.0, alpha=-5, omega_heave =2, A_heave=0.1, outputDir=outputDir, simName='uLS_heave_AR=4_k=0.1')
         df = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.1.csv')).toDataFrame()
         df_ref = weio.read(os.path.join(scriptDir, './_outputs/uLS_heave_AR=4_k=0.1_ref.csv')).toDataFrame()
         np.testing.assert_almost_equal(df['CL'].values[:nt], df_ref['CL'].values[:nt], 6)
@@ -725,7 +762,7 @@ if __name__ == "__main__":
 
     #if True:
     #    with Timer():
-    #        main(nChord=1, nSpan=3, nStep=50, chord=1, span=8.0, outputDir=scriptDir)
+    #        main(nChord=1, nSpan=3, nStep=50, chord=1, span=8.0, outputDir=outputDir)
     #    # ---
     #    nt = 10
     #    df = weio.read(os.path.join(scriptDir, './_outputs/uLS.csv')).toDataFrame()

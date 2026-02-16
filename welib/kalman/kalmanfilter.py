@@ -1,9 +1,26 @@
 # TODO Change notations
 """ """
-from .kalman import *
+import matplotlib.pyplot as plt
 import os
 import numpy as np
 import pandas as pd
+# Local
+from .kalman import *
+try:
+    from welib.tools.strings import OK, FAIL, WARN, INFO___
+except:
+    def FAIL(*args, **kwargs): print('[FaiL]',*args, **kwargs) 
+    def OK  (*args, **kwargs): print('[ OK ]',*args, **kwargs) 
+
+
+def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
+    s=str(M)
+#             s=sindent
+#             for iline,line in enumerate(M):
+#                 s+=''.join([(fmt.format(v) if int(v)!=v else fmt_int.format(int(v))) for v in line ])
+#                 s+='\n'+sindent
+    return s
+
 
 class KalmanFilter(object):
     def __init__(self, sX0, sXa, sU, sY, sS=None, sXd=None):
@@ -29,6 +46,9 @@ class KalmanFilter(object):
         self.iU = {lab: i   for i,lab in enumerate(self.sU)}
         self.iS = {lab: i   for i,lab in enumerate(self.sS)}
 
+        # State matrices
+        self.Xx, self.Xu, self.Yx, self.Yu= None, None, None, None
+
         # Standard deviations and covariance matrix
         self.sigX_c = None
         self.sigY_c = None
@@ -37,6 +57,27 @@ class KalmanFilter(object):
         self.P = None
         self.Q = None
         self.R = None
+
+        # Time
+        self.time = None
+        self.dt   = None
+        self.it   = 0
+
+        # Time storage (Dataframes)
+        self.X_hat    = None # pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sX) # Estimated state
+        self.Y_hat    = None # pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY) # Estimate output / measurement
+        self.Y        = None # pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY) # Actual measurement, with potential noise
+        self.S_hat    = None # pd.DataFrame(data = np.zeros((self.nt, self.nS)), columns = self.sS)
+        self.U_hat    = None # pd.DataFrame(data = np.zeros((self.nt, self.nU)), columns = self.sU)
+        self.XD_hat   = None # pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sXd)
+        self.X_clean  = None # pd.DataFrame(data = np.zeros((self.nt,self.nX)), columns = self.sX)
+        self.Y_clean  = None # pd.DataFrame(data = np.zeros((self.nt,self.nY)), columns = self.sY) # Measurement without noise
+        self.U_clean  = None # pd.DataFrame(data = np.zeros((self.nt,self.nU)), columns = self.sU)
+        self.S_clean  = None # pd.DataFrame(data = np.zeros((self.nt,self.nS)), columns = self.sS)
+        self.XD_clean = None # pd.DataFrame(data = np.zeros((self.nt,self.nX)), columns = self.sXd)
+        self.Pt       = None # np.zeros((self.nt, self.nX, self.nY))  # P is nx * nx
+        self.Kt       = None # np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
+
 
     @property
     def nX(self):
@@ -63,13 +104,6 @@ class KalmanFilter(object):
         return len(self.sS)
 
     def __repr__(self):
-        def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
-            s=str(M)
-#             s=sindent
-#             for iline,line in enumerate(M):
-#                 s+=''.join([(fmt.format(v) if int(v)!=v else fmt_int.format(int(v))) for v in line ])
-#                 s+='\n'+sindent
-            return s
 
         s=''
         s+='<kalman.KalmanFilter object> \n'
@@ -91,6 +125,17 @@ class KalmanFilter(object):
         if self.Yu is not None:
             s+=' D: Output-Input Matrix (Yu) \n'
             s+=pretty_PrintMat(self.Yu)+'\n'
+        if self.P is not None:
+            s+=' P: error covariance matrix\n'
+            s+=pretty_PrintMat(self.P)+'\n'
+        if self.Q is not None:
+            s+=' Q: process noise\n'
+            s+=pretty_PrintMat(self.Q)+'\n'
+        if self.R is not None:
+            s+=' R: measurement matrix\n'
+            s+=pretty_PrintMat(self.R)+'\n'
+            
+
         return s
 
     @property
@@ -122,10 +167,10 @@ class KalmanFilter(object):
             raise Exception('Shape of Yx ({}) not compatible with KF Yx shape ({}) '.format(Yx.shape, self.Yx.shape))
         if Yu.shape != self.Yu.shape:
             raise Exception('Shape of Yu ({}) not compatible with KF Yu shape ({}) '.format(Yu.shape, self.Yu.shape))
-        self.Xx.iloc[:,:]=Xx
-        self.Xu.iloc[:,:]=Xu
-        self.Yx.iloc[:,:]=Yx
-        self.Yu.iloc[:,:]=Yu
+        self.Xx.iloc[:,:] = Xx
+        self.Xu.iloc[:,:] = Xu
+        self.Yx.iloc[:,:] = Yx
+        self.Yu.iloc[:,:] = Yu
 
         if np.any(np.isnan(Xx)): raise Exception('A matrix contains nan')
         if np.any(np.isnan(Xu)): raise Exception('B matrix contains nan')
@@ -133,19 +178,62 @@ class KalmanFilter(object):
         if np.any(np.isnan(Yu)): raise Exception('D matrix contains nan')
 
 
+    def checkObservability(self):
+        import control
+        O   = control.obsv(self.Xx, self.Yx)
+        try:
+            sys = control.StateSpace(self.Xx, self.Xu, self.Yx, self.Yu)
+        except:
+            FAIL('State space')
+            pass
+        try:
+            Wc = control.gram(sys, 'c')
+        except:
+            FAIL('gramian Controlability')
+            pass
+        try:
+            FAIL('gramian Observability')
+            Wo  = control.gram(sys, 'o')
+        except:
+            pass
 
-    def discretize(self,dt,method='exponential'):
-        self.dt=dt
-        self.Xxd,self.Xud = KFDiscretize(self.Xx, self.Xu, dt, method=method)
 
-    def estimateTimeStep(self,u,y,x,P,Q,R):
+
+
+    def discretize(self, dt, method='exponential'):
+        self.dt = dt
+        self.Xxd, self.Xud = KFDiscretize(self.Xx, self.Xu, dt, method=method)
+
+    def estimateTimeStep(self, u, y, x, P=None, Q=None, R=None, it=None):
         """
         OUTPUTS:
           z1: States at time n
           P1: Process covariance at time n
           Kk: Kalman gain
         """
-        return EstimateKFTimeStep(u,y,x,self.Xxd,self.Xud,self.Yx.values,self.Yu.values,P,Q,R)
+        if it is None:
+            it = self.it
+        if Q is None:
+            Q = self.Q
+        if R is None:
+            R = self.R
+        if P is None:
+            P = self.P
+
+        x_new, P_new, Kk = EstimateKFTimeStep(u, y, x, self.Xxd, self.Xud, self.Yx.values,self.Yu.values, P, Q, R)
+
+        self.P = P_new
+        self.it = it+1
+        
+        # --- Store
+        self.X_hat .iloc[it+1,:] = x_new
+        self.XD_hat.iloc[it+1,:] = np.dot(self.A, x_new) + np.dot(self.B, u)
+        self.Y_hat .iloc[it+1,:] = np.dot(self.C, x_new) + np.dot(self.D, u)
+
+        self.Pt[it+1, :, :]   = P_new
+        self.Kt[it+1, :, :]   = Kk
+
+        return x_new, P_new, Kk
 
     def covariancesFromSig(self):
         if not hasattr(self,'sigX'):
@@ -233,34 +321,15 @@ class KalmanFilter(object):
             self.Y[lab]=df[ColMap[lab]]
 
     def initTimeStorage(self):
-        self.X_hat = pd.DataFrame(data=np.zeros((self.nt, self.nX)), columns=self.sX)
-        self.Y_hat = pd.DataFrame(data=np.zeros((self.nt, self.nY)), columns=self.sY)
-        self.Y     = pd.DataFrame(data=np.zeros((self.nt, self.nY)), columns=self.sY)
-        self.S_hat = pd.DataFrame(data=np.zeros((self.nt, self.nS)), columns=self.sS)
-        self.U_hat = pd.DataFrame(data=np.zeros((self.nt, self.nU)), columns=self.sU)
-        self.XD_hat = pd.DataFrame(data=np.zeros((self.nt, self.nX)), columns=self.sXd)
+        self.X_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sX)
+        self.Y_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY)
+        self.Y      = pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY)
+        self.S_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nS)), columns = self.sS)
+        self.U_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nU)), columns = self.sU)
+        self.XD_hat = pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sXd)
+        self.Pt     = np.zeros((self.nt, self.nX, self.nX))  # P is nx * nx
+        self.Kt     = np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
     
-#     # TODO use property or dict syntax
-#     def get_vY(self,lab):
-#         return self.Y[lab].values
-#     def set_vY(self, lab, val ):
-#         self.Y[lab]=val
-# 
-#     def get_vX_hat(self,lab):
-#         return self.X_hat[lab].values
-#     def set_vX_hat(self, lab, val ):
-#         self.X_hat[lab]=val
-# 
-#     def get_Y(self,lab,it):
-#         return self.Y[lab][it]
-#     def set_Y(self, lab, val ):
-#         self.Y[self.iY[lab],it]=val
-# 
-#     def get_X_hat(self,lab,it):
-#         return self.X_hat[self.iX[lab],it]
-#     def set_X_hat(self,lab, val ):
-#         self.X_hat[self.iX[lab],it]=val
-
 
     def initFromClean(self):
         x = self.X_clean.iloc[0,:].values
@@ -316,7 +385,7 @@ class KalmanFilter(object):
         KF.initTimeStorage()
 
 
-    def setYFromClean(self,NoiseRFactor=None,y_bias=None,R=None):
+    def setYFromClean(self, NoiseRFactor=None, y_bias=None, R=None):
         """ 
         Create y vector from "clean" y values (when available with simulations for instance)
         Possibilty to add a constant bias
@@ -331,6 +400,12 @@ class KalmanFilter(object):
             y_bias = np.zeros(self.nY)
 
         if NoiseRFactor is not None:
+            if hasattr(NoiseRFactor, '__len__'):
+                if len(NoiseRFactor)!=R.shape[0]:
+                    raise Exception('NoiseRFactor has wrong length')
+            else:
+                NoiseRFactor=[NoiseRFactor] * R.shape[0]
+            NoiseRFactor = np.asarray(NoiseRFactor)
             Ey = np.sqrt(R)*NoiseRFactor
 
         for it in range(0,self.nt):    
@@ -358,8 +433,8 @@ class KalmanFilter(object):
         return sigX,sigY
 
     def print_sigmas(self):
-        sigX_c=self.sigX_c
-        sigY_c=self.sigY_c
+        sigX_c = self.sigX_c
+        sigY_c = self.sigY_c
         if sigX_c is not None:
             print('Sigma X            to be used     from inputs')
             for k,v in self.sigX.items():
@@ -377,6 +452,14 @@ class KalmanFilter(object):
             print('Sigma Y            to be used')
             for k,v in self.sigY.items():
                 print('Sigma {:10s}: {:12.3f}'.format(k,v))
+        s=''
+        if self.Q is not None:
+            s+=' Q: process noise\n'
+            s+=pretty_PrintMat(self.Q)+'\n'
+        if self.R is not None:
+            s+=' R: measurement matrix\n'
+            s+=pretty_PrintMat(self.R)+'\n'
+        print(s)
 
 
     # --------------------------------------------------------------------------------}
@@ -402,7 +485,72 @@ class KalmanFilter(object):
             return
         return _plot(KF.time, KF.S_clean, KF.S_hat, KF.sS, title=title, **kwargs)
 
-    def save(KF, filename, fmt='pickle'):
+    def plot_K(self, title='Kalmab gain'):
+        """ Plots the Kalman Gains K grouped by measurement. """
+        # Kt shape: (nt, nX, nY)
+        fig, axes = plt.subplots(self.nY, 1, sharex=True, figsize=(10, 4 * self.nY))
+        if self.nY == 1: axes = [axes]
+
+        for j, lab_y in enumerate(self.sY):
+            ax = axes[j]
+            for i, lab_x in enumerate(self.sX):
+                ax.plot(self.time, self.Kt[:, i, j], label=f'Gain {lab_x}')
+            
+            ax.set_ylabel(f'Gain for {lab_y}')
+            ax.set_title(f'Kalman Gains relative to Sensor: {lab_y}')
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+            ax.grid(True, alpha=0.3)
+
+        axes[-1].set_xlabel('Time [s]')
+        plt.tight_layout()
+
+
+    def plot_P(self):
+        """ Plots the diagonal of the covariance matrix P over time. """
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
+        # Extract the diagonal elements for each state
+        # Pt shape: (nt, nX, nX)
+        for i, lab in enumerate(self.sX):
+            # Taking the sqrt to plot standard deviation (more intuitive units)
+            sigma = np.sqrt(self.Pt[:, i, i])
+            ax.plot(self.time, sigma, label=fr'$\sigma$({lab})')
+        
+        ax.set_yscale('log')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Standard Deviation (log scale)')
+        ax.set_title('State Uncertainty (Diagonal of P)')
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+        ax.grid(True, which="both", alpha=0.3)
+        plt.tight_layout()
+
+    def plot_innovation(self):
+        """
+        Plots the residual (innovation) between measurements and predicted output.
+        """
+        # Calculate residuals
+        residuals = self.Y - self.Y_hat
+        
+        fig, axes = plt.subplots(self.nY, 1, sharex=True, figsize=(10, 4 * self.nY))
+        if self.nY == 1: axes = [axes]
+        
+        for j, lab_y in enumerate(self.sY):
+            ax = axes[j]
+            # Plotting the residual
+            ax.plot(self.time, residuals[lab_y], label='Innovation (Y - Y_hat)', color='red', alpha=0.7)
+            ax.axhline(0, color='black', linestyle='--', linewidth=1)
+            
+            ax.set_ylabel(f'Residual [{lab_y}]')
+            ax.set_title(f'Diagnostic: Innovation for {lab_y}')
+            ax.legend(loc='upper right')
+            ax.grid(True, alpha=0.3)
+
+        axes[-1].set_xlabel('Time [s]')
+        plt.tight_layout()
+
+
+
+    def save(self, filename, fmt='pickle'):
         if fmt=='pickle':
             import pickle
             with open(filename,'wb') as f:
@@ -480,15 +628,15 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2', tRangeStats=None, printStats=False):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2', tRangeStats=None, printStats=False, STY=None, refLast=False):
     from welib.tools.stats import comparison_stats
     from welib.tools.strings import latexStrip
-    import matplotlib
-    import matplotlib.pyplot as plt
+    from welib.tools.colors import cmap_colors
     # --- Misc inits
     if COLRS is None:
-        from welib.tools.colors import cmap_colors
         COLRS = cmap_colors(4, 'viridis')
+    if STY is None:
+        STY=['-','--','-','--']
     if printStats:
         import sys
         if sys.platform.startswith('win'):
@@ -539,11 +687,15 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
     for j,i in enumerate(I):
         s  = sX[i]
         ax = axes[j]
-        if X_clean is not None:
-            ax.plot(time,X_clean[s],''  , color=COLRS[0],label='Reference')
+        if not refLast:
+            if X_clean is not None:
+                ax.plot(time,X_clean[s],STY[0]  , color=COLRS[0],label='Reference')
         if X_noisy is not None:
-            ax.plot(time,X_noisy[s],'-.',  color=COLRS[2] ,label='Noisy')
-        ax.plot(time,X_hat[s],'--', color=COLRS[1],label='Estimate')
+            ax.plot(time,X_noisy[s],STY[2],  color=COLRS[2] ,label='Noisy')
+        ax.plot(time,X_hat[s],STY[1], color=COLRS[1],label='Estimate')
+        if refLast:
+            if X_clean is not None:
+                ax.plot(time,X_clean[s],STY[0]  , color=COLRS[0],label='Reference')
 
         if stats:
             if X_clean is not None:

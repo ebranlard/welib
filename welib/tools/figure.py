@@ -474,6 +474,7 @@ def export(figformat, fig=None, i=None, width=None, height=None, print_latex=Tru
 
     return figNames, fileNames, titles
 
+# def export(figformat, fig=None, i=None, width=None, height=None, print_latex=True, verbose=True, twoByTwo=True, path=None):
 def export2pdf(**kwargs):
     return export('pdf',**kwargs)
 def export2png(**kwargs):

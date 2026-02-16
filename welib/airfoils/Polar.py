@@ -83,6 +83,10 @@ class Polar(object):
             cl    = df['Cl'].values
             cd    = df['Cd'].values
             cm    = df['Cm'].values
+            if np.all(np.isnan(cm)):
+                print('[WARN] Polar. Cm is all NaN, replacing with 0')
+                cm[:] = 0
+
             if 'fs' in df.keys():
                 if verbose:
                     print('[INFO] Using separating function from input file.')
@@ -595,7 +599,7 @@ class Polar(object):
                 else:
                     cm_ext[i] = cm_new
         cm = np.interp(np.degrees(alpha), alpha_cm, cm_ext)
-        return type(self)(self.Re, np.degrees(alpha), cl, cd, cm)
+        return type(self)(Re=self.Re, alpha=np.degrees(alpha), cl=cl, cd=cd, cm=cm)
 
     def __Viterna(self, alpha, cl_adj):
         """private method to perform Viterna extrapolation"""
@@ -879,6 +883,8 @@ class Polar(object):
             d['Cn2']       = np.around(cn2, 4)
             d['Cd0']       = np.around(cd0, 4)
             d['Cm0']       = np.around(cm0, 4)
+            if np.isnan(cm0):
+                raise Exception('cm0 is NaN. Is Cm not provided? Debug Polar.py.')
             return d
         else:
             return (alpha0, alpha1, alpha2, cnSlope, cn1, cn2, cd0, cm0)
@@ -1112,7 +1118,7 @@ class Polar(object):
     def toAeroDyn(self, filenameOut=None, templateFile=None, Re=1.0, comment=None, unsteadyParams=True):
         # TODO find a way to handle multiple polars, might need a separate class for "Polars"
         from welib.weio.fast_input_file import ADPolarFile
-        cleanComments=comment is not None
+        cleanComments = (comment is not None)
         # Read a template file for AeroDyn polars
         if templateFile is None:
             MyDir=os.path.dirname(__file__)
