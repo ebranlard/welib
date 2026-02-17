@@ -215,8 +215,8 @@ class FASTOutputFile(File):
         """ Returns object into one DataFrame, or a dictionary of DataFrames"""
         return self.data
 
-    def writeDataFrame(self, df, filename, binary=True):
-        writeDataFrame(df, filename, binary=binary)
+    def writeDataFrame(self, df, filename, binary=True, tLabel='Time'):
+        writeDataFrame(df, filename, binary=binary, tLabel=tLabel)
 
     def __repr__(self):
         s='<{} object> with attributes:\n'.format(type(self).__name__)
@@ -624,7 +624,7 @@ def load_binary_output(filename, use_buffer=False, method='mix', **kwargs):
     return data, info
 
 
-def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
+def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr='', tLabel='Time'):
     """
     Write an OpenFAST binary file.
 
@@ -643,19 +643,22 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
     # Data sanitization
     chanNames = list(chanNames)
     channels  = np.asarray(channels)
-    if chanUnits[0][0]!='(':
+    if len(chanUnits[0])==0:
         chanUnits = ['('+u+')' for u in chanUnits] # units surrounded by parenthesis to match OpenFAST convention
+    else:
+        if chanUnits[0][0]!='(':
+            chanUnits = ['('+u+')' for u in chanUnits] # units surrounded by parenthesis to match OpenFAST convention
 
     nT, nChannelsWithTime = np.shape(channels)
     nChannels             = nChannelsWithTime - 1
 
     # For FileID =2,  time needs to be present and at the first column
     try:
-        iTime = chanNames.index('Time')
+        iTime = chanNames.index(tLabel)
     except ValueError:
-        raise Exception('`Time` needs to be present in channel names' )
+        raise Exception(f'`{tLabel}` needs to be present in channel names' )
     if iTime!=0:
-        raise Exception('`Time` needs to be the first column of `chanName`' )
+        raise Exception(f'`{tLabel}` needs to be the first column of `chanName`' )
 
     time = channels[:,iTime]
     timeStart = time[0]
@@ -752,7 +755,7 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
 
             fid.close()
 
-def writeDataFrame(df, filename, binary=True):
+def writeDataFrame(df, filename, binary=True, tLabel='Time'):
     """ write a DataFrame to OpenFAST output format"""
     channels  = df.values
     # attempt to extract units from channel names
@@ -781,7 +784,7 @@ def writeDataFrame(df, filename, binary=True):
         chanUnits.append(unit)
 
     if binary:
-        writeBinary(filename, channels, chanNames, chanUnits, fileID=FileFmtID_ChanLen_In)
+        writeBinary(filename, channels, chanNames, chanUnits, fileID=FileFmtID_ChanLen_In, tLabel=tLabel)
     else:
         NotImplementedError()
 

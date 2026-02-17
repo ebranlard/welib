@@ -1,3 +1,9 @@
+""" 
+This is for 3D point double and 3D doublet line (e.g. used for induction zone).
+
+For 2D Vortex Doublet Panel, look at DoubletPanel2D
+"""
+
 import numpy as np
 import unittest
 try:

@@ -771,9 +771,12 @@ class FASTLinModel(LinearStateSpace):
         print('FASTLinModel: loading PKL:',pickleFile)
 
         d = LinearStateSpace.load(self, pickleFile)
-        self.WT          = d['WT']
-        self.fstFilename = d['fstFilename']
-        self.pickleFile = pickleFile
+        if 'WT' in d:
+            self.WT          = d['WT']
+            self.fstFilename = d['fstFilename']
+            self.pickleFile = pickleFile
+        else:
+            print('[WARN] FASTLinModel: this is an old pickle file, it does not contain WT or fstFilename')
 
 
     def save(self, pickleFile=None):
@@ -972,7 +975,7 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
 
     # ---
     try:
-        D['Qgen_[Nm]']['Qgen_[Nm]']=1
+        D.loc['Qgen_[Nm]', 'Qgen_[Nm]'] = 1 # [row, "col"]
     except:
         pass
 

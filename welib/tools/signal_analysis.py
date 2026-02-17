@@ -474,7 +474,7 @@ def correlation(*args, **kwargs):
     
 def xCorrCoeff(x1, x2, t=None, nMax=None, method='manual'):    
     """ 
-    Compute cross-correlation coefficient of a signal
+    Compute cross-correlation coefficient between two signals.
     """
     x1 = x1.copy()-np.mean(x1)
     x2 = x2.copy()-np.mean(x2)
@@ -506,7 +506,19 @@ def xCorrCoeff(x1, x2, t=None, nMax=None, method='manual'):
                 t11, x11 = t [r:]   , x1[r:] 
             rho[i] = np.mean(x11*x22) / (sigma1*sigma2)
     else:
-        raise NotImplementedError(method)
+        raise NotImplementedError(method)    
+        cross_corr = correlate(x, y, mode=mode)/ min(len(x), len(y)) / (sigma1*sigma2)
+        if mode=='same':
+            cross_corr =np.concatenate( [ cross_corr[N:], cross_corr[:N] ] )
+            cross_corr[N3:2*N3]=0
+        if mode=='full':
+            lags = np.arange(-len(x) + 1, len(x)) * dt
+        elif mode=='same':
+            lags = (np.arange(len(x)) - N) * dt
+            lags = np.concatenate( [ lags[N:], lags[:N] ] )
+        else:
+            raise NotImplementedError(mode)
+
 
     tau = rvec * (t[1]-t[0])
     return rho, tau

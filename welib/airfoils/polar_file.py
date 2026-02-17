@@ -253,7 +253,8 @@ def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=Tr
                     found=True
                     break
             if not found:
-                print('[WARN] PolarFile: The following column was not understood: {}'.format(col))
+                if verbose:
+                    print('[WARN] PolarFile: The following column was not understood: {}'.format(col))
 
         # --- Standardize data
         for k,v in DEFAULT_COLUMNS.items():

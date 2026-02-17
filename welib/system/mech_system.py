@@ -1,3 +1,5 @@
+""" """
+
 import numpy as np
 import pandas as pd
 from numpy.linalg import inv
@@ -12,7 +14,9 @@ from .statespace import StateMatrix, Bu
 # --------------------------------------------------------------------------------{
 # NOTE: this is time invariant!
 class MechSystem():
+    # NOTE TODO TODO: I WISH I USED A DIFFERENT CONVENTION TRY TO SWAP X AND Q PROGRESSIVELY
     """ 
+
     Tools to handle/simulate a mechanical system of the form
 
         M(x) xddot + C xdot + K x = F(t,x,xdot) 
@@ -300,7 +304,7 @@ class MechSystem():
     # --------------------------------------------------------------------------------}
     # --- Time integration 
     # --------------------------------------------------------------------------------{
-    def integrate(self,t_eval, method='RK45', y0=None, calc='', **options):
+    def integrate(self, t_eval, method='RK45', y0=None, calc='', **options):
         """ Perform time integration of system 
             method: 'RK54', 'LSODA'  (see solve_ivp)
         """

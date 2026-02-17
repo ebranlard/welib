@@ -222,7 +222,8 @@ def hawc2ToBeamDyn(H2MeanLine, H2Structure, BDBldFileOut, BDMainFileOut=None, BD
         hwc[c] = np.interp(r_ref, r_old, hwc_in[c])
     if r_old[-1]<r_ref[-1]:
         # NOTE: interp won't do extrap , small hack here...
-        hwc['r_[m]'].values[-1] = r_ref[-1]
+        #hwc['r_[m]'].values[-1] = r_ref[-1]
+        hwc.loc[hwc.index[-1], 'r_[m]'] = r_ref[-1]
 
     # --- Safety check
     if len(hwc)!=len(c2def):

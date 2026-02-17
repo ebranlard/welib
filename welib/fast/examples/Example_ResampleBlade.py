@@ -21,3 +21,5 @@ if __name__ == '__main__':
     pass
 if __name__ == '__test__':
     os.remove(new)
+if __name__ == '__export__':
+    os.remove(new)

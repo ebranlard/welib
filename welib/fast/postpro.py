@@ -775,6 +775,9 @@ def spanwiseColAD(Cols):
         ADSpanMap['^[A]*'+sB+r'N(\d*)Vindxa_\[m/s\]']  =sB+'Vindxa_[m/s]'
         ADSpanMap['^[A]*'+sB+r'N(\d*)Vindya_\[m/s\]']  =sB+'Vindya_[m/s]'
         ADSpanMap['^[A]*'+sB+r'N(\d*)Vindza_\[m/s\]']  =sB+'Vindza_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vindxl_\[m/s\]']  =sB+'Vindxl_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vindyl_\[m/s\]']  =sB+'Vindyl_[m/s]'
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Vindzl_\[m/s\]']  =sB+'Vindzl_[m/s]'
         ADSpanMap['^[A]*'+sB+r'N(\d*)Fx_\[N/m\]'   ]   =sB+'Fx_[N/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Fy_\[N/m\]'   ]   =sB+'Fy_[N/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Fxi_\[N/m\]'   ]  =sB+'Fxi_[N/m]'   
@@ -789,6 +792,12 @@ def spanwiseColAD(Cols):
         ADSpanMap['^[A]*'+sB+r'N(\d*)Mxp_\[N-m/m\]' ]  =sB+'Mxp_[N-m/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Myp_\[N-m/m\]' ]  =sB+'Myp_[N-m/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Mzp_\[N-m/m\]' ]  =sB+'Mzp_[N-m/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fxl_\[N/m\]'   ]  =sB+'Fxl_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fyl_\[N/m\]'   ]  =sB+'Fyl_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Fzl_\[N/m\]'   ]  =sB+'Fzl_[N/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Mxl_\[N-m/m\]' ]  =sB+'Mxl_[N-m/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Myl_\[N-m/m\]' ]  =sB+'Myl_[N-m/m]'   
+        ADSpanMap['^[A]*'+sB+r'N(\d*)Mzl_\[N-m/m\]' ]  =sB+'Mzl_[N-m/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Fl_\[N/m\]'   ]   =sB+'Fl_[N/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Fd_\[N/m\]'   ]   =sB+'Fd_[N/m]'   
         ADSpanMap['^[A]*'+sB+r'N(\d*)Fn_\[N/m\]'   ]   =sB+'Fn_[N/m]'   
@@ -1283,7 +1292,7 @@ def addToOutlist(OutList, Signals):
 # --------------------------------------------------------------------------------}
 # --- Generic df 
 # --------------------------------------------------------------------------------{
-def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, verbose=False):
+def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, verbose=False, raiseIfAbsent=False):
     """ 
     NOTE: see welib.tools.pandalib
 
@@ -1309,10 +1318,11 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
         df = fastlib.remap_df(df, ColumnMap, inplace=True)
 
     """
-    # Insert dataDict into namespace
-    if dataDict is not None:
-        for k,v in dataDict.items():
-            exec('{:s} = dataDict["{:s}"]'.format(k,k))
+    # Insert dataDict into namespace, doesnt work
+    #if dataDict is not None:
+    #    for k,v in dataDict.items():
+    #        print('>>>> SETTING ', k, dataDict[k])
+    #        exec('{:s} = dataDict["{:s}"]'.format(k,k))
 
 
     if not inPlace:
@@ -1352,11 +1362,13 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
                         bFail=True
                     else:
                         expr=expr.replace(item.group(0),'df[\''+col+'\']')
-                #print(k0, '=', expr)
+                #print(k, '=', expr)
                 if not bFail:
                     df[k]=eval(expr)
                     ColNew.append(k)
                 else:
+                    if raiseIfAbsent:
+                        raise Exception('Column not present in dataframe, cannot evaluate: ',expr)
                     print('[WARN] Column not present in dataframe, cannot evaluate: ',expr)
             else:
                 #print(k0,'=',v)
@@ -1391,6 +1403,8 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
 
     if len(ColMapMiss)>0:
         print('[FAIL] The following columns were not found in the dataframe:',ColMapMiss)
+        if raiseIfAbsent:
+            raise Exception('Column not present in dataframe, cannot evaluate: ',ColMapMiss)
         #print('Available columns are:',df.columns.values)
 
     if bColKeepNewOnly:

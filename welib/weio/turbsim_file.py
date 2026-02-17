@@ -442,10 +442,7 @@ class TurbSimFile(File):
         """ Compute lateral cross spectral density
         If no index is provided, computed at mid box 
         """
-        try:
-            import scipy.signal as sig
-        except:
-            import pydatview.tools.spectral as sig
+        import scipy.signal as sig
         u, v, w = ts._latline(ix0=ix0, iz0=iz0, removeMean=True)
         t       = ts['t']
         dt      = t[1]-t[0]
@@ -459,10 +456,7 @@ class TurbSimFile(File):
         """ Compute vertical cross spectral density
         If no index is provided, computed at mid box 
         """
-        try:
-            import scipy.signal as sig
-        except:
-            import pydatview.tools.spectral as sig
+        import scipy.signal as sig
         t       = ts['t']
         dt      = t[1]-t[0]
         fs      = 1/dt
@@ -480,10 +474,7 @@ class TurbSimFile(File):
         """ Coherence on a longitudinal line for different delta y and delta z
         compared to a given point with index iy0,iz0
         """
-        try:
-            import scipy.signal as sig
-        except:
-            import pydatview.tools.spectral as sig
+        import scipy.signal as sig
         if iy0 is None:
             iy0,iz0 = ts.iMid
         u, v, w = ts._longiline(iy0=iy0, iz0=iz0, removeMean=True)
@@ -544,7 +535,7 @@ class TurbSimFile(File):
             print('New std : {:7.3f}  (target: {:7.3f}, old: {:7.3f})'.format(new_std2 , new_std , old_std))
 
     def makePeriodic(self):
-        """ Make the box periodic in the streamwise direction by mirroring it """
+        """ Make the box periodic in the streamwise direction by mirroring it - Periodic is ID=8"""
         nDim, nt0, ny, nz = self['u'].shape
         u = self['u'].copy()
         del self['u']
@@ -669,22 +660,23 @@ class TurbSimFile(File):
             import warnings
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore') #, category=DeprecationWarning)
-            fc, chi_uu, chi_vv, chi_ww = self.csd_longi()
-            cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
-            data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
-            dfs['Mid_csd_longi'] = pd.DataFrame(data = data ,columns = cols)
+            if len(self.t)>256:
+                fc, chi_uu, chi_vv, chi_ww = self.csd_longi()
+                cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+                data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+                dfs['Mid_csd_longi'] = pd.DataFrame(data = data ,columns = cols)
 
-            # Mid csd
-            fc, chi_uu, chi_vv, chi_ww = self.csd_lat()
-            cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
-            data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
-            dfs['Mid_csd_lat'] = pd.DataFrame(data = data ,columns = cols)
+                # Mid csd
+                fc, chi_uu, chi_vv, chi_ww = self.csd_lat()
+                cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+                data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+                dfs['Mid_csd_lat'] = pd.DataFrame(data = data ,columns = cols)
 
-            # Mid csd
-            fc, chi_uu, chi_vv, chi_ww = self.csd_vert()
-            cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
-            data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
-            dfs['Mid_csd_vert'] = pd.DataFrame(data = data ,columns = cols)
+                # Mid csd
+                fc, chi_uu, chi_vv, chi_ww = self.csd_vert()
+                cols = ['f_[Hz]','chi_uu_[-]', 'chi_vv_[-]','chi_ww_[-]']
+                data = np.column_stack((fc, chi_uu, chi_vv, chi_ww))
+                dfs['Mid_csd_vert'] = pd.DataFrame(data = data ,columns = cols)
         except ModuleNotFoundError:
             print('Module scipy.signal not available')
         except ImportError:
@@ -768,7 +760,7 @@ class TurbSimFile(File):
         """
         from xarray import IndexVariable, DataArray, Dataset
         
-        print('[TODO] openfast_toolbox.io.turbsim_file.toDataset: merge with function toDataSet')
+        print('[TODO] turbsim_file.toDataset: merge with function toDataSet')
 
         y      = IndexVariable("y", self.y, attrs={"description":"lateral coordinate","units":"m"})
         zround = np.asarray([np.round(zz,6) for zz in self.z]) #the open function here returns something like *.0000000001 which is annoying
@@ -795,8 +787,8 @@ class TurbSimFile(File):
         """
         import xarray as xr
         
-        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: should be discontinued')        
-        print('[TODO] openfast_toolbox.io.turbsim_file.toDataSet: merge with function toDataset')        
+        print('[TODO] turbsim_file.toDataSet: should be discontinued')        
+        print('[TODO] turbsim_file.toDataSet: merge with function toDataset')        
 
         if datetime:
             timearray = pd.to_datetime(self['t'], unit='s', origin=pd.to_datetime('2000-01-01 00:00:00'))

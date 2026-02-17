@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 # --------------------------------------------------------------------------------{
-def vs_u_raw(CP, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=None):
+def vs_u_raw(CP, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=None, rcut_den=1e-17, rcut_norm=1e-8):
     """ Induced velocity from a vortex segment on one control point
     See fUi_VortexSegment11_smooth
 
@@ -29,12 +29,12 @@ def vs_u_raw(CP, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=No
     norm_b      = np.sqrt(xb * xb + yb * yb + zb * zb)
     denominator = norm_a * norm_b * (norm_a * norm_b + xa * xb + ya * yb + za * zb)
 
-    if (denominator < 1e-17):
-        return np.zeros((1,3))
-    if (norm_a < 1e-08 or norm_b < 1e-08):
-        return np.zeros((1,3))
+    if (denominator < rcut_den):
+        return np.zeros(3)
+    if (norm_a < rcut_norm or norm_b < rcut_norm):
+        return np.zeros(3)
 
-    crossprod       = np.array([[ya * zb - za * yb, za * xb - xa * zb, xa * yb - ya * xb]])
+    crossprod       = np.array([ya * zb - za * yb, za * xb - xa * zb, xa * yb - ya * xb])
     # Singular model
     if RegFunction==0:
         Kv = Gamma / (4.0 * np.pi) * (norm_a + norm_b) / denominator
@@ -43,7 +43,7 @@ def vs_u_raw(CP, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=No
     if nt is None:  
         # Regularization models, based on orthogonal distance to segment h2
         norm2_r0        = (xa - xb)**2 + (ya - yb)**2 + (za - zb)**2
-        norm2_crossprod = crossprod[0,0]**2 + crossprod[0,1]**2 + crossprod[0,2]**2
+        norm2_crossprod = crossprod[0]**2 + crossprod[1]**2 + crossprod[2]**2
         h2              = norm2_crossprod/norm2_r0 # Orthogonal distance (r1 x r2)/r0
         eps2 = h2/RegParam**2
         if RegFunction==1:
@@ -81,10 +81,6 @@ def vs_u_raw(CP, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=No
 
     Kv = Gamma * Kv / (4.0 * np.pi) * (norm_a + norm_b) / denominator
 
-
-
-
-
     return Kv * crossprod
 
 def vs_u(Xcp, Ycp, Zcp, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegParamW=None):
@@ -113,9 +109,9 @@ def vs_u(Xcp, Ycp, Zcp, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegPa
     for i,(x,y,z) in enumerate(zip(Xcp,Ycp,Zcp)):
         CP=np.array([[x,y,z]])
         u = vs_u_raw(CP,Pa,Pb, Gamma, RegFunction, RegParam, nt, RegParamW)
-        ux[i] = u[0,0]
-        uy[i] = u[0,1]
-        uz[i] = u[0,2]
+        ux[i] = u[0]
+        uy[i] = u[1]
+        uz[i] = u[2]
         
     ux = ux.reshape(shape_in)
     uy = uy.reshape(shape_in)
@@ -130,15 +126,15 @@ def vs_u(Xcp, Ycp, Zcp, Pa, Pb, Gamma, RegFunction=0, RegParam=0, nt=None, RegPa
 class TestVortexSegment(unittest.TestCase):
     def test_VS_RegFunctions(self):
         # --- One vortex segment
-        Pa = np.array([[ 0, 0, -z0]])
-        Pb = np.array([[ 0, 0,  z0]])
+        Pa = np.array([ 0, 0, -z0])
+        Pb = np.array([ 0, 0,  z0])
         # --- test, 0 on singularity
         U  = vs_u_raw(np.array([0,0,0]), Pa, Pb, Gamma = 1, RegFunction = 0, RegParam = 0)
-        np.testing.assert_equal(U, np.zeros((1,3)))
+        np.testing.assert_equal(U, np.zeros(3))
         U  = vs_u_raw(Pa, Pa, Pb, Gamma = 1, RegFunction = 0, RegParam = 0)
-        np.testing.assert_equal(U, np.zeros((1,3)))
+        np.testing.assert_equal(U, np.zeros(3))
         U  = vs_u_raw(Pb, Pa, Pb, Gamma = 1, RegFunction = 0, RegParam = 0)
-        np.testing.assert_equal(U, np.zeros((1,3)))
+        np.testing.assert_equal(U, np.zeros(3))
 
 if __name__ == "__main__":
     unittest.main()

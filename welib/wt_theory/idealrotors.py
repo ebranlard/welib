@@ -25,7 +25,7 @@ except:
 # --------------------------------------------------------------------------------}
 # --- Maximum power extraction from stream tube theory (STT)
 # --------------------------------------------------------------------------------{
-def ADMTO_inductions(lambda_, method='fzero'):
+def ADMTO_inductions(lambda_, method='analytical'):
     """
     Actuator disc momentum theory optimal (ADMTO) induction factors
     See e.g. [1] Section 9.5.4
@@ -62,13 +62,19 @@ def ADMTO_inductions(lambda_, method='fzero'):
     #ap= 1/2*(-1+np.sqrt(1+4/lambda_r**2 * a * (1-a)))    # Always true 
     ap[bZero]  = np.nan
 
-
     return a, ap
 
-def ADMTO_CP(lambda_, method='analytical'):
+# --------------------------------------------------------------------------------}
+# --- Optimal CP 
+# --------------------------------------------------------------------------------{
+def CP_lambda_AD(lambda_, method='analytical'):
     """
-    Actuator disc momentum theory optimal (ADMTO) induction factors
+    Optimal power coefficient for a rotating actuator disc.
     See e.g. [2] Chap 3 
+    INPUTS:
+      - lambda_: tip speed ratio, array
+    OUTPUT:
+      - CP: power coefficient for each lambda_ values, array
     """
     lambda_ = np.asarray(lambda_)
     CP      = np.zeros_like(lambda_)
@@ -78,7 +84,10 @@ def ADMTO_CP(lambda_, method='analytical'):
         def dCPmax(x): # [2] Chapter 3, eq 43
             return  (64/5*x**5 + 72*x**4 + 124*x**3 + 38*x**2 - 63*x-12*np.log(x) - 4/x)
         for i, (l,a2) in enumerate(zip(lambda_,a)):
-            CP[i] = 8/(729*l**2) * ( dCPmax(x=1/4) - dCPmax(x=1-3*a2)  )
+            if l==0:
+                CP[i]==0
+            else:
+                CP[i] = 8/(729*l**2) * ( dCPmax(x=1/4) - dCPmax(x=1-3*a2)  )
     elif method == 'num_int':
         n=100000
         for i, l in enumerate(lambda_):
@@ -98,6 +107,112 @@ def ADMTO_CP(lambda_, method='analytical'):
         a, ap = ADMTO_inductions(lambda_, method='analytical')
         CP  =np.array([0.486,0.703,0.811,0.865,0.899,0.963,0.983,0.987])*16/27
     return CP, a
+
+ADMTO_CP = CP_lambda_AD # Legacy
+
+def CP_lambda_B_ClCd_Wilson(lambda_, B, ClCd):
+    """ 
+    Optimal power coefficient for a rotor with B blades and a constant Cl over Cd
+    Approximate formula from Wilson and Lissaman (1976)
+
+    INPUTS: 
+      - lambda_: tip speed ratio, array
+      - B: number of blade, scalar
+      - ClCd: lift over drag ration, scalar
+    OUTPUT:
+      - CP: power coefficient for each lambda_ values, array
+    """
+    lambda_ = np.asarray(lambda_)
+    CP = np.zeros_like(lambda_)
+    bValid = np.logical_and( lambda_>=4 , lambda_<=20)
+    TSR = lambda_[bValid]
+    T1 = TSR + (1.32+((TSR-8)/20)**2)/ B**(2/3)
+    if ClCd>1e8:
+        T2=0
+    else:
+        T2 = 0.57 * TSR**2 / (ClCd* (TSR+1/(2*B)) )
+    CP[bValid] = 16/27 * TSR /T1 - T2
+    CP[~bValid] = np.nan
+    return CP
+
+
+def CP_lambda_B(lambda_, B, method='Wilson'):
+    """ 
+    INPUTS: 
+      - lambda_: array of tip speed ratio
+      - B: number of blades, scalar
+      - method: 
+    """
+    lambda_ = np.asarray(lambda_)
+    CP = np.zeros_like(lambda_)
+    bZero  = lambda_==0
+
+    if method=='Wilson':
+        # Approximate formula from Wilson et al. 1976 
+        # See Eq. 3.119 from [2]
+        return CP_lambda_B_ClCd_Wilson(lambda_, B, ClCd=np.inf)
+    elif method == 'num_int':
+        n=10000
+        for i, TSR_design in enumerate(lambda_):
+            if TSR_design>0:
+                lambda_r = np.linspace(0.00001, TSR_design , n)
+                R = 1
+                r = lambda_r/TSR_design *R
+                # --- Optimal actuator disk
+                # TODO, we should use iteration here to maximize integrand, see Wilson Lissaman p 61 Section 3.1 - Local Optimization
+                # 
+                #a_, ap_ = ADMTO_inductions(lambda_r, method='analytical')
+                #phi = 2./3. * np.arctan(1./(lambda_r)) 
+                #F   = (2/np.pi) * np.arccos(np.exp(-B / 2 * (R - r) / (r * np.sin(phi))))
+                #CP1 =8/(TSR_design**2) * trapezoid(F * ap_ *(1-a_) * lambda_r**3, lambda_r)  # [2] Eq. 3.117
+                #CP1
+
+                #CP2=8/(TSR_design**2) * trapezoid(F * np.sin(phi)**2 * (np.cos(phi)-lambda_r*np.sin(phi))*(np.sin(phi) + lambda_r*np.cos(phi)) * lambda_r**2, lambda_r)  # [2] Eq. 3.117
+                #print(CP1, CP2)
+                #CP[i] = CP2
+    else:
+        raise NotImplementedError()
+
+    return CP
+
+
+def CP_lambda_B_ClCd(lambda_, B, ClCd, method='Wilson'):
+    # TODO NOTE: this is in welib/wt_theory/idealrotors.py
+    """ 
+    INPUTS: 
+      - lambda_: array of tip speed ratio
+      - B: number of blades, scalar
+      - ClCd: Cl over Cd, scalar
+      - method: 
+    """
+    lambda_ = np.asarray(lambda_)
+    CP = np.zeros_like(lambda_)
+    bZero  = lambda_==0
+
+    if method=='Wilson':
+        # Approximate formula from Wilson et al. 1976 
+        # See Eq. 3.119 from [2]
+        return CP_lambda_B_ClCd_Wilson(lambda_, B, ClCd)
+    elif method == 'num_int':
+        n=10000
+        Cl_design = 1
+        Cd_design = Cl_design/ClCd
+        for i, TSR_design in enumerate(lambda_):
+            lambda_r = np.linspace(0.00001, TSR_design , n)
+            R = 1
+            r = lambda_r/TSR_design
+
+            chord, phi, a, ap = planform_ClCd(r, R,  TSR_design, Cl_design, Cd_design, B=B)
+            #a_, ap_ = ADMTO_inductions(lamb_, method='analytical')
+            if TSR_design>0:
+                #CT[i]=8/(l**2) * trapezoid(a_  *(1-a_) * lamb_   , lamb_) # [1] Eq. 9.80
+                CP[i]=8/(TSR_design**2) * trapezoid(ap_ *(1-a_) * lambda_r**3, lambda_r)  # [1] Eq. 9.82
+    else:
+        raise NotImplementedError()
+
+    return CP
+
+
 
 
 

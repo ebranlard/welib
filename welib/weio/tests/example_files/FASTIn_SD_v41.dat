@@ -1,0 +1,500 @@
+----------- SubDyn v1.01.x MultiMember Support Structure Input File ------------
+M100 Starting at -50m
+-------------------------- SIMULATION CONTROL  ---------------------------------
+False            Echo        - Echo input data to "<rootname>.SD.ech" (flag)
+"DEFAULT"        SDdeltaT    - Local Integration Step. If "default", the glue-code integration step will be used.
+             3   IntMethod   - Integration Method [1/2/3/4 = RK4/AB4/ABM4/AM2].
+True             SttcSolve   - Solve dynamics about static equilibrium point
+-------------------- FEA and CRAIG-BAMPTON PARAMETERS---------------------------
+             1   FEMMod      - FEM switch: element model in the FEM. [1= Euler-Bernoulli(E-B);  2=Tapered E-B (unavailable);  3= 2-node Timoshenko;  4= 2-node tapered Timoshenko (unavailable)]
+             1   NDiv        - Number of sub-elements per member
+             2   Nmodes      - Number of internal modes to retain. If Nmodes=0 --> Guyan Reduction. If Nmodes<0 --> retain all modes.
+           0.1   JDampings   - Damping Ratios for each retained mode (% of critical) If Nmodes>0, list Nmodes structural damping ratios for each retained mode (% of critical), or a single damping ratio to be applied to all retained modes. (last entered value will be used for all remaining modes).
+             1   GuyanDampMod - Guyan damping {0=none, 1=Rayleigh Damping, 2=user specified 6x6 matrix}.
+0.000, 0.006     RayleighDamp - Mass and stiffness proportional damping  coefficients (Rayleigh Damping) [only if GuyanDampMod=1].
+             6   GuyanDampSize - Guyan damping matrix (6x6) [only if GuyanDampMod=2].
+           0.0            0.0            0.0            0.0            0.0            0.0
+           0.0            0.0            0.0            0.0            0.0            0.0
+           0.0            0.0            0.0            0.0            0.0            0.0
+           0.0            0.0            0.0            0.0            0.0            0.0
+           0.0            0.0            0.0            0.0            0.0            0.0
+           0.0            0.0            0.0            0.0            0.0            0.0
+---- STRUCTURE JOINTS: joints connect structure members (~Hydrodyn Input File) --------
+           101   NJoints     - Number of joints (-)
+  JointID    JointXss    JointYss    JointZss    JointType   JointDirX   JointDirY   JointDirZ  JointStiff      ![Coordinates of Member joints in SS-Coordinate System][JointType={1:cantilever, 2:universal joint, 3:revolute joint, 4:spherical joint}]
+    (-)         (m)         (m)         (m)         (-)         (-)         (-)         (-)      (Nm/rad)
+1	0	0	-50           1           0           0           0           0
+2	0	0	-49           1           0           0           0           0
+3	0	0	-48           1           0           0           0           0
+4	0	0	-47           1           0           0           0           0
+5	0	0	-46           1           0           0           0           0
+6	0	0	-45           1           0           0           0           0
+7	0	0	-44           1           0           0           0           0
+8	0	0	-43           1           0           0           0           0
+9	0	0	-42           1           0           0           0           0
+10	0	0	-41           1           0           0           0           0
+11	0	0	-40           1           0           0           0           0
+12	0	0	-39           1           0           0           0           0
+13	0	0	-38           1           0           0           0           0
+14	0	0	-37           1           0           0           0           0
+15	0	0	-36           1           0           0           0           0
+16	0	0	-35           1           0           0           0           0
+17	0	0	-34           1           0           0           0           0
+18	0	0	-33           1           0           0           0           0
+19	0	0	-32           1           0           0           0           0
+20	0	0	-31           1           0           0           0           0
+21	0	0	-30           1           0           0           0           0
+22	0	0	-29           1           0           0           0           0
+23	0	0	-28           1           0           0           0           0
+24	0	0	-27           1           0           0           0           0
+25	0	0	-26           1           0           0           0           0
+26	0	0	-25           1           0           0           0           0
+27	0	0	-24           1           0           0           0           0
+28	0	0	-23           1           0           0           0           0
+29	0	0	-22           1           0           0           0           0
+30	0	0	-21           1           0           0           0           0
+31	0	0	-20           1           0           0           0           0
+32	0	0	-19           1           0           0           0           0
+33	0	0	-18           1           0           0           0           0
+34	0	0	-17           1           0           0           0           0
+35	0	0	-16           1           0           0           0           0
+36	0	0	-15           1           0           0           0           0
+37	0	0	-14           1           0           0           0           0
+38	0	0	-13           1           0           0           0           0
+39	0	0	-12           1           0           0           0           0
+40	0	0	-11           1           0           0           0           0
+41	0	0	-10           1           0           0           0           0
+42	0	0	-9           1           0           0           0           0
+43	0	0	-8           1           0           0           0           0
+44	0	0	-7           1           0           0           0           0
+45	0	0	-6           1           0           0           0           0
+46	0	0	-5           1           0           0           0           0
+47	0	0	-4           1           0           0           0           0
+48	0	0	-3           1           0           0           0           0
+49	0	0	-2           1           0           0           0           0
+50	0	0	-1           1           0           0           0           0
+51	0	0	0           1           0           0           0           0
+52	0	0	1           1           0           0           0           0
+53	0	0	2           1           0           0           0           0
+54	0	0	3           1           0           0           0           0
+55	0	0	4           1           0           0           0           0
+56	0	0	5           1           0           0           0           0
+57	0	0	6           1           0           0           0           0
+58	0	0	7           1           0           0           0           0
+59	0	0	8           1           0           0           0           0
+60	0	0	9           1           0           0           0           0
+61	0	0	10           1           0           0           0           0
+62	0	0	11           1           0           0           0           0
+63	0	0	12           1           0           0           0           0
+64	0	0	13           1           0           0           0           0
+65	0	0	14           1           0           0           0           0
+66	0	0	15           1           0           0           0           0
+67	0	0	16           1           0           0           0           0
+68	0	0	17           1           0           0           0           0
+69	0	0	18           1           0           0           0           0
+70	0	0	19           1           0           0           0           0
+71	0	0	20           1           0           0           0           0
+72	0	0	21           1           0           0           0           0
+73	0	0	22           1           0           0           0           0
+74	0	0	23           1           0           0           0           0
+75	0	0	24           1           0           0           0           0
+76	0	0	25           1           0           0           0           0
+77	0	0	26           1           0           0           0           0
+78	0	0	27           1           0           0           0           0
+79	0	0	28           1           0           0           0           0
+80	0	0	29           1           0           0           0           0
+81	0	0	30           1           0           0           0           0
+82	0	0	31           1           0           0           0           0
+83	0	0	32           1           0           0           0           0
+84	0	0	33           1           0           0           0           0
+85	0	0	34           1           0           0           0           0
+86	0	0	35           1           0           0           0           0
+87	0	0	36           1           0           0           0           0
+88	0	0	37           1           0           0           0           0
+89	0	0	38           1           0           0           0           0
+90	0	0	39           1           0           0           0           0
+91	0	0	40           1           0           0           0           0
+92	0	0	41           1           0           0           0           0
+93	0	0	42           1           0           0           0           0
+94	0	0	43           1           0           0           0           0
+95	0	0	44           1           0           0           0           0
+96	0	0	45           1           0           0           0           0
+97	0	0	46           1           0           0           0           0
+98	0	0	47           1           0           0           0           0
+99	0	0	48           1           0           0           0           0
+100	0	0	49           1           0           0           0           0
+101	0	0	50           1           0           0           0           0
+------------------- BASE REACTION JOINTS: 1/0 for Locked/Free DOF @ each Reaction Node ---------------------
+             1   NReact      - Number of Joints with reaction forces; be sure to remove all rigid motion DOFs of the structure  (else det([K])=[0])
+RJointID    RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss     SSIfile   [Global Coordinate System]
+    (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)     (string)
+   1           1           1           1           1           1           1   ""
+------- INTERFACE JOINTS: 1/0 for Locked (to the TP)/Free DOF @each Interface Joint (only Locked-to-TP implemented thus far (=rigid TP)) ---------
+             1   NInterf     - Number of interface joints locked to the Transition Piece (TP):  be sure to remove all rigid motion dofs
+IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss     [Global Coordinate System]
+  (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
+  101          1           1           1           1           1           1
+----------------------------------- MEMBERS --------------------------------------
+           100   NMembers    - Number of frame members
+MemberID    MJointID1   MJointID2  MPropSetID1 MPropSetID2    MType      MSpin/COSMID   ![MType={1c:beam circ., 1r:beam rect., 2:cable, 3:rigid, 4:beam arb., 5:spring}. COMSID={-1:none}]
+    (-)         (-)         (-)         (-)         (-)         (-)         (deg/-)
+1	1	2	1	1          1c            0
+2	2	3	1	1          1c            0
+3	3	4	1	1          1c            0
+4	4	5	1	1          1c            0
+5	5	6	1	1          1c            0
+6	6	7	1	1          1c            0
+7	7	8	1	1          1c            0
+8	8	9	1	1          1c            0
+9	9	10	1	1          1c            0
+10	10	11	1	1          1c            0
+11	11	12	1	1          1c            0
+12	12	13	1	1          1c            0
+13	13	14	1	1          1c            0
+14	14	15	1	1          1c            0
+15	15	16	1	1          1c            0
+16	16	17	1	1          1c            0
+17	17	18	1	1          1c            0
+18	18	19	1	1          1c            0
+19	19	20	1	1          1c            0
+20	20	21	1	1          1c            0
+21	21	22	1	1          1c            0
+22	22	23	1	1          1c            0
+23	23	24	1	1          1c            0
+24	24	25	1	1          1c            0
+25	25	26	1	1          1c            0
+26	26	27	1	1          1c            0
+27	27	28	1	1          1c            0
+28	28	29	1	1          1c            0
+29	29	30	1	1          1c            0
+30	30	31	1	1          1c            0
+31	31	32	1	1          1c            0
+32	32	33	1	1          1c            0
+33	33	34	1	1          1c            0
+34	34	35	1	1          1c            0
+35	35	36	1	1          1c            0
+36	36	37	1	1          1c            0
+37	37	38	1	1          1c            0
+38	38	39	1	1          1c            0
+39	39	40	1	1          1c            0
+40	40	41	1	1          1c            0
+41	41	42	1	1          1c            0
+42	42	43	1	1          1c            0
+43	43	44	1	1          1c            0
+44	44	45	1	1          1c            0
+45	45	46	1	1          1c            0
+46	46	47	1	1          1c            0
+47	47	48	1	1          1c            0
+48	48	49	1	1          1c            0
+49	49	50	1	1          1c            0
+50	50	51	1	1          1c            0
+51	51	52	1	1          1c            0
+52	52	53	1	1          1c            0
+53	53	54	1	1          1c            0
+54	54	55	1	1          1c            0
+55	55	56	1	1          1c            0
+56	56	57	1	1          1c            0
+57	57	58	1	1          1c            0
+58	58	59	1	1          1c            0
+59	59	60	1	1          1c            0
+60	60	61	1	1          1c            0
+61	61	62	1	1          1c            0
+62	62	63	1	1          1c            0
+63	63	64	1	1          1c            0
+64	64	65	1	1          1c            0
+65	65	66	1	1          1c            0
+66	66	67	1	1          1c            0
+67	67	68	1	1          1c            0
+68	68	69	1	1          1c            0
+69	69	70	1	1          1c            0
+70	70	71	1	1          1c            0
+71	71	72	1	1          1c            0
+72	72	73	1	1          1c            0
+73	73	74	1	1          1c            0
+74	74	75	1	1          1c            0
+75	75	76	1	1          1c            0
+76	76	77	1	1          1c            0
+77	77	78	1	1          1c            0
+78	78	79	1	1          1c            0
+79	79	80	1	1          1c            0
+80	80	81	1	1          1c            0
+81	81	82	1	1          1c            0
+82	82	83	1	1          1c            0
+83	83	84	1	1          1c            0
+84	84	85	1	1          1c            0
+85	85	86	1	1          1c            0
+86	86	87	1	1          1c            0
+87	87	88	1	1          1c            0
+88	88	89	1	1          1c            0
+89	89	90	1	1          1c            0
+90	90	91	1	1          1c            0
+91	91	92	1	1          1c            0
+92	92	93	1	1          1c            0
+93	93	94	1	1          1c            0
+94	94	95	1	1          1c            0
+95	95	96	1	1          1c            0
+96	96	97	1	1          1c            0
+97	97	98	1	1          1c            0
+98	98	99	1	1          1c            0
+99	99	100	1	1          1c            0
+100	100	101	1	1          1c            0
+------------------ CIRCULAR BEAM CROSS-SECTION PROPERTIES -----------------------------
+             1   NPropSets       - Number of structurally unique cross-sections
+PropSetID     YoungE          ShearG          MatDens          XsecD           XsecT
+  (-)         (N/m2)          (N/m2)          (kg/m3)           (m)             (m)
+   1        2.10000e+11     7.93000e+10       7850.00        8.1966401       0.04476779
+----------------- RECTANGULAR BEAM CROSS-SECTION PROPERTIES ---------------------------
+             0   NPropSetsRec   - Number of structurally unique cross-sections (if 0 the following table is ignored)
+PropSetID     YoungE          ShearG          MatDens          XsecA          XsecB           XsecT
+  (-)         (N/m2)          (N/m2)          (kg/m3)           (m)            (m)             (m)
+----------------- ARBITRARY BEAM CROSS-SECTION PROPERTIES -----------------------------
+             0   NXPropSets  - Number of structurally unique non-circular x-sections (if 0 the following table is ignored)
+PropSetID     YoungE      ShearG2     MatDens      XsecA      XsecAsx     XsecAsy     XsecJxx     XsecJyy     XsecJ0
+  (-)         (N/m2)          (N/m2)          (kg/m3)          (m2)            (m2)          (m2)          (m4)          (m4)          (m4)
+-------------------------- CABLE PROPERTIES  -------------------------------------
+0                      NCablePropSets - Number of cable cable properties
+ PropSetID      EA        MatDens       T0
+    (-)         (N)       (kg/m)        (N)
+----------------------- RIGID LINK PROPERTIES ------------------------------------
+0                      NRigidPropSets - Number of rigid link properties
+ PropSetID    MatDens
+    (-)       (kg/m)
+----------------------- SPRING ELEMENT PROPERTIES -------------------------------------
+             0   NSpringPropSets - Number of spring properties
+PropSetID   k11     k12     k13     k14     k15     k16     k22     k23     k24     k25     k26     k33     k34     k35     k36     k44      k45      k46      k55      k56      k66    
+  (-)      (N/m)   (N/m)   (N/m)  (N/rad) (N/rad) (N/rad)  (N/m)   (N/m)  (N/rad) (N/rad) (N/rad)  (N/m)  (N/rad) (N/rad) (N/rad) (Nm/rad) (Nm/rad) (Nm/rad) (Nm/rad) (Nm/rad) (Nm/rad)
+---------------------- MEMBER COSINE MATRICES COSM(i,j) -------------------------------
+             0   NCOSMs      - Number of unique cosine matrices (i.e., of unique member alignments including principal axis rotations); ignored if NXPropSets=0   or 9999 in any element below
+COSMID    COSM11    COSM12    COSM13    COSM21    COSM22    COSM23    COSM31    COSM32    COSM33
+ (-)       (-)       (-)       (-)       (-)       (-)       (-)       (-)       (-)       (-)
+------------------------ JOINT ADDITIONAL CONCENTRATED MASSES--------------------------
+             0   NCmass      - Number of joints with concentrated masses; Global Coordinate System
+CMJointID      JMass       JMXX        JMYY        JMZZ        JMXY        JMXZ        JMYZ        MCGX        MCGY        MCGZ
+    (-)        (kg)      (kg*m^2)    (kg*m^2)    (kg*m^2)    (kg*m^2)    (kg*m^2)    (kg*m^2)       (m)         (m)         (m)
+---------------------------- OUTPUT: SUMMARY & OUTFILE ------------------------------
+False            SumPrint       - Output a Summary File (flag).It contains: matrices K,M  and C-B reduced M_BB, M-BM, K_BB, K_MM(OMG^2), PHI_R, PHI_L. It can also contain COSMs if requested.
+0                OutCBModes  - Output Guyan and Craig-Bampton modes {0: No output, 1: JSON output}, (flag)
+0                OutFEMModes - Output first 30 FEM modes {0: No output, 1: JSON output} (flag)
+False            OutCOSM     - Output cosine matrices with the selected output member forces (flag)
+False            OutAll      - [T/F] Output all members' end forces
+             2   OutSwtch    - [1/2/3] Output requested channels to: 1=<rootname>.SD.out;  2=<rootname>.out (generated by FAST);  3=both files.
+True             TabDelim    - Generate a tab-delimited output in the <rootname>.SD.out file
+             1   OutDec      - Decimation of output in the <rootname>.SD.out file
+"ES11.4e2"       OutFmt      - Output format for numerical results in the <rootname>.SD.out file
+"A11"            OutSFmt     - Output format for header strings in the <rootname>.SD.out file
+------------------------- MEMBER OUTPUT LIST ------------------------------------------
+           99  NMOutputs   - Number of members whose forces/displacements/velocities/accelerations will be output (-) [Must be <= 9].
+MemberID   NOutCnt    NodeCnt [NOutCnt=how many nodes to get output for [< 10]; NodeCnt are local ordinal numbers from the start of the member, and must be >=1 and <= NDiv+1] If NMOutputs=0 leave blank as well.
+  (-)        (-)        (-)
+1	1	1
+2	1	1	
+3	1	1	
+4	1	1	
+5	1	1	
+6	1	1	
+7	1	1	
+8	1	1	
+9	1	1	
+10	1	1	
+11	1	1	
+12	1	1	
+13	1	1	
+14	1	1	
+15	1	1	
+16	1	1	
+17	1	1	
+18	1	1	
+19	1	1	
+20	1	1	
+21	1	1	
+22	1	1	
+23	1	1	
+24	1	1	
+25	1	1	
+26	1	1	
+27	1	1	
+28	1	1	
+29	1	1	
+30	1	1	
+31	1	1	
+32	1	1	
+33	1	1	
+34	1	1	
+35	1	1	
+36	1	1	
+37	1	1	
+38	1	1	
+39	1	1	
+40	1	1	
+41	1	1	
+42	1	1	
+43	1	1	
+44	1	1	
+45	1	1	
+46	1	1	
+47	1	1	
+48	1	1	
+49	1	1	
+50	1	1	
+51	1	1	
+52	1	1	
+53	1	1	
+54	1	1	
+55	1	1	
+56	1	1	
+57	1	1	
+58	1	1	
+59	1	1	
+60	1	1	
+61	1	1	
+62	1	1	
+63	1	1	
+64	1	1	
+65	1	1	
+66	1	1	
+67	1	1	
+68	1	1	
+69	1	1	
+70	1	1	
+71	1	1	
+72	1	1	
+73	1	1	
+74	1	1	
+75	1	1	
+76	1	1	
+77	1	1	
+78	1	1	
+79	1	1	
+80	1	1	
+81	1	1	
+82	1	1	
+83	1	1	
+84	1	1	
+85	1	1	
+86	1	1	
+87	1	1	
+88	1	1	
+89	1	1	
+90	1	1	
+91	1	1	
+92	1	1	
+93	1	1	
+94	1	1	
+95	1	1	
+96	1	1	
+97	1	1	
+98	2	1	2
+100	2	1	2
+------------------------- SSOutList: The next line(s) contains a list of output parameters that will be output in <rootname>.SD.out or <rootname>.out. ------
+"SSQM01"
+"SSQMD01"
+"SSQMDD01"
+"SSQM02"
+"SSQMD02"
+"SSQMDD02"
+"IntfFXss , IntfFZss , IntfMYss "
+"IntfTDXss, IntfTDZss, IntfRDYss"
+"M1N1FKXe, M1N1FKZe, M1N1MKYe"
+"M2N1FKXe, M2N1FKZe, M2N1MKYe"
+"M3N1FKXe, M3N1FKZe, M3N1MKYe"
+"M4N1FKXe, M4N1FKZe, M4N1MKYe"
+"M5N1FKXe, M5N1FKZe, M5N1MKYe"
+"M6N1FKXe, M6N1FKZe, M6N1MKYe"
+"M7N1FKXe, M7N1FKZe, M7N1MKYe"
+"M8N1FKXe, M8N1FKZe, M8N1MKYe"
+"M9N1FKXe, M9N1FKZe, M9N1MKYe"
+"M10N1FKXe, M10N1FKZe, M10N1MKYe"
+"M11N1FKXe, M11N1FKZe, M11N1MKYe"
+"M12N1FKXe, M12N1FKZe, M12N1MKYe"
+"M13N1FKXe, M13N1FKZe, M13N1MKYe"
+"M14N1FKXe, M14N1FKZe, M14N1MKYe"
+"M15N1FKXe, M15N1FKZe, M15N1MKYe"
+"M16N1FKXe, M16N1FKZe, M16N1MKYe"
+"M17N1FKXe, M17N1FKZe, M17N1MKYe"
+"M18N1FKXe, M18N1FKZe, M18N1MKYe"
+"M19N1FKXe, M19N1FKZe, M19N1MKYe"
+"M20N1FKXe, M20N1FKZe, M20N1MKYe"
+"M21N1FKXe, M21N1FKZe, M21N1MKYe"
+"M22N1FKXe, M22N1FKZe, M22N1MKYe"
+"M23N1FKXe, M23N1FKZe, M23N1MKYe"
+"M24N1FKXe, M24N1FKZe, M24N1MKYe"
+"M25N1FKXe, M25N1FKZe, M25N1MKYe"
+"M26N1FKXe, M26N1FKZe, M26N1MKYe"
+"M27N1FKXe, M27N1FKZe, M27N1MKYe"
+"M28N1FKXe, M28N1FKZe, M28N1MKYe"
+"M29N1FKXe, M29N1FKZe, M29N1MKYe"
+"M30N1FKXe, M30N1FKZe, M30N1MKYe"
+"M31N1FKXe, M31N1FKZe, M31N1MKYe"
+"M32N1FKXe, M32N1FKZe, M32N1MKYe"
+"M33N1FKXe, M33N1FKZe, M33N1MKYe"
+"M34N1FKXe, M34N1FKZe, M34N1MKYe"
+"M35N1FKXe, M35N1FKZe, M35N1MKYe"
+"M36N1FKXe, M36N1FKZe, M36N1MKYe"
+"M37N1FKXe, M37N1FKZe, M37N1MKYe"
+"M38N1FKXe, M38N1FKZe, M38N1MKYe"
+"M39N1FKXe, M39N1FKZe, M39N1MKYe"
+"M40N1FKXe, M40N1FKZe, M40N1MKYe"
+"M41N1FKXe, M41N1FKZe, M41N1MKYe"
+"M42N1FKXe, M42N1FKZe, M42N1MKYe"
+"M43N1FKXe, M43N1FKZe, M43N1MKYe"
+"M44N1FKXe, M44N1FKZe, M44N1MKYe"
+"M45N1FKXe, M45N1FKZe, M45N1MKYe"
+"M46N1FKXe, M46N1FKZe, M46N1MKYe"
+"M47N1FKXe, M47N1FKZe, M47N1MKYe"
+"M48N1FKXe, M48N1FKZe, M48N1MKYe"
+"M49N1FKXe, M49N1FKZe, M49N1MKYe"
+"M50N1FKXe, M50N1FKZe, M50N1MKYe"
+"M51N1FKXe, M51N1FKZe, M51N1MKYe"
+"M52N1FKXe, M52N1FKZe, M52N1MKYe"
+"M53N1FKXe, M53N1FKZe, M53N1MKYe"
+"M54N1FKXe, M54N1FKZe, M54N1MKYe"
+"M55N1FKXe, M55N1FKZe, M55N1MKYe"
+"M56N1FKXe, M56N1FKZe, M56N1MKYe"
+"M57N1FKXe, M57N1FKZe, M57N1MKYe"
+"M58N1FKXe, M58N1FKZe, M58N1MKYe"
+"M59N1FKXe, M59N1FKZe, M59N1MKYe"
+"M60N1FKXe, M60N1FKZe, M60N1MKYe"
+"M61N1FKXe, M61N1FKZe, M61N1MKYe"
+"M62N1FKXe, M62N1FKZe, M62N1MKYe"
+"M63N1FKXe, M63N1FKZe, M63N1MKYe"
+"M64N1FKXe, M64N1FKZe, M64N1MKYe"
+"M65N1FKXe, M65N1FKZe, M65N1MKYe"
+"M66N1FKXe, M66N1FKZe, M66N1MKYe"
+"M67N1FKXe, M67N1FKZe, M67N1MKYe"
+"M68N1FKXe, M68N1FKZe, M68N1MKYe"
+"M69N1FKXe, M69N1FKZe, M69N1MKYe"
+"M70N1FKXe, M70N1FKZe, M70N1MKYe"
+"M71N1FKXe, M71N1FKZe, M71N1MKYe"
+"M72N1FKXe, M72N1FKZe, M72N1MKYe"
+"M73N1FKXe, M73N1FKZe, M73N1MKYe"
+"M74N1FKXe, M74N1FKZe, M74N1MKYe"
+"M75N1FKXe, M75N1FKZe, M75N1MKYe"
+"M76N1FKXe, M76N1FKZe, M76N1MKYe"
+"M77N1FKXe, M77N1FKZe, M77N1MKYe"
+"M78N1FKXe, M78N1FKZe, M78N1MKYe"
+"M79N1FKXe, M79N1FKZe, M79N1MKYe"
+"M80N1FKXe, M80N1FKZe, M80N1MKYe"
+"M81N1FKXe, M81N1FKZe, M81N1MKYe"
+"M82N1FKXe, M82N1FKZe, M82N1MKYe"
+"M83N1FKXe, M83N1FKZe, M83N1MKYe"
+"M84N1FKXe, M84N1FKZe, M84N1MKYe"
+"M85N1FKXe, M85N1FKZe, M85N1MKYe"
+"M86N1FKXe, M86N1FKZe, M86N1MKYe"
+"M87N1FKXe, M87N1FKZe, M87N1MKYe"
+"M88N1FKXe, M88N1FKZe, M88N1MKYe"
+"M89N1FKXe, M89N1FKZe, M89N1MKYe"
+"M90N1FKXe, M90N1FKZe, M90N1MKYe"
+"M91N1FKXe, M91N1FKZe, M91N1MKYe"
+"M92N1FKXe, M92N1FKZe, M92N1MKYe"
+"M93N1FKXe, M93N1FKZe, M93N1MKYe"
+"M94N1FKXe, M94N1FKZe, M94N1MKYe"
+"M95N1FKXe, M95N1FKZe, M95N1MKYe"
+"M96N1FKXe, M96N1FKZe, M96N1MKYe"
+"M97N1FKXe, M97N1FKZe, M97N1MKYe"
+"M98N1FKXe, M98N1FKZe, M98N1MKYe"
+"M98N2FKXe, M98N2FKZe, M98N2MKYe"
+"M99N1FKXe, M99N1FKZe, M99N1MKYe"
+"M99N2FKXe, M99N2FKZe, M99N2MKYe"
+"-ReactFXss, -ReactFYss, -ReactFZss" - Base reactions: fore-aft shear, side-to-side shear and vertical forces at the mudline.
+"-ReactMXss, -ReactMYss, -ReactMZss" - Base reactions: side-to-side, fore-aft and yaw moments at the mudline.
+END of output channels and end of file. (the word "END" must appear in the first 3 columns of this line)

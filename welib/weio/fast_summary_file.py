@@ -85,15 +85,17 @@ class FASTSummaryFile(File):
         if attrList is None:
             attrList = [c for c in child.__dir__() if not c.startswith('_')]
         for attr in attrList:
-            print('FASTSummaryFile from child {}, setting `{}`'.format(type(child).__name__, attr))
+            #print('FASTSummaryFile from child {}, setting `{}`'.format(type(child).__name__, attr))
             setattr(self, attr, getattr(child, attr)) 
 
     def toDataFrame(self):
         if 'module' not in self.keys():
             raise Exception('');
+
         if self['module']=='SubDyn':
             raise Exception('This should not happen since class was added to subdyn object')
         #    dfs=subDynToDataFrame(self)
+
         return dfs
 
     def toGraph(self):

@@ -21,6 +21,7 @@ import pandas as pd
 import copy
 import welib.weio as weio
 from collections import OrderedDict
+from welib.essentials import *
 from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
 from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
@@ -932,6 +933,8 @@ def FASTWindTurbine(fstFilename, main_axis='z',
 
     # --- Fnd (defined wrt ground/MSL "E")
 #     print(FST.keys())
+    if FST['CompSub']>0:
+        FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
     M_fnd = ED['PtfmMass']
     r_EGfnd_inF = np.array([ED['PtfmCMxt'],ED['PtfmCMyt'],ED['PtfmCMzt']])
     r_EPtfm_inF    = np.array([0             ,0             ,ED['PtfmRefzt']]) # TODO, this is wrong

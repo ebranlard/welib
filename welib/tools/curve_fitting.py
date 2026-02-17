@@ -982,7 +982,6 @@ class ModelFitter(FunctionFitter):
 
         self.model['consts'], missing = set_common_keys(self.model['consts'],  fun_kwargs )
         if len(missing)>0:
-#             raise Exception('Curve fitting with function `{}` requires the following arguments {}. Missing: {}'.format(func.__name__,consts.keys(),missing))
             raise Exception('Curve fitting with function `{}` requires the following arguments {}. Missing: {}'.format(func,self.model['consts'].keys(),missing))
 
 # --------------------------------------------------------------------------------}

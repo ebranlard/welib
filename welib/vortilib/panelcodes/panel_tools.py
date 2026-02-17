@@ -4,6 +4,7 @@ Set of tools useful for 2D panel methods
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 # --------------------------------------------------------------------------------
@@ -24,8 +25,14 @@ def compute_curvature(X, Y, method='Menger'):
     if method=='Menger':
         # --- Menger
         # Compute Menger curvature (circle passing through three points)
-        X = np.concatenate(([X[-1]],X,[X[0]]))
-        Y = np.concatenate(([Y[-1]],Y,[Y[0]]))
+        if np.abs(X[0]-X[-1])<1e-12 or np.abs(Y[0]-Y[-1])<1e-12:
+            # Contour is closed
+            X = np.concatenate(([X[-2]],X,[X[1]]))
+            Y = np.concatenate(([Y[-2]],Y,[Y[1]]))
+        else:
+            X = np.concatenate(([X[-1]],X,[X[0]]))
+            Y = np.concatenate(([Y[-1]],Y,[Y[0]]))
+
         for i in range(1,nP):
             P1 = np.array((X[i-1],Y[i-1]))
             P2 = np.array((X[i]  ,Y[i]))
@@ -34,6 +41,8 @@ def compute_curvature(X, Y, method='Menger'):
             L2= np.linalg.norm(P3-P2)
             L3= np.linalg.norm(P1-P3)
             area = 0.5*((P2[0] - P1[0]) * (P3[1] -P1[1]) - (P2[1] - P1[1]) * (P3[0] -P1[0]))
+            if L1*L2*L3 == 0:
+                import pdb; pdb.set_trace()
             curv[i-1] = 4*area/(L1*L2*L3)
     elif method=='Lewis':
         # --- Lewis
@@ -60,14 +69,30 @@ def compute_curvature(X, Y, method='Menger'):
         curv[bNaN]=0
     return curv
 
-# --------------------------------------------------------------------------------}
-# --- Line / airfoil
-# --------------------------------------------------------------------------------{
-def plot_airfoil(*args, **kwargs):
-    return plot_line(*args, **kwargs)
+def panel_geometry(XP, YP, closed_expected=True, force_clockwise=True):
+    ns_in  = -1 * np.sign(np.sum(XP[:-1]*YP[1:] - XP[1:]*YP[:-1]))
+    if ns_in==0:
+        if closed_expected:
+            print('[WARN] Not a closed contour, make sure order makes sense')
+        ns = 1
+    elif ns_in==-1:
+        if force_clockwise:
+            print('[INFO] Making contour clockwise')
+            XP = XP[::-1]
+            YP = YP[::-1]
 
-def airfoil_params(*args, **kwargs):
-    return line_params(*args, **kwargs)
+    ns     = -1 * np.sign(np.sum(XP[:-1]*YP[1:] - XP[1:]*YP[:-1]))
+    if ns==0:
+        ns=1 # Not a closed countour
+    PP     = np.column_stack((XP, YP))
+    mids   = (PP[:-1,:] + PP[1:,:]) / 2
+    dP     = PP[1:,:] - PP[:-1,:]
+    ds     = np.linalg.norm(dP, axis=1)
+    t_hat  = dP / ds[:, None]
+    n_hat  = ns * np.column_stack((-t_hat[:,1], t_hat[:,0])) # ns Ensures normals are outwards
+    phi    = np.arctan2(dP[:,1], dP[:,0])
+    phi[phi<0] += 2*np.pi
+    return PP, mids, dP, ds, t_hat, n_hat, phi, ns
 
 def line_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger', verbose=False):
     """ 
@@ -124,10 +149,31 @@ def line_params(X, Y, plot=False, ntScale=0.3, curv_method='Menger', verbose=Fal
     return n_hat, t_hat, mids, ds, curv, ax
 
 
+# --------------------------------------------------------------------------------}
+# --- Airfoils 
+# --------------------------------------------------------------------------------{
+def points_inside(XP, YP, XX, YY):
+    from matplotlib import path
+    AF     = np.vstack((XP.T,YP.T)).T
+    afPath = path.Path(AF)
+    points = np.column_stack((XX.ravel(), YY.ravel()))
+    inside = afPath.contains_points(points).reshape(XX.shape)
+    return inside
+
+# --------------------------------------------------------------------------------}
+# --- Line / airfoil
+# --------------------------------------------------------------------------------{
+def plot_airfoil(*args, **kwargs):
+    return plot_line(*args, **kwargs)
+
+def airfoil_params(*args, **kwargs):
+    return line_params(*args, **kwargs)
+
+
+
     
 
 def plot_line(X, Y, Uwall=None, ntScale=0.1, UScale=0.1, nt=True, ax=None):
-    import matplotlib.pyplot as plt
 
     normals, tangents, mids, ds, _, _ = line_params(X, Y, plot=False, curv_method='zero')
 
@@ -197,3 +243,50 @@ def plot_line2(P1, P2, Uwall=None, ntScale=0.1, UScale=0.1, nt=True, ax=None):
     ax.set_ylabel('y [m]')
     return ax
 
+
+# --------------------------------------------------------------------------------}
+# --- Airfoils Cp
+# --------------------------------------------------------------------------------{
+def plot_pressure_force_bars(CP, Cp, n_hat, scale=0.1, ax=None):
+    """ Plot Pressure force as blue/red normal bars  """
+    if ax is None:
+        fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    scale = 0.1
+    Cp_abs = np.abs(Cp * scale)
+    for i in range(len(CP)):
+        x_bar = CP[i,0] + np.array([ 0,  Cp_abs[i]*n_hat[i,0]])
+        y_bar = CP[i,1] + np.array([ 0,  Cp_abs[i]*n_hat[i,1]])
+        sty='b-' if (Cp[i] > 0) else 'r-'
+        ax.plot(x_bar, y_bar, sty)
+    #ax.fill(XP,YP,'k')
+    ax.set_xlabel('x/c [-]')
+    ax.set_ylabel('y/c [-]')
+    #ax.legend()
+    ax.set_aspect('equal')                                               # Set aspect ratio equal
+    return ax
+
+
+def plot_Cp(x, Cp, ax=None, Cp_ref=None, simple=True, label=None, sty='--', x_ref=None):
+    # --- Plot Cp
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+    midIndS = int(np.floor(len(Cp)/2))                                          # Airfoil middle index for VPM data
+
+    if Cp_ref is not None:
+        if x_ref is None:
+            x_ref = x
+        ax.plot(x_ref, Cp_ref[:],  'k-', label='Reference Cp')
+    if simple:
+        ax.plot(x, Cp, sty, label=label)
+    else:
+        ax.plot(x[midIndS+1:len(x)],Cp[midIndS+1:len(CP)], 'ks', markerfacecolor='b', label=label+' Upper' if label is not None else 'Upper')
+        ax.plot(x[0:midIndS       ],        Cp[0:midIndS], 'ks', markerfacecolor='r', label=label+' Lower' if label is not None else 'Lower')
+
+
+    # ax.set_xlim([0,1])
+    ax.set_xlabel('x/c [-]') 
+    ax.set_ylabel('Cp [-]')
+    ax.legend()
+    ax.invert_yaxis()
+    return ax

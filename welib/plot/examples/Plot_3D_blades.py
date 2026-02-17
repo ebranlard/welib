@@ -159,6 +159,9 @@ def main(nTheta=25, verbose=False):
             z1=r[i]
             z2=r[i+1]
             id = ID[i]-1
+            if coords[id] is None:
+                print('[WARN] No coordinate for section {}'.format(i))
+                continue
             df = coords[id].toDataFrame()
     #         df = coords[-1].toDataFrame()
             AC_frac = 0.25 # TODO we need the position of the AC (not good for cylinders)
