@@ -19,6 +19,7 @@ TABTYPE_NUM_BEAMDYN        = 5
 TABTYPE_NUM_SUBDYNOUT      = 7
 TABTYPE_MIX_WITH_HEADER    = 6
 TABTYPE_FIL                = 3
+TABTYPE_OUTLIST            = 33
 TABTYPE_FMT                = 9999 # TODO
 
 
@@ -53,6 +54,10 @@ class FASTInputFile(File):
         self._fixedfile = None
         self.basefile = FASTInputFileBase(filename, **kwargs) # Generic fileformat
 
+    def copy(self):
+        import copy
+        return copy.deepcopy(self)
+
     @property
     def fixedfile(self):
         if self._fixedfile is not None:
@@ -79,6 +84,9 @@ class FASTInputFile(File):
 
     def getID(self, label):
         return self.basefile.getID(label)
+
+    def getTab(self, label):
+        return self.fixedfile.getTab(label)
 
     @property
     def data(self):
@@ -140,16 +148,69 @@ class FASTInputFile(File):
     def __next__(self): 
         return self.fixedfile.__next__()
 
-    def __setitem__(self,key,item):
-        return self.fixedfile.__setitem__(key,item)
+    def __setitem__(self, key, item):
+        return self.fixedfile.__setitem__(key, item)
 
-    def __getitem__(self,key):
+    def __getitem__(self, key):
         return self.fixedfile.__getitem__(key)
+
+    def __contains__(self, item):
+        return self.fixedfile.__contains__(item)
 
     def __repr__(self):
         return self.fixedfile.__repr__()
         #s ='Fast input file: {}\n'.format(self.filename)
         #return s+'\n'.join(['{:15s}: {}'.format(d['label'],d['value']) for i,d in enumerate(self.data)])
+
+    def delete(self, key, error=False):
+        self.pop(key, error=error)
+
+    def pop(self, key, error=False):
+        if isinstance(key, int):
+            i = key
+        else:
+            i = self.fixedfile.getIDSafe(key)
+        if i>=0:
+            d = self.data[i]
+            del self.data[i]
+            return d
+        else:
+            if error:
+                raise Exception('Key `{}` not found in file:{}'.format(key, self.filename))
+            else:
+                print('[WARN] Key `{}` not found in file:{}'.format(key, self.filename))
+                return None
+
+    def insertComment(self, i, comment='', error=False):
+        d = getDict()
+        d['value']     = comment
+        d['label']     = ''
+        d['descr']     = ''
+        d['isComment'] = True
+        try:
+            self.data.insert(i, d)
+        except:
+            import pdb; pdb.set_trace()
+
+    def insertKeyVal(self, i, key, value, description='', error=False):
+        d = getDict()
+        d['value']     = value
+        d['label']     = key
+        d['descr']     = description
+        d['isComment'] = False
+        self.data.insert(i, d)
+
+    def insertKeyValAfter(self, key_prev, key, value, description, error=False):
+        i = self.fixedfile.getIDSafe(key_prev)
+        if i<0:
+            if error:
+                raise Exception('Key `{}` not found in file:{}'.format(key_prev, self.filename))
+            else:
+                print('[WARN] Key `{}` not found in file:{}'.format(key_prev, self.filename))
+        self.insertKeyVal(i+1, key, value, description, error=error)
+
+
+
 
 
 # --------------------------------------------------------------------------------}
@@ -185,12 +246,16 @@ class FASTInputFileBase(File):
     def formatName():
         return 'FAST input file Base'
 
-    def __init__(self, filename=None, **kwargs):
+    def __init__(self, filename=None, IComment=None, verbose=False, **kwargs):
         self._size=None
         self.setData() # Init data
         if filename:
             self.filename = filename
-            self.read()
+            self.read(IComment=IComment, verbose=verbose)
+
+    def copy(self):
+        import copy
+        return copy.deepcopy(self)
 
     def setData(self, filename=None, data=None, hasNodal=False, module=None):
         """ Set the data of this object. This object shouldn't store anything else. """
@@ -206,10 +271,10 @@ class FASTInputFileBase(File):
         self.labels = [ d['label'] for i,d in enumerate(self.data) if (not d['isComment']) and (i not in self._IComment)]
         return self.labels
 
-    def getID(self,label):
+    def getID(self, label):
         i=self.getIDSafe(label)
         if i<0:
-            raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
+            raise KeyError('Variable `' + str(label) +'` not found in FAST file:'+str(self.filename))
         else:
             return i
 
@@ -220,7 +285,7 @@ class FASTInputFileBase(File):
             d = self.data[i]
             if d['label'].lower()==label.lower():
                 I.append(i)
-        if len(I)<0:
+        if len(I)==0:
             raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
         else:
             return I
@@ -232,6 +297,14 @@ class FASTInputFileBase(File):
             if d['label'].lower()==label.lower():
                 return i
         return -1
+
+    def getTab(self, label):
+        i=self.getIDSafe(label)
+        if i<0:
+            raise KeyError('Variable `'+ label+'` not found in FAST file:'+self.filename)
+        d = self.data[i]
+        df = pd.DataFrame(columns=d['tabColumnNames'], data=d['value'])
+        return df
 
     # Making object an iterator
     def __iter__(self):
@@ -261,12 +334,18 @@ class FASTInputFileBase(File):
                     pass
             self.data[i]['value'] = item
 
-    def __getitem__(self,key):
+    def __getitem__(self, key):
         i = self.getID(key)
         return self.data[i]['value']
 
+    def __contains__(self, item):
+        return item in self.keys()
+
+
     def __repr__(self):
-        s ='Fast input file base: {}\n'.format(self.filename)
+        s='<{} object - Base> with attributes:\n'.format(type(self).__name__)
+        s =' - filename: {}\n'.format(self.filename)
+        s =' - dict keys/values: \n'
         return s+'\n'.join(['{:15s}: {}'.format(d['label'],d['value']) for i,d in enumerate(self.data)])
 
     def addKeyVal(self, key, val, descr=None):
@@ -320,7 +399,7 @@ class FASTInputFileBase(File):
         return [1] # Typical OpenFAST files have comment on second line [1]
 
 
-    def read(self, filename=None):
+    def read(self, filename=None, IComment=None, verbose=False):
         if filename:
             self.filename = filename
         if self.filename:
@@ -328,76 +407,14 @@ class FASTInputFileBase(File):
                 raise OSError(2,'File not found:',self.filename)
             if os.stat(self.filename).st_size == 0:
                 raise EmptyFileError('File is empty:',self.filename)
-            self._read()
+            self._read(IComment=IComment, verbose=verbose)
         else:  
             raise Exception('No filename provided')
 
-    def _read(self):
+    def _read(self, IComment=None, verbose=False):
+        if IComment is None:
+            IComment=[]
 
-        # --- Tables that can be detected based on the "Value" (first entry on line)
-        # TODO members for  BeamDyn with mutliple key point                                                                                                                                                                                                                                                                                                        ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
-        NUMTAB_FROM_VAL_DETECT  = ['HtFract'  , 'TwrElev'   , 'BlFract'  , 'Genspd_TLU' , 'BlSpn'        , 'HvCoefID' , 'AxCoefID' , 'JointID'  , 'Dpth'      , 'FillNumM'    , 'MGDpth'    , 'SimplCd'  , 'RNodes'       , 'kp_xr'      , 'mu1'           , 'TwrHtFr'   , 'TwrRe'  , 'WT_X']
-        NUMTAB_FROM_VAL_DIM_VAR = ['NTwInpSt' , 'NumTwrNds' , 'NBlInpSt' , 'DLL_NumTrq' , 'NumBlNds'     , 'NHvCoef'  , 'NAxCoef'  , 'NJoints'  , 'NCoefDpth' , 'NFillGroups' , 'NMGDepths' , 1          , 'BldNodes'     , 'kp_total'   , 1               , 'NTwrHt'    , 'NTwrRe' , 'NumTurbines']
-        NUMTAB_FROM_VAL_VARNAME = ['TowProp'  , 'TowProp'   , 'BldProp'  , 'DLLProp'    , 'BldAeroNodes' , 'HvCoefs'  , 'AxCoefs'  , 'Joints'   , 'DpthProp'  , 'FillGroups'  , 'MGProp'    , 'SmplProp' , 'BldAeroNodes' , 'MemberGeom' , 'DampingCoeffs' , 'TowerProp' , 'TowerRe', 'WindTurbines']
-        NUMTAB_FROM_VAL_NHEADER = [2          , 2           , 2          , 2            , 2              , 2          , 2          , 2          , 2           , 2             , 2           , 2          , 1              , 2            , 2               , 1           , 1        , 2 ]
-        NUMTAB_FROM_VAL_TYPE    = ['num'      , 'num'       , 'num'      , 'num'        , 'num'          , 'num'      , 'num'      , 'num'      , 'num'       , 'num'         , 'num'       , 'num'      , 'mix'          , 'num'        , 'num'           , 'num'       , 'num'    , 'mix']
-        # SubDyn
-        NUMTAB_FROM_VAL_DETECT  += [ 'RJointID'        , 'IJointID'        , 'COSMID'             , 'CMJointID'         ]
-        NUMTAB_FROM_VAL_DIM_VAR += [ 'NReact'          , 'NInterf'         , 'NCOSMs'             , 'NCmass'            ]
-        NUMTAB_FROM_VAL_VARNAME += [ 'BaseJoints'      , 'InterfaceJoints' , 'MemberCosineMatrix' , 'ConcentratedMasses']
-        NUMTAB_FROM_VAL_NHEADER += [ 2                 , 2                 , 2                    , 2                   ]
-        NUMTAB_FROM_VAL_TYPE    += [ 'mix'             , 'num'             , 'num'                , 'num'               ]
-        # AD Driver old and new
-        NUMTAB_FROM_VAL_DETECT  += [ 'WndSpeed' , 'HWndSpeed' ]
-        NUMTAB_FROM_VAL_DIM_VAR += [ 'NumCases' , 'NumCases'  ]
-        NUMTAB_FROM_VAL_VARNAME += [ 'Cases'    , 'Cases'     ]
-        NUMTAB_FROM_VAL_NHEADER += [ 2          , 2           ]
-        NUMTAB_FROM_VAL_TYPE    += [ 'num'      , 'num'       ]
-
-        # --- Tables that can be detected based on the "Label" (second entry on line)
-        # NOTE: MJointID1, used by SubDyn and HydroDyn
-        NUMTAB_FROM_LAB_DETECT   = ['NumAlf'  , 'F_X'       , 'MemberCd1'    , 'MJointID1' , 'NOutLoc'    , 'NOutCnt'    , 'PropD'       ]
-        NUMTAB_FROM_LAB_DIM_VAR  = ['NumAlf'  , 'NKInpSt'   , 'NCoefMembers' , 'NMembers'  , 'NMOutputs'  , 'NMOutputs'  , 'NPropSets'   ]
-        NUMTAB_FROM_LAB_VARNAME  = ['AFCoeff' , 'TMDspProp' , 'MemberProp'   , 'Members'   , 'MemberOuts' , 'MemberOuts' , 'SectionProp' ]
-        NUMTAB_FROM_LAB_NHEADER  = [2         , 2           , 2              , 2           , 2            , 2            , 2             ]
-        NUMTAB_FROM_LAB_NOFFSET  = [0         , 0           , 0              , 0           , 0            , 0            , 0             ]
-        NUMTAB_FROM_LAB_TYPE     = ['num'     , 'num'       , 'num'          , 'mix'       , 'num'        , 'sdout'      , 'num'         ]
-        # MoorDyn Version 1 and 2 (with AUTO for LAB_DIM_VAR)
-        NUMTAB_FROM_LAB_DETECT   += ['Diam'       ,'Type'           ,'LineType'    , 'Attachment']
-        NUMTAB_FROM_LAB_DIM_VAR  += ['NTypes:AUTO','NConnects'      ,'NLines:AUTO' , 'AUTO']
-        NUMTAB_FROM_LAB_VARNAME  += ['LineTypes'  ,'ConnectionProp' ,'LineProp'    , 'Points']
-        NUMTAB_FROM_LAB_NHEADER  += [ 2           , 2               , 2            , 2     ]
-        NUMTAB_FROM_LAB_NOFFSET  += [ 0           , 0               , 0            , 0     ]
-        NUMTAB_FROM_LAB_TYPE     += ['mix'        ,'mix'            ,'mix'         , 'mix']
-        # SubDyn
-        NUMTAB_FROM_LAB_DETECT   += ['GuyanDampSize'     , 'YoungE'   , 'YoungE'    , 'EA'             , 'MatDens'       ]
-        NUMTAB_FROM_LAB_DIM_VAR  += [6                   , 'NPropSets', 'NXPropSets', 'NCablePropSets' , 'NRigidPropSets']
-        NUMTAB_FROM_LAB_VARNAME  += ['GuyanDampMatrix'   , 'BeamProp' , 'BeamPropX' , 'CableProp'      , 'RigidProp'     ]
-        NUMTAB_FROM_LAB_NHEADER  += [0                   , 2          , 2           , 2                , 2               ]
-        NUMTAB_FROM_LAB_NOFFSET  += [1                   , 0          , 0           , 0                , 0               ]
-        NUMTAB_FROM_LAB_TYPE     += ['num'               , 'num'      , 'num'       , 'num'            , 'num'           ]
-        # OLAF
-        NUMTAB_FROM_LAB_DETECT   += ['GridName'   ]
-        NUMTAB_FROM_LAB_DIM_VAR  += ['nGridOut'   ]
-        NUMTAB_FROM_LAB_VARNAME  += ['GridOutputs']
-        NUMTAB_FROM_LAB_NHEADER  += [0            ]
-        NUMTAB_FROM_LAB_NOFFSET  += [2            ]
-        NUMTAB_FROM_LAB_TYPE     += ['mix'        ]
-
-        FILTAB_FROM_LAB_DETECT   = ['FoilNm' ,'AFNames']
-        FILTAB_FROM_LAB_DIM_VAR  = ['NumFoil','NumAFfiles']
-        FILTAB_FROM_LAB_VARNAME  = ['FoilNm' ,'AFNames']
-
-        # Using lower case to be more tolerant..
-        NUMTAB_FROM_VAL_DETECT_L = [s.lower() for s in NUMTAB_FROM_VAL_DETECT]
-        NUMTAB_FROM_LAB_DETECT_L = [s.lower() for s in NUMTAB_FROM_LAB_DETECT]                                         
-        FILTAB_FROM_LAB_DETECT_L = [s.lower() for s in FILTAB_FROM_LAB_DETECT]
-
-        # Reset data
-        self.data   = []
-        self.hasNodal=False
-        self.module = None
-        #with open(self.filename, 'r', errors="surrogateescape") as f:
         with open(self.filename, 'r', errors="surrogateescape") as f:
             lines=f.read().splitlines()
         # IF NEEDED> DO THE FOLLOWING FORMATTING:
@@ -413,6 +430,122 @@ class FASTInputFileBase(File):
         if self.detectAndReadAirfoilAD14(lines):
             return
 
+        # We help the reader due to complicated overlaps of tables between SubDyn and HydroDyn
+        firstline = lines[0].lower()
+        if 'hydrodyn' in firstline:
+            self.module = 'hydrodyn'
+        elif 'subdyn' in firstline:
+            self.module = 'subdyn'
+        if verbose:
+            print('Input detected as module:', self.module)
+
+
+        # TODO make all these classes
+        # --- Tables that can be detected based on the "Dimension Variables", after which we directly have the table
+        NUMTAB_FROM_DIM_DIM_VAR =[]
+        NUMTAB_FROM_DIM_VARNAME =[]
+        NUMTAB_FROM_DIM_NHEADER =[]
+        NUMTAB_FROM_DIM_NOFFSET =[]
+        NUMTAB_FROM_DIM_TYPE    =[]
+        # SubDyn
+        if self.module == 'subdyn' or self.module is None:
+            NUMTAB_FROM_DIM_DIM_VAR  += ['NJoints',  'NMembers', 'NPropSetsCirc' , 'NPropSetsRec' , 'NXPropSets' , 'NSpringPropSets', 'NCablePropSets' , 'NRigidPropSets']
+            NUMTAB_FROM_DIM_VARNAME  += ['Joints' ,  'Members' , 'BeamProp'      , 'BeamPropRec'  , 'BeamPropX'  , 'SpringProp'     , 'CableProp'      , 'RigidProp'     ]
+            NUMTAB_FROM_DIM_NHEADER  += [2        ,  2         ,   2               , 2              , 2            ,  2               , 2                , 2               ]
+            NUMTAB_FROM_DIM_NOFFSET  += [0        ,  0         ,   0               , 0              , 0            ,  0               , 0                , 0               ]
+            NUMTAB_FROM_DIM_TYPE     += ['num'    ,  'mix'     ,   'num'           , 'num'          , 'num'        , 'num'            , 'num'            , 'num'           ]
+        # HydroDyn
+        if self.module == 'hydrodyn' or self.module is None:
+            NUMTAB_FROM_DIM_DIM_VAR  += ['NAxCoef', 'NJoints', 'NPropSetsCyl'  , 'NPropSetsRec'  , 'NCoefDpthCyl',  'NCoefDpthRec'  ,  'NCoefMembersCyl',  'NCoefMembersRec', 'NMembers'  ]
+            NUMTAB_FROM_DIM_VARNAME  += ['AxCoefs', 'Joints' , 'SectionPropCyl', 'SectionPropRec', 'DpthProp'    ,  'DpthPropRec'   ,  'MemberPropCyl'  ,  'MemberPropRec'  , 'Members' ]
+            NUMTAB_FROM_DIM_NHEADER  += [2        , 2        , 2               , 2               , 2             ,  2               ,  2                ,  2                , 2   ]
+            NUMTAB_FROM_DIM_NOFFSET  += [0        , 0        , 0               , 0               , 0             ,  0               ,  0                ,  0                , 0   ]
+            NUMTAB_FROM_DIM_TYPE     += ['num'    , 'num'    , 'num'           , 'num'           , 'num'         ,  'num'           ,  'num'            ,  'num'            , 'mix']
+
+        # --- Tables that can be detected based on the "Value" (first entry on line)
+        # TODO members for  BeamDyn with mutliple key point                                                                                                                                                                                                                                                                                                        ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
+        NUMTAB_FROM_VAL_DETECT  = ['HtFract'  , 'TwrElev'   , 'BlFract'  , 'Genspd_TLU' , 'BlSpn'        , 'HvCoefID']
+        NUMTAB_FROM_VAL_DIM_VAR = ['NTwInpSt' , 'NumTwrNds' , 'NBlInpSt' , 'DLL_NumTrq' , 'NumBlNds'     , 'NHvCoef' ]
+        NUMTAB_FROM_VAL_VARNAME = ['TowProp'  , 'TowProp'   , 'BldProp'  , 'DLLProp'    , 'BldAeroNodes' , 'HvCoefs' ]
+        NUMTAB_FROM_VAL_NHEADER = [2          , 2           , 2          , 2            , 2              , 2         ]
+        NUMTAB_FROM_VAL_TYPE    = ['num'      , 'num'       , 'num'      , 'num'        , 'num'          , 'num'     ]
+        # HydroDyn
+        if self.module == 'hydrodyn' or self.module is None:
+            NUMTAB_FROM_VAL_DETECT  += [ 'SimplCd'     ,  'SimplCdA'    , 'Dpth'      , 'FillNumM'    , 'MGDpth'    ]
+            NUMTAB_FROM_VAL_DIM_VAR += [ 1             ,  1             , 'NCoefDpth' , 'NFillGroups' , 'NMGDepths' ]
+            NUMTAB_FROM_VAL_VARNAME += [ 'SmplPropCyl' ,  'SmplPropRec' , 'DpthProp'  , 'FillGroups'  , 'MGProp'    ]
+            NUMTAB_FROM_VAL_NHEADER += [ 2             ,  2              , 2           , 2             , 2           ]
+            NUMTAB_FROM_VAL_TYPE    += [ 'num'         ,  'num'          , 'num'       , 'num'         , 'num'       ]
+        # SubDyn
+        if self.module == 'subdyn' or self.module is None:
+            NUMTAB_FROM_VAL_DETECT  += [ 'RJointID'        , 'IJointID'        , 'COSMID'             , 'CMJointID'         ]
+            NUMTAB_FROM_VAL_DIM_VAR += [ 'NReact'          , 'NInterf'         , 'NCOSMs'             , 'NCmass'            ]
+            NUMTAB_FROM_VAL_VARNAME += [ 'BaseJoints'      , 'InterfaceJoints' , 'MemberCosineMatrix' , 'ConcentratedMasses']
+            NUMTAB_FROM_VAL_NHEADER += [ 2                 , 2                 , 2                    , 2                   ]
+            NUMTAB_FROM_VAL_TYPE    += [ 'mix'             , 'num'             , 'num'                , 'num'               ]
+        # Misc
+        NUMTAB_FROM_VAL_DETECT  += [ 'RNodes'       , 'kp_xr'      , 'mu1'           , 'TwrHtFr'   , 'TwrRe'  , 'WT_X']
+        NUMTAB_FROM_VAL_DIM_VAR += [ 'BldNodes'     , 'kp_total'   , 1               , 'NTwrHt'    , 'NTwrRe' , 'NumTurbines']
+        NUMTAB_FROM_VAL_VARNAME += [ 'BldAeroNodes' , 'MemberGeom' , 'DampingCoeffs' , 'TowerProp' , 'TowerRe', 'WindTurbines']
+        NUMTAB_FROM_VAL_NHEADER += [ 1              , 2            , 2               , 1           , 1        , 2 ]
+        NUMTAB_FROM_VAL_TYPE    += [ 'mix'          , 'num'        , 'num'           , 'num'       , 'num'    , 'mix']
+        # AD Driver old and new
+        NUMTAB_FROM_VAL_DETECT  += [ 'WndSpeed' , 'HWndSpeed' ]
+        NUMTAB_FROM_VAL_DIM_VAR += [ 'NumCases' , 'NumCases'  ]
+        NUMTAB_FROM_VAL_VARNAME += [ 'Cases'    , 'Cases'     ]
+        NUMTAB_FROM_VAL_NHEADER += [ 2          , 2           ]
+        NUMTAB_FROM_VAL_TYPE    += [ 'num'      , 'num'       ]
+
+        # --- Tables that can be detected based on the "Label" (second entry on line)
+        # NOTE: MJointID1, used by SubDyn and HydroDyn
+        # TODO remove MemberCd1, MJointID1
+        NUMTAB_FROM_LAB_DETECT   = ['NumAlf'  , 'F_X'       , 'MemberCd1'    , 'MJointID1' , 'NOutLoc'    , 'NOutCnt'    , 'PropD'       ]
+        NUMTAB_FROM_LAB_DIM_VAR  = ['NumAlf'  , 'NKInpSt'   , 'NCoefMembers' , 'NMembers'  , 'NMOutputs'  , 'NMOutputs'  , 'NPropSets'   ]
+        NUMTAB_FROM_LAB_VARNAME  = ['AFCoeff' , 'TMDspProp' , 'MemberProp'   , 'Members'   , 'MemberOuts' , 'MemberOuts' , 'SectionProp' ]
+        NUMTAB_FROM_LAB_NHEADER  = [2         , 2           , 2              , 2           , 2            , 2            , 2             ]
+        NUMTAB_FROM_LAB_NOFFSET  = [0         , 0           , 0              , 0           , 0            , 0            , 0             ]
+        NUMTAB_FROM_LAB_TYPE     = ['num'     , 'num'       , 'num'          , 'mix'       , 'num'        , 'sdout'      , 'num'         ]
+        # MoorDyn Version 1 and 2 (with AUTO for LAB_DIM_VAR)
+        NUMTAB_FROM_LAB_DETECT   += ['Diam'       ,'Type'           ,'LineType'    , 'Attachment']
+        NUMTAB_FROM_LAB_DIM_VAR  += ['NTypes:AUTO','NConnects'      ,'NLines:AUTO' , 'AUTO']
+        NUMTAB_FROM_LAB_VARNAME  += ['LineTypes'  ,'ConnectionProp' ,'LineProp'    , 'Points']
+        NUMTAB_FROM_LAB_NHEADER  += [ 2           , 2               , 2            , 2     ]
+        NUMTAB_FROM_LAB_NOFFSET  += [ 0           , 0               , 0            , 0     ]
+        NUMTAB_FROM_LAB_TYPE     += ['mix'        ,'mix'            ,'mix'         , 'mix']
+        # SubDyn
+        NUMTAB_FROM_LAB_DETECT   += ['GuyanDampSize'   , 'YoungE' ]
+        NUMTAB_FROM_LAB_DIM_VAR  += [6                 ,  'NPropSets']
+        NUMTAB_FROM_LAB_VARNAME  += ['GuyanDampMatrix' ,  'BeamProp' ]
+        NUMTAB_FROM_LAB_NHEADER  += [0                 ,  2          ]
+        NUMTAB_FROM_LAB_NOFFSET  += [1                 ,  0          ]
+        NUMTAB_FROM_LAB_TYPE     += ['num'             ,  'num'      ]
+        # OLAF
+        NUMTAB_FROM_LAB_DETECT   += ['GridName'   ]
+        NUMTAB_FROM_LAB_DIM_VAR  += ['nGridOut'   ]
+        NUMTAB_FROM_LAB_VARNAME  += ['GridOutputs']
+        NUMTAB_FROM_LAB_NHEADER  += [0            ]
+        NUMTAB_FROM_LAB_NOFFSET  += [2            ]
+        NUMTAB_FROM_LAB_TYPE     += ['mix'        ]
+
+        FILTAB_FROM_LAB_DETECT   = ['FoilNm' ,'AFNames']
+        FILTAB_FROM_LAB_DIM_VAR  = ['NumFoil','NumAFfiles']
+        FILTAB_FROM_LAB_VARNAME  = ['FoilNm' ,'AFNames']
+
+        TABTYPE2ID={'num': TABTYPE_NUM_WITH_HEADER, 'mix':TABTYPE_MIX_WITH_HEADER, 'sdout': TABTYPE_NUM_SUBDYNOUT}
+
+
+        # Using lower case to be more tolerant..
+        NUMTAB_FROM_DIM_DIM_VAR_L= [s.lower() for s in NUMTAB_FROM_DIM_DIM_VAR]
+        NUMTAB_FROM_VAL_DETECT_L = [s.lower() for s in NUMTAB_FROM_VAL_DETECT]
+        NUMTAB_FROM_LAB_DETECT_L = [s.lower() for s in NUMTAB_FROM_LAB_DETECT]                                         
+        FILTAB_FROM_LAB_DETECT_L = [s.lower() for s in FILTAB_FROM_LAB_DETECT]
+
+        # Reset data
+        self.data   = []
+        self.hasNodal=False
+        self.module = None
+
+
         # Parsing line by line, storing each line into a dictionary
         i=0    
         nComments  = 0
@@ -423,6 +556,11 @@ class FASTInputFileBase(File):
         labOffset=''
         while i<len(lines):
             line = lines[i]
+            if i in IComment:
+                self.addComment(line)
+                i +=1
+                continue
+
 
             # --- Read special sections
             if line.upper().find('ADDITIONAL OUTPUTS')>0 \
@@ -443,19 +581,19 @@ class FASTInputFileBase(File):
                 else:
                     d['label']   = firstword
                 d['descr']   = remainer
-                d['tabType'] = TABTYPE_FIL # TODO
+                d['tabType'] = TABTYPE_OUTLIST # TODO
                 d['value']   = ['']+OutList
                 self.data.append(d)
                 if i>=len(lines):
+                    self.addComment('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)')
+                    self.addComment('---------------------------------------------------------------------------------------')
                     break
                 # --- Here we cheat and force an exit of the input file
                 # The reason for this is that some files have a lot of things after the END, which will result in the file being intepreted as a wrong format due to too many comments
                 if i+2<len(lines) and (lines[i+2].lower().find('bldnd_bladesout')>0 or lines[i+2].lower().find('bldnd_bloutnd')>0):
                     self.hasNodal=True
                 else:
-                    self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
-                    self.data.append(parseFASTInputLine('---------------------------------------------------------------------------------------',i+2))
-                    break
+                    pass
             elif line.upper().find('SSOUTLIST'   )>0 or line.upper().find('SDOUTLIST'   )>0:
                 # SUBDYN Outlist doesn not follow regular format
                 self.data.append(parseFASTInputLine(line,i))
@@ -468,8 +606,8 @@ class FASTInputFileBase(File):
                     d['value']=o
                     self.data.append(d)
                 # --- Here we cheat and force an exit of the input file
-                self.data.append(parseFASTInputLine('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)',i+1))
-                self.data.append(parseFASTInputLine('---------------------------------------------------------------------------------------',i+2))
+                self.addComment('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)')
+                self.addComment('---------------------------------------------------------------------------------------')
                 break
             elif line.upper().find('ADDITIONAL STIFFNESS')>0:
                 # TODO, lazy implementation so far, MAKE SUB FUNCTION
@@ -491,18 +629,33 @@ class FASTInputFileBase(File):
                 i+=1;
                 self.readBeamDynProps(lines,i)
                 return
+            elif line.upper().find('GLBDCM')>0:
+                # BeamDyn DCM has no label.....
+                self.addComment(lines[i]); i+=1
+                self.addComment(lines[i]); i+=1
+                d = getDict()
+                d['label'] = 'GlbDCM'
+                d['tabType'] = TABTYPE_NUM_NO_HEADER
+                nTabLines = 3
+                nHeaders = 0
+                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename, lines[i:i+nTabLines],nTabLines, i, nHeaders, tableType='num', nOffset=0)
+                i=i+3
+                self.data.append(d)
+                continue
+
+                #---The following 3 by 3 matrix is the direction cosine matirx ,GlbDCM(3,3),
             elif line.upper().find('OUTPUTS')>0:
                 if 'Points' in self.keys() and 'dtM' in self.keys():
                     OutList,i = parseFASTOutList(lines,i+1) 
                     d = getDict()
                     d['label']   = 'Outlist'
                     d['descr']   = ''
-                    d['tabType'] = TABTYPE_FIL # TODO
+                    d['tabType'] = TABTYPE_OUTLIST
                     d['value']   = OutList
                     self.addComment('------------------------ OUTPUTS --------------------------------------------')
                     self.data.append(d)
-                    self.addComment('END')
-                    self.addComment('------------------------- need this line --------------------------------------')
+                    self.addComment('END of input file (the word "END" must appear in the first 3 columns of this last OutList line)')
+                    self.addComment('---------------------------------------------------------------------------------------')
                     return
 
             # --- Parsing of standard lines: value(s) key comment
@@ -553,6 +706,7 @@ class FASTInputFileBase(File):
                         d['tabType']   = TABTYPE_NUM_WITH_HEADERCOM
                         nTabLines = self[d['tabDimVar']]-1  # SOMEHOW ONE DATA POINT LESS
                         d['value'], d['tabColumnNames'],_  = parseFASTNumTable(self.filename,lines[i:i+nTabLines+1],nTabLines,i,1)
+                        d['descr'] = '' #
                         d['tabUnits'] = ['(-)','(-)']
                         self.data.append(d)
                         break
@@ -592,8 +746,10 @@ class FASTInputFileBase(File):
                     nTabLines = d['tabDimVar']
                 else:
                     nTabLines = self[d['tabDimVar']]
-                #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                if verbose:
+                    print('From val: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
                 d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders], nTabLines, i, nHeaders, tableType=tab_type, varNumLines=d['tabDimVar'])
+                _, d['descr'] = splitAfterChar(lines[i], '!')
                 i += nTabLines+nHeaders-1
 
                 # --- Temporary hack for e.g. SubDyn, that has duplicate table, impossible to detect in the current way...
@@ -605,9 +761,40 @@ class FASTInputFileBase(File):
                 del NUMTAB_FROM_VAL_TYPE   [ii] 
                 del NUMTAB_FROM_VAL_DETECT_L[ii]  
 
+            elif isStr(labelRaw) and labelRaw in NUMTAB_FROM_DIM_DIM_VAR_L:
+                # --- Tables that can are right after their dimension variable
+                ii       = NUMTAB_FROM_DIM_DIM_VAR_L.index(d['label'].lower())
+                tab_type = NUMTAB_FROM_DIM_TYPE[ii]
+                # We store the current line (contains the dimension variable)
+                self.data.append(d)
+                i += 1
+
+                # Creating a new dictionary for the table
+                d = getDict()
+                d['label']     = NUMTAB_FROM_DIM_VARNAME[ii]+labOffset
+                d['tabDimVar'] = NUMTAB_FROM_DIM_DIM_VAR[ii]
+                d['tabType']   = TABTYPE2ID[ tab_type ]
+                nHeaders       = NUMTAB_FROM_DIM_NHEADER[ii]
+                nOffset        = NUMTAB_FROM_DIM_NOFFSET[ii]
+                nTabLines      = self[d['tabDimVar']]
+                if verbose:
+                    print('From dim: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
+                d['descr'] = '' #
+                i += nTabLines+1-nOffset
+
+                del NUMTAB_FROM_DIM_DIM_VAR[ii] 
+                del NUMTAB_FROM_DIM_VARNAME[ii] 
+                del NUMTAB_FROM_DIM_NHEADER[ii] 
+                del NUMTAB_FROM_DIM_NOFFSET[ii] 
+                del NUMTAB_FROM_DIM_TYPE   [ii] 
+                del NUMTAB_FROM_DIM_DIM_VAR_L[ii]  
+
+
+
             elif isStr(labelRaw) and labelRaw in NUMTAB_FROM_LAB_DETECT_L:
-                ii      = NUMTAB_FROM_LAB_DETECT_L.index(labelRaw)
-                tab_type       = NUMTAB_FROM_LAB_TYPE[ii]
+                ii       = NUMTAB_FROM_LAB_DETECT_L.index(labelRaw)
+                tab_type = NUMTAB_FROM_LAB_TYPE[ii]
                 # Special case for airfoil data, the table follows NumAlf, so we add d first
                 doDelete =True
                 if labelRaw=='numalf':
@@ -628,14 +815,10 @@ class FASTInputFileBase(File):
                 if d['label'].lower()=='afcoeff' :
                     d['tabType']        = TABTYPE_NUM_WITH_HEADERCOM
                 else:
-                    if tab_type=='num':
-                        d['tabType']   = TABTYPE_NUM_WITH_HEADER
-                    elif tab_type=='sdout':
-                        d['tabType']   = TABTYPE_NUM_SUBDYNOUT
-                    else:
-                        d['tabType']   = TABTYPE_MIX_WITH_HEADER
+                    d['tabType']   = TABTYPE2ID [ tab_type ]
                 # Finding table dimension (number of lines)
                 tabDimVar = NUMTAB_FROM_LAB_DIM_VAR[ii]
+                nTabLines = np.nan
                 if isinstance(tabDimVar, int): # dimension hardcoded
                     d['tabDimVar'] = tabDimVar
                     nTabLines = d['tabDimVar']
@@ -653,13 +836,18 @@ class FASTInputFileBase(File):
                                 nTabLines = self[tabDimVar+labOffset]
                                 break
                             except KeyError:
-                                #print('Cannot determine table dimension using {}'.format(tabDimVar))
+                                print('Cannot determine table dimension using {}'.format(tabDimVar))
                                 # Hopefully this table has AUTO as well
                                 pass
-
+                
                 d['label']  += labOffset
-                #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
-                d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
+                if verbose:
+                    print('From lab: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                try:
+                    d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
+                except:
+                    import pdb; pdb.set_trace()
+                d['descr'] = '' #
                 i += nTabLines+1-nOffset
 
                 # --- Temporary hack for e.g. SubDyn, that has duplicate table, impossible to detect in the current way...
@@ -679,7 +867,8 @@ class FASTInputFileBase(File):
                 d['tabDimVar'] = FILTAB_FROM_LAB_DIM_VAR[ii]
                 d['tabType']   = TABTYPE_FIL
                 nTabLines = self[d['tabDimVar']]
-                #print('Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
+                if verbose:
+                    print('From Fil: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
                 d['value'] = parseFASTFilTable(lines[i:i+nTabLines],nTabLines,i)
                 i += nTabLines-1
 
@@ -697,7 +886,7 @@ class FASTInputFileBase(File):
                     #print('label>',d['label'],'<',type(d['label']),line);
                     if i>3: # first few lines may be comments, we allow it
                         #print('Line',i,'Label:',d['label'])
-                        raise WrongFormatError('Special Character found in Label: `{}`, for line: `{}`'.format(d['label'],line))
+                        raise WrongFormatError('Special Character found in Label: `{}`, for line {}: `{}`'.format(d['label'],i, line))
                 if len(d['label'])==0:
                     nWrongLabels +=1
             if nComments>len(lines)*0.35:
@@ -731,10 +920,11 @@ class FASTInputFileBase(File):
         def toStringVLD(val,lab,descr):
             val='{}'.format(val)
             lab='{}'.format(lab)
-            if len(val)<13:
-                val='{:13s}'.format(val)
-            if len(lab)<13:
-                lab='{:13s}'.format(lab)
+            # Trying to reproduce WISDEM format
+            if len(val)<22:
+                val='{:22s}'.format(val)
+            if len(lab)<11:
+                lab='{:11s}'.format(lab)
             return val+' '+lab+' - '+descr.strip().lstrip('-').lstrip()
 
         def toStringIntFloatStr(x):
@@ -767,38 +957,48 @@ class FASTInputFileBase(File):
             if d['isComment']:
                 s+='{}'.format(d['value'])
             elif d['tabType']==TABTYPE_NOT_A_TAB:
-                if isinstance(d['value'], list):
-                    sList=', '.join([str(x) for x in d['value']])
+                if isinstance(d['value'], list) or isinstance(d['value'],np.ndarray):
+                    sList=', '.join([str(x) for x in np.atleast_1d(d['value'])])
                     s+=toStringVLD(sList, d['label'], d['descr'])
                 else:
                     s+=toStringVLD(d['value'],d['label'],d['descr'])
             elif d['tabType']==TABTYPE_NUM_WITH_HEADER:
+                PrettyCols= d['label']!='TowProp' # Temporary hack for AeroDyn tower table
                 if d['tabColumnNames'] is not None:
-                    s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabColumnNames']]))
-                #s+=d['descr'] # Not ready for that
+                    if PrettyCols:
+                        s+='{}'.format(' '.join(['{:^15s}'.format(s) for s in d['tabColumnNames']]))
+                    else:
+                        s+='{}'.format(' '.join(['{:14s}'.format(s) for s in d['tabColumnNames']]))
+                    if len(d['descr'])>0 and d['descr'][0]=='!':
+                        s+=d['descr'] 
                     if d['tabUnits'] is not None:
                         s+='\n'
-                        s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
+                        if PrettyCols:
+                            s+='{}'.format(' '.join(['{:^15s}'.format(s) for s in d['tabUnits']]))
+                        else:
+                            s+='{}'.format(' '.join(['{:14s}'.format(s) for s in d['tabUnits']]))
                     newline='\n'
                 else:
                     newline=''
                 if np.size(d['value'],0) > 0 :
                     s+=newline
-                    s+='\n'.join('\t'.join( ('{:15.0f}'.format(x) if int(x)==x else '{:15.8e}'.format(x) )  for x in y) for y in d['value'])
+                    if PrettyCols:
+                        s+='\n'.join('\t'.join( ('{:^15.0f}'.format(x) if int(x)==x else '{:15.8e}'.format(x) )  for x in y) for y in d['value'])
+                    else:
+                        s+='\n'.join('  '.join( ('{:13.7E}'.format(x) )  for x in y) for y in d['value'])
             elif d['tabType']==TABTYPE_MIX_WITH_HEADER:
                 s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabColumnNames']]))
                 if d['tabUnits'] is not None:
                     s+='\n'
-                    s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
+                    s+='{}'.format(' '.join(['{:^15s}'.format(s) for s in d['tabUnits']]))
                 if np.size(d['value'],0) > 0 :
                     s+='\n'
                     s+='\n'.join('\t'.join(toStringIntFloatStr(x) for x in y) for y in d['value'])
             elif d['tabType']==TABTYPE_NUM_WITH_HEADERCOM:
-                s+='! {}\n'.format(' '.join(['{:15s}'.format(s) for s in d['tabColumnNames']]))
-                s+='! {}\n'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
+                s+='! {}\n'.format(' '.join(['{:^15s}'.format(s) for s in d['tabColumnNames']]))
+                s+='! {}\n'.format(' '.join(['{:^15s}'.format(s) for s in d['tabUnits']]))
                 s+='\n'.join('\t'.join('{:15.8e}'.format(x) for x in y) for y in d['value'])
             elif d['tabType']==TABTYPE_FIL:
-                #f.write('{} {} {}\n'.format(d['value'][0],d['tabDetect'],d['descr']))
                 label = d['label']
                 if 'kbot' in self.keys(): # Moordyn has no 'OutList' label..
                     label=''
@@ -807,6 +1007,10 @@ class FASTInputFileBase(File):
                 else:
                     s+='{} {} {}\n'.format(d['value'][0], label, d['descr']) # TODO?
                     s+='\n'.join(fil for fil in d['value'][1:])
+            elif d['tabType']==TABTYPE_OUTLIST:
+                label = d['label']
+                s+='{:22s} {:11s} - {}\n'.format('', label, d['descr'])
+                s+='\n'.join(fil for fil in d['value'][1:])
             elif d['tabType']==TABTYPE_NUM_BEAMDYN:
                 # TODO use dedicated sub-class
                 data = d['value']
@@ -820,11 +1024,14 @@ class FASTInputFileBase(File):
                     s += beamdyn_section_mat_tostring(x,K,M)
             elif d['tabType']==TABTYPE_NUM_SUBDYNOUT:
                 data = d['value']
-                s+='{}\n'.format(' '.join(['{:15s}'.format(s) for s in d['tabColumnNames']]))
-                s+='{}'.format(' '.join(['{:15s}'.format(s) for s in d['tabUnits']]))
+                s+='{}\n'.format(' '.join(['{:^15s}'.format(s) for s in d['tabColumnNames']]))
+                s+='{}'.format(' '.join(['{:^15s}'.format(s) for s in d['tabUnits']]))
                 if np.size(d['value'],0) > 0 :
                     s+='\n'
                     s+='\n'.join('\t'.join('{:15.0f}'.format(x) for x in y) for y in data)
+            elif d['tabType']==TABTYPE_NUM_NO_HEADER:
+                data = d['value']
+                s+='\n'.join('\t'.join( ('{:15.0f}'.format(x) if int(x)==x else '{:15.8e}'.format(x) )  for x in y) for y in d['value'])
             else:
                 raise Exception('Unknown table type for variable {}'.format(d))
             if i<len(self.data)-1:
@@ -886,6 +1093,13 @@ class FASTInputFileBase(File):
                     Cols = Cols + ShapeCols
 
                 name=d['label']
+                if 'AFCoeff' in name:
+                    if '_' in name:
+                        i = int(name.split('_')[1])
+                        Re = self['Re_'+str(i)]
+                    else:
+                        Re = self['Re']
+                    name = 'AFCoeff_Re{:.2f}'.format(Re)
 
                 if name=='DampingCoeffs':
                     pass
@@ -1036,6 +1250,32 @@ def strIsInt(s):
 def strToBool(s):
     return s.lower() in ['true','t']
 
+def addToList(l,value):
+    if l is None:
+        l = value
+    elif isinstance(l,int):
+        if strIsInt(value):
+            l = [l, value]
+    elif isinstance(l,float):
+        if strIsFloat(value):
+            l = [l, value]
+    elif isinstance(l,str):
+        if isStr(value):
+            l = [l, value]
+    elif isinstance(l,bool):
+        if strIsBool(value):
+            l = [l, value]
+    else:
+        if   isinstance(l[0],int)   and strIsInt(value):
+                l.append(value)
+        elif isinstance(l[0],float) and strIsFloat(value):
+                l.append(value)
+        elif isinstance(l[0],str)   and isStr(value):
+                l.append(value)
+        elif isinstance(l[0],bool)  and strIsBool(value):
+                l.append(value)
+    return l
+
 def hasSpecialChars(s):
     # fast allows for parenthesis
     # For now we allow for - but that's because of BeamDyn geometry members 
@@ -1049,12 +1289,18 @@ def cleanLine(l):
     return l
 
 def cleanAfterChar(l,c):
-    # remove whats after a character
+    # remove what's after a character
     n = l.find(c);
     if n>0:
         return l[:n]
     else:
         return l
+def splitAfterChar(l, c):
+    n = l.find(c);
+    if n>0:
+        return l[:n], l[n:]
+    else:
+        return l, ''
 
 def getDict():
     return {'value':None, 'label':'', 'isComment':False, 'descr':'', 'tabType':TABTYPE_NOT_A_TAB}
@@ -1072,6 +1318,12 @@ def _merge_value(splits):
 
 def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
     d = getDict()
+    line_low = line_raw.lower()
+    if line_low=='end' or line_low.startswith('end of') or line_low.startswith('end ('):
+        d['isComment'] = True
+        d['value'] = line_raw
+        d['label'] = 'END'
+        return d
     #print(line_raw)
     try:
         # preliminary cleaning (Note: loss of formatting)
@@ -1129,17 +1381,22 @@ def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
             _merge_value(splits)
             s=splits[0]
 
-            if strIsInt(s):
-                d['value']=int(s)
-                if allowSpaceSeparatedList and len(splits)>1:
-                    if strIsInt(splits[1]):
-                        d['value']=splits[0]+ ' '+splits[1]
-            elif strIsFloat(s):
-                d['value']=float(s)
-            elif strIsBool(s):
-                d['value']=strToBool(s)
-            else:
-                d['value']=s
+            # The loop below assumes allowSpaceSeparatedList is true
+            allowSpaceSeparatedList = True
+
+            for s in splits:
+                if strIsInt(s):
+                    d['value'] = addToList(d['value'],int(s))
+                elif strIsFloat(s):
+                    d['value'] = addToList(d['value'],float(s))
+                elif strIsBool(s):
+                    d['value'] = addToList(d['value'],strToBool(s))
+                else:
+                    d['value'] = addToList(d['value'], s)
+                    # For strings, only the first one should be printed
+                    break
+                if not allowSpaceSeparatedList:
+                    break
             iNext=1
 
         # Extracting label (TODO, for now only second split)
@@ -1184,7 +1441,7 @@ def parseFASTOutList(lines,iStart):
         if i>=len(lines):
             print('[WARN] End of file reached while reading Outlist')
     #i=min(i+1,len(lines))
-    return OutList,iStart+len(OutList)
+    return OutList, iStart+len(OutList)
 
 
 def extractWithinParenthesis(s):
@@ -1237,6 +1494,7 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
     Units = None
     
 
+    i = 0
     if len(lines)!=n+nHeaders+nOffset:
         raise BrokenFormatError('Not enough lines in table: {} lines instead of {}\nFile:{}'.format(len(lines)-nHeaders,n,filename))
     try:
@@ -1320,8 +1578,8 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
                 if l.startswith('---'):
                     raise BrokenFormatError('Error reading line {} while reading table. Is the variable `{}` set correctly?'.format(iStart+i+1, varNumLines))
                 if len(v) != nCols:
-                    # Discarding SubDyn special cases
-                    if ColNames[-1].lower() not in ['cosmid', 'ssifile']:
+                    # Discarding SubDyn special cases. Also discarding Mod_AmbWind=1 where position of turbines do not need to be specified
+                    if ColNames[-1].lower() not in ['cosmid', 'ssifile', 'dz_high']:
                         print('[WARN] {}: Line {}: Number of data is different than number of column names. Column Names: {}'.format(filename,iStart+1+i, ColNames))
                 if i==nHeaders+nOffset:
                     if len(v)>nCols:
@@ -1352,7 +1610,7 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
             ColNames=None
             
     except Exception as e:    
-        raise BrokenFormatError('Line {}: {}'.format(iStart+i+1,e.args[0]))
+        raise BrokenFormatError('Line {}: {}. in file: {}'.format(iStart+i+1,e.args[0], filename))
     return Tab, ColNames, Units
 
 
@@ -1730,6 +1988,44 @@ class ADBladeFile(FASTInputFileBase):
     @property
     def _IComment(self): return [1]
 
+    def resample(self, n=10, r=None):
+        def multiInterp(x, xp, fp, extrap='bounded'):
+            """ See welib.tools.signal_analysis """
+            x   = np.asarray(x)
+            xp  = np.asarray(xp)
+            j = np.searchsorted(xp, x, 'left') - 1
+            dd  = np.zeros(len(x)) #*np.nan
+            bOK = np.logical_and(j>=0, j< len(xp)-1)
+            jOK = j[bOK]
+            dd[bOK] = (x[bOK] - xp[jOK]) / (xp[jOK + 1] - xp[jOK])
+            jBef=j 
+            jAft=j+1
+            bLower =j<0
+            bUpper =j>=len(xp)-1
+            jAft[bUpper] = len(xp)-1
+            jBef[bUpper] = len(xp)-1
+            jAft[bLower] = 0
+            jBef[bLower] = 0
+            return (1 - dd) * fp[:,jBef] + fp[:,jAft] * dd
+        # current data
+        M_old= self['BldAeroNodes']
+        r_old = M_old[:,0]
+        if r is None:
+            r_new = np.linspace(r_old[0], r_old[-1], n)
+        else:
+            r_new = r
+        M_new = multiInterp(r_new, r_old, M_old.T).T
+        # Handling precision, but keeping first and last value 
+        M_new = np.around(M_new, 5)
+        if r_new[0]==r_old[0]:
+            M_new[0,:] = M_old[0,:]
+        if r_new[-1]==r_old[-1]:
+            M_new[-1,:] = M_old[-1,:]
+        M_new[:,6] = np.around(M_new[:,6],0).astype(int)
+        self['BldAeroNodes']=M_new
+        self['NumBlNds']=len(r_new)
+        return self
+
 
 # --------------------------------------------------------------------------------}
 # --- AeroDyn Polar 
@@ -1755,7 +2051,9 @@ class ADPolarFile(FASTInputFileBase):
             self.addComment('! ')
             self.addComment('! ------------------------------------------------------------------------------')
             self.addValKey("DEFAULT", 'InterpOrd' , 'Interpolation order to use for quasi-steady table lookup {1=linear; 3=cubic spline; "default"} [default=3]')
+            self.addValKey(      0.2, 'RelThickness','The non-dimensional thickness of the airfoil (thickness/chord) [only used if UAMod=7] [default=0.2] (-)')
             self.addValKey(        1, 'NonDimArea', 'The non-dimensional area of the airfoil (area/chord^2) (set to 1.0 if unsure or unneeded)')
+            self.addValKey("unused" , 'BL_file'   , 'The file name including the boundary layer characteristics of the profile. Ignored if the aeroacoustic module is not called.')
             self.addValKey(        0, 'NumCoords' , 'The number of coordinates in the airfoil shape file.  Set to zero if coordinates not included.')
             self.addValKey( numTabs , 'NumTabs'   , 'Number of airfoil tables in this file.  Each table must have lines for Re and Ctrl.')
             # TODO multiple tables
@@ -1847,16 +2145,22 @@ class ADPolarFile(FASTInputFileBase):
                 self.data[i]['label'] = labFull
 
     def _toDataFrame(self):
+        # --- We rely on parent class, it has an if statement for AFCoeff already...
         dfs = FASTInputFileBase._toDataFrame(self)
         if not isinstance(dfs, dict):
             dfs={'AFCoeff':dfs}
 
-        for k,df in dfs.items():
+        # --- Adding more columns
+        for i,(k,df) in enumerate(dfs.items()):
             sp = k.split('_')
-            if len(sp)==2:
-                labOffset='_'+sp[1]
+            if len(dfs)>1:
+                labOffset='_'+str(i+1)
             else:
                 labOffset=''
+            #if len(sp)==2:
+            #    labOffset='_'+sp[1]
+            #else:
+            #    labOffset=''
             alpha = df['Alpha_[deg]'].values*np.pi/180.
             Cl    = df['Cl_[-]'].values
             Cd    = df['Cd_[-]'].values
@@ -1913,6 +2217,10 @@ class ADPolarFile(FASTInputFileBase):
 
     @comment.setter
     def comment(self, comment):
+        # Remove all comments
+        for i in self._IComment:
+            self.data[i]['value'] = '!'
+        # Replace based on numbers of lines
         splits = comment.split('\n')
         for i,com in zip(self._IComment, splits):
             self.data[i]['value'] = '! ' +com
@@ -1926,6 +2234,81 @@ class ADPolarFile(FASTInputFileBase):
                 if not self.data[i]['value'].startswith('! ---'):
                     I.append(i)
         return I
+
+
+    # --- Helper functions
+    @property
+    def reynolds(self):
+        return self.getAll('re')
+
+    def getPolar(self, i):
+        if i not in range(0, self['NumTabs']):
+            raise IndexError('Index {} for Polar should be between 0 and {}'.format(i, self['NumTabs']-1))
+        if self['NumTabs']==1:
+            return self[f'AFCoeff'].copy()
+        else:
+            return self[f'AFCoeff_{i+1}'].copy()
+
+    def setPolar(self, i, M):
+        if i not in range(0, self['NumTabs']):
+            raise IndexError('Index {} for Polar should be between 0 and {}'.format(i, self['NumTabs']-1))
+        if self['NumTabs']==1:
+            M_old =  self[f'AFCoeff']
+        else:
+            M_old =  self[f'AFCoeff_{i+1}']
+        if M_old.shape[1] != M.shape[1]:
+            # Actually, does it?
+            raise Exception('Number of columns must match previous data when setting a polar')
+        #self[f'AFCoeff_{i+1}']=M
+        if self['NumTabs']==1:
+            self[f'AFCoeff']=M
+        else:
+            ID = self.getID(f'AFCoeff_{i+1}')
+            self[f'NumAlf_{i+1}']=M.shape[0]
+            self.data[ID]['value']=M
+
+
+    def getAll(self, key):
+        """ 
+        Examples:
+            pol.getAll('re')
+        """
+        if self['NumTabs']==1:
+            return np.array([self[key]])
+        else:
+            return np.array([self[key + f'_{i}'] for i in range(1, self['NumTabs']+1)])
+
+    def setAll(self, key, value=None, offset=None):
+        """ 
+        Examples:
+            pol.setAll('T_f0', 6 )
+            pol.setAll('alpha1', offset=+2 )
+            pol.setAll('alpha2', offset=-2 )
+        """
+        if self['NumTabs']==1:
+            if value is not None:
+                self[f'{key}'] = value
+            if offset is not None:
+                self[f'{key}'] += offset
+        else:
+            for i in range(1, self['NumTabs']+1):
+                ID = self.getID(f'{key}_{i}')
+                if value is not None:
+                    self.data[ID]['value'] = value
+                if offset is not None:
+                    self.data[ID]['value']+= offset
+
+    def calcUnsteadyParams(self):
+        from welib.airfoils.Polar import Polar
+        for i in range(1, self['NumTabs']+1):
+            offset=f'_{i}' if self['NumTabs']>1 else ''
+            M = self['AFCoeff'+offset]
+            pol = Polar(alpha=M[:,0], cl=M[:,1], cd=M[:,2], cm=M[:,3], radians=False, name=os.path.basename(self.filename)+f'_Table{i}')
+            d = pol.unsteadyParams(dictOut=True)
+            for k,v in d.items():
+                self[k+offset] = v
+            
+
 
 
 # --------------------------------------------------------------------------------}
@@ -2025,7 +2408,7 @@ class ExtPtfmFile(FASTInputFileBase):
         self.module='ExtPtfm'
 
 
-    def _read(self):
+    def _read(self, IComment=None, verbose=False):
         with open(self.filename, 'r', errors="surrogateescape") as f:
             lines=f.read().splitlines()
         detectAndReadExtPtfmSE(self, lines)

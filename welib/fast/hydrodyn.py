@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 # Local 
 from welib.tools.clean_exceptions import *
-from welib.weio import FASTInputFile
+from welib.weio.fast_input_file import FASTInputFile
 
 # Submodules
 from welib.fast.hydrodyn_morison import Morison

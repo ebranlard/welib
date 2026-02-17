@@ -42,7 +42,7 @@ class Test(unittest.TestCase):
         residual = F(0,xdot0,x0,u0,p)
         np.testing.assert_almost_equal(residual, np.zeros((nx,1)))
 
-    def test_system_linearization_lti_statespace(self):
+    def test_system_lin_lti_statespace(self):
         # --- Test the general "system" linearization using a LTI state space system
         
         # Create some simple state space 

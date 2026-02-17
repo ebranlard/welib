@@ -111,7 +111,7 @@ def getDrDz(r, z):
     return DR, DZ
 
 
-def axisym_predefined_distributions(r, z, params=None, distribution='singular_ring', velocity=False):
+def axisym_predefined_distributions(r, z, params=None, distribution='singular_ring', velocity=False, verbose=False):
     """ 
     Return vorticity field and optional velocity field for some predefined distributions
     """
@@ -143,7 +143,8 @@ def axisym_predefined_distributions(r, z, params=None, distribution='singular_ri
         iz = np.argmin(np.abs(z-zRing))
         d= np.sqrt((r[ir]-rRing)**2 + (z[ir]-zRing)**2)
         if d>1e-6:
-            print('[WARN] Grid does not contain ring point. Ring placed at:',r[ir],z[iz], 'instead of ', rRing, zRing)
+            if verbose:
+                print('[WARN] Grid does not contain ring point. Ring placed at:',r[ir],z[iz], 'instead of ', rRing, zRing)
         om[iz,ir] = Gamma/(DR[iz,ir]*DZ[iz,ir])
 
         if velocity:
@@ -165,12 +166,14 @@ def axisym_predefined_distributions(r, z, params=None, distribution='singular_ri
         izEnd = np.argmin(np.abs(z-(zCyl+lCyl)))
         d= np.sqrt((r[ir]-rCyl)**2 + (z[iz]-zCyl)**2)
         if d>1e-6:
-            print('[WARN] Grid does not contain ring point. Cyl placed at:',r[ir],z[iz], 'instead of ', rCyl, zCyl)
+            if verbose:
+                print('[WARN] Grid does not contain ring point. Cyl placed at:',r[ir],z[iz], 'instead of ', rCyl, zCyl)
         om[iz:izEnd,ir] = gamma_t/(DR[iz:izEnd,ir])
 
         if velocity:
             if ((zCyl+lCyl)>np.max(z)):
-                print('[WARN] Cylinder extends beyond domain, assuming an infinite cylinder for flow field')
+                if verbose:
+                    print('[WARN] Cylinder extends beyond domain, assuming an infinite cylinder for flow field')
                 ur, uz = vc_tang_u      (Rcp, Rcp*0, Zcp-zCyl, gamma_t, R=rCyl, polar_out=True)
             else:
                 ur, uz = cylinder_tang_u(Rcp, Rcp*0, Zcp, gamma_t, R=rCyl, z1=zCyl, z2=zCyl+lCyl, polar_out=True)

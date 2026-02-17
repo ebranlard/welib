@@ -73,6 +73,22 @@ def NTM(WS, turbulence_class='A'):
     # Turbulence intensity from normal turbulence model
     return sigma1_NTM(WS, turbulence_class)/ WS
 
+def NTM_TI(WS, turb_class='A'):
+    """ Normal Turbulence intensity model according to the IEC standards
+    INPUT: 
+       -  WS: array of wind speed [m/s]
+       -  turb_class: turbine class, "A", "B" or "C"
+    OUTPUT:
+       - TI: turbulence intensity at WS
+    """
+    Iref={'A+':0.18, 'A':0.16, 'B':0.14, 'C':0.12}[turb_class]
+    c    = 2.
+    Vave = 10.
+    sigma =  c * Iref * (0.072 * (Vave / c + 3.) * (WS / c - 4.) + 10.)
+    TI = sigma/WS
+    return TI
+
+
 def EWM(WS, WT_class='I'):
     # Extreme wind speed model: 6.3.2.1
     V_ref = fVref(WT_class=WT_class)

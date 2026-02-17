@@ -8,7 +8,7 @@ from sympy.physics.vector import dynamicsymbols
 # --------------------------------------------------------------------------------}
 # --- TESTS
 # --------------------------------------------------------------------------------{
-class TestYAMSSPTools(unittest.TestCase):
+class TestYAMSSP(unittest.TestCase):
     def test_subs_no_diff(self):
         # --- Test substitution without replacing time dderivatives
         x,y = dynamicsymbols('x, y')
@@ -35,7 +35,7 @@ class TestYAMSSPTools(unittest.TestCase):
         expr0     = subs_no_diff(expr, [(x,0),(y,b)] )
         self.assertEqual(expr0, expr0_ref)
 
-    def test_linearization(self):
+    def test_lin(self):
         # --- Test linearization without replacing time derivatives
         x,y = dynamicsymbols('x, y')
         z   = symbols('z')
@@ -96,7 +96,7 @@ class TestYAMSSPTools(unittest.TestCase):
         expr0     = linearize(expr, [(x,0),(y,0)], order=1 )
         self.assertEqual(expr0, expr0_ref)
 
-    def test_linearization_with_diff(self):
+    def test_lin_with_diff(self):
 
         x,y      = dynamicsymbols('x, y')
         a,b,c,d  = symbols('a,b,c,d')

@@ -5,11 +5,7 @@ References:
 # --- General
 import unittest
 import numpy as np
-import numpy.matlib
 from scipy.special import ellipk, ellipe
-# import warnings
-# warnings.filterwarnings('error')
-
 
 def ring_u_polar_singular(r,z,Gamma=-1,r0=1):
     """ 
@@ -202,8 +198,6 @@ def rings_u(Xcp,Ycp,Zcp,Gamma_r,Rr,Xr,Yr,Zr,polar_out=True,epsilon=0):
 # --------------------------------------------------------------------------------{
 class TestRing(unittest.TestCase):
     def test_Ring_singularities(self):
-#         import warnings
-#         warnings.filterwarnings('error')
         # ---- r=0, z=0, uz=Gamma/(2R)
         ur,uz=ring_u(0,0,0)
         np.testing.assert_almost_equal(uz,-1/2)
@@ -357,7 +351,9 @@ class TestRing(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
 #     TestRing().test_singularities()
 #     TestRing().test_rotor()
-    unittest.main()
+        unittest.main()
 

@@ -17,8 +17,9 @@ from sympy.physics.mechanics import dynamicsymbols, ReferenceFrame, Point
 # --- TESTS
 # --------------------------------------------------------------------------------{
 class Test(unittest.TestCase):
-    def test_rigid_FTNSR_3DOF_kane(self):
+    def test_FTNSR_3DOF_kane(self):
         """ """
+        # TRigid
 
         # Main symbols
         time      = dynamicsymbols._t

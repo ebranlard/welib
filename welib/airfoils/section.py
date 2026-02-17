@@ -143,8 +143,8 @@ class Section(object):
     # --------------------------------------------------------------------------------}
     # --- Polar 
     # --------------------------------------------------------------------------------{
-    def polarFromCSV(self, polarFilename, fformat=None):
-        self._pol = Polar(polarFilename, fformat=fformat, radians=True, compute_params=True) # compute_params for DS
+    def polarFromCSV(self, polarFilename, fformat=None, radians=True):
+        self._pol = Polar(polarFilename, fformat=fformat, radians=radians, compute_params=True) # compute_params for DS
         # TODO TODO as a trigger
         ppol = polarParams(self._pol, chord=self._chord, tau=self._tau)
         self._ppol = ppol
@@ -498,6 +498,9 @@ class Section(object):
                 dfloc = pd.DataFrame(S).T
                 df = pd.concat((df,dfloc))
         return df, AMat
+
+    def campbellPKL(self):
+        pass
 
 
 

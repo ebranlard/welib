@@ -592,7 +592,7 @@ def extractMAPStiffnessFromLinFile(linFile):
     dfs = lin.toDataFrame()
 
     # --- Find 
-    _, nodes = find_matching_pattern(lin.udescr(), 'MAPPtFairDisplacementTxN(\d+)_\[m\]')
+    _, nodes = find_matching_pattern(lin.udescr(), r'MAPPtFairDisplacementTxN(\d+)_\[m\]')
     nNodes = np.max(nodes)
     #print('Number of nodes',nNodes)
       

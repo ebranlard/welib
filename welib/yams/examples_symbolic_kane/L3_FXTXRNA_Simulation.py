@@ -42,11 +42,12 @@ def readFSTLin(filename):
     return lin
 
 
-def simulate(fstFilename, model_name, sims, sim_name):
+def simulate(fstFilename, model_name, sims, sim_name, verbose=False):
     # ---
     p, WT = FAST2StructureInputs(fstFilename, model_name)
 
-    print('>>>>>',p['tilt'])
+    if verbose:
+        print('>>>>>',p['tilt'])
     import importlib
     model= importlib.import_module('_py.{}'.format(model_name))
 
@@ -62,18 +63,21 @@ def simulate(fstFilename, model_name, sims, sim_name):
 
     # --- Initial conditions
     nDOFExpected=np.sum([int(s) for s in model_name if s.isdigit()])
-    print('DOFs:', WT.DOFname, 'Model:',model_name, 'nDOF:',nDOFExpected )
+    if verbose:
+        print('DOFs:', WT.DOFname, 'Model:',model_name, 'nDOF:',nDOFExpected )
     if len(WT.DOFname)!=nDOFExpected:
         raise Exception('Inconsistency in number of DOFs')
     q0  = WT.q0
     qd0 = WT.qd0
-    print('q0 :',q0)
-    print('qd0:',qd0)
+    if verbose:
+        print('q0 :',q0)
+        print('qd0:',qd0)
     q0l = WT.q0*0
     qd0l= WT.qd0*0
     DOFs = WT.activeDOFs
-    print('q0l :',q0l)
-    print('qd0l:',qd0l)
+    if verbose:
+        print('q0l :',q0l)
+        print('qd0l:',qd0l)
 
     # --- Evaluate linear structural model
     u0=dict() # Inputs at operating points
@@ -112,19 +116,20 @@ def simulate(fstFilename, model_name, sims, sim_name):
     MM      = model.mass_matrix(q0,p)
     forcing = model.forcing(t,q0,qd0,p,u)
     #print(WT.WT_rigid)
-    print('--------------------')
-    print('Mass Matrix: ')
-    print(MM)
-    print(MM_ED)
-    M_Ref=MM_ED.copy()
-    print(' Rel Error')
-    MM   [np.abs(MM   )<1e-1]=1
-    MM_ED[np.abs(MM_ED)<1e-1]=1
-    M_Ref[np.abs(M_Ref)<1e-1]=1
-    print(np.around(np.abs((MM_ED-MM))/M_Ref*100,1))
-    print('--------------------')
-    print('Forcing: ')
-    print(forcing)
+    if verbose:
+        print('--------------------')
+        print('Mass Matrix: ')
+        print(MM)
+        print(MM_ED)
+        M_Ref=MM_ED.copy()
+        print(' Rel Error')
+        MM   [np.abs(MM   )<1e-1]=1
+        MM_ED[np.abs(MM_ED)<1e-1]=1
+        M_Ref[np.abs(M_Ref)<1e-1]=1
+        print(np.around(np.abs((MM_ED-MM))/M_Ref*100,1))
+        print('--------------------')
+        print('Forcing: ')
+        print(forcing)
 
     if sims is False:
         return p, WT, None, None, None, None 
@@ -150,16 +155,17 @@ def simulate(fstFilename, model_name, sims, sim_name):
     sysLI.save(fstFilename.replace('.fst','_Linear.csv'), WT.channels, DOFscales)
 
     try:
-        print('>>>>> A')
-        print(sysLI.A)
-        print('>>>>> A')
-        print(lin['A'])
-        freq_d, zeta, Q, freq0  = eigA(sysLI.A)
-        freq_d2, zeta2, Q2, freq02  = eigA(lin['A'])
-        print(freq_d)
-        print(freq_d2)
-        print(zeta)
-        print(zeta2)
+        if verbose:
+            print('>>>>> A')
+            print(sysLI.A)
+            print('>>>>> A')
+            print(lin['A'])
+            freq_d, zeta, Q, freq0  = eigA(sysLI.A)
+            freq_d2, zeta2, Q2, freq02  = eigA(lin['A'])
+            print(freq_d)
+            print(freq_d2)
+            print(zeta)
+            print(zeta2)
     except:
         print('>> No lin')
 

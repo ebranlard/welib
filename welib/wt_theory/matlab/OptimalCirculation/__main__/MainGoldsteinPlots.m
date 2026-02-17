@@ -1,11 +1,16 @@
-%%
-InitClear
-close all
-setFigureLatex(1)
-require('OPTIMCIRC','v00')
+%% Initialization
+clear all; close all; clc; % addpath()
+restoredefaultpath;
+addpath(genpath('../v01/'))
+
+
+%% Hack if mex functions not available
+fGoldsteinFactor = @(a,b,c) fGoldsteinFactor_Matlab(a,b,c) ;
+
 
 %%
 tic();
+
 
 %% Comparison with Tibery and Wrench - plots for one lbar and different blades
 close all
@@ -20,6 +25,8 @@ Sty={'r:','b--','g-'};
 
 R=1;
 GammaGoldstein=zeros(length(VB),N);
+cols=repmat(linspace(0,0.4,length(VB))',[1 3]);
+% cols=fColrs();
 for il=1:length(Vlbar)
     l_bar=Vlbar(il);
     h=2*pi*R*l_bar;
@@ -40,9 +47,9 @@ for il=1:length(Vlbar)
     for iB=1:length(VB)
         B=VB(iB);
         GammaGoldstein(iB,:) = fGoldsteinFactor( l_bar,B,vx);
-        plot(vx/R,GammaGoldstein(iB,:),Sty{iB},'Color',fColrs(iB));
+        plot(vx/R,GammaGoldstein(iB,:),Sty{iB},'Color',cols(iB,:));
         [r k] = fTiberyWrench( l_bar , B );
-        plot(r,k,'ko','MarkerSize',5,'MarkerFaceColor',fColrs(iB),'LineWidth',1)
+        plot(r,k,'ko','MarkerSize',5,'MarkerFaceColor',cols(iB,:),'LineWidth',1)
     end  
 end
 %%    
@@ -59,8 +66,8 @@ box on , grid on
 hold all
 plot(lambda_r,KB,'k-','LineWidth',2.2)
 ylim([0 1])
-cols=repmat(linspace(0,0.4,3)',[1 3]);
-cols=fColrs();
+cols=repmat(linspace(0,0.4,length(Vlambda))',[1 3]);
+% cols=fColrs();
 for il=1:length(Vlambda)
     lambda=Vlambda(il);
     lambda_r=lambda*vx;
@@ -87,13 +94,13 @@ box on , grid on
 hold all
 ylim([0 1])
 xlim([0.3 1])
-cols=repmat(linspace(0,0.4,3)',[1 3]);
-cols=fColrs();
+cols=repmat(linspace(0,0.4,length(Vlambda))',[1 3]);
+% cols=fColrs();
 for il=1:length(Vlambda)
     lambda=Vlambda(il);
     lambda_r=lambda*vx/R;
     l_bar=1/lambda;
-    G=fTipLossGoldsteinOkulov( l_bar,B,vx);
+    G=fTipLossGoldstein( l_bar,B,vx);
     F=fTipLossPrandtl( lambda,B,vx);
     
     plot(lambda_r/lambda,G,'-','Color',cols(il,:))
@@ -154,7 +161,7 @@ title('GoldsteinKTwoBlades')
 % Vn=10:10:200;
 %  A=zeros(length(Vn),5);
 %  for i=1:length(Vn); 
-%      A(i,:)=fGoldsteinOkulovF(1/5,3, linspace(0.2,0.95,5)  ,Vn(i)); 
+%      A(i,:)=fGoldsteinF(1/5,3, linspace(0.2,0.95,5)  ,Vn(i)); 
 %  end
 % 
 %  close all
@@ -176,12 +183,11 @@ box on , grid on
 hold all
 % plot(lambda_r,KB,'k-','LineWidth',2)
 ylim([0 1])
-cols=repmat(linspace(0,0.4,3)',[1 3]);
-cols=fColrs();
-
 n_poly=8;
 P=zeros(length(Vlambda),n_poly+1);
 vsLambda=[];
+cols=repmat(linspace(0,0.4,length(Vlambda))',[1 3]);
+% cols=fColrs();
 
 for il=1:length(Vlambda)
     lambda=Vlambda(il);
@@ -194,19 +200,19 @@ for il=1:length(Vlambda)
     
     p=polyfit(vx(:),asin(G(:)),n_poly);
     P(il,:)=p;
-%     plot(lambda_r,sin(polyval(p,vx)),'--','Color',cols(il,:))
-%     plot(lambda_r,G,'-','Color',cols(il,:))
-%     plot(lambda_r,F,'--','Color',cols(il,:))    
+    plot(lambda_r,sin(polyval(p,vx)),'--','Color',cols(il,:))
+    plot(lambda_r,G,'-','Color',cols(il,:))
+    plot(lambda_r,F,'--','Color',cols(il,:))    
 end
 xlabel('\lambda_r [.]')
 ylabel('Normalized Circulation K [.]')
 legend('Betz','Goldstein','Prandtl','Location','South')
 title('Comparison Betz Prandtl Goldstein')
 %%
-rowLabels=eval(strcat('{',sprintf('''$a_%d$'',',n_poly:-1:1),'''$a_0$''}'));
-rowLabels=rowLabels(end:-1:1)
-
-matrix2latex(P(:,end:-1:1)',0,'rowLabels', rowLabels,'columnLabels', vsLambda, 'format', '%-6.1f', 'alignment', 'r')
+% rowLabels=eval(strcat('{',sprintf('''$a_%d$'',',n_poly:-1:1),'''$a_0$''}'));
+% rowLabels=rowLabels(end:-1:1)
+% 
+% matrix2latex(P(:,end:-1:1)',0,'rowLabels', rowLabels,'columnLabels', vsLambda, 'format', '%-6.1f', 'alignment', 'r')
 
 
 %% Polyfit B=2
@@ -221,10 +227,10 @@ KB=fCirculationBetz( R/Vlambda(1),vx);
 figure
 box on , grid on
 hold all
+cols=repmat(linspace(0,0.4,length(Vlambda))',[1 3]);
+% cols=fColrs();
 % plot(lambda_r,KB,'k-','LineWidth',2)
 ylim([0 1])
-cols=repmat(linspace(0,0.4,3)',[1 3]);
-cols=fColrs();
 
 n_poly=8;
 P=zeros(length(Vlambda),n_poly+1);
@@ -241,19 +247,18 @@ for il=1:length(Vlambda)
        
     p=polyfit(vx(:),asin(G(:)),n_poly);
     P(il,:)=p;
-%     plot(lambda_r,sin(polyval(p,vx)),'--','Color',cols(il,:))
-%     plot(lambda_r,G,'-','Color',cols(il,:))
-%     plot(lambda_r,F,'--','Color',cols(il,:))    
+    plot(lambda_r,sin(polyval(p,vx)),'--','Color',cols(il,:))
+    plot(lambda_r,G,'-','Color',cols(il,:))
+    plot(lambda_r,F,'--','Color',cols(il,:))    
 end
 xlabel('\lambda_r [.]')
 ylabel('Normalized Circulation K [.]')
 legend('Betz','Goldstein','Prandtl','Location','South')
 title('Comparison Betz Prandtl Goldstein')
 %%
-rowLabels=eval(strcat('{',sprintf('''$a_%d$'',',n_poly:-1:1),'''$a_0$''}'));
-rowLabels=rowLabels(end:-1:1)
-
-matrix2latex(P(:,end:-1:1)',0,'rowLabels', rowLabels,'columnLabels', vsLambda, 'format', '%-6.1f', 'alignment', 'r')
+% rowLabels=eval(strcat('{',sprintf('''$a_%d$'',',n_poly:-1:1),'''$a_0$''}'));
+% rowLabels=rowLabels(end:-1:1)
+% matrix2latex(P(:,end:-1:1)',0,'rowLabels', rowLabels,'columnLabels', vsLambda, 'format', '%-6.1f', 'alignment', 'r')
 
 
 

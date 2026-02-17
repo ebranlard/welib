@@ -72,14 +72,47 @@ class YAMSModel(object):
 
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
-        s+=' - coordinates:       {}\n'.format(self.coordinates)
+        s+=' - ref (inert. frame): <YAMSInertialbody> name:{}\n'.format(self.ref.name)
+        s+=' - coordinates      : {}\n'.format(self.coordinates)
+        s+=' - bodies           : list of length {}\n'.format(len(self.bodies))
+        s+=' - body_loads       : list of length {}\n'.format(len(self.body_loads))
+        s+=' - g_vect (gravity) : {}\n'.format(self.g_vect)
         s+=' - speeds:            {}\n'.format(self.speeds)
         s+=' - kdeqsSubs:         {}\n'.format(self.kdeqsSubs)
         s+=' - var:               {}\n'.format(self.var)
         s+=' - smallAnglesUsed  : {}\n'.format(self.smallAnglesUsed)
         s+=' - number of bodies : {}\n'.format(len(self.bodies))
         s+=' - opts             : {}\n'.format(self.opts)
+        s+=' * q (coordinates)\n'
+        s+=' * kdeqs (kinematic equations)\n'
         s+=' * loads            : {}\n'.format(self.loads)
+        s+=' - kane             : {}\n'.format('(need to call kaneEquations)')
+        s+=' - M (non-linear MM): {}\n'.format('(need to call mass_forcing_form)')
+        s+=' - F (non-linear F ): {}\n'.format('')
+        s+=' - M0 (linear MM)   : {}\n'.format('(need to call linearize)')
+        s+=' - K0 (linear K )   : {}\n'.format('')
+        s+=' - C0 (linear C )   : {}\n'.format('')
+        s+=' - B0 (linear F )   : {}\n'.format('')
+        s+='Useful functions:\n'
+        s+=' 1> kaneEquations(Mform="symbolic")\n'
+        s+=' 2> to_EOM(extraSubs=None, simplify=False)\n'
+        s+=' 2> mass_forcing_form(extraSubs=None, simplify=False)\n'
+        s+=' 3> linearize(op_point=None, noAcc=True, noVel=False, extraSubs=None)\n'
+        s+=' 1> EOM(self, Mform="symbolic", extraSubs=None):\n'
+        s+=' - smallAngleLinearize(op_point=None, noAcc=True, noVel=False, extraSubs=None)\n'
+        s+=' - smallAngleApproxEOM(angle_list, extraSubs=None, order=1)\n'
+        s+='Lower level functions\n'
+        s+=' - q_full()\n'
+        s+=' - coordinates_speed(self)\n'
+        s+=' - coordinates_acc(self)\n'
+        s+=' - addForce(body, point, force)\n'
+        s+=' - addMoment(body, frame, moment)\n'
+        s+=' - addPoint(P, frame=None)\n'
+        s+=' - exportPackage(path="", **kwargs)\n'
+        s+=' - toPython(extraSubs=None, variables=["MM"])\n'
+        s+=' - saveTex(name="", folder="./", **kwargs)\n'
+        s+=' - save(filename)\n'
+        s+=' - load(filename)\n'
         return s
 
     @property
@@ -368,6 +401,12 @@ class YAMSModel(object):
 
         return M,C,K,B
 
+    def mass_forcing_form(self, extraSubs=None, simplify=False):
+        EOM = self.to_EOM(extraSubs=extraSubs)
+        EOM.mass_forcing_form() # EOM.M and EOM.F
+        self.M = EOM.M
+        self.F = EOM.F
+
     def to_EOM(self, extraSubs=None, simplify=False):
         """ return a class to easily manipulate the equations of motion in place"""
         EOM = self.EOM().subs(self.kdeqsSubs).doit()
@@ -522,7 +561,7 @@ class YAMSModel(object):
         with Timer('Latex to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 if header:
-                    f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
+                    f.write('Model: {}, \n'.format(self.name.replace('_',r'\_')))
                     f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.coordinates)))
                     try:
                         f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAnglesUsed)))
@@ -726,10 +765,17 @@ class EquationsOfMotionQ(object):
         s+=' - input_vars: {}\n'.format(self.input_vars)
         s+=' - bodyReplaceDict: {}\n'.format(self.bodyReplaceDict)
         s+=' - smallAnglesUsed: {}\n'.format(self.smallAnglesUsed)
-        s+='attributes: EOM\n'.format(self.smallAnglesUsed)
-        s+='attributes: M,F          (call mass_forcing_form) \n'.format(self.smallAnglesUsed)
-        s+='attributes: M0,K0,C0,B0  (call linearize) \n'.format(self.smallAnglesUsed)
-        s+='methods that act on EOM in place (not M/F,M0): subs, simplify, trigsimp, expand\n'
+        s+=' - EOM\n'
+        s+=' - M,F          (call mass_forcing_form first) \n'
+        s+=' - M0,K0,C0,B0  (call linearize first) \n'
+        s+='Functions that act on EOM in place (not M/F,M0): subs, simplify, trigsimp, expand\n'
+        s+='Useful functions:\n'
+        s+=' - mass_forcing_form(extraSubs=None, simplify=False)\n'
+        s+=' - smallAngleApprox(angle_list, order=1, inPlace=False, newInstance=True)\n'
+        s+=' - linearize(op_point=None, noAcc=True, noVel=False, extraSubs=None, simplify=False)\n'
+        s+=' - saveTex()\n'
+        s+=' - toPython()\n'
+        s+=' - savePython()\n'
         return s
 
 
@@ -825,7 +871,7 @@ class EquationsOfMotionQ(object):
         with Timer('Latex to {}'.format(filename),True,silent=True):
             with open(filename,'w') as f:
                 if header:
-                    f.write('Model: {}, \n'.format(self.name.replace('_','\_')))
+                    f.write('Model: {}, \n'.format(self.name.replace('_',r'\_')))
                     f.write('Degrees of freedom: ${}$, \n'.format(cleantex(self.q)))
                     try:
                         f.write('Small angles:       ${}$\\\\ \n'.format(cleantex(self.smallAnglesUsed)))
@@ -906,7 +952,7 @@ def findInputs(EOM, q):
     inputs = list(np.array(inputs)[II])
     return inputs
 
-def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs=None):
+def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs=None, verbose=False):
     """ Linearize the equations of motions using state "q" and derivatives
     The alternative is to use the kinematic equations using linearizer.linearize.
     """
@@ -922,7 +968,8 @@ def linearizeQ(EOM, q, u=None, op_point=None, noAcc=True, noVel=False, extraSubs
     if noVel: 
         op_point0=[(qdi,0) for qdi in qd]
     op_point= op_point0+op_point # order might matter
-    print('>>> TODO linearize does not protect derivatives in substituion!')
+    if verbose:
+        print('>>> TODO linearize does not protect derivatives in substituion!')
     # use if isinstance sympy.core.function.Derivative
 
     # --- Inputs are dynamic symbols that are not coordinates
@@ -966,6 +1013,10 @@ def forcingToPy(q, forcing, replaceDict=None, extraSubs=None, velSubs=[(0,0)], d
     s += '    u:  inputs, dictionary with keys: {}\n'.format(inputs)
     s += '           where each values is a function of time\n'
     s += '    """\n'
+    s += '    if q is not None:\n'
+    s += '        q  = np.asarray(q).flatten()\n'
+    s += '    if qd is not None:\n'
+    s += '        qd  = np.asarray(qd).flatten()\n'
     s += '    if z is not None:\n'
     s += '        q  = z[0:int(len(z)/2)] \n'
     s += '        qd = z[int(len(z)/2): ] \n'
@@ -988,6 +1039,8 @@ def MMToPy(q, MM, replaceDict=None, extraSubs=None, velSubs=[(0,0)], doSimplify=
     s += '     q:  degrees of freedom, array-like: {}\n'.format(sdofs)
     s += '     p:  parameters, dictionary with keys: {}\n'.format(params)
     s += '    """\n'
+    s += '    if q is not None:\n'
+    s += '        q  = np.asarray(q).flatten()\n'
     s += '    if z is not None:\n'
     s += '        q  = z[0:int(len(z)/2)] \n'
     s += s0

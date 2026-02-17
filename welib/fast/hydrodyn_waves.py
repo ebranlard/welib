@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # Local 
 from welib.tools.clean_exceptions import *
-from welib.weio import FASTInputFile
 
 
 class Waves:

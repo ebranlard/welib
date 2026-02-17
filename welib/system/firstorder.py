@@ -162,4 +162,107 @@ def duhamel(time, tau, u, x0=0):
     x  = convolution_integral(time, u.ravel(), H )
     x += tau*H*x0
     return x
+# --------------------------------------------------------------------------------}
+# ---  
+# --------------------------------------------------------------------------------{
+def frequency_response(Omega, tau, num=None, method='analytical' ):
+    """ 
+    Frequency respone of a first order system defined by :
+       H(s)  =  b2 s + b1  / (1 + a),   num=[b2, b1]
+       tau = 1/a
+    """
+    # --- Sanity checks
+    if num is None:
+        num = [0, 1]
+    if len(num)==1:
+        num = [0] + list(num)
+    if len(num)!=2:
+        raise Exception('Function only works for a numerator of dimension 2 max')
 
+    # --- Usefule parameters
+    params ={}
+    b_1 = num[1]
+    b_2 = num[0]
+    a   = 1/tau
+    params['omega_c'] = 1/tau
+    params['fc'] = params['omega_c']/(2*np.pi)
+    if b_2 ==0:
+        params['hmag_0']   = np.abs(b_1/a)
+        params['hmag_inf'] = np.nan
+        params['phi_0']   = 0
+        params['phi_inf'] = -np.pi/2 *180/np.pi
+    else:
+        params['hmag_0']   = np.abs(b_1/a)
+        params['hmag_inf'] = np.abs(b_2)
+        params['phi_0']   = 0
+        params['phi_inf'] = 0
+
+    # --- Frequency response
+    if method=='analytical':
+        # Method 1 - analytical expression
+        Hmag = np.sqrt(b_1**2 + b_2**2*Omega**2)/np.sqrt(a**2+Omega**2)
+        phi  = np.arctan( ( (a*b_2-b_1)*Omega) /(a*b_1+b_2*Omega**2))
+
+    elif method=='control':
+        # Method 2 - using Control toolbox
+        import control as ct
+        den = [1, a]
+        sys = ct.tf(num, den)
+        Hdat = sys.frequency_response(Omega)
+        H = Hdat.fresp[0,0,:]
+        Hmag, phi = np.abs(H), np.angle(H)
+    else:
+        raise Exception('Wrong method', method)
+    return Hmag, phi, params
+
+
+def bode_plot(Omega, tau, num=None, fig=None, Hscale='0', fscale='fc'):
+    import matplotlib.pyplot as plt
+    freq = Omega / (2*np.pi)
+    omega_c = 1/tau
+    ic = np.argmin(np.abs(Omega-omega_c))
+
+    Hmag_th, phi_th, params = frequency_response(Omega, tau, num=num, method='analytical')
+    #Hmag, phi, params = frequency_response(Omega, tau, num=None, method='control')
+    fc = params['fc']
+
+    # --- Scales
+    if Hscale is None:
+        Hscale='none'
+    if fscale is None or fscale=='none':
+        fscale='hertz'
+    Hscale=Hscale.lower()
+    H0 = {'none':1, '0':params['hmag_0'], 'inf':params['hmag_inf']}[Hscale]
+    fscale=fscale.lower()
+    fc = {'hertz':1, 'fc':fc}[fscale]
+
+
+    fig,axes = plt.subplots(2, 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    # Amplitudes
+
+    axes[0].plot(freq     /fc, Hmag_th/H0 , ls='-', color='k')
+#     axes[0].plot(freq[:ic]/fc, freq[:ic]*0+params['hmag_0']  /H0, ls=':', color='k')
+#     axes[0].plot(freq[ic:]/fc, freq[ic:]*0+params['hmag_inf']/H0, ls=':', color='k')
+    # Phases
+    axes[1].plot(freq     /fc, phi_th*180/np.pi, ls='-', color='k')
+#     axes[1].plot(freq[:ic]/fc, freq[:ic]*0+params['phi_0']  , ls=':', color='k')
+#     axes[1].plot(freq[ic:]/fc, freq[ic:]*0+params['phi_inf'], ls=':', color='k')
+#     axes[0].axvline(fc /fc, c='k', ls=':')
+#     axes[1].axvline(fc /fc, c='k', ls=':')
+    ylabel = {'none':r' $H$', '0':'ratio $H/H_0$ [-]', 'inf':r'ratio $H/H_\infty$ [-]'}[Hscale]
+    xlabel = {'hertz':r' $f$ [Hz]', 'fc':'ratio $f/f_c$ [-]', 'rad':r' $\omega$ [rad/s]'}[fscale]
+    axes[0].set_ylabel(r'Amplitude'+ylabel)
+    axes[1].set_xlabel(r'Frequency '+xlabel)    
+    axes[1].set_ylabel('Phase [deg]')    
+    axes[0].set_xscale('log')
+    axes[1].set_xscale('log')
+    axes[1].set_xlim([np.min(freq/fc), np.max(freq/fc)])
+    axes[0].set_xlim([np.min(freq/fc), np.max(freq/fc)])
+
+    xl = axes[1].get_xticklabels()
+    for ix, x in enumerate(xl):
+        if str(x) == r"Text(1.0, 0, '$\\mathdefault{10^{0}}$')":
+            xl[ix]=plt.Text(1,0, r'$1$')
+    axes[1].set_xticklabels(xl)
+    return fig

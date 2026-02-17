@@ -70,7 +70,7 @@ def main(test=False,extra=False):
     try:
         fig = rs.plotCP3D()
         ax = fig.gca()
-        ax.set_title('BEM Steady - CP-lambda-pitch ')
+        ax.set_title('BEM - Steady - CP-lambda-pitch ')
     except:
         print('Plot 3D failed. TODO')
     #fig.colorbar(surf, shrink=0.5, aspect=15)

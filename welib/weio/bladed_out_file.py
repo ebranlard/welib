@@ -70,13 +70,17 @@ def read_bladed_sensor_file(sensorfile):
             # sometimes, the info is written on "AXIVAL"
             # Check next line, we concatenate if doesnt start with AXISLAB (Might need more cases)
             try:
-                nextLine=sensorLines[i+1].strip()
-                if not nextLine.startswith('AXISLAB'):
-                    t_line = t_line.strip()+' '+nextLine
+                # Combine the strings into one string
+                combined_string = ''.join(sensorLines)
+                # Search for a regex pattern that spans across multiple strings
+                line = re.search(r'(?<=AXITICK).+?(?=(AXISLAB|NVARS))', combined_string, flags=re.DOTALL)
+                line=line.group(0)
+                # Replace consecutive whitespace characters with a single space
+                t_line = re.sub(r'\s+', ' ', line)
             except:
                 pass
 
-            temp = t_line[7:].strip()
+            temp = t_line.strip()
             temp = temp.strip('\'').split('\' \'')
             dat['SectionList'] = np.array(temp, dtype=str)
             dat['nSections'] = len(dat['SectionList'])
@@ -102,6 +106,7 @@ def read_bladed_sensor_file(sensorfile):
             except:
                 pass
             def repUnits(s):
+                s = s.replace('[[','[').replace(']]',']')
                 s = s.replace('TT','s^2').replace('T','s').replace('A','rad')
                 s = s.replace('P','W').replace('L','m').replace('F','N').replace('M','kg')
                 return s
@@ -179,6 +184,10 @@ def read_bladed_output(sensorFilename, readTimeFilesOnly=False):
             data = np.fromfile(fid_2, sensorInfo['Precision'])
 
         try:
+            if nMajor==0:
+                nMajor=int(np.floor(len(data)/nSections/nSensors))
+                data=data[0:nMajor*nSections*nSensors]
+                sensorInfo['nMajor']=nMajor
             if sensorInfo['NDIMENS'] == 3:
                 data = np.reshape(data,(nMajor, nSections, nSensors), order='C')
 

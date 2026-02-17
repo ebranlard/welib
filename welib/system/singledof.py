@@ -1,5 +1,7 @@
 """ 
-Functions for a single DOF, second order system
+Functions for a single mechanical DOF, second order system
+
+TODO: Some is for a mechanical system, some is for generic second order, to be sorted out with secondorder.py!
 
 """
 import numpy as np
@@ -8,6 +10,7 @@ import welib.system.secondorder as so
 # --------------------------------------------------------------------------------}
 # --- Unforced/Homogeneous/Harmonic responses
 # --------------------------------------------------------------------------------{
+# TODO merge with second_order
 def harmonic_vibration(vt, x0, xdot0, omega0, zeta=0):
     """ 
     harmonic/free vibrations, constants determined based on initial conditions
@@ -64,6 +67,7 @@ def _harmonic_vibration_raw(vt, c1, c2, omega0, zeta=0):
 # --------------------------------------------------------------------------------}
 # --- Forced damped vibrations
 # --------------------------------------------------------------------------------{
+# TODO, this is for a mechanical system
 def forced_vibration_particular_cst(frat, F0_over_k, zeta):
     """ 
     Constants for the particular solution (H0 and Phi), x=H0 sin(Omega t - Phi)

@@ -1,5 +1,9 @@
 
 import numpy as np
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 def bendingMode(s, ModeNr = None): 
@@ -248,7 +252,10 @@ def dAerodynMatrix(par, z, Omega, W, phi_f, phi_e, phi_t):
     rho = par['rho']
     # computer parameters
     lambda_ = z * Omega / W
-    alpha0  = np.arctan(1 / lambda_)
+    if lambda_!=0:
+        alpha0  = np.arctan(1 / lambda_)
+    else:
+        alpha0  = 0 # TODO
     psi0    = alpha0
     
     U0 = np.sqrt(W ** 2 + (z * Omega) ** 2)
@@ -415,7 +422,7 @@ def parameters():
     mt  = np.pi * (D ** 2 - d ** 2) / 4 * rhot
     h   = np.linspace(0,H,500)
     phi = bendingMode(h,1)
-    p['Mtot'] = p['Mn'] + np.trapz(phi**2 * mt, h) / phi[-1] ** 2 #M Equivalent nacelle and tower mass 290.6 ton
+    p['Mtot'] = p['Mn'] + trapezoid(phi**2 * mt, h) / phi[-1] ** 2 #M Equivalent nacelle and tower mass 290.6 ton
 
     return p
 

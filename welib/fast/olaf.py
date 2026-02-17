@@ -8,10 +8,10 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
           deltaPsiDeg=6, nPerRot=None,
           targetFreeWakeLengthD=1,
           targetWakeLengthD=4.,
-          nNWrot=8, 
-          nNWrotFree=1,
-          nFWrot=0, nFWrotFree=0,
-          verbose=True, dt_glue_code=None):
+          nRotNW=8, 
+          nRotNWFree=1,
+          nRotFW=0, nRotFWFree=0,
+          verbose=True, dt_glue_code=None, outDict=False):
     """
     Computes recommended time step and wake length for OLAF based on:
 
@@ -85,12 +85,10 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
     # Free near wake panels (based on distance)
     targetFreeWakeLength = targetFreeWakeLengthD * 2 * R
     nNWPanelsFree_FromU0 = int(targetFreeWakeLength / (Uc*dt_fvw))
-    nNWPanelsFree_FromRot = int(nNWrotFree*nPerRot)
-    # Far wake (FW) panels, always from number of rotations
-    nFWPanels     = int(nFWrot*nPerRot)
-    nFWPanelsFree = int(nFWrotFree*nPerRot)
-    # Wake length from rotational speed and number of rotations
-    nAWPanels_FromRot = int(nNWrot*nPerRot) # Total number of panels NW+FW
+    nNWPanelsFree_FromRot = int(nPerRot * nRotNWFree)
+    nFWPanels             = int(nPerRot * nRotFW)     # Far wake (FW) panels, always from number of rotations
+    nFWPanelsFree         = int(nPerRot * nRotFWFree)
+    nAWPanels_FromRot     = int(nPerRot * nRotNW)      # Total number of panels NW+FW
 
     # Below we chose between criteria on number of rotation or donwstream distance
     # This can be adapted/improved
@@ -144,20 +142,27 @@ def OLAFParams(omega_rpm, U0, R, a=0.3, aScale=1.2,
         myprint('{:15d} nFWPanels     ({:5.1f} rot, {:5.1f}D)'.format(nFWPanels    , n2R(nFWPanels    ), n2L(nFWPanels    )))
         myprint('{:15d} nFWPanelsFree ({:5.1f} rot, {:5.1f}D)'.format(nFWPanelsFree, n2R(nFWPanelsFree), n2L(nFWPanelsFree)))
 
-    return dt_fvw, tMin, nNWPanels, nNWPanelsFree, nFWPanels, nFWPanelsFree
+    if outDict:
+        D = {'U0':U0, 'RPM':omega_rpm, 'dt':dt_fvw, 'tmax':tMin, 'deltaPsiDeg':deltaPsiDeg}
+        D.update( {'nAW':       nNWPanels+nFWPanels,  'nNW':        nNWPanels,  'nNWFree':       nNWPanelsFree,  'nFW':       nFWPanels, 'nFWFree':nFWPanelsFree})
+        D.update( {'nRotAW':n2R(nNWPanels+nFWPanels), 'nRotNW': n2R(nNWPanels), 'nRotNWFree':n2R(nNWPanelsFree), 'nRotFW':n2R(nFWPanels)} ) # number of rotations
+        D.update( {'lenAW' :n2L(nNWPanels+nFWPanels), 'lenNW':  n2L(nNWPanels), 'lenNWFree': n2L(nNWPanels),     'lenFW': n2L(nFWPanels)} ) # lengths
+        return D
+    else:
+        return dt_fvw, tMin, nNWPanels, nNWPanelsFree, nFWPanels, nFWPanelsFree
 
 
 
-def OLAFParamsRPM(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, nPerRot=None,  verbose=True, dt_glue_code=None, totalRot=None):
+def OLAFParamsRPM(omega_rpm, deltaPsiDeg=6, nRotNW=2, nRotNWFree=None, nRotFW=10, nRotFWFree=3, nPerRot=None,  verbose=True, dt_glue_code=None, nRotTot=None, outDict=False):
     """ 
     Computes recommended time step and wake length based on the rotational speed in RPM
 
     INPUTS:
      - omega_rpm: rotational speed in RPM
      - deltaPsiDeg : azimuthal discretization in deg
-     - nNWrot : number of near wake rotations
-     - nFWrot : total number of far wake rotations
-     - nFWrotFree : number of far wake rotations that are free
+     - nRotNW : number of near wake rotations
+     - nRotFW : total number of far wake rotations
+     - nRotFWFree : number of far wake rotations that are free
 
         deltaPsiDeg  -  nPerRot
              5            72    
@@ -165,6 +170,9 @@ def OLAFParamsRPM(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, n
              7            51.5  
              8            45    
     """
+    if nRotNWFree is None:
+        nRotNWFree=nNWrot
+
     omega_rpm = np.asarray(omega_rpm)
     omega = omega_rpm*2*np.pi/60
     T = 2*np.pi/omega
@@ -184,23 +192,42 @@ def OLAFParamsRPM(omega_rpm, deltaPsiDeg=6, nNWrot=2, nFWrot=10, nFWrotFree=3, n
         deltaPsiDeg = deltaPsiDeg2
         nPerRot = int(2*np.pi /(deltaPsiDeg*np.pi/180))
 
-    nNWPanel     = int(nNWrot*nPerRot)
-    nFWPanel     = int(nFWrot*nPerRot)
-    nFWPanelFree = int(nFWrotFree*nPerRot)
+    dt_fvw = dt_wanted
 
-    if totalRot is None:
-        totalRot = (nNWrot + nFWrot)*3 # going three-times through the entire wake
+    nNWPanels      = int(nPerRot * nRotNW)
+    nNWPanelsFree  = int(nPerRot * nRotNWFree)
+    nFWPanels      = int(nPerRot * nRotFW)
+    nFWPanelsFree  = int(nPerRot * nRotFWFree)
 
-    tMax = dt_wanted*nPerRot*totalRot
+    if nRotTot is None:
+        nRotTot = (nRotNW + nRotFW)*2 # going twice through the entire wake
+
+    tMin = dt_fvw*nPerRot*nRotTot
+
+    # Useful functions
+    U0 = np.nan
+    Uc = np.nan
+    R = np.nan
+    n2L = lambda n: (n * dt_fvw * Uc)/(2*R)  # convert number of panels to distance
+    n2R = lambda n:  n * dt_fvw / T          # convert number of panels to number of rotations
+    n2t = lambda n:  n * dt_fvw              # convert number of panels to time
 
     if verbose:
         print(dt_wanted              , '  dt')
-        print(int      (nNWPanel    ), '  nNWPanel          ({} rotations)'.format(nNWrot))
-        print(int      (nFWPanel    ), '  FarWakeLength     ({} rotations)'.format(nFWrot))
-        print(int      (nFWPanelFree), '  FreeFarWakeLength ({} rotations)'.format(nFWrotFree))
-        print(tMax              , '  Tmax ({} rotations)'.format(totalRot))
+        print(int      (nNWPanels    ), '  nNWPanels         ({} rotations)'.format(nRotNW))
+        print(int      (nNWPanelsFree), '  nNWPanelsFree     ({} rotations)'.format(nRotNWFree))
+        print(int      (nFWPanels    ), '  nFWPanels         ({} rotations)'.format(nRotFW))
+        print(int      (nFWPanelsFree), '  nFWPanelsFree     ({} rotations)'.format(nRotFWFree))
+        print(tMin              , '  Tmax ({} rotations)'.format(nRotTot))
 
-    return dt_wanted, tMax, nNWPanel, nFWPanel, nFWPanelFree
+    if outDict:
+        D = {'U0':U0, 'RPM':omega_rpm, 'dt':dt_fvw, 'tmax':tMin, 'deltaPsiDeg':deltaPsiDeg}
+        D.update( {'nAW':       nNWPanels+nFWPanels,  'nNW':        nNWPanels,  'nNWFree':       nNWPanelsFree,  'nFW':       nFWPanels, 'nFWFree':nFWPanelsFree})
+        D.update( {'nRotAW':n2R(nNWPanels+nFWPanels), 'nRotNW': n2R(nNWPanels), 'nRotNWFree':n2R(nNWPanelsFree), 'nRotFW':n2R(nFWPanels)} ) # number of rotations
+        D.update( {'lenAW' :n2L(nNWPanels+nFWPanels), 'lenNW':  n2L(nNWPanels), 'lenNWFree': n2L(nNWPanels),     'lenFW': n2L(nFWPanels)} ) # lengths
+        return D
+    else:
+        return dt_fvw, tMin, nNWPanels, nNWPanelsFree, nFWPanels, nFWPanelsFree
 
 
 

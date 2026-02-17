@@ -101,7 +101,7 @@ class TestED(unittest.TestCase):
 
 
 
-    def test_ED_10_blade_params_NoBldAdj(self):
+    def test_ED_10_bld_NoBldAdj(self):
         # 
         # NOTE:  These parameters were obtained for AdjBlMs=1!!!
         # Kept to avoid redoing all these tests..
@@ -280,7 +280,7 @@ class TestED(unittest.TestCase):
 # 
 
 
-    def test_ED_10_tower_params(self):
+    def test_ED_10_twr_params(self):
         EDfilename=os.path.join(scriptDir,'../../../data/NREL5MW/onshore/NREL5MW_ED_Onshore.dat')
         RotMass = 107107.00927723547
         Gravity = 9.80665

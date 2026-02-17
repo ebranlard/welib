@@ -19,8 +19,7 @@ from welib.FEM.fem_beam import cbeam_assembly
 from welib.FEM.frame3dlin import frame3dlin_Mcross, frame3dlin_Kg
 
 from welib.tools.clean_exceptions import *
-
-import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 from welib.system.eva import eig
 from welib.yams.sid import FEMBeam2SID
 import matplotlib.pyplot as plt
@@ -35,7 +34,7 @@ def OpenFASTIsolatedTower():
     TowerHt=87.6;
     TowerBs=0;
     TwrFile=os.path.join(MyDir,'./../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat')
-    twr = weio.FASTInputFile(TwrFile).toDataFrame()
+    twr = FASTInputFile(TwrFile).toDataFrame()
     z = twr['HtFract_[-]']*(TowerHt-TowerBs)
     m = twr['TMassDen_[kg/m]']  # mu
     EIy = twr['TwFAStif_[Nm^2]'] 

@@ -37,7 +37,7 @@ ax.tick_params(direction='in')
 if __name__=="__main__":
     plt.show()
 if __name__=="__test__":
-    np.testing.assert_almost_equal(S[iMax], 113.8770176)
+    np.testing.assert_almost_equal(S[iMax], 113.86073, 5)
 if __name__=="__export__":
     from welib.tools.repo import export_figs_callback
     export_figs_callback(__file__)

@@ -1,4 +1,5 @@
-from .file  import File, WrongFormatError, BrokenFormatError, FileNotFoundError, EmptyFileError
+# --- Generic reader / fileformat detection
+from .file  import File, WrongFormatError, BrokenFormatError, FileNotFoundError, EmptyFileError, OptionalImportError
 from .file_formats  import FileFormat, isRightFormat
 import sys
 import os
@@ -16,6 +17,12 @@ _FORMATS=None
 def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     """ return list of fileformats supported by the library
     If userpath is provided, 
+
+    OUTPUTS:
+      if ignoreErrors is True:
+          formats,  errors
+      else:
+          formats
 
     """
     global _FORMATS
@@ -41,6 +48,7 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     from .hawcstab2_pwr_file      import HAWCStab2PwrFile
     from .hawcstab2_ind_file      import HAWCStab2IndFile
     from .hawcstab2_cmb_file      import HAWCStab2CmbFile
+    from .gnuplot_file            import GNUPlotFile 
     from .mannbox_file            import MannBoxFile 
     from .flex_blade_file         import FLEXBladeFile
     from .flex_profile_file       import FLEXProfileFile
@@ -61,6 +69,9 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     from .raawmat_file            import RAAWMatFile
     from .rosco_discon_file       import ROSCODISCONFile
     from .rosco_performance_file  import ROSCOPerformanceFile
+    from .plot3d_file             import Plot3DFile
+    from .yaml_file               import YAMLFile
+    from .airfoil_file            import AirfoilShapeFile
     priorities = []
     formats = []
     def addFormat(priority, fmt):
@@ -68,6 +79,7 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
         formats.append(fmt)
     addFormat(0, FileFormat(CSVFile))
     addFormat(0, FileFormat(ExcelFile))
+    addFormat(0, FileFormat(YAMLFile))
     addFormat(10, FileFormat(TecplotFile))
     addFormat(10, FileFormat(BladedFile))
     addFormat(20, FileFormat(FASTInputFile))
@@ -97,10 +109,13 @@ def fileFormats(userpath=None, ignoreErrors=False, verbose=False):
     addFormat(60, FileFormat(NetCDFFile))
     addFormat(60, FileFormat(VTKFile))
     addFormat(60, FileFormat(TDMSFile))
+    addFormat(60, FileFormat(GNUPlotFile))
     addFormat(60, FileFormat(ParquetFile))
     addFormat(60, FileFormat(PickleFile))
+    addFormat(60, FileFormat(Plot3DFile))
     addFormat(70, FileFormat(CactusFile))
     addFormat(70, FileFormat(RAAWMatFile))
+    addFormat(70, FileFormat(AirfoilShapeFile))
 
     # --- User defined formats from user path
     UserClasses, UserPaths, UserModules, UserModuleNames, errors = userFileClasses(userpath, ignoreErrors, verbose=verbose)
@@ -229,13 +244,14 @@ def detectFormat(filename, **kwargs):
             extMatch = True
         else:
             # Try patterns if present
-            extPatterns = [ef.replace('.','\.').replace('$','\$').replace('*','[.]*') for ef in myformat.extensions if '*' in ef]
+            extPatterns = [ef.replace('.',r'\.').replace('$',r'\$').replace('*','[.]*') for ef in myformat.extensions if '*' in ef]
             if len(extPatterns)>0:
                 extPatMatch = [re.match(pat, ext) is not None for pat in extPatterns]
                 extMatch = any(extPatMatch)
             else:
                 extMatch = False
         if extMatch: # we have a match on the extension
+            #print('Trying format: ',myformat)
             valid, F = isRightFormat(myformat, filename, **kwargs)
             if valid:
                 #print('File detected as :',myformat)
@@ -259,16 +275,5 @@ def read(filename, fileformat=None, **kwargs):
         F=fileformat.constructor(filename=filename)
     return F
 
-
-# --- For legacy code
-def FASTInputFile(*args,**kwargs):
-    from .fast_input_file import FASTInputFile as fi
-    return fi(*args,**kwargs)
-def FASTOutputFile(*args,**kwargs):
-    from .fast_output_file import FASTOutputFile as fo
-    return fo(*args,**kwargs)
-def CSVFile(*args,**kwargs):
-    from .csv_file import CSVFile as csv
-    return csv(*args,**kwargs)
 
 

@@ -12,6 +12,10 @@ from welib.tools.colors import python_colors
 from welib.hydro.wavekin import *
 from welib.hydro.morison import *
 
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 # --- Parameters
 g   = 9.81                # gravity [m/s^2]
@@ -50,15 +54,15 @@ for it, t in enumerate(time[:-1]):
     u, du = kinematics2d(a, f, k, eps, h, t, z, Wheeler=True, eta=eta)
     u0, du0 = kinematics2d(a, f, k, eps, h, t, z)
     # Wave loads with wheeler
-    p_tot     = inline_load(u, du, D, CD  , CM  , rho)
-    p_inertia = inline_load(u, du, D, CD*0, CM  , rho)
-    p_drag    = inline_load(u, du, D, CD  , CM*0, rho)
+    p_tot     = inline_load(u, du, du, D=D, rho=rho, Cd=CD  , CM=CM   )[0]
+    p_inertia = inline_load(u, du, du, D=D, rho=rho, Cd=CD*0, CM=CM   )[0]
+    p_drag    = inline_load(u, du, du, D=D, rho=rho, Cd=CD  , CM=CM*0 )[0]
     dM        = p_tot * (z-z_ref) # [Nm/m] 
 
     # Wave loads without Wheeler
-    p_tot0    = inline_load(u0, du0, D, CD  , CM  , rho)
-    p_inertia0= inline_load(u0, du0, D, CD*0, CM  , rho)
-    p_drag0   = inline_load(u0, du0, D, CD  , CM*0, rho)
+    p_tot0    = inline_load(u0, du0, du0, D=D, rho=rho, Cd=CD  , CM=CM  )[0]
+    p_inertia0= inline_load(u0, du0, du0, D=D, rho=rho, Cd=CD*0, CM=CM  )[0]
+    p_drag0   = inline_load(u0, du0, du0, D=D, rho=rho, Cd=CD  , CM=CM*0)[0]
     dM0       = p_tot0* (z-z_ref) # [Nm/m] 
 
 
@@ -124,18 +128,18 @@ a=6 # NOTE: increased amplitude here to see Effect of Wheeler
 
 for it, t in enumerate(time):
     # Wave kinematics
-    veta[it] = elevation2d(a, f, k, eps, t, x              = 0)
+    veta[it] = elevation2d(a, f, k, eps, t, x= 0)[0]
     z        = np.linspace(-h, veta[it], nz)
     u, du    = kinematics2d(a, f, k, eps, h, t, z, Wheeler = True, eta = veta[it])
     u0, du0  = kinematics2d(a, f, k, eps, h, t, z)
     # Wave loads with Wheeler
-    p_tot  = inline_load(u, du, D, CD  , CM  , rho)
-    vF[it] = np.trapz(p_tot            , z) # [N]
-    vM[it] = np.trapz(p_tot * (z-z_ref), z) # [Nm]
+    p_tot  = inline_load(u, du, du, rho=rho, D=D, Cd=CD  , CM=CM)[0]
+    vF[it] = trapezoid(p_tot            , z) # [N]
+    vM[it] = trapezoid(p_tot * (z-z_ref), z) # [Nm]
     # Wave loads without Wheeler
-    p_tot0 = inline_load(u0, du0, D, CD  , CM  , rho)
-    vF0[it] = np.trapz(p_tot0            , z) # [N]
-    vM0[it] = np.trapz(p_tot0 * (z-z_ref), z) # [Nm]
+    p_tot0 = inline_load(u0, du0, du0, rho=rho, D=D, Cd=CD  , CM=CM)[0]
+    vF0[it] = trapezoid(p_tot0            , z) # [N]
+    vM0[it] = trapezoid(p_tot0 * (z-z_ref), z) # [Nm]
 
 # Plot
 fig, axes = plt.subplots(3, 1, sharex=True, figsize=(6.4,4.8)) # (6.4,4.8)

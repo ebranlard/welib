@@ -14,12 +14,12 @@ class Test(unittest.TestCase):
         freq = np.arange(df, fMax, df)
         S = jonswap(freq, Hs, Tp=Tp)
 
-        fmax_ref = 0.07861111111111112
-        Smax_ref = 113.87701757394201
+        fmax_ref = 0.0788888
+        Smax_ref = 113.86073
 
         iMax = np.argmax(S)
-        np.testing.assert_almost_equal(freq[iMax], fmax_ref)
-        np.testing.assert_almost_equal(S[iMax], Smax_ref)
+        np.testing.assert_almost_equal(freq[iMax], fmax_ref, 5 )
+        np.testing.assert_almost_equal(S[iMax]   , Smax_ref, 5 )
 
 
 if __name__ == '__main__':

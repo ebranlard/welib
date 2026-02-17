@@ -125,6 +125,7 @@ class Test(unittest.TestCase):
 
 
     def test_BodyXYZ(self):
+        # Arbitrary case
         phix = np.pi/3
         phiy = np.pi/4
         phiz = np.pi/6
@@ -138,6 +139,29 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(A.dot(A.T), np.eye(3), 5)
         np.testing.assert_almost_equal(G.dot(Ginv), np.eye(3), 5)
         np.testing.assert_almost_equal(Gb.dot(Gbinv), np.eye(3), 5)
+
+        # Check Extract
+        phis = BodyXYZ_fromDCM(A.T)
+        np.testing.assert_almost_equal(phis, (phix, phiy, phiz), 5)
+        phix = np.pi/3
+        phiy = np.pi/4
+        phiz = np.pi/6
+
+        # Case cos(phi_y)=0
+        phix = 0
+        phiy = np.pi/2
+        phiz = 0
+        A     = BodyXYZ_A(phix,phiy,phiz)
+        phis = BodyXYZ_fromDCM(A.T)
+        np.testing.assert_almost_equal(phis, (phix, phiy, phiz), 5)
+
+        # Case cos(phi_z)=0
+        phix = np.pi/3
+        phiy = np.pi/4
+        phiz = np.pi/2
+        A     = BodyXYZ_A(phix,phiy,phiz)
+        phis = BodyXYZ_fromDCM(A.T)
+        np.testing.assert_almost_equal(phis, (phix, phiy, phiz), 5)
 
 
     def test_BodyZYX(self):

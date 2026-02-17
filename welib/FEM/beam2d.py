@@ -10,8 +10,11 @@ Nodal DOF:    (u theta)
 Element DOFs: (u1 t1 u2 t2) 
 
 """
+import numpy as np
+
+
 def beam2d_KeMe(EI,L,Mass,T=0, theta=None, MMFormulation='consistent' ):
-    """ 
+    r""" 
     Stiffness and mass matrices for Hermitian beam element with 2DOF per node.
         
     INPUTS
@@ -58,7 +61,7 @@ def beam2d_KeMe(EI,L,Mass,T=0, theta=None, MMFormulation='consistent' ):
         #              22*L  4*L^2  13*L  -3*L^2  ; ...
         #              54    13*L   156      -22*L; ...
         #             -13*L -3*L^2 -22*L   4*L^2] ; 
-        me = Mass / 420 * np.array([
+        Me = Mass / 420 * np.array([
             [156      , 22 * L       , 54       , - 13 * L]     , 
             [22 * L   , 4 * L ** 2   , 13 * L   , - 3 * L ** 2] , 
             [54       , 13 * L       , 156      , - 22 * L]     , 
@@ -66,7 +69,7 @@ def beam2d_KeMe(EI,L,Mass,T=0, theta=None, MMFormulation='consistent' ):
             ])
     elif MMFormulation=='lumped':
         # Lumped formulation
-        me = np.diag([Mass/2, 0, Mass/2, 0]))
+        Me = np.diag([Mass/2, 0, Mass/2, 0])
         #  TODO?
         #     alpha = 17.5;
         #   me = rho*A*L / 2 * ...  # lumped
@@ -76,13 +79,14 @@ def beam2d_KeMe(EI,L,Mass,T=0, theta=None, MMFormulation='consistent' ):
         #     0   0              0  alpha*L^2/210 ];
     elif MMFormulation=='diagonal':
         # Diagonal formulation
-        me = Mass * np.diag([1/2, L**2/78, 1/2, L**2/78])
+        Me = Mass * np.diag([1/2, L**2/78, 1/2, L**2/78])
     else:
         raise Exception('Unknown  mass matrix formulation {}'.format(MMFormulation))
 
 
     # --- Conversion to global system if requested
     if theta is not None:
+        pass
         # TODO
         #R = np.array([
         #    [np.cos(theta)   , np.sin(theta) , 0 , 0               , 0             , 0]   , 

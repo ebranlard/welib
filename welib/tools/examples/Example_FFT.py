@@ -28,7 +28,7 @@ ax[0].set_ylabel('Signal')
 ax[1].set_ylabel('FFT Amplitude')
 # ax[1].set_yscale("log", nonposy='clip')
 ax[1].legend()
-ax[0].set_title('Signal - FFT')
+ax[0].set_title('Tools - Signal - FFT')
 
 
 # --- PSD, log y
@@ -46,7 +46,7 @@ ax[1].set_xlabel('Frequency [Hz]')
 ax[0].set_ylabel('Signal')
 ax[1].set_ylabel('PSD Amplitude')
 ax[1].legend()
-ax[0].set_title('Signal - PSD')
+ax[0].set_title('Tools - Signal - PSD')
 
 
 if __name__=="__main__":

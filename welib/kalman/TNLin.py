@@ -277,8 +277,8 @@ class KalmanFilterTNLin(KalmanFilter):
     def plot_summary(KF):
         import matplotlib
         import matplotlib.pyplot as plt
-        cmap = matplotlib.cm.get_cmap('viridis')
-        COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,3+1)]
+        from welib.tools.colors import cmap_colors
+        COLRS = cmap_colors(4, 'viridis')
 
         def spec_plot(ax,t,ref,sim):
             try:
@@ -407,14 +407,14 @@ class KalmanFilterTNLin(KalmanFilter):
     def plot_moments(KF,fig=None,scaleByMean=False):
         import matplotlib
         import matplotlib.pyplot as plt
+        from welib.tools.colors import cmap_colors
 
         z_test = list(fastlib.ED_TwrGag(KF.WT.ED) - KF.WT.ED['TowerBsHt'])
         print('z test:',z_test)
         n=len(z_test)
 #         z_test.reverse()
         # --- Compare measurements
-        cmap = matplotlib.cm.get_cmap('viridis')
-        COLRS = [(cmap(v)[0],cmap(v)[1],cmap(v)[2]) for v in np.linspace(0,1,n+1)]
+        COLRS = cmap_colors(n+1, 'viridis')
         if fig is None:
             fig=plt.figure()
         fig.set_size_inches(6.4,15.0,forward=True) # default is (6.4,4.8)

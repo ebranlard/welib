@@ -45,7 +45,7 @@ def main():
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Axial induction [-]')
     ax.set_ylim([0.09,0.21])
-    ax.set_title('Dynamic Inflow (Oye) - induction step')
+    ax.set_title('Dynamic Inflow - Oye - induction step')
     return ax
 
 main()

@@ -73,7 +73,7 @@ def polyeig(*A, sort=False, normQ=None):
     return X, e
 
 
-def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massScaling=True):
+def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massScaling=True, verbose=False):
     """ performs eigenvalue analysis and return same values as matlab 
 
     returns:
@@ -92,7 +92,8 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massS
             for j in range(M.shape[1]):
                 q_j = Q[:,j]
                 modalmass_j = np.dot(q_j.T,M).dot(q_j)
-                Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
+                if modalmass_j>0:
+                    Q[:,j]= Q[:,j]/np.sqrt(modalmass_j)
         Lambda=np.dot(Q.T,K).dot(Q)
     else:
         D,Q = linalg.eig(K)
@@ -125,7 +126,8 @@ def eig(K, M=None, freq_out=False, sort=True, normQ=None, discardIm=False, massS
         bb = imm>0
         if sum(bb)>0:
             W=list(np.where(bb)[0])
-            print('[WARN] Found {:d} complex eigenvectors at positions {}/{}'.format(sum(bb),W,Q.shape[0]))
+            if verbose:
+                print('[WARN] Found {:d} complex eigenvectors at positions {}/{}'.format(sum(bb),W,Q.shape[0]))
         Lambda = np.real(Lambda)
 
     return Q,Lambda
@@ -198,7 +200,7 @@ def eigA(A, nq=None, nq1=None, fullEV=False, normQ=None, sort=True):
 
 
 
-def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScaling=True):
+def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScaling=True, Imodes=None):
     """ 
     Eigenvalue analysis of a mechanical system
     M, K: mass, and stiffness matrices respectively
@@ -207,10 +209,17 @@ def eigMK(M, K, sort=True, normQ=None, discardIm=False, freq_out=True, massScali
     except that frequencies are returned instead of "Lambda"
 
     OUTPUTS:
-      Q, freq_0 if freq_out
-      Q, Lambda otherwise
+      - Q, freq_0  if freq_out
+      - Q, Lambda otherwise
     """
-    return eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out, massScaling=massScaling)
+    Q,l = eig(K, M, sort=sort, normQ=normQ, discardIm=discardIm, freq_out=freq_out, massScaling=massScaling)
+    if Imodes is not None:
+        Q=Q[:,Imodes]
+        if len(l.shape)==2:
+            l=l[np.ix_(Imodes, Imodes)] # TODO 
+        else:
+            l=l[Imodes]
+    return Q,l
 
 
 def eigMCK(M, C, K, method='full_matrix', sort=True, normQ=None): 
@@ -238,7 +247,7 @@ def eigMCK(M, C, K, method='full_matrix', sort=True, normQ=None):
         freq_0      = np.sqrt(np.diag(Lambda))/(2*np.pi)
         betaMat     = np.dot(Q,C).dot(Q.T)
         xi          = (np.diag(betaMat)*np.pi/(2*np.pi*freq_0))
-        xi[xi>2*np.pi] = np.NAN
+        xi[xi>2*np.pi] = np.nan
         zeta        = xi/(2*np.pi)
         freq_d      = freq_0*np.sqrt(1-zeta**2)
 

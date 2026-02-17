@@ -384,7 +384,7 @@ class FASTLin(object):
         #if any(['A','B','C','D'])
 
         import pickle
-        with open(exportFile,'wb') as f:
+        with open(stateFile,'wb') as f:
             pickle.dump(stateDict,f)
 
     def save(self,filename):

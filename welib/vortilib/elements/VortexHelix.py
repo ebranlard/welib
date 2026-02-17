@@ -168,9 +168,6 @@ class TestHelix(unittest.TestCase):
 
     def test_VH_LiftingLine(self):
         # TODO radial induction is zero on the lifting line due to "inherent" infinite assumption from theory
-        import warnings
-        warnings.filterwarnings('error')
-
         a,U0,R,Lambda,nB,h,CT,Gamma_B=self.Params(nB=10)
         method = 'wrench'
         bWT   = True # Convention WT or Propeller
@@ -211,7 +208,10 @@ class TestHelix(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        unittest.main()
 
     
 # def fUi_HelixN(nB = None,v1 = None,v2 = None,v3 = None,vGamma = None,vR = None,vh = None,vpsi = None,bGridIn = None,bPolarIn = None,bPolarOut = None,bComputeGrad = None,Algo = None): 

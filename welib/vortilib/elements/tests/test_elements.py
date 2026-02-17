@@ -1,3 +1,4 @@
+from welib.vortilib.elements.elliptic import TestElliptic
 from welib.vortilib.elements.InviscidVortexPatch  import *
 from welib.vortilib.elements.LambOseen            import *
 from welib.vortilib.elements.VortexPoint          import *
@@ -8,3 +9,4 @@ from welib.vortilib.elements.VortexHelix          import *
 from welib.vortilib.elements.VortexRing           import *
 from welib.vortilib.elements.VortexParticle       import *
 from welib.vortilib.elements.SourceEllipsoid      import *
+from welib.vortilib.elements.SourcePanel2D        import *

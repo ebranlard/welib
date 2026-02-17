@@ -10,8 +10,6 @@ import matplotlib.pyplot as plt
 
 import welib.weio as io
 import welib.fast.postpro as postpro
-#import pyFAST.input_output as io 
-#import pyFAST.input_output.postpro as postpro
 
 def main():
     # Get current directory so this script can be called from any location

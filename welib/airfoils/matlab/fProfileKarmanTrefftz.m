@@ -1,11 +1,13 @@
 function [ P PS SS Cp u v xg yg chord X_profile Y_profile IPin IPout ] = fProfileKarmanTrefftz( xc,yc,tau,n,varargin )
 % returns Van Karman profiles and optionally some aero data 
+% AUTHOR: E. Branlard
 % --- Input ------------------
 % xc      = -0.2 ;  % Circle Center Location (<0)
 % yc      = -0.1 ;  % Circle Center (>0 adds + camber)
 % tau     = 10   ;  % Tail Angle in deg !!!
 % n       = 201  ;  % Number of points along mapped foil surface
 % out_pts = 36   ;  % Total number of X-Y output points (ODD)
+
 % --- Output -------------
 % P=[x y]: normalized coordinates of the airfoil
 % PS idem but pressure side
@@ -13,6 +15,10 @@ function [ P PS SS Cp u v xg yg chord X_profile Y_profile IPin IPout ] = fProfil
 % Cp : pressure coeff
 % u,v,xg,yg : velocity field around profile and grid points (polar grid>use TriScatteredInterp to go back to a cartesian grid)
 % chord
+% EXAMPLES:
+%   [X_p,Y_p]    = fProfileKarmanTrefftz(xc,yc,tau,n);
+%   [X_p,Y_p,Cp] = fProfileKarmanTrefftz(xc,yc,tau,n,U0,alpha_deg);
+%   [X_p,Y_p,Cp,Ug,Vg,CP] = fProfileKarmanTrefftz(xc,yc,tau,n,U0,alpha_deg,Xg,Yg);
 if ~exist('fConformalMapKarmanTrefftz','file')
     require('POTFLOW','v00')
 end
@@ -36,19 +42,20 @@ end
 % Optional outputs
 Cp=[]; u=[]; v=[]; xg=[]; yg=[]; 
 
-% Param and Properties
-a      = 1.0                   ;  % x-intersect
+%% Main parameters
+a      = 1.0                  ; % x intersectoin
 rc     = sqrt((a-xc)^2 + yc^2) ;  % radius of circle
 beta   = asin(-yc/(rc))        ;  % Angle to rear stagnation point
 lambda = 2-tau/180             ; 
 
-% Circle
+
+%% Coordinates of profile (using transform of the circle)
 vtheta_circ = 0:2*pi/n:2*pi-pi/n; %Defines theta incremented 0->2*pi
 z0=(xc + i*yc); % center of circle
 z_circ= z0 + rc*exp(i*vtheta_circ);
 
-% Karman-Trefftz Conformal map
-[ Z_profile dZdz] = fConformalMapKarmanTrefftz( z_circ, a, lambda  );
+% --- Karman-Trefftz Conformal map - Profile Shape
+[Z_profile, dZdz] = fConformalMapKarmanTrefftz(z_circ, a, lambda);
 X_profile=real(Z_profile(:));
 Y_profile=imag(Z_profile(:));
 
@@ -62,10 +69,11 @@ Y_profile=imag(Z_profile(:));
 
 %% Aero computation if required -> this is just minimum if needed, see dedicated script for more..
 if bComputeAero
-    Gamma = 4*pi*rc*U0*sin(beta-alpha*pi/180) % from Kutta condition 
-    % Velocity at circle
-    [ u_circ, v_circ ] = fUi_Cylinder2D(real(z_circ),imag(z_circ), xc,yc,rc, U0, alpha, Gamma  , false);
-    % Velocities -Cp on surface
+    %% ---Pressure distribution on the airfoil
+    Gamma = 4*pi*rc*U0*sin(beta-alpha*pi/180); % from Kutta condition 
+    % Velocity at circle surface
+  [ u_circ, v_circ ] = fUi_Cylinder2D(real(z_circ),imag(z_circ),xc,yc,rc,U0,alpha,Gamma);
+    % Velocities, -Cp on surface
     W_circ  = (u_circ-i*v_circ)./dZdz    ;  % [u-iv]_Z = [u-iv]_z/DZ/Dz
     U_circ  = real(W_circ)           ;  % X velocity in Zeta-plane
     V_circ  = -imag(W_circ)          ;  % Y velocity in Zeta-plane

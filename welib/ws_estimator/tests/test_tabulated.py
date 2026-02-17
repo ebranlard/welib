@@ -167,9 +167,9 @@ class Test(unittest.TestCase):
         def meth2():
             WS_est, info = wse.estimate(Qa, pitch, omega, WS_guess, relaxation=0, debug=True, method='crossing', deltaWSMax=15)
 
-        from timeit import timeit
-        print('Time 1: ',timeit(meth1, number=1000))
-        print('Time 2: ',timeit(meth2, number=1000))
+        #from timeit import timeit
+        #print('Time 1: ',timeit(meth1, number=1000))
+        #print('Time 2: ',timeit(meth2, number=1000))
 
 
 if __name__ == '__main__':

@@ -11,10 +11,10 @@ from welib.airfoils.Polar import _intersections
 # --------------------------------------------------------------------------------{
 
 
-class TestPolarSubFunctions(unittest.TestCase):
+class TestPolarSubF(unittest.TestCase):
 
 
-    def test_intersection1(self):
+    def test_intersect1(self):
         a, b = 1, 2
         phi = np.linspace(3, 10, 100)
         x1 = a*phi - b*np.sin(phi)
@@ -27,7 +27,7 @@ class TestPolarSubFunctions(unittest.TestCase):
         np.testing.assert_almost_equal(x,[6.10766,8.3648], decimal=4)
         np.testing.assert_almost_equal(y,[1.825397,2.87209], decimal=4)
 
-    def test_intersection2(self):
+    def test_intersect2(self):
 
         alpha  = np.linspace(-180,180,121)
         Cl     = alpha*np.pi/180 * 2*np.pi

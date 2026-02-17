@@ -1,4 +1,4 @@
-function [ KB ] = fBetzCirculation(l_bar,Vx)
+function [ KB ] = fCirculationBetz(l_bar,Vx)
     % This function does not return the circulation properly speaking but the dimensionless circulation -> consider calling it factor
     % NOW ALL PARAMETERS ARE Dimensionless
     % l_bar=l/R,  sometimes l_bar=1/lambda so l=R/lambda

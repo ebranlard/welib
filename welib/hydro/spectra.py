@@ -52,7 +52,7 @@ def jonswap(freq, Hs, Tp=None, Tz=None, g=9.81):
     freq = np.asarray(freq)
     fp = 1/Tp
     sigma = np.ones(freq.shape)*0.09
-    sigma[freq<=fp]=0.7
+    sigma[freq<=fp]=0.07
     beta  = np.exp(-0.5*(((freq/fp)-1.)*(1./sigma))**2)
     # Formulation using gravity even though it cancels out)
     #alpha = 5*(Hs**2*fp**4/g**2)*(1-0.287*np.log(gamma))*np.pi**4

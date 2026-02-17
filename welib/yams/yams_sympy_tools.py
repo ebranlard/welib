@@ -26,15 +26,17 @@ def eye(n):
 
 
 def skew(x):
-    """ Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
-    #S = Matrix(np.zeros((3,3)).astype(int))
-    if hasattr(x,'shape') and len(x.shape)==2:
-        if x.shape[0]==3:
-            return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
-        else:
-            raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
-    else:
-        return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
+    #""" Returns the skew symmetric matrix M, such that: cross(x,v) = M v """
+    from welib.yams.utils import skew as skew_general
+    return skew_general(x, symb=True)
+    ##S = Matrix(np.zeros((3,3)).astype(int))
+    #if hasattr(x,'shape') and len(x.shape)==2:
+    #    if x.shape[0]==3:
+    #        return Matrix(np.array([[0, -x[2,0], x[1,0]],[x[2,0],0,-x[0,0]],[-x[1,0],x[0,0],0]]))
+    #    else:
+    #        raise Exception('fSkew expect a vector of size 3 or matrix of size 3x1, got {}'.format(x.shape))
+    #else:
+    #    return Matrix(np.array([[0, -x[2], x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]]))
 
 # --------------------------------------------------------------------------------}
 # --- PYDY VIZ related...
@@ -224,7 +226,7 @@ def mycollect(expr, var_list, evaluate=True, **kwargs):
     return d
 
 def myjacobian(expr, var_list, value_list=None):
-    """ Compute jacobian of expression, matrix or not. 
+    r""" Compute jacobian of expression, matrix or not. 
     Perform symbol substitution first to have support for derivatives
 
     J = [ \partial fi / \partial_xj ]_x0
@@ -264,7 +266,7 @@ def myjacobian(expr, var_list, value_list=None):
         jac = jac.subs(sub_list)
     return jac
 
-def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True):
+def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True, verbose=False):
     """ 
     Return a Taylor expansion of the expression at the operating point x0
     INPUTS:
@@ -336,7 +338,8 @@ def linearize(expr, x0, order=1, sym=False, doSimplifyIfDeriv=True):
         myexpr = myexpr.subs(DT2Dummy)
 
         if myexpr.has(Derivative) and doSimplifyIfDeriv:
-            print('[WARN] Yams sympy linearize: Expression still contains derivative. Behavior might not be the right one. To be safe, we are running simplify on the expression.')
+            if verbose:
+                print('[WARN] Yams sympy linearize: Expression still contains derivative. Behavior might not be the right one. To be safe, we are running simplify on the expression.')
             #NOTE: if expressions contains diff(-x,t) it won't work (for instance after a substitution). We need it simplified to -diff(x,t)
             # We simplify expression
             myexpr0=myexpr0.simplify()
@@ -434,7 +437,7 @@ def cleantex(expr):
         '\\end{matrix}\\right]':'\n\\end{bmatrix}\n' ,
         '\\operatorname{q_{T1}}':'q_{T1}',
         '\\operatorname{q_{T2}}':'q_{T2}',
-        '\operatorname{T_{a}}'  : 'T_a',
+        '\\operatorname{T_{a}}'  : 'T_a',
         '\\left(t \\right)'    : '(t)',
         '{(t)}': '(t)',
         '{d t}': '{dt}',
@@ -474,9 +477,9 @@ def cleantex(expr):
         '\\cos{\\left(\\phi_x \\right)}':'\\cos\\phi_x',
         '\\cos{\\left(\\phi_y \\right)}':'\\cos\\phi_y',
         '\\cos{\\left(\\phi_z \\right)}':'\\cos\\phi_z',
-        '\\left(\\dot{\\phi}_x\\right)^{2}':'\dot{\\phi}_x^2',
-        '\\left(\\dot{\\phi}_y\\right)^{2}':'\dot{\\phi}_y^2',
-        '\\left(\\dot{\\phi}_z\\right)^{2}':'\dot{\\phi}_z^2',
+        '\\left(\\dot{\\phi}_x\\right)^{2}':'\\dot{\\phi}_x^2',
+        '\\left(\\dot{\\phi}_y\\right)^{2}':'\\dot{\\phi}_y^2',
+        '\\left(\\dot{\\phi}_z\\right)^{2}':'\\dot{\\phi}_z^2',
         '\\\\':'\\\\ \n' 
         }
     for k in D_rep.keys():

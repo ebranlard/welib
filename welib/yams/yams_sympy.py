@@ -131,7 +131,7 @@ def DCMtoOmega(DCM, ref_frame=None):
 # ---  
 # --------------------------------------------------------------------------------{
 class Taylor(object):
-    """ 
+    r""" 
     A Taylor object contains a Taylor expansion of a variable as function of q
         M = M^0 + \sum_j=1^nq M^1_j q_j
     where M, M^0, M^1_j are matrices of dimension nr x nc
@@ -192,6 +192,12 @@ class Taylor(object):
                 del self.M1
         else:
             raise Exception('set order for now mainly removes the 2nd order term')
+
+    def __repr__(self):
+        print('Note: just call object.eval() to see the terms M0 and M1 with a generic q instead of __repr__')
+        M= self.eval()
+        return str(M)
+
 
 #Me = Taylor('T','Me', 3, 3, nq=2, rname='xyz', cname='xyz')
 #Me.M1
@@ -272,6 +278,16 @@ class YAMSBody(object):
         self.inertial_origin = None # storing the typical inertial frame use for computation
 
         self.viz_opts={}
+
+    @property
+    def name(self):
+        """The name of the body."""
+        return self._name
+
+    @name.setter
+    def name(self,name):
+        """The name of the body."""
+        self._name=name
 
     def __repr__(self):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
@@ -429,7 +445,7 @@ class YAMSBody(object):
     # --------------------------------------------------------------------------------}
     # --- Connection between bodies
     # --------------------------------------------------------------------------------{
-    def connectTo(parent, child, type='Rigid', rel_pos=None, rel_pos_b=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False, ref_frame=None):
+    def connectTo(parent, child, type='Rigid', rel_pos=None, rel_pos_b=None, rot_type='Body', rot_amounts=None, rot_order=None, dynamicAllowed=False, ref_frame=None, verbose=False):
         """ 
         Define a connection between parent and child bodies
 
@@ -561,7 +577,8 @@ class YAMSBody(object):
                 rot_vars = rot_amounts
             for d in rot_vars:
                 if d!=0 and d!=1 and not exprHasFunction(d):
-                    print('>>> WARNING: Rotation amount variable is not a dynamic variable for joint connection, variable: {}'.format(d))
+                    if verbose:
+                        print('>>> WARNING: Rotation amount variable is not a dynamic variable for joint connection, variable: {}'.format(d))
                     #raise Exception('Rotation amount variable should be a dynamic variable for a joint connection, variable: {}'.format(d))
         else:
             raise Exception('Unsupported joint type: {}'.format(type))
@@ -932,7 +949,8 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         
         """
         # YAMS Body creates a default "origin", "masscenter", and "frame"
-        YAMSBody.__init__(self, name)
+        # We give the properties to SympyRigidBody later below
+        super().__init__(name =name)
         
         if name_for_var is None:
             name_for_var = name
@@ -974,9 +992,11 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             
         #inertia: dyadic : (inertia(frame, *list), point)
         if J_at_Origin:
+            self._inertia_point = self.origin
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.origin)
             print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NOTE: inertia at origin')
         else:
+            self._inertia_point = self.origin
             _inertia = (inertia(self.frame, ixx, iyy, izz, ixy, iyz, izx), self.masscenter)
             
         # --- Position of COG in body frame
@@ -984,12 +1004,72 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             rho_G=symbols('x_G_'+name_for_var+ ', y_G_'+name_for_var+ ', z_G_'+name_for_var)
         self.setGcoord(rho_G)
         self.masscenter.set_vel(self.frame, 0 * self.frame.x)
-            
         # Init Sympy Rigid Body 
-        SympyRigidBody.__init__(self, name, self.masscenter, self.frame, mass, _inertia)
+        #SympyRigidBody.__init__(self, name, self.masscenter, self.frame, mass, _inertia)
+        self.mass = mass # Need to be  before inertia
+        #self.masscenter # already defined
+        #self.frame # already defined
+        self.inertia = _inertia
 
         # For harmony with flexible bodies
         self.shapeNormSubs= []
+
+    def bodyMassMatrix(self, form='regular', point='origin'):
+        """ Body mass matrix in body coordinates M'(q)
+        form is ['symbolic' , 'regular', 'TaylorExpanded']
+        """
+        self.M = zeros(6, 6)
+        # Mxx
+        self.M[0,0] = self.mass
+        self.M[1,1] = self.mass
+        self.M[2,2] = self.mass
+        print('>>> bodyMassMatrix for rigid bodies is in Beta')
+
+        if form=='TaylorExpanded':
+            """ Return the term of the mass matrix at a given order.
+            For order 1, terms are different for each dof"""
+            # TODO
+            self.M[0,0] = 0
+            self.M[1,1] = 0
+            self.M[2,2] = 0
+            # Mrx, Mxr
+            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            # Mrr
+            self.M[3:6,3:6] = self.J.get(dof,order)
+
+        elif form=='regular':
+            from welib.yams.utils import buildRigidBodyMassMatrix 
+            self.M[0,0] = self.mass
+            self.M[1,1] = self.mass
+            self.M[2,2] = self.mass
+            self.s_G_inB
+            s_OG = self.masscenter_pos_local
+            s_OG_ = s_OG.to_matrix(self.frame)
+            self.M =  buildRigidBodyMassMatrix(self.mass, self.origin_inertia_matrix, s_OG_, symb=True) 
+
+        elif form=='symbolic':
+            # Mxr
+            for i in np.arange(0,3):
+                for j in np.arange(3,6):
+                    self.M[i,j]=Symbol('M_{}{}{}'.format(self.name_for_var,i+1,j+1))
+            self.M[0,3]=0
+            self.M[1,4]=0
+            self.M[2,5]=0
+            # Mrr
+            char='xyz'
+            for i in np.arange(3,6):
+                for j in np.arange(3,6):
+                    self.M[i,j]=Symbol('J_{}{}{}'.format(self.name_for_var,char[i-3],char[j-3]))
+            # Symmetry
+            for i in np.arange(0,6+nq):
+                for j in np.arange(0,6+nq):
+                    self.M[j,i]=self.M[i,j]
+            pass
+        else:
+            raise NotImplementedError()
+        return self.M
+
             
     def inertiaIsInPrincipalAxes(self):
         """ enforce the fact that the frame is along the principal axes"""
@@ -1009,10 +1089,14 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     @property    
     def origin_inertia(self):
         return self.parallel_axis(self.origin)
+
+    @property    
+    def origin_inertia_matrix(self):
+        return self.origin_inertia.to_matrix(self.frame)
     
     @property    
     def inertia_matrix(self):
-        """ Returns inertia matrix in body frame"""
+        """ Returns inertia matrix in body frame at mass center"""
         J_G= self.parallel_axis(self.masscenter)
         return J_G.to_matrix(self.frame)
 
@@ -1060,8 +1144,11 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         except:
             s+=' * masscenter_acc_inertial: {}\n'.format('unknown')
 
-        s+='Useful getters: origin_inertia, inertia_matrix\n'
+        s+='Useful getters: origin_inertia, inertia_matrix, origin_inertia_matrix\n'
+        s+='                masscenter_inertia\n'
         s+='Useful setters: noMass, noInertia, setGcoord\n'
+        s+='Useful functions:\n'
+        s+='  - bodyMassMatrix(q=None, form="TaylorExpanded", order=None, dof=None)\n'
         return s
 
 
@@ -1094,7 +1181,7 @@ class RigidBody(Body):
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None):
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True):
         """ 
         name:  name used for object name, origin
         name_for_var: name/string used for inertial variable names
@@ -1140,7 +1227,7 @@ class YAMSFlexibleBody(YAMSBody):
         self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
         
         self.directions=directions
-        self.defineExtremity(directions)
+        self.defineExtremity(directions, unit_deflect=tip_unit_deflect, rotate=tip_rotate)
         
         self.origin = Point('O_'+self.name)
         # Properties from Rigid body
@@ -1169,14 +1256,19 @@ class YAMSFlexibleBody(YAMSBody):
         s+=' - uc    :       {}\n'.format(self.uc)
         s+=' - alpha :       {}\n'.format(self.alpha)
         s+=' - directions:   {}\n'.format(self.directions)
+        s+='Useful functions:\n'
+        s+='  - bodyMassMatrix(form="regular", point="origin")\n'
         return s
 
 
-    def defineExtremity(self, directions=None): 
+    def defineExtremity(self, directions=None, unit_deflect=False, rotate=True): 
         if directions is None:
             directions=['xyz']*len(self.q)
         # Hard coding 1 connection at beam extremity
         self.alpha =[dynamicsymbols('alpha_x{}'.format(self.name_for_DOF)),dynamicsymbols('alpha_y{}'.format(self.name_for_DOF)),dynamicsymbols('alpha_z{}'.format(self.name_for_DOF))]
+#         if unit_deflect:
+#             self.uc    =[0,0,0]
+#         else:
         self.uc    =[dynamicsymbols('u_x{}c'.format(self.name_for_DOF)),dynamicsymbols('u_y{}c'.format(self.name_for_DOF)),0]
         alphax = 0
         alphay = 0
@@ -1189,13 +1281,25 @@ class YAMSFlexibleBody(YAMSBody):
             u=0
             v=0
             if 'x' in directions[i]:
-                u = symbols('u_x{}{}c'.format(self.name_for_DOF,i+1))
-                v = symbols('v_y{}{}c'.format(self.name_for_DOF,i+1)) 
+                if unit_deflect:
+                    u = 1
+                else:
+                    u = symbols('u_x{}{}c'.format(self.name_for_DOF,i+1))
+                if rotate:
+                    v = symbols('v_y{}{}c'.format(self.name_for_DOF,i+1)) 
+                else:
+                    v = 0
                 uxc   += u * self.q[i]
                 alphay+= v * self.q[i]
             if 'y' in directions[i]:
-                u = symbols('u_y{}{}c'.format(self.name_for_DOF,i+1))
-                v = symbols('v_x{}{}c'.format(self.name_for_DOF,i+1))
+                if unit_deflect:
+                    u = 1
+                else:
+                    u = symbols('u_y{}{}c'.format(self.name_for_DOF,i+1))
+                if rotate:
+                    v = symbols('v_x{}{}c'.format(self.name_for_DOF,i+1))
+                else:
+                    v = 0
                 uyc   += u * self.q[i]
                 alphax+= v * self.q[i]
             if 'z' in directions[i]:
@@ -1209,7 +1313,7 @@ class YAMSFlexibleBody(YAMSBody):
         self.v2Subs = [(v1*v2,0) for v1 in vList for v2 in vList] # Second order terms put to 0
 
         self.ucList =uList # "PhiU" values at connection point for each mode
-        self.vcList =vList # "PhiV" valaes at connection point for each mode
+        self.vcList =vList # "PhiV" values at connection point for each mode
 
     def bodyMassMatrix(self, q=None, form='TaylorExpanded', order=None, dof=None):
         """ Body mass matrix in body coordinates M'(q)
@@ -1342,6 +1446,48 @@ class YAMSFlexibleBody(YAMSBody):
                     for j in np.arange(3,6):
                         if i<j:
                             self.M[j,i]=self.M[i,j]
+            elif self.predefined_kind=='bld-z-straight':
+                #print('>>> yams_simpy, predifined kind',self.predefined_kind)
+                # inertial tensor diagonal
+                for i in np.arange(3,6):
+                    for j in np.arange(3,6):
+                        if i!=j:
+                            self.M[j,i]=0
+                            self.M[i,j]=0
+                # COG purely on z
+                self.M[5,0]=0 # MdBy =0
+                self.M[0,5]=0
+                self.M[3,2]=0 # MdBy =0
+                self.M[2,3]=0
+                self.M[5,1]=0 # MdBx =0
+                self.M[1,5]=0
+                self.M[4,2]=0 # MdBx =0
+                self.M[2,4]=0
+                # shape
+                #print('>>>> DIRECTIONS', self.directions)
+                for iq in np.arange(nq):
+                    xyz = self.directions[iq]
+                    if xyz=='y':
+                        self.M[0,6+iq]=0
+                        self.M[2,6+iq]=0
+                        self.M[4,6+iq]=0
+                        self.M[5,6+iq]=0
+                    if xyz=='x':
+                        self.M[1,6+iq]=0
+                        self.M[2,6+iq]=0
+                        self.M[3,6+iq]=0
+                        self.M[5,6+iq]=0
+                    for jq in np.arange(nq):
+                        xyz2 = self.directions[jq]
+                        # Assume no coupling x-y
+                        if xyz2!=xyz:
+                            self.M[6+iq,6+jq]=0
+                # symmetry
+                for i in np.arange(self.M.shape[0]):
+                    for j in np.arange(self.M.shape[0]):
+                        if i<j:
+                            self.M[j,i]=self.M[i,j]
+                
 
             else:
                 raise NotImplementedError()
@@ -1349,7 +1495,7 @@ class YAMSFlexibleBody(YAMSBody):
         return self.M
     
     def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded'):
-        """ Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
+        r""" Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
         inputs:
            omega: angular velocity of the body wrt to the inertial frame, expressed in body coordinates
            q,qd: generalied coordinates and speeds for this body
@@ -1482,7 +1628,7 @@ class YAMSFlexibleBody(YAMSBody):
     def applyKindSimplification(self):
         """ set inertia to zero"""
         if self.predefined_kind is not None:
-            if self.predefined_kind=='twr-z':
+            if self.predefined_kind=='twr-z' or self.predefined_kind=='bld-z-straight':
                 nq=len(self.q)
                 for iq in np.arange(nq):
                     xyz = self.directions[iq]
@@ -1531,6 +1677,7 @@ class YAMSFlexibleBody(YAMSBody):
                 # Mdcm
                 self.mdCM.M0[0]=0
                 self.mdCM.M0[1]=0
+
 
     def replaceDict(self, rd=None, form='TaylorExpanded'):
         if rd is None:

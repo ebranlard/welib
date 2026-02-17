@@ -1,0 +1,3 @@
+
+class WELIBException(Exception):
+    pass

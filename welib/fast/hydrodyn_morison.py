@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import copy
 # Local 
 from welib.tools.clean_exceptions import *
-from welib.weio import FASTInputFile
+from welib.weio.fast_input_file import FASTInputFile
 
 from welib.fast.fast_mesh import PointMesh
 from welib.yams.rotations import Rodriguez_A

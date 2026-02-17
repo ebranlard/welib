@@ -14,7 +14,7 @@ import scipy
 # --- Element formulation 
 # --------------------------------------------------------------------------------{
 def frame3dlin_KeMe(E,G,Kv1,Kv2,A1,A2,Iy1,Iy2,Iz1,Iz2,L,me1,me2,R=None):
-    """
+    r"""
     Linear frame element directed along x
     Values are given at both nodes
 

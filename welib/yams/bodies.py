@@ -5,7 +5,7 @@ These classes will be used for more advanced classes:
     - YAMS body for numerical yams
 """
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrixFromCOG
-from welib.yams.utils import rigidBodyMassMatrix 
+from welib.yams.utils import buildRigidBodyMassMatrix 
 from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GeneralizedMCK_PolyBeam
 from welib.yams.flexibility import checkRegularNode
@@ -17,6 +17,11 @@ __all__ = ['Body','InertialBody','RigidBody','FlexibleBody']
 # --- For harmony with sympy
 import numpy as np
 from numpy import eye, cross, cos ,sin
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
+
 def Matrix(m):
     return np.asarray(m)
 def zeros(m,n):
@@ -35,12 +40,18 @@ class Body(object):
         self.pos_global_init = np.asarray(r_O).ravel()
         self._R_b2g          = np.asarray(R_b2g)
         self.R_b2g_init      = np.asarray(R_b2g)
+        self.additional_properties = [] # List of string so that we remember the useful properties
 
         self._mass=None
         self.MM  = None # To be defined by children
 
     def __repr__(self):
-        s='<Generic Body object>:\n'
+        s='<Generic Body {} object>:\n'.format(self.name)
+        s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
+        s+=' - mass:                  {}\n'.format(self.mass)
+        s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
+        s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
+        s+=' - Additional Props: {}\n'.format(self.additional_properties)
         return s
 
     @property
@@ -186,17 +197,17 @@ class RigidBody(Body):
     @property
     def mass_matrix(self):
         """ Body mass matrix at origin"""
-        return rigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
+        return buildRigidBodyMassMatrix(self.mass, self.inertia, self._s_OG) # TODO change interface
 
     def mass_matrix_at(self, s_OP):
         """ Body mass matrix at a given point"""
         J = self.inertia_at(s_OP)
         s_PG = -np.asarray(s_OP)+ self._s_OG
-        return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
+        return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
-        s='<RigidBody object>:\n'.format(self.name)
-        s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
+        s='<RigidBody object>:\n'
+        s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
@@ -205,6 +216,7 @@ class RigidBody(Body):
         s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+        s+=' - Additional Props: {}\n'.format(self.additional_properties)
         s+='Useful getters: inertia_at, mass_matrix\n'
         return s
 
@@ -408,7 +420,7 @@ class BeamBody(FlexibleBody):
                 #FirstMom = sum(p['BElmntMass']*p['RNodes'])
                 return np.array(S/self.mass)
             else:
-                return  np.trapz(self.m*self.s_G0,self.s_span)/self.mass
+                return  trapezoid(self.m*self.s_G0,self.s_span)/self.mass
         else:
             return np.array([0,0,0])
 
@@ -500,7 +512,7 @@ class BeamBody(FlexibleBody):
         """ Body mass matrix at a ginve point"""
         J = self.inertia_at(s_OP)
         s_PG = -np.asarray(s_OP)+ self._s_OG
-        return rigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
+        return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
 
     def updateFlexibleKinematics(B, qe, qep, qepp=None):
@@ -627,8 +639,13 @@ class BeamBody(FlexibleBody):
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
         s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
-        s+=' - Properties: s_span, m, EI, Mtop, PhiU, PhiV, PhiW\n'
+        s+=' - Properties: s_span, m, EI, Mtop, s_G0, PhiU, PhiV, PhiK\n'
+        s+='               jxxG, s_P0, s_G\n'
+        s+='               bAxialCorr, bOrth, bStiffening\n'
+        s+='               Omega, gravity, int_method    \n'
+        s+='               damp_zeta, RayleighCoeff, DampMat\n'
         s+='               MM, KK, KK0, KKg, KKg_Mtop, KKg_self\n'
+        s+=' - Additional Props: {}\n'.format(self.additional_properties)
         s+='Usefull getters: inertia_at, mass_matrix_at, toRigidBody \n'
         return s
 
@@ -681,7 +698,13 @@ class FASTBeamBody(BeamBody):
             damp_zeta=damp_zeta[shapes]
             mass_fact = inp['AdjBlMs']   # Factor to adjust blade mass density (-)
             prop      = inp['BldProp']  
-            s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
+            if prop.shape[1] ==5:
+                #BlFract           StrcTwst       BMassDen        FlpStff        EdgStff
+                #  (-)              (deg)          (kg/m)         (Nm^2)         (Nm^2)
+                s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,2], prop[:,3], prop[:,4]
+            else:
+                # Old
+                s_bar, m, EIFlp, EIEdg  =prop[:,0], prop[:,3], prop[:,4], prop[:,5]
             """
             BldBodyStartAtRoot    BldBodyAndSpanStartAtR     BldBodyAndSpanStartAtR
                   /                          /                       /
@@ -804,4 +827,9 @@ class FASTBeamBody(BeamBody):
                 massExpected=massExpected,
                 int_method=int_method
                 )
-        self.shapes=shapes
+        self.shapes = shapes
+        self.FASTInpuFile    = inp
+        self.additional_properties+=['shapes', 'FASTInpuFile']
+        if 'fnd' in name:
+            self.SD = sd
+            self.additional_properties+=['shapes', 'FASTInpuFile', 'SD']

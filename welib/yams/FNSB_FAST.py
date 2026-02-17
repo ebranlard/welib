@@ -9,6 +9,8 @@ from welib.yams.utils import *
 from welib.yams.TNSB import manual_assembly, auto_assembly
 
 import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.fast_input_deck import FASTInputDeck
 
 # --------------------------------------------------------------------------------}
 # --- Creating a FNSB model from a FAST model
@@ -16,11 +18,12 @@ import welib.weio as weio
 # TODO TODO TODO
 # TODO TODO TODO HARMONIZE WITH WINDTURBINE.PY AND TNSB..
 # TODO TODO TODO
-def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan_bld=None, bHubMass=1,bNacMass=1,bBldMass=1,DEBUG=False,main_axis ='x',bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+def FASTmodel2FNSB(FST_file, shapes_sub=[0,4], nShapes_bld=0, nSpan_sub=None, nSpan_bld=None, bHubMass=1, bNacMass=1, bBldMass=1, DEBUG=False, main_axis ='x', bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+        fixedShaft=False,
         spanFrom0=True, # TODO for legacy, we keep this for now..
         bladeMassExpected=None,
         gravity=None,
-        algo='' # TODO replace with OpenFAST
+        algo='', # TODO replace with OpenFAST
         ):
     """ 
     Returns the following structure
@@ -44,59 +47,37 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
     if ext.lower()!='.fst':
         raise Exception('FNSB requires a fst file as input')
 
-    FST=weio.read(FST_file)
-    rootdir = os.path.dirname(FST_file)
-    EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
+    DCK = FASTInputDeck(FST_file)
+    FST = DCK.fst_vt['Fst']
+    ED  = DCK.fst_vt['ElastoDyn']
+    SD  = DCK.fst_vt['SubDyn']
+    bld  = DCK.fst_vt['ElastoDynBlade']
     if gravity is None:
         try:
            gravity = FST['gravity']
         except:
-           pass
-    subfile = os.path.join(rootdir,FST['SubFile'].strip('"')).replace('\\','/')
-
-    # Reading elastodyn file
-    ED      = weio.read(EDfile)
-    rootdir = os.path.dirname(EDfile)
-    bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
-    twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
-    #twr     = weio.read(twrfile)
-    bld     = weio.read(bldfile)
-    if gravity is None:
-       gravity = ED['gravity'] # Old interface, method above should work, so raise Exception here
+           gravity = ED['gravity'] # Old interface
 
     # Reading SubDyn file
-    sub     = weio.read(subfile)
     nShapes_sub = len(shapes_sub)
-    graph = sub.toGraph() # NOTE: this is repeated in bodies.py...
-    graph.divideElements(sub['NDiv'])
+    graph = SD.toGraph() # NOTE: this is repeated in bodies.py...
+    graph.divideElements(SD['NDiv'])
     graph.sortNodesBy('z')
     df = graph.nodalDataFrame()
     zBot = np.min(df['z'])
     zTop = np.max(df['z'])
     RayleighCoeff=None
     DampMat=None
-    if sub['GuyanDampMod']==1:
+    if SD['GuyanDampMod']==1:
         # Rayleigh Damping
-        RayleighCoeff=sub['RayleighDamp']
+        RayleighCoeff=SD['RayleighDamp']
         #if RayleighCoeff[0]==0:
         #    damp_zeta=omega*RayleighCoeff[1]/2. 
-    elif sub['GuyanDampMod']==2:
+    elif SD['GuyanDampMod']==2:
         # Full matrix
-        DampMat = sub['GuyanDampMatrix']
+        DampMat = SD['GuyanDampMatrix']
         DampMat=DampMat[np.ix_(shapes,shapes)]
 
-
-    # --- Default arguments
-#     if nSpan_sub is None:
-#         if algo=='OpenFAST':
-#             nSpan_sub = 
-#             print('[INFO] FNSB_FAST: Using number of substructure nodes ({}) from OpenFAST Input file.'.format(nSpan_sub))
-#         else:
-#             nSpan_sub=101
-#             print('[INFO] FNSB_FAST: Using default number of substructure nodes ({}).'.format(nSpan_sub))
-#     else:
-#         if algo=='OpenFAST':
-#             print('[INFO] FNSB_FAST: Using user-specified number of substructure nodes ({}).'.format(nSpan_sub))
     if nSpan_bld is None:
         if algo=='OpenFAST':
             nSpan_bld = ED['BldNodes']
@@ -109,7 +90,10 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
             print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
 
     nB = ED['NumBl']
-    nDOF = 1 + nShapes_sub + nShapes_bld * nB # +1 for Shaft
+    if fixedShaft:
+        nDOF = nShapes_sub + nShapes_bld * nB # 
+    else:
+        nDOF = 1 + nShapes_sub + nShapes_bld * nB # +1 for Shaft
     if q is None:
         q = np.zeros((nDOF,1)) # TODO, full account of q not done
 
@@ -214,12 +198,12 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
     # Tower Body
     #   None for now
     # Substructure Body
-    Fnd = FASTBeamBody('substructure', ED, sub, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
+    Fnd = FASTBeamBody('substructure', ED, SD, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
     #print(Fnd)
     #print('Fnd MM\n',Fnd.MM[6:,6:])
     #print('Fnd KK\n',Fnd.KK[6:,6:])
     # HACK here because doesn't handle this for now
-    if sub['GuyanDampMod']==1:
+    if SD['GuyanDampMod']==1:
         Fnd.DD[6:,6:] = Fnd.MM[6:,6:]*RayleighCoeff[0] + Fnd.KK[6:,6:]*RayleighCoeff[1] 
 
 
@@ -247,9 +231,9 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
     r_TN_inT = r_FT_inF+r_TN_inT # assume that F and T are in system E here
 
     if assembly=='manual':
-        Struct = manual_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = manual_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, fixedShaft=fixedShaft)
     else:
-        Struct = auto_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
+        Struct = auto_assembly(Fnd,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, fixedShaft=fixedShaft)
 
     # --- Initial conditions
     omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
@@ -271,8 +255,9 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
         for iDOF,iDOFfull in enumerate(shapes_sub):
             q_init[iDOF] = sub_init[iDOFfull]
 
-    q_init[iPsi]          = psi_init
-    q_init[nDOFMech+iPsi] = omega_init
+    if not fixedShaft:
+        q_init[iPsi]          = psi_init
+        q_init[nDOFMech+iPsi] = omega_init
 
     Struct.q_init = q_init
     if DEBUG:
@@ -280,10 +265,22 @@ def FASTmodel2FNSB(FST_file,shapes_sub=[0,4], nShapes_bld=0,nSpan_sub=None,nSpan
         print(q_init)
 
     # --- Useful data
-    Struct.ED=ED
+    Struct.DCK = DCK
+    Struct.FST = FST
+    Struct.ED  = ED
+    Struct.SD  = SD
+    Struct.Hydro     = FST['CompHydro']>0 # FST['CompSeaSt']>0 and 
+    Struct.HD        = DCK.fst_vt['HydroDyn']
+    try:
+        Struct.WtrDens   = FST['WtrDens']
+        Struct.WtrDpth   = FST['WtrDpth']
+    except:
+        Struct.WtrDens   = Struct.HD['WtrDens']
+        Struct.WtrDpth   = Struct.HD['WtrDpth']
 
     Struct.DampMat=DampMat
     Struct.RayleighCoeff=RayleighCoeff
+    Struct.additional_properties +=['DCK', 'FST', 'ED', 'DampMat', 'RayleighCoeff', 'WaterDepth','Hydro']
 
 
     return Struct

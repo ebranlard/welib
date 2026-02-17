@@ -153,7 +153,7 @@ class FEMIsotropic2NodesElement(FEM2NodesElement):
 # --------------------------------------------------------------------------------{
 class Frame2dElement(FEMIsotropic2NodesElement):
     def __init__(self, ID, E, rho, I, A, nodeIDs=None, nodes=None, main_axis='z', **kwargs):
-        """ 
+        r""" 
         Frame 2D element
         Nodal DOF   : (ux uy theta)
 
@@ -194,7 +194,7 @@ class Frame2dElement(FEMIsotropic2NodesElement):
 
 class Beam2dElement(FEMIsotropic2NodesElement):
     def __init__(self, ID, E, rho, I, A, nodeIDs=None, nodes=None, main_axis='z', **kwargs):
-        """ 
+        r""" 
         Beam 2D element
         Nodal DOF:    (u theta)
 

@@ -8,6 +8,10 @@ from welib.tools.colors import fColrs
 from welib.tools.clean_exceptions import *
 from welib.tools.curves import streamQuiver
 from welib.vortilib.elements.VortexSegment import *
+try:
+    from numpy import trapezoid
+except:
+    from numpy import trapz as trapezoid
 
 
 def main():
@@ -72,7 +76,7 @@ def main():
         Ut = Uy * np.cos(theta) - Ux * np.sin(theta)
         U_th = Gamma*(L/2)/(2*np.pi*r * np.sqrt(r**2 + (L/2)**2))
         print(Ut[:3], U_th)
-        #GammaCalc = r* np.trapz(Ut,theta)
+        #GammaCalc = r* trapezoid(Ut,theta)
         GammaCalc = 2*np.pi * r*Ut[0] 
         return  GammaCalc
 

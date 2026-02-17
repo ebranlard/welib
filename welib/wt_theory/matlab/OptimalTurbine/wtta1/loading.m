@@ -1,7 +1,7 @@
 %% Initialization / loading
 clear all;
 clc;
-M=dlmread('airfoil.dat');
+M=dlmread('_airfoil.dat');
 alpha_origin=M(:,1);
 Cl_origin=M(:,2);
 Cd_origin=M(:,3);

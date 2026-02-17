@@ -18,6 +18,7 @@ The following references are used:
 import os
 import numpy as np
 from welib.yams.utils import skew 
+from welib.weio.fast_input_file import FASTInputFile
 
 class Refmod(object):
     def __init__(self,nq):
@@ -691,12 +692,15 @@ def FASTBlade2SID(ed_file=None, Imodes_bld=[0,1,2], method='ShapeFunctions', sta
         BldLen= TipRad-HubRad;
         BldFile = ed['BldFile(1)'].replace('"','')
         BldFile=os.path.join(parentDir,BldFile)
-        bld = weio.FASTInputFile(BldFile).toDataFrame()
+        bld = FASTInputFile(BldFile).toDataFrame()
         z   = bld['BlFract_[-]']*BldLen + HubRad
         m   = bld['BMassDen_[kg/m]']               # mu
         EIy = bld['FlpStff_[Nm^2]']
         EIz = bld['EdgStff_[Nm^2]']               # TODO actually EIx, but FEM beams along x
-        phi = bld['PitchAxis_[-]']/(180)*np.pi 
+        if 'PitchAxis_[-]' in bld.keys():
+            phi = bld['PitchAxis_[-]']/(180)*np.pi 
+        else:
+            phi = m*0
         # --- Derived parameters
         phi= np.concatenate(([0], np.diff(phi))) #% add phi_abs(1) to pitch angle
         A  = m*0 + 100       # Area
@@ -750,7 +754,7 @@ def FASTTower2SID(ed_file, method='ShapeFunctions', gravity=None, RotMass=None, 
         TowerBs = ed['TowerBsHt']
         TwrFile = ed['TwrFile'].replace('"','')
         TwrFile=os.path.join(parentDir,TwrFile)
-        twr = weio.FASTInputFile(TwrFile).toDataFrame()
+        twr = FASTInputFile(TwrFile).toDataFrame()
         z   = twr['HtFract_[-]']*(TowerHt-TowerBs)
         m   = twr['TMassDen_[kg/m]']               # mu
         EIy = twr['TwFAStif_[Nm^2]']

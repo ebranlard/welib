@@ -10,25 +10,41 @@ In particular:
 
 import numpy as np
 import unittest
+_DEFAULT_REL_TOL=0.001
 
-def curve_coord(line=None):
+def get_line(x, y, close_it=False):
+    if close_it:
+        x, y = close_contour(x, y)
+
+    line = np.zeros((len(x), 2))
+    line[:,0] = x
+    line[:,1] = y
+    return line
+    #return np.array([x,y]).T
+
+def curve_coord(x=None, y=None, line=None):
     """ return curvilinear coordinate """
-    x=line[:,0]
-    y=line[:,1]
+    if line is not None:
+        x = line[:,0]
+        y = line[:,1]
+    x = np.asarray(x)
+    y = np.asarray(y)
     s     = np.zeros(x.shape)
     s[1:] = np.sqrt((x[1:]-x[0:-1])**2+ (y[1:]-y[0:-1])**2)
     s     = np.cumsum(s)                                  
     return s
 
 
-def curve_extract(line,spacing,offset=None):
-    """ Extract points at equidistant space along a curve"""
+def curve_extract(line, spacing, offset=None):
+    """ Extract points at equidistant space along a curve
+    NOTE: curve_extract and curve_interp do basically the same, one uses "spacing", the other uses n
+    """
     x=line[:,0]
     y=line[:,1]
     if offset is None:
         offset=spacing/2
     # Computing curvilinear length
-    s = curve_coord(line)
+    s = curve_coord(line=line)
     offset=np.mod(offset,s[-1]) # making sure we always get one point
     # New (equidistant) curvilinear coordinate
     sExtract=np.arange(offset,s[-1],spacing)
@@ -38,19 +54,28 @@ def curve_extract(line,spacing,offset=None):
     return np.array([xx,yy]).T
 
 
-def curve_interp(x=None,y=None,n=3,line=None):
+def curve_interp(x=None, y=None, n=3, s=None, ds=None, line=None, keepOri=False):
     """ Interpolate a curves to equidistant curvilinear space between points
 
     INPUTS:
-      either:
-        x,y : 1d arrays 
-      or
-        line: (n_in x 2) array
-      n : number of points to interpolate
+     - either:
+       -  x,y : 1d arrays 
+        or
+       -  line: (n_in x 2) array
+     - either
+        - n : number of points to interpolate
+         or
+        - s : array of curvilinear coordinates where we'll interpolate
+         or
+        - ds : equispacing 
+      - keepOri: keep the original datapoints
+    OUTPUTS:
+      - x_new, y_new 
     """
+    # --- Sanitization
     MatOut=False
     if line is None:
-        line = np.array([x,y]).T
+        line = get_line(x,y)
     else:
         x=line[:,0]
         y=line[:,1]
@@ -62,26 +87,331 @@ def curve_interp(x=None,y=None,n=3,line=None):
         raise Exception('Inputs should have the same length')
     if len(x)<2 or len(y)<2:
         if MatOut:
-            return np.array([x,y]).T
+            return get_line(x,y)
         else:
             return x,y
+
     # Computing curvilinear length
-    s = curve_coord(line)
-    # New (equidistant) curvilinear coordinate
-    sNorm=np.linspace(0,s[-1],n);
-    # Interpolating based on new curvilinear coordinate
-    xx=np.interp(sNorm,s,x);
-    yy=np.interp(sNorm,s,y);
+    s_old = curve_coord(line=line)
+    if n is not None:
+        # --- Interpolate based on n, equidistant curvilinear coordinates
+        # New (equidistant) curvilinear coordinate
+        s_new = np.linspace(0, s_old[-1], n);
+    elif s is not None:
+        # Use new curvilinear coordinate
+        if s[0]<s_old[0] or s[-1]>s_old[-1]:
+            raise Exception('curve_interp: Curvilinear coordinate needs to be between 0 and {}, currently it is between {} and {}'.format(s_old[-1], s[0], s[-1]))
+        s_new = s
+    elif ds is not None:
+        s_new = np.arange(0, s_old[-1], ds)
+    else:
+        raise NotImplementedError()
+
+    # --- Preseve original points if requeted
+    if keepOri:
+        if ds is not None:
+            # Call dedicated function, will maintain equispacing in between original points
+            s_new = equispace_preserving(s_old, ds)
+        else:
+            # Insert old points, and spread neightbors to make the insertion look uniform
+            s_new = insert_uniformly(s_new, s_old)
+        # Ensure all original s_old are in s_new
+        try:
+            assert np.allclose(np.isin(np.around(s_old,5), np.around(s_new,5)), True), "Some original points lost."
+        except:
+            print(s_old)
+            print(s_new)
+            print('[WARN] Some original points lost.')
+
+    # --- Interpolating based on new curvilinear coordinate
+    xx = np.interp(s_new, s_old, x)
+    yy = np.interp(s_new, s_old, y)
+
     if MatOut:
-        return np.array([xx,yy]).T
+        return get_line(xx, yy) 
     else:
         return xx,yy
+
+def equispace_preserving(s_old, ds, tol=1e-8):
+    """ 
+    Attempts to keep a constant ds, but preserves original datapoint
+    """
+    s_new = [s_old[0]]
+    for i in range(len(s_old) - 1):
+        s0, s1 = s_old[i], s_old[i + 1]
+        seg_len = s1 - s0
+        s_new.append(s1)  # always keep original points
+        if seg_len > ds + tol:
+            ds_approx = seg_len/(int(seg_len/ds)+0)
+            inserted = np.arange(s0, s1+ds_approx/2, ds_approx)
+            #n_insert = int(np.floor(seg_len / ds))
+            #inserted = np.linspace(s0, s1, n_insert+1)
+            s_new += (inserted.tolist())[1:-1] 
+    s_new = np.array(sorted(set(s_new)))  # avoid duplicates, ensure increasing
+    return s_new
+
+def insert_uniformly(s, s_old, tol=1e-10, thresh=0.2):
+    """
+    Insert points from s_old into s, adjusting surrounding points to maintain local uniformity.
+    
+    Parameters:
+      - s: desired initial curvilinear grid (1D array)
+      - s_old: required curvilinear points to insert (1D array)
+    
+    Returns:
+      - s_new: adjusted curvilinear grid with all s_old inserted
+    """
+    s = list(np.sort(np.unique(s)))
+    s_old = np.sort(np.unique(s_old))
+
+    np.set_printoptions(linewidth=300, precision=3)
+    
+    for so in s_old:
+        if any(np.isclose(so, s, atol=tol)):
+            continue  # already present
+        
+        # Find where to insert
+        for j in range(len(s) - 1):
+            if s[j] < so < s[j + 1]:
+                break
+        else:
+            raise ValueError(f"s_old value {so} is outside the range of s.")
+
+        panel_length = s[j+1] - s[j]
+        threshold = thresh * panel_length
+
+        # Case 1: very close to s[j]
+        if abs(so - s[j]) < threshold:
+            s[j] = so
+            continue
+        # Case 2: very close to s[j+1]
+        if abs(so - s[j+1]) < threshold:
+            s[j+1] = so
+            continue
+         # Case 3: insert and shift up to 4 points if room
+        if j >= 2 and j + 2 < len(s):
+            d = (s[j+2] - s[j-1]) / 5
+            dr = (s[j+3] - so) / 3
+            dl = (so - s[j-2]) / 3
+            new_pts = [so - 2*dl, so - dl, so, so + dr, so + 2*dr]
+            s = s[:j-1] + new_pts + s[j+3:]
+        else:
+            if j < 1 or j + 2 >= len(s):
+                # Not enough neighbor to adjust..
+                s = s[:j+1] + [so] + s[j:] 
+            else:
+                # adjusting two neighbors
+                dr = (s[j + 2] - so) / 2
+                dl = (so - s[j-1]) / 2
+                new_pts = [so - dl, so, so + dr]
+                s = s[:j] + new_pts + s[j+2:] 
+        s = list(np.sort(np.unique(s)))  # clean up and sort
+    return np.array(s)
+
+
+
+
+# --------------------------------------------------------------------------------
+# --- Contour tools 
+# --------------------------------------------------------------------------------
+# NOTE: merge with airfoils/shape.py
+
+def contour_length_scale(x, y):
+    """ return representative length scale of contour """
+    lx = np.max(x)-np.min(x)
+    ly = np.max(y)-np.min(y)
+    return  max(lx, ly)
+
+def contour_isClosed(x, y, reltol=_DEFAULT_REL_TOL):
+    """ Return true if contour is closed """
+    l = contour_length_scale(x, y)
+    return np.abs(x[0]-x[-1])<l*reltol or np.abs(y[0]-y[-1])<l*reltol
+
+def contour_remove_duplicates(x, y, reltol=_DEFAULT_REL_TOL):
+    l = contour_length_scale(x, y)
+    unique_points = []
+    duplicate_points = []
+    for x,y in zip(x, y):
+        if all(np.sqrt((x-p[0])**2 + (y-p[1])**2) > reltol*l for p in unique_points):
+            unique_points.append((x,y))
+        else:
+            duplicate_points.append((x,y))
+    x = np.array([p[0] for p in unique_points])
+    y = np.array([p[1] for p in unique_points])
+    return x, y, duplicate_points
+
+def close_contour(x, y, reltol=_DEFAULT_REL_TOL, force=False):
+    """ Close contour, unless it's already closed, alwasys do it if force is True"""
+    x = np.asarray(x)
+    y = np.asarray(y)
+    isClosed = contour_isClosed(x, y, reltol=reltol)
+    if isClosed or force:
+        x = np.append(x, x[0])
+        y = np.append(y, y[0])
+    return x, y
+    
+def reloop_contour(x, y, i):
+    """
+    Reloop a contour array so that it starts at a specific index.
+    NOTE: duplicates should preferably be removed
+    INPUTS:
+    - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
+    - i: Index where the relooped contour should start.
+    OUTPUTS:
+    - Relooped contour array.
+    """
+    #relooped_contour = np.concatenate((contour_array[i:], contour_array[:i]))
+    x2 = np.concatenate((x[i:], x[:i]))
+    y2 = np.concatenate((y[i:], y[:i]))
+    return x2, y2
+
+def opposite_contour(x, y, reltol = _DEFAULT_REL_TOL):
+    """
+    Make a clockwise contour counterclockwise and vice versa
+    INPUTS:
+    - contour_array: Numpy array of shape (n, 2) representing the contour of point coordinates.
+    OUTPUTS:
+    - opposite contour
+    """
+    isClosed = contour_isClosed(x, y, reltol=reltol)
+    if not isClosed:
+        # we close the contour
+        x, y = close_contour(x, y, force=True, reltol=reltol)
+    xopp=x[-1::-1]
+    yopp=y[-1::-1]
+    # If it was not closed, we remove duplicates
+    if not isClosed:
+        xopp, yopp, dupli = contour_remove_duplicates(xopp, yopp, reltol=reltol)
+    return xopp, yopp
+
+def contour_orientation(x, y):
+    """
+    Determine if a contour is clockwise or counterclockwise.
+    
+    INPUTS:
+    - x: 1D array containing the x-coordinates of the contour nodes.
+    - y: 1D array containing the y-coordinates of the contour nodes.
+    
+    OUTPUTS:
+    - 'clockwise' if the contour is clockwise, 'counterclockwise' if it's counterclockwise.
+    """
+    # Compute the signed area
+    signed_area = np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
+    
+    # Determine orientation
+    if signed_area > 0:
+        return 'counterclockwise' # Positive about z
+    elif signed_area < 0:
+        return 'clockwise' # Negative about z
+    else:
+        return 'undetermined'
+
+
+
+
+def closest_point(x0, y0, x, y):
+    """ return closest point to curve and index"""
+    i = np.argmin((x - x0)**2 + (y - y0)**2)
+    return x[i], y[i], i
+
+def find_closest(X, Y, point, xlim=None, ylim=None):
+    """Return closest point(s), using norm2 distance 
+    if xlim and ylim is provided, these are used to make the data non dimensional.
+    """
+    # NOTE: this will fail for datetime
+    if xlim is not None:
+        x_scale = (xlim[1]-xlim[0])**2
+        y_scale = (ylim[1]-ylim[0])**2
+    else:
+        x_scale = 1
+        y_scale = 1
+
+    norm2 = ((X-point[0])**2)/x_scale + ((Y-point[1])**2)/y_scale
+    ind = np.argmin(norm2, axis=0)
+    return X[ind], Y[ind], ind
+
+
+def point_in_contour(X, Y, contour, method='ray_casting'):
+    """
+    Checks if a point is inside a closed contour.
+ 
+    INPUTS:
+      - X: scalar or array of point coordinates
+      - Y: scalar or array of point coordinates
+      - contour: A numpy array shape (n x 2), of (x, y) coordinates representing the contour.
+            [[x1, y1]
+               ...
+             [xn, yn]]
+         or [(x1,y1), ... (xn,yn)]
+ 
+    OUTPUTS:
+      - logical or array of logical: True if the point is inside the contour, False otherwise.
+    """
+    def __p_in_c_ray(x, y, contour):
+        # --- Check if a point is inside a polygon using Ray Casting algorithm.
+        n = len(contour)
+        inside = False
+        p1x, p1y = contour[0]
+        for i in range(n+1):
+            p2x, p2y = contour[i % n]
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+        return inside
+
+    def __p_in_c_cv2(x, y, contour):
+       # --- CV2
+       import cv2 # pip install opencv-python
+       # NOTE: not working well...
+       contour = contour.reshape((-1,1,2))
+       dist = cv2.pointPolygonTest(contour.T, P, True)
+       if dist > 0:
+           return True
+       else:
+           return False
+    # --- End subfunctions
+
+    # --- Sanity
+    contour = np.asarray(contour)
+    assert(contour.shape[1]==2)
+
+    if np.isscalar(X):
+        # Check if the point is inside the bounding box of the contour.
+        if X > np.max(contour[:,0]) or X < np.min(contour[:,0]) or Y > np.max(contour[:,1]) or Y < np.min(contour[:,1]):
+            return False
+        if method=='cv2':
+            return __p_in_c_cv2(X, Y, contour)
+        elif method=='ray_casting':
+            return __p_in_c_ray(X, Y, contour)
+        else:
+            raise NotImplementedError()
+    # --- For arrays
+    #assert(X.shape==Y.shape)
+    shape_in = X.shape
+    Xf = np.array(X).flatten()
+    Yf = np.array(Y).flatten()
+    Bf = np.zeros(Xf.shape, dtype=bool)
+    if len(Xf)!=len(Yf):
+        raise Exception('point_in_contour: when array provided, X and Y must have the same length')
+    # Quickly eliminate pints outside of bounding box (vectorial calculation)
+    bbbox = (Xf <= np.max(contour[:,0])) & (Xf >= np.min(contour[:,0])) & (Yf <= np.max(contour[:,1])) & (Yf >= np.min(contour[:,1]))
+    Bf[bbbox] = True
+    for i, (x,y,b) in enumerate(zip(Xf, Yf, Bf)):
+        if b: # If in Bounding box, go into more complicated calculation
+            Bf[i] = __p_in_c_ray(x, y, contour)
+    B =  Bf.reshape(shape_in)
+    return B
 
 
 # --------------------------------------------------------------------------------}
 # --- Streamlines and quiver 
 # --------------------------------------------------------------------------------{
-def lines_to_arrows(lines,n=5,spacing=None,normalize=True):
+def lines_to_arrows(lines, n=5, offset=None, spacing=None, normalize=True):
     """ Extract "streamlines" arrows from a set of lines 
     Either: `n` arrows per line
         or an arrow every `spacing` distance
@@ -92,14 +422,17 @@ def lines_to_arrows(lines,n=5,spacing=None,normalize=True):
         if type(n) is int:
             n=[n]*len(lines)
         n=np.asarray(n)
-        spacing = [ curve_coord(l)[-1]/nn for l,nn in zip(lines,n)]
+        spacing = [ curve_coord(line=l)[-1]/nn for l,nn in zip(lines,n)]
     try:
         len(spacing)
     except:
         spacing=[spacing]*len(lines)
-
-    lines_s=[curve_extract(l,spacing=sp,offset=sp/2)         for l,sp in zip(lines,spacing)]
-    lines_e=[curve_extract(l,spacing=sp,offset=sp/2+0.01*sp) for l,sp in zip(lines,spacing)]
+    if offset is None:
+        lines_s=[curve_extract(l, spacing=sp, offset=sp/2)         for l,sp in zip(lines,spacing)]
+        lines_e=[curve_extract(l, spacing=sp, offset=sp/2+0.01*sp) for l,sp in zip(lines,spacing)]
+    else:
+        lines_s=[curve_extract(l, spacing=sp, offset=offset)         for l,sp in zip(lines,spacing)]
+        lines_e=[curve_extract(l, spacing=sp, offset=offset+0.01*sp) for l,sp in zip(lines,spacing)]
     arrow_x  = [l[i,0] for l in lines_s for i in range(len(l))]
     arrow_y  = [l[i,1] for l in lines_s for i in range(len(l))]
     arrow_dx = [le[i,0]-ls[i,0] for ls,le in zip(lines_s,lines_e) for i in range(len(ls))]
@@ -154,31 +487,26 @@ def seg_to_lines(seg):
         i=iEnd+1
     return lines
 
-def streamQuiver(ax,sp,*args,**kwargs):
+def streamQuiver(ax, sp, n=5, spacing=None, offset=None, normalize=True, **kwargs):
     """ Plot arrows from streamplot data  
     The number of arrows per streamline is controlled either by `spacing` or by `n`.
     See `lines_to_arrows`.
     """
-    # TODO this was changed for python 2.7
-    if 'spacing' in kwargs.keys():
-        spacing=kwargs['spacing']
-    else:
-        spacing=None
-    if 'n' in kwargs.keys():
-        n=kwargs['n']
-        del kwargs['n']
-    else:
-        n=5
-
     # --- Main body of streamQuiver
     # Extracting lines
-    seg   = sp.lines.get_segments() # list of (2, 2) numpy arrays
-    # lc = mc.LineCollection(seg,color='k',linewidth=0.7)
-    lines = seg_to_lines(seg)       # list of (N,2) numpy arrays
+    seg   = sp.lines.get_segments() 
+    if seg[0].shape==(2,2):
+        #--- Legacy)
+        # list of (2, 2) numpy arrays
+        # lc = mc.LineCollection(seg,color='k',linewidth=0.7)
+        lines = seg_to_lines(seg) # list of (N,2) numpy arrays
+    else:
+        lines = seg
+
     # Convert lines to arrows
-    ar_x, ar_y, ar_dx, ar_dy = lines_to_arrows(lines,spacing=spacing,n=n,normalize=True)
+    ar_x, ar_y, ar_dx, ar_dy = lines_to_arrows(lines, offset=offset, spacing=spacing, n=n, normalize=normalize)
     # Plot arrows
-    qv=ax.quiver(ar_x, ar_y, ar_dx, ar_dy, *args, **kwargs)
+    qv=ax.quiver(ar_x, ar_y, ar_dx, ar_dy, **kwargs)
     return qv
 
 
@@ -265,6 +593,11 @@ def example_streamquiver():
     plt.show()
 
 
+
+
+
 if __name__ == "__main__":
     TestCurves().test_curv_interp()
 #     unittest.main()
+
+
