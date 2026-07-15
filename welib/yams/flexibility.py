@@ -480,7 +480,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     Mxx = np.identity(3)*M
     #print('Mxx\n',Mxx)
 
-    # --- Mxt = -\int [~s] dm    =  -Skew(sigma+Psi g)    Or: +/- Skew(mdCM)
+    # --- Mxt = -\int [~s] dm    =  -Skew(sigma+Psi g)  = - Skew(mdCM)
     C_x = trapzs(s_G[0,:]*m)
     C_y = trapzs(s_G[1,:]*m)
     C_z = trapzs(s_G[2,:]*m)
@@ -740,7 +740,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     # Computing the M1 terms, this assumes that "s_G" is the undisplaced position!
     # The displaced position for each dof l is then s_G+ U[l]q_l with q_l=1
     if M1:
-        # --- M1 Mxt = -\int [~s] dm  = -Skew(sigma+Psi g)  Or: +/- Skew(mdCM)
+        # --- M1 Mxt = -\int [~s] dm  = -Skew(sigma+Psi g) = - Skew(mdCM) 
         # mdCM1 = C1n = int phi_n dm 
         mdCM_M1 = np.zeros((3,nf))
         Mxt_M1 = np.zeros((3,3,nf))

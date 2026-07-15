@@ -20,7 +20,7 @@ from sympy import trigsimp
 from sympy import cos,sin
 from sympy import zeros, transpose
 
-from sympy.physics.mechanics import Body as SympyBody
+# from sympy.physics.mechanics import Body as SympyBody
 from sympy.physics.mechanics import RigidBody as SympyRigidBody
 from sympy.physics.mechanics import Point, ReferenceFrame, inertia, dynamicsymbols
 from sympy.physics.mechanics.functions import msubs
@@ -137,7 +137,7 @@ class Taylor(object):
     where M, M^0, M^1_j are matrices of dimension nr x nc
     See Wallrapp 1993/1994
     """
-    def __init__(self, bodyname, varname, nr, nc, nq, rname=None, cname=None, q=None, order=2):
+    def __init__(self, bodyname, varname, nr, nc, nq, rname=None, cname=None, q=None, order=2, noZeroExp=False):
         if rname is None:
             rname=list(np.arange(nr)+1)
         if cname is None:
@@ -154,7 +154,10 @@ class Taylor(object):
         self.M0=Matrix(np.zeros((nr,nc)).astype(int))
         for i in np.arange(nr):
             for j in np.arange(nc):
-                self.M0[i,j] = symbols('{}^0_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+                if noZeroExp:
+                    self.M0[i,j] = symbols('{}_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+                else:
+                    self.M0[i,j] = symbols('{}^0_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
                 
         if order==2: 
             self.M1=[]
@@ -954,6 +957,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         
         if name_for_var is None:
             name_for_var = name
+            self.name_for_var = name_for_var
 
         # --- Mass
         if mass is None:
@@ -1032,9 +1036,9 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             self.M[0,0] = 0
             self.M[1,1] = 0
             self.M[2,2] = 0
-            # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
-            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            # Mxr, Mrx
+            self.M[0:3,3:6] = - skew(self.mdCM.get(dof, order)) # =-skew(mdCM)  NOTE:2026 Changed sign
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()       # = skew(mdCM)
             # Mrr
             self.M[3:6,3:6] = self.J.get(dof,order)
 
@@ -1062,6 +1066,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
                 for j in np.arange(3,6):
                     self.M[i,j]=Symbol('J_{}{}{}'.format(self.name_for_var,char[i-3],char[j-3]))
             # Symmetry
+            nq=0 # Rigid body
             for i in np.arange(0,6+nq):
                 for j in np.arange(0,6+nq):
                     self.M[j,i]=self.M[i,j]
@@ -1181,7 +1186,7 @@ class RigidBody(Body):
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True):
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True, noZeroExp=False):
         """ 
         name:  name used for object name, origin
         name_for_var: name/string used for inertial variable names
@@ -1210,21 +1215,21 @@ class YAMSFlexibleBody(YAMSBody):
             self.qddot.append(diff(self.qdot[i],t))
         # --- Mass matrix related
         self.mass=symbols('M_{}'.format(name_for_var))
-        self.J   = Taylor(name_for_var,'J'  , 3 , 3 , nq=nq, rname='xyz', cname='xyz', order=orderMM)
-        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM)
-        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM)
-        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM)
-        self.mdCM= Taylor(name_for_var,'M_d', 3,  1 , nq=nq, rname='xyz', cname=[''], order=orderMM)
+        self.J   = Taylor(name_for_var,'J'  , 3 , 3 , nq=nq, rname='xyz', cname='xyz', order=orderMM, noZeroExp=noZeroExp)
+        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM, noZeroExp=noZeroExp)
+        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM, noZeroExp=noZeroExp)
+        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM, noZeroExp=noZeroExp)
+        self.mdCM= Taylor(name_for_var,'M_d', 3,  1 , nq=nq, rname='xyz', cname=[''], order=orderMM, noZeroExp=noZeroExp)
         # --- h-omega related terms
         self.Gr=[0]*nq
         self.Ge=[0]*nq
         for i in np.arange(nq):
-            self.Gr[i] = Taylor(name_for_var, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
-            self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
-        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH)
+            self.Gr[i] = Taylor(name_for_var, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH, noZeroExp=noZeroExp)
+            self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH, noZeroExp=noZeroExp)
+        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH, noZeroExp=noZeroExp)
         # --- Stiffness and damping
-        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
-        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
+        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp)
+        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp)
         
         self.directions=directions
         self.defineExtremity(directions, unit_deflect=tip_unit_deflect, rotate=tip_rotate)
@@ -1338,8 +1343,8 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[1,1] = 0
             self.M[2,2] = 0
             # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
-            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            self.M[0:3,3:6] = - skew(self.mdCM.get(dof, order)) # = -skew(mdCM)
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()       # =  skew(mdCM)
             # Mrr
             self.M[3:6,3:6] = self.J.get(dof,order)
             # Mgx, Mxg
@@ -1381,8 +1386,8 @@ class YAMSFlexibleBody(YAMSBody):
         elif form=='TaylorExpanded':
             # We evaluate
             # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.eval(q)) # NOTE: sign convention is opposite wallrapp, change convention
-            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            self.M[0:3,3:6] = - skew(self.mdCM.eval(q))    # = - skew(mdCM)
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()  # =   skew(mdCM)
             # Mrr
             self.M[3:6,3:6] = self.J.eval(q)
             # Mgx, Mxg
@@ -1516,8 +1521,10 @@ class YAMSFlexibleBody(YAMSBody):
         
         if form=='TaylorExpanded':
             # k_omega_t
-            k_omega[0:3,0] = 2 *om_til * transpose(self.Ct.eval(q)) * qd # TODO does star work? or dot!
-            k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: mdCM sign convention is opposite Wallrap
+            k_omega[0:3,0] =  2 *om_til * transpose(self.Ct.eval(q)) * qd # NOTE we use star instead of dot because Ct and qd are sympy Matrix
+            # k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: Wrong sign convention mdCM sign convention is opposite Wallrap
+            k_omega[0:3,0] += om_til * (om_til * self.mdCM.eval(q))  # True expression 
+            #k_omega[0:3,0] += - om_til * skew(self.mdCM.eval(q)) * omega # Alternative from true expression by reverting the cross product
             # k_omega_r
             k_omega[3:6,0] = om_til * self.J.eval(q) * omega
             for k in np.arange(nq):
@@ -1544,7 +1551,9 @@ class YAMSFlexibleBody(YAMSBody):
         return ke
 
     def bodyGravitationalForce(self, g_vect, q, form='TaylorExpanded'):
-        """ Body gravity force  h_g  
+        r""" Body gravity force  h_g, acts as an external force on the right hand side
+            M a + k_{\omega} + k_e = f_{ext,other} + h_g
+
         inputs:
            g_vect: gravity vector, expressed in body coordinates
            q: generalized coordinates for this body
@@ -1565,11 +1574,11 @@ class YAMSFlexibleBody(YAMSBody):
         h_g = Matrix(np.zeros((6+nq,1)).astype(int)) 
         if form=='TaylorExpanded':
             # h_g,t
-            h_g[0:3,0] = M33.dot(g_vect)
+            h_g[0:3,0] = M33.dot(g_vect)                      # f_g    = \int m g_vect
             # h_g,t
-            h_g[3:6,0] =  skew(self.mdCM.eval(q)).dot(g_vect)
+            h_g[3:6,0] =  skew(self.mdCM.eval(q)).dot(g_vect) # \tau_g = \int r_{CG} \times (m g_vect) = \int (m r_{CG}) \times g_vect
             # h_g_e
-            h_g[6:6+nq,0] =  (self.Ct.eval(q)).dot(g_vect)
+            h_g[6:6+nq,0] =  (self.Ct.eval(q)).dot(g_vect)    #f_{g,e} = \int   m(z) \Phi(z)^T g_vect dz = C_t \, g_vect
         else:
             raise NotImplementedError()
 
