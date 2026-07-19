@@ -1,3 +1,7 @@
+"""
+Wrapper of YAMSModel for simple wind turbine models
+"""
+
 import numpy as np
 from sympy import Matrix, symbols, simplify, Function, expand_trig, Symbol, diff
 from sympy import cos, sin, transpose, pi
@@ -43,6 +47,7 @@ _defaultOpts={
     'orderMM':2, #< order of taylor expansion for Mass Matrix
     'orderH':2,  #< order of taylor expansion for H term
     'verbose':False, 
+    'RNA_Name':'RNA', 
 }
 
 
@@ -224,7 +229,7 @@ def get_model(model_name, **opts):
     else:
         # Nacelle
         #nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
-        nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_form='cross') 
+        nac = YAMSRigidBody(opts['RNA_Name'], rho_G = [x_RNAG ,0, z_RNAG], J_form='cross') 
         rot = None
 
     # --------------------------------------------------------------------------------}
