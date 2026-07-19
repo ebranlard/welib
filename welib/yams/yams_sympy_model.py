@@ -125,6 +125,8 @@ class YAMSModel(object):
 
     @property
     def loads(self):
+        if self.body_loads is None:
+            return None
         return [f[1] for f in self.body_loads]
 
     def EOM(self, Mform='symbolic', extraSubs=None):
@@ -159,7 +161,7 @@ class YAMSModel(object):
         self.PointsFrames.append(frame)
 
 
-    def kaneEquations(self, Mform='symbolic', addGravity=True):
+    def kaneEquations(self, Mform='symbolic', addGravity=True, nonLinCorr=False):
         """ 
         Compute equation of motions using Kane's method
         Mform: form to use for mass matrix, either: 
@@ -168,9 +170,11 @@ class YAMSModel(object):
 
         addGravity: include gravity for elastic bodies
         """
-        for sa in ['ref', 'coordinates', 'speeds','kdeqs','bodies','loads']:
+        for sa in ['ref', 'coordinates', 'speeds','kdeqs','bodies']:
             if getattr(self,sa) is None:
                 raise Exception('Attribute {} needs to be set before calling `kane` method'.format(sa))
+        if self.loads is None:
+            print('[WARN] zero loads')
 
         with Timer('Kane step1',True,silent=True):
             self.kane = YAMSKanesMethod(self.ref.frame, self.coordinates, self.speeds, self.kdeqs)
@@ -178,7 +182,7 @@ class YAMSModel(object):
         # --- Expensive kane step
         with Timer('Kane step 2',True,silent=True):
             #(use  Mform ='symbolic' or 'TaylorExpanded'), Mform='symbolic'
-            self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform, addGravity=addGravity, g_vect=self.g_vect)
+            self.fr, self.frstar  = self.kane.kanes_equations(self.bodies, self.loads, Mform=Mform, addGravity=addGravity, g_vect=self.g_vect, nonLinCorr=nonLinCorr)
         self.kane.fr     = self.fr
         self.kane.frstar = self.frstar
 

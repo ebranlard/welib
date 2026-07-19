@@ -1,3 +1,4 @@
+import sympy as sp
 from sympy.core.backend import zeros, Matrix, diff, eye
 from sympy import solve_linear_system_LU
 # try:
@@ -355,7 +356,7 @@ class YAMSKanesMethod(object):
         self._fr = FR
         return FR
 
-    def _form_frstar(self, bl, Mform='TaylorExpanded', addGravity=True, g_vect=None):
+    def _form_frstar(self, bl, Mform='TaylorExpanded', addGravity=True, g_vect=None, nonLinCorr=False):
         """Form the generalized inertia force.
 
         Mform: which form to use for flexible body mass matrix: TaylorExpanded or symbolic
@@ -401,7 +402,8 @@ class YAMSKanesMethod(object):
             # --- Step 3/4: Velocities and accelerations
             omega = body.frame.ang_vel_in(N)
             vel = zero_uaux(P.vel(N))
-            acc = zero_udot_uaux(P.acc(N))
+            acc_full = P.acc(N)
+            acc_no_u = zero_udot_uaux(acc_full) # NOTE: all velocities are wiped out here
             if not isinstance(body, Particle):
                 omega = zero_uaux(body.frame.ang_vel_in(N))
                 alpha = omega.diff(t, N)
@@ -434,7 +436,7 @@ class YAMSKanesMethod(object):
                         # rotational
                         bodyMM[j, k] +=     (tmp_ang & Jo_vect[k]) # I dot Jo[:,j] dot Jo[:,k]
                 # --- Full inertial loads
-                inertial_force = (M.diff(t) * vel + M * acc)
+                inertial_force = (M.diff(t) * vel + M * acc_no_u)
                 inertial_torque = zero_uaux((I.dt(body.frame) & omega) + msubs(I & body.frame.ang_acc_in(N), udot_zero) + (omega ^ (I & omega)))
 
                 # NOTE KEEP ME: Alternative formulation using "matrices" 
@@ -447,6 +449,7 @@ class YAMSKanesMethod(object):
                     bodynonMM[j] += inertial_force  & Jv_vect[j]
                     bodynonMM[j] += inertial_torque & Jo_vect[j]
             elif isinstance(body,YAMSFlexibleBody):
+                acc = msubs(acc_full, uaux_zero)
                 if addGravity:
                     acc=acc-g_vect
                 MMloc = body.bodyMassMatrix(form=Mform)
@@ -482,8 +485,82 @@ class YAMSKanesMethod(object):
                     for k in range(len(body.q)):
                         if self.q[j] == body.q[k]:
                             bodynonMM[j] +=  inertial_elast_coord[k]
+                # --------------------------------------------------------------------------------}
+                # --- Correction for nonlinear terms typically missing in floating Frame of Reference
+                # --------------------------------------------------------------------------------{
+                # Automated symbolic correction patch inside the YAMSFlexibleBody block
+                if nonLinCorr:
+                    print('[INFO] Applying nonlinear correction - Beta version!')
+                    # 1. Extract kinematic quantities from the framework in the local body frame
+                    #omega_vec = body.frame.ang_vel_in(N).to_matrix(body.frame)
+                    omega_vec = omega_sub.to_matrix(body.frame) # NOTE: using omega_sub here
+                    # v_origin = P.vel(N).to_matrix(body.frame)
+                    vel_origin = vel_sub.to_matrix(body.frame) # NOTE: using vel_sub here
+                    #print('vel_sub', P.vel(N).to_matrix(body.frame))
+                    #print('vel_sub', vel_origin)
+                    #print('omega', omega)
+                    #print('omega_vec', omega_vec)
+                    
+                    omega_x = omega_vec[0, 0]
+                    omega_y = omega_vec[1, 0]
+                    omega_z = omega_vec[2, 0]
+                    
+                    v_x = vel_origin[0, 0]
+                    v_y = vel_origin[1, 0]
+                    v_z = vel_origin[2, 0]
+                    
+                    # 2. Automatically build Delta_T (Kinetic energy) using known shape integrals from MMloc
+                    Delta_T = sp.S.Zero
+                    for k, q_k in enumerate(body.q):
+                        # Extract the exact symbolic mass constants from MMloc positions
+                        # Diagonal entry of the elastic block gives the modal mass
+                        M_et = MMloc[6 + k, 6 + k]
+                        # Loop through individual characters in case direction is multi-axis like 'xy'
+                        for axis in body.directions[k]:
+                            if axis == 'x':
+                                # Retrieve Ct coupling component mapping to translation along x
+                                C_t_x = MMloc[0, 6 + k]
+                                # Rotational inertia variation about cross-axis (y)
+                                Delta_T += sp.S.Half * M_et * q_k**2 * omega_y**2
+                                # Rigid-flexible translational coupling
+                                Delta_T += C_t_x * q_k * (v_z * omega_y - v_y * omega_z)
+                                #print('Delta T', sp.S.Half * M_et * q_k**2 * omega_y**2)
+                                #print('Delta T', C_t_x * q_k * (v_z * omega_y - v_y * omega_z))
+                                
+                            elif axis == 'y':
+                                # Retrieve Ct coupling component mapping to translation along y
+                                C_t_y = MMloc[1, 6 + k]
+                                # Rotational inertia variation about cross-axis (x)
+                                Delta_T += sp.S.Half * M_et * q_k**2 * omega_x**2
+                                # Rigid-flexible translational coupling
+                                Delta_T += C_t_y * q_k * (v_x * omega_z - v_z * omega_x)
+
+                    # 3. Apply Lagrange's equation to Delta_T to get the missing generalized forces
+                    for j in range(o):
+                        q_j = self.q[j]
+                        u_j = self.u[j]
+
+                        # --- Add in Body MM
+                        # Direct Hessian calculation for the mass matrix components
+                        for k in range(o):
+                            u_k = self.u[k]
+                            #print('BodyMM', diff(diff(Delta_T, u_j), u_k))
+                            bodyMM[j, k] += diff(diff(Delta_T, u_j), u_k)
+
+                        # --- Add in nonMM term for proper quadratic velocity
+                        # Full generalized force from Delta_T                       
+                        p_j = diff(Delta_T, u_j)
+                        F_j_missing = diff(p_j, t).subs(q_ddot_u_map) - diff(Delta_T, q_j)
+                        #print('F_j', F_j_missing)
+                        #print('F_j', msubs(F_j_missing, udot_zero))
+                        #bodynonMM[j] += F_j_missing
+                        # Strip out udot terms so only pure velocity/position terms hit bodynonMM
+                        bodynonMM[j] += msubs(F_j_missing, udot_zero)
+
+
+                # --- 
                 bnMMSubs = msubs(bodynonMM, q_ddot_u_map)
-                bodyMM = bnMMSubs.jacobian(self._udot)
+                bodyMM += bnMMSubs.jacobian(self._udot)
             else:
                 M = zero_uaux(body.mass)
                 vel = zero_uaux(body.point.vel(N))
@@ -504,7 +581,8 @@ class YAMSKanesMethod(object):
             MM   +=bodyMM
             nonMM+=bodynonMM
             # --- Storing for debug
-            body._acc             = acc
+            body._acc             = acc_full
+            body._acc_no_u        = acc_no_u
             body._vel             = vel
             body._omega           = omega
             body._inertial_force  = inertial_force
@@ -648,7 +726,7 @@ class YAMSKanesMethod(object):
         result = linearizer.linearize(**kwargs)
         return result + (linearizer.r,)
 
-    def kanes_equations(self, bodies, loads=None, Mform='TaylorExpanded',addGravity=True, g_vect=None):
+    def kanes_equations(self, bodies, loads=None, Mform='TaylorExpanded',addGravity=True, g_vect=None, nonLinCorr=False):
         """ Method to form Kane's equations, Fr + Fr* = 0.
 
         Explanation
@@ -683,12 +761,14 @@ class YAMSKanesMethod(object):
                     useinstead='switched argument order to update your code, For example: '
                     'kanes_equations(loads, bodies) > kanes_equations(bodies, loads).',
                     issue=10945, deprecated_since_version="1.1").warn()
+        if addGravity and g_vect is None:
+            raise Exception('kanes_equations: addGravity is True but g_vect is None. Set addGravity to False if gravity is not desired.')
 
         if not self._k_kqdot:
             raise AttributeError('Create an instance of KanesMethod with '
                     'kinematic differential equations to use this method.')
         fr = self._form_fr(loads)
-        frstar = self._form_frstar(bodies, Mform=Mform, addGravity=addGravity, g_vect=g_vect)
+        frstar = self._form_frstar(bodies, Mform=Mform, addGravity=addGravity, g_vect=g_vect, nonLinCorr=nonLinCorr)
         if self._uaux:
             if not self._udep:
                 km = KanesMethod(self._inertial, self.q, self._uaux,

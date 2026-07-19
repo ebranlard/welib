@@ -166,6 +166,8 @@ class Taylor(object):
                 for i in np.arange(nr):
                     for j in np.arange(nc):
                         self.M1[k][i,j] = symbols('{}^1_{}_{}_{}{}'.format(varname,k+1,bodyname,rname[i],cname[j])) 
+        if order>2:
+            raise NotImplementedError('Order 3 not implemented')
     def eval(self, q=None, order=None):
         """ evaluate the taylor series """
         if q is None:

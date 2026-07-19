@@ -104,7 +104,7 @@ class Test(unittest.TestCase):
 
         # --- YAMSKane
         y_kane = YAMSKanesMethod(ref.frame, coordinates, speeds, kdeqs)
-        fr_y, frstar_y  = y_kane.kanes_equations(bodies, loads)
+        fr_y, frstar_y  = y_kane.kanes_equations(bodies, loads, addGravity=False)
         #MM            = y_kane.mass_matrix_full
         #forcing_vector = y_kane.forcing_full
 
