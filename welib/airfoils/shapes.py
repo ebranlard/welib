@@ -19,7 +19,7 @@ from welib.tools.curves import *
 
 # Local 
 
-_DEFAULT_REL_TOL=0.001
+_DEFAULT_REL_TOL=0.00001
 
 def normalize(x,y):
     c  = np.max(x)-np.min(x)
@@ -33,6 +33,7 @@ class AirfoilShape():
         """ 
          - reltol: relative tolerance to figure out if points are close. Relative to chord
         """
+        print('[WARN] The welib version of AirfoilShape is behind the nalulib version.')
         # 
         if filename is not None:
             import welib.weio as weio
@@ -232,7 +233,7 @@ class AirfoilShape():
     # --------------------------------------------------------------------------------
     # --- Functions that potentially change the data
     # --------------------------------------------------------------------------------
-    def _removeDuplicates(self, x=None, y=None, inPlace=False, verbose=False):
+    def _removeDuplicates(self, x=None, y=None, inPlace=False, verbose=True):
         """ remove duplicates in list of points """
         if x is None:
             x = self._x
@@ -287,7 +288,7 @@ class AirfoilShape():
     # --------------------------------------------------------------------------------
     # --- Plot
     # --------------------------------------------------------------------------------
-    def plot_surfaces(self):
+    def plot_surfaces(self, title=None):
         xu, yu, xl, yl, Iu, Il = self.split_surfaces()
         x0, y0, y0u, y0l = self.camberline()
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -301,7 +302,10 @@ class AirfoilShape():
         ax.legend()
         ax.set_xlabel('x')
         ax.set_ylabel('y')
-        ax.set_title(self.name)
+        if title is not None:
+            ax.set_title(title)
+        else:
+            ax.set_title(self.name)
         plt.axis ( 'equal' )
         return ax
 
@@ -314,7 +318,7 @@ class AirfoilShape():
             y = self.y
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        ax.plot(self.x, self.y, label=label)
+        ax.plot(self.x, self.y, label=label, marker='.')
         
         if first:
             ax.plot(self.x[0], self.y[0], 's')

@@ -16,7 +16,7 @@ class TestAirfoilShape(unittest.TestCase):
         #self.assertEqual(P.cl.size,3)
         digits='0022'
         n=3
-        x, y = naca_shape(digits, chord=1, n=n, thickTEZero=True)
+        x, y = naca_shape(digits, chord=1, n=n, sharp=True)
         #print('x',x)
         #print('y',y)
 
@@ -87,6 +87,16 @@ class TestAirfoilShape(unittest.TestCase):
         #arf.plot_surfaces()
         #arf.plot()
 
+    def test_naca_cambered(self):
+        digits='2412'
+        n=101
+        x, y = naca_shape(digits, chord=1, n=n, sharp=True)
+        arf = AirfoilShape(x=x, y=y, name='Naca'+digits)
+        self.assertEqual(arf.chord, 1)
+        self.assertEqual(arf.closed, True)
+        np.testing.assert_almost_equal(arf.thickness_max, 0.12157300198224763, 3)
+        self.assertTrue(np.max(y) > 0)
+        self.assertTrue(np.min(y) < 0)
 
 
 if __name__ == '__main__':
