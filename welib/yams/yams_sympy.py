@@ -130,6 +130,32 @@ def DCMtoOmega(DCM, ref_frame=None):
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
+def   SmpMat(bodyname, varname, nr, nc, nq, rname=None, cname=None, noZeroExp=False, singleDOFNumbering=True):
+        if rname is None:
+            if singleDOFNumbering or nr>1:
+                rname=list(np.arange(nr)+1)
+            else:
+                rname=['']
+        if cname is None:
+            if singleDOFNumbering or nc>1:
+                cname=list(np.arange(nc)+1)
+            else:
+                cname=['']
+        if len(cname)!=nc:
+            raise Exception('cname length should match nc for Taylor {} {}'.format(bodyname, varname))
+        if len(rname)!=nr:
+            raise Exception('rname length should match nr for Taylor {} {}'.format(bodyname, varname))
+            
+        M0=Matrix(np.zeros((nr,nc)).astype(int))
+        for i in np.arange(nr):
+            for j in np.arange(nc):
+                if noZeroExp:
+                    M0[i,j] = symbols('{}_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+                else:
+                    M0[i,j] = symbols('{}^0_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+        return M0
+
+
 class Taylor(object):
     r""" 
     A Taylor object contains a Taylor expansion of a variable as function of q
@@ -137,11 +163,17 @@ class Taylor(object):
     where M, M^0, M^1_j are matrices of dimension nr x nc
     See Wallrapp 1993/1994
     """
-    def __init__(self, bodyname, varname, nr, nc, nq, rname=None, cname=None, q=None, order=2, noZeroExp=False):
+    def __init__(self, bodyname, varname, nr, nc, nq, rname=None, cname=None, q=None, order=2, noZeroExp=False, singleDOFNumbering=True):
         if rname is None:
-            rname=list(np.arange(nr)+1)
+            if singleDOFNumbering or nr>1:
+                rname=list(np.arange(nr)+1)
+            else:
+                rname=['']
         if cname is None:
-            cname=list(np.arange(nr)+1)
+            if singleDOFNumbering or nc>1:
+                cname=list(np.arange(nc)+1)
+            else:
+                cname=['']
         if len(cname)!=nc:
             raise Exception('cname length should match nc for Taylor {} {}'.format(bodyname, varname))
         if len(rname)!=nr:
@@ -161,7 +193,7 @@ class Taylor(object):
                 
         if order==2: 
             self.M1=[]
-            for k in np.arange(nq):
+            for k in np.arange(nq): # DOF number
                 self.M1.append(Matrix(np.zeros((nr,nc)).astype(int)))
                 for i in np.arange(nr):
                     for j in np.arange(nc):
@@ -1126,6 +1158,10 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     def masscenter_acc_inertial(self):
         """ return acceleration velocity of body COG in inertial frame """
         return self.masscenter.acc(self.inertial_frame)
+
+    @property
+    def kinetic_energy_inertial(self):
+        return self.kinetic_energy(self.inertial_frame)
     
     def __repr__(self):
         # rigid body
@@ -1153,8 +1189,12 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
 
         s+='Useful getters: origin_inertia, inertia_matrix, origin_inertia_matrix\n'
         s+='                masscenter_inertia\n'
+        s+='                kinetic_energy_inertial\n'
         s+='Useful setters: noMass, noInertia, setGcoord\n'
         s+='Useful functions:\n'
+        s+='  - kinetic_energy(frame)\n'
+        s+='  - linear_momentum(point, frame)\n'
+        s+='  - angular_momentum(point, frame)\n'
         s+='  - bodyMassMatrix(q=None, form="TaylorExpanded", order=None, dof=None)\n'
         return s
 
@@ -1188,7 +1228,8 @@ class RigidBody(Body):
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True, noZeroExp=False):
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True, 
+                 noZeroExp=False, singleDOFNumbering=True):
         """ 
         name:  name used for object name, origin
         name_for_var: name/string used for inertial variable names
@@ -1210,30 +1251,39 @@ class YAMSFlexibleBody(YAMSBody):
         self.qdot  = []                         # DOF velocities
         self.qddot = []                         # DOF accelerations
         t=dynamicsymbols._t
+        if nq==1 and not singleDOFNumbering:
+            for i in np.arange(nq):
+                self.q.append   (dynamicsymbols('q_{}'. format(name_for_DOF)))
+                self.qd.append  (dynamicsymbols('qd_{}'.format(name_for_DOF)))
+        else:
+            for i in np.arange(nq):
+                self.q.append   (dynamicsymbols('q_{}{}'. format(name_for_DOF,i+1)))
+                self.qd.append  (dynamicsymbols('qd_{}{}'.format(name_for_DOF,i+1)))
         for i in np.arange(nq):
-            self.q.append   (dynamicsymbols('q_{}{}'. format(name_for_DOF,i+1)))
-            self.qd.append  (dynamicsymbols('qd_{}{}'.format(name_for_DOF,i+1)))
             self.qdot.append(diff(self.q[i],t))
             self.qddot.append(diff(self.qdot[i],t))
         # --- Mass matrix related
         self.mass=symbols('M_{}'.format(name_for_var))
         self.J   = Taylor(name_for_var,'J'  , 3 , 3 , nq=nq, rname='xyz', cname='xyz', order=orderMM, noZeroExp=noZeroExp)
-        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM, noZeroExp=noZeroExp)
-        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM, noZeroExp=noZeroExp)
-        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM, noZeroExp=noZeroExp)
+        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM, noZeroExp=noZeroExp        , singleDOFNumbering=singleDOFNumbering ) # TODO no expansion
+        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
         self.mdCM= Taylor(name_for_var,'M_d', 3,  1 , nq=nq, rname='xyz', cname=[''], order=orderMM, noZeroExp=noZeroExp)
         # --- h-omega related terms
         self.Gr=[0]*nq
         self.Ge=[0]*nq
         for i in np.arange(nq):
             self.Gr[i] = Taylor(name_for_var, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH, noZeroExp=noZeroExp)
-            self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH, noZeroExp=noZeroExp)
-        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH, noZeroExp=noZeroExp)
+            self.Ge[i] = SmpMat(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+#           self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH, noZeroExp=noZeroExp    , singleDOFNumbering=singleDOFNumbering)
+        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
         # --- Stiffness and damping
-        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp)
-        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp)
+        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
         
-        self.directions=directions
+        if len(directions)<nq:
+            raise Exception(f'Number of directions should be at least {nq}. Directions provided are {directions}')
+        self.directions=directions[:nq]
         self.defineExtremity(directions, unit_deflect=tip_unit_deflect, rotate=tip_rotate)
         
         self.origin = Point('O_'+self.name)
@@ -1402,7 +1452,7 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[6:6+nq,6:6+nq] = self.Me.eval(q)
 
         else:
-            raise Exception('Unknown mass matrix form option `{}`'.format(form))
+            raise Exception('Unknown mass matrix form option `{}`. Allowed are: `TaylorExpanded` or `symbolic`'.format(form))
 
         if self.predefined_kind is not None:
             if self.predefined_kind=='twr-z':
@@ -1501,7 +1551,7 @@ class YAMSFlexibleBody(YAMSBody):
         
         return self.M
     
-    def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded'):
+    def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded', nonLinCorr=False):
         r""" Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
         inputs:
            omega: angular velocity of the body wrt to the inertial frame, expressed in body coordinates
@@ -1521,24 +1571,92 @@ class YAMSFlexibleBody(YAMSBody):
         ox,oy,oz=omega[0,0],omega[1,0],omega[2,0]
         omega_q = Matrix([ox**2, oy**2,oz**2, ox*oy, oy*oz, ox*oz]).reshape(6,1)
         
-        if form=='TaylorExpanded':
-            # k_omega_t
-            k_omega[0:3,0] =  2 *om_til * transpose(self.Ct.eval(q)) * qd # NOTE we use star instead of dot because Ct and qd are sympy Matrix
-            # k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: Wrong sign convention mdCM sign convention is opposite Wallrap
-            k_omega[0:3,0] += om_til * (om_til * self.mdCM.eval(q))  # True expression 
-            #k_omega[0:3,0] += - om_til * skew(self.mdCM.eval(q)) * omega # Alternative from true expression by reverting the cross product
-            # k_omega_r
-            k_omega[3:6,0] = om_til * self.J.eval(q) * omega
-            for k in np.arange(nq):
-                k_omega[3:6,0] += self.Gr[k].eval(q) * qd[k] * omega
-            # k_omega_e
-            k_omega[6:6+nq,0] = self.Oe.eval(q) * omega_q
-            for k in np.arange(nq):
-                k_omega[6:6+nq,0] += self.Ge[k].eval(q) * qd[k] * omega
+        if not nonLinCorr:
+            if form=='TaylorExpanded':
+                # --- k_omega_t
+                k_omega[0:3,0] =  2 *om_til * transpose(self.Ct.eval(q)) * qd # NOTE we use star instead of dot because Ct and qd are sympy Matrix
+                # k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: Wrong sign convention mdCM sign convention is opposite Wallrap
+                k_omega[0:3,0] += om_til * (om_til * self.mdCM.eval(q))  # True expression 
+                #k_omega[0:3,0] += - om_til * skew(self.mdCM.eval(q)) * omega # Alternative from true expression by reverting the cross product
+
+                # --- k_omega_r 
+                k_omega[3:6,0] = om_til * self.J.eval(q) * omega
+                for k in np.arange(nq):
+                    k_omega[3:6,0] += self.Gr[k].eval(q) * qd[k] * omega
+
+                # --- k_omega_e
+                k_omega[6:6+nq,0] = self.Oe.eval(q) * omega_q
+                for k in np.arange(nq):
+                    #k_omega[6:6+nq,0] += self.Ge[k].eval(q) * qd[k] * omega
+                    k_omega[6:6+nq,0] += self.Ge[k] * qd[k] * omega
+            else:
+                raise NotImplementedError()
         else:
-            raise NotImplementedError()
+            M_theta_theta_1, M_theta_theta_2 = self.M_theta_theta_expansion()
+
+            # --- NOTE: only the nonlinCorr here
+            # --- k_omega_t
+            #k_omega[0:3,0] =  2 *om_til * transpose(self.Ct.eval(q)) * qd # No expansion of Ct
+            for j, q_j in enumerate(q):
+                mdCM_1_j = self.Ct.M0[j,:].T * q_j
+                k_omega[0:3,0] += om_til * (om_til *  mdCM_1_j )  # True expression 
+
+            # --- k_omega_r - Term 1
+            M_theta_theta_ = zeros(3, 3)
+            for j, q_j in enumerate(q):
+                M_theta_theta_ += M_theta_theta_1[j] * q_j
+                for k, q_k in enumerate(q):
+                    M_theta_theta_ += M_theta_theta_2[j][k] * q_j * q_k
+            k_omega[3:6,0] += om_til * ( M_theta_theta_ ) * omega
+
+            # --- k_omega_r - Term 2
+            for j in np.arange(nq):
+                Gr_ = zeros(3, 3)
+                for k, q_k in enumerate(q):
+                    Gr_ += 2* M_theta_theta_2[k][j] * q_k
+                k_omega[3:6,0] += Gr_ * qd[j] * omega
+
+            # --- k_omega_e
+            for j in np.arange(nq):
+                Oe_1 = zeros(3,3)
+                for k, q_k in enumerate(q):
+                    Oe_1 += - M_theta_theta_2[k][j] * q_k
+                k_omega[6+j,0] +=  (omega.T * Oe_1 * omega)[0,0]
 
         return k_omega
+
+    def M_theta_theta_expansion(self, Mform='TaylorExpanded'):
+        """ Return nonlinear terms of M theta theta 
+        Note: computed analytically on 20/7/2026 as part of 673 extract notes, to be placed elsewhere.
+        """
+        MMloc = self.bodyMassMatrix(form=Mform)
+
+        M_theta_theta_1 = [zeros(3,3)] * len(self.q)
+        M_theta_theta_2 = [[zeros(3,3)] * len(self.q)] * len(self.q)
+        # Loop on body DOFs
+        for j, q_j in enumerate(self.q):
+            # --- M_theta_theta_1
+            C_rj = MMloc[3:6, 6 + j] # Cr row j, a vector of length 3
+            M_theta_theta_1[j]= - skew(C_rj)
+
+            # --- M_theta_theta_2
+            for k, q_k in enumerate(self.q):
+                M_ejk = MMloc[6 + j, 6 + k] # Modal mass
+                if 'z' in np.array(self.directions).flatten():
+                    raise NotImplementedError('M_theta_theta correction only implemented for z-beam')
+                M_theta_theta_2[j][k][2, 2] = M_ejk # Good as long as beam along z
+                if len(np.unique(np.array(self.directions).flatten()))!=len(self.q):
+                    raise NotImplementedError('Shape function directions needs to be unique for M_theta_tehta correction for now..')
+                # NOTE: simplifications for now, assume all modes are in different directions
+                if k==j:
+                    if self.directions[j]=='x':
+                        M_theta_theta_2[j][k][1, 1] = M_ejk
+                    elif self.directions[j]=='y':
+                        M_theta_theta_2[j][k][0, 0] = M_ejk
+                    else:
+                        raise NotImplementedError('Only pure x and y directions supported for M_theta_theta correction')
+        return M_theta_theta_1, M_theta_theta_2
+
     
     def bodyElasticForce(self, q, qd):
         # --- Safety
@@ -1646,11 +1764,11 @@ class YAMSFlexibleBody(YAMSBody):
                     if xyz=='y' or xyz=='x':
                         # Ge
                         for jq in np.arange(nq):
-                            self.Ge[iq].M0[jq,0]=0
-                            self.Ge[iq].M0[jq,1]=0
+                            self.Ge[iq][jq,0]=0
+                            self.Ge[iq][jq,1]=0
                             xyz2 = self.directions[jq]
                             if xyz==xyz2:
-                                self.Ge[iq].M0[jq,2]=0
+                                self.Ge[iq][jq,2]=0
                             if xyz!=xyz2:
                                 self.Me.M0[iq,jq]=0
                                 self.De.M0[iq,jq]=0
@@ -1728,9 +1846,9 @@ class YAMSFlexibleBody(YAMSBody):
                         rd[s] = ('Gr_{}'.format(self.name_for_var), [iq,i,j])
 
         for iq in np.arange(len(self.Ge)):
-            for i in np.arange(self.Ge[iq].M0.shape[0]):
-                for j in np.arange(self.Ge[iq].M0.shape[1]):
-                    s=repr(self.Ge[iq].M0[i,j])
+            for i in np.arange(self.Ge[iq].shape[0]):
+                for j in np.arange(self.Ge[iq].shape[1]):
+                    s=repr(self.Ge[iq][i,j])
                     if len(s)>1:
                         rd[s] = ('Ge_{}'.format(self.name_for_var), [iq,i,j])
 

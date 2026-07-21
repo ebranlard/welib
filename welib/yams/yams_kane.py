@@ -24,6 +24,8 @@ from sympy.utilities.exceptions import SymPyDeprecationWarning
 from sympy.utilities.iterables import iterable
 
 from welib.yams.yams_sympy import YAMSFlexibleBody, YAMSRigidBody, coord2vec
+from welib.yams.yams_sympy_tools import skew
+import numpy as np
 
 
 __all__ = ['YAMSKanesMethod']
@@ -461,13 +463,13 @@ class YAMSKanesMethod(object):
                 inertial_force=0 # Fstar
                 inertial_torque=0 # Tstar
                 inertial_force_coord =MMloc[0:3,0:3] * acc.to_matrix(body.frame) 
-                inertial_force_coord+=MMloc[0:3,3:6] * alpha.to_matrix(body.frame)
+                inertial_force_coord+=MMloc[0:3,3:6] * alpha.to_matrix(body.frame) # M_x_theta
                 inertial_force_coord+=MMloc[0:3,6:]  * Matrix(body.qddot)
                 inertial_force_coord+=body.h_omega[0:3,0]
                 inertial_force_coord+=body.h_elast[0:3,0]
-                inertial_torque_coord =MMloc[3:6,0:3] * acc.to_matrix(body.frame) 
-                inertial_torque_coord+=MMloc[3:6,3:6] * alpha.to_matrix(body.frame)
-                inertial_torque_coord+=MMloc[3:6,6:]  * Matrix(body.qddot)
+                inertial_torque_coord =MMloc[3:6,0:3] * acc.to_matrix(body.frame)  # M_theta_x
+                inertial_torque_coord+=MMloc[3:6,3:6] * alpha.to_matrix(body.frame)# M_theta_theta
+                inertial_torque_coord+=MMloc[3:6,6:]  * Matrix(body.qddot)         # M_theta_e
                 inertial_torque_coord+=body.h_omega[3:6,0]
                 inertial_torque_coord+=body.h_elast[3:6,0]
                 inertial_elast_coord =MMloc[6:,0:3] * acc.to_matrix(body.frame) 
@@ -476,7 +478,91 @@ class YAMSKanesMethod(object):
                 inertial_elast_coord+=body.h_omega[6:,0]
                 inertial_elast_coord+=body.h_elast[6:,0]
                 body.inertial_elast=inertial_elast_coord
+                # --------------------------------------------------------------------------------
+                # --- Correction for nonlinear terms typically missing in floating Frame of Reference
+                # --------------------------------------------------------------------------------
+                if nonLinCorr:
+                    print('[INFO] Adding corrections directly to continuous inertial fields!')
+                    # Allocate matching correction containers in the body frame
+                    F_corr = zeros(3, 1)
+                    T_corr = zeros(3, 1)
+                    E_corr = zeros(len(body.q), 1)
+                    # Extract angular velocities in the body frame
 
+                    # --- NEW CORRECTION
+                    M_theta_theta_1, M_theta_theta_2 = body.M_theta_theta_expansion()
+                    for j, q_j in enumerate(body.q):
+                        # --- First order terms
+                        # --- M x_theta_1
+                        C_tj = MMloc[0:3, 6 + j] # Vector
+                        M_x_theta_1_j = - skew(C_tj) * q_j
+                        F_corr += M_x_theta_1_j   * alpha.to_matrix(body.frame).as_mutable() # M_x_theta_1
+                        T_corr += M_x_theta_1_j.T * acc.to_matrix(body.frame).as_mutable()   # M_theta_x_1
+                        # --- M_theta_theta_1
+                        T_corr += M_theta_theta_1[j] * q_j * alpha.to_matrix(body.frame).as_mutable() # M_theta_theta
+                        # --- M_theta_e_1
+                        T_corr+= sp.S.Half * body.Ge[j].T * q_j * Matrix(body.qddot)         # M_theta_e
+
+                        # --- Second order terms
+                        # --- M_theta_theta_2
+                        for k, q_k in enumerate(body.q):
+                            T_corr += M_theta_theta_2[j][k] * q_j * q_k * alpha.to_matrix(body.frame).as_mutable()   # M_theta_theta_2
+
+                    # --- OLD CORRECTION
+#                     om_mat = omega.to_matrix(body.frame)
+#                     al_mat = alpha.to_matrix(body.frame)
+#                     acc_mat = acc.to_matrix(body.frame)
+#                     al_subs = msubs(al_mat  , q_ddot_u_map)
+#                     for j, q_j in enumerate(body.q):
+#                         M_et = MMloc[6 + j, 6 + j] # Modal mass
+#                         qdot_j = body.qdot[j]
+#                         qddot_j = body.qddot[j]
+#                         ox, oy, oz = om_mat[0, 0], om_mat[1, 0], om_mat[2, 0]
+#                         for axis in body.directions[j]:
+#                             if axis == 'x':
+#                                 C_t = MMloc[0, 6 + j]
+#                                 # --- 1. Pure Rotational Correction (Me * q^2 effects - Mass matrix and Quad vel)
+#                                 # Moment of inertia changes: gives rise to mass matrix and quadratic terms
+#                                 T_corr[1, 0] += M_et * (q_j**2 * al_mat[1, 0] + 2 * q_j * qdot_j * om_mat[1, 0])
+#                                 E_corr[j, 0] += -M_et * q_j * om_mat[1, 0]**2
+#                                 # --- 2. Center of Mass Shift (Mass Matrix Terms) alpha x (q xhat)
+#                                 F_corr[0, 0] += C_t * q_j * al_subs[1, 0] # Main term
+#                                 F_corr[1, 0] += C_t * q_j * al_subs[0, 0] # likely zero, unless strong yawing
+# 
+#                                 T_corr[0, 0] += C_t * q_j * acc_mat[2, 0]
+#                                 T_corr[1, 0] += C_t * q_j * acc_mat[0, 0] # Main term
+#                                 T_corr[2, 0] +=-C_t * q_j * acc_mat[1, 0]  
+                                # --- 3. Missing Centrifugal (Quad vel term) om x (om x q xhat)
+#                                 F_corr[0, 0] += -C_t * q_j * (oy**2 + oz**2)
+# 
+#                             elif axis == 'y':
+#                                 C_t = MMloc[1, 6 + j]
+#                                 # --- 1. Pure Rotational Correction (Me * q^2 effects)
+#                                 T_corr[0, 0] += M_et * (q_j**2 * al_subs[0, 0] + 2 * q_j * qdot_j * om_mat[0, 0])
+#                                 E_corr[j, 0] += -M_et * q_j * om_mat[0, 0]**2
+#                                 # --- 2. Consistent Center of Mass Shift Mass Matrix Terms
+#                                 F_corr[1, 0] += -C_t * q_j * al_subs[0, 0]
+#                                 T_corr[0, 0] += -C_t * q_j * acc_mat[1, 0]
+#                                 # --- 3. Missing Centrifugal Remainder
+#                                 F_corr[1, 0] += -C_t * q_j * (om_mat[0, 0]**2 + oz**2)
+#                             else:
+#                                 raise NotImplementedError(f'axis {axis}')
+
+                    # --- h_omega_x 
+                    body.h_omega_NL = body.bodyQuadraticForce(omega.to_matrix(body.frame), body.q, body.qdot, nonLinCorr=True)
+                    F_corr += body.h_omega_NL[0:3,0]
+                    T_corr += body.h_omega_NL[3:6,0]
+                    E_corr += body.h_omega_NL[6:,0]
+                    #print('h_omega_NL x', body.h_omega_NL[0:3,0])
+                    #print('h_omega_NL t', body.h_omega_NL[3:6,0])
+                    #print('h_omega_NL e', body.h_omega_NL[6:,0])
+
+                    # Add corrections directly back into your baseline equations
+                    inertial_force_coord  += F_corr
+                    inertial_torque_coord += T_corr
+                    inertial_elast_coord  += E_corr
+
+                # --- From coordinates to vectors (for nicer dot products across frames)
                 inertial_force  = coord2vec(inertial_force_coord,body.frame) 
                 inertial_torque = coord2vec(inertial_torque_coord,body.frame) 
 
@@ -487,82 +573,65 @@ class YAMSKanesMethod(object):
                     for k in range(len(body.q)):
                         if self.q[j] == body.q[k]:
                             bodynonMM[j] +=  inertial_elast_coord[k]
+
+                bnMMSubs = msubs(bodynonMM, q_ddot_u_map)
+                bodyMM = bnMMSubs.jacobian(self._udot)
                 # --------------------------------------------------------------------------------}
                 # --- Correction for nonlinear terms typically missing in floating Frame of Reference
                 # --------------------------------------------------------------------------------{
                 # Automated symbolic correction patch inside the YAMSFlexibleBody block
-                if nonLinCorr:
-                    print('[INFO] Applying nonlinear correction - Beta version!')
-                    # 1. Extract kinematic quantities from the framework in the local body frame
-                    #omega_vec = body.frame.ang_vel_in(N).to_matrix(body.frame)
-                    omega_vec = omega_sub.to_matrix(body.frame) # NOTE: using omega_sub here
-                    # v_origin = P.vel(N).to_matrix(body.frame)
-                    vel_origin = vel_sub.to_matrix(body.frame) # NOTE: using vel_sub here
-                    #print('vel_sub', P.vel(N).to_matrix(body.frame))
-                    #print('vel_sub', vel_origin)
-                    #print('omega', omega)
-                    #print('omega_vec', omega_vec)
-                    
-                    omega_x = omega_vec[0, 0]
-                    omega_y = omega_vec[1, 0]
-                    omega_z = omega_vec[2, 0]
-                    
-                    v_x = vel_origin[0, 0]
-                    v_y = vel_origin[1, 0]
-                    v_z = vel_origin[2, 0]
-                    
-                    # 2. Automatically build Delta_T (Kinetic energy) using known shape integrals from MMloc
-                    Delta_T = sp.S.Zero
-                    for k, q_k in enumerate(body.q):
-                        # Extract the exact symbolic mass constants from MMloc positions
-                        # Diagonal entry of the elastic block gives the modal mass
-                        M_et = MMloc[6 + k, 6 + k]
-                        # Loop through individual characters in case direction is multi-axis like 'xy'
-                        for axis in body.directions[k]:
-                            if axis == 'x':
-                                # Retrieve Ct coupling component mapping to translation along x
-                                C_t_x = MMloc[0, 6 + k]
-                                # Rotational inertia variation about cross-axis (y)
-                                Delta_T += sp.S.Half * M_et * q_k**2 * omega_y**2
-                                # Rigid-flexible translational coupling
-                                Delta_T += C_t_x * q_k * (v_z * omega_y - v_y * omega_z)
-                                #print('Delta T', sp.S.Half * M_et * q_k**2 * omega_y**2)
-                                #print('Delta T', C_t_x * q_k * (v_z * omega_y - v_y * omega_z))
-                                
-                            elif axis == 'y':
-                                # Retrieve Ct coupling component mapping to translation along y
-                                C_t_y = MMloc[1, 6 + k]
-                                # Rotational inertia variation about cross-axis (x)
-                                Delta_T += sp.S.Half * M_et * q_k**2 * omega_x**2
-                                # Rigid-flexible translational coupling
-                                Delta_T += C_t_y * q_k * (v_x * omega_z - v_z * omega_x)
-
-                    # 3. Apply Lagrange's equation to Delta_T to get the missing generalized forces
-                    for j in range(o):
-                        q_j = self.q[j]
-                        u_j = self.u[j]
-
-                        # --- Add in Body MM
-                        # Direct Hessian calculation for the mass matrix components
-                        for k in range(o):
-                            u_k = self.u[k]
-                            #print('BodyMM', diff(diff(Delta_T, u_j), u_k))
-                            bodyMM[j, k] += diff(diff(Delta_T, u_j), u_k)
-
-                        # --- Add in nonMM term for proper quadratic velocity
-                        # Full generalized force from Delta_T                       
-                        p_j = diff(Delta_T, u_j)
-                        F_j_missing = diff(p_j, t).subs(q_ddot_u_map) - diff(Delta_T, q_j)
-                        #print('F_j', F_j_missing)
-                        #print('F_j', msubs(F_j_missing, udot_zero))
-                        #bodynonMM[j] += F_j_missing
-                        # Strip out udot terms so only pure velocity/position terms hit bodynonMM
-                        bodynonMM[j] += msubs(F_j_missing, udot_zero)
-
-
+#                 if nonLinCorr:
+#                     print('[INFO] Applying nonlinear correction - Beta version!')
+#                     bodyMM_corr    = zeros(o, o)
+#                     bodynonMM_corr = zeros(o, 1)
+#                     # --- Delta_T (Kinetic energy)
+#                     Delta_T = sp.S.Zero
+#                     for k, q_k in enumerate(body.q):
+#                         M_et = MMloc[6 + k, 6 + k] # Modal mass
+#                         # Loop through individual characters in case direction is multi-axis like 'xy'
+#                         for axis in body.directions[k]:
+#                             if axis == 'x':
+#                                 # Delta T = 1/2 Me q_k omega_y
+#                                 Delta_T += sp.S.Half * M_et * q_k**2 * (omega_sub & body.frame.y)**2
+#                                 u_elastic = q_k * body.frame.x
+#                                 C_t = MMloc[0, 6 + k] # Ctx
+#                             elif axis == 'y':
+#                                 # Delta T = 1/2 Me q_k omega_x
+#                                 Delta_T += sp.S.Half * M_et * q_k**2 * (omega_sub & body.frame.x)**2
+#                                 u_elastic = q_k * body.frame.y
+#                                 C_t = MMloc[1, 6 + k] # Cty
+#                             else:
+#                                 raise NotImplementedError(f'axis {axis}')
+#                             # --- 
+#                             # Rigid-flexible translational coupling via direct vector triple product
+#                             v_omega_cross_u = vel_sub & (omega_sub ^ u_elastic)
+#                             Delta_T += C_t * v_omega_cross_u 
+# 
+#                     # Apply Lagrange's equation to Delta_T to get the missing generalized forces
+#                     for j in range(o):
+#                         q_j = self.q[j]
+#                         u_j = self.u[j]
+#                         p_j = diff(Delta_T, u_j)
+#                         # --- Add in Body MM
+#                         ## Direct Hessian calculation for the mass matrix components
+#                         for k in range(o):
+#                             u_k = self.u[k]
+#                             Jac = diff(p_j, u_k)
+#                             bodyMM_corr[j, k] = Jac
+# 
+#                         dt_p_j = sp.S.Zero
+#                         for idx in range(o):
+#                             dt_p_j += diff(p_j, self.q[idx]) * self.u[idx]    # Coordinate updates
+#                             #dt_p_j += diff(p_j, self.u[idx]) * self._udot[idx] # Explicit acceleration terms
+#                         F_j_missing = dt_p_j - diff(Delta_T, q_j)
+#                         #F_j_missing = dt_partial - diff(Delta_T, q_j)
+#                         F_j_lagrange = diff(p_j, t).subs(q_ddot_u_map)  - diff(Delta_T, q_j)
+#                         bodynonMM_corr[j] = msubs(F_j_missing, udot_zero)
+#                     bodynonMM = bodynonMM_corr
+#                     bodyMM +=bodyMM_corr
+# #                 bnMMSubs = msubs(bodynonMM, q_ddot_u_map)
+# #                 bodyMM = bnMMSubs.jacobian(self._udot)
                 # --- 
-                bnMMSubs = msubs(bodynonMM, q_ddot_u_map)
-                bodyMM += bnMMSubs.jacobian(self._udot)
             else:
                 M = zero_uaux(body.mass)
                 vel = zero_uaux(body.point.vel(N))
