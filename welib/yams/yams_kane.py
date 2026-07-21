@@ -134,9 +134,11 @@ class YAMSKanesMethod(object):
     def __init__(self, frame, q_ind, u_ind, kd_eqs=None, q_dependent=None,
             configuration_constraints=None, u_dependent=None,
             velocity_constraints=None, acceleration_constraints=None,
-            u_auxiliary=None, bodies=None, forcelist=None):
+            u_auxiliary=None, bodies=None, forcelist=None,
+            silent_warn=False):
 
         """Please read the online documentation. """
+        self._silent_warn=silent_warn
         if not q_ind:
             q_ind = [dynamicsymbols('dummy_q')]
             kd_eqs = [dynamicsymbols('dummy_kd')]
@@ -592,8 +594,7 @@ class YAMSKanesMethod(object):
 
         # Compose fr_star out of MM and nonMM
         MM = zero_uaux(msubs(MM, q_ddot_u_map))
-        nonMM = msubs(msubs(nonMM, q_ddot_u_map),
-                udot_zero, uauxdot_zero, uaux_zero)
+        nonMM = msubs(msubs(nonMM, q_ddot_u_map), udot_zero, uauxdot_zero, uaux_zero)
         fr_star = -(MM * msubs(Matrix(self._udot), uauxdot_zero) + nonMM)
 
         # If there are dependent speeds, we need to find fr_star_tilde
@@ -843,6 +844,8 @@ class YAMSKanesMethod(object):
     @property
     def mass_matrix(self):
         """The mass matrix of the system."""
+        if not self._silent_warn:
+            print('[WARN] kane.mass_matrix is M_Kane * udot, not M_Lag * qddot (Lagrangian Dynamics)!')
         if not self._fr or not self._frstar:
             raise ValueError('Need to compute Fr, Fr* first.')
         return Matrix([self._k_d, self._k_dnh])
@@ -861,6 +864,8 @@ class YAMSKanesMethod(object):
     @property
     def forcing(self):
         """The forcing vector of the system."""
+        if not self._silent_warn:
+            print('[WARN] kane.forcing is f_Kane not the same as Lagrangian Dynamics!')
         if not self._fr or not self._frstar:
             raise ValueError('Need to compute Fr, Fr* first.')
         return -Matrix([self._f_d, self._f_dnh])

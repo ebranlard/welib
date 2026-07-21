@@ -48,6 +48,8 @@ _defaultOpts={
     'orderH':2,  #< order of taylor expansion for H term
     'verbose':False, 
     'RNA_Name':'RNA', 
+    'singleExpNumbering':False, # If True, exponent 0 is used, even if order is 1
+    'singleDOFNumbering':False, # If true, counts DOFs even if there is only 1
 }
 
 
@@ -76,6 +78,15 @@ def get_model(model_name, **opts):
     # Nicknames
     bFullRNA   = model_name.find('RNA')==-1
     bRotorOnly = model_name.find('R')==0
+
+    RNAType = 'None' # No RNA whatsoever
+    if model_name.find('RNA')>1:
+        RNAType = 'OneRigidBody' # Nacelle, Shaft, Rotor, one rigid body
+    else:
+        if model_name.find('R')==0:
+            RNAType = 'RotorOnly' #  will overide a lot of options
+        elif model_name.find('N')>=0 or model_name.find('S')>=0:
+            RNAType = 'NacelleShaftBladeOrRotor' #  will overide a lot of options
 
     if bRotorOnly and not bFullRNA:
         raise Exception('Cannot have "Rotor" and RNA')
@@ -184,13 +195,17 @@ def get_model(model_name, **opts):
             twr = YAMSRigidBody('T', rho_G = [0,0,z_TG], J_form='diag') 
         elif nDOF_twr<=4:
             # Flexible tower
-            twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'], orderMM=opts['orderMM'], orderH=opts['orderH'], predefined_kind='twr-z', tip_unit_deflect=opts['twr_tip_unit_deflect'],tip_rotate=opts['twr_tip_rotate'])
+            twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'][:nDOF_twr], orderMM=opts['orderMM'], orderH=opts['orderH'], 
+                                   predefined_kind='twr-z', tip_unit_deflect=opts['twr_tip_unit_deflect'], tip_rotate=opts['twr_tip_rotate'],
+                                   noZeroExp=not opts['singleExpNumbering'], singleDOFNumbering=opts['singleDOFNumbering'])
 
     # --- Nacelle rotor assembly
     blds = []
     rot  = None
     nac  = None
-    if bFullRNA:
+    if RNAType=='None':
+        pass
+    elif bFullRNA:
         if not bRotorOnly:
             # Nacelle
             nac = YAMSRigidBody('N', rho_G = [x_NG ,0, z_NG], J_form='cross') 
@@ -227,7 +242,7 @@ def get_model(model_name, **opts):
             rot = YAMSRigidBody('R', rho_G = [0,0,0], J_form='diag')
             rot.inertia = (inertia(rot.frame, Jxx_R, JO_R, JO_R), rot.origin)  # defining inertia at orign
     else:
-        # Nacelle
+        # One Rigid body for full RNA
         #nac = YAMSRigidBody('RNA', rho_G = [x_RNAG ,0, z_RNAG], J_diag=True) 
         nac = YAMSRigidBody(opts['RNA_Name'], rho_G = [x_RNAG ,0, z_RNAG], J_form='cross') 
         rot = None
@@ -263,25 +278,28 @@ def get_model(model_name, **opts):
     nacDOFs     = []
     nacSpeeds   = []
     nacKDEqSubs = []
-    if opts['yaw']=='dynamic':
-        nacDOFs     += [q_yaw]
-        nacSpeeds   += [qd_yaw]
-        nacKDEqSubs += [(qd_yaw, diff(q_yaw, time))]
-    if opts['tilt']=='dynamic':
-        nacDOFs     += [q_tilt]
-        nacSpeeds   += [qd_tilt]
-        nacKDEqSubs += [(qd_tilt, diff(q_tilt, time))]
-
-    nacDOFsAct=(opts['yaw']=='dynamic',opts['tilt']=='dynamic')
-    if nDOF_nac==0:
-        if not (nacDOFsAct==(False,False)):
-            raise Exception('If nDOF_nac is 0, yaw and tilt needs to be "fixed" or "zero"')
-    elif nDOF_nac==1:
-        if not (nacDOFsAct==(True,False) or nacDOFsAct==(False,True) ):
-            raise Exception('If nDOF_nac is 1, yaw or tilt needs to be "dynamic"')
+    if RNAType=='None':
+        pass
     else:
-        if not (nacDOFsAct==(True,True)):
-            raise Exception('If nDOF_nac is 2, yaw and tilt needs to be "dynamic"')
+        if opts['yaw']=='dynamic':
+            nacDOFs     += [q_yaw]
+            nacSpeeds   += [qd_yaw]
+            nacKDEqSubs += [(qd_yaw, diff(q_yaw, time))]
+        if opts['tilt']=='dynamic':
+            nacDOFs     += [q_tilt]
+            nacSpeeds   += [qd_tilt]
+            nacKDEqSubs += [(qd_tilt, diff(q_tilt, time))]
+
+        nacDOFsAct=(opts['yaw']=='dynamic',opts['tilt']=='dynamic')
+        if nDOF_nac==0:
+            if not (nacDOFsAct==(False,False)):
+                raise Exception('If nDOF_nac is 0, yaw and tilt needs to be "fixed" or "zero"')
+        elif nDOF_nac==1:
+            if not (nacDOFsAct==(True,False) or nacDOFsAct==(False,True) ):
+                raise Exception('If nDOF_nac is 1, yaw or tilt needs to be "dynamic"')
+        else:
+            if not (nacDOFsAct==(True,True)):
+                raise Exception('If nDOF_nac is 2, yaw and tilt needs to be "dynamic"')
 
     # --- Shaft
     sftDOFs  =[]
@@ -344,7 +362,7 @@ def get_model(model_name, **opts):
             ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
         else:
             #print('Free connection ref twr', rel_pos, rots)
-            ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')  #NOTE: rot order is not "optimal".. phi_x should be last
+            ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=rots, rot_order='XYZ')
             #ref.connectTo(twr, type='Free' , rel_pos=rel_pos, rot_amounts=(rots[2],rots[1],rots[0]), rot_order='ZYX')  #NOTE: rot order is not "optimal".. phi_x should be last
     else:
         if not bRotorOnly:
@@ -360,7 +378,9 @@ def get_model(model_name, **opts):
             else:
                 twr.connectTo(fnd, type='Rigid', rel_pos=(0,0,0)) # -L_F
 
-        if nDOF_twr==0:
+        if RNAType=='None':
+            pass
+        elif nDOF_twr==0:
             # Tower rigid -> Rigid connection to nacelle
             # TODO TODO L_T or twr.L
             #if nDOF_nac==0:
@@ -396,7 +416,9 @@ def get_model(model_name, **opts):
     psi_b = [psi0+ib*2 * pi/nB for ib,_ in enumerate(blds)] # blade default azimuthal position
     if not bRotorOnly:
         # --- Nacelle to rotor/blades
-        if bFullRNA:
+        if RNAType=='None':
+            pass
+        elif bFullRNA:
             if opts['tiltShaft']:
                 if nDOF_sft==0:
                     nac.connectTo(rot, type='Joint', rel_pos=(x_NR,0,z_NR), rot_amounts=(0,tiltDOF,0), rot_order='ZYX')
@@ -529,7 +551,10 @@ def get_model(model_name, **opts):
     T_a              = dynamicsymbols('T_a') # NOTE NOTE
     #T_a              = Function('T_a')(dynamicsymbols._t, *coordinates, *speeds) # NOTE: to introduce it in the linearization, add coordinates
     M_ax, M_ay, M_az = dynamicsymbols('M_x_a, M_y_a, M_z_a') # Aero torques
-    if bFullRNA:
+    if RNAType=='None':
+        # No aero loads
+        pass 
+    elif bFullRNA:
         if bBld:
             # --- Flexible blade DOFs
             # Gravity on blades
@@ -599,7 +624,8 @@ def get_model(model_name, **opts):
     # --- Defining Body rotational velocities
     if not bRotorOnly:
         omega_TE = twr.ang_vel_in(ref)        # Angular velocity of nacelle in inertial frame
-        omega_NT = nac.ang_vel_in(twr.frame)  # Angular velocity of nacelle in inertial frame
+        if nac is not None:
+            omega_NT = nac.ang_vel_in(twr.frame)  # Angular velocity of nacelle in inertial frame
         if rot is not None:
             omega_RN = rot.ang_vel_in(nac.frame)  # Angular velocity of rotor wrt Nacelle (omega_R-omega_N)
     else:

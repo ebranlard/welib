@@ -50,6 +50,7 @@ class YAMSModel(object):
         self.opts        = opts
         # Generated / Internal data
         self.kane        = None
+        self._EOM        = None
         self._sa_forcing     = None
         self._sa_mass_matrix = None
         self._sa_M           = None
@@ -74,16 +75,15 @@ class YAMSModel(object):
         s='<{} object "{}" with attributes:>\n'.format(type(self).__name__,self.name)
         s+=' - ref (inert. frame): <YAMSInertialbody> name:{}\n'.format(self.ref.name)
         s+=' - coordinates      : {}\n'.format(self.coordinates)
-        s+=' - bodies           : list of length {}\n'.format(len(self.bodies))
+        s+=' - bodies           : list of length {} with names {}\n'.format(len(self.bodies), str([b.name for b in self.bodies]))
         s+=' - body_loads       : list of length {}\n'.format(len(self.body_loads))
         s+=' - g_vect (gravity) : {}\n'.format(self.g_vect)
+        s+=' * q (coordinates)  : {}\n'.format(self.q)
         s+=' - speeds:            {}\n'.format(self.speeds)
         s+=' - kdeqsSubs:         {}\n'.format(self.kdeqsSubs)
         s+=' - var:               {}\n'.format(self.var)
         s+=' - smallAnglesUsed  : {}\n'.format(self.smallAnglesUsed)
-        s+=' - number of bodies : {}\n'.format(len(self.bodies))
         s+=' - opts             : {}\n'.format(self.opts)
-        s+=' * q (coordinates)\n'
         s+=' * kdeqs (kinematic equations)\n'
         s+=' * loads            : {}\n'.format(self.loads)
         s+=' - kane             : {}\n'.format('(need to call kaneEquations)')
@@ -306,6 +306,10 @@ class YAMSModel(object):
         Apply small angle approximation to forcing and mass matrix
         NOTE: can be called multiple times with different angle list (cumulative effect)
         """
+        # We avoid Kane's warning since we are using the kane mass matrix here..
+        _silent_warn = self.kane._silent_warn
+        self.kane._silent_warn = True
+
         extraSubs = [] if extraSubs is None else extraSubs
         # Forcing
         with Timer('Small angle approx. forcing',True,silent=True):
@@ -325,6 +329,8 @@ class YAMSModel(object):
             self._sa_mass_matrix.simplify()
 
         self.smallAnglesUsed+=angle_list
+
+        self.kane._silent_warn = _silent_warn
         
 
     def smallAngleApproxEOM(self, angle_list, extraSubs=None, order=1):
@@ -405,15 +411,20 @@ class YAMSModel(object):
 
         return M,C,K,B
 
-    def mass_forcing_form(self, extraSubs=None, simplify=False):
-        EOM = self.to_EOM(extraSubs=extraSubs)
+    def mass_forcing_form(self, extraSubs=None, simplify=False, Mform='symbolic'):
+        EOM = self.to_EOM(Mform=Mform, extraSubs=extraSubs)
         EOM.mass_forcing_form() # EOM.M and EOM.F
+        self._EOM = EOM
         self.M = EOM.M
         self.F = EOM.F
 
-    def to_EOM(self, extraSubs=None, simplify=False):
+    def to_EOM(self, extraSubs=None, simplify=False, Mform='symbolic'):
         """ return a class to easily manipulate the equations of motion in place"""
-        EOM = self.EOM().subs(self.kdeqsSubs).doit()
+        # calling .doit() right forces SymPy to re-evaluate all pending time derivatives:
+        #    self.frstar contains generalized accelerations as (Derivative(u_i(t), t)), 
+        #    after the substitution $u_i  = f(\mathbf{q}, \dot{\mathbf{q}})$ 
+        #    doit applies the chain rule, this automatically evaluates the derivatives down to $\dot{\mathbf{q}}$ and $\ddot{\mathbf{q}}$ symbols.
+        EOM = self.EOM(Mform=Mform).subs(self.kdeqsSubs).doit()
         if extraSubs is not None:
             EOM = EOM.subs(extraSubs)
         if simplify:
