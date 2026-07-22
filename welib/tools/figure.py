@@ -339,7 +339,8 @@ class FigureExporter:
     def print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date):
             print('in \\autoref{fig:%s}'%figName);
             print('% ---------------------------------- FIGURE --------------------------------------')
-            print('%% From script: %s, folder: %s, %s'%(script_name,script_run_dir,script_run_date));
+            #print('%% From script: %s, folder: %s, %s'%(script_name,script_run_dir,script_run_date));
+            print('%% From: %s/%s %s'%(script_run_dir,script_name,script_run_date));
             print('\\noindent\\begin{figure}[!htb]\\centering%');
             print('  \\includegraphics[width=0.49\\textwidth]{%s}'%figName);
             print('  \\caption{%s}\\label{fig:%s}%%'%(titleLatexSafe,figName));
@@ -351,7 +352,7 @@ class FigureExporter:
     def print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date):
             print('in \\autoref{fig:%s}'%figNameLast);
             print('% ---------------------------------- FIGURES -------------------------------------')
-            print('%% From script: %s, folder: %s, %s'%(script_name,script_run_dir,script_run_date));
+            print('%% From: %s/%s %s'%(script_run_dir,script_name,script_run_date));
             print('\\noindent\\begin{figure}[!htb]\\centering%%');
 #             print('  \\begin{subfigure}[b]{0.49\\textwidth}\\centering \\includegraphics[width=\\textwidth]{%s}\\caption{}\\label{fig:%s}\\end{subfigure}%%'%(figNameLast,figNameLast));
 #             print('  \\begin{subfigure}[b]{0.49\\textwidth}\\centering \\includegraphics[width=\\textwidth]{%s}\\caption{}\\label{fig:%s}\\end{subfigure}%%'%(figName,figName));

@@ -1211,6 +1211,16 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     #def zeroOrigin(self):
     #    """ set origin to zero"""
     #    self.origin.set_pos=(0,0,0)
+    def kinetic_energy(self, frame):
+        """ Taken from sympy.physics.mechanics.rigidbody.RigidBody.kinetic_energy"""
+        from sympy.physics.vector  import dot
+        from sympy import S
+        rotational_KE = S.Half * dot(
+            self.frame.ang_vel_in(frame),
+            dot(self.central_inertia, self.frame.ang_vel_in(frame)))
+        translational_KE = S.Half * self.mass * dot(self.masscenter.vel(frame), self.masscenter.vel(frame))
+        return rotational_KE + translational_KE
+
 
         
 class RigidBody(Body):
@@ -1314,7 +1324,7 @@ class YAMSFlexibleBody(YAMSBody):
         s+=' - alpha :       {}\n'.format(self.alpha)
         s+=' - directions:   {}\n'.format(self.directions)
         s+='Useful functions:\n'
-        s+='  - bodyMassMatrix(form="regular", point="origin")\n'
+        s+='  - bodyMassMatrix(form="symbolic", point="origin")\n'
         return s
 
 
@@ -1871,6 +1881,10 @@ class YAMSFlexibleBody(YAMSBody):
                     rd[s] = ('DD_{}'.format(self.name_for_var), [i+6,j+6])
         return rd
     
+    def kinetic_energy(self, frame):
+        pass
+        #rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
+
 
 # --------------------------------------------------------------------------------}
 # --- Beam Body 
@@ -2042,3 +2056,13 @@ def fBMB(BB_I_inI,MM):
 
 
 
+if __name__ == "__main__":
+    x, y, z = dynamicsymbols('x, y, z')
+    phi_x, phi_y, phi_z = dynamicsymbols('phi_x, phi_y, phi_z')
+    ref = YAMSInertialBody('E')
+
+    rot = YAMSRigidBody('R')
+
+    ref.connectTo(rot, 'Free', rel_pos=[x,y,z], rot_type='Body', rot_amounts=[phi_x,phi_y,phi_z], rot_order='XYZ')
+
+    print(rot.kinetic_energy(ref.frame))

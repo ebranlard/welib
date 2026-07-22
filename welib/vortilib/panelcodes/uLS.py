@@ -333,7 +333,8 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
          U0=10.0, U0_wind=0, U0_body=0, rho=1.0, outputDir='', simName='default', motionType='body',
          omega_fact = 1,
          debug_print=False,
-         vtk_out= False
+         vtk_out= False,
+         toffset=0
          ):
     
 
@@ -459,9 +460,11 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
         if dfMotion is None:
             TETA = A_pitch * np.sin(omega_pitch * T) # Pitch angle, NOTE: I THINK IT'S USING A NEGATIVE CONVENTION
             OMEGA = A_pitch * omega_pitch * np.cos(omega_pitch * T)
+            DOMEGA =-A_pitch * omega_pitch**2 * np.sin(omega_pitch * T)
         else:
             TETA  = np.interp(T, t_prescr, dfMotion['th_[rad]']) + alpha
             OMEGA = np.interp(T, t_prescr, dfMotion['dth_[rad/s]'])
+            DOMEGA = np.interp(T, t_prescr, dfMotion['ddth_[rad/s^2]'])
         SN1 = np.sin(TETA)
         CS1 = np.cos(TETA)
         # ###  VINF = -np.cos(TETA) * DSX - np.sin(TETA) * DSZ # TODO COMMENTED OUT
@@ -544,10 +547,10 @@ def main(nChord=4, nSpan=13, nStep=10, chord=1, span=8.0, alpha=5,
         CLT = CL / CL_ref
         CFG = FG / FG_ref
         # Output results
-        print(f"T={T:10.2f}  SX={rO_str_i[0]:10.2f}  SZ={rO_str_i[2]:10.2f}  VINF={VINF:10.2f}  TETA={TETA:10.2f}  OMEGA={OMEGA:10.2f}")
+        print(f"T={T+toffset:10.2f}  SX={rO_str_i[0]:10.2f}  SZ={rO_str_i[2]:10.2f}  VINF={VINF:10.2f}  TETA={TETA:10.2f}  OMEGA={OMEGA:10.2f}")
         print(f"CL={CL:10.4f}  L={FL:10.4f}  CM={CM:10.4f}  CD={CD:10.4f}  L/L(INF)={CLT:10.4f}  GAMA/GAMA(INF)={CFG:10.4f}")
         with open(output_file, "a") as f:
-            f.write(f"{-rO_str_i[0]},{T},{rO_str_i[2]},{Vref},{TETA},{omega_pitch},{CL},{FL},{CM},{CD},{CLT},{CFG},{np.mod(omega_heave*T, 2*np.pi)}\n")
+            f.write(f"{-rO_str_i[0]},{T+toffset},{rO_str_i[2]},{Vref},{TETA},{omega_pitch},{CL},{FL},{CM},{CD},{CLT},{CFG},{np.mod(omega_heave*T, 2*np.pi)}\n")
 
         # After updating GD.QW and GD.Gamma_NW for the current time step IT:
         if vtk_out:
@@ -568,12 +571,14 @@ def LS_calcForce(rho, chord, Vref, S_ref, dt, DX, Gamma_LS, r_LS, CP, Gamma_LS_p
     for J in range(nSpan):
         for I in range(nChord):
             # --- Lift
+            # SIGMA1: weighted average of the gamma_LS
             if I == 0:
                 dGamma_shed = Gamma_LS[I, J] # shed segment between two chordwise panels on LS
                 SIGMA1 = (0.5 * dGamma_shed ) * DX
             else:
                 dGamma_shed = Gamma_LS[I, J] - Gamma_LS[I-1, J] # shed segment between two chordwise panels on LS
                 SIGMA1 = (0.5 * dGamma_shed + Gamma_LS[I-1, J]) * DX
+            # Approximation for the circulatory lag 
             DFDT = (SIGMA1 - GD.dLT[I, J]) / dt # some kind of DGamma/Dt
             GD.dLT[I, J] = SIGMA1
             dL_IJ[I, J] = rho * (Vref * dGamma_shed + DFDT) * GD.dl_LL[J] * GD.CSO[I]
@@ -596,6 +601,10 @@ def LS_calcForce(rho, chord, Vref, S_ref, dt, DX, Gamma_LS, r_LS, CP, Gamma_LS_p
             FG += dGamma_shed * GD.dl_LL[J]
             # debug_print
             #print(f"Drag{I+1:4}{J+1:4}{DFDT:10.3f}{DD1:10.3f}{GD.Uind_wake_on_LS[I, J, 2]:10.3f}{Gamma_LS[I,J]:10.3f}{W1:10.3f}{W2:10.3f}{W8:10.3f}{CTS:10.3f}{DD2:10.3f}")
+    # --- ADDED MASS TODO TODO TODO
+    # Lift due to added mass (non-circulatory)
+    # b = chord / 2.0
+    # L_added_mass = rho * np.pi * (b**2) * (-Vref * OMEGA + b * DOMEGA) # Example for pitching/heaving
     # Spanwise forces
     Fl = np.sum(dL_IJ, axis=0) # TODO check axis
     Fd = np.sum(dD_IJ, axis=0) # TODO check axis
