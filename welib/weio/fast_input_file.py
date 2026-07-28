@@ -190,7 +190,7 @@ class FASTInputFile(File):
         try:
             self.data.insert(i, d)
         except:
-            import pdb; pdb.set_trace()
+            raise Exception('Something is off, developper should fix this case.')
 
     def insertKeyVal(self, i, key, value, description='', error=False):
         d = getDict()
@@ -436,6 +436,13 @@ class FASTInputFileBase(File):
             self.module = 'hydrodyn'
         elif 'subdyn' in firstline:
             self.module = 'subdyn'
+            # Hack
+            StrList = ['NPropSetsCirc', 'NPropSetsRec']
+            for i, line in enumerate(lines):
+                if 'npropsets' in line.lower() and StrList:
+                    replacement = StrList.pop(0)
+                    print(f'[INFO] SubDyn file: Replacing NPropSets with {replacement} on line {i}')
+                    lines[i] = re.sub(r'(?i)\bnpropsets\b', replacement, line)
         if verbose:
             print('Input detected as module:', self.module)
 
@@ -463,7 +470,7 @@ class FASTInputFileBase(File):
             NUMTAB_FROM_DIM_TYPE     += ['num'    , 'num'    , 'num'           , 'num'           , 'num'         ,  'num'           ,  'num'            ,  'num'            , 'mix']
 
         # --- Tables that can be detected based on the "Value" (first entry on line)
-        # TODO members for  BeamDyn with mutliple key point                                                                                                                                                                                                                                                                                                        ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
+        # TODO members for  BeamDyn with mutliple key point                                                   ####### TODO PropSetID is Duplicate SubDyn and used in HydroDyn
         NUMTAB_FROM_VAL_DETECT  = ['HtFract'  , 'TwrElev'   , 'BlFract'  , 'Genspd_TLU' , 'BlSpn'        , 'HvCoefID']
         NUMTAB_FROM_VAL_DIM_VAR = ['NTwInpSt' , 'NumTwrNds' , 'NBlInpSt' , 'DLL_NumTrq' , 'NumBlNds'     , 'NHvCoef' ]
         NUMTAB_FROM_VAL_VARNAME = ['TowProp'  , 'TowProp'   , 'BldProp'  , 'DLLProp'    , 'BldAeroNodes' , 'HvCoefs' ]
@@ -781,6 +788,7 @@ class FASTInputFileBase(File):
                     print('From dim: Reading table {} Dimension {} (based on {})'.format(d['label'],nTabLines,d['tabDimVar']));
                 d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
                 d['descr'] = '' #
+
                 i += nTabLines+1-nOffset
 
                 del NUMTAB_FROM_DIM_DIM_VAR[ii] 
@@ -846,7 +854,7 @@ class FASTInputFileBase(File):
                 try:
                     d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
                 except:
-                    import pdb; pdb.set_trace()
+                    raise Exception('Something is off, developper should fix this case.')
                 d['descr'] = '' #
                 i += nTabLines+1-nOffset
 
@@ -1104,7 +1112,15 @@ class FASTInputFileBase(File):
                 if name=='DampingCoeffs':
                     pass
                 else:
-                    dfs[name]=pd.DataFrame(data=Val,columns=Cols)
+                    df = pd.DataFrame(data=Val,columns=Cols)
+                    if d['tabType'] == TABTYPE_MIX_WITH_HEADER:
+                        # For mixed files, we try to set the columns to a proper numeric datatype when possible
+                        try: # newer pandas
+                            df = df.apply(pd.to_numeric, errors='coerce').fillna(df)
+                        except: # Legacy pandas
+                            df = df.apply(pd.to_numeric, errors='ignore')
+                    dfs[name] = df
+
             elif d['tabType'] in [TABTYPE_NUM_BEAMDYN]:
                 span = d['value']['span']
                 M    = d['value']['M']
@@ -1590,8 +1606,16 @@ def parseFASTNumTable(filename,lines,n,iStart,nHeaders=2,tableType='num',nOffset
                 v=v[0:min(len(v),nCols)]
                 Tab[i-nHeaders-nOffset,0:len(v)] = v
             # If all values are float, we convert to float
-            if all([strIsFloat(x) for x in Tab.ravel()]):
-                Tab=Tab.astype(float)
+            #if all([strIsFloat(x) for x in Tab.ravel()]):
+            #    Tab=Tab.astype(float)
+            #else:
+            # Convert to dataframe, to convert numeric columns to numeric, and keep strings as strings 
+            df = pd.DataFrame(Tab)
+            try:
+                df = df.apply(pd.to_numeric, errors='coerce').fillna(df)
+            except:
+                df = df.apply(pd.to_numeric, errors='ignore')
+            Tab = df.values
         elif tableType=='sdout':
             header = lines[0]
             units  = lines[1]
