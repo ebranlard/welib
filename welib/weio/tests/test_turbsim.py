@@ -30,6 +30,21 @@ class Test(unittest.TestCase):
         np.testing.assert_almost_equal(F['u'][1,:,:,:],F2['u'][1,:,:,:],3)
         np.testing.assert_almost_equal(F['u'][2,:,:,:],F2['u'][2,:,:,:],3)
 
+    def test_superimposeTimeSeries(self):
+        F = TurbSimFile()
+        F['t'] = np.array([0., 1., 2., 3.])
+        F['u'] = np.zeros((3, 4, 2, 2))
+
+        t_in = np.array([0., 1.5, 3.0])
+        u_in = np.array([1.0, 4.0, 7.0])
+
+        F.superimposeTimeSeries(t_in, u_in)
+
+        u_expected = np.interp(F['t'], t_in, u_in)
+        np.testing.assert_allclose(F['u'][0], np.tile(u_expected[:, None, None], (1, 2, 2)))
+        np.testing.assert_allclose(F['u'][1], 0.0)
+        np.testing.assert_allclose(F['u'][2], 0.0)
+
 if __name__ == '__main__':
 #     Test().test_000_debug()
     unittest.main()
