@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
-from welib.weio.csv_file import CSVFile, find_non_numeric_header_lines
-from welib.weio.plot3d_file import read_plot3d, write_plot3d
+from .csv_file import CSVFile, find_non_numeric_header_lines
+from .plot3d_file import read_plot3d, write_plot3d
 try:
     from .file import File, WrongFormatError, BrokenFormatError, EmptyFileError
 except:
