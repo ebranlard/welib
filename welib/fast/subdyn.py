@@ -992,4 +992,15 @@ def subdyntoYAMLSum(model, filename, more=False):
             f.write(s)
 
 
-
+if __name__ == '__main__':
+    from welib.weio.fast_input_file import FASTInputFile
+    sdFilename = 'C:/Users/ebranlard/Documents/Work/2024-10-OESI-Digitwin/DigiTwinMonopile/simulations_wt/IEA-22-280-RWT/SD.dat'
+#     sd = FASTInputFile(sdFilename, verbose=True)
+#     dfs = sd.toDataFrame()
+#     print(dfs['Members'])
+#     print(dfs['Members']['MemberID_[-]'])
+#     print(dfs['Members']['MType_[-]'])
+    sd = SubDyn(sdFilename)
+    print(sd)
+    graph = sd.getGraph(nDiv=2)
+    print(graph)
