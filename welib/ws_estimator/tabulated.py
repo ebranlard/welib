@@ -419,13 +419,13 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         self.LambdaHR = Lambda
 
 
-    def CP_eval(self, WS, Pitch, omega):
-        #P = Paero(WS, Pitch, omega, self.R, self.rho, self.fCP)
+    def CP_eval(self, WS, pitch, omega):
+        #P = Paero(WS, pitch, omega, self.R, self.rho, self.fCP)
         Lambda = omega * self.R / WS
-        CP     = self.fCP(Pitch, Lambda)
+        CP     = self.fCP(pitch, Lambda)
         return CP
 
-    def Power(self, WS, Pitch, omega):
+    def Power(self, WS, pitch, omega):
         """
         Return power from fCP
          - WS: wind speed [m/s]
@@ -433,9 +433,9 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
          - pitch: pitch angle [deg]
          - phiy: platform pitch angle [deg]
          """
-        return Paero(WS, Pitch, omega, self.R, self.rho, self.fCP)
+        return Paero(WS, pitch, omega, self.R, self.rho, self.fCP)
 
-    def Thrust(self, WS, Pitch, omega):
+    def Thrust(self, WS, pitch, omega):
         """
         Return Thrust from fCP
          - WS: wind speed [m/s]
@@ -443,9 +443,9 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
          - pitch: pitch angle [deg]
          - phiy: platform pitch angle [deg]
          """
-        return Taero(WS, Pitch, omega, self.R, self.rho, self.fCT)
+        return Taero(WS, pitch, omega, self.R, self.rho, self.fCT)
 
-    def Torque(self, WS, Pitch, omega):
+    def Torque(self, WS, pitch, omega):
         """
         Return Torque from fCP
          - WS: wind speed [m/s]
@@ -453,25 +453,25 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
          - pitch: pitch angle [deg]
          - phiy: platform pitch angle [deg]
         """
-        return Qaero(WS, Pitch, omega, self.R, self.rho, self.fCP)
+        return Qaero(WS, pitch, omega, self.R, self.rho, self.fCP)
 
-    def TorqueFromCQ(self, WS, Pitch, omega):
-        Pitch = np.asarray(Pitch)
+    def TorqueFromCQ(self, WS, pitch, omega):
+        pitch = np.asarray(pitch)
         WS    = np.asarray(WS)
         omega = np.asarray(omega)
         Lambda = omega * self.R / WS
-        CQ = self.fCQ(Pitch, Lambda)
+        CQ = self.fCQ(pitch, Lambda)
         Q = 1/2 * self.rho * np.pi * self.R**3 * WS**2 * CQ
         return Q
 
-    def TorqueAt(self, Pitch, omega):
+    def TorqueAt(self, pitch, omega):
         """ 
         Return Torque(WS) curve for a given pitch and rotational speed
         Pitch,omega: scalar
         """
         WS     = omega * self.R / self.LambdaHR[-1::-1] # NOTE using LambdaHR to benefit from cubic interpolation
         WS = WS[WS<self.WSmax]
-        vPitch = np.array([Pitch]*len(WS))
+        vPitch = np.array([pitch]*len(WS))
         vomega = np.array([omega]*len(WS))
         return WS, self.Torque(WS, vPitch, vomega)
 
@@ -508,7 +508,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
 
 
         def estim(WS0, delta, maxiter=50, tol=0.0001):
-            vWS, vQ = self.TorqueAt(Pitch=pitch, omega=omega)
+            vWS, vQ = self.TorqueAt(pitch=pitch, omega=omega)
             try:
                 fQ = si.interp1d(vWS, vQ, kind='cubic')
             except:
@@ -600,7 +600,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         if method.find('crossing')>=0:
             if omega>0:
                 iNear = None
-                vWS, vQ = self.TorqueAt(Pitch=pitch, omega=omega)
+                vWS, vQ = self.TorqueAt(pitch=pitch, omega=omega)
                 WScross, iBef, sign = zero_crossings(vQ-Qa, x=vWS)
                 if len(WScross)==0:
                     #print('{} cross p={:8.3f} om={:8.3} Qa={:10.2f} WS0={:7.3f}'.format(len(WScross), pitch, omega, Qa, WS0), WScross)
@@ -677,7 +677,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         return WS, info
 
 
-    def estimateTimeSeries(self, Qaero, Pitch, omega, WS_prev=None, WS_ref=None, debug=False, **kwargs):
+    def estimateTimeSeries(self, Qaero, pitch, omega, WS_prev=None, WS_ref=None, debug=False, **kwargs):
         """ 
         Perform wind speed estimation given a time series of aerodynamic torque, pitch and rotational speed
         """
@@ -688,7 +688,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         if debug:
             # Storage for debug
             pass
-        for i,(Qa, pitch, omega) in enumerate(zip(Qaero, Pitch, omega)):
+        for i,(Qa, pitch, omega) in enumerate(zip(Qaero, pitch, omega)):
             ws_hat, info    = self.estimate(Qa, pitch, omega, WS_prev, debug=debug, **kwargs)
             WS_est[i] = ws_hat
             WS_prev   = ws_hat
@@ -712,7 +712,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             df = df[np.logical_and(df['Time_[s]']>=tRange[0],df['Time_[s]']<=tRange[1])]
         time       = df['Time_[s]'].values
         WS_ref     = df['RtVAvgxh_[m/s]'].values # Rotor avg
-        Pitch      = df['BldPitch1_[deg]'].values
+        pitch      = df['BldPitch1_[deg]'].values
         try:
             Qaero_ref  = df['RtAeroMxh_[N-m]'].values
         except:
@@ -720,12 +720,12 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         omega      = df['RotSpeed_[rpm]'].values*2*np.pi/60 # rad/s
         lambda_ref = omega*self.R/WS_ref
         # Estimating wind speed on time series
-        WS_est, ts_info = self.estimateTimeSeries(Qaero_ref, Pitch, omega, WS_prev=WS_ref[0]*0.9, WS_ref=WS_ref, **kwargs)
+        WS_est, ts_info = self.estimateTimeSeries(Qaero_ref, pitch, omega, WS_prev=WS_ref[0]*0.9, WS_ref=WS_ref, **kwargs)
         # Evaluating torque
-        Qaero_eval = self.Torque(WS_ref, Pitch, omega)
-        Qaero_est  = self.Torque(WS_est, Pitch, omega)
+        Qaero_eval = self.Torque(WS_ref, pitch, omega)
+        Qaero_est  = self.Torque(WS_est, pitch, omega)
         # Storing data into a dataframe
-        M    = np.column_stack((time, WS_ref, WS_est, Qaero_ref, Qaero_eval, Qaero_est, omega, Pitch))
+        M    = np.column_stack((time, WS_ref, WS_est, Qaero_ref, Qaero_eval, Qaero_est, omega, pitch))
         cols = ['Time_[s]','WS_ref_[m/s]','WS_est_[m/s]','Qaero_ref_[N]','Qaero_eval_[N]','Qaero_est_[N]','omega_[rad/s]','Pitch_[deg]']
         dfOut = pd.DataFrame(data=M, columns=cols)
 
@@ -756,9 +756,9 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         except:
             WS_ref = None
 
-        WS0, Q0 = self.TorqueAt(Pitch=pitch, omega=omega)
-        WS1, Q1 = self.TorqueAt(Pitch=pitch, omega=omega*0.95)
-        WS2, Q2 = self.TorqueAt(Pitch=pitch, omega=omega*1.05)
+        WS0, Q0 = self.TorqueAt(pitch=pitch, omega=omega)
+        WS1, Q1 = self.TorqueAt(pitch=pitch, omega=omega*0.95)
+        WS2, Q2 = self.TorqueAt(pitch=pitch, omega=omega*1.05)
 
 
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -804,17 +804,17 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
     
         WS     = self.OP['WS_[m/s]'].values
         omega  = self.OP['RotSpeed_[rpm]'].values * 2*np.pi/60
-        Pitch  = self.OP['Pitch_[deg]'].values
+        pitch  = self.OP['Pitch_[deg]'].values
         Qa_ref = self.OP['Qaero_[Nm]'].values
 
 
 
         # --- Method 1 just call raw method fCP
         Lambda = omega * self.R / WS
-        CP = self.fCP(Pitch, Lambda)
-        Qa = self.Torque(WS, Pitch, omega)
-        Pa = self.Power (WS, Pitch, omega)
-        Qa2 = self.TorqueFromCQ(WS, Pitch, omega)
+        CP = self.fCP(pitch, Lambda)
+        Qa = self.Torque(WS, pitch, omega)
+        Pa = self.Power (WS, pitch, omega)
+        Qa2 = self.TorqueFromCQ(WS, pitch, omega)
 
         print(self.OP.keys())
 

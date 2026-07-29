@@ -161,7 +161,7 @@ class Test(unittest.TestCase):
         omega    = 12.1*np.pi/30
         Qa       = 0.6e7
         WS_guess = 10
-        WS0, Q0 = wse.TorqueAt(Pitch=0, Omega=omega)
+        WS0, Q0 = wse.TorqueAt(pitch=0, omega=omega)
         def meth1():
             WS_est, info = wse.estimate(Qa, pitch, omega, WS_guess, relaxation=0, debug=True, method='min', deltaWSMax=15)
         def meth2():
