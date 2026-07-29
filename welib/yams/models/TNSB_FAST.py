@@ -4,16 +4,24 @@ import copy
 import matplotlib.pyplot as plt
 import os
 
-from welib.yams.yams import FASTBeamBody, RigidBody
+from welib.yams.windturbine import FASTWindTurbine
+from welib.yams.yams import FASTBeamBody, YAMSRecRigidBody
 from welib.yams.utils import *
-from welib.yams.models.TNSB import manual_assembly, auto_assembly
+from welib.yams.models.TNSB import manual_assembly, auto_assembly, TNSBStructure
 
 import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.fast_input_deck import FASTInputDeck
 
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model from a FAST model
 # --------------------------------------------------------------------------------{
-def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0, 
+# TODO TODO TODO
+# TODO TODO TODO HARMONIZE WITH WINDTURBINE.PY AND TNSB..
+# TODO TODO TODO
+class FASTmodel2TNSB(FASTWindTurbine):
+    
+    def __init__(self, FST_file,nB=3,nShapes_twr=2, nShapes_bld=0, 
                    nSpan_twr=None, nSpan_bld=None, 
                    bHubMass=1, bNacMass=1, bBldMass=1, 
                    DEBUG=False, main_axis ='x', bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
@@ -23,224 +31,185 @@ def FASTmodel2TNSB(ED_or_FST_file,nB=3,nShapes_twr=2, nShapes_bld=0,
                    algo='', # TODO replace with OpenFAST
                    verbose=False
         ):
-    """ 
-    Returns the following structure
-      Twr :  BeamBody
-      Shft:  RigiBody
-      Nac :  RigidBody
-      Blds:  List of BeamBodies
+        """ 
+        Returns the following structure
+          WT.twr :  BeamBody
+          WT.shft:  RigiBody
+          WT.nac :  RigidBody
+          WT.bld:  List of BeamBodies
 
-      MM, KK, DD : mass, stiffness and damping matrix of full system
+          MM, KK, DD : mass, stiffness and damping matrix of full system
 
 
-      NOTE/TODO: compare this with "windturbine.py"
-    """
-    
-    nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
-    if q is None:
-        q = np.zeros((nDOF,1)) # TODO, full account of q not done
+          NOTE/TODO: compare this with "windturbine.py"
+        """
 
-    # --- Read fst file
-    # --- Input data from ED file
-    ext=os.path.splitext(ED_or_FST_file)[1]
-    if ext.lower()=='.fst':
-        FST=weio.read(ED_or_FST_file)
-        rootdir = os.path.dirname(ED_or_FST_file)
-        EDfile = os.path.join(rootdir,FST['EDFile'].strip('"')).replace('\\','/')
-        if gravity is None:
-            try:
-                gravity = FST['gravity']
-            except:
-                pass
-    else:
-        EDfile=ED_or_FST_file
+        WT = TNSBStructure()
+        FASTWindTurbine.__init__(self, WT=WT,
+                                 main_axis=main_axis, 
+                                 algo=algo)
 
-    # Reading elastodyn file
-    ED      = weio.read(EDfile)
-    rootdir = os.path.dirname(EDfile)
-    try:
-        bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
-    except:
-        bldfile = os.path.join(rootdir,ED['BldFile1'].strip('"')).replace('\\','/')
-    twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
-    twr     = weio.read(twrfile)
-    bld     = weio.read(bldfile)
-    if gravity is None:
-        gravity = ED['gravity'] # Old interface, method above should work, so raise Exception here
 
-    # --- Default arguments
-    if nSpan_twr is None:
-        if algo=='OpenFAST':
-            nSpan_twr = ED['TwrNodes']
-            if verbose:
-                print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan_twr))
+        # --- Read fast input files
+        readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
+        self.loadFST(FST_file, readlist=readlist)
+
+        
+        nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
+        if q is None:
+            q = np.zeros((nDOF,1)) # TODO, full account of q not done
+
+        # --- LEGACY
+        ED = self.ED
+
+        # --- Default arguments
+        if nSpan_twr is None:
+            if algo=='OpenFAST':
+                nSpan_twr = ED['TwrNodes']
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan_twr))
+            else:
+                nSpan_twr=101
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan_twr))
         else:
-            nSpan_twr=101
-            if verbose:
-                print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan_twr))
-    else:
-        if algo=='OpenFAST':
-            if verbose:
-                print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan_twr))
-    if nSpan_bld is None:
-        if algo=='OpenFAST':
-            nSpan_bld = ED['BldNodes']
-            if verbose:
-                print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
+            if algo=='OpenFAST':
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan_twr))
+        if nSpan_bld is None:
+            if algo=='OpenFAST':
+                nSpan_bld = ED['BldNodes']
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
+            else:
+                nSpan_bld=61
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
         else:
-            nSpan_bld=61
-            if verbose:
-                print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
-    else:
-        if algo=='OpenFAST':
-            if verbose:
-                print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
+            if algo=='OpenFAST':
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
 
 
-    ## --- Strucural and geometrical Inputs
-    if main_axis=='x':
-        theta_tilt_y= ED['ShftTilt']*np.pi/180 # NOTE: tilt has wrong orientation in FAST
-        theta_cone_y=-ED['Precone(1)']*np.pi/180
-        r_ET_inE    = np.array([[ED['TowerBsHt']]              ,[0],[0]]) # NOTE: could be used to get hub height
-        r_TN_inT    = np.array([[ED['TowerHt']-ED['TowerBsHt']],[0],[0]])
-        if bTiltBeforeNac:
-            raise NotImplementedError()
-            R_NS0 = np.eye(3)
-            R_TN0 = R_y(theta_tilt_y)
-        else:
-            R_NS0 = R_y(theta_tilt_y)
-            R_TN0 = np.eye(3)
-            r_NGnac_inN = np.array([[ED['NacCMzn']]                ,[0],[ED['NacCMxn']]] )
-            r_NS_inN    = np.array([[ED['Twr2Shft']]               ,[0],[0]]) # S on tower axis
-        r_SR_inS    = np.array([[0]                            ,[0],[ED['OverHang']]] ) # S and R 
-        r_SGhub_inS = np.array([[0]                            ,[0],[ED['OverHang']+ED['HubCM']]]   ) # 
-    elif main_axis=='z':
-        theta_tilt_y=-ED['ShftTilt']*np.pi/180 # NOTE: tilt has wrong orientation in FAST
-        theta_cone_y= ED['Precone(1)']*np.pi/180
-        r_ET_inE    = np.array([[0]                         ,[0],[ED['TowerBsHt']]               ]) # NOTE: could be used to get hub height
-        r_TN_inT    = np.array([[0]                         ,[0],[ED['TowerHt']-ED['TowerBsHt']] ])
-        if bTiltBeforeNac:
-            raise NotImplementedError()
-            R_NS0 = np.eye(3)
-            R_TN0 = R_y(theta_tilt_y)
-        else:
-            R_NS0 = R_y(theta_tilt_y)
-            R_TN0 = np.eye(3)
-            r_NGnac_inN = np.array([[ED['NacCMxn']]             ,[0],[ED['NacCMzn']]                 ])
-            r_NS_inN    = np.array([[0]                         ,[0],[ED['Twr2Shft']]                ]) # S on tower axis
-        r_SR_inS    = np.array([[ED['OverHang']]            ,[0],[0]]                             ) # S and R
-        r_SGhub_inS = np.array([[ED['OverHang']+ED['HubCM']],[0],[0]]                             ) # 
+        ## --- Strucural and geometrical Inputs
+        self.setupEDGeom(zBot=0, bTiltBeforeNac=bTiltBeforeNac)
+        self.reshape_3array_to_atleast_2d()
+        # --- Legacy
+        theta_tilt_y =  self.WT.shaft_tilt
+        theta_cone_y =  self.WT.theta_cone_y
+        r_ET_inE     =  self.WT.r_ET_inE
+        r_TN_inT     =  self.WT.r_TN_inT    
+        R_NS0        =  self.WT.R_NS0 
+        R_TN0        =  self.WT.R_TN0 
+        r_NGnac_inN  =  self.WT.r_NGnac_inN
+        r_NS_inN     =  self.WT.r_NS_inN   
+        r_SR_inS     =  self.WT.r_SR_inS    
+        r_SGhub_inS  =  self.WT.r_SGhub_inS 
+        r_RGhub_inS  =  self.WT.r_RGhub_inS 
 
-    r_RGhub_inS = - r_SR_inS + r_SGhub_inS
-
-
-    M_hub   = ED['HubMass']*bHubMass
-    M_nac   = ED['NacMass'] *bNacMass
-    M_yaw   = ED['YawBrMass']
-    IR_hub = np.zeros((3,3))
-    I0_nac=np.zeros((3,3)) 
-
-	# TODO, here hub and Gen put together...
-    if main_axis=='x':
-        IR_hub[2,2] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
-        I0_nac[0,0]= ED['NacYIner']
-    elif main_axis=='z':
-        IR_hub[0,0] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
-        I0_nac[2,2] = ED['NacYIner']
-    IR_hub = IR_hub * bHubMass
-    I0_nac = I0_nac * bNacMass
-
-    # Inertias not at COG...
-    IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG=r_RGhub_inS)
-    IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, r_NGnac_inN)
-
-    # --------------------------------------------------------------------------------}
-    ## --- Creating bodies
-    # --------------------------------------------------------------------------------{
-    # Bld
-    Blds=[]
-    Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
-    Blds[0].MM *=bBldMass
-    for iB in range(nB-1):
-        Blds.append(copy.deepcopy(Blds[0]))
-    # IMPORTANT FOR RNA set R_b2g
-    for iB,B in enumerate(Blds):
-        B.name='bld'+str(iB+1)
-        psi_B= -iB*2*np.pi/len(Blds) 
+        # --- Hub
+        # TODO, here hub and Gen put together...
+        M_hub   = ED['HubMass']*bHubMass
+        IR_hub = np.zeros((3,3))
         if main_axis=='x':
-            R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
+            IR_hub[2,2] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
         elif main_axis=='z':
-            R_SB = R_x(0*np.pi + psi_B) # TODO psi0
-        R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
-        B.R_b2g= R_SB
+            IR_hub[0,0] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
+        IR_hub = IR_hub * bHubMass
+        IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG=r_RGhub_inS)
 
-    # ShaftHubGen Body  NOTE: generator!!! This is ugly
-    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
-    
-    # Gen only
-    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+        # --- Nac
+        self.setupEDNac(bNacMass=bNacMass, flavor='yams_rec')
+        nac = self.WT.nac
 
-    #print('>>> IG_hub',IG_hub, r_SGhub_inS)
-    # Nacelle Body
-    Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
-    # Yaw Bearing # TODO TODO TODO
-    Yaw=RigidBody('YawBearing',M_yaw,(0,0,0),(0,0,0));
-    if M_yaw>0:
-        print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
-
-    M_rot= sum([B.mass for B in Blds])
-    M_RNA= M_rot + Sft.mass + Nac.mass + Yaw.mass
-    # Tower Body
-    Twr = FASTBeamBody('tower',ED,twr,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
-    #print('Stiffnening', bStiffening)
-    #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
-    if DEBUG:
-        print('HubMass',Sft.mass)
-        print('NacMass',Nac.mass)
-        print('RotMass',M_rot)
-        print('RNAMass',M_RNA)
-        print('IG_hub')
-        print(IG_hub)
-        print('IG_nac')
-        print(IG_nac)
-        print('I_gen_LSS', ED['GenIner']*ED['GBRatio']**2)
-        print('I_hub_LSS', ED['hubIner'])
-        print('I_rot_LSS', nB*Blds[0].MM[5,5])
-        print('I_tot_LSS', nB*Blds[0].MM[5,5]+ED['hubIner']+ED['GenIner']*ED['GBRatio']**2) 
-        print('r_NGnac_inN',r_NGnac_inN.T)
-        print('r_SGhub_inS',r_SGhub_inS.T)
-    # --------------------------------------------------------------------------------}
-    # --- Assembly 
-    # --------------------------------------------------------------------------------{
-    if assembly=='manual':
-        Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
-    else:
-        Struct = auto_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac)
-
-    # --- Initial conditions
-    omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
-    psi_init   = ED['Azimuth']*np.pi/180   # rad
-    FA_init    = ED['TTDspFA']
-    iPsi     = Struct.iPsi
-    nDOFMech = len(Struct.MM)
-    q_init   = np.zeros(2*nDOFMech) # x2, state space
-
-    if nShapes_twr>0:
-        q_init[0] = FA_init
-
-    q_init[iPsi]          = psi_init
-    q_init[nDOFMech+iPsi] = omega_init
-
-    Struct.q_init = q_init
-    if DEBUG:
-        print('Initial conditions:')
-        print(q_init)
-
-    # --- Useful data
-    Struct.ED=ED
+        # --- Yaw
+        M_yaw   = ED['YawBrMass']
+        # Yaw Bearing # TODO TODO TODO
+        Yaw=YAMSRecRigidBody('YawBearing',M_yaw,(0,0,0),(0,0,0));
+        if M_yaw>0:
+            print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
 
 
-    return Struct
+
+        # --------------------------------------------------------------------------------}
+        ## --- Creating bodies
+        # --------------------------------------------------------------------------------{
+        # Bld
+        Blds=[]
+        Blds.append(FASTBeamBody('blade',ED,self.bldFile,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
+        Blds[0].MM *=bBldMass
+        for iB in range(nB-1):
+            Blds.append(copy.deepcopy(Blds[0]))
+        # IMPORTANT FOR RNA set R_b2g
+        for iB,B in enumerate(Blds):
+            B.name='bld'+str(iB+1)
+            psi_B= -iB*2*np.pi/len(Blds) 
+            if main_axis=='x':
+                R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
+            elif main_axis=='z':
+                R_SB = R_x(0*np.pi + psi_B) # TODO psi0
+            R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
+            B.R_b2g= R_SB
+
+        # ShaftHubGen Body  NOTE: generator!!! This is ugly
+        Sft=YAMSRecRigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
+        
+        # Gen only
+        Gen=YAMSRecRigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+
+        #print('>>> IG_hub',IG_hub, r_SGhub_inS)
+
+        M_rot= sum([B.mass for B in Blds])
+        M_RNA= M_rot + Sft.mass + self.WT.nac.mass + Yaw.mass
+        # Tower Body
+        Twr = FASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
+        #print('Stiffnening', bStiffening)
+        #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
+        if DEBUG:
+            print('HubMass',Sft.mass)
+            print('NacMass',nac.mass)
+            print('RotMass',M_rot)
+            print('RNAMass',M_RNA)
+            print('IG_hub')
+            print(IG_hub)
+            print('IG_nac')
+            print(IG_nac)
+            print('I_gen_LSS', ED['GenIner']*ED['GBRatio']**2)
+            print('I_hub_LSS', ED['hubIner'])
+            print('I_rot_LSS', nB*Blds[0].MM[5,5])
+            print('I_tot_LSS', nB*Blds[0].MM[5,5]+ED['hubIner']+ED['GenIner']*ED['GBRatio']**2) 
+            print('r_NGnac_inN',r_NGnac_inN.T)
+            print('r_SGhub_inS',r_SGhub_inS.T)
+        # --------------------------------------------------------------------------------}
+        # --- Assembly 
+        # --------------------------------------------------------------------------------{
+        if assembly=='manual':
+             manual_assembly(Twr,Yaw,nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+        else:
+            auto_assembly(Twr,Yaw,nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+
+        # --- Initial conditions
+        omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
+        psi_init   = ED['Azimuth']*np.pi/180   # rad
+        FA_init    = ED['TTDspFA']
+        iPsi     = self.WT.iPsi
+        nDOFMech = len(self.WT.MM)
+        q_init   = np.zeros(2*nDOFMech) # x2, state space
+
+        if nShapes_twr>0:
+            q_init[0] = FA_init
+
+        q_init[iPsi]          = psi_init
+        q_init[nDOFMech+iPsi] = omega_init
+
+        self.WT.q_init = q_init
+        if DEBUG:
+            print('Initial conditions:')
+            print(q_init)
+
+        # --- Useful data
+        WT=self.WT
+        self.WT.ED=ED
 
 
 # --------------------------------------------------------------------------------}

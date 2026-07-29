@@ -23,8 +23,10 @@ import welib.weio as weio
 from collections import OrderedDict
 from welib.essentials import *
 from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
+from welib.yams.yams import YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
+from welib.yams.utils import translateInertiaMatrixToCOG
 
 class WindTurbineStructure():
     def __init__(self):
@@ -816,14 +818,19 @@ class FASTWindTurbine():
     def __init__(self, fstFilename=None, main_axis='z', 
                     nSpanTwr=None, twrShapes=None, 
                     nSpanBld=None, bldShapes=None,
-                    algo='', bldStartAtRotorCenter=True):
+                    algo='', bldStartAtRotorCenter=True,
+                    WT=None
+                 ):
         """
         INPUTS:
          - twrShapes: Select shapes to use for tower. If None, twrShapes=[0,1,2,3]
 
         """
         # --- Storing a general windturbine structure
-        self.WT = WindTurbineStructure()
+        if WT is None:
+            self.WT = WindTurbineStructure()
+        else:
+            self.WT = WT
         self.WT.algo = algo
 
         self.ED  = None
@@ -858,30 +865,25 @@ class FASTWindTurbine():
             self.WT.ED = self.ED # TODO 
 
 
-    def loadFST(self, fstFilename):
+    def loadFST(self, fstFilename, readlist=None):
         # TODO TODO TODO  Harmonize with TNSB.py
         # TODO TODO TODO  Harmonize with fast.elastodyn when algo is OpenFAST
+        from welib.weio.fast_input_deck import FASTInputDeck
+
+        if readlist is None:
+            readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
+
         # --- Reading main OpenFAST files
-        # TODO Use InputDeck
-        ext     = os.path.splitext(fstFilename)[1]
-        FST     = weio.read(fstFilename)
-        rootdir = os.path.dirname(fstFilename)
-        EDfilename  = os.path.join(rootdir, FST['EDFile'].strip('"')).replace('\\','/')
-        ED      = weio.read(EDfilename)
-        rootdir = os.path.dirname(EDfilename)
-        try:
-            bldfile = os.path.join(rootdir,ED['BldFile(1)'].strip('"')).replace('\\','/')
-        except:
-            bldfile = os.path.join(rootdir,ED['BldFile1'].strip('"')).replace('\\','/')
-        twrfile = os.path.join(rootdir,ED['TwrFile'].strip('"')).replace('\\','/')
-
-        # ---
-        self.twrFile = weio.read(twrfile) # TODO
-        self.bldFile = weio.read(bldfile) # TODO
-        self.FST = FST
-        self.ED  = ED
-
-        # TODO SubDyn, MoorDyn, BeamDyn 
+        ext=os.path.splitext(fstFilename)[1]
+        if ext.lower()!='.fst':
+            raise Exception('FNSB requires a fst file as input')
+        DCK     = FASTInputDeck(fstFilename, readlist = readlist)
+        self.FST     = DCK.fst_vt['Fst']
+        self.ED      = DCK.fst_vt['ElastoDyn']
+        self.bldFile = DCK.fst_vt['ElastoDynBlade']
+        self.twrFile = DCK.fst_vt['ElastoDynTower']
+        # TODO, MoorDyn, BeamDyn 
+        self.SD      = DCK.fst_vt['SubDyn']
         try:
             self.WT.gravity = self.FST['gravity']
         except:
@@ -890,22 +892,63 @@ class FASTWindTurbine():
             except:
                 raise Exception('Variable gravity not found in FST file or ED file.')
 
-    def setupEDGeom(self):
+    def setupEDGeom(self, zBot=0, bTiltBeforeNac=False):
+
         ED = self.ED
         WT = self.WT
-        WT.r_EPtfm_inE = np.array([0,0,ED['PtfmRefzt']               ])  # TODO TODO TODO
-        WT.r_ET_inE    = np.array([0,0,ED['TowerBsHt']               ])  # TODO TODO TODO
-        WT.r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
-        # Basic geometries for nacelle
-        WT.shaft_tilt = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST
-        WT.R_NS = R_y(WT.shaft_tilt)  # Rotation fromShaft to Nacelle
-        WT.r_NS_inN    = np.array([0             , 0, ED['Twr2Shft']]) # Shaft start in N
-        WT.r_SR_inS    = np.array([ED['OverHang'], 0, 0             ]) # Rotor center in S
-        WT.r_SGhub_inS = np.array([ED['HubCM']   , 0, 0             ]) + WT.r_SR_inS # Hub G in S
+
+        if self.main_axis=='x':
+           WT.r_EF_inE = np.array([zBot                         ,0,0]) 
+           WT.r_ET_inE = np.array([ED['TowerBsHt']              ,0,0]) 
+           WT.r_FT_inF = np.array([ED['TowerBsHt']-zBot         ,0,0]) 
+           WT.r_TN_inT = np.array([ED['TowerHt']-ED['TowerBsHt'],0,0])
+
+           WT.shaft_tilt   = ED['ShftTilt']*np.pi/180    # NOTE: tilt has wrong orientation in FAST
+           WT.theta_cone_y = -ED['Precone(1)']*np.pi/180
+
+           if bTiltBeforeNac:
+               raise NotImplementedError()
+               WT.R_NS0 = np.eye(3)
+               WT.R_TN0 = R_y(WT.shaft_tilt)
+           else:
+               WT.R_NS0 = R_y(WT.shaft_tilt)
+               WT.R_TN0 = np.eye(3)
+               WT.R_NS  = R_y(WT.shaft_tilt)
+               WT.r_NGnac_inN = np.array([ED['NacCMzn'],0,ED['NacCMxn']] )
+               WT.r_NS_inN    = np.array([ED['Twr2Shft'] ,0,0]) # S on tower axis
+           WT.r_SR_inS    = np.array([0,0,ED['OverHang']] ) # S and R 
+           WT.r_SGhub_inS = np.array([0,0,ED['OverHang']+ED['HubCM']]   ) # 
+
+        elif self.main_axis=='z':
+            # 
+            WT.r_EF_inE    = np.array([0,0,zBot  ]) 
+            WT.r_EPtfm_inE = np.array([0,0,ED['PtfmRefzt']      ])  # TODO TODO TODO
+            WT.r_FT_inF    = np.array([0,0,ED['TowerBsHt']-zBot ]) 
+            WT.r_ET_inE    = np.array([0,0,ED['TowerBsHt']      ])  # TODO TODO TODO
+            WT.r_TN_inT    = np.array([0,0,ED['TowerHt']-ED['TowerBsHt'] ])
+
+            # Basic geometries for nacelle
+            WT.shaft_tilt = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST
+            WT.theta_cone_y= ED['Precone(1)']*np.pi/180
+
+            if bTiltBeforeNac:
+                raise NotImplementedError()
+                R_NS0 = np.eye(3)
+                R_TN0 = R_y(WT.shaft_tilt)
+            else:
+                WT.R_NS0 = R_y(WT.shaft_tilt)  # Rotation fromShaft to Nacelle
+                WT.R_TN0 = np.eye(3)
+                WT.R_NS  = R_y(WT.shaft_tilt)  # Rotation fromShaft to Nacelle
+                WT.r_NGnac_inN = np.array([ED['NacCMxn'],0,ED['NacCMzn']    ])                  # Nacelle G in N
+                WT.r_NS_inN    = np.array([0             , 0, ED['Twr2Shft']]) # Shaft start in N
+            WT.r_SR_inS    = np.array([ED['OverHang'], 0, 0             ]) # Rotor center in S
+            WT.r_SGhub_inS = np.array([ED['HubCM']   , 0, 0             ]) + WT.r_SR_inS # Hub G in S
+
+
+
+        # --- Common
         WT.r_NR_inN    = WT.r_NS_inN + WT.R_NS.dot(WT.r_SR_inS)       # Rotor center in N
         WT.r_RGhub_inS = - WT.r_SR_inS + WT.r_SGhub_inS
-        if self.main_axis=='x':
-            raise NotImplementedError()
 
 
         # --- OpenFAST compatibility
@@ -936,15 +979,36 @@ class FASTWindTurbine():
         gen = RigidBody('Gen', 0, (ED['GenIner']*ED['GBRatio']**2,0,0), s_OG=[0,0,0], R_b2g=WT.R_NS,  r_O=WT.r_NS_inN) 
         WT.gen = gen
 
-    def setupEDNac(self):
+    def setupEDNac(self, bNacMass=1, flavor=''):
         # --- Nacelle (defined using point N and nacelle coord as ref)
         ED = self.ED
         WT = self.WT
-        M_nac       = ED['NacMass']
-        JyyNac_atN  = ED['NacYIner']                                                 # Inertia of nacelle at N in N
-        r_NGnac_inN = np.array([ED['NacCMxn'],0,ED['NacCMzn']    ])                  # Nacelle G in N
-        nac = RigidBody('Nac', M_nac, (0,JyyNac_atN,0), r_NGnac_inN, s_OP = [0,0,0])
+        M_nac       = ED['NacMass'] * bNacMass
+        JyyNac_atN  = ED['NacYIner'] *bNacMass # Inertia of nacelle at N in N
+
+        if flavor=='yams_rec':
+            I0_nac = np.zeros((3,3)) 
+            if self.main_axis=='x':
+                I0_nac[0,0]= ED['NacYIner']
+            elif self.main_axis=='z':
+                I0_nac[2,2] = ED['NacYIner'] # TODO TODO TODO why 2,2 for a y inertia???
+            I0_nac = I0_nac * bNacMass
+            IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, WT.r_NGnac_inN)
+            # Nacelle Body
+            print('windturbine.py: TODO Not sure about Nacelle inertia definition')
+            nac = YAMSRecRigidBody('Nacelle', M_nac, IG_nac, WT.r_NGnac_inN)
+
+        else:
+            nac = RigidBody('Nac', M_nac, (0,JyyNac_atN,0), WT.r_NGnac_inN, s_OP = [0,0,0])
         WT.nac = nac
+
+
+
+
+
+
+
+
 
     def setupEDBld(self, bldShapes=None, nSpanBld=None, bldStartAtRotorCenter=True):
         ED = self.ED
@@ -1160,6 +1224,10 @@ class FASTWindTurbine():
     #           0   IPDefl      - Initial in-plane blade-tip deflection (meters)
 
 
+    def reshape_3array_to_atleast_2d(self):
+        for name, value in vars(self.WT).items():
+            if isinstance(value, np.ndarray) and value.shape == (3,):
+                setattr(self.WT, name, value.reshape((3,1)))
 
 
 # --------------------------------------------------------------------------------}

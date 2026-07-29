@@ -39,7 +39,7 @@ class KalmanFilterTNLin(KalmanFilter):
         iU = KF.iU
 
         # --- Mechanical system and turbine data
-        WT2= FASTmodel2TNSB(FstFile , nShapes_twr=1,nShapes_bld=0, DEBUG=False, bStiffening=True, main_axis='z')    
+        WT2= FASTmodel2TNSB(FstFile , nShapes_twr=1,nShapes_bld=0, DEBUG=False, bStiffening=True, main_axis='z').WT
         #WT2.DD      = WT2.DD*3.5 # increased damping to account for aero damping
         KF.WT2=WT2
 

@@ -78,7 +78,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # --------------------------------------------------------------------------------}
     ## --- Creating bodies
     # --------------------------------------------------------------------------------{
-    Yaw=RigidBody('YawBearing',0,(0,0,0),(0,0,0));
+    Yaw=YAMSRecRigidBody('YawBearing',0,(0,0,0),(0,0,0));
     # Bld
     # TODO
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
@@ -116,12 +116,12 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
         Blds.append(copy.deepcopy(Blds[0]))
 
     # Generator only
-    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+    Gen=YAMSRecRigidBody('Gen', 0, IG_hub, r_SGhub_inS)
     # ShaftHub Body 
-    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS);
+    Sft=YAMSRecRigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS);
     Sft.MM*=bSftMass
     # Nacelle Body
-    Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
+    Nac=YAMSRecRigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
     Nac.MM*=bNacMass
     # Tower Body
     # TODO

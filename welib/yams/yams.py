@@ -539,7 +539,7 @@ class GroundBody(Body, GenericInertialBody):
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
-class RigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
+class YAMSRecRigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
     def __init__(B, name, mass, J_G, rho_G):
         """
         Creates a rigid body 

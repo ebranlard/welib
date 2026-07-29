@@ -16,7 +16,7 @@ import copy
 import os
 
 from welib.yams.yams import fB_inB, fB_aug, fBMB, fBMatRecursion, fBMatTranslate
-from welib.yams.yams import GroundBody, RigidBody
+from welib.yams.yams import GroundBody, YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z
 from welib.yams.windturbine import WindTurbineStructure, rigidBlades
 
@@ -71,7 +71,7 @@ class TNSBStructure(WindTurbineStructure):
             r_SGhub_inS=s.sft.masscenter # In body coordinates, S, titled
             #hub = RigidBody('Hub', s.sft.mass, J=s.sft.masscenter_inertia, s_OG=r_SGhub_inS, R_b2g=R_NS, r_O=r_NS_inN) 
 
-            hub = RigidBody('Hub', s.sft.mass, J_G=s.sft.masscenter_inertia, rho_G=s.sft.masscenter)
+            hub = YAMSRecRigidBody('Hub', s.sft.mass, J_G=s.sft.masscenter_inertia, rho_G=s.sft.masscenter)
             #hub.shiftOrigin(R_NS.T.dot(-r_NS_inN))
             hub.R_b2g      = R_NS
             hub.pos_global = r_NS_inN
@@ -240,7 +240,7 @@ class TNSBStructure(WindTurbineStructure):
 # --------------------------------------------------------------------------------}
 # --- Creating a TNSB model automatically 
 # --------------------------------------------------------------------------------{
-def auto_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_yaw=0,theta_cone_y=0,DEBUG=False,bTiltBeforeNac=False, fixedShaft=False):
+def auto_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis='x',theta_tilt_y=0,theta_yaw=0,theta_cone_y=0,DEBUG=False,bTiltBeforeNac=False, fixedShaft=False, WT=None):
     # TODO gen
 
     if main_axis=='x':
@@ -304,7 +304,13 @@ def auto_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE,r_TN_inT,r_NS_inN,r_S
 
     MM[np.abs(MM)< 1e-09] = 0
     # --- returning everthin in a structure class
-    WT      = TNSBStructure(main_axis=main_axis,theta_cone=theta_cone_y,theta_tilt=theta_tilt_y,bTiltBeforeNac=bTiltBeforeNac)
+    if WT is None:
+        WT      = TNSBStructure(main_axis=main_axis,theta_cone=theta_cone_y,theta_tilt=theta_tilt_y,bTiltBeforeNac=bTiltBeforeNac)
+    else:
+        WT.main_axis      = main_axis
+        WT.theta_cone     = theta_cone_y
+        WT.theta_tilt     = theta_tilt_y
+        WT.bTiltBeforeNac = bTiltBeforeNac
     WT.grd  = grd
     WT.twr  = twr
     WT.yaw  = yaw
@@ -330,7 +336,7 @@ def auto_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE,r_TN_inT,r_NS_inN,r_S
 # --------------------------------------------------------------------------------}
 # --- Manual assembly of a TNSB model 
 # --------------------------------------------------------------------------------{
-def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN, r_SR_inS, main_axis='x',theta_tilt_y=0,theta_cone_y=0,DEBUG=False, bTiltBeforeNac=False, fixedShaft=False):
+def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN, r_SR_inS, main_axis='x',theta_tilt_y=0,theta_cone_y=0,DEBUG=False, bTiltBeforeNac=False, fixedShaft=False, WT=None):
 
     # Main Parameters
     nDOF = len(q)
@@ -565,7 +571,13 @@ def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN
 
 
     # --- returning everthin in a structure class
-    WT      = TNSBStructure(main_axis=main_axis,theta_cone=theta_cone_y,theta_tilt=theta_tilt_y,bTiltBeforeNac=bTiltBeforeNac)
+    if WT is None:
+        WT      = TNSBStructure(main_axis=main_axis,theta_cone=theta_cone_y,theta_tilt=theta_tilt_y,bTiltBeforeNac=bTiltBeforeNac)
+    else:
+        WT.main_axis      = main_axis
+        WT.theta_cone     = theta_cone_y
+        WT.theta_tilt     = theta_tilt_y
+        WT.bTiltBeforeNac = bTiltBeforeNac
     WT.grd = GroundBody()
     WT.twr  = twr
     WT.yaw  = yaw
