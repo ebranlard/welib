@@ -8,7 +8,7 @@ from .kalman import *
 from .kalmanfilter import KalmanFilter
 from .filters import moving_average
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
-from welib.yams.TNSB_FAST import FASTmodel2TNSB
+from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
 
 
 import welib.fast.fastlib as fastlib

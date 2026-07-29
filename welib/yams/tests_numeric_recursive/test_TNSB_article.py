@@ -9,7 +9,7 @@ import copy
 import unittest
 from welib.yams.bodies import FlexibleBody
 from welib.yams.yams import *
-from welib.yams.TNSB import manual_assembly
+from welib.yams.models.TNSB import manual_assembly
 
 def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
 
@@ -146,9 +146,9 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
 
 class TestTNSB(unittest.TestCase):
     def test_TNSB_article(self):
-        Struct=main()
-        MM=Struct.MM
-        KK=Struct.KK
+        Struct = main()
+        MM     = Struct.MM
+        KK     = Struct.KK
         np.testing.assert_allclose(MM[0,0],7.86e5 ,rtol  = 1e-3)
         np.testing.assert_allclose(MM[1,1],7.23e7 ,rtol  = 1e-3)
         np.testing.assert_allclose(MM[2,2],7.50e3 ,rtol  = 1e-3)
@@ -160,7 +160,7 @@ class TestTNSB(unittest.TestCase):
         np.testing.assert_allclose(KK[2,2],2.86e5 ,rtol  = 1e-3)
         np.testing.assert_allclose(KK[2,2],2.86e5 ,rtol  = 1e-3)
 
-        Twr=Struct.Twr
+        Twr=Struct.twr
         Twr.gravity=9.81
         Twr.bStiffening=True
         Twr.computeStiffnessMatrix()

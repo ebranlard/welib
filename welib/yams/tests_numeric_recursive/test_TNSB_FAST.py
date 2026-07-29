@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 
-from welib.yams.TNSB_FAST import *
+from welib.yams.models.TNSB_FAST import *
 
 MyDir=os.path.dirname(__file__)
 
@@ -54,9 +54,9 @@ class TestTNSB(unittest.TestCase):
                              [-0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -0.00000000e+00, -0.00000000e+00,  0.00000000e+00 , 0.00000000e+00,  0.00000000e+00],
                              [ 8.43721581e+04,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  4.70023180e+06,  0.00000000e+00 , 4.78239541e+04, -7.83818828e+05],
                              [-2.21926938e+06,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -9.57847002e+07,  0.00000000e+00 ,-7.83818828e+05,  2.41136381e+07]])
-        np.testing.assert_almost_equal(StructA.Twr.r_O.ravel(), (0,0,10))
-        np.testing.assert_almost_equal(StructA.Twr.MM[:6,:6]/1e5, Twr_MMref[:6,:6]/1e5, 5)
-        np.testing.assert_almost_equal(StructA.Twr.MM[6:,:]/1e10, Twr_MMref[6:,:]/1e10, 5)
+        np.testing.assert_almost_equal(StructA.twr.r_O.ravel(), (0,0,10))
+        np.testing.assert_almost_equal(StructA.twr.MM[:6,:6]/1e5, Twr_MMref[:6,:6]/1e5, 5)
+        np.testing.assert_almost_equal(StructA.twr.MM[6:,:]/1e10, Twr_MMref[6:,:]/1e10, 5)
         np.testing.assert_almost_equal(StructA.alpha.ravel(), (0,0.1193935,0))
         # print('Twr: B_T:')
         # print(StructA.Twr.B_inB)
@@ -87,9 +87,9 @@ class TestTNSB(unittest.TestCase):
                              [      0., -420000.,       0. ,      0.,       0.,       0.],
                              [ 420000.,       0., -456000. ,      0.,       0.,       0.],
                              [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
-        np.testing.assert_almost_equal(StructA.Nac.mass, 240000)
-        np.testing.assert_almost_equal(StructA.Nac.r_O.ravel(),(0,0,87.6))
-        np.testing.assert_almost_equal(StructA.Nac.MM,Nac_MMref)
+        np.testing.assert_almost_equal(StructA.nac.mass, 240000)
+        np.testing.assert_almost_equal(StructA.nac.r_O.ravel(),(0,0,87.6))
+        np.testing.assert_almost_equal(StructA.nac.MM,Nac_MMref)
         # print(StructA.Nac.Mass)
         # print(StructA.Nac.MM)
         # print(StructA.Nac.r_O)
@@ -108,9 +108,9 @@ class TestTNSB(unittest.TestCase):
                             [      0.    ,         0.      ,  284984.498 ,         0.    ,   1430365.6939118,      0.       ],
                             [     -0.    ,   -284984.498   ,       0.    ,         0.    ,         0.       ,1430365.6939118]])
     
-        np.testing.assert_almost_equal(StructA.Sft.mass,56780)
-        np.testing.assert_almost_equal(StructA.Sft.r_O.ravel(),(0.2337605,0,89.5485887))
-        np.testing.assert_almost_equal(StructA.Sft.MM,Sft_MMref)
+        np.testing.assert_almost_equal(StructA.sft.mass,56780)
+        np.testing.assert_almost_equal(StructA.sft.r_O.ravel(),(0.2337605,0,89.5485887))
+        np.testing.assert_almost_equal(StructA.sft.MM,Sft_MMref)
         #print('Sft: R_S:')
         #print(StructA.Sft.R_0b)
         #print(StructM.Sft.R_0b)
@@ -138,13 +138,13 @@ class TestTNSB(unittest.TestCase):
                          [  387727.67680019,       0.          ,    -0.        ,      -0.        ,12819694.4476355    ,   -0.        ],
                          [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
 
-        np.testing.assert_almost_equal(StructA.Blds[0].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.Blds[0].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
-        np.testing.assert_almost_equal(StructA.Blds[0].MM,Bld_MMref)
+        np.testing.assert_almost_equal(StructA.bld[0].mass,Bld_MMref[0,0])
+        np.testing.assert_almost_equal(StructA.bld[0].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
+        np.testing.assert_almost_equal(StructA.bld[0].MM,Bld_MMref)
 
-        np.testing.assert_almost_equal(StructA.Blds[2].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.Blds[2].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
-        np.testing.assert_almost_equal(StructA.Blds[2].MM,Bld_MMref)
+        np.testing.assert_almost_equal(StructA.bld[2].mass,Bld_MMref[0,0])
+        np.testing.assert_almost_equal(StructA.bld[2].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
+        np.testing.assert_almost_equal(StructA.bld[2].MM,Bld_MMref)
 
         #   print(StructA.Blds[0].Mass)
         #   print(StructA.Blds[0].MM)

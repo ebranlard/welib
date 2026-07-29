@@ -32,14 +32,36 @@ class WindTurbineStructure():
         self.hub = None
         self.gen = None
         self.rot = None # hub+blds
+        self.sft = None
         self.nac = None
+        self.yaw = None
         self.twr = None
         self.fnd = None
+        self.grd = None 
         # Geometry
+        self.r_ET_inE=None
+        self.r_TN_inT=None
         self.r_NS_inN = None
         self.r_NR_inN = None
         self.r_SR_inS = None
-        self.shaft_tilt = None # [rad]
+
+        self.shaft_tilt = None # [rad] # TODO theta_tilt
+
+        # --- From TNSB
+        self.MM   = None
+        self.KK   = None
+        self.DD   = None
+        self.q    = None
+        self.theta_tilt     = None
+        self.theta_cone     = None
+        self.theta_yaw      = None
+        self.bTiltBeforeNac = None
+        self.additional_properties=[] # for user output in __repr__, so I remember what we have in the object
+
+        # --- TODO
+        self._gravity = None
+
+
 
         # Information relevant for simulation
         self.DOF    ={'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
@@ -154,10 +176,16 @@ class WindTurbineStructure():
 
     @property
     def gravity(self):
+        if self._gravity is not None:
+            return self._gravity
         try:
             return self.FST['Gravity'] # NEW
         except:
             return self.ED['Gravity'] # OLD OpenFAST
+
+    @gravity.setter
+    def gravity(self, value):
+        self._gravity = value
 
 
     def yams_parameters(self, flavor='allbodies', 
