@@ -10,6 +10,7 @@ Reference:
 """
 import numpy as np
 import sympy
+import sympy as sp
 from sympy import Symbol, symbols
 from sympy import Matrix, Function, diff
 from sympy.printing import lambdarepr
@@ -71,8 +72,8 @@ def rotToDCM(rot_type, rot_amounts, rot_order=None):
               'SmallRot': small angle rotations (ADDED in YAMS)
               'Axis': simple rotations about a single common axis
               'DCM': for setting the direction cosine matrix directly
-              'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
-              'Space': three successive rotations about the parent frames’ unit vectors
+              'Body': three successive rotations about new intermediate axes, also called "Euler and Tait-Bryan angles"
+              'Space': three successive rotations about the parent frames' unit vectors
               'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
      - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
                 The input types are:
@@ -506,8 +507,8 @@ class YAMSBody(object):
                   'SmallRot': small angle rotations (ADDED in YAMS)
                   'Axis': simple rotations about a single common axis
                   'DCM': for setting the direction cosine matrix directly
-                  'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
-                  'Space': three successive rotations about the parent frames’ unit vectors
+                  'Body': three successive rotations about new intermediate axes, also called "Euler and Tait-Bryan angles"
+                  'Space': three successive rotations about the parent frames' unit vectors
                   'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
          - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
                     The input types are:
@@ -1255,6 +1256,7 @@ class YAMSFlexibleBody(YAMSBody):
         self.name=name
         self.name_for_var = name_for_var
         self.name_for_DOF = name_for_DOF
+        self.singleDOFNumbering = singleDOFNumbering
         self.L     = symbols('L_'+name_for_var)
         self.q     = []                         # DOF
         self.qd    = []                         # DOF velocity as "anonymous" variables
@@ -1560,6 +1562,70 @@ class YAMSFlexibleBody(YAMSBody):
                 raise NotImplementedError()
         
         return self.M
+
+
+    def bodyMassMatrixNonLin(self, form='TaylorExpanded'):
+        nq = len(self.q)
+        MNL = zeros(6+nq,6+nq)
+
+        MMloc = self.bodyMassMatrix(form=form) # TODO need symbolic form with Wallrapp notation
+
+        # --- NEW CORRECTION
+        M_theta_theta_1, M_theta_theta_2 = self.M_theta_theta_expansion()
+
+        for j, q_j in enumerate(self.q):
+            # --- First order terms
+            # --- M x_theta_1
+            C_tj = MMloc[0:3, 6 + j] # Vector
+            MNL[0:3,3:6] += - skew(C_tj) * q_j
+            # --- M_theta_theta_1
+            MNL[3:6,3:6] += M_theta_theta_1[j] * q_j
+            # --- M_theta_e_1
+            MNL[3:6,6:] += sp.S.Half * self.Ge[j].T * q_j 
+            # --- Second order terms
+            # --- M_theta_theta_2
+            for k, q_k in enumerate(self.q):
+                if j==k:
+                    # TODO TODO
+                    MNL[3:6,3:6] += M_theta_theta_2[j][k] * q_j * q_k
+        # --- Make it symmetric
+        MNL[3:6, 0:3] = MNL[0:3,3:6].T
+        MNL[6: , 3:6] = MNL[3:6, 6:].T
+        return MNL
+
+    def M_theta_theta_expansion(self, Mform='TaylorExpanded'):
+        """ Return nonlinear terms of M theta theta 
+        Note: computed analytically on 20/7/2026 as part of 673 extract notes, to be placed elsewhere.
+        """
+        MMloc = self.bodyMassMatrix(form=Mform)
+
+        M_theta_theta_1 = [zeros(3,3)] * len(self.q)
+        M_theta_theta_2 = [[zeros(3,3)] * len(self.q)] * len(self.q)
+        # Loop on body DOFs
+        for j, q_j in enumerate(self.q):
+            # --- M_theta_theta_1
+            C_rj = MMloc[3:6, 6 + j] # Cr row j, a vector of length 3
+            M_theta_theta_1[j]= - skew(C_rj)
+
+            # --- M_theta_theta_2
+            for k, q_k in enumerate(self.q):
+                M_ejk = MMloc[6 + j, 6 + k] # Modal mass
+                if 'z' in np.array(self.directions).flatten():
+                    raise NotImplementedError('M_theta_theta correction only implemented for z-beam')
+                M_theta_theta_2[j][k][2, 2] = M_ejk # Good as long as beam along z
+                if len(np.unique(np.array(self.directions).flatten()))!=len(self.q):
+                    raise NotImplementedError('Shape function directions needs to be unique for M_theta_tehta correction for now..')
+                # NOTE: simplifications for now, assume all modes are in different directions
+                if k==j:
+                    if self.directions[j]=='x':
+                        M_theta_theta_2[j][k][1, 1] = M_ejk
+                    elif self.directions[j]=='y':
+                        M_theta_theta_2[j][k][0, 0] = M_ejk
+                    else:
+                        raise NotImplementedError('Only pure x and y directions supported for M_theta_theta correction')
+        return M_theta_theta_1, M_theta_theta_2
+
+
     
     def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded', nonLinCorr=False):
         r""" Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
@@ -1635,37 +1701,6 @@ class YAMSFlexibleBody(YAMSBody):
 
         return k_omega
 
-    def M_theta_theta_expansion(self, Mform='TaylorExpanded'):
-        """ Return nonlinear terms of M theta theta 
-        Note: computed analytically on 20/7/2026 as part of 673 extract notes, to be placed elsewhere.
-        """
-        MMloc = self.bodyMassMatrix(form=Mform)
-
-        M_theta_theta_1 = [zeros(3,3)] * len(self.q)
-        M_theta_theta_2 = [[zeros(3,3)] * len(self.q)] * len(self.q)
-        # Loop on body DOFs
-        for j, q_j in enumerate(self.q):
-            # --- M_theta_theta_1
-            C_rj = MMloc[3:6, 6 + j] # Cr row j, a vector of length 3
-            M_theta_theta_1[j]= - skew(C_rj)
-
-            # --- M_theta_theta_2
-            for k, q_k in enumerate(self.q):
-                M_ejk = MMloc[6 + j, 6 + k] # Modal mass
-                if 'z' in np.array(self.directions).flatten():
-                    raise NotImplementedError('M_theta_theta correction only implemented for z-beam')
-                M_theta_theta_2[j][k][2, 2] = M_ejk # Good as long as beam along z
-                if len(np.unique(np.array(self.directions).flatten()))!=len(self.q):
-                    raise NotImplementedError('Shape function directions needs to be unique for M_theta_tehta correction for now..')
-                # NOTE: simplifications for now, assume all modes are in different directions
-                if k==j:
-                    if self.directions[j]=='x':
-                        M_theta_theta_2[j][k][1, 1] = M_ejk
-                    elif self.directions[j]=='y':
-                        M_theta_theta_2[j][k][0, 0] = M_ejk
-                    else:
-                        raise NotImplementedError('Only pure x and y directions supported for M_theta_theta correction')
-        return M_theta_theta_1, M_theta_theta_2
 
     
     def bodyElasticForce(self, q, qd):
@@ -1881,9 +1916,342 @@ class YAMSFlexibleBody(YAMSBody):
                     rd[s] = ('DD_{}'.format(self.name_for_var), [i+6,j+6])
         return rd
     
-    def kinetic_energy(self, frame):
-        pass
-        #rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
+
+    @property
+    def curvilinear_coord(self):
+        s=Symbol('s') # TODO, could use name for var
+        return s
+
+    def Phi(self, form='function', var=None, full=False):
+        """ Return matrix of shape function displacement field"""
+        if var is None:
+            var = self.curvilinear_coord
+        if full:
+            directions=['xyz']*len(self.q)
+        else:
+            directions = self.directions
+
+        Phis = zeros( 3, len(self.q) )
+        if form =='function':
+            for iq, axes in enumerate(directions):
+                if 'x' in axes:
+                    Phis[iq, 0] = Function('Phi_'+self.name_for_var+str(iq+1)+'_x')(var)
+                if 'y' in axes:
+                    Phis[iq, 1] = Function('Phi_'+self.name_for_var+str(iq+1)+'_y')(var)
+        else:
+            for iq, axes in enumerate(self.directions):
+                if 'x' in axes:
+                    Phis[iq, 0] = Symbol('Phi_'+self.name_for_var+str(iq+1)+'_x') 
+                if 'y' in axes:
+                    Phis[iq, 1] = Symbol('Phi_'+self.name_for_var+str(iq+1)+'_y') 
+        return Phis
+
+    def uP(self, form='function', var=None):
+        """ Return displacement field at point P"""
+        uP = zeros(3,1)
+        Phis = self.Phi(form=form, var=var)
+        for j, qj in enumerate(self.q):
+            uP += qj*Phis[:, j]
+        return uP
+
+    def udotP(self, form='function', var=None):
+        # udot = sum qdot_j * Phi_j
+        Phis = self.Phi(form = form, var=var)
+        udotP = sp.zeros(3, 1)
+        for j, qdotj in enumerate(self.qdot):
+            udotP += qdotj * Phis[:, j]
+        return udotP
+
+
+    def r0(self):
+        """ 
+        r_0 = (x0, y0, z0)_B is the undeformed position vector, with coords in body frame
+        """
+        x0,y0,z0 = sp.symbols('x_0, y_0 z_0')
+        if self.predefined_kind == 'twr-z':
+            x0=0
+            y0=0
+#         else:
+#             raise NotImplementedError('predefined kind {self.predefined_kind}')
+        r0 = sp.Matrix([x0, y0, z0])
+        return r0
+
+    def rP(self, form='function', var=None):
+        """ 
+         r_P = r_0 + u = r_0 + sum q_j Phi_j
+        """
+        r0 = self.r0()
+        if self.predefined_kind == 'twr-z':
+            var = r0[2,0] # z0
+        rP = r0 + self.uP(form=form, var=var)
+        return rP
+            
+
+    def KE_origin_vel(self):
+        # NOTE: those better be unique symbols across the framework and bodies
+        vOx, vOy, vOz = sp.symbols('v_Ox, v_Oy, v_Oz') # Body Origin Velocity in body frame
+        omx, omy, omz = sp.symbols('omega_x, omega_y, omega_z') # Body angular velocity in body frame
+        vO_symb = sp.Matrix([vOx, vOy, vOz])
+        om_symb = sp.Matrix([omx, omy, omz])
+        if self.inertial_frame is None:
+            subs_dict = None
+        else:
+            vO_coord = self.vel_inertial.to_matrix(self.frame).simplify()
+            om_coord = self.omega_inertial.to_matrix(self.frame).simplify()
+            subs_dict = {
+                vOx: vO_coord[0], vOy: vO_coord[1], vOz: vO_coord[2],
+                omx: om_coord[0], omy: om_coord[1], omz: om_coord[2]
+            }
+        #print('>>> Origin velocity')
+        #print(vO_symb)
+        #print(om_symb)
+        return vO_symb, om_symb, subs_dict
+
+    def kinetic_energy(self, frame=None, subs=False, method='analytical_atoms'):
+
+        # ---  Define arbitrary velocity of body using symbols
+        vO_symb, om_symb, origin_vel_subs = self.KE_origin_vel()
+
+        # --- Kinematics of point P
+        rP = self.rP()
+        r0 = self.r0()
+        if self.predefined_kind == 'twr-z':
+            var = r0[2, 0] 
+        else:
+            var= None
+        Phis  = self.Phi(var=var)
+        udotP = self.udotP(var=var)
+        #print(Phis)
+        #print(udotP)
+        
+        # --- Compute individual atoms
+        if method =='analytical_atoms':
+            T1 = self._KE_atom1_translation(vO_symb)
+            T2 = self._KE_atom2_trans_rot(vO_symb, om_symb, rP)
+            T3 = self._KE_atom3_trans_elastic(vO_symb, udotP)
+            T4 = self._KE_atom4_rotation(om_symb, rP)
+            T5 = self._KE_atom5_rot_elastic(om_symb, rP, udotP)
+            T6 = self._KE_atom6_pure_elastic(udotP)
+            T_symb = T1 + T2 + T3 + T4 + T5 +  T6
+        elif method == 'direct':
+            T_symb = self._KE_direct_identification(vO_symb, om_symb)
+
+        # --- Final step: replace placeholders with true body-frame kinematics
+        if self.inertial_frame is None:
+            print('>>>>> KE: inertial_frame is None, keeping things symbolic')
+            return T_symb
+        else:
+            print('subs_dict', origin_vel_subs)
+            if subs:
+                return T_symb.subs(origin_vel_subs).simplify()
+            else:
+                return T_symb
+
+
+    def _KE_atom1_translation(self, vO):
+        """Atom 1: 0.5 * m * (vO . vO)"""
+        return sp.Rational(1, 2) * self.mass * vO.dot(vO)
+
+    def _KE_atom2_trans_rot(self, vO, om, rP):
+        """Atom 2: vO . (om x integral(rP dm))"""
+        # integral(rP dm) = S + sum(q_j * Ct_j)
+        S_total = self.mdCM.M0
+        
+        # Add elastic contribution to center of mass moment if Ct exists
+        for j, qj in enumerate(self.q):
+            S_total += qj * self.Ct.M0[j, :].T
+                
+        return vO.dot(om.cross(S_total))
+
+    def _KE_atom3_trans_elastic(self, vO, udotP):
+        """Atom 3: vO . integral(udotP dm) = vO . sum(qdot_j * Ct_j)"""
+        udot_integrated = sp.zeros(3, 1)
+        for j, qdotj in enumerate(self.qdot):
+            udot_integrated += qdotj * self.Ct.M0[j, :].T
+        return vO.dot(udot_integrated)
+
+    def _KE_atom4_rotation(self, om, rP):
+        """Atom 4: 0.5 * om^T * J(q) * om"""
+        # Retrieve or assemble J(q) = J0 + sum(q_j * Je_j) + ...
+        J_q = self.J.M0
+        # TODO
+        #for j, qj in enumerate(self.q):
+        #    J_q += qj * self.Je[j]
+        # 1st-order extension: J_q += sum_j (q_j * Je_j)
+        #for j, qj in enumerate(self.q):
+        #    J_q += qj * self.Je[j]
+                
+        # 2nd-order extension: J_q += sum_{j,k} (q_j * q_k * Je_jk)
+        #for j, qj in enumerate(self.q):
+        #    for k, qk in enumerate(self.q):
+        #        J_q += qj * qk * self.Je_jk[j][k]
+                
+        return sp.Rational(1, 2) * (om.T * J_q * om)[0]
+
+    def _KE_atom5_rot_elastic(self, om, rP, udotP):
+        """Atom 5: om . integral(rP x udotP dm)"""
+        # Evaluates to om . (sum(qdot_k * Cr_k) + sum(q_j * qdot_k * Cr_jk))
+        rot_elastic_term = sp.zeros(3, 1)
+        
+        for k, qdotk in enumerate(self.qdot):
+            rot_elastic_term += qdotk * self.Cr.M0[k, :].T
+                
+        # TODO
+        #for j, qj in enumerate(self.q):
+        #    for k, qdotk in enumerate(self.qdot):
+        #        rot_elastic_term += qj * qdotk * self.Cr_jk[j][k]
+                    
+        return om.dot(rot_elastic_term)
+
+    def _KE_atom6_pure_elastic(self, udotP):
+        """Atom 6: 0.5 * qdot^T * Me * qdot"""
+        qdot_vec = sp.Matrix(self.qdot)
+        return sp.Rational(1, 2) * (qdot_vec.T * self.Me.M0 * qdot_vec)[0]
+
+
+    def bodyMassMatrixFromKE(self, T=None, method='analytical_atoms'):
+        """
+        Computes the generic body mass matrix M(q) from the kinetic energy T(q, v_O, om, qdot)
+        by differentiating with respect to the body velocity vector:
+            nu = [v_Ox, v_Oy, v_Oz, omega_x, omega_y, omega_z, qdot_1, ..., qdot_N]^T
+        
+        Returns:
+            sp.Matrix of shape (6 + n_modes, 6 + n_modes)
+        """
+        # 1. Compute kinetic energy with symbolic placeholders if not supplied
+        if T is None:
+            T = self.kinetic_energy(subs=False, method=method)
+            
+        # 2. Re-create the exact symbolic placeholders used in kinetic_energy
+        vOx, vOy, vOz = sp.symbols('v_Ox, v_Oy, v_Oz')
+        omx, omy, omz = sp.symbols('omega_x, omega_y, omega_z')
+        
+        # 3. Assemble the full velocity vector nu
+        nu = sp.Matrix([vOx, vOy, vOz, omx, omy, omz] + list(self.qdot))
+        n_dof = len(nu)
+        
+        # 4. Compute M_ij = d^2(T) / (d nu_i d nu_j)
+        M = sp.zeros(n_dof, n_dof)
+        for i in range(n_dof):
+            # First gradient element dT / d(nu_i)
+            dT_dnu_i = sp.diff(T, nu[i])
+            
+            # Second derivative for lower triangle + diagonal
+            for j in range(i, n_dof):
+                val = sp.diff(dT_dnu_i, nu[j])
+                M[i, j] = val
+                if i != j:
+                    M[j, i] = val # Enforce symmetry
+                    
+        return M
+
+
+    def _KE_direct_identification(self, vO_symb, om_symb):
+            """
+            Computes 1/2 * v_P . v_P symbolically, expands spatial terms, 
+            and matches spatial integrands against shape integral definitions.
+            """
+            # 1. Point P kinematics
+            r0 = self.r0()
+            if self.predefined_kind == 'twr-z':
+                var = r0[2, 0] 
+            else:
+                var = None
+            rP = self.rP(var=var) # 3x1 Matrix depending on spatial var (e.g. z_0)
+            udotP = self.udotP(var=var) # 3x1 Matrix depending on qdot and Phis
+            
+            # 2. Local point velocity vector v_P
+            vP = vO_symb + om_symb.cross(rP) + udotP
+            
+            # 3. Scalar kinetic energy density = 1/2 * vP . vP
+            # Expanding scalar dot product ensures additive terms
+            T_density = sp.Rational(1, 2) * vP.dot(vP)
+            T_expanded = sp.expand(T_density)
+            
+            # Identify spatial variable (e.g. z_0)
+            z0 = self.r0()[2, 0] if self.predefined_kind == 'twr-z' else sp.Symbol('z_0')
+            
+            # Identify all time-dependent variables to hold constant
+            time_symbols = set(vO_symb) | set(om_symb) | set(self.q) | set(self.qdot)
+            
+            # Split into additive scalar terms
+            terms = sp.Add.make_args(T_expanded)
+            
+            T_integrated = 0
+            for term in terms:
+                # Separate time-dependent factors from spatial factors
+                spatial_part, time_part = term.as_independent(*time_symbols, as_coeff_prod=True)
+                # Pull out pure numerical coefficients (e.g., 1/2, 2, -1) from spatial_part
+                num_coeff, pure_spatial = spatial_part.as_coeff_Mul()
+                
+                # Identify shape integral symbol for the pure spatial integrand
+                shape_integral_symb = self._identify_shape_integral(pure_spatial, z0)
+
+                T_integrated += num_coeff * time_part * shape_integral_symb
+                
+            return T_integrated
+
+    def _identify_shape_integral(self, spatial_expr, s_var):
+        """
+        Pattern matches spatial expressions inside integral( rho * spatial_expr dz )
+        to generate symbolic shape integrals.
+        """
+        # 1. Constant term (int(1 dz) -> M_T)
+        # Pure constant spatial factor
+        if spatial_expr == 1:
+             return self.mass
+
+        # 2. First mass moment (int(z dz) -> S_z)
+        if spatial_expr == s_var:
+            return self.mdCM.M0[2]
+            #return sp.Symbol('M_dTz')
+
+        # 3. Second mass moment / Inertia terms (int(z^2 dz) -> J_z2)
+        if spatial_expr == s_var**2:
+            return sp.Symbol('J_z2')
+
+        # 4. Shape function terms
+        Phis = self.Phi(var=s_var)
+        for j, qj in enumerate(self.q):
+            phi_j = Phis[:, j]
+
+            # Linear translation coupling: int(Phi_j_dim dz) -> C_t_j_dim
+            for dim_idx, dim_name in enumerate(['x', 'y', 'z']):
+                if spatial_expr == phi_j[dim_idx]:
+                    return self.Ct.M0[j, dim_idx]
+                #return sp.Symbol(f'C_t_{j+1}_{dim_name}')
+                if spatial_expr == s_var * phi_j[dim_idx]:
+                    if dim_name == 'y':
+                        return -self.Cr.M0[j, 0] # Crx
+                    elif dim_name == 'x':
+                        return self.Cr.M0[j, 1] # Cry
+                    else:
+#                         if dim_name == 'x':
+#                     print('>>>>>>>>>>>> TODO TODO C_t_z')
+                        return sp.Symbol(f'C_t_z_{j+1}_{dim_name}')
+
+            # Modal mass coupling: int(Phi_j . Phi_k dz) -> M_e_j_k
+            for k, qk in enumerate(self.q):
+                phi_k = Phis[:, k]
+
+                # Check vector dot product match
+                if spatial_expr == phi_j.dot(phi_k):
+                    return self.Me.M0[j,k]
+                #return sp.Symbol(f'M_e_{j+1}_{k+1}')
+
+                # Check component-wise products (e.g., Phi_j_x * Phi_k_x)
+                for dim_idx in range(3):
+                    if spatial_expr == phi_j[dim_idx] * phi_k[dim_idx]:
+                        #return sp.Symbol(f'M_e_{j+1}_{k+1}')
+                        return self.Me.M0[j,k]
+                #return sp.Symbol(f'M_e_{j+1}_{k+1}')
+
+        print(f"Unrecognized spatial integrand structure: {spatial_expr}")
+        rho = sp.symbols(r'\rho')
+        L   = sp.symbols(r'L')
+        return sp.Integral(rho * spatial_expr, (s_var, 0, L))
+
+
 
 
 # --------------------------------------------------------------------------------}
@@ -2062,7 +2430,14 @@ if __name__ == "__main__":
     ref = YAMSInertialBody('E')
 
     rot = YAMSRigidBody('R')
+    twr = YAMSFlexibleBody('T', 1, directions=['x'], predefined_kind='twr-z')
+#     twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'][:nDOF_twr], orderMM=opts['orderMM'], orderH=opts['orderH'], 
+#                            predefined_kind='twr-z', tip_unit_deflect=opts['twr_tip_unit_deflect'], tip_rotate=opts['twr_tip_rotate'],
+#                            noZeroExp=not opts['singleExpNumbering'], singleDOFNumbering=opts['singleDOFNumbering'])
 
-    ref.connectTo(rot, 'Free', rel_pos=[x,y,z], rot_type='Body', rot_amounts=[phi_x,phi_y,phi_z], rot_order='XYZ')
+#     ref.connectTo(twr, type='Free' , rel_pos=[x,y,z], rot_type='Body', rot_amounts=[phi_x,phi_y,phi_z], rot_order='XYZ')
+
+
+    ref.connectTo(rot, type='Free', rel_pos=[x,y,z], rot_type='Body', rot_amounts=[phi_x,phi_y,phi_z], rot_order='XYZ')
 
     print(rot.kinetic_energy(ref.frame))
