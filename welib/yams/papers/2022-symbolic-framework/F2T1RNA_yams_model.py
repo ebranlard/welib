@@ -49,7 +49,7 @@ def main(runSim=True, runFAST=False):
         #fstFilename = os.path.join(MyDir, '../../../data/NREL5MW/Main_Onshore.fst')
         fstFilename = os.path.join(MyDir, 'F2T1RNA_SmallAngle/Main_Spar_ED.fst')
         from welib.yams.windturbine import FASTWindTurbine
-        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)
+        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50).WT
         p = WT.yams_parameters()
 
         # --- Perform time integration

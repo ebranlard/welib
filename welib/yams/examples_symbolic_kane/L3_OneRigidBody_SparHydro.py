@@ -70,7 +70,7 @@ if runSim:
     # --- Import the python module that was generated
     model_pkg = importlib.import_module('_'+modelname)
     # --- Load the wind turbine model, and extract relevant parameters "p"
-    WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)
+    WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50).WT
     p = WT.yams_parameters(flavor='onebody', J_at_Origin=True)
     #print(p.keys())
 

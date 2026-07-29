@@ -167,7 +167,7 @@ def DTfreq(InFile):
         - zeta: damping ratio
     """
     from welib.yams.windturbine import FASTWindTurbine
-    WT     = FASTWindTurbine(InFile)
+    WT     = FASTWindTurbine(InFile).WT
     nGear  = WT.ED['GBRatio']
     K_DT   = WT.ED['DTTorSpr']
     D_DT   = WT.ED['DTTorDmp']
