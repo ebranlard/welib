@@ -76,8 +76,6 @@ class TNSBStructure(WindTurbineStructure):
             hub.R_b2g      = R_NS
             hub.pos_global = r_NS_inN
 
-
-
             # --- Rotor = Hub + Blades (with origin R, using N as global ref)
             #rot = blds_rigid.combine(s.sft, R_b2g=R_NS, r_O=blds_rigid.pos_global)
             rot = blds_rigid.combine(hub, R_b2g=R_NS, r_O=blds_rigid.pos_global)

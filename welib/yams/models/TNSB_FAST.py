@@ -54,10 +54,6 @@ class FASTmodel2TNSB(FASTWindTurbine):
         readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
         self.loadFST(FST_file, readlist=readlist)
 
-        
-        nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
-        if q is None:
-            q = np.zeros((nDOF,1)) # TODO, full account of q not done
 
         # --- LEGACY
         ED = self.ED
@@ -93,43 +89,30 @@ class FASTmodel2TNSB(FASTWindTurbine):
 
         ## --- Strucural and geometrical Inputs
         self.setupEDGeom(zBot=0, bTiltBeforeNac=bTiltBeforeNac)
+
+        #--------------------------- HUB NAC YAW RNA 
+
+        # --- Sft = Hub + Gen
+        self.setupEDHubGen(bHubMass=bHubMass, flavor='yams_rec') 
+        # --- Gen only
+        self.setupEDGen(flavor='yams_rec')
+        # --- Nac
+        self.setupEDNac(bNacMass=bNacMass, flavor='yams_rec')
+        # --- Yaw
+        self.setupEDYaw(flavor='yams_rec')
+
+        # --- Legacy Code
+        sft = self.WT.hubgen
+        gen = self.WT.gen
+        nac = self.WT.nac
+        yaw = self.WT.yawBr
         self.reshape_3array_to_atleast_2d()
-        # --- Legacy
         theta_tilt_y =  self.WT.shaft_tilt
         theta_cone_y =  self.WT.theta_cone_y
         r_ET_inE     =  self.WT.r_ET_inE
         r_TN_inT     =  self.WT.r_TN_inT    
-        R_NS0        =  self.WT.R_NS0 
-        R_TN0        =  self.WT.R_TN0 
-        r_NGnac_inN  =  self.WT.r_NGnac_inN
         r_NS_inN     =  self.WT.r_NS_inN   
         r_SR_inS     =  self.WT.r_SR_inS    
-        r_SGhub_inS  =  self.WT.r_SGhub_inS 
-        r_RGhub_inS  =  self.WT.r_RGhub_inS 
-
-        # --- Hub
-        # TODO, here hub and Gen put together...
-        M_hub   = ED['HubMass']*bHubMass
-        IR_hub = np.zeros((3,3))
-        if main_axis=='x':
-            IR_hub[2,2] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
-        elif main_axis=='z':
-            IR_hub[0,0] = ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2
-        IR_hub = IR_hub * bHubMass
-        IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG=r_RGhub_inS)
-
-        # --- Nac
-        self.setupEDNac(bNacMass=bNacMass, flavor='yams_rec')
-        nac = self.WT.nac
-
-        # --- Yaw
-        M_yaw   = ED['YawBrMass']
-        # Yaw Bearing # TODO TODO TODO
-        Yaw=YAMSRecRigidBody('YawBearing',M_yaw,(0,0,0),(0,0,0));
-        if M_yaw>0:
-            print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
-
-
 
         # --------------------------------------------------------------------------------}
         ## --- Creating bodies
@@ -151,42 +134,32 @@ class FASTmodel2TNSB(FASTWindTurbine):
             R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
             B.R_b2g= R_SB
 
-        # ShaftHubGen Body  NOTE: generator!!! This is ugly
-        Sft=YAMSRecRigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS)
-        
-        # Gen only
-        Gen=YAMSRecRigidBody('Gen', 0, IG_hub, r_SGhub_inS)
-
-        #print('>>> IG_hub',IG_hub, r_SGhub_inS)
 
         M_rot= sum([B.mass for B in Blds])
-        M_RNA= M_rot + Sft.mass + self.WT.nac.mass + Yaw.mass
+        M_RNA= M_rot + sft.mass + self.WT.nac.mass + yaw.mass
+
+        #--------------------------- HUB NAC YAW RNA COMMON WITH FTNSB 
+
         # Tower Body
+        #print('M_RNA', M_RNA, self.WT.RNA.mass)
         Twr = FASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
         #print('Stiffnening', bStiffening)
         #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
         if DEBUG:
-            print('HubMass',Sft.mass)
-            print('NacMass',nac.mass)
-            print('RotMass',M_rot)
-            print('RNAMass',M_RNA)
-            print('IG_hub')
-            print(IG_hub)
-            print('IG_nac')
-            print(IG_nac)
-            print('I_gen_LSS', ED['GenIner']*ED['GBRatio']**2)
-            print('I_hub_LSS', ED['hubIner'])
-            print('I_rot_LSS', nB*Blds[0].MM[5,5])
-            print('I_tot_LSS', nB*Blds[0].MM[5,5]+ED['hubIner']+ED['GenIner']*ED['GBRatio']**2) 
-            print('r_NGnac_inN',r_NGnac_inN.T)
-            print('r_SGhub_inS',r_SGhub_inS.T)
+            self.setupDebug()
         # --------------------------------------------------------------------------------}
         # --- Assembly 
         # --------------------------------------------------------------------------------{
+        nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
+        if q is None:
+            q = np.zeros((nDOF,1)) # TODO, full account of q not done
+
+
+
         if assembly=='manual':
-             manual_assembly(Twr,Yaw,nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+             manual_assembly(Twr, yaw, nac, gen, sft, Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
         else:
-            auto_assembly(Twr,Yaw,nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+            auto_assembly   (Twr, yaw, nac, gen, sft, Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
 
         # --- Initial conditions
         omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
@@ -270,13 +243,13 @@ if __name__=='__main__':
 #     print(StructA.Nac.R_0b)
 #     print(StructM.Nac.R_0b)
 # 
-#     print('Sft: R_S:')
-#     print(StructA.Sft.R_0b)
-#     print(StructM.Sft.R_0b)
-#     print('Sft: B_S:')
-#     print(StructA.Sft.B_inB)
-#     print(np.dot(RR,StructM.Sft.B_inB))
-#     print(np.dot(RR,StructM.Sft.BB_inB)-StructA.Sft.BB_inB)
+#     print('sft: R_S:')
+#     print(StructA.sft.R_0b)
+#     print(StructM.sft.R_0b)
+#     print('sft: B_S:')
+#     print(StructA.sft.B_inB)
+#     print(np.dot(RR,StructM.sft.B_inB))
+#     print(np.dot(RR,StructM.sft.BB_inB)-StructA.sft.BB_inB)
 
 #     print('Bld1 R_B:')
 #     print(StructA.Blds[0].R_0b)

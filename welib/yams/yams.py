@@ -24,7 +24,6 @@ def Matrix(m):
 def colvec(v): 
     return np.asarray(v).ravel().reshape(3,1)
 
-
 # --------------------------------------------------------------------------------}
 # --- Connections 
 # --------------------------------------------------------------------------------{
@@ -540,12 +539,27 @@ class GroundBody(Body, GenericInertialBody):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class YAMSRecRigidBody(Body,GenericRigidBody): # TODO rename YAMSRecRigidBody
-    def __init__(B, name, mass, J_G, rho_G):
+    def __init__(B, name, mass, J, rho_G=None, s_OP=None, r_O=None, R_b2g=None):
         """
         Creates a rigid body 
+
+        NOTE:
+          - Legacy call was always with J_G and rho_G
+          - We are adding s_OP
+
         """
-        Body.__init__(B,name)
-        GenericRigidBody.__init__(B, name, mass, J_G, rho_G)
+        if s_OP is not None:
+            raise Exception('[INFO] You are using the new interface, it should work, but lets debug it')
+        if r_O is None:
+            r_O = [0,0,0]
+        if R_b2g is None:
+            R_b2g = np.eye(3)
+
+
+        Body.__init__(B, name)
+        #              Interface:(name, mass, J, s_OG, r_O=[0,0,0], R_b2g=np.eye(3), s_OP=None):
+        GenericRigidBody.__init__(B, name=name, mass=mass, J=J, s_OG=rho_G, r_O=r_O, R_b2g=R_b2g, s_OP=s_OP)
+
         B.s_G_inB = B.masscenter
         B.J_G_inB = B.masscenter_inertia
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, mass, -B.s_G_inB)

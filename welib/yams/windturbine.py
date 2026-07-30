@@ -26,7 +26,7 @@ from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
 from welib.yams.yams import YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
-from welib.yams.utils import translateInertiaMatrixToCOG
+from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrix
 
 class WindTurbineStructure():
     def __init__(self):
@@ -37,7 +37,7 @@ class WindTurbineStructure():
         self.rotgen = None      # origin at R, rigid body bld+hub+genLSS
         self.RNA    = None      # origin at N, rigid body bld+hub+gen+nac+yawBr
         self.RNA_noYawBr = None # origin at N, rigid body bld+hub+gen+nac
-        self.sft = None
+        self.hubgen = None         # Hub + Gen
         self.nac = None
         self.yawBr = None        # origin at N
         self.yaw = None   # TODO yaw or yawbr
@@ -962,21 +962,53 @@ class FASTWindTurbine():
             pTwr = towerParameters(self.ED.filename, RotMass=RotMass, gravity=WT.gravity)
             self.pTwr = towerDerivedParameters(pTwr)
 
-    def setupEDHub(self):
+    def setupEDHub(self, bHubMass=1, flavor= ''):
         # --- Hub  (defined using point N and nacelle coord as ref)
         ED = self.ED
         WT = self.WT
-        M_hub      = ED['HubMass']
-        JxxHub_atR = ED['HubIner']
+        M_hub      = ED['HubMass']*bHubMass
+        JxxHub_atR = ED['HubIner']*bHubMass
         hub = RigidBody('Hub', M_hub, (JxxHub_atR,0,0), s_OG=WT.r_SGhub_inS, R_b2g=WT.R_NS, s_OP=WT.r_SR_inS, r_O=WT.r_NS_inN)
         WT.hub = hub
+        if flavor=='yams_rec':
+            raise NotImplementedError()
+
+    def setupEDHubGen(self, bHubMass=1, flavor=''):
+        """ sft = hub + gen"""
+        ED = self.ED
+        WT = self.WT
+        M_hub      = ED['HubMass']*bHubMass
+        JxxHub_atR = (ED['HubIner'] + ED['GenIner']*ED['GBRatio']**2) * bHubMass
+        if flavor=='yams_rec':
+            # --- Hub
+            IR_hub = np.zeros((3,3))
+            if self.main_axis=='x':
+                IR_hub[2,2] = JxxHub_atR
+            elif self.main_axis=='z':
+                IR_hub[0,0] = JxxHub_atR
+            IG_hub = translateInertiaMatrix(I_A=IR_hub, Mass=M_hub, r_BG=np.array([0,0,0]), r_AG = WT.r_RGhub_inS)
+            hubgen = YAMSRecRigidBody('ShaftHubGen', M_hub, IG_hub, WT.r_SGhub_inS)
+        else:
+            raise NotImplementedError()
+        WT.hubgen = hubgen
 
 
-    def setupEDGen(self):
+    def setupEDGen(self, flavor=''):
         # --- Generator (Low speed shaft) (defined using point N and nacelle coord as ref)
         ED = self.ED
         WT = self.WT
-        gen = RigidBody('Gen', 0, (ED['GenIner']*ED['GBRatio']**2,0,0), s_OG=[0,0,0], R_b2g=WT.R_NS,  r_O=WT.r_NS_inN) 
+        Jp = ED['GenIner']*ED['GBRatio']**2
+        if flavor=='yams_rec':
+            IR_gen = np.zeros((3,3))
+            if self.main_axis=='x':
+                IR_gen[2,2] = Jp
+            elif self.main_axis=='z':
+                IR_gen[0,0] = Jp
+            # Generator has no mass, no need to translate inertia
+            #IG_gen = translateInertiaMatrix(I_A=IR_gen, Mass=0, r_BG=np.array([0,0,0]), r_AG = WT.r_RGhub_inS)
+            gen = YAMSRecRigidBody('Gen', 0, IR_gen, WT.r_SGhub_inS)
+        else:
+            gen = RigidBody('Gen', 0, (Jp,0,0), s_OG=[0,0,0], R_b2g=WT.R_NS, r_O=WT.r_NS_inN) 
         WT.gen = gen
 
     def setupEDNac(self, bNacMass=1, flavor=''):
@@ -1085,12 +1117,17 @@ class FASTWindTurbine():
         WT.rot        = rot        # origin at R, rigid body bld+hub
         WT.rotgen     = rotgen     # origin at R, rigid body bld+hub+genLSS
 
-    def setupEDYaw(self):
+    def setupEDYaw(self, flavor=''):
         ED = self.ED
         WT = self.WT
         #--- Yaw bearing, at tower top
         M_yawBr = ED['YawBrMass']
-        WT.yawBr = RigidBody('YawBr', M_yawBr, J=(0,0,0), s_OG=(0,0,0))
+        if flavor=='yams_rec':
+            WT.yawBr = YAMSRecRigidBody('YawBearing',M_yawBr,(0,0,0),(0,0,0));
+            if M_yawBr>0:
+                print('[WARN] TODO YAW BEARING MASS NOT FULLY IMPLEMENTED IN TNSB')
+        else:
+            WT.yawBr = RigidBody('YawBr', M_yawBr, J=(0,0,0), s_OG=(0,0,0))
 
     def setupEDRNA(self):
         ED = self.ED
@@ -1118,7 +1155,7 @@ class FASTWindTurbine():
         r_PtfmGfnd_inF = -r_EPtfm_inF + r_EGfnd_inF
         WT.fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
         
-    def setupEDTwr(self, twrShapes=None, nSpanTwr=None):
+    def setupEDTwr(self, twrShapes=None, nSpanTwr=None, flavor=''):
         ED = self.ED
         WT = self.WT
         # --- Twr
@@ -1149,6 +1186,13 @@ class FASTWindTurbine():
 
         WT.twr = twr
         WT.twr_rigid = twr_rigid
+
+        if flavor=='yams_rec':
+            # TODO TODO
+            raise NotImplementedError()
+            # Tower Body
+            twr = YAMSRecFASTBeamBody('tower',ED,self.twrFile,Mtop=WT.RNA.mass, nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis, bStiffening=bStiffening, gravity=WT.gravity, algo=algo)
+
 
 
     def setupWTRigid(self):
@@ -1214,6 +1258,25 @@ class FASTWindTurbine():
             DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['FlapDOF2'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F2_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
             DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl'] , 'qd0':0, 'q_channel':'Q_B{}E1_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
         self.WT.DOF = DOFs
+
+        def setupDebug(self):
+            ED = self.ED
+            WT = self.WT
+            print('HubMass',WT.sft.mass)
+            print('NacMass',WT.nac.mass)
+#             print('RotMass',M_rot)
+#             print('RNAMass',M_RNA)
+#             print('IG_hub')
+#             print(IG_hub)
+#             print('IG_nac')
+#             print(IG_nac)
+            print('I_gen_LSS', ED['GenIner']*ED['GBRatio']**2)
+            print('I_hub_LSS', ED['hubIner'])
+#             print('I_rot_LSS', nB*Blds[0].MM[5,5])
+#             print('I_tot_LSS', nB*Blds[0].MM[5,5]+ED['hubIner']+ED['GenIner']*ED['GBRatio']**2) 
+            print('r_NGnac_inN',WT.r_NGnac_inN.T)
+            print('r_SGhub_inS',WT.r_SGhub_inS.T)
+
 
     # ---------------------- DEGREES OF FREEDOM --------------------------------------
     # False          FlapDOF1    - First flapwise blade mode DOF (flag)
