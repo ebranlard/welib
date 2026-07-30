@@ -90,12 +90,11 @@ class FASTmodel2TNSB(FASTWindTurbine):
                 if verbose:
                     print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
 
-
+        # --------------------------------------------------------------------------------}
+        ## --- Creating bodies
+        # --------------------------------------------------------------------------------{
         ## --- Strucural and geometrical Inputs
         self.setupEDGeom(zBot=0, bTiltBeforeNac=bTiltBeforeNac)
-
-        #--------------------------- HUB NAC YAW RNA 
-
         # --- Sft = Hub + Gen
         self.setupEDHubGen(bHubMass=bHubMass, flavor='yams_rec') 
         # --- Gen only
@@ -104,12 +103,26 @@ class FASTmodel2TNSB(FASTWindTurbine):
         self.setupEDNac(bNacMass=bNacMass, flavor='yams_rec')
         # --- Yaw
         self.setupEDYaw(flavor='yams_rec')
-
+        # --- Hub
+        self.setupEDHub() #flavor='yams_rec')
+        # WT.bld
+        self.setupEDBld(shapes=shapes_bld, nSpan=nSpan_bld,
+                        spanFrom0=spanFrom0, massExpected=bladeMassExpected,
+                        flavor='yams_rec')
+        self.setupEDRot()   # WT.rot and rotgen  (Generic Rigid Body)
+        self.setupEDRNA()   # WT.RNA             (Generic Rigid Body)
+        #--------------------------- HUB NAC YAW RNA COMMON WITH FTNSB 
+        # WT.twr
+        self.setupEDTwr(shapes=shapes_twr, nSpan=nSpan_twr, 
+                        bStiffening=bStiffening,
+                        flavor='yams_rec')
         # --- Legacy Code
         sft = self.WT.hubgen
         gen = self.WT.gen
         nac = self.WT.nac
         yaw = self.WT.yawBr
+        bld = self.WT.bld
+        twr = self.WT.twr
         #self.reshape_3array_to_atleast_2d()
         theta_tilt_y =  self.WT.shaft_tilt
         theta_cone_y =  self.WT.theta_cone_y
@@ -118,35 +131,6 @@ class FASTmodel2TNSB(FASTWindTurbine):
         r_NS_inN     =  self.WT.r_NS_inN   
         r_SR_inS     =  self.WT.r_SR_inS    
 
-        # --------------------------------------------------------------------------------}
-        ## --- Creating bodies
-        # --------------------------------------------------------------------------------{
-        # Bld
-        Blds=[]
-        Blds.append(YAMSRecFASTBeamBody('blade',ED,self.bldFile,Mtop=0,shapes=shapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
-        Blds[0].MM *=bBldMass
-        for iB in range(nB-1):
-            Blds.append(copy.deepcopy(Blds[0]))
-        # IMPORTANT FOR RNA set R_b2g
-        for iB,B in enumerate(Blds):
-            B.name='bld'+str(iB+1)
-            psi_B= -iB*2*np.pi/len(Blds) 
-            if main_axis=='x':
-                R_SB = R_z(0*np.pi + psi_B) # TODO psi offset and psi0
-            elif main_axis=='z':
-                R_SB = R_x(0*np.pi + psi_B) # TODO psi0
-            R_SB = np.dot(R_SB, R_y(ED['PreCone({})'.format(iB+1)]*np.pi/180)) # blade2shaft
-            B.R_b2g= R_SB
-
-
-        M_rot= sum([B.mass for B in Blds])
-        M_RNA= M_rot + sft.mass + self.WT.nac.mass + yaw.mass
-
-        #--------------------------- HUB NAC YAW RNA COMMON WITH FTNSB 
-
-        # Tower Body
-        #print('M_RNA', M_RNA, self.WT.RNA.mass)
-        Twr = YAMSRecFASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA, shapes=shapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
         #print('Stiffnening', bStiffening)
         #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
         if DEBUG:
@@ -158,12 +142,10 @@ class FASTmodel2TNSB(FASTWindTurbine):
         if q is None:
             q = np.zeros((nDOF,1)) # TODO, full account of q not done
 
-
-
         if assembly=='manual':
-             manual_assembly(Twr, yaw, nac, gen, sft, Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+             manual_assembly(twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
         else:
-            auto_assembly   (Twr, yaw, nac, gen, sft, Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+            auto_assembly   (twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
 
         # --- Initial conditions
         omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s

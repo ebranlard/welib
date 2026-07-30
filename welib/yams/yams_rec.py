@@ -180,7 +180,9 @@ class YAMSRecBody(GenericBody):
         B.gzf         = None
 
     def __repr__(B):
-        s='<YAMSRec Body {} object>:\n'.format(B.name)
+        s='<YAMSRecBody {} object>:\n'.format(B.name)
+        s+='|Inherits:\n'
+        s+='|'+'\n||'.join(GenericBody.__repr__(B).split('\n'))+'--->\n'
         s+='|Properties:\n'
         try: 
             names = [c.name for c in B.Children]
@@ -193,14 +195,11 @@ class YAMSRecBody(GenericBody):
             types=''
         s+='| - Connections: {} {}\n'.format(len(B.Connections), types)
         s+='| - I_DOF:  {}\n'.format(B.I_DOF)
-        s+='| - pos_global:  {}\n'.format(B.pos_global)
         s+='| - gzf       :  {}\n'.format(B.gzf)
-        s+='| - R_b2g : \n{}\n'.format(B.R_b2g)
         s+='| * nf  : {}\n'.format(B.nf)
         s+='| * R_bc: \n{}\n'.format(B.R_bc)
         s+='| * Bhat_x_bc: \n{}\n'.format(B.Bhat_x_bc)
         s+='| * Bhat_t_bc: \n{}\n'.format(B.Bhat_t_bc)
-        s+='| * mass     :   {}\n'.format(B.mass) 
         s+='|Methods: connectTo, updateChildrenKinematicsNonRecursive \n'
         return s
 
@@ -470,10 +469,10 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
 
 
     def __repr__(self):
-        s='<YAMSRec GroundBody {} object>:\n'.format(self.name)
+        s='<YAMSRecGroundBody {} object>:\n'.format(self.name)
         s+='|Inherits:\n'
-        s+='||'+'\n|'.join(YAMSRecBody.__repr__(self).split('\n'))+'\n'
-        s+='||'+'\n|'.join(GenericInertialBody.__repr__(self).split('\n'))+'\n'
+        s+='||'+'\n|'.join(YAMSRecBody.__repr__(self).split('\n'))+'--->\n'
+        s+='||'+'\n|'.join(GenericInertialBody.__repr__(self).split('\n'))+'--->\n'
         s+='|Properties:\n'
         s+='|- nq: {}\n'.format(self.nq)
         s+='|- q:  {}\n'.format(self.q)
@@ -597,6 +596,16 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody):
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
         # END - YAMSRec RigidBody
+
+    def __repr__(self):
+        s='<YAMSRecRigidBody {} object>:\n'.format(self.name)
+        s+='|Inherits:\n'
+        s+='|'+'\n||'.join(YAMSRecBody.__repr__(self).split('\n'))+'--->\n'
+        s+='|'+'\n||'.join(GenericRigidBody.__repr__(self).split('\n'))+'--->\n'
+        s+='|Properties:\n'
+        s+='| - MM:\n{}\n'.format(self.MM)
+        return s
+
 
 
 

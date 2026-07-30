@@ -24,6 +24,7 @@ from collections import OrderedDict
 from welib.essentials import *
 from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
 from welib.yams.yams_rec import YAMSRecRigidBody
+from welib.yams.yams_rec import YAMSRecFASTBeamBody
 from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrix
@@ -849,7 +850,7 @@ class FASTWindTurbine():
             self.setupEDHub()
             self.setupEDGen()
             self.setupEDNac()
-            self.setupEDBld(bldShapes=bldShapes, nSpanBld=nSpanBld, bldStartAtRotorCenter=bldStartAtRotorCenter)
+            self.setupEDBld(shapes=bldShapes, nSpan=nSpanBld, bldStartAtRotorCenter=bldStartAtRotorCenter)
             self.setupEDRot()
             self.setupEDYaw()
             self.setupEDRNA()
@@ -857,7 +858,7 @@ class FASTWindTurbine():
                 FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
             else:
                 self.setupEDRigidFloat()
-            self.setupEDTwr(twrShapes=twrShapes, nSpanTwr=nSpanTwr)
+            self.setupEDTwr(shapes=twrShapes, nSpan=nSpanTwr)
             self.setupWTRigid()
             self.setupMAP()
             self.setupEDDOFs()
@@ -970,8 +971,8 @@ class FASTWindTurbine():
         JxxHub_atR = ED['HubIner']*bHubMass
         hub = RigidBody('Hub', M_hub, (JxxHub_atR,0,0), s_OG=WT.r_SGhub_inS, R_b2g=WT.R_NS, s_OP=WT.r_SR_inS, r_O=WT.r_NS_inN)
         WT.hub = hub
-        if flavor=='yams_rec':
-            raise NotImplementedError()
+#         if flavor=='yams_rec':
+#             raise NotImplementedError()
 
     def setupEDHubGen(self, bHubMass=1, flavor=''):
         """ sft = hub + gen"""
@@ -1042,21 +1043,22 @@ class FASTWindTurbine():
 
 
 
-    def setupEDBld(self, bldShapes=None, nSpanBld=None, 
-                   bBldMass=1, bldStartAtRotorCenter=True,
+    def setupEDBld(self, shapes=None, nSpan=None, 
+                   spanFrom0=False, bBldMass=1, bldStartAtRotorCenter=True,
+                   massExpected=None,
                    flavor=''
                    ):
         ED = self.ED
         WT = self.WT
         # --- Blades 
-        if bldShapes is None: 
-            bldShapes=[]
+        if shapes is None: 
+            shapes=[]
             if ED['FlapDOF1']:
-                bldShapes+=[0]
+                shapes+=[0]
             if ED['FlapDOF2']:
-                bldShapes+=[1]
+                shapes+=[1]
             if ED['EdgeDOF']:
-                bldShapes+=[2]
+                shapes+=[2]
 
         m    = self.bldFile['BldProp'][:,3]
         jxxG=0*m
@@ -1070,23 +1072,22 @@ class FASTWindTurbine():
 
         if flavor=='yams_rec':
             # ----------- YAMS REC------------------------------------------------------------
-            raise NotImplementedError()
             bld[0] = YAMSRecFASTBeamBody('blade', ED, self.bldFile,
                                          Mtop=0, 
-                                         nShapes=len(bldShapes), nSpan=nSpan_bld, 
+                                         shapes=shapes, nSpan=nSpan, 
                                          main_axis=self.main_axis, 
-                                         spanFrom0=spanFrom0, algo=algo,
-                                         massExpected=bladeMassExpected, 
-                                         gravity=gravity) # NOTE: legacy spanfrom0
+                                         spanFrom0=spanFrom0, algo=WT.algo,
+                                         massExpected=massExpected, 
+                                         gravity=WT.gravity) # NOTE: legacy spanfrom0
 
         else:
             # ----------- GENERIC BODY -------------------------------------------------------
             bld[0] = FASTBeamBody(ED, self.bldFile, 
                                   Mtop=0, 
                                   jxxG=jxxG, 
-                                  shapes=bldShapes, nSpan=nSpanBld, 
+                                  shapes=shapes, nSpan=nSpan, 
                                   main_axis=self.main_axis, 
-                                  spanFrom0=False, bldStartAtRotorCenter=bldStartAtRotorCenter, algo=WT.algo,
+                                  spanFrom0=spanFrom0, bldStartAtRotorCenter=bldStartAtRotorCenter, algo=WT.algo,
                                   gravity=WT.gravity
                                   ) 
             if WT.algo.lower()=='openfast':
@@ -1094,8 +1095,8 @@ class FASTWindTurbine():
                 bld[0].MM[0,0]    = self.pBld['BldMass']
                 bld[0].MM[1,1]    = self.pBld['BldMass']
                 bld[0].MM[2,2]    = self.pBld['BldMass']
-                # TODO TODO bldShapes
-                if bldShapes==[0,1,2]:
+                # TODO TODO shapes
+                if shapes==[0,1,2]:
                     bld[0].MM [6:,6:] = self.pBld['Me']
                     bld[0].KK0[6:,6:] = self.pBld['Ke0'] # NOTE: Ke has no stiffening
                     bld[0].DD [6:,6:] = self.pBld['De']
@@ -1183,31 +1184,29 @@ class FASTWindTurbine():
         r_PtfmGfnd_inF = -r_EPtfm_inF + r_EGfnd_inF
         WT.fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
         
-    def setupEDTwr(self, twrShapes=None, nSpanTwr=None, 
+    def setupEDTwr(self, shapes=None, nSpan=None, 
                    flavor='', 
                    bAxialCorr=False, bStiffening=True
                    ):
         ED = self.ED
         WT = self.WT
         # --- Twr
-        if twrShapes is None: 
-            twrShapes=[]
+        if shapes is None: 
+            shapes=[]
             if ED['TwFADOF1']:
-                twrShapes+=[0]
+                shapes+=[0]
             if ED['TwFADOF2']:
-                twrShapes+=[1]
+                shapes+=[1]
             if ED['TwSSDOF1']:
-                twrShapes+=[2]
+                shapes+=[2]
             if ED['TwSSDOF2']:
-                twrShapes+=[3]
+                shapes+=[3]
 
         if flavor=='yams_rec':
-            # TODO TODO
-            raise NotImplementedError()
             # Tower Body
             twr = YAMSRecFASTBeamBody('tower', ED, self.twrFile, 
                                       Mtop=WT.RNA.mass, 
-                                      nShapes=nShapes_twr, nSpan=nSpan_twr, 
+                                      shapes=shapes, nSpan=nSpan, 
                                       main_axis=self.main_axis, 
                                       bStiffening=bStiffening, algo=WT.algo,
                                       gravity=WT.gravity
@@ -1215,24 +1214,27 @@ class FASTWindTurbine():
         else:
             twr = FASTBeamBody(ED, self.twrFile, 
                                Mtop=WT.RNA.mass, 
-                               shapes=twrShapes, nSpan=nSpanTwr, 
+                               shapes=shapes, nSpan=nSpan, 
                                main_axis=self.main_axis, 
                                bAxialCorr=bAxialCorr, bStiffening=bStiffening, algo=WT.algo, 
                                gravity=WT.gravity
-                               ) # TODO options
+                               ) 
 
-            twr_rigid  = twr.toRigidBody()
-            twr_rigid.pos_global = WT.r_ET_inE
+        if flavor!='yams_rec':
+            # TODO impose this always?
             if WT.algo=='OpenFAST':
                 twr.MM[0,0]         = self.pTwr['TwrMass']
                 twr.MM[1,1]         = self.pTwr['TwrMass']
                 twr.MM[2,2]         = self.pTwr['TwrMass']
-                twr.MM      [6:,6:] = self.pTwr['Me']   [np.ix_(twrShapes,twrShapes)]
-                twr.KK      [6:,6:] = self.pTwr['Ke']   [np.ix_(twrShapes,twrShapes)]
-                twr.KK0     [6:,6:] = self.pTwr['Ke0']  [np.ix_(twrShapes,twrShapes)]
-                twr.KKg_self[6:,6:] = self.pTwr['Kg_SW'][np.ix_(twrShapes,twrShapes)]
-                twr.KKg_Mtop[6:,6:] = self.pTwr['Kg_TM'][np.ix_(twrShapes,twrShapes)]
-                twr.DD      [6:,6:] = self.pTwr['De']   [np.ix_(twrShapes,twrShapes)]
+                twr.MM      [6:,6:] = self.pTwr['Me']   [np.ix_(shapes,shapes)]
+                twr.KK      [6:,6:] = self.pTwr['Ke']   [np.ix_(shapes,shapes)]
+                twr.KK0     [6:,6:] = self.pTwr['Ke0']  [np.ix_(shapes,shapes)]
+                twr.KKg_self[6:,6:] = self.pTwr['Kg_SW'][np.ix_(shapes,shapes)]
+                twr.KKg_Mtop[6:,6:] = self.pTwr['Kg_TM'][np.ix_(shapes,shapes)]
+                twr.DD      [6:,6:] = self.pTwr['De']   [np.ix_(shapes,shapes)]
+
+        twr_rigid  = twr.toRigidBody()
+        twr_rigid.pos_global = WT.r_ET_inE
 
         WT.twr = twr
         WT.twr_rigid = twr_rigid

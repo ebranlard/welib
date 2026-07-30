@@ -88,9 +88,9 @@ class Body(object):
 
 
     def __repr__(self):
-        s='<Generic Body {} object>:\n'.format(self.name)
+        s='<GenericBody {} object>:\n'.format(self.name)
         s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
-        s+=' - mass:                  {}\n'.format(self.mass)
+        s+=' * mass:                  {}\n'.format(self.mass)
         s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' - Additional Props: {}\n'.format(self.additional_properties)
@@ -244,12 +244,12 @@ class RigidBody(Body):
         return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
-        s='<RigidBody object>:\n'
+        s='<RigidBody {} object>:\n'.format(self.name)
         s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
         s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
         s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
         s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
-        s+=' - mass:         {}\n'.format(self.mass)
+        s+=' * mass:         {}\n'.format(self.mass)
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
@@ -677,7 +677,7 @@ class BeamBody(FlexibleBody):
             s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
             s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
             s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
-            s+=' - mass:         {}\n'.format(self.mass)
+            s+=' * mass:         {}\n'.format(self.mass)
             s+=' * length:      {}\n'.format(self.length)
             s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
             s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
