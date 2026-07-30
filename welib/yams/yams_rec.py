@@ -105,13 +105,13 @@ class Connection():
                 else:
                     raise Exception()
                 # Setting Bhat column by column
-                j.B_ci[3:,ir] = np.dot(R,I) # NOTE: needs to be done before R updates
+                j.B_ci[3:,ir] = R @ I # NOTE: needs to be done before R updates
                 # Updating rotation matrix
-                R      = np.dot(R , Rj )
+                R      = R @ Rj
                 if j.OrientAfter:
-                    j.R_ci = j.Matrix(np.dot(R, j.R_ci_0 ))
+                    j.R_ci = j.Matrix(R @ j.R_ci_0)
                 else:
-                    j.R_ci = j.Matrix(np.dot(j.R_ci_0, R ))
+                    j.R_ci = j.Matrix(j.R_ci_0 @ R)
 
         # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
         if j.parentNode is not None:
@@ -234,16 +234,16 @@ class YAMSRecBody(GenericBody):
             conn_pi.updateKinematics(q) # TODO
 
             # Full connection p and j
-            R_pi   = np.dot(R_pc, conn_pi.R_ci )
+            R_pi   = R_pc @ conn_pi.R_ci
             if conn_pi.B_ci.shape[1]>0:
-                Bx_pi  = np.column_stack((Bx_pc, np.dot(R_pc,conn_pi.B_ci[:3,:])))
-                Bt_pi  = np.column_stack((Bt_pc, np.dot(R_pc,conn_pi.B_ci[3:,:])))
+                Bx_pi  = np.column_stack((Bx_pc, R_pc @ conn_pi.B_ci[:3,:]))
+                Bt_pi  = np.column_stack((Bt_pc, R_pc @ conn_pi.B_ci[3:,:]))
             else:
                 Bx_pi  = Bx_pc
                 Bt_pi  = Bt_pc
               
             # Rotation of body i is rotation due to p and j
-            R_0i = np.dot( R_0p , R_pi )
+            R_0i = R_0p @ R_pi
 
             # Position of connection point in P and 0 system
             r_pi_inP= conn_pi.s_C_inB
@@ -267,6 +267,7 @@ class YAMSRecBody(GenericBody):
 
 #            TODO TODO TODO: remaining from matlab?????
             gzf  = q[body_i.I_DOF,0]
+            print('>>> ',body_i.name, gzf)
 #             gz   = q    (i.I_DOF);
 #             gzp  = qdot (i.I_DOF);
 #             gzpp = qddot(i.I_DOF);
@@ -339,11 +340,11 @@ class YAMSRecBody(GenericBody):
             R_b2g = o.R_b2g
         # Updating rigid body velocity and acceleration
         if v_0 is not None:
-            o.v_O_inB     = np.dot(R_b2g, v_0[0:3])
-            o.om_O_inB    = np.dot(R_b2g, v_0[3:6])
+            o.v_O_inB     = R_b2g @ v_0[0:3]
+            o.om_O_inB    = R_b2g @ v_0[3:6]
         if a_v_0 is not None:
-            o.a_O_v_inB   = np.dot(R_b2g, a_v_0[0:3])
-            o.omp_O_v_inB = np.dot(R_b2g, a_v_0[3:6])
+            o.a_O_v_inB   = R_b2g @ a_v_0[0:3]
+            o.omp_O_v_inB = R_b2g @ a_v_0[3:6]
 
     @property
     def _positions_global(B): # todo rename
@@ -615,16 +616,17 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
 
     @property
     def alpha_couplings(self):
-        return  np.dot(self.Bhat_t_bc , self.gzf).ravel()
+        gzf = np.atleast_1d(self.gzf)
+        return (self.Bhat_t_bc @ gzf).ravel()
 
     @property
     def R_bc(self):
         alpha = self.alpha_couplings
 
         if self.main_axis=='x':
-            return np.dot(R_y(alpha[1]),R_z(alpha[2]))
+            return R_y(alpha[1]) @ R_z(alpha[2])
         elif self.main_axis=='z':
-            return np.dot(R_x(alpha[0]),R_y(alpha[1]))
+            return R_x(alpha[0]) @ R_y(alpha[1])
         else:
             raise NotImplementedError()
 
@@ -850,7 +852,7 @@ def fB_inB(R_EI, B_I, sympy=False):
     if len(B_I)==0:
         B_I_inI = MatrixLoc(np.array([]))
     else:
-        B_I_inI = MatrixLoc(np.vstack(( np.dot(R_EI.T, B_I[:3,:]), np.dot(R_EI.T , B_I[3:,:]))))
+        B_I_inI = MatrixLoc(np.vstack((R_EI.T @ B_I[:3,:], R_EI.T @ B_I[3:,:])))
     return B_I_inI
 
 def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None, sympy=False):
@@ -915,8 +917,8 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi, sympy=False):
         Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
         Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
     if ni>0:
-        Bi[:3,n_p:] = np.dot(R0p, Bhat_x[:,:]) # Recursive formula for Bx mentioned after Eq.(15)
-        Bi[3:,n_p:] = np.dot(R0p, Bhat_t[:,:]) # Recursive formula for Bt mentioned after Eq.(12)
+        Bi[:3,n_p:] = R0p @ Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
+        Bi[3:,n_p:] = R0p @ Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
     return Bi
 
 def fBMatTranslate(Bp, r_pi, sympy=False):
@@ -939,7 +941,7 @@ def fBMB(BB_I_inI, MM, sympy=False):
     """ Computes the body generalized matrix: B'^t M' B 
     See Eq.(8) of [1] 
     """
-    MM_I = np.dot(np.transpose(BB_I_inI), MM).dot(BB_I_inI)
+    MM_I = (np.transpose(BB_I_inI) @ MM) @ BB_I_inI
     return MM_I
 
 if __name__=='__main__':

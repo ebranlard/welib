@@ -324,13 +324,13 @@ class Connection():
                 else:
                     raise Exception()
                 # Setting Bhat column by column
-                j.B_ci[3:,ir] = np.dot(R,I) # NOTE: needs to be done before R updates
+                j.B_ci[3:,ir] = R @ I # NOTE: needs to be done before R updates
                 # Updating rotation matrix
-                R      = np.dot(R , Rj )
+                R      = R @ Rj
                 if j.OrientAfter:
-                    j.R_ci = self.Matrix(np.dot(R, j.R_ci_0 ))
+                    j.R_ci = self.Matrix(R @ j.R_ci_0)
                 else:
-                    j.R_ci = self.Matrix(np.dot(j.R_ci_0, R ))
+                    j.R_ci = self.Matrix(j.R_ci_0 @ R)
 
         # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
         if j.parentNode is not None:
@@ -989,8 +989,8 @@ class YAMSRecSPBody(object):
             # Full connection p and j
             R_pi   = R_pc*conn_pi.R_ci  
             if conn_pi.B_ci.shape[1]>0:
-                Bx_pi  = self.Matrix(np.column_stack((Bx_pc, np.dot(R_pc,conn_pi.B_ci[:3,:]))))
-                Bt_pi  = self.Matrix(np.column_stack((Bt_pc, np.dot(R_pc,conn_pi.B_ci[3:,:]))))
+                Bx_pi  = self.Matrix(np.column_stack((Bx_pc, R_pc @ conn_pi.B_ci[:3,:])))
+                Bt_pi  = self.Matrix(np.column_stack((Bt_pc, R_pc @ conn_pi.B_ci[3:,:])))
             else:
                 Bx_pi  = Bx_pc
                 Bt_pi  = Bt_pc
@@ -2514,7 +2514,7 @@ class BeamBody(YAMSRecSPBody):
         B.main_axis = main_axis
     @property
     def alpha_couplings(self):
-        return  np.dot(self.Bhat_t_bc , self.gzf)
+        return self.Bhat_t_bc @ self.gzf
 
     @property
     def R_bc(self):
@@ -2685,7 +2685,7 @@ def fBMB(BB_I_inI, MM, sympy=True):
     """ Computes the body generalized matrix: B'^t M' B 
     See Eq.(8) of [1] 
     """
-    MM_I = np.dot(np.transpose(BB_I_inI), MM).dot(BB_I_inI)
+    MM_I = (np.transpose(BB_I_inI) @ MM) @ BB_I_inI
     return MM_I
 
 
