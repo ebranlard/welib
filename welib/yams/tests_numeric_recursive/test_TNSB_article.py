@@ -9,7 +9,7 @@ import copy
 import unittest
 from welib.yams.yams_rec import *
 from welib.yams.utils import translateInertiaMatrix, translateInertiaMatrixToCOG
-from welib.yams.models.TNSB import manual_assembly
+from welib.yams.models.TNSB import TNSBStructure
 
 def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
 
@@ -142,8 +142,23 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # --------------------------------------------------------------------------------}
     # --- Manual assembly 
     # --------------------------------------------------------------------------------{
-    Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,DEBUG=DEBUG)
-    return Struct
+    WT = TNSBStructure(main_axis=main_axis, bTiltBeforeNac=False)
+    WT.twr    = Twr
+    WT.yawBr  = Yaw
+    WT.nac    = Nac
+    WT.gen    = Gen
+    WT.hubgen = Sft
+    WT.bld    = Blds
+    WT.r_ET_inE = r_ET_inE
+    WT.r_TN_inT = r_TN_inT
+    WT.r_NS_inN = r_NS_inN
+    WT.r_SR_inS = r_SR_inS
+    WT.shaft_tilt = 0
+    WT.blade_cone = 0
+    WT.manual_assembly(q=q)
+#     WT.auto_assembly(q=q) # NOTE: fails, probably because of lack of coherence in data structure
+    #Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,DEBUG=DEBUG)
+    return WT
 
 
 class TestTNSB(unittest.TestCase):

@@ -52,16 +52,15 @@ class WindTurbineStructure():
         self.r_NR_inN = None
         self.r_SR_inS = None
 
-        self.shaft_tilt = None # [rad] # TODO theta_tilt
+        self.shaft_tilt = None # [rad] # TODO introduce nac_titl
+        self.blade_cone = None # [rad]
+        self.nac_yaw    = None # TODO decide what this means (offset, DOF)
 
         # --- From TNSB
         self.MM   = None
         self.KK   = None
         self.DD   = None
         self.q    = None
-        self.theta_tilt     = None
-        self.theta_cone     = None
-        self.theta_yaw      = None
         self.bTiltBeforeNac = None
         self.additional_properties=[] # for user output in __repr__, so I remember what we have in the object
 
@@ -948,7 +947,7 @@ class FASTWindTurbine():
            WT.r_TN_inT = np.array([ED['TowerHt']-ED['TowerBsHt'],0,0])
 
            WT.shaft_tilt   = ED['ShftTilt']*np.pi/180    # NOTE: tilt has wrong orientation in FAST
-           WT.theta_cone_y = -ED['Precone(1)']*np.pi/180
+           WT.blade_cone = -ED['Precone(1)']*np.pi/180
 
            if bTiltBeforeNac:
                raise NotImplementedError()
@@ -973,7 +972,7 @@ class FASTWindTurbine():
 
             # Basic geometries for nacelle
             WT.shaft_tilt = -ED['ShftTilt']*np.pi/180  # NOTE: tilt has wrong orientation in FAST
-            WT.theta_cone_y= ED['Precone(1)']*np.pi/180
+            WT.blade_cone = ED['Precone(1)']*np.pi/180
 
             if bTiltBeforeNac:
                 raise NotImplementedError()

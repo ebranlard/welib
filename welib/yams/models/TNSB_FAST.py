@@ -7,7 +7,7 @@ import os
 from welib.yams.windturbine import FASTWindTurbine
 from welib.yams.yams_rec import YAMSRecFASTBeamBody, YAMSRecRigidBody
 from welib.yams.utils import *
-from welib.yams.models.TNSB import manual_assembly, auto_assembly, TNSBStructure
+from welib.yams.models.TNSB import TNSBStructure
 
 import welib.weio as weio
 from welib.weio.fast_input_file import FASTInputFile
@@ -97,21 +97,6 @@ class FASTmodel2TNSB(FASTWindTurbine):
         self.setupEDTwr(shapes=shapes_twr, nSpan=nSpan_twr, 
                         bStiffening=bStiffening,
                         flavor='yams_rec')
-        # --- Legacy Code
-        sft = self.WT.hubgen
-        gen = self.WT.gen
-        nac = self.WT.nac
-        yaw = self.WT.yawBr
-        bld = self.WT.bld
-        twr = self.WT.twr
-        #self.reshape_3array_to_atleast_2d()
-        theta_tilt_y =  self.WT.shaft_tilt
-        theta_cone_y =  self.WT.theta_cone_y
-        r_ET_inE     =  self.WT.r_ET_inE
-        r_TN_inT     =  self.WT.r_TN_inT    
-        r_NS_inN     =  self.WT.r_NS_inN   
-        r_SR_inS     =  self.WT.r_SR_inS    
-
         #print('Stiffnening', bStiffening)
         #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
         if DEBUG:
@@ -125,10 +110,8 @@ class FASTmodel2TNSB(FASTWindTurbine):
 
         if assembly=='manual':
             self.WT.manual_assembly(q=q, DEBUG=DEBUG)
-#              manual_assembly(twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
         else:
             self.WT.auto_assembly(q=q, DEBUG=DEBUG)
-#             auto_assembly   (twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
 
         # --- Initial conditions
         ED = self.ED
