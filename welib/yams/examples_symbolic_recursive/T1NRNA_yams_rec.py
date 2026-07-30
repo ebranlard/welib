@@ -17,16 +17,23 @@ from welib.yams.yams_sympy import colvec, R_x, R_y, R_z, cross
 from welib.yams.yams_sympy import GroundBody
 from welib.yams.yams_sympy import BeamBody
 from welib.yams.yams_sympy import RigidBody
+from welib.essentials import *
 
 
-def main():
+def main(test=False):
     init_printing(use_unicode=False, wrap_line=False, no_global=True)
     #init_printing(wrap_line=False)
     # init_printing(use_latex='mathjax')
-    display=lambda x: sympy.pprint(x, use_unicode=False,wrap_line=False)
-    disp=lambda x: print(lambdarepr.lambdarepr(x))
-    sep=lambda : print('--------')
-
+    def myprint(x):
+        if test:
+            pass
+        else:
+            print(x)
+    def display(x):
+        if test:
+            pass
+        else:
+            sympy.pprint(x, use_unicode=False,wrap_line=False)
 
     # ---
     L  = symbols('L')
@@ -97,55 +104,55 @@ def main():
 
     Grd.connectTo(Twr, Point=r_ET_inE, Type='Rigid')
     Twr.connectTo(Nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 )
-    nq=Grd.setupDOFIndex(0);
+    nq=Grd.setupDOFIndex();
 
-    print('Number of DOFs: ')
+    myprint('Number of DOFs: ')
     if nq!=len(q):
-       print('>>> ',nq,len(q))
+       myprint('>>> ',nq,len(q))
        raise Exception('Wrong number of dof')
 
 
 
-    print('------------------ p=GROUND   i=TOWER --------------------------------------')
+    myprint('------------------ p=GROUND   i=TOWER --------------------------------------')
     Grd.updateChildrenKinematicsNonRecursive(q)
-    print('------------------ p=TOWER   i=NACELLE --------------------------------------')
+    myprint('------------------ p=TOWER   i=NACELLE --------------------------------------')
     Twr.updateChildrenKinematicsNonRecursive(q)
 
 
-    print('------------------ TOWER --------------------------------------')
-    print('B_T')
+    myprint('------------------ TOWER --------------------------------------')
+    myprint('B_T')
     display(Twr.B)
-    print(np.array(Twr.B.subs(subs)))
-    print('B_T_in_T')
+    myprint(np.array(Twr.B.subs(subs)))
+    myprint('B_T_in_T')
     display(Twr.B_inB)
-    print(np.array(Twr.B_inB.subs(subs)))
-    print('BB_T_in_T')
+    myprint(np.array(Twr.B_inB.subs(subs)))
+    myprint('BB_T_in_T')
     display(Twr.BB_inB)
-    print(np.array(Twr.BB_inB.subs(subs)))
+    myprint(np.array(Twr.BB_inB.subs(subs)))
 
-    print('------------------ NACELLE --------------------------------------')
-    print('B_N')
+    myprint('------------------ NACELLE --------------------------------------')
+    myprint('B_N')
     display(Nac.B)
-    print(np.array(Nac.B.subs(subs)))
-    print('B_N_in_N')
+    myprint(np.array(Nac.B.subs(subs)))
+    myprint('B_N_in_N')
     display(Nac.B_inB)
-    print(np.array(Nac.B_inB.subs(subs)))
-    print('BB_N_in_N')
+    myprint(np.array(Nac.B_inB.subs(subs)))
+    myprint('BB_N_in_N')
     display(Nac.BB_inB)
-    print(np.array(Nac.BB_inB.subs(subs)))
+    myprint(np.array(Nac.BB_inB.subs(subs)))
 
 
-    print('------------------ TOWER TOP FORCES IN EARTH--------------------------------------')
-    print('Thrust in E')
+    myprint('------------------ TOWER TOP FORCES IN EARTH--------------------------------------')
+    myprint('Thrust in E')
     T_inE = Nac.R_b2g*T_inN
     display(T_inE)
-    print(np.array(T_inE.subs(subs)))
+    myprint(np.array(T_inE.subs(subs)))
 
-    print('Moment from thrust in E')
+    myprint('Moment from thrust in E')
     r_NR_inE = Nac.R_b2g*r_NR_inN
     MT_inE = Matrix(cross(r_NR_inE, T_inE))
     display(MT_inE)
-    print(np.array(MT_inE.subs(subs)))
+    myprint(np.array(MT_inE.subs(subs)))
 
 
     W_inE= M_RNA*g_inE
@@ -153,100 +160,114 @@ def main():
     rho_N_inE = Nac.R_b2g*rho_N_inN
     MW_inE = M_RNA*Matrix(cross(rho_N_inE , g_inE))
 
-    print('Moment from weight in E')
+    myprint('Moment from weight in E')
     display(MW_inE)
-    print(np.array(MW_inE.subs(subs)))
+    myprint(np.array(MW_inE.subs(subs)))
 
 
-    print('FullForce in E')
+    myprint('FullForce in E')
     F_inE = W_inE + T_inE
     display(F_inE)
-    print(np.array(F_inE.subs(subs)))
-    print('Fullmoment in E at N')
+    myprint(np.array(F_inE.subs(subs)))
+    myprint('Fullmoment in E at N')
     M_inE = MW_inE + MT_inE
-    print(np.array(M_inE.subs(subs)))
+    myprint(np.array(M_inE.subs(subs)))
 
 
-    print('FullLoad in E at N')
+    myprint('FullLoad in E at N')
     f_inE = Matrix(np.vstack((F_inE,M_inE)))
-    print(np.array(f_inE.subs(subs)))
+    myprint(np.array(f_inE.subs(subs)))
 
 
-    print('')
-    print('Fx in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
-    print(np.array(simplify(F_inE[0].subs(subs))))
-    print('')
-    print('My in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
-    print(np.array(simplify(M_inE[1].subs(subs))))
-    print('')
-    print('Fz in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
-    print(np.array(simplify(F_inE[2].subs(subs))))
-    print('')
+    myprint('')
+    myprint('Fx in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
+    myprint(np.array(simplify(F_inE[0].subs(subs))))
+    myprint('')
+    myprint('My in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
+    myprint(np.array(simplify(M_inE[1].subs(subs))))
+    myprint('')
+    myprint('Fz in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
+    myprint(np.array(simplify(F_inE[2].subs(subs))))
+    myprint('')
 
 
-    print('Generalized force in E at N')
+    myprint('Generalized force in E at N')
     GF_N_fromE = Nac.B.T * f_inE
-    print(np.array(GF_N_fromE.subs(subs)))
+    myprint(np.array(GF_N_fromE.subs(subs)))
 
 
 
-    print('------------------ TOWER TOP FORCES IN NAC--------------------------------------')
-    print('Thrust in N')
+    myprint('------------------ TOWER TOP FORCES IN NAC--------------------------------------')
+    myprint('Thrust in N')
     display(T_inN)
-    print(np.array(T_inN.subs(subs)))
+    myprint(np.array(T_inN.subs(subs)))
 
-    print('Moment from thrust in N')
+    myprint('Moment from thrust in N')
     MT_inN = Matrix(cross(r_NR_inN, T_inN))
     display(MT_inN)
-    print(np.array(MT_inN.subs(subs)))
+    myprint(np.array(MT_inN.subs(subs)))
 
     g_inN = Nac.R_b2g.T * g_inE
     W_inN= M_RNA* g_inN
 
     MW_inN = M_RNA*Matrix(cross(rho_N_inN , g_inN))
     # 
-    print('Moment from weight in N')
+    myprint('Moment from weight in N')
     display(MW_inN)
-    print(np.array(MW_inN.subs(subs)))
+    myprint(np.array(MW_inN.subs(subs)))
 
 
-    print('FullForce in N')
+    myprint('FullForce in N')
     F_inN = W_inN + T_inN
     display(F_inN)
-    print(np.array(F_inN.subs(subs)))
+    myprint(np.array(F_inN.subs(subs)))
 
 
 
 
-    print('Fullmoment in N at N')
+    myprint('Fullmoment in N at N')
     M_inN = MW_inN + MT_inN
-    print(np.array(M_inN.subs(subs)))
+    myprint(np.array(M_inN.subs(subs)))
 
 
-    print('FullLoad in E at N')
+    myprint('FullLoad in E at N')
     f_inN = Matrix(np.vstack((F_inN,M_inN)))
-    print(np.array(f_inE.subs(subs)))
+    myprint(np.array(f_inE.subs(subs)))
 
-    print('Generalized force in N at N')
+    myprint('Generalized force in N at N')
     GF_N = Nac.B_inB.T * f_inN
-    print(np.array(GF_N.subs(subs)))
+    myprint(np.array(GF_N.subs(subs)))
 
-    print('Generalized force in E at N')
-    print(np.array(GF_N_fromE.subs(subs)))
+    myprint('Generalized force in E at N')
+    myprint(np.array(GF_N_fromE.subs(subs)))
 
-    print('')
-    print('Generalized force simplified')
+    myprint('')
+    myprint('Generalized force simplified')
     display(simplify(GF_N))
-    print('')
-    print('---------------------------')
+    myprint('')
+    myprint('---------------------------')
     display(simplify(GF_N-GF_N_fromE))
 
-    print('----------Fx in E----------')
+    myprint('----------Fx in E----------')
     display(simplify(F_inE[0]).subs(subs))
-    print('----------Fz in E----------')
+    myprint('----------Fz in E----------')
     display(simplify(F_inE[2]).subs(subs))
-    print('----------My in E----------')
+    myprint('----------My in E----------')
     display(simplify(M_inE[1]).subs(subs))
+
+
+
+    myprint('----------Grd--------------')
+    myprint(Grd)
+
+    myprint('----------Twr--------------')
+    myprint(Twr)
+
+    myprint('----------Nac--------------')
+    myprint(Nac)
+
+    myprint('----------MM --------------')
+    #display(simplify(Grd.M()).subs(subs))
 
 
 
@@ -269,14 +290,6 @@ def main():
     # display(Twr.Bhat_x_bc)
     # sep()
     # display(Twr.Bhat_t_bc)
-
-
-
-    # M=Matrix([[],[],[]])
-    # Matrix()
-    # print(len(M))
-    # print(M.shape)
-    # display(M*r_T_inE)
 
 
     # r_T     = r_E+ r_TN_inE
@@ -322,10 +335,6 @@ def main():
 
 if __name__=="__main__":
     main()
-    plt.show()
 if __name__=="__test__":
-    pass
-if __name__=="__export__":
-    pass
-    #from welib.tools.repo import export_figs_callback
-    #export_figs_callback(__file__)
+    raise Exception('HERE')
+    main(test=True)

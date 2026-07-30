@@ -38,7 +38,7 @@ from collections import OrderedDict
 
 
 __all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody'] # New general implementation
-__all__+= ['Body','RigidBody','GroundBody'] # Old "recursive" implementation. TODO merge the two
+__all__+= ['YAMSRecSPBody','RigidBody','GroundBody'] # Old "recursive" implementation. TODO merge the two
 __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
 
 # --------------------------------------------------------------------------------}
@@ -246,18 +246,23 @@ class Taylor(object):
 # --- Connections 
 # --------------------------------------------------------------------------------{
 class Connection():
-    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None):
+    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True, parentNode=None, parentBody=None, sympy=True):
+        self.sympy = sympy
         if RelOrientation is None:
-            RelOrientation=eye(3)
+            RelOrientation=self.eye(3)
         if RelPoint is None:
-            RelPoint=colvec([0,0,0])
+            RelPoint = [0,0,0]
 
         self.Type=Type
         
-        self.s_C_0_inB = RelPoint
+        self.s_C_0_inB = self.vec3(RelPoint)
         self.s_C_inB   = self.s_C_0_inB
         self.R_ci_0    = RelOrientation
         self.R_ci      = self.R_ci_0     
+        self.OrientAfter= OrientAfter
+        self.parentNode = parentNode
+        self.parentBody = parentBody
+        self.I_DOF= None  # < Index of joints DOF in global DOF vector
 
         if self.Type=='Rigid':
             self.nj=0
@@ -267,8 +272,38 @@ class Connection():
         else:
             raise NotImplementedError()
 
+    # --- Generic Tools to work with Sympy and Numpy
+    def vec3(self, v):
+        if self.sympy:
+            return Matrix([[v[0]],[v[1]],[v[2]]])
+        else:
+            v = np.asarray(v).ravel()
+            if len(v)!=3:
+                raise Exception('Vector should be of length 3')
+            return v
+
+    def Matrix(self, m):
+        if self.sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
+
+    def cross(self, V1, V2):
+        if self.sympy:
+            return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
+        else:
+            return np.cross(V1, V2) 
+
+    def eye(self, n): 
+        if self.sympy:
+            return Matrix( np.eye(n).astype(int) )
+        else:
+            return np.eye(n)
+    # --- End generic tools
+
+
     def updateKinematics(j,q):
-        j.B_ci=Matrix(np.zeros((6,j.nj)))
+        j.B_ci = j.Matrix(np.zeros((6,j.nj)))
         if j.Type=='Rigid':
             j.R_ci=j.R_ci_0
         elif j.Type=='SphericalJoint':
@@ -292,8 +327,29 @@ class Connection():
                 j.B_ci[3:,ir] = np.dot(R,I) # NOTE: needs to be done before R updates
                 # Updating rotation matrix
                 R      = np.dot(R , Rj )
-                j.R_ci = Matrix(np.dot(R, j.R_ci_0 ))
+                if j.OrientAfter:
+                    j.R_ci = self.Matrix(np.dot(R, j.R_ci_0 ))
+                else:
+                    j.R_ci = self.Matrix(np.dot(j.R_ci_0, R ))
 
+        # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
+        if j.parentNode is not None:
+            #print('>>>> Joint Kinematics. Updating joint position based on parent node position')
+            iNode=j.parentNode
+            j.s_C_inB = (j.parentBody.s_P[:,iNode]).reshape(3,1)
+
+    def __repr__(self):
+        s ='<Connection object>:\n'
+        s+='|Properties:\n'
+        s+='| - Type:     {} \n'.format(self.Type)
+        s+='| - OrientAfter:  {} \n'.format(self.OrientAfter)
+        s+='| - s_C_0_inB:(init pos. of conn. in body)   \n{} \n'.format(self.s_C_0_inB)
+        s+='| - s_C_inB:  (current pos. of conn. in body)\n{} \n'.format(self.s_C_inB)
+        s+='| - R_ci_0:   (init rot. ro conn. in body)   \n{} \n'.format(self.R_ci_0)
+        s+='| - R_ci:     (current rot. ro conn. in body)\n{} \n'.format(self.R_ci)
+        s+='|Methods: updateKinematics\n'
+        s+='|Usefull getters: None \n'
+        return s
 
 
 # --------------------------------------------------------------------------------}
@@ -816,18 +872,77 @@ class YAMSBody(object):
             else:
                 raise NotImplementedError()
             
-class Body(object):
-    def __init__(B,Name=''):
+class YAMSRecSPBody(object):
+    def __init__(B, name='', sympy=True):
+        B.sympy = True
+        B.pos_global  = B.vec3([0,0,0])
+        B.R_b2g       = B.eye(3)
+        B.name        = name
         B.Children    = []
         B.Connections = []
-        B.Name        = Name
         B.MM     = None
         B.B           = [] # Velocity transformation matrix
-        B.updatePosOrientation(colvec([0,0,0]), eye(3))
+        B.B_inB       = None
+        B.BB_inB      = None
+#         B.Bhat_x_bc   = None
+#         B.Bhat_t_bc   = None
+        B.I_DOF       = None
+        B.gzf         = None        
 
-    def updatePosOrientation(o,x_0,R_b2g):
-        o.r_O = x_0      # position of body origin in global coordinates
-        o.R_b2g=R_b2g      # transformation matrix from body to global
+    # --- Generic Tools to work with Sympy and Numpy
+    def vec3(self, v):
+        if self.sympy:
+            return Matrix([[v[0]],[v[1]],[v[2]]])
+        else:
+            v = np.asarray(v).ravel()
+            if len(v)!=3:
+                raise Exception('Vector should be of length 3')
+            return v
+
+    def Matrix(self, m):
+        if self.sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
+
+    def cross(self, V1, V2):
+        if self.sympy:
+            return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
+        else:
+            return np.cross(V1, V2) 
+
+    def eye(self, n): 
+        if self.sympy:
+            return Matrix( np.eye(n).astype(int) )
+        else:
+            return np.eye(n)
+    # --- End generic tools
+
+
+    def __repr__(B):
+        s='<YAMSRecSP Body {} object>:\n'.format(B.name)
+        s+='|Properties:\n'
+        try: 
+            names = [c.name for c in B.Children]
+        except:
+            names=''
+        s+='| - Children: {} {}\n'.format(len(B.Children), names)
+        try: 
+            types = [c.Type for c in B.Connections]
+        except:
+            types=''
+        s+='| - Connections: {} {}\n'.format(len(B.Connections), types)
+        s+='| - I_DOF:  {}\n'.format(B.I_DOF)
+        s+='| - pos_global:  {}\n'.format(B.pos_global)
+        s+='| - gzf       :  {}\n'.format(B.gzf)
+        s+='| - R_b2g : \n{}\n'.format(B.R_b2g)
+        s+='| * nf  : {}\n'.format(B.nf)
+        s+='| * R_bc: \n{}\n'.format(B.R_bc)
+        s+='| * Bhat_x_bc: \n{}\n'.format(B.Bhat_x_bc)
+        s+='| * Bhat_t_bc: \n{}\n'.format(B.Bhat_t_bc)
+        s+='| * mass     :   {}\n'.format(B.mass) 
+        s+='|Methods: connectTo, updateChildrenKinematicsNonRecursive \n'
+        return s
 
     def connectTo(self, Child, Point=None, Type=None, RelOrientation=None, JointRotations=None):
         if Type =='Rigid':
@@ -837,7 +952,7 @@ class Body(object):
         self.Children.append(Child)
         self.Connections.append(c)
 
-    def setupDOFIndex(o,n):
+    def _setupDOFIndex(o,n):
         nForMe=o.nf
         # Setting my dof index
         o.I_DOF=n+ np.arange(nForMe) 
@@ -850,29 +965,16 @@ class Body(object):
             # Update
             n=n+nForConn;
             # Then Children
-            n=child.setupDOFIndex(n)
+            n=child._setupDOFIndex(n)
         return n
 
-    def __repr__(B):
-        s=''
-        return s
 
-    @property
-    def R_bc(self):
-        return eye(3);
-    @property
-    def Bhat_x_bc(self):
-        return Matrix(np.zeros((3,0)))
-    @property
-    def Bhat_t_bc(self):
-        return Matrix(np.zeros((3,0)))
-
-    def updateChildrenKinematicsNonRecursive(p,q):
+    def updateChildrenKinematicsNonRecursive(p,q, qdot=None, qddot=None):
         # At this stage all the kinematics of the body p are known
         # Useful variables
         R_0p =  p.R_b2g
         B_p  =  p.B
-        r_0p  = p.r_O
+        r_0p  = p.pos_global  # Position of body origin in global coordinates
 
         nf_all_children=sum([child.nf for child in p.Children])
 
@@ -887,8 +989,8 @@ class Body(object):
             # Full connection p and j
             R_pi   = R_pc*conn_pi.R_ci  
             if conn_pi.B_ci.shape[1]>0:
-                Bx_pi  = Matrix(np.column_stack((Bx_pc, np.dot(R_pc,conn_pi.B_ci[:3,:]))))
-                Bt_pi  = Matrix(np.column_stack((Bt_pc, np.dot(R_pc,conn_pi.B_ci[3:,:]))))
+                Bx_pi  = self.Matrix(np.column_stack((Bx_pc, np.dot(R_pc,conn_pi.B_ci[:3,:]))))
+                Bt_pi  = self.Matrix(np.column_stack((Bt_pc, np.dot(R_pc,conn_pi.B_ci[3:,:]))))
             else:
                 Bx_pi  = Bx_pc
                 Bt_pi  = Bt_pc
@@ -899,48 +1001,82 @@ class Body(object):
             # Position of connection point in P and 0 system
             r_pi_inP= conn_pi.s_C_inB
             r_pi    = R_0p * r_pi_inP
-            B_i      = fBMatRecursion(B_p, Bx_pi, Bt_pi, R_0p, r_pi)
-            B_i_inI  = fB_inB(R_0i, B_i)
-            BB_i_inI = fB_aug(B_i_inI, body_i.nf)
+            B_i      = fBMatRecursion(B_p, Bx_pi, Bt_pi, R_0p, r_pi, sympy=p.sympy)
+            B_i_inI  = fB_inB(R_0i, B_i, sympy=p.sympy)
+            BB_i_inI = fB_aug(B_i_inI, body_i.nf, sympy=p.sympy)
 
             body_i.B      = B_i    
             body_i.B_inB  = B_i_inI
             body_i.BB_inB = BB_i_inI
 
             # --- Updating Position and orientation of child body 
-            r_0i = r_0p + r_pi  # % in 0 system
+            r_0i = r_0p + r_pi  # in 0 system
             body_i.R_pb = R_pi 
-            body_i.updatePosOrientation(r_0i,R_0i)
+            body_i.pos_global = r_0i
+            body_i.R_b2g = R_0i
 
             # TODO flexible dofs and velocities/acceleration
             body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
 
-    def getFullM(o,M):
-        if not isinstance(o,GroundBody):
-            MqB      = fBMB(o.BB_inB,o.MM)
-            n        = MqB.shape[0]
-            M[:n,:n] = M[:n,:n]+MqB     
+    def _getFullM(o, M):
+        if isinstance(o, GroundBody):
+            raise Exception('Not intended to be called for Ground body')
+        MqB      = fBMB(o.BB_inB, o.MM, sympy=o.sympy)
+        n        = MqB.shape[0]
+        M[:n,:n] = M[:n,:n]+MqB     
         for c in o.Children:
-            M=c.getFullM(M)
+            M=c._getFullM(M)
         return M
         
-    def getFullK(o,K):
-        if not isinstance(o,GroundBody):
-            KqB      = fBMB(o.BB_inB,o.KK)
+    def _getFullK(o, K):
+        if isinstance(o, GroundBody):
+            raise Exception('Not intended to be called for Ground body')
+            KqB      = fBMB(o.BB_inB, o.KK, sympy=o.sympy)
             n        = KqB.shape[0]
             K[:n,:n] = K[:n,:n]+KqB     
         for c in o.Children:
-            K=c.getFullK(K)
+            K=c._getFullK(K)
         return K
         
-    def getFullD(o,D):
-        if not isinstance(o,GroundBody):
-            DqB      = fBMB(o.BB_inB,o.DD)
-            n        = DqB.shape[0]
-            D[:n,:n] = D[:n,:n]+DqB     
+    def _getFullD(o, D):
+        if isinstance(o, GroundBody):
+            raise Exception('Not intended to be called for Ground body')
+        DqB      = fBMB(o.BB_inB,o.DD, sympy=o.sympy)
+        n        = DqB.shape[0]
+        D[:n,:n] = D[:n,:n]+DqB     
         for c in o.Children:
-            D=c.getFullD(D)
+            D=c._getFullD(D)
         return D
+        
+    @property
+    def bodies(o):
+        """ List of bodies recursively (children of children, etc)"""
+        bodies = [o]
+        for c in o.Children:
+            bodies += c.bodies
+        return bodies
+
+
+    @property
+    def R_bc(self):
+        return self.eye(3);
+    @property
+    def Bhat_x_bc(self):
+        return self.Matrix(np.zeros((3,0)))
+    @property
+    def Bhat_t_bc(self):
+        return self.Matrix(np.zeros((3,0)))
+    @property
+    def nf(B):
+        if hasattr(B,'PhiU'):
+            return len(B.PhiU)
+        else:
+            return 0
+    @property
+    def mass(B):
+        if B.MM is None:
+            return 0
+        return B.MM[0,0]
 
 
 # --------------------------------------------------------------------------------}
@@ -954,11 +1090,125 @@ class YAMSInertialBody(YAMSBody):
         YAMSBody.__init__(self,name)
     
 
-class GroundBody(Body):
+class GroundBody(YAMSRecSPBody):
+    """ 
+    Ground body is used to traverse the tree and hold the full mass matrix
+    """
     def __init__(B):
         super(GroundBody,B).__init__('Grd')
-        B.nf   = 0
+        
+    def setupDOFIndex(o):
+        n=0
+        o.nq = o._setupDOFIndex(n)
+        return o.nq
 
+    def setDOF(o, q):  
+        q   = q.reshape(o.nq,1)
+        o.q = q
+        if o.I_DOF is None:
+            o.setupDOFIndex()
+        # Update kinematics of all bodies
+        for b in o.bodies:
+            b.updateChildrenKinematicsNonRecursive(o.q)
+
+
+    def __repr__(self):
+        s='<YAMSRec GroundBody {} object>:\n'.format(self.name)
+        s+='|Inherits:\n'
+        s+='||'+'\n|'.join(YAMSRecSPBody.__repr__(self).split('\n'))+'\n'
+        s+='|Properties:\n'
+        try:
+            bnames = [b.name for b in self.bodies]
+        except:
+            bnames=''
+        s+='|* bodies: {}\n'.format(len(self.bodies))
+        for b in self.bodies:
+            s+='|    name : {:8s}, I_DOF : {}\n'.format(b.name, b.I_DOF)
+        s+='|Derived properties: M, K, D'
+        return s
+
+    def eva(o):
+        """ Perform eigenvalue analysis based on system matrices"""
+        from welib.system.eva import eigMCK
+        MM = o.M
+        KK = o.K
+        DD = o.D
+        freq_d, zeta, Q, freq_0 = eigMCK(MM, DD, KK, method='full_matrix', sort=True)
+        return freq_d, zeta, Q, freq_0
+
+    def modes(o, norm='tip_norm'):
+        # Backup current q
+        q_before = o.q
+        # Perform EVA
+        freq_d, zeta, Q, freq_0 = o.eva()
+        # Apply each mode, to compute full position of structure
+        Modes=[]
+        for q in Q.T: # loop though columns
+            o.setDOF(q)
+            mode = o._all_positions_global
+            Modes.append(mode)
+            # --- Mode scaling
+            # TODO figure out main "dimension"
+            # Sript below assumes x is main dimension
+            # TODO TODO normalization is not bullet proof..
+            Uy = mode[1,:]
+            Uz = mode[2,:]
+            maxAmp  = [np.max(np.abs(Uy)), np.max(np.abs(Uz))]
+            iMaxAmp = np.mod(np.argmax(maxAmp)+1,3)
+            iOther  = 1 if iMaxAmp==2 else 2
+            if norm=='tip_norm':
+                tipVal = mode[iMaxAmp, -1]
+                fact = tipVal
+                mode[iMaxAmp,:] /= fact
+                mode[iOther,:] /= fact
+            elif norm=='max':
+                maxVal = np.max(np.abs(mode[iMaxAmp, :]))
+                iMaxVal = np.argmax(np.abs(mode[iMaxAmp,:]))
+                fact = 1 / mode[iMaxAmp, iMaxVal]
+                mode[iMaxAmp,:] /= fact
+                mode[iOther,:] /= fact
+            elif norm=='mode_mass':
+                raise Exception()
+                pass
+
+
+        # Restore current q
+        o.setDOF(q_before)
+
+        return Modes
+
+    @property
+    def _all_positions_global(o): # TODO rename 
+        """ Return shape of full structure"""
+        for ib, b in enumerate(o.bodies):
+            pos = b._positions_global
+            if ib==0:
+                all_pos = pos
+            else:
+                all_pos = np.column_stack((all_pos,pos))
+        return all_pos
+
+
+    @property
+    def M(o):
+        M = np.zeros((o.nq, o.nq))
+        for c in o.Children:
+            M=c._getFullM(M)
+        return M
+        
+    @property
+    def K(o):
+        K = np.zeros((o.nq, o.nq))
+        for c in o.Children:
+            K=c._getFullK(K)
+        return K
+        
+    @property
+    def D(o):
+        D = np.zeros((o.nq, o.nq))
+        for c in o.Children:
+            D=c._getFullD(D)
+        return D
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
@@ -1224,13 +1474,12 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
 
 
         
-class RigidBody(Body):
+class RigidBody(YAMSRecSPBody):
     def __init__(B, Name, Mass, J_G, rho_G):
         """
         Creates a rigid body 
         """
         super(RigidBody,B).__init__(Name)
-        B.nf  = 0
         B.s_G_inB = rho_G
         B.J_G_inB = J_G  
         B.Mass    = Mass 
@@ -2257,10 +2506,10 @@ class YAMSFlexibleBody(YAMSBody):
 # --------------------------------------------------------------------------------}
 # --- Beam Body 
 # --------------------------------------------------------------------------------{
-class BeamBody(Body):
+class BeamBody(YAMSRecSPBody):
     def __init__(B,Name,nf,main_axis='z',nD=2):
         super(BeamBody,B).__init__(Name)
-        B.nf  = nf
+        B.PhiU = [None] * nf # B.nf has no setter 
         B.nD  = nD
         B.main_axis = main_axis
     @property
@@ -2332,29 +2581,41 @@ def R_z(t):
 # --------------------------------------------------------------------------------}
 # --- B Matrices 
 # --------------------------------------------------------------------------------{
-def fB_inB(R_EI, B_I):
+def fB_inB(R_EI, B_I, sympy=True):
     """ Transfer a global B_I matrix (body I at point I) into a matrix in it's own coordinate.
     Simply multiply the top part and bottom part of the B matrix by the 3x3 rotation matrix R_EI
     e.g.
          B_N_inN = [R_EN' * B_N(1:3,:);  R_EN' * B_N(4:6,:)];
     """ 
+    def MatrixLoc(m):
+        if sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
+            
     if len(B_I)==0:
-        B_I_inI = Matrix(np.array([]))
+        B_I_inI = MatrixLoc(np.array([]))
     else:
         B_I_inI = Matrix(np.vstack(( R_EI.T* B_I[:3,:],  R_EI.T * B_I[3:,:])))
     return B_I_inI
 
-def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None):
+def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None, sympy=True):
     """
     Augments the B_I_inI matrix, to include nf_I flexible degrees of freedom.
     This returns the full B matrix on the left side of Eq.(11) from [1], 
     based on the Bx and Bt matrices on the right side of this equation
     """
+    def MatrixLoc(m):
+        if sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
+
     if len(B_I_inI)==0:
         if nf_I>0:
-            BB_I_inI = Matrix(np.vstack( (np.zeros((6,nf_I)).astype(int), np.eye(nf_I).astype(int))) )
+            BB_I_inI = MatrixLoc(np.vstack( (np.zeros((6,nf_I)).astype(int), np.eye(nf_I).astype(int))) )
         else:
-            BB_I_inI= Matrix(np.zeros((6,0)).astype(int))
+            BB_I_inI= MatrixLoc(np.zeros((6,0)).astype(int))
     else:
         if nf_Curr is not None:
             # Case of several flexible bodies connected to one point (i.e. blades)
@@ -2366,13 +2627,18 @@ def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None):
 
         BB_I_inI = np.block([ [B_I_inI, np.zeros((6,nf_I))], [np.zeros((nf_Curr,B_I_inI.shape[1])), I]]);
 
-    return Matrix(BB_I_inI)
+    return MatrixLoc(BB_I_inI)
 
 
-def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
+def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi, sympy=True):
     """ Recursive formulae for B' and Bhat 
     See discussion after Eq.(12) and (15) from [1]
     """
+    def MatrixLoc(m):
+        if sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
     # --- Safety checks
     if len(Bp)==0:
         n_p = 0
@@ -2390,7 +2656,7 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
     r_pi=colvec(r_pi)
 
     # TODO use Translate here
-    Bi = Matrix(np.zeros((6,ni+n_p)))
+    Bi = MatrixLoc(np.zeros((6,ni+n_p)))
     for j in range(n_p):
         Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
         Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
@@ -2399,7 +2665,7 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
         Bi[3:,n_p:] = R0p*Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
     return Bi
 
-def fBMatTranslate(Bp,r_pi):
+def fBMatTranslate(Bp, r_pi, sympy=True):
     """
     Rigid translation of a B matrix to another point, i.e. transfer the velocities from a point to another: 
       - translational velocity:  v@J = v@I + om@I x r@IJ
@@ -2415,7 +2681,7 @@ def fBMatTranslate(Bp,r_pi):
     return Bi
 
 
-def fBMB(BB_I_inI,MM):
+def fBMB(BB_I_inI, MM, sympy=True):
     """ Computes the body generalized matrix: B'^t M' B 
     See Eq.(8) of [1] 
     """

@@ -41,12 +41,12 @@ class Body(object):
     Base class for rigid bodies and flexible bodies
     """
     def __init__(self, name='', r_O=None, R_b2g=None, sympy=False):
+        self.name = name
+        self.sympy = sympy
         if r_O is None:
             r_O = [0,0,0]
         if R_b2g is None:
-            R_b2g = np.eye(3)
-        self.name = name
-        self.sympy = sympy
+            R_b2g = self.eye(3)
         self._r_O            = self.vec3(r_O)
         self.pos_global_init = self.vec3(r_O)
         self._R_b2g          = self.Matrix(R_b2g)
