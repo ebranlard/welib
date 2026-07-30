@@ -1,7 +1,7 @@
 import unittest
 
 import numpy as np
-from welib.yams.yams import *
+from welib.yams.yams_rec import *
 
 # --------------------------------------------------------------------------------}
 # --- TESTS

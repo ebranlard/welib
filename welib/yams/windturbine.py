@@ -23,7 +23,7 @@ import welib.weio as weio
 from collections import OrderedDict
 from welib.essentials import *
 from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
-from welib.yams.yams import YAMSRecRigidBody
+from welib.yams.yams_rec import YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrix

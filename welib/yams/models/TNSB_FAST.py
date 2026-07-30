@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import os
 
 from welib.yams.windturbine import FASTWindTurbine
-from welib.yams.yams import FASTBeamBody, YAMSRecRigidBody
+from welib.yams.yams_rec import YAMSRecFASTBeamBody, YAMSRecRigidBody
 from welib.yams.utils import *
 from welib.yams.models.TNSB import manual_assembly, auto_assembly, TNSBStructure
 
@@ -119,7 +119,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------{
         # Bld
         Blds=[]
-        Blds.append(FASTBeamBody('blade',ED,self.bldFile,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
+        Blds.append(YAMSRecFASTBeamBody('blade',ED,self.bldFile,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
         Blds[0].MM *=bBldMass
         for iB in range(nB-1):
             Blds.append(copy.deepcopy(Blds[0]))
@@ -142,7 +142,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
 
         # Tower Body
         #print('M_RNA', M_RNA, self.WT.RNA.mass)
-        Twr = FASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
+        Twr = YAMSRecFASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
         #print('Stiffnening', bStiffening)
         #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
         if DEBUG:

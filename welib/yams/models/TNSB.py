@@ -15,8 +15,8 @@ import numpy as np
 import copy
 import os
 
-from welib.yams.yams import fB_inB, fB_aug, fBMB, fBMatRecursion, fBMatTranslate
-from welib.yams.yams import GroundBody, YAMSRecRigidBody
+from welib.yams.yams_rec import fB_inB, fB_aug, fBMB, fBMatRecursion, fBMatTranslate
+from welib.yams.yams_rec import GroundBody, YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z
 from welib.yams.windturbine import WindTurbineStructure, rigidBlades
 

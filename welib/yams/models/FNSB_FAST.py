@@ -18,7 +18,7 @@ import os
 
 from welib.yams.windturbine import rigidBlades
 from welib.yams.windturbine import FASTWindTurbine
-from welib.yams.yams import FASTBeamBody, YAMSRecRigidBody
+from welib.yams.yams_rec import YAMSRecFASTBeamBody, YAMSRecRigidBody
 from welib.yams.utils import *
 from welib.yams.models.TNSB import manual_assembly, auto_assembly, TNSBStructure
 
@@ -192,7 +192,7 @@ class FASTmodel2FNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------{
         # Bld
         Blds=[]
-        Blds.append(FASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
+        Blds.append(YAMSRecFASTBeamBody('blade',ED,bld,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
         Blds[0].MM *=bBldMass
         for iB in range(nB-1):
             Blds.append(copy.deepcopy(Blds[0]))
@@ -226,7 +226,7 @@ class FASTmodel2FNSB(FASTWindTurbine):
         # Tower Body
         #   None for now
         # Substructure Body
-        Fnd = FASTBeamBody('substructure', ED, SD, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
+        Fnd = YAMSRecFASTBeamBody('substructure', ED, SD, Mtop=M_RNA, shapes=shapes_sub, nSpan=nSpan_sub, main_axis=main_axis, bStiffening=bStiffening, gravity=gravity, algo=algo)
         #print(Fnd)
         #print('Fnd MM\n',Fnd.MM[6:,6:])
         #print('Fnd KK\n',Fnd.KK[6:,6:])

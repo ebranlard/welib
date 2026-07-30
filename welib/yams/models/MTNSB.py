@@ -18,7 +18,7 @@ import os
 
 from welib.yams.windturbine import rigidBlades
 from welib.yams.windturbine import WindTurbineStructure, FASTWindTurbine
-from welib.yams.yams import FASTBeamBody, RigidBody
+from welib.yams.yams_rec import YAMSRecFASTBeamBody, YAMSRecRigidBody
 from welib.yams.utils import *
 # from welib.yams.models.TNSB import manual_assembly, auto_assembly, TNSBStructure
 

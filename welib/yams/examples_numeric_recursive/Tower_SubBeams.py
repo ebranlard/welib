@@ -11,7 +11,7 @@ Top mass
 
 import numpy as np
 import matplotlib.pyplot as plt
-from welib.yams.yams import UniformBeamBody, GroundBody
+from welib.yams.yams_rec import YAMSRecUniformBeamBody, YAMSRecGroundBody
 from welib.tools.clean_exceptions import *
 import welib.beams.theory as bt
 
@@ -42,7 +42,7 @@ freq_th,_,U_th,_,_ = bt.UniformBeamBendingModes('unloaded-topmass-clamped-free',
 
 # --- Model Setup
 # Creating reference frame
-grd = GroundBody()
+grd = YAMSRecGroundBody()
 # Bodies
 twrs=[]
 L_sub = L_twr/nBeams_twr  # sub beam length
@@ -62,7 +62,7 @@ for itwr in np.arange(nBeams_twr):
         #        name='T'+str(itwr+1)
         #        )
     else:
-        twr= UniformBeamBody('T'+str(itwr+1), nShapes_twr, nSpan_twr, L_sub, EI_twr, m_twr, Mtop=Mtop, bAxialCorr=bAxialCorr, main_axis='x', bCompatibility=bCompat, bStiffening=bStiffening, gravity=gravity)
+        twr= YAMSRecUniformBeamBody('T'+str(itwr+1), nShapes_twr, nSpan_twr, L_sub, EI_twr, m_twr, Mtop=Mtop, bAxialCorr=bAxialCorr, main_axis='x', bCompatibility=bCompat, bStiffening=bStiffening, gravity=gravity)
         twrs.append(twr)
 
 # Connection between bodies
@@ -108,24 +108,26 @@ pos = grd._all_positions_global
 grd.setDOF(q*0) # <<<<< NOTE: unless the q_init was a good initial value, for now we use all zero 
 freq_d, zeta, Q, freq_0 = grd.eva()
 nMaxModes = min(4, len(freq_0))
-print('Frequencies: ',np.around(freq_0[:nMaxModes],3))
 
 # --- Modes
 modes = grd.modes(norm=norm)
 nMaxModes = min(nModesPlot, len(modes))
 
-fig,axes = plt.subplots(1,nMaxModes, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
-fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-for im, (m,ax) in enumerate(zip(modes,axes)):
-    ax.plot(U_th[im,:], x_th, 'k--',label='Theory')
-    # NOTE: first point is "reference/ground" frame (0,0,0)
-    #ax.plot(m[1,1:]/m[1,-1], m[0,1:], label='y')
-    ax.plot(m[2,1:]/m[2,-1], m[0,1:], label='z')
-    ax.set_title('Mode {}'.format(im+1))
-ax.set_xlabel('')
-ax.set_ylabel('')
-ax.legend()
-plt.show()
+if __name__ == '__main__':
+    print('Frequencies: ',np.around(freq_0[:nMaxModes],3))
+
+    fig,axes = plt.subplots(1,nMaxModes, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+    for im, (m,ax) in enumerate(zip(modes,axes)):
+        ax.plot(U_th[im,:], x_th, 'k--',label='Theory')
+        # NOTE: first point is "reference/ground" frame (0,0,0)
+        #ax.plot(m[1,1:]/m[1,-1], m[0,1:], label='y')
+        ax.plot(m[2,1:]/m[2,-1], m[0,1:], label='z')
+        ax.set_title('Mode {}'.format(im+1))
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.legend()
+    plt.show()
 
 
 

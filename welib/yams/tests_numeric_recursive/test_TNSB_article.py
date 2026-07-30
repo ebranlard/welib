@@ -7,8 +7,7 @@ Test that builds the 5 DOF model presented in the article:
 import numpy as np
 import copy
 import unittest
-from welib.yams.bodies import FlexibleBody
-from welib.yams.yams import *
+from welib.yams.yams_rec import *
 from welib.yams.models.TNSB import manual_assembly
 
 def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
@@ -84,7 +83,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
     #Bld=UniformBeamBody('Blade', nShapes_bld, nSpan_bld, L_bld, EI_bld , m_bld, Mtop=0, jxxG=jxx_bld, GKt=GKt_bld, bCompatibility=bCompat)
     Blds=[]
-    Blds.append(Body('B1'))
+    Blds.append(YAMSRecBody('B1'))
     #Blds[0].MM = np.array([
     # [  3.0000E+04,   0.0000E+00,   0.0000E+00,   0.0000E+00,   5.2444E+03,   0.0000E+00,  -2.4905E+02,  -1.1333E+03],
     # [  0.0000E+00,   3.0000E+04,   0.0000E+00,  -5.2401E+03,   0.0000E+00,   9.0000E+05,   0.0000E+00,   0.0000E+00],
@@ -127,7 +126,7 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # TODO
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
     Mtop=sum([B.mass for B in Blds]) + Sft.mass + Nac.mass;
-    Twr=UniformBeamBody('Tower', nShapes_twr, nSpan_twr, L_twr, EI_twr , m_twr, Mtop=Mtop, bAxialCorr=False, bStiffening=False, main_axis=main_axis, gravity=0)
+    Twr=YAMSRecUniformBeamBody('Tower', nShapes_twr, nSpan_twr, L_twr, EI_twr , m_twr, Mtop=Mtop, bAxialCorr=False, bStiffening=False, main_axis=main_axis, gravity=0)
     #  Temporary
     x_0=np.array([[0],[0],[0]])
     R_0b=np.eye(3)
