@@ -1155,7 +1155,10 @@ class FASTWindTurbine():
         r_PtfmGfnd_inF = -r_EPtfm_inF + r_EGfnd_inF
         WT.fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
         
-    def setupEDTwr(self, twrShapes=None, nSpanTwr=None, flavor=''):
+    def setupEDTwr(self, twrShapes=None, nSpanTwr=None, 
+                   flavor='', 
+                   main_axis='z', bStiffening=True
+                   ):
         ED = self.ED
         WT = self.WT
         # --- Twr
@@ -1170,7 +1173,7 @@ class FASTWindTurbine():
             if ED['TwSSDOF2']:
                 twrShapes+=[3]
 
-        twr = FASTBeamBody(ED, self.twrFile, Mtop=WT.RNA.mass, main_axis='z', bAxialCorr=False, bStiffening=True, shapes=twrShapes, nSpan=nSpanTwr, algo=WT.algo, gravity=WT.gravity) # TODO options
+        twr = FASTBeamBody(ED, self.twrFile, Mtop=WT.RNA.mass, main_axis=main_axis, bAxialCorr=False, bStiffening=bStiffening, shapes=twrShapes, nSpan=nSpanTwr, algo=WT.algo, gravity=WT.gravity) # TODO options
         twr_rigid  = twr.toRigidBody()
         twr_rigid.pos_global = WT.r_ET_inE
         if WT.algo=='OpenFAST':
@@ -1191,7 +1194,7 @@ class FASTWindTurbine():
             # TODO TODO
             raise NotImplementedError()
             # Tower Body
-            twr = YAMSRecFASTBeamBody('tower',ED,self.twrFile,Mtop=WT.RNA.mass, nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis, bStiffening=bStiffening, gravity=WT.gravity, algo=algo)
+            twr = YAMSRecFASTBeamBody('tower', ED, self.twrFile, Mtop=WT.RNA.mass, nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis, bStiffening=bStiffening, gravity=WT.gravity, algo=WT.algo )
 
 
 

@@ -15,9 +15,6 @@ from sympy import simplify
 from sympy.parsing.sympy_parser import parse_expr
 
 from welib.yams.yams_sympy import colvec, R_x, R_y, R_z, cross
-from welib.yams.yams_sympy import GroundBody 
-from welib.yams.yams_sympy import BeamBody   
-from welib.yams.yams_sympy import RigidBody  
 from welib.yams.yams_rec import YAMSRecGroundBody
 from welib.yams.yams_rec import YAMSRecBeamBody
 from welib.yams.yams_rec import YAMSRecRigidBody
