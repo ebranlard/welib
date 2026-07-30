@@ -9,9 +9,9 @@ class TestTNSB(unittest.TestCase):
     def test_TNSB_FAST(self):
 
         bStiffening=True
-        nShapes_twr=2
-        nShapes_bld=0
-        nDOF = 1 + nShapes_twr + nShapes_bld * 3
+        shapes_twr=[0,1]
+        shapes_bld=[]
+        nDOF = 1 + len(shapes_twr) + len(shapes_bld) * 3
         q = np.zeros((nDOF,1)) # TODO, full account of q not done
         q[[0]]=1
         q[[1]]=0.1
@@ -24,12 +24,12 @@ class TestTNSB(unittest.TestCase):
         main_axis='z'
         assembly='auto'
 
-        StructA= FASTmodel2TNSB(FSTFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065).WT
+        StructA= FASTmodel2TNSB(FSTFile, shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065).WT
 
         # --- Manual assembly with x axis
         assembly='auto'
         main_axis='x'
-        StructM= FASTmodel2TNSB(FSTFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065).WT
+        StructM= FASTmodel2TNSB(FSTFile, shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065).WT
 
 
         # --------------------------------------------------------------------------------}

@@ -21,7 +21,7 @@ from welib.weio.fast_input_deck import FASTInputDeck
 # TODO TODO TODO
 class FASTmodel2TNSB(FASTWindTurbine):
     
-    def __init__(self, FST_file,nB=3,nShapes_twr=2, nShapes_bld=0, 
+    def __init__(self, FST_file,nB=3, shapes_twr=None, shapes_bld=None, 
                    nSpan_twr=None, nSpan_bld=None, 
                    bHubMass=1, bNacMass=1, bBldMass=1, 
                    DEBUG=False, main_axis ='x', bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
@@ -43,6 +43,10 @@ class FASTmodel2TNSB(FASTWindTurbine):
 
           NOTE/TODO: compare this with "windturbine.py"
         """
+        if shapes_twr is None:
+            shapes_twr=[0,1]
+        if shapes_bld is None:
+            shapes_bld=[]
 
         WT = TNSBStructure()
         FASTWindTurbine.__init__(self, WT=WT,
@@ -119,7 +123,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------{
         # Bld
         Blds=[]
-        Blds.append(YAMSRecFASTBeamBody('blade',ED,self.bldFile,Mtop=0,nShapes=nShapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
+        Blds.append(YAMSRecFASTBeamBody('blade',ED,self.bldFile,Mtop=0,shapes=shapes_bld, nSpan=nSpan_bld, main_axis=main_axis, spanFrom0=spanFrom0, massExpected=bladeMassExpected, gravity=gravity, algo=algo)) # NOTE: legacy spanfrom0
         Blds[0].MM *=bBldMass
         for iB in range(nB-1):
             Blds.append(copy.deepcopy(Blds[0]))
@@ -142,7 +146,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
 
         # Tower Body
         #print('M_RNA', M_RNA, self.WT.RNA.mass)
-        Twr = YAMSRecFASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA,nShapes=nShapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
+        Twr = YAMSRecFASTBeamBody('tower',ED,self.twrFile,Mtop=M_RNA, shapes=shapes_twr, nSpan=nSpan_twr, main_axis=main_axis,bStiffening=bStiffening, gravity=gravity, algo=algo)
         #print('Stiffnening', bStiffening)
         #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
         if DEBUG:
@@ -150,7 +154,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------}
         # --- Assembly 
         # --------------------------------------------------------------------------------{
-        nDOF = 1 + nShapes_twr + nShapes_bld * nB # +1 for Shaft
+        nDOF = 1 + len(shapes_twr) + len(shapes_bld) * nB # +1 for Shaft
         if q is None:
             q = np.zeros((nDOF,1)) # TODO, full account of q not done
 
@@ -169,7 +173,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
         nDOFMech = len(self.WT.MM)
         q_init   = np.zeros(2*nDOFMech) # x2, state space
 
-        if nShapes_twr>0:
+        if len(shapes_twr)>0:
             q_init[0] = FA_init
 
         q_init[iPsi]          = psi_init
@@ -196,8 +200,8 @@ def readFASTOut():
 
 if __name__=='__main__':
     bStiffening=True
-    nShapes_twr=1
-    nShapes_bld=0
+    shapes_twr=[0]
+    shapes_bld=[]
     nDOF = 1 + nShapes_twr + nShapes_bld * 3
     q = np.zeros((nDOF,1)) # TODO, full account of q not done
     q[[0]]= 0          # Twr 1
@@ -207,13 +211,13 @@ if __name__=='__main__':
     np.set_printoptions(linewidth=500)
     assembly='auto'
     main_axis='z'
-    #StructA= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
-    StructA= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    #StructA= FASTmodel2TNSB('../data/NREL5MW_ED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    StructA= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     assembly='manual'
 #     assembly='auto'
 #     main_axis='x'
-#     #StructM= FASTmodel2TNSB('../data/NREL5MW_ED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
-    StructM= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+#     #StructM= FASTmodel2TNSB('../data/NREL5MW_ED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
+    StructM= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
 #     print('------------------')
     from scipy.linalg import block_diag
 #     print('RR')
