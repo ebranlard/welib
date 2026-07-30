@@ -328,9 +328,9 @@ class Connection():
                 # Updating rotation matrix
                 R      = R @ Rj
                 if j.OrientAfter:
-                    j.R_ci = self.Matrix(R @ j.R_ci_0)
+                    j.R_ci = j.Matrix(R @ j.R_ci_0)
                 else:
-                    j.R_ci = self.Matrix(j.R_ci_0 @ R)
+                    j.R_ci = j.Matrix(j.R_ci_0 @ R)
 
         # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
         if j.parentNode is not None:
@@ -944,11 +944,21 @@ class YAMSRecSPBody(object):
         s+='|Methods: connectTo, updateChildrenKinematicsNonRecursive \n'
         return s
 
-    def connectTo(self, Child, Point=None, Type=None, RelOrientation=None, JointRotations=None):
-        if Type =='Rigid':
+    def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
+        if BodyPoint is not None and Type =='Rigid':
+            if BodyPoint is not None:
+                if BodyPoint == 'FirstPoint':
+                    i_C_inB=0;
+                elif BodyPoint == 'LastPoint':
+                    i_C_inB=self.nSpan-1
+                else:
+                    raise NotImplementedError()
+                RelPoint = self.s_P0[:,i_C_inB]
+                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self)
+        elif Type =='Rigid':
             c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation)
         else: # TODO first node, last node
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations)
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter)
         self.Children.append(Child)
         self.Connections.append(c)
 
@@ -968,8 +978,13 @@ class YAMSRecSPBody(object):
             n=child._setupDOFIndex(n)
         return n
 
-
     def updateChildrenKinematicsNonRecursive(p,q, qdot=None, qddot=None):
+        if p.I_DOF is None:
+            raise Exception('Call setupDOFIndex on the reference body first')
+        if qdot is None:
+            qdot = q*0
+        if qddot is None:
+            qddot = q*0
         # At this stage all the kinematics of the body p are known
         # Useful variables
         R_0p =  p.R_b2g
@@ -987,20 +1002,20 @@ class YAMSRecSPBody(object):
             conn_pi.updateKinematics(q) # TODO
 
             # Full connection p and j
-            R_pi   = R_pc*conn_pi.R_ci  
+            R_pi   = R_pc @ conn_pi.R_ci  
             if conn_pi.B_ci.shape[1]>0:
-                Bx_pi  = self.Matrix(np.column_stack((Bx_pc, R_pc @ conn_pi.B_ci[:3,:])))
-                Bt_pi  = self.Matrix(np.column_stack((Bt_pc, R_pc @ conn_pi.B_ci[3:,:])))
+                Bx_pi  = p.Matrix(np.column_stack((Bx_pc, R_pc @ conn_pi.B_ci[:3,:])))
+                Bt_pi  = p.Matrix(np.column_stack((Bt_pc, R_pc @ conn_pi.B_ci[3:,:])))
             else:
                 Bx_pi  = Bx_pc
                 Bt_pi  = Bt_pc
               
             # Rotation of body i is rotation due to p and j
-            R_0i = R_0p * R_pi
+            R_0i = R_0p @ R_pi
 
             # Position of connection point in P and 0 system
             r_pi_inP= conn_pi.s_C_inB
-            r_pi    = R_0p * r_pi_inP
+            r_pi    = R_0p @ r_pi_inP 
             B_i      = fBMatRecursion(B_p, Bx_pi, Bt_pi, R_0p, r_pi, sympy=p.sympy)
             B_i_inI  = fB_inB(R_0i, B_i, sympy=p.sympy)
             BB_i_inI = fB_aug(B_i_inI, body_i.nf, sympy=p.sympy)
@@ -1018,10 +1033,35 @@ class YAMSRecSPBody(object):
             # TODO flexible dofs and velocities/acceleration
             body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
 
+    def updateKinematics(o, x_0=None, R_b2g=None, gz=None, v_0=None, a_v_0=None):
+        # NOTE: this is overriden by BeamBody
+        # Updating position of body origin in global coordinates
+        if x_0 is not None:
+            o.pos_global = x_0[0:3]
+        if gz is not None:
+            o.gzf = gz
+        # Updating Transformation matrix
+        if R_b2g is not None:
+            o.R_b2g=R_b2g
+        else:
+            R_b2g = o.R_b2g
+        # Updating rigid body velocity and acceleration
+        if v_0 is not None:
+            o.v_O_inB     = R_b2g @ v_0[0:3]
+            o.om_O_inB    = R_b2g @ v_0[3:6]
+        if a_v_0 is not None:
+            o.a_O_v_inB   = R_b2g @ a_v_0[0:3]
+            o.omp_O_v_inB = R_b2g @ a_v_0[3:6]
+
+    @property
+    def _positions_global(B): # todo rename
+        # NOTE: this is overriden by BeamBody
+        return B.pos_global # for rigid bodies
+        
     def _getFullM(o, M):
         if isinstance(o, GroundBody):
             raise Exception('Not intended to be called for Ground body')
-        MqB      = fBMB(o.BB_inB, o.MM, sympy=o.sympy)
+        MqB      = fBMB(o.BB_inB, o.MM, sympy=o.sympy, name=o.name)
         n        = MqB.shape[0]
         M[:n,:n] = M[:n,:n]+MqB     
         for c in o.Children:
@@ -1031,7 +1071,7 @@ class YAMSRecSPBody(object):
     def _getFullK(o, K):
         if isinstance(o, GroundBody):
             raise Exception('Not intended to be called for Ground body')
-            KqB      = fBMB(o.BB_inB, o.KK, sympy=o.sympy)
+            KqB      = fBMB(o.BB_inB, o.KK, sympy=o.sympy, name=o.name)
             n        = KqB.shape[0]
             K[:n,:n] = K[:n,:n]+KqB     
         for c in o.Children:
@@ -1041,7 +1081,7 @@ class YAMSRecSPBody(object):
     def _getFullD(o, D):
         if isinstance(o, GroundBody):
             raise Exception('Not intended to be called for Ground body')
-        DqB      = fBMB(o.BB_inB,o.DD, sympy=o.sympy)
+        DqB      = fBMB(o.BB_inB,o.DD, sympy=o.sympy, name=o.name)
         n        = DqB.shape[0]
         D[:n,:n] = D[:n,:n]+DqB     
         for c in o.Children:
@@ -1096,6 +1136,8 @@ class GroundBody(YAMSRecSPBody):
     """
     def __init__(B):
         super(GroundBody,B).__init__('Grd')
+        B.nq = 0
+        B.q  = []
         
     def setupDOFIndex(o):
         n=0
@@ -1117,6 +1159,8 @@ class GroundBody(YAMSRecSPBody):
         s+='|Inherits:\n'
         s+='||'+'\n|'.join(YAMSRecSPBody.__repr__(self).split('\n'))+'\n'
         s+='|Properties:\n'
+        s+='|- nq: {}\n'.format(self.nq)
+        s+='|- q:  {}\n'.format(self.q)
         try:
             bnames = [b.name for b in self.bodies]
         except:
@@ -1191,7 +1235,7 @@ class GroundBody(YAMSRecSPBody):
 
     @property
     def M(o):
-        M = np.zeros((o.nq, o.nq))
+        M = o.Matrix(np.zeros((o.nq, o.nq)))
         for c in o.Children:
             M=c._getFullM(M)
         return M
@@ -2596,7 +2640,7 @@ def fB_inB(R_EI, B_I, sympy=True):
     if len(B_I)==0:
         B_I_inI = MatrixLoc(np.array([]))
     else:
-        B_I_inI = Matrix(np.vstack(( R_EI.T* B_I[:3,:],  R_EI.T * B_I[3:,:])))
+        B_I_inI = MatrixLoc(np.vstack((R_EI.T @ B_I[:3,:], R_EI.T @ B_I[3:,:])))
     return B_I_inI
 
 def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None, sympy=True):
@@ -2609,13 +2653,14 @@ def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None, sympy=True):
         if sympy:
             return Matrix(m)
         else:
-            return np.asarray(m)
-
+            return np.asarray(m)    
     if len(B_I_inI)==0:
         if nf_I>0:
-            BB_I_inI = MatrixLoc(np.vstack( (np.zeros((6,nf_I)).astype(int), np.eye(nf_I).astype(int))) )
+             BB_I_inI = np.vstack( (np.zeros((6,nf_I)), np.eye(nf_I))) 
         else:
-            BB_I_inI= MatrixLoc(np.zeros((6,0)).astype(int))
+             BB_I_inI = np.zeros((6,0))
+        if sympy:
+             BB_I_inI = Matrix( BB_I_inI.astype(int) )
     else:
         if nf_Curr is not None:
             # Case of several flexible bodies connected to one point (i.e. blades)
@@ -2653,7 +2698,7 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi, sympy=True):
     else:
         raise Exception('Bi needs to be empty or a 2d array')
 
-    r_pi=colvec(r_pi)
+    #r_pi=colvec(r_pi)
 
     # TODO use Translate here
     Bi = MatrixLoc(np.zeros((6,ni+n_p)))
@@ -2661,8 +2706,8 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi, sympy=True):
         Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
         Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
     if ni>0:
-        Bi[:3,n_p:] = R0p*Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
-        Bi[3:,n_p:] = R0p*Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
+        Bi[:3,n_p:] = R0p @ Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
+        Bi[3:,n_p:] = R0p @ Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
     return Bi
 
 def fBMatTranslate(Bp, r_pi, sympy=True):
@@ -2676,15 +2721,17 @@ def fBMatTranslate(Bp, r_pi, sympy=True):
         raise NotImplementedError
 
     for j in range(Bp.shape[1]):
-        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi.ravel());
+        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi)
         Bi[3:6,j] = Bp[3:6,j]
     return Bi
 
 
-def fBMB(BB_I_inI, MM, sympy=True):
+def fBMB(BB_I_inI, MM, sympy=True, name=''):
     """ Computes the body generalized matrix: B'^t M' B 
     See Eq.(8) of [1] 
     """
+    if MM is None:
+        raise Exception(f'MM is None for body {name}')
     MM_I = (np.transpose(BB_I_inI) @ MM) @ BB_I_inI
     return MM_I
 

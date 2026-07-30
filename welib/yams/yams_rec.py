@@ -184,7 +184,7 @@ class YAMSRecBody(GenericBody):
                     i_C_inB=self.nSpan-1
                 else:
                     raise NotImplementedError()
-                RelPoint = self.s_P0[:,i_C_inB].reshape(3,1)
+                RelPoint = self.s_P0[:,i_C_inB]
                 c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self)
         elif Type =='Rigid':
             c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation)
@@ -236,8 +236,8 @@ class YAMSRecBody(GenericBody):
             # Full connection p and j
             R_pi   = R_pc @ conn_pi.R_ci
             if conn_pi.B_ci.shape[1]>0:
-                Bx_pi  = np.column_stack((Bx_pc, R_pc @ conn_pi.B_ci[:3,:]))
-                Bt_pi  = np.column_stack((Bt_pc, R_pc @ conn_pi.B_ci[3:,:]))
+                Bx_pi  = p.Matrix(np.column_stack((Bx_pc, R_pc @ conn_pi.B_ci[:3,:])))
+                Bt_pi  = p.Matrix(np.column_stack((Bt_pc, R_pc @ conn_pi.B_ci[3:,:])))
             else:
                 Bx_pi  = Bx_pc
                 Bt_pi  = Bt_pc
@@ -247,7 +247,7 @@ class YAMSRecBody(GenericBody):
 
             # Position of connection point in P and 0 system
             r_pi_inP= conn_pi.s_C_inB
-            r_pi    = np.dot (R_0p , r_pi_inP )
+            r_pi    = R_0p @ r_pi_inP 
             B_i      = fBMatRecursion(B_p, Bx_pi, Bt_pi, R_0p, r_pi, sympy=p.sympy)
             B_i_inI  = fB_inB(R_0i, B_i, sympy=p.sympy)
             BB_i_inI = fB_aug(B_i_inI, body_i.nf, sympy=p.sympy)
@@ -865,13 +865,14 @@ def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None, sympy=False):
         if sympy:
             return Matrix(m)
         else:
-            return np.asarray(m)
-
+            return np.asarray(m)    
     if len(B_I_inI)==0:
         if nf_I>0:
-            BB_I_inI = MatrixLoc(np.vstack( (np.zeros((6,nf_I)), np.eye(nf_I))) )
+             BB_I_inI = np.vstack( (np.zeros((6,nf_I)), np.eye(nf_I))) 
         else:
-            BB_I_inI= MatrixLoc(np.zeros((6,0)))
+             BB_I_inI = np.zeros((6,0))
+        if sympy:
+             BB_I_inI = Matrix( BB_I_inI.astype(int) )
     else:
         if nf_Curr is not None:
             # Case of several flexible bodies connected to one point (i.e. blades)

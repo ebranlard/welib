@@ -12,6 +12,7 @@ from sympy import lambdify
 from sympy import cos,sin, expand_trig
 from sympy import trigsimp
 from sympy import simplify
+from sympy.parsing.sympy_parser import parse_expr
 
 from welib.yams.yams_sympy import colvec, R_x, R_y, R_z, cross
 from welib.yams.yams_sympy import GroundBody
@@ -259,66 +260,48 @@ def main(test=False):
 
     myprint('----------Grd--------------')
     myprint(Grd)
+    #myprint('MM' + Grd.MM)
 
     myprint('----------Twr--------------')
     myprint(Twr)
+    #myprint('MM' + Twr.MM)
 
     myprint('----------Nac--------------')
     myprint(Nac)
+    #myprint('MM' + Nac.MM)
 
     myprint('----------MM --------------')
     #display(simplify(Grd.M()).subs(subs))
 
 
 
+    dB = Nac.B - parse_expr('Matrix([[ux1c], [0], [0], [0], [vy1c], [0]])')
+    np.testing.assert_equal(dB, Matrix([[0],[0],[0],[0],[0],[0]]))
 
+    dB = Nac.BB_inB - parse_expr('Matrix([[ux1c*cos(alpha_y)], [0], [ux1c*sin(alpha_y)], [vy1c*sin(alpha_x)*sin(alpha_y)], [vy1c*cos(alpha_x)], [-vy1c*sin(alpha_x)*cos(alpha_y)]])')
+    np.testing.assert_equal(dB, Matrix([[0],[0],[0],[0],[0],[0]]))
 
+    T_inE = Nac.R_b2g*T_inN
+    dT = T_inE - parse_expr('Matrix([[-T*sin(alpha_y)*sin(theta_tilt) + T*cos(alpha_y)*cos(theta_tilt)], [T*sin(alpha_x)*sin(alpha_y)*cos(theta_tilt) + T*sin(alpha_x)*sin(theta_tilt)*cos(alpha_y)], [-T*sin(alpha_y)*cos(alpha_x)*cos(theta_tilt) - T*sin(theta_tilt)*cos(alpha_x)*cos(alpha_y)]])')
+    np.testing.assert_equal(dT, Matrix([[0],[0],[0]]))
 
+    return Grd, Nac, Twr, T_inE
 
-
-
-
-    # display(Grd.R_bc)
-    # sep()
-    # display(Grd.Bhat_x_bc)
-    # sep()
-    # display(Grd.Bhat_t_bc)
-    # sep()
-    # 
-    # display(Twr.R_bc)
-    # sep()
-    # display(Twr.Bhat_x_bc)
-    # sep()
-    # display(Twr.Bhat_t_bc)
-
-
-    # r_T     = r_E+ r_TN_inE
-    # 
     # # Grd.s_C_inB = r_T_inE              # NOTE: only one connection supported
     # # r_pi          = Grd.R_0p * Grd.s_C_inB
-    # # 
-    # # 
     # # Grd.Baug_B_inB=eye(4)
-    # 
-    # # --- Tower
-    # 
     # # --- Tower nacelle connection
     # r_N
-    # 
     # R_tc  = R_x(alpha_x) * R_y(alpha_y)  * R_z(alpha_z)  # R_pc
     # R_cn =  R_z (theta_yaw) * R_y(theta_tilt)            # R_ci0
     # R_TN = R_tc*R_cn
     # R_EN = R_ET * R_TN
-    # 
     # display(R_TN)
     # display(R_EN)
-    # 
     # Grd.connectTo(Twr,'Point',[0;0;0],'Type','Rigid');
     # Grd.connectTo(Twr,'Point',[0;0;0],'Type','Rigid');
     # Twr.connectTo(Nac,'Point','LastPoint','Type','Rigid');
     # Nac.connectTo(Sft,'Point',r_NS_inN,'Type','SphericalJoint','JointRotations',{'z'},'Orientation',fRotz(pi));
-
-
     # q        : [u_xf   , u_zf     , phi_y   , u_yf   , phi_z   , phi_x      , u_zt   , phi_yt   , u_yt    , phi_zt   , theta_yaw   , theta_tilt  ] $
     # JH_T : addcol(C0, C0, ey, C0,  R_y(phi_y) . ez , R_y(phi_y) . R_z(phi_z) . ex )$  /** 
     # JH_K : addcol(Ckob*ey, ey, -Ckob * R_y(alpha_y). ez ,  R_y(alpha_y) . ez , R_y(alpha_y) . R_z(alpha_z) . ex,  R_y(alpha_y) . R_z(alpha_z). R_x(theta_yaw). ey )
@@ -336,5 +319,4 @@ def main(test=False):
 if __name__=="__main__":
     main()
 if __name__=="__test__":
-    raise Exception('HERE')
-    main(test=True)
+    Grd, Twr, Nac, T_inE = main(test=True)
