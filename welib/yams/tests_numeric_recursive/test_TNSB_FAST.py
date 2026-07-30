@@ -54,18 +54,18 @@ class TestTNSB(unittest.TestCase):
                              [-0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -0.00000000e+00, -0.00000000e+00,  0.00000000e+00 , 0.00000000e+00,  0.00000000e+00],
                              [ 8.43721581e+04,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  4.70023180e+06,  0.00000000e+00 , 4.78239541e+04, -7.83818828e+05],
                              [-2.21926938e+06,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -9.57847002e+07,  0.00000000e+00 ,-7.83818828e+05,  2.41136381e+07]])
-        np.testing.assert_almost_equal(StructA.twr.r_O.ravel(), (0,0,10))
+        np.testing.assert_almost_equal(StructA.twr.pos_global, (0,0,10))
         np.testing.assert_almost_equal(StructA.twr.MM[:6,:6]/1e5, Twr_MMref[:6,:6]/1e5, 5)
         np.testing.assert_almost_equal(StructA.twr.MM[6:,:]/1e10, Twr_MMref[6:,:]/1e10, 5)
         np.testing.assert_almost_equal(StructA.alpha.ravel(), (0,0.1193935,0))
         # print('Twr: B_T:')
         # print(StructA.Twr.B_inB)
         # print(StructM.Twr.B_inB)
-        # print(StructA.Twr.r_O)
-        # print(StructM.Twr.r_O)
+        # print(StructA.Twr.pos_global)
+        # print(StructM.Twr.pos_global)
         # print(StructA.Twr.Mass)
         # print(StructA.Twr.MM)
-        # print(StructA.Twr.r_O)
+        # print(StructA.Twr.pos_global)
         # print('Twr.alpha_y:')
         # print(StructA.alpha)
         # print(StructM.alpha)
@@ -88,11 +88,11 @@ class TestTNSB(unittest.TestCase):
                              [ 420000.,       0., -456000. ,      0.,       0.,       0.],
                              [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
         np.testing.assert_almost_equal(StructA.nac.mass, 240000)
-        np.testing.assert_almost_equal(StructA.nac.r_O.ravel(),(0,0,87.6))
+        np.testing.assert_almost_equal(StructA.nac.pos_global,(0,0,87.6))
         np.testing.assert_almost_equal(StructA.nac.MM,Nac_MMref)
         # print(StructA.Nac.Mass)
         # print(StructA.Nac.MM)
-        # print(StructA.Nac.r_O)
+        # print(StructA.Nac.pos_global)
         # print('Nac: B_N:')
         # print(StructM.Nac.B_inB)
         # print(np.dot(RR, StructA.Nac.B_inB))
@@ -109,7 +109,7 @@ class TestTNSB(unittest.TestCase):
                             [     -0.    ,   -284984.498   ,       0.    ,         0.    ,         0.       ,1430365.6939118]])
     
         np.testing.assert_almost_equal(StructA.sft.mass,56780)
-        np.testing.assert_almost_equal(StructA.sft.r_O.ravel(),(0.2337605,0,89.5485887))
+        np.testing.assert_almost_equal(StructA.sft.pos_global,(0.2337605,0,89.5485887))
         np.testing.assert_almost_equal(StructA.sft.MM,Sft_MMref)
         #print('Sft: R_S:')
         #print(StructA.Sft.R_b2g)
@@ -120,7 +120,7 @@ class TestTNSB(unittest.TestCase):
         #print(np.dot(RR,StructM.Sft.BB_inB)-StructA.Sft.BB_inB)
         #print(StructA.Sft.Mass)
         #print(StructA.Sft.MM)
-        #print(StructA.Sft.r_O)
+        #print(StructA.Sft.pos_global)
 
         # ---  Blade 1
         #Bld_MMref = np.array(
@@ -139,16 +139,16 @@ class TestTNSB(unittest.TestCase):
                          [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
 
         np.testing.assert_almost_equal(StructA.bld[0].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.bld[0].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
+        np.testing.assert_almost_equal(StructA.bld[0].pos_global,(-4.6785417,0,90.5784681), 3)
         np.testing.assert_almost_equal(StructA.bld[0].MM,Bld_MMref)
 
         np.testing.assert_almost_equal(StructA.bld[2].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.bld[2].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
+        np.testing.assert_almost_equal(StructA.bld[2].pos_global,(-4.6785417,0,90.5784681), 3)
         np.testing.assert_almost_equal(StructA.bld[2].MM,Bld_MMref)
 
         #   print(StructA.Blds[0].Mass)
         #   print(StructA.Blds[0].MM)
-        #   print(StructA.Blds[0].r_O)
+        #   print(StructA.Blds[0].pos_global)
         #     print('Bld1 R_B:')
         #     print(StructA.Blds[0].R_b2g)
         #     print(StructM.Blds[0].R_b2g)
@@ -228,7 +228,7 @@ class TestTNSB(unittest.TestCase):
 #         print(StructA.RNA)
 #         print(StructM)
 
-    #     print('Origin E :',StructM.Grd.r_O.T)
+    #     print('Origin E :',StructM.Grd.pos_global.T)
 
 if __name__=='__main__':
     unittest.main()

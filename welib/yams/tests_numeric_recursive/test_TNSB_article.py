@@ -42,19 +42,19 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     GKt_bld = 7*10**11
     jxx_bld = 10*5
 
-    r_ET_inE    = np.array([[0]    ,[0],[0]]  )
+    r_ET_inE    = np.array([ 0     , 0 , 0 ]  )
     if main_axis=='x':
-        r_TN_inT    = np.array([[L_twr],[0],[0]]  )
-        r_NGnac_inN = np.array([[0]    ,[0],[2.0]])
-        r_NS_inN    = np.array([[0]    ,[0],[-10]])
+        r_TN_inT    = np.array([ L_twr , 0 , 0 ]  )
+        r_NGnac_inN = np.array([ 0     , 0 , 2.0 ])
+        r_NS_inN    = np.array([ 0     , 0 , -10 ])
     elif main_axis=='z':
-        r_TN_inT    = np.array([[0],[0],[L_twr]] )
-        r_NGnac_inN = np.array([[1.0],[0],[0]])
-        r_NS_inN    = np.array([[-10],[0],[0]])
+        r_TN_inT    = np.array([0  ,0,L_twr ] )
+        r_NGnac_inN = np.array([1.0,0,0])
+        r_NS_inN    = np.array([-10,0,0])
 
-    r_SGhub_inS = np.array([[0]    ,[0],[0]]  )
-    r_SR_inS    = np.array([[0]    ,[0],[0]]  )
-    r_RGhub_inS = np.array([[0]    ,[0],[0]]  )
+    r_SGhub_inS = np.array([0,0,0]  )
+    r_SR_inS    = np.array([0,0,0]  )
+    r_RGhub_inS = np.array([0,0,0]  )
 
     M_hub=10**5
     IR_hub = np.zeros((3,3))
@@ -83,7 +83,9 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
     #Bld=UniformBeamBody('Blade', nShapes_bld, nSpan_bld, L_bld, EI_bld , m_bld, Mtop=0, jxxG=jxx_bld, GKt=GKt_bld, bCompatibility=bCompat)
     Blds=[]
+    PhiU = np.zeros(nShapes_bld)
     Blds.append(YAMSRecBody('B1'))
+#     Blds.append(YAMSRecBeamBody('B1', PhiU=PhiU))
     #Blds[0].MM = np.array([
     # [  3.0000E+04,   0.0000E+00,   0.0000E+00,   0.0000E+00,   5.2444E+03,   0.0000E+00,  -2.4905E+02,  -1.1333E+03],
     # [  0.0000E+00,   3.0000E+04,   0.0000E+00,  -5.2401E+03,   0.0000E+00,   9.0000E+05,   0.0000E+00,   0.0000E+00],

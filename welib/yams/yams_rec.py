@@ -21,8 +21,8 @@ from .bodies import InertialBody as GenericInertialBody
 from numpy import eye, cross, cos ,sin
 def Matrix(m):
 	return np.asarray(m)
-def colvec(v): 
-    return np.asarray(v).ravel().reshape(3,1)
+def vec3(v): 
+    return np.asarray(v).ravel() #.reshape(3,1)
 
 # --------------------------------------------------------------------------------}
 # --- Connections 
@@ -32,9 +32,9 @@ class Connection():
         if RelOrientation is None:
             RelOrientation=eye(3)
         if RelPoint is None:
-            RelPoint=colvec([0,0,0])
+            RelPoint=vec3([0,0,0])
         else:
-            RelPoint=colvec(RelPoint)
+            RelPoint=vec3(RelPoint)
 
         self.Type=Type
         
@@ -116,11 +116,13 @@ class YAMSRecBody(GenericBody):
         B.MM          = None
         B.B           = []     # Velocity transformation matrix
         B.I_DOF       = None
-        B.r_O         = None   # position of body origin in global coordinates
-                               # Is it same as _r_O stored in generic body, with getter pos_global.
         B.gzf         = None
+        # Generic body
+        #B._r_O        = None     # position of body origin in global coordinates
         #B.R_b2g        = None   # transformation matrix from body to global in _R_b2g in generic body
-        B.updatePosOrientation(colvec([0,0,0]), eye(3))
+        B.pos_global = vec3([0,0,0])
+        B.R_b2g = eye(3)
+
 
     def __repr__(B):
         s='<YAMSRec Body {} object>:\n'.format(B.name)
@@ -136,8 +138,8 @@ class YAMSRecBody(GenericBody):
             types=''
         s+='| - Connections: {} {}\n'.format(len(B.Connections), types)
         s+='| - I_DOF:  {}\n'.format(B.I_DOF)
-        s+='| - r_O  :  {}\n'.format(B.r_O.flatten())
-        s+='| - gzf  :  {}\n'.format(B.gzf)
+        s+='| - pos_global:  {}\n'.format(B.pos_global)
+        s+='| - gzf       :  {}\n'.format(B.gzf)
         s+='| - R_b2g : \n{}\n'.format(B.R_b2g)
         s+='| * nf  : {}\n'.format(B.nf)
         s+='| * R_bc: \n{}\n'.format(B.R_bc)
@@ -149,7 +151,7 @@ class YAMSRecBody(GenericBody):
         return s
 
     def updatePosOrientation(o, x_0, R_b2g):
-        o.r_O = x_0      # position of body origin in global coordinates
+        o.pos_global = x_0      # position of body origin in global coordinates
         o.R_b2g=R_b2g      # transformation matrix from body to global
 
     def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
@@ -198,7 +200,7 @@ class YAMSRecBody(GenericBody):
         # Useful variables
         R_0p =  p.R_b2g
         B_p  =  p.B
-        r_0p  = p.r_O  # Position of body origin in global coordinates
+        r_0p  = p.pos_global  # Position of body origin in global coordinates
 
         nf_all_children=sum([child.nf for child in p.Children])
 
@@ -323,7 +325,7 @@ class YAMSRecBody(GenericBody):
         # NOTE: this is overriden by BeamBody
         # Updating position of body origin in global coordinates
         if x_0 is not None:
-            o.r_O = x_0[0:3]
+            o.pos_global = x_0[0:3]
         if gz is not None:
             o.gzf = gz
         # Updating Transformation matrix
@@ -342,7 +344,7 @@ class YAMSRecBody(GenericBody):
     @property
     def _positions_global(B): # todo rename
         # NOTE: this is overriden by BeamBody
-        return B.r_O # for rigid bodies
+        return B.pos_global # for rigid bodies
 
 
 
@@ -578,7 +580,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
             damp_zeta=None,
-            name='dummy',
+            name='dummyYAMSRecBeamBody',
             algo=''
             ):
         """ 
@@ -629,7 +631,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
             raise NotImplementedError()
 
     def updateKinematics(o,x_0,R_b2g,gz,v_0,a_v_0, verbose=False):
-        super(YAMSRecBeamBody,o).updateKinematics(x_0,R_b2g,gz,v_0,a_v_0)
+        super(YAMSRecBeamBody,o).updateKinematics(x_0, R_b2g, gz, v_0, a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
         if o.nf>0:
             o.gzpf  = v_0[6:]
@@ -679,7 +681,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
     @property
     def _positions_global(B): # TODO rename
         displ_g = B.R_b2g.dot(B.s_P) # TODO reference line or COG
-        pos_g   = B.r_O + displ_g
+        pos_g   = B.pos_global + displ_g
         return pos_g
 
     @property
@@ -890,12 +892,12 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
     else:
         raise Exception('Bi needs to be empty or a 2d array')
 
-    r_pi=colvec(r_pi)
+    r_pi=vec3(r_pi)
 
     # TODO use Translate here
     Bi = Matrix(np.zeros((6,ni+n_p)))
     for j in range(n_p):
-        Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi.ravel()) # Recursive formula for Bt mentioned after Eq.(15)
+        Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
         Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
     if ni>0:
         Bi[:3,n_p:] = np.dot(R0p, Bhat_x[:,:]) # Recursive formula for Bx mentioned after Eq.(15)
@@ -913,7 +915,7 @@ def fBMatTranslate(Bp,r_pi):
         raise NotImplementedError
 
     for j in range(Bp.shape[1]):
-        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi.ravel());
+        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi)
         Bi[3:6,j] = Bp[3:6,j]
     return Bi
 

@@ -1,4 +1,4 @@
-"""
+r"""
 Generic bodies classes
 These classes will be used for more advanced classes:
     - new and old YAMS body classes for Sympy
@@ -40,7 +40,11 @@ class Body(object):
     """
     Base class for rigid bodies and flexible bodies
     """
-    def __init__(self, name='', r_O=[0,0,0], R_b2g=np.eye(3), sympy=False):
+    def __init__(self, name='', r_O=None, R_b2g=None, sympy=False):
+        if r_O is None:
+            r_O = [0,0,0]
+        if R_b2g is None:
+            R_b2g = np.eye(3)
         self.name = name
         self.sympy = sympy
         self._r_O            = self.vec3(r_O)
@@ -57,8 +61,10 @@ class Body(object):
         if self.sympy:
             return Matrix([[v[0]],[v[1]],[v[2]]])
         else:
-            #return np.asarray(v).ravel().reshape(3,1)
-            return np.asarray(v).ravel() 
+            v = np.asarray(v).ravel()
+            if len(v)!=3:
+                raise Exception('Vector should be of length 3')
+            return v
 
     def Matrix(self, m):
         if self.sympy:
@@ -101,7 +107,7 @@ class Body(object):
 
     @pos_global.setter
     def pos_global(self, r_O):
-        self._r_O = np.asarray(r_O).ravel()
+        self._r_O = self.vec3(r_O)
 
     @property
     def R_b2g(self):
@@ -134,7 +140,7 @@ class InertialBody(Body):
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class RigidBody(Body):
-    def __init__(self, name, mass, J, s_OG, r_O=[0,0,0], R_b2g=np.eye(3), s_OP=None):
+    def __init__(self, name, mass, J, s_OG, r_O=None, R_b2g=None, s_OP=None):
         """
         Creates a rigid body 
 
@@ -276,7 +282,7 @@ class RigidBody(Body):
         if r_O is None:
             # Putting origin of new body at COG of common body
             r_O  = x_G
-            s_OG = [0,0,0]
+            s_OG = self.vec3([0,0,0])
         else:
             s_OG = (R_b2g.T).dot(x_G-r_O)
         return RigidBody(name, M, J1+J2, s_OG, r_O=r_O, R_b2g=R_b2g)
@@ -287,7 +293,7 @@ class RigidBody(Body):
 # --------------------------------------------------------------------------------{
 class FlexibleBody(Body):
     def __init__(self, name, 
-            r_O=[0,0,0], R_b2g=np.eye(3) # Position and orientation in global
+            r_O=None, R_b2g=None # Position and orientation in global
             ):
         """
         Creates a Flexible body 
@@ -300,7 +306,7 @@ class FlexibleBody(Body):
 class BeamBody(FlexibleBody):
     def __init__(self, name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
-            r_O=[0,0,0], R_b2g=np.eye(3), # Position and orientation in global
+            r_O=None, R_b2g=None, # Position and orientation in global
             damp_zeta=None, RayleighCoeff=None, DampMat=None,
             bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z', massExpected=None,
             int_method='Flex'

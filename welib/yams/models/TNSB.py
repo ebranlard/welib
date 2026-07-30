@@ -67,11 +67,11 @@ class TNSBStructure(WindTurbineStructure):
             #M_hub  = ED['HubMass']
             #JxxHub_atR = ED['HubIner']
             #hub = RigidBody('Hub', M_hub, (JxxHub_atR,0,0), s_OG=r_SGhub_inS, R_b2g=R_NS, s_OP=r_SR_inS, r_O=r_NS_inN) 
-            r_NS_inN=s.sft.r_O.ravel()-s.nac.r_O.ravel()
+            r_NS_inN=s.sft.pos_global.ravel()-s.nac.pos_global.ravel()
             r_SGhub_inS=s.sft.masscenter # In body coordinates, S, titled
             #hub = RigidBody('Hub', s.sft.mass, J=s.sft.masscenter_inertia, s_OG=r_SGhub_inS, R_b2g=R_NS, r_O=r_NS_inN) 
 
-            hub = YAMSRecRigidBody('Hub', s.sft.mass, J_G=s.sft.masscenter_inertia, rho_G=s.sft.masscenter)
+            hub = YAMSRecRigidBody('Hub', s.sft.mass, J=s.sft.masscenter_inertia, rho_G=s.sft.masscenter)
             #hub.shiftOrigin(R_NS.T.dot(-r_NS_inN))
             hub.R_b2g      = R_NS
             hub.pos_global = r_NS_inN
@@ -93,8 +93,8 @@ class TNSBStructure(WindTurbineStructure):
             s.rot        = rot
             s.hub        = hub
 
-
         except:
+            # NOTE: due to test test_TNSB_article which uses a dummy YAMSRecBody for a flexbile body, we do not have access to "toRigidBody" routine
             if verbose:
                 print('[WARN] TNSB: Fail to compute RNA with new method, using legacy')
             s.r_NGrot_inN = s.r_NR_inN   # NOTE approximation neglecting cone, putting all rotor mass at R
@@ -107,7 +107,7 @@ class TNSBStructure(WindTurbineStructure):
         s.iPsi  = s.twr.nf # Index of DOF corresponding to azimuth
 
         # Useful for load computation
-        s.r_NR_inN = s.r_NS_inN.ravel() + np.dot(s.nac.R_b2g.T, np.dot(s.sft.R_b2g, s.r_SR_inS))
+        s.r_NR_inN = s.r_NS_inN.ravel() + np.dot(s.nac.R_b2g.T, np.dot(s.sft.R_b2g, s.r_SR_inS.ravel()))
         s.gravity  = s.twr.gravity
         s.compute_RNA()
         s.nDOF = len(s.q)
@@ -478,7 +478,7 @@ def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN
     # Point R
     r_SR  = np.dot(R_ES, r_SR_inS)
     B_R = fBMatRecursion(B_S,[],[],R_ES,r_SR)
-    B_R_bis = fBMatTranslate(B_S,r_SR)
+    B_R_bis = fBMatTranslate(B_S, r_SR)
     # Points B1, B2, B3
     MM_B      = np.zeros((nDOF,nDOF))
     KK_B      = np.zeros((nDOF,nDOF))

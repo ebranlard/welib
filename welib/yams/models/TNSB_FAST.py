@@ -106,7 +106,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
         gen = self.WT.gen
         nac = self.WT.nac
         yaw = self.WT.yawBr
-        self.reshape_3array_to_atleast_2d()
+        #self.reshape_3array_to_atleast_2d()
         theta_tilt_y =  self.WT.shaft_tilt
         theta_cone_y =  self.WT.theta_cone_y
         r_ET_inE     =  self.WT.r_ET_inE
