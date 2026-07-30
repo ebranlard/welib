@@ -16,7 +16,7 @@ import copy
 import os
 
 from welib.yams.yams_rec import fB_inB, fB_aug, fBMB, fBMatRecursion, fBMatTranslate
-from welib.yams.yams_rec import GroundBody, YAMSRecRigidBody
+from welib.yams.yams_rec import YAMSRecGroundBody, YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z
 from welib.yams.windturbine import WindTurbineStructure, rigidBlades
 
@@ -262,7 +262,7 @@ def auto_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE,r_TN_inT,r_NS_inN,r_S
 
 
     # Creating reference frame
-    grd = GroundBody()
+    grd = YAMSRecGroundBody()
 
     # Connections between bodies
     grd.connectTo(twr, Point=r_ET_inE, Type='Rigid')
@@ -576,7 +576,7 @@ def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN
         WT.theta_cone     = theta_cone_y
         WT.theta_tilt     = theta_tilt_y
         WT.bTiltBeforeNac = bTiltBeforeNac
-    WT.grd = GroundBody()
+    WT.grd = YAMSRecGroundBody()
     WT.twr  = twr
     WT.yaw  = yaw
     WT.nac  = nac

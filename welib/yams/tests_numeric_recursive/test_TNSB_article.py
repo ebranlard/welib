@@ -8,6 +8,7 @@ import numpy as np
 import copy
 import unittest
 from welib.yams.yams_rec import *
+from welib.yams.utils import translateInertiaMatrix, translateInertiaMatrixToCOG
 from welib.yams.models.TNSB import manual_assembly
 
 def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):

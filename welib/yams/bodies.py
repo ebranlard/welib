@@ -447,6 +447,9 @@ class BeamBody(FlexibleBody):
     @property    
     def mass(self):
         """ Body mass"""
+        if self.MM is None:
+            print('[WARN] bodies: MM is None')
+            return 0
         return self.MM[0,0]
 
     @property    
@@ -643,14 +646,14 @@ class BeamBody(FlexibleBody):
         return len(B.PhiU)
 
     @property
-    def Bhat_x_bc(self,iNode=-1):
+    def Bhat_x_bc(self, iNode=-1):
         Bhat_x_bc = self.Matrix(np.zeros((3,self.nf)))
         for j in np.arange(self.nf):
             Bhat_x_bc[:,j]=self.PhiU[j][:,iNode] #  along x
         return Bhat_x_bc
 
     @property
-    def Bhat_t_bc(self,iNode=-1):
+    def Bhat_t_bc(self, iNode=-1):
         """ unit "alpha" couplings """
         Bhat_t_bc = self.Matrix(np.zeros((3,self.nf)))
         for j in np.arange(self.nf):
@@ -666,25 +669,28 @@ class BeamBody(FlexibleBody):
 
     def __repr__(self):
         s='<BeamBody {} object>:\n'.format(self.name)
-        s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
-        s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
-        s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
-        s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
-        s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
-        s+=' - mass:         {}\n'.format(self.mass)
-        s+=' * length:      {}\n'.format(self.length)
-        s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
-        s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
-        s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
-        s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
-        s+=' - Properties: s_span, m, EI, Mtop, s_G0, PhiU, PhiV, PhiK\n'
-        s+='               jxxG, s_P0, s_G\n'
-        s+='               bAxialCorr, bOrth, bStiffening\n'
-        s+='               Omega, gravity, int_method    \n'
-        s+='               damp_zeta, RayleighCoeff, DampMat\n'
-        s+='               MM, KK, KK0, KKg, KKg_Mtop, KKg_self\n'
-        s+=' - Additional Props: {}\n'.format(self.additional_properties)
-        s+='Usefull getters: inertia_at, mass_matrix_at, toRigidBody \n'
+        if self.sympy:
+            pass
+        else:
+            s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
+            s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
+            s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
+            s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
+            s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
+            s+=' - mass:         {}\n'.format(self.mass)
+            s+=' * length:      {}\n'.format(self.length)
+            s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
+            s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
+            s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
+            s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+            s+=' - Properties: s_span, m, EI, Mtop, s_G0, PhiU, PhiV, PhiK\n'
+            s+='               jxxG, s_P0, s_G\n'
+            s+='               bAxialCorr, bOrth, bStiffening\n'
+            s+='               Omega, gravity, int_method    \n'
+            s+='               damp_zeta, RayleighCoeff, DampMat\n'
+            s+='               MM, KK, KK0, KKg, KKg_Mtop, KKg_self\n'
+            s+=' - Additional Props: {}\n'.format(self.additional_properties)
+            s+='Usefull getters: inertia_at, mass_matrix_at, toRigidBody \n'
         return s
 
 # --------------------------------------------------------------------------------}

@@ -29,8 +29,11 @@ from sympy.physics.mechanics.functions import msubs
 from sympy.physics.vector import init_vprinting, vlatex
 
 # Local
-from welib.yams.yams_sympy_tools import exprHasFunction, skew, colvec, cross #,ete
 from collections import OrderedDict 
+from welib.yams.yams_sympy_tools import exprHasFunction, skew, colvec #,ete
+from welib.yams.utils import translateInertiaMatrixFromCOG, buildRigidBodyMassMatrix
+
+
 
 #init_vprinting(use_latex='mathjax', pretty_print=False)
 #
@@ -40,6 +43,35 @@ from collections import OrderedDict
 __all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody'] # New general implementation
 __all__+= ['YAMSRecSPBody','RigidBody','GroundBody'] # Old "recursive" implementation. TODO merge the two
 __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
+
+
+# --------------------------------------------------------------------------------}
+# --- Sympy harmony 
+# --------------------------------------------------------------------------------{
+def R_x(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[1,0,0], [0,sp.cos(t),-sp.sin(t)], [0,sp.sin(t),sp.cos(t)]])
+    else:
+        return np.array( [[1,0,0], [0,np.cos(t),-np.sin(t)], [0,np.sin(t),np.cos(t)]])
+
+def R_y(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[sp.cos(t),0,sp.sin(t)], [0,1,0], [-sp.sin(t),0,sp.cos(t)] ])
+    else:
+        return np.array( [[np.cos(t),0,np.sin(t)], [0,1,0], [-np.sin(t),0,np.cos(t)] ])
+
+def R_z(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[sp.cos(t),-sp.sin(t),0], [sp.sin(t),sp.cos(t),0], [0,0,1]])
+    else:
+        return np.array( [[np.cos(t),-np.sin(t),0], [np.sin(t),np.cos(t),0], [0,0,1]])
+
+def cross(u, v):
+    if hasattr(u, "cross"):
+        return u.cross(v)
+    else:
+        return np.cross(u, v)
+        
 
 # --------------------------------------------------------------------------------}
 # --- Helper functions 
@@ -874,7 +906,7 @@ class YAMSBody(object):
             
 class YAMSRecSPBody(object):
     def __init__(B, name='', sympy=True):
-        B.sympy = True
+        B.sympy = sympy
         B.pos_global  = B.vec3([0,0,0])
         B.R_b2g       = B.eye(3)
         B.name        = name
@@ -954,11 +986,12 @@ class YAMSRecSPBody(object):
                 else:
                     raise NotImplementedError()
                 RelPoint = self.s_P0[:,i_C_inB]
-                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self)
+                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self, sympy=self.sympy)
         elif Type =='Rigid':
-            c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation)
+            c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation, sympy=self.sympy)
         else: # TODO first node, last node
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter)
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, sympy=self.sympy)
+
         self.Children.append(Child)
         self.Connections.append(c)
 
@@ -1134,8 +1167,8 @@ class GroundBody(YAMSRecSPBody):
     """ 
     Ground body is used to traverse the tree and hold the full mass matrix
     """
-    def __init__(B):
-        super(GroundBody,B).__init__('Grd')
+    def __init__(B, sympy=True):
+        super(GroundBody,B).__init__(name='Grd', sympy=sympy)
         B.nq = 0
         B.q  = []
         
@@ -1253,6 +1286,8 @@ class GroundBody(YAMSRecSPBody):
         for c in o.Children:
             D=c._getFullD(D)
         return D
+
+
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
@@ -1518,15 +1553,25 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
 
 
         
+# --------------------------------------------------------------------------------}
+# --- YAMSRec Rigid Body 
+# --------------------------------------------------------------------------------{
 class RigidBody(YAMSRecSPBody):
-    def __init__(B, Name, Mass, J_G, rho_G):
+    def __init__(B, name, mass, J_G, rho_G, sympy=True):
         """
-        Creates a rigid body 
+        Creates a rigid body for YAMSRec
         """
-        super(RigidBody,B).__init__(Name)
+        super(RigidBody,B).__init__(name, sympy=sympy)
+        s_G_inB = B.Matrix(rho_G) # B.masscenter
+        J_G_inB = B.Matrix(J_G)   # B.masscenter_inertia
+        # TODO Not ready
+        #B.J_O_inB = translateInertiaMatrixFromCOG(J_G_inB, mass, -s_G_inB)
+        #B.MM = buildRigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
+        B.DD = B.Matrix(np.zeros((6,6)))
+        B.KK = B.Matrix(np.zeros((6,6)))
         B.s_G_inB = rho_G
         B.J_G_inB = J_G  
-        B.Mass    = Mass 
+        # END - YAMSRec RigidBody
 
 # --------------------------------------------------------------------------------}
 # --- Flexible body/Beam Body 
@@ -2548,67 +2593,143 @@ class YAMSFlexibleBody(YAMSBody):
 
 
 # --------------------------------------------------------------------------------}
-# --- Beam Body 
+# --- Beam Recursive Beam Body 
 # --------------------------------------------------------------------------------{
 class BeamBody(YAMSRecSPBody):
-    def __init__(B,Name,nf,main_axis='z',nD=2):
-        super(BeamBody,B).__init__(Name)
-        B.PhiU = [None] * nf # B.nf has no setter 
-        B.nD  = nD
-        B.main_axis = main_axis
+    def __init__(B, 
+                 main_axis='z',
+                 name='dummyYAMSRecSPBeamBody', 
+                 algo='',
+                 directions=[['x']],
+                 sympy=True
+                ):
+        """ 
+          Points P0 - Undeformed mean line of the body
+        """                
+        int_method    = 'Flex'
+        if algo=='OpenFAST': 
+            int_method='OpenFAST'
+        # --- Inherit from BeamBody and YAMSRecBody         
+        super(BeamBody, B).__init__(name=name, sympy=sympy)
+        B.directions = directions
+        if sympy:
+            if directions is None: 
+                raise Exception('directions shouldnt be None with sympy')
+            nf = len(directions)
+            # --- TODO WE CREATE A FAKE INTERFACE
+            B.main_axis=main_axis
+            B.directions = directions
+            nSpan = 2
+            B.s_span = [0,symbols('L')]
+            B.PhiU = []
+            B.PhiV = []
+            B.gzf = B.Matrix([0]*nf)
+            for j in range(nf):
+                PhiU = B.Matrix(np.zeros((3,nSpan)))
+                PhiV = B.Matrix(np.zeros((3,nSpan)))
+                direction = B.directions[j]
+                nD = len(B.directions[j])
+                if 'x' in direction:
+                    PhiU[0,-1] = symbols('ux{:d}c'.format(j+1))
+                    PhiV[0,-1]=symbols('vy{:d}c'.format(j+1))
+                if 'y' in direction:
+                    PhiU[1,-1] = symbols('uy{:d}c'.format(j+1))
+                    PhiV[1,-1] = symbols('ux{:d}c'.format(j+1))
+                B.PhiU.append(PhiU)
+                B.PhiV.append(PhiV)
+                 
+
+        B.gzf   = B.Matrix(np.zeros((B.nf,1)))
+        B.gzpf  = B.Matrix(np.zeros((B.nf,1)))
+        B.gzppf = B.Matrix(np.zeros((B.nf,1)))
+
+
     @property
     def alpha_couplings(self):
+        gzf = np.atleast_1d(self.gzf)
         return self.Bhat_t_bc @ self.gzf
 
     @property
     def R_bc(self):
-        if self.main_axis=='x':
-            alpha_y= symbols('alpha_y') #-p.V(3,iNode);
-            alpha_z= symbols('alpha_z') # p.V(2,iNode);
-            return R_y(alpha_y)*R_z(alpha_z)
+        if self.sympy:
+            if self.main_axis=='x':
+                alpha_y= symbols('alpha_y') #-p.V(3,iNode);
+                alpha_z= symbols('alpha_z') # p.V(2,iNode);
+                return R_y(alpha_y) @ R_z(alpha_z)
 
-        elif self.main_axis=='z':
-            alpha_x= symbols('alpha_x') #-p.V(2,iNode);
-            alpha_y= symbols('alpha_y') # p.V(1,iNode);
-            return R_x(alpha_x)*R_y(alpha_y)
-        else:
-            raise NotImplementedError()
+            elif self.main_axis=='z':
+                alpha_x= symbols('alpha_x') #-p.V(2,iNode);
+                alpha_y= symbols('alpha_y') # p.V(1,iNode);
+                return R_x(alpha_x)*R_y(alpha_y)
+            else:
+                raise NotImplementedError()
+
+
+    @property
+    def Bhat_x_bc_generic(self, iNode=-1):
+        Bhat_x_bc = self.Matrix(np.zeros((3,self.nf)))
+        for j in np.arange(self.nf):
+            Bhat_x_bc[:,j]=self.PhiU[j][:,iNode] #  along x
+        return Bhat_x_bc
+
+    @property
+    def Bhat_t_bc_generic(self, iNode=-1):
+        """ unit "alpha" couplings """
+        Bhat_t_bc = self.Matrix(np.zeros((3,self.nf)))
+        for j in np.arange(self.nf):
+            if self.main_axis=='x':
+                Bhat_t_bc[0,j]=0                      # torsion
+                Bhat_t_bc[1,j]=-self.PhiV[j][2,iNode]
+                Bhat_t_bc[2,j]= self.PhiV[j][1,iNode]
+            elif self.main_axis=='z':
+                Bhat_t_bc[0,j]=-self.PhiV[j][1,iNode]
+                Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
+                Bhat_t_bc[2,j]= 0                     # torsion
+        return Bhat_t_bc
+
+
+
 
     @property
     def Bhat_x_bc(self):
         #      Bx_pc(:,j)=p.PhiU{j}(:,iNode);
-        Bhat_x_bc = Matrix(np.zeros((3,self.nf)).astype(int))
-        if self.main_axis=='z':
-            for j in np.arange(self.nf):
-                if j<self.nf/2 or self.nD==1:
-                    Bhat_x_bc[0,j]=symbols('ux{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along x
-                else:
-                    Bhat_x_bc[1,j]=symbols('uy{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along y
-        elif self.main_axis=='x':
-            for j in np.arange(self.nf):
-                if j<self.nf/2 or self.nD==1:
-                    Bhat_x_bc[2,j]=symbols('uz{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along z
-                else:
-                    Bhat_x_bc[1,j]=symbols('uy{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along y
-        return Bhat_x_bc
+        if self.sympy:
+            Bhat_x_bc = Matrix(np.zeros((3,self.nf)).astype(int))
+            if self.main_axis=='z':
+                for j in np.arange(self.nf):
+                    nD = len(self.directions[j])
+                    if j<self.nf/2 or nD==1:
+                        Bhat_x_bc[0,j]=symbols('ux{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along x
+                    else:
+                        Bhat_x_bc[1,j]=symbols('uy{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along y
+            elif self.main_axis=='x':
+                for j in np.arange(self.nf):
+                    nD = len(self.directions[y])
+                    if j<self.nf/2 or nD==1:
+                        Bhat_x_bc[2,j]=symbols('uz{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along z
+                    else:
+                        Bhat_x_bc[1,j]=symbols('uy{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along y
+            return Bhat_x_bc
 
     @property
     def Bhat_t_bc(self):
-        #      Bt_pc(:,j)=[0; -p.PhiV{j}(3,iNode); p.PhiV{j}(2,iNode)];
-        Bhat_t_bc = Matrix(np.zeros((3,self.nf)).astype(int))
-        if self.main_axis=='z':
-            for j in np.arange(self.nf):
-                if j<self.nf/2  or self.nD==1:
-                    Bhat_t_bc[1,j]=symbols('vy{:d}c'.format(j+1))
-                else:
-                    Bhat_t_bc[0,j]=-symbols('vx{:d}c'.format(j+1))
-        elif self.main_axis=='x':
-            for j in np.arange(self.nf):
-                if j<self.nf/2 or self.nD==1:
-                    Bhat_t_bc[1,j]=-symbols('vz{:d}c'.format(j+1))
-                else:
-                    Bhat_t_bc[2,j]=symbols('vy{:d}c'.format(j+1))
-        return Bhat_t_bc
+        if self.sympy:
+            Bhat_t_bc = Matrix(np.zeros((3,self.nf)).astype(int))
+            if self.main_axis=='z':
+                for j in np.arange(self.nf):
+                    nD = len(self.directions[j])
+                    if j<self.nf/2  or self.nD==1:
+                        Bhat_t_bc[1,j]=symbols('vy{:d}c'.format(j+1))
+                    else:
+                        Bhat_t_bc[0,j]=-symbols('vx{:d}c'.format(j+1))
+            elif self.main_axis=='x':
+                for j in np.arange(self.nf):
+                    nD = len(self.directions[j])
+                    if j<self.nf/2 or self.nD==1:
+                        Bhat_t_bc[1,j]=-symbols('vz{:d}c'.format(j+1))
+                    else:
+                        Bhat_t_bc[2,j]=symbols('vy{:d}c'.format(j+1))
+            return Bhat_t_bc
 
 
 
@@ -2616,12 +2737,12 @@ class BeamBody(YAMSRecSPBody):
 # --------------------------------------------------------------------------------}
 # --- Rotation 
 # --------------------------------------------------------------------------------{
-def R_x(t):
-    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
-def R_y(t):
-    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
-def R_z(t): 
-    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
+def R_x(t, sympy=True):
+    return Matrix( [[1,0,0], [0,sp.cos(t),-sp.sin(t)], [0,sp.sin(t),sp.cos(t)]])
+def R_y(t, sympy=True):
+    return Matrix( [[sp.cos(t),0,sp.sin(t)], [0,1,0], [-sp.sin(t),0,sp.cos(t)] ])
+def R_z(t, sympy=True): 
+    return Matrix( [[sp.cos(t),-sp.sin(t),0], [sp.sin(t),sp.cos(t),0], [0,0,1]])
 # --------------------------------------------------------------------------------}
 # --- B Matrices 
 # --------------------------------------------------------------------------------{
@@ -2721,7 +2842,7 @@ def fBMatTranslate(Bp, r_pi, sympy=True):
         raise NotImplementedError
 
     for j in range(Bp.shape[1]):
-        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi)
+        Bi[0:3,j] = Bp[0:3,j] + cross(Bp[3:6,j],r_pi)
         Bi[3:6,j] = Bp[3:6,j]
     return Bi
 

@@ -9,7 +9,8 @@ Reference:
 """
 
 import numpy as np
-from .utils import *
+from .utils import buildRigidBodyMassMatrix
+from .utils import translateInertiaMatrixFromCOG
 from .bodies import Body         as GenericBody
 from .bodies import RigidBody    as GenericRigidBody
 from .bodies import FlexibleBody as GenericFlexibleBody
@@ -18,9 +19,37 @@ from .bodies import FASTBeamBody as GenericFASTBeamBody
 from .bodies import InertialBody as GenericInertialBody
 
 # --- To ease comparison with sympy version
-from numpy import eye, cross, cos ,sin
+# from numpy import eye, cross, cos ,sin
 
-from sympy import Matrix
+import sympy as sp
+from sympy import Matrix, symbols
+
+# --------------------------------------------------------------------------------}
+# --- Sympy harmony 
+# --------------------------------------------------------------------------------{
+def R_x(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[1,0,0], [0,sp.cos(t),-sp.sin(t)], [0,sp.sin(t),sp.cos(t)]])
+    else:
+        return np.array( [[1,0,0], [0,np.cos(t),-np.sin(t)], [0,np.sin(t),np.cos(t)]])
+
+def R_y(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[sp.cos(t),0,sp.sin(t)], [0,1,0], [-sp.sin(t),0,sp.cos(t)] ])
+    else:
+        return np.array( [[np.cos(t),0,np.sin(t)], [0,1,0], [-np.sin(t),0,np.cos(t)] ])
+
+def R_z(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[sp.cos(t),-sp.sin(t),0], [sp.sin(t),sp.cos(t),0], [0,0,1]])
+    else:
+        return np.array( [[np.cos(t),-np.sin(t),0], [np.sin(t),np.cos(t),0], [0,0,1]])
+
+def cross(u, v):
+    if hasattr(u, "cross"):
+        return u.cross(v)
+    else:
+        return np.cross(u, v)
 
 
 # --------------------------------------------------------------------------------}
@@ -88,7 +117,7 @@ class Connection():
         if j.Type=='Rigid':
             j.R_ci=j.R_ci_0
         elif j.Type=='SphericalJoint':
-            R=eye(3)
+            R = np.eye(3)
             myq    = q   [j.I_DOF,0];
             #myqdot = qdot[j.I_DOF];
 
@@ -137,8 +166,8 @@ class Connection():
 # --- Bodies 
 # --------------------------------------------------------------------------------{
 class YAMSRecBody(GenericBody):
-    def __init__(B,name=''):
-        GenericBody.__init__(B, name=name)
+    def __init__(B, name='', sympy=False):
+        GenericBody.__init__(B, name=name, sympy=sympy)
         B.Children    = []
         B.Connections = []
         B.MM          = None
@@ -185,11 +214,11 @@ class YAMSRecBody(GenericBody):
                 else:
                     raise NotImplementedError()
                 RelPoint = self.s_P0[:,i_C_inB]
-                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self)
+                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self, sympy=self.sympy)
         elif Type =='Rigid':
-            c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation)
+            c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation, sympy=self.sympy)
         else: # TODO first node, last node
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter)
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, sympy=self.sympy)
 
         self.Children.append(Child)
         self.Connections.append(c)
@@ -267,7 +296,6 @@ class YAMSRecBody(GenericBody):
 
 #            TODO TODO TODO: remaining from matlab?????
             gzf  = q[body_i.I_DOF,0]
-            print('>>> ',body_i.name, gzf)
 #             gz   = q    (i.I_DOF);
 #             gzp  = qdot (i.I_DOF);
 #             gzpp = qddot(i.I_DOF);
@@ -351,12 +379,10 @@ class YAMSRecBody(GenericBody):
         # NOTE: this is overriden by BeamBody
         return B.pos_global # for rigid bodies
 
-
-
     def _getFullM(o, M):
-        if isinstance(o, GroundBody):
+        if isinstance(o, YAMSRecGroundBody):
             raise Exception('Not intended to be called for Ground body')
-        MqB      = fBMB(o.BB_inB, o.MM, sympy=o.sympy)
+        MqB      = fBMB(o.BB_inB, o.MM, sympy=o.sympy, name=o.name)
         n        = MqB.shape[0]
         M[:n,:n] = M[:n,:n]+MqB     
         for c in o.Children:
@@ -364,9 +390,9 @@ class YAMSRecBody(GenericBody):
         return M
         
     def _getFullK(o, K):
-        if isinstance(o, GroundBody):
+        if isinstance(o, YAMSRecGroundBody):
             raise Exception('Not intended to be called for Ground body')
-        KqB      = fBMB(o.BB_inB, o.KK, sympy=o.sympy)
+        KqB      = fBMB(o.BB_inB, o.KK, sympy=o.sympy, name=o.name)
         n        = KqB.shape[0]
         K[:n,:n] = K[:n,:n]+KqB     
         for c in o.Children:
@@ -374,9 +400,9 @@ class YAMSRecBody(GenericBody):
         return K
         
     def _getFullD(o, D):
-        if isinstance(o, GroundBody):
+        if isinstance(o, YAMSRecGroundBody):
             raise Exception('Not intended to be called for Ground body')
-        DqB      = fBMB(o.BB_inB,o.DD, sympy=o.sympy)
+        DqB      = fBMB(o.BB_inB,o.DD, sympy=o.sympy, name=o.name)
         n        = DqB.shape[0]
         D[:n,:n] = D[:n,:n]+DqB     
         for c in o.Children:
@@ -415,11 +441,14 @@ class YAMSRecBody(GenericBody):
 
 
 # --------------------------------------------------------------------------------}
-# --- Ground Body 
+# --- Ground/inertial Body 
 # --------------------------------------------------------------------------------{
-class GroundBody(YAMSRecBody, GenericInertialBody):
-    def __init__(B):
-        YAMSRecBody.__init__(B, 'Grd')
+class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
+    """ 
+    Ground body is used to traverse the tree and hold the full mass matrix
+    """
+    def __init__(B, sympy=False):
+        YAMSRecBody.__init__(B, name='Grd', sympy=sympy)
         GenericInertialBody.__init__(B)
         # We'll use the GroundBody object for global "assembly"
         B.nq = 0
@@ -522,7 +551,7 @@ class GroundBody(YAMSRecBody, GenericInertialBody):
 
     @property
     def M(o):
-        M = np.zeros((o.nq, o.nq))
+        M = o.Matrix(np.zeros((o.nq, o.nq)))
         for c in o.Children:
             M=c._getFullM(M)
         return M
@@ -543,12 +572,12 @@ class GroundBody(YAMSRecBody, GenericInertialBody):
 
 
 # --------------------------------------------------------------------------------}
-# --- Rigid Body 
+# --- YAMSRec Rigid Body 
 # --------------------------------------------------------------------------------{
-class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody): # TODO rename YAMSRecRigidBody
-    def __init__(B, name, mass, J, rho_G=None, s_OP=None, r_O=None, R_b2g=None):
+class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody):
+    def __init__(B, name, mass, J, rho_G=None, s_OP=None, r_O=None, R_b2g=None, sympy=False):
         """
-        Creates a rigid body 
+        Creates a rigid body for YAMSRec
 
         NOTE:
           - Legacy call was always with J_G and rho_G
@@ -557,7 +586,7 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody): # TODO rename YAMSRecRigid
         """
         if s_OP is not None:
             raise Exception('[INFO] You are using the new interface, it should work, but lets debug it')
-        YAMSRecBody.__init__(B, name)
+        YAMSRecBody.__init__(B, name, sympy=sympy)
         #              Interface:(name, mass, J, s_OG, r_O=[0,0,0], R_b2g=np.eye(3), s_OP=None):
         GenericRigidBody.__init__(B, name=name, mass=mass, J=J, s_OG=rho_G, r_O=r_O, R_b2g=R_b2g, s_OP=s_OP)
 
@@ -567,6 +596,7 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody): # TODO rename YAMSRecRigid
         B.MM = buildRigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
         B.DD = np.zeros((6,6))
         B.KK = np.zeros((6,6))
+        # END - YAMSRec RigidBody
 
 
 
@@ -574,13 +604,16 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody): # TODO rename YAMSRecRigid
 # --- YAMS Recursive Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody): 
-    def __init__(B, s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=None, s_G0=None, 
+    def __init__(B, 
+                 s_span=None, s_P0=None, m=None, PhiU=None, PhiV=None, PhiK=None, EI=None, jxxG=None, s_G0=None, 
             s_min=None, s_max=None,
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
             damp_zeta=None,
             name='dummyYAMSRecBeamBody',
-            algo=''
+            algo='',
+            directions=None,
+            sympy=False
             ):
         """ 
           Points P0 - Undeformed mean line of the body
@@ -589,22 +622,49 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
         if algo=='OpenFAST': 
             int_method='OpenFAST'
         # --- Inherit from BeamBody and YAMSRecBody 
-        YAMSRecBody.__init__(B)
-        GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
+        YAMSRecBody.__init__(B, sympy=sympy)
+
+        if sympy:
+            if directions is None: 
+                raise Exception('directions shouldnt be None with sympy')
+            nf = len(directions)
+            # --- TODO WE CREATE A FAKE INTERFACE
+            B.main_axis=main_axis
+            B.directions = directions
+            nSpan = 2
+            B.s_span = [0,symbols('L')]
+            B.PhiU = []
+            B.PhiV = []
+            B.gzf = B.Matrix([0]*nf)
+            for j in range(nf):
+                PhiU = B.Matrix(np.zeros((3,nSpan)))
+                PhiV = B.Matrix(np.zeros((3,nSpan)))
+                direction = B.directions[j]
+                nD = len(B.directions[j])
+                if 'x' in direction:
+                    PhiU[0,-1] = symbols('ux{:d}c'.format(j+1))
+                    PhiV[0,-1]=symbols('vy{:d}c'.format(j+1))
+                if 'y' in direction:
+                    PhiU[1,-1] = symbols('uy{:d}c'.format(j+1))
+                    PhiV[1,-1] = symbols('ux{:d}c'.format(j+1))
+                B.PhiU.append(PhiU)
+                B.PhiV.append(PhiV)
+        else:
+            GenericBeamBody.__init__(B,name, s_span, s_P0, m, EI, PhiU, PhiV, PhiK, jxxG=jxxG, s_G0=s_G0, s_min=s_min, s_max=s_max,
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
                  damp_zeta=damp_zeta,
                  massExpected=massExpected,
                  int_method=int_method
                 )
 
-        B.gzf   = np.zeros((B.nf,1))
-        B.gzpf  = np.zeros((B.nf,1))
-        B.gzppf = np.zeros((B.nf,1))
+        B.gzf   = B.Matrix(np.zeros((B.nf,1)))
+        B.gzpf  = B.Matrix(np.zeros((B.nf,1)))
+        B.gzppf = B.Matrix(np.zeros((B.nf,1)))
 
         # TODO
-        B.V0         = np.zeros((3,B.nSpan))
-        B.K0         = np.zeros((3,B.nSpan))
-        B.rho_G0_inS = np.zeros((3,B.nSpan)) # location of COG in each cross section
+        B.V0         = B.Matrix(np.zeros((3,B.nSpan)))
+        B.K0         = B.Matrix(np.zeros((3,B.nSpan)))
+        B.rho_G0_inS = B.Matrix(np.zeros((3,B.nSpan))) # location of COG in each cross section
         #[o.PhiV,o.PhiK] = fBeamSlopeCurvature(o.s_span,o.PhiU,o.PhiV,o.PhiK,1e-2);
         #[o.V0,o.K0]     = fBeamSlopeCurvature(o.s_span,o.s_P0,o.V0,o.K0,1e-2)    ;
         #if isempty(o.s_G0); o.s_G0=o.s_P0; end;
@@ -617,18 +677,35 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
     @property
     def alpha_couplings(self):
         gzf = np.atleast_1d(self.gzf)
-        return (self.Bhat_t_bc @ gzf).ravel()
+        if self.sympy:
+            return self.Bhat_t_bc @ gzf
+        else:
+            return (self.Bhat_t_bc @ gzf).ravel()
 
     @property
     def R_bc(self):
-        alpha = self.alpha_couplings
+        if self.sympy:
+            # We use analytical couplings
+            if self.main_axis=='x':
+                alpha_y= symbols('alpha_y') #-p.V(3,iNode);
+                alpha_z= symbols('alpha_z') # p.V(2,iNode);
+                return R_y(alpha_y) @ R_z(alpha_z)
 
-        if self.main_axis=='x':
-            return R_y(alpha[1]) @ R_z(alpha[2])
-        elif self.main_axis=='z':
-            return R_x(alpha[0]) @ R_y(alpha[1])
+            elif self.main_axis=='z':
+                alpha_x= symbols('alpha_x') #-p.V(2,iNode);
+                alpha_y= symbols('alpha_y') # p.V(1,iNode);
+                return R_x(alpha_x)*R_y(alpha_y)
+            else:
+                raise NotImplementedError()
         else:
-            raise NotImplementedError()
+            alpha = self.alpha_couplings
+
+            if self.main_axis=='x':
+                return R_y(alpha[1]) @ R_z(alpha[2])
+            elif self.main_axis=='z':
+                return R_x(alpha[0]) @ R_y(alpha[1])
+            else:
+                raise NotImplementedError()
 
     def updateKinematics(o,x_0,R_b2g,gz,v_0,a_v_0, verbose=False):
         super(YAMSRecBeamBody,o).updateKinematics(x_0, R_b2g, gz, v_0, a_v_0)
@@ -642,30 +719,32 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
             o.K  = np.zeros((3,o.nSpan));
             #o.U(1,:) = o.s_span; 
             o.UP = np.zeros((3,o.nSpan));
-            for j in range(o.nf):
-                o.U [0:3,:] = o.U [0:3,:] + o.gzf[j]  * o.PhiU[j][0:3,:]
-                o.UP[0:3,:] = o.UP[0:3,:] + o.gzpf[j] * o.PhiU[j][0:3,:]
-                o.V [0:3,:] = o.V [0:3,:] + o.gzf[j]  * o.PhiV[j][0:3,:]
-                o.K [0:3,:] = o.K [0:3,:] + o.gzf[j]  * o.PhiK[j][0:3,:]
-            o.V_tot=o.V+o.V0;
-            o.K_tot=o.K+o.K0;
+            if not o.sympy:
+                # TODO for sympy
+                for j in range(o.nf):
+                    o.U [0:3,:] = o.U [0:3,:] + o.gzf[j]  * o.PhiU[j][0:3,:]
+                    o.UP[0:3,:] = o.UP[0:3,:] + o.gzpf[j] * o.PhiU[j][0:3,:]
+                    o.V [0:3,:] = o.V [0:3,:] + o.gzf[j]  * o.PhiV[j][0:3,:]
+                    o.K [0:3,:] = o.K [0:3,:] + o.gzf[j]  * o.PhiK[j][0:3,:]
+                o.V_tot=o.V+o.V0;
+                o.K_tot=o.K+o.K0;
 
-            # Position of mean line in body coordinates
-            o.s_P=o.s_P0+o.U;
+                # Position of mean line in body coordinates
+                o.s_P=o.s_P0+o.U;
 
-            # Position of deflected COG in body coordinates
-            # TODO TODO TODO mean_axis not x
-            o.rho_G      = np.zeros((3,o.nSpan))
-            if o.main_axis=='x':
-                o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
-                o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
-            else:
-                if verbose:
-                    print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
-                #raise NotImplementedError()
-                #o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
-                #o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
-            o.s_G = o.s_P+o.rho_G; 
+                # Position of deflected COG in body coordinates
+                # TODO TODO TODO mean_axis not x
+                o.rho_G      = np.zeros((3,o.nSpan))
+                if o.main_axis=='x':
+                    o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
+                    o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
+                else:
+                    if verbose:
+                        print('>>>> YAMS: NotImplemented beam along z, wathc out for your results.')
+                    #raise NotImplementedError()
+                    #o.rho_G[1,:] = o.rho_G0_inS[1,:]*np.cos(o.V_tot[0,:])-o.rho_G0_inS[2,:]*np.sin(o.V_tot[0,:]);
+                    #o.rho_G[2,:] = o.rho_G0_inS[1,:]*np.sin(o.V_tot[0,:])+o.rho_G0_inS[2,:]*np.cos(o.V_tot[0,:]);
+                o.s_G = o.s_P+o.rho_G; 
             # Alternative:
             #rho_G2     = zeros(3,o.nSpan);
             #rho_G2(2,:) = o.rho_G0(2,:).*cos(o.V(1,:))-o.rho_G0(3,:).*sin(o.V(1,:));
@@ -708,6 +787,7 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
             shapeFunctions='masslessbeam',
             bottomBC='clamped',
             topBC='free',
+            sympy=False
             ):
 
         import welib.beams.theory as bt
@@ -788,7 +868,7 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
 
 	# Create a beam body
         super(YAMSRecUniformBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, Mtop=Mtop, bStiffening=bStiffening,
-                gravity=gravity, main_axis=main_axis, name=name)
+                gravity=gravity, main_axis=main_axis, name=name, sympy=sympy)
 
 
     def __repr__(self):
@@ -804,7 +884,8 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
 class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
             spanFrom0=False, massExpected=None, gravity=None,
-            algo='' # TODO OpenFAST
+            algo='', # TODO OpenFAST
+            sympy=False
             ):
         """ 
         """
@@ -831,7 +912,8 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
                 massExpected=massExpected,
-                algo=algo
+                algo=algo,
+                sympy=sympy
                 )
 
 # --------------------------------------------------------------------------------}
@@ -915,7 +997,7 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi, sympy=False):
     # TODO use Translate here
     Bi = MatrixLoc(np.zeros((6,ni+n_p)))
     for j in range(n_p):
-        Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
+        Bi[:3,j] = Bp[:3,j] + cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
         Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
     if ni>0:
         Bi[:3,n_p:] = R0p @ Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
@@ -933,15 +1015,17 @@ def fBMatTranslate(Bp, r_pi, sympy=False):
         raise NotImplementedError
 
     for j in range(Bp.shape[1]):
-        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi)
+        Bi[0:3,j] = Bp[0:3,j] + cross(Bp[3:6,j],r_pi)
         Bi[3:6,j] = Bp[3:6,j]
     return Bi
 
 
-def fBMB(BB_I_inI, MM, sympy=False):
+def fBMB(BB_I_inI, MM, sympy=False, name=''):
     """ Computes the body generalized matrix: B'^t M' B 
     See Eq.(8) of [1] 
     """
+    if MM is None:
+        raise Exception(f'MM is None for body {name}')
     MM_I = (np.transpose(BB_I_inI) @ MM) @ BB_I_inI
     return MM_I
 

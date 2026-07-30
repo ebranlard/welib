@@ -15,9 +15,12 @@ from sympy import simplify
 from sympy.parsing.sympy_parser import parse_expr
 
 from welib.yams.yams_sympy import colvec, R_x, R_y, R_z, cross
-from welib.yams.yams_sympy import GroundBody
-from welib.yams.yams_sympy import BeamBody
-from welib.yams.yams_sympy import RigidBody
+from welib.yams.yams_sympy import GroundBody 
+from welib.yams.yams_sympy import BeamBody   
+from welib.yams.yams_sympy import RigidBody  
+from welib.yams.yams_rec import YAMSRecGroundBody
+from welib.yams.yams_rec import YAMSRecBeamBody
+from welib.yams.yams_rec import YAMSRecRigidBody
 from welib.essentials import *
 
 
@@ -88,11 +91,11 @@ def main(test=False):
     r_NR_inN  = colvec([rNR_x,0,rNR_z])
     rho_N_inN = colvec([rhoN_x,0,rhoN_z])
 
-
+    directions=[['x']]*nShapes_twr
     # --- Independent bodies
-    Grd = GroundBody()
-    Twr = BeamBody ('Twr',nShapes_twr, main_axis=main_axis, nD=nD)
-    Nac = RigidBody('Nac'      ,0,0,0)
+    Grd = YAMSRecGroundBody(sympy=True)
+    Twr = YAMSRecBeamBody (name='Twr', main_axis=main_axis, directions=directions, sympy=True)
+    Nac = YAMSRecRigidBody(name='Nac' ,mass=0, J=(0,0,0), rho_G=(0,0,0), sympy=True)
 
     # --- Connect bodies together
     if bTiltBeforeNac:
@@ -109,7 +112,7 @@ def main(test=False):
 
     myprint('Number of DOFs: ')
     if nq!=len(q):
-       myprint('>>> ',nq,len(q))
+       myprint('>>> '+str(nq)+' '+str(len(q)))
        raise Exception('Wrong number of dof')
 
 
@@ -123,13 +126,13 @@ def main(test=False):
     myprint('------------------ TOWER --------------------------------------')
     myprint('B_T')
     display(Twr.B)
-    myprint(np.array(Twr.B.subs(subs)))
+    myprint(np.array(Twr.B)) # .subs(subs)))
     myprint('B_T_in_T')
     display(Twr.B_inB)
-    myprint(np.array(Twr.B_inB.subs(subs)))
+    myprint(np.array(Twr.B_inB)) #.subs(subs)))
     myprint('BB_T_in_T')
     display(Twr.BB_inB)
-    myprint(np.array(Twr.BB_inB.subs(subs)))
+    myprint(np.array(Twr.BB_inB)) #.subs(subs)))
 
     myprint('------------------ NACELLE --------------------------------------')
     myprint('B_N')
@@ -275,6 +278,27 @@ def main(test=False):
 
 
 
+
+
+#     print('---------------------------------Twr')
+#     print(Twr1)
+#     print(Twr2)
+#     print('---------------------------------B R_b2c')
+#     print(Twr1.R_bc)
+#     print(Twr2.R_bc)
+#     print('---------------------------------B x')
+#     print(Twr1.Bhat_x_bc)
+#     print(Twr2.Bhat_x_bc)
+#     print('---------------------------------B t')
+#     print(Twr1.Bhat_t_bc)
+#     print(Twr2.Bhat_t_bc)
+#     print('---------------------------------Couplings')
+#     print(Twr1.alpha_couplings)
+#     print(Twr2.alpha_couplings)
+#     print('---------------------------------gzf')
+#     print(Twr1.gzf)
+#     print(Twr2.gzf)
+
     dB = Nac.B - parse_expr('Matrix([[ux1c], [0], [0], [0], [vy1c], [0]])')
     np.testing.assert_equal(dB, Matrix([[0],[0],[0],[0],[0],[0]]))
 
@@ -284,6 +308,7 @@ def main(test=False):
     T_inE = Nac.R_b2g*T_inN
     dT = T_inE - parse_expr('Matrix([[-T*sin(alpha_y)*sin(theta_tilt) + T*cos(alpha_y)*cos(theta_tilt)], [T*sin(alpha_x)*sin(alpha_y)*cos(theta_tilt) + T*sin(alpha_x)*sin(theta_tilt)*cos(alpha_y)], [-T*sin(alpha_y)*cos(alpha_x)*cos(theta_tilt) - T*sin(theta_tilt)*cos(alpha_x)*cos(alpha_y)]])')
     np.testing.assert_equal(dT, Matrix([[0],[0],[0]]))
+
 
     return Grd, Nac, Twr, T_inE
 
