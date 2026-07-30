@@ -20,6 +20,9 @@ from welib.weio.fast_input_deck import FASTInputDeck
 # TODO TODO TODO HARMONIZE WITH WINDTURBINE.PY AND TNSB..
 # TODO TODO TODO
 class FASTmodel2TNSB(FASTWindTurbine):
+    """ 
+    Constructor for a TNSB Wind turbine Structure
+    """
     
     def __init__(self, FST_file,nB=3, shapes_twr=None, shapes_bld=None, 
                    nSpan_twr=None, nSpan_bld=None, 
@@ -48,7 +51,13 @@ class FASTmodel2TNSB(FASTWindTurbine):
         if shapes_bld is None:
             shapes_bld=[]
 
-        WT = TNSBStructure()
+        # --- Defining a default TNSB structure
+        WT = TNSBStructure(
+                         main_axis=main_axis, 
+                         bTiltBeforeNac=bTiltBeforeNac,
+                         )
+
+        # --- Calling Parent with that structure 
         FASTWindTurbine.__init__(self, WT=WT,
                                  main_axis=main_axis, 
                                  algo=algo)
@@ -58,37 +67,9 @@ class FASTmodel2TNSB(FASTWindTurbine):
         readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
         self.loadFST(FST_file, readlist=readlist)
 
-
-        # --- LEGACY
-        ED = self.ED
-
-        # --- Default arguments
-        if nSpan_twr is None:
-            if algo=='OpenFAST':
-                nSpan_twr = ED['TwrNodes']
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan_twr))
-            else:
-                nSpan_twr=101
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan_twr))
-        else:
-            if algo=='OpenFAST':
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan_twr))
-        if nSpan_bld is None:
-            if algo=='OpenFAST':
-                nSpan_bld = ED['BldNodes']
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan_bld))
-            else:
-                nSpan_bld=61
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan_bld))
-        else:
-            if algo=='OpenFAST':
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan_bld))
+        # --- Default arguments (needs ED loaded)
+        nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose)
+        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose)
 
         # --------------------------------------------------------------------------------}
         ## --- Creating bodies
@@ -143,11 +124,14 @@ class FASTmodel2TNSB(FASTWindTurbine):
             q = np.zeros((nDOF,1)) # TODO, full account of q not done
 
         if assembly=='manual':
-             manual_assembly(twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+            self.WT.manual_assembly(q=q, DEBUG=DEBUG)
+#              manual_assembly(twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
         else:
-            auto_assembly   (twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
+            self.WT.auto_assembly(q=q, DEBUG=DEBUG)
+#             auto_assembly   (twr, yaw, nac, gen, sft, bld, q, r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,theta_tilt_y=theta_tilt_y,theta_cone_y=theta_cone_y,DEBUG=DEBUG, bTiltBeforeNac=bTiltBeforeNac, WT=self.WT)
 
         # --- Initial conditions
+        ED = self.ED
         omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
         psi_init   = ED['Azimuth']*np.pi/180   # rad
         FA_init    = ED['TTDspFA']

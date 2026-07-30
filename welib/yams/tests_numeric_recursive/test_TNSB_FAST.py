@@ -108,9 +108,9 @@ class TestTNSB(unittest.TestCase):
                             [      0.    ,         0.      ,  284984.498 ,         0.    ,   1430365.6939118,      0.       ],
                             [     -0.    ,   -284984.498   ,       0.    ,         0.    ,         0.       ,1430365.6939118]])
     
-        np.testing.assert_almost_equal(StructA.sft.mass,56780)
-        np.testing.assert_almost_equal(StructA.sft.pos_global,(0.2337605,0,89.5485887))
-        np.testing.assert_almost_equal(StructA.sft.MM,Sft_MMref)
+        np.testing.assert_almost_equal(StructA.hubgen.mass,56780)
+        np.testing.assert_almost_equal(StructA.hubgen.pos_global,(0.2337605,0,89.5485887))
+        np.testing.assert_almost_equal(StructA.hubgen.MM,Sft_MMref)
         #print('Sft: R_S:')
         #print(StructA.Sft.R_b2g)
         #print(StructM.Sft.R_b2g)

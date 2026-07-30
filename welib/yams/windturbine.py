@@ -104,6 +104,11 @@ class WindTurbineStructure():
     def fromFAST(fstFilename):
         return FASTWindTurbine(fstFilename).WT
 
+    def reshape_3array_to_atleast_2d(self):
+        for name, value in vars(self).items():
+            if isinstance(value, np.ndarray) and value.shape == (3,):
+                setattr(self, name, value.reshape((3,1)))
+
     @property
     def q0(self):
         return pd.Series(np.array([dof['q0'] for dof in self.DOF if dof['active']]), index=self.DOFname)
@@ -828,11 +833,6 @@ class FASTWindTurbine():
 
         """
         # --- Storing a general windturbine structure
-        if WT is None:
-            self.WT = WindTurbineStructure()
-        else:
-            self.WT = WT
-        self.WT.algo = algo
 
         self.ED  = None
         self.FST = None
@@ -842,6 +842,14 @@ class FASTWindTurbine():
         self.fstFilename = fstFilename
         self.pBld = None
         self.pTwr = None
+
+        if WT is not None and fstFilename is not None:
+            raise Exception('Cannot provide both a WT and a fstFilename')
+        if WT is None:
+            self.WT = WindTurbineStructure()
+        else:
+            self.WT = WT
+        self.WT.algo = algo
 
         if fstFilename is not None:
             # TODO for harmonization, these might not need to all be called
@@ -892,6 +900,41 @@ class FASTWindTurbine():
                 self.WT.gravity = self.ED['gravity']
             except:
                 raise Exception('Variable gravity not found in FST file or ED file.')
+
+
+    def _defaultNSpanTwr(self, nSpan=None, verbose=False):
+        ED = self.ED
+        if nSpan is None:
+            if self.WT.algo=='OpenFAST':
+                nSpan = ED['TwrNodes']
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan))
+            else:
+                nSpan=101
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan))
+        else:
+            if self.WT.algo=='OpenFAST':
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan))
+        return nSpan
+
+    def _defaultNSpanBld(self, nSpan=None, verbose=False):
+        ED = self.ED
+        if nSpan is None:
+            if self.WT.algo=='OpenFAST':
+                nSpan = ED['BldNodes']
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan))
+            else:
+                nSpan=61
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan))
+        else:
+            if self.WT.algo=='OpenFAST':
+                if verbose:
+                    print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan))
+        return nSpan
 
     def setupEDGeom(self, zBot=0, bTiltBeforeNac=False):
 
@@ -1332,12 +1375,6 @@ class FASTWindTurbine():
     # ---------------------- INITIAL CONDITIONS --------------------------------------
     #           0   OoPDefl     - Initial out-of-plane blade-tip displacement (meters)
     #           0   IPDefl      - Initial in-plane blade-tip deflection (meters)
-
-
-    def reshape_3array_to_atleast_2d(self):
-        for name, value in vars(self.WT).items():
-            if isinstance(value, np.ndarray) and value.shape == (3,):
-                setattr(self.WT, name, value.reshape((3,1)))
 
 
 # --------------------------------------------------------------------------------}
