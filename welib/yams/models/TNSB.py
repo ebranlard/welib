@@ -50,7 +50,7 @@ class TNSBStructure(WindTurbineStructure):
         s.M_rot= sum([B.mass for B in s.bld])
         s.M_RNA= s.M_rot + s.sft.mass + s.nac.mass;
         s.r_NGnac_inN = s.nac.s_G_inB.ravel()
-        s.r_NGhub_inN = s.r_NS_inN.ravel() + np.dot(s.nac.R_0b.T, np.dot(s.sft.R_0b, s.sft.s_G_inB))
+        s.r_NGhub_inN = s.r_NS_inN.ravel() + np.dot(s.nac.R_b2g.T, np.dot(s.sft.R_b2g, s.sft.s_G_inB))
 
         try:
             # --------------------------------------------------------------------------------}
@@ -107,7 +107,7 @@ class TNSBStructure(WindTurbineStructure):
         s.iPsi  = s.twr.nf # Index of DOF corresponding to azimuth
 
         # Useful for load computation
-        s.r_NR_inN = s.r_NS_inN.ravel() + np.dot(s.nac.R_0b.T, np.dot(s.sft.R_0b, s.r_SR_inS))
+        s.r_NR_inN = s.r_NS_inN.ravel() + np.dot(s.nac.R_b2g.T, np.dot(s.sft.R_b2g, s.r_SR_inS))
         s.gravity  = s.twr.gravity
         s.compute_RNA()
         s.nDOF = len(s.q)
@@ -380,7 +380,7 @@ def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN
     DD_T     = fBMB(BB_T_inT,twr.DD)
 
     twr.r_O    = r_ET_inE
-    twr.R_0b   = R_ET
+    twr.R_b2g   = R_ET
     twr.B      = B_T    
     twr.B_inB  = B_T_inT
     twr.BB_inB = BB_T_inT
@@ -422,15 +422,15 @@ def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN
     MM_N     = fBMB(BB_N_inN,nac.MM)
     KK_N     = fBMB(BB_N_inN,nac.KK)
 
-    nac.r_O    = twr.r_O + np.dot(twr.R_0b, r_TN_inT)
-    nac.R_0b   = R_EN
+    nac.r_O    = twr.r_O + np.dot(twr.R_b2g, r_TN_inT)
+    nac.R_b2g   = R_EN
     nac.B      = B_N    
     nac.B_inB  = B_N_inN
     nac.BB_inB = BB_N_inN
     # TODO YAW
     MM_Y       = fBMB(BB_N_inN, yaw.MM)
-    yaw.r_O    = twr.r_O + np.dot(twr.R_0b, r_TN_inT)
-    yaw.R_0b   = R_EN
+    yaw.r_O    = twr.r_O + np.dot(twr.R_b2g, r_TN_inT)
+    yaw.R_b2g   = R_EN
     yaw.B      = B_N    
     yaw.B_inB  = B_N_inN
     yaw.BB_inB = BB_N_inN
@@ -467,7 +467,7 @@ def manual_assembly(twr, yaw, nac, gen, sft, bld, q,r_ET_inE, r_TN_inT, r_NS_inN
     KK_S     = fBMB(BB_S_inS,sft.KK)
 
     sft.r_O    = nac.r_O + r_NS
-    sft.R_0b   = R_ES
+    sft.R_b2g   = R_ES
     sft.B      = B_S    
     sft.B_inB  = B_S_inS
     sft.BB_inB = BB_S_inS

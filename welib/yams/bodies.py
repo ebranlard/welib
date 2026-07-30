@@ -3,6 +3,17 @@ Generic bodies classes
 These classes will be used for more advanced classes:
     - new and old YAMS body classes for Sympy
     - YAMS body for numerical yams
+
+Hierarchy:
+                   Body
+                    ^ 
+     /              |                 \ 
+RigidBody      FlexibleBody       InertialBody
+                    |
+                 BeamBody
+                    |
+               FASTBeamBody
+
 """
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrixFromCOG
 from welib.yams.utils import buildRigidBodyMassMatrix 
@@ -14,18 +25,13 @@ from welib.yams.flexibility import checkRegularNode
 
 __all__ = ['Body','InertialBody','RigidBody','FlexibleBody']
 
-# --- For harmony with sympy
 import numpy as np
-from numpy import eye, cross, cos ,sin
 try:
     from numpy import trapezoid
 except:
     from numpy import trapz as trapezoid
 
-def Matrix(m):
-    return np.asarray(m)
-def zeros(m,n):
-    return np.zeros((m,n))
+from sympy import Matrix
 
 # --------------------------------------------------------------------------------}
 # --- Generic Body 
@@ -34,16 +40,46 @@ class Body(object):
     """
     Base class for rigid bodies and flexible bodies
     """
-    def __init__(self, name='', r_O=[0,0,0], R_b2g=np.eye(3)):
+    def __init__(self, name='', r_O=[0,0,0], R_b2g=np.eye(3), sympy=False):
         self.name = name
-        self._r_O            = np.asarray(r_O).ravel()
-        self.pos_global_init = np.asarray(r_O).ravel()
-        self._R_b2g          = np.asarray(R_b2g)
-        self.R_b2g_init      = np.asarray(R_b2g)
+        self.sympy = sympy
+        self._r_O            = self.vec3(r_O)
+        self.pos_global_init = self.vec3(r_O)
+        self._R_b2g          = self.Matrix(R_b2g)
+        self.R_b2g_init      = self.Matrix(R_b2g)
         self.additional_properties = [] # List of string so that we remember the useful properties
 
         self._mass=None
         self.MM  = None # To be defined by children
+
+    # --- Generic Tools to work with Sympy and Numpy
+    def vec3(self, v):
+        if self.sympy:
+            return Matrix([[v[0]],[v[1]],[v[2]]])
+        else:
+            #return np.asarray(v).ravel().reshape(3,1)
+            return np.asarray(v).ravel() 
+
+    def Matrix(self, m):
+        if self.sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
+
+    def cross(self, V1, V2):
+        if self.sympy:
+            return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
+        else:
+            return np.cross(V1, V2) 
+
+    def eye(self, n): 
+        if self.sympy:
+            return Matrix( np.eye(n).astype(int) )
+        else:
+            return np.eye(n)
+    # --- End generic tools
+
+
 
     def __repr__(self):
         s='<Generic Body {} object>:\n'.format(self.name)
@@ -53,10 +89,6 @@ class Body(object):
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
         s+=' - Additional Props: {}\n'.format(self.additional_properties)
         return s
-
-    @property
-    def Mass(self):
-        raise Exception('`Mass` is an old interface, use `mass` instead')
 
     @property
     def mass(self):
@@ -606,7 +638,7 @@ class BeamBody(FlexibleBody):
 
     @property
     def Bhat_x_bc(self,iNode=-1):
-        Bhat_x_bc = Matrix(np.zeros((3,self.nf)))
+        Bhat_x_bc = self.Matrix(np.zeros((3,self.nf)))
         for j in np.arange(self.nf):
             Bhat_x_bc[:,j]=self.PhiU[j][:,iNode] #  along x
         return Bhat_x_bc
@@ -614,7 +646,7 @@ class BeamBody(FlexibleBody):
     @property
     def Bhat_t_bc(self,iNode=-1):
         """ unit "alpha" couplings """
-        Bhat_t_bc = Matrix(np.zeros((3,self.nf)))
+        Bhat_t_bc = self.Matrix(np.zeros((3,self.nf)))
         for j in np.arange(self.nf):
             if self.main_axis=='x':
                 Bhat_t_bc[0,j]=0                      # torsion

@@ -825,9 +825,9 @@ class Body(object):
         B.B           = [] # Velocity transformation matrix
         B.updatePosOrientation(colvec([0,0,0]), eye(3))
 
-    def updatePosOrientation(o,x_0,R_0b):
+    def updatePosOrientation(o,x_0,R_b2g):
         o.r_O = x_0      # position of body origin in global coordinates
-        o.R_0b=R_0b      # transformation matrix from body to global
+        o.R_b2g=R_b2g      # transformation matrix from body to global
 
     def connectTo(self, Child, Point=None, Type=None, RelOrientation=None, JointRotations=None):
         if Type =='Rigid':
@@ -870,7 +870,7 @@ class Body(object):
     def updateChildrenKinematicsNonRecursive(p,q):
         # At this stage all the kinematics of the body p are known
         # Useful variables
-        R_0p =  p.R_0b
+        R_0p =  p.R_b2g
         B_p  =  p.B
         r_0p  = p.r_O
 

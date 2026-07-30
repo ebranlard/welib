@@ -97,8 +97,8 @@ class TestTNSB(unittest.TestCase):
         # print(StructM.Nac.B_inB)
         # print(np.dot(RR, StructA.Nac.B_inB))
         # print('Nac R_B:')
-        # print(StructA.Nac.R_0b)
-        # print(StructM.Nac.R_0b)
+        # print(StructA.Nac.R_b2g)
+        # print(StructM.Nac.R_b2g)
         
         # --- Shaft
         Sft_MMref=np.array([[  56780.    ,         0.      ,       0.    ,         0.    ,         0.       ,     -0.       ],
@@ -112,8 +112,8 @@ class TestTNSB(unittest.TestCase):
         np.testing.assert_almost_equal(StructA.sft.r_O.ravel(),(0.2337605,0,89.5485887))
         np.testing.assert_almost_equal(StructA.sft.MM,Sft_MMref)
         #print('Sft: R_S:')
-        #print(StructA.Sft.R_0b)
-        #print(StructM.Sft.R_0b)
+        #print(StructA.Sft.R_b2g)
+        #print(StructM.Sft.R_b2g)
         #print('Sft: B_S:')
         #print(StructA.Sft.B_inB)
         #print(np.dot(RR,StructM.Sft.B_inB))
@@ -150,8 +150,8 @@ class TestTNSB(unittest.TestCase):
         #   print(StructA.Blds[0].MM)
         #   print(StructA.Blds[0].r_O)
         #     print('Bld1 R_B:')
-        #     print(StructA.Blds[0].R_0b)
-        #     print(StructM.Blds[0].R_0b)
+        #     print(StructA.Blds[0].R_b2g)
+        #     print(StructM.Blds[0].R_b2g)
         #     print('Bld1: B_S:')
         #     print(StructA.Blds[0].B_inB)
         #     print(np.dot(RR,StructM.Blds[0].B_inB))

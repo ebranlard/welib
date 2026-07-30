@@ -113,14 +113,14 @@ class YAMSRecBody(GenericBody):
         GenericBody.__init__(B, name=name)
         B.Children    = []
         B.Connections = []
-        B.MM     = None
-        B.B           = [] # Velocity transformation matrix
+        B.MM          = None
+        B.B           = []     # Velocity transformation matrix
+        B.I_DOF       = None
+        B.r_O         = None   # position of body origin in global coordinates
+                               # Is it same as _r_O stored in generic body, with getter pos_global.
+        B.gzf         = None
+        #B.R_b2g        = None   # transformation matrix from body to global in _R_b2g in generic body
         B.updatePosOrientation(colvec([0,0,0]), eye(3))
-        B.I_DOF = None
-#         B.r_O   = None
-        B.gzf   = None
-#         B.R_0b  = None
-#         B.RR_0b = None
 
     def __repr__(B):
         s='<YAMSRec Body {} object>:\n'.format(B.name)
@@ -138,7 +138,7 @@ class YAMSRecBody(GenericBody):
         s+='| - I_DOF:  {}\n'.format(B.I_DOF)
         s+='| - r_O  :  {}\n'.format(B.r_O.flatten())
         s+='| - gzf  :  {}\n'.format(B.gzf)
-        s+='| - R_0b : \n{}\n'.format(B.R_0b)
+        s+='| - R_b2g : \n{}\n'.format(B.R_b2g)
         s+='| * nf  : {}\n'.format(B.nf)
         s+='| * R_bc: \n{}\n'.format(B.R_bc)
         s+='| * Bhat_x_bc: \n{}\n'.format(B.Bhat_x_bc)
@@ -148,9 +148,9 @@ class YAMSRecBody(GenericBody):
         s+='|         updatePosOrientation'
         return s
 
-    def updatePosOrientation(o,x_0,R_0b):
+    def updatePosOrientation(o, x_0, R_b2g):
         o.r_O = x_0      # position of body origin in global coordinates
-        o.R_0b=R_0b      # transformation matrix from body to global
+        o.R_b2g=R_b2g      # transformation matrix from body to global
 
     def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
         if BodyPoint is not None and Type =='Rigid':
@@ -196,7 +196,7 @@ class YAMSRecBody(GenericBody):
             qddot = q*0
         # At this stage all the kinematics of the body p are known
         # Useful variables
-        R_0p =  p.R_0b
+        R_0p =  p.R_b2g
         B_p  =  p.B
         r_0p  = p.r_O  # Position of body origin in global coordinates
 
@@ -319,7 +319,7 @@ class YAMSRecBody(GenericBody):
 # %             KK_N= BB_N_inN'*Nac.KK*BB_N_inN;
 
 
-    def updateKinematics(o, x_0=None, R_0b=None, gz=None, v_0=None, a_v_0=None):
+    def updateKinematics(o, x_0=None, R_b2g=None, gz=None, v_0=None, a_v_0=None):
         # NOTE: this is overriden by BeamBody
         # Updating position of body origin in global coordinates
         if x_0 is not None:
@@ -327,17 +327,17 @@ class YAMSRecBody(GenericBody):
         if gz is not None:
             o.gzf = gz
         # Updating Transformation matrix
-        if R_0b is not None:
-            o.R_0b=R_0b
+        if R_b2g is not None:
+            o.R_b2g=R_b2g
         else:
-            R_0b = o.R_0b
+            R_b2g = o.R_b2g
         # Updating rigid body velocity and acceleration
         if v_0 is not None:
-            o.v_O_inB     = np.dot(R_0b, v_0[0:3])
-            o.om_O_inB    = np.dot(R_0b, v_0[3:6])
+            o.v_O_inB     = np.dot(R_b2g, v_0[0:3])
+            o.om_O_inB    = np.dot(R_b2g, v_0[3:6])
         if a_v_0 is not None:
-            o.a_O_v_inB   = np.dot(R_0b, a_v_0[0:3])
-            o.omp_O_v_inB = np.dot(R_0b, a_v_0[3:6])
+            o.a_O_v_inB   = np.dot(R_b2g, a_v_0[0:3])
+            o.omp_O_v_inB = np.dot(R_b2g, a_v_0[3:6])
 
     @property
     def _positions_global(B): # todo rename
@@ -628,8 +628,8 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
         else:
             raise NotImplementedError()
 
-    def updateKinematics(o,x_0,R_0b,gz,v_0,a_v_0, verbose=False):
-        super(YAMSRecBeamBody,o).updateKinematics(x_0,R_0b,gz,v_0,a_v_0)
+    def updateKinematics(o,x_0,R_b2g,gz,v_0,a_v_0, verbose=False):
+        super(YAMSRecBeamBody,o).updateKinematics(x_0,R_b2g,gz,v_0,a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
         if o.nf>0:
             o.gzpf  = v_0[6:]
@@ -678,7 +678,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
 
     @property
     def _positions_global(B): # TODO rename
-        displ_g = B.R_0b.dot(B.s_P) # TODO reference line or COG
+        displ_g = B.R_b2g.dot(B.s_P) # TODO reference line or COG
         pos_g   = B.r_O + displ_g
         return pos_g
 

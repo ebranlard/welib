@@ -137,12 +137,12 @@ def main():
 
     print('------------------ TOWER TOP FORCES IN EARTH--------------------------------------')
     print('Thrust in E')
-    T_inE = Nac.R_0b*T_inN
+    T_inE = Nac.R_b2g*T_inN
     display(T_inE)
     print(np.array(T_inE.subs(subs)))
 
     print('Moment from thrust in E')
-    r_NR_inE = Nac.R_0b*r_NR_inN
+    r_NR_inE = Nac.R_b2g*r_NR_inN
     MT_inE = Matrix(cross(r_NR_inE, T_inE))
     display(MT_inE)
     print(np.array(MT_inE.subs(subs)))
@@ -150,7 +150,7 @@ def main():
 
     W_inE= M_RNA*g_inE
 
-    rho_N_inE = Nac.R_0b*rho_N_inN
+    rho_N_inE = Nac.R_b2g*rho_N_inN
     MW_inE = M_RNA*Matrix(cross(rho_N_inE , g_inE))
 
     print('Moment from weight in E')
@@ -200,7 +200,7 @@ def main():
     display(MT_inN)
     print(np.array(MT_inN.subs(subs)))
 
-    g_inN = Nac.R_0b.T * g_inE
+    g_inN = Nac.R_b2g.T * g_inE
     W_inN= M_RNA* g_inN
 
     MW_inN = M_RNA*Matrix(cross(rho_N_inN , g_inN))
