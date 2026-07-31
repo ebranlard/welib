@@ -43,7 +43,7 @@ class WindTurbineStructure():
         self.yawBr = None        # origin at N
         self.yaw = None   # TODO yaw or yawbr
         self.twr = None
-        self.fnd = None
+        self.fnd = None  # mnp or floater
         self.grd = None 
         # Geometry
         self.r_ET_inE=None

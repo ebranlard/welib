@@ -57,7 +57,6 @@ class FASTmodel2MNSB(FASTWindTurbine):
 
           NOTE/TODO: compare this with "windturbine.py"
         """
-        nShapes_bld=len(shapes_bld)
         shapes_twr=[]
 
         self.shapes_sub = shapes_sub # we store fo convenience

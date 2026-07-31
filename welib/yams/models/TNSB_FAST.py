@@ -11,8 +11,9 @@ class FASTmodel2TNSB(FASTWindTurbine):
     Constructor for a TNSB Wind Turbine Structure
     """
     
-    def __init__(self, FST_file,nB=3, shapes_twr=None, shapes_bld=None, 
-                   nSpan_twr=None, nSpan_bld=None, 
+    def __init__(self, FST_file,
+                   shapes_twr=None, nSpan_twr=None,
+                   shapes_bld=None, nSpan_bld=None, 
                    bHubMass=1, bNacMass=1, bBldMass=1, 
                    DEBUG=False, main_axis ='x', bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
                    spanFrom0=True, # TODO for legacy, we keep this for now..
