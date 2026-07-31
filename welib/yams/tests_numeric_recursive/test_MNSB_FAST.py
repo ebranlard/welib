@@ -2,13 +2,13 @@ import unittest
 import numpy as np
 import os
 
-from welib.yams.models.FNSB_FAST import FASTmodel2FNSB
+from welib.yams.models.MNSB_FAST import FASTmodel2MNSB
 from welib.tools.strings import printMat
 
 MyDir=os.path.dirname(__file__)
 
-class TestTNSB(unittest.TestCase):
-    def test_TNSB_FAST(self):
+class TestMNSB(unittest.TestCase):
+    def test_MNSB_FAST(self):
 
         nDOF=2
         q = np.zeros((nDOF,1)) # TODO, full account of q not done
@@ -17,16 +17,19 @@ class TestTNSB(unittest.TestCase):
 
         np.set_printoptions(linewidth=500)
         fstFile = os.path.join(MyDir, '../../../data/Monopile/Main_MT100_JONSWAP.fst')
-        main_axis='z'
         shapes_sub=[0,4]
 
         # --- Auto assembly with z axis
-
         assembly='auto'
-        WTA = FASTmodel2FNSB(fstFile, q=q, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True).WT
+        WTA = FASTmodel2MNSB(fstFile, q=q, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True).WT
         # --- Manual assembly with x axis
         assembly='manual'
-        WTM = FASTmodel2FNSB(fstFile, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True).WT
+        WTM = FASTmodel2MNSB(fstFile, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True).WT
+        #WTM = WTA.copy()
+        #WTM.MM=0
+        #WTM.DD=0
+        #WTM.KK=0
+        #WTM.manual_assembly(q=q, DEBUG=False, fixedShaft=True)
 
         # --- "Tower"
         MMref=np.array([

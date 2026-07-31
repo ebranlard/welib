@@ -25,6 +25,7 @@ from welib.yams.flexibility import checkRegularNode
 
 __all__ = ['Body','InertialBody','RigidBody','FlexibleBody']
 
+import copy
 import numpy as np
 try:
     from numpy import trapezoid
@@ -55,6 +56,9 @@ class Body(object):
 
         self._mass=None
         self.MM  = None # To be defined by children
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     # --- Generic Tools to work with Sympy and Numpy
     def vec3(self, v):

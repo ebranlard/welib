@@ -37,8 +37,9 @@ class FASTmodel2TNSB(FASTWindTurbine):
             shapes_twr=[0,1]
         if shapes_bld is None:
             shapes_bld=[]
-        self.shapes_bld = shapes_bld # we store fo convenience
+        self.shapes_sub = [] # we store fo convenience
         self.shapes_twr = shapes_twr # we store fo convenience
+        self.shapes_bld = shapes_bld # we store fo convenience
 
         # --- Defining a default TNSB structure
         WT = TNSBStructure(
@@ -55,6 +56,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --- Read fast input files
         readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
         self.loadFST(FST_file, readlist=readlist)
+        self.setGravity(gravity)
 
         # --- Default arguments (needs ED loaded)
         nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose)
@@ -100,14 +102,14 @@ class FASTmodel2TNSB(FASTWindTurbine):
             print(self.WT.q0)
             print(self.WT.qd0)
             print(self.WT.z0)
-        self.setupEDDOFs(verbose=verbose)
+        self.setupEDDOFs()
+        self.setActiveDOFs(verbose=verbose, shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld)
         nDOF = len(self.WT.q0) # 1 + len(shapes_twr) + len(shapes_bld) * nB # +1 for Shaft
+        if q is None:
+            q = np.zeros((nDOF,1)) # Only pos, not vel here.
         # --------------------------------------------------------------------------------}
         # --- Assembly 
         # --------------------------------------------------------------------------------{
-        if q is None:
-            q = np.zeros((nDOF,1)) # Only pos, not vel here.
-
         if assembly=='manual':
             self.WT.manual_assembly(q=q, DEBUG=DEBUG)
         else:
@@ -120,6 +122,10 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # Call parent first
         FASTWindTurbine.setupEDDOFs(self)
         # Override based on model
+        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
+        TWR_NAMES =  ['q_FA1', 'q_SS1','q_FA2', 'q_SS2'] # Twr
+        BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
+
         NAMEOFF = ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
         NAMEOFF += ['theta_y'] # Yaw
         NAMEOFF += ['nu'] # Shaft torsion

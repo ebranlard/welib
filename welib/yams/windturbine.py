@@ -79,6 +79,8 @@ class WindTurbineStructure():
         #self.q0     
         #self.qd0    
 
+    def copy(self):
+        return copy.deepcopy(self)
 
     def __repr__(B):
         s='<Generic {} object>:\n'.format(type(B).__name__)
@@ -825,6 +827,7 @@ class FASTWindTurbine():
                     nSpanTwr=None, twrShapes=None, 
                     nSpanBld=None, bldShapes=None,
                     algo='', bldStartAtRotorCenter=True,
+                    gravity=None,
                     WT=None
                  ):
         """
@@ -854,6 +857,7 @@ class FASTWindTurbine():
         if fstFilename is not None:
             # TODO for harmonization, these might not need to all be called
             self.loadFST(fstFilename) # self.FST, self.ED, self.gravity
+            self.setGravity(gravity) # self.FST, self.ED, self.gravity
             self.setupEDGeom()
             self.setupEDHub()
             self.setupEDGen()
@@ -886,20 +890,25 @@ class FASTWindTurbine():
         ext=os.path.splitext(fstFilename)[1]
         if ext.lower()!='.fst':
             raise Exception('FNSB requires a fst file as input')
-        DCK     = FASTInputDeck(fstFilename, readlist = readlist)
-        self.FST     = DCK.fst_vt['Fst']
-        self.ED      = DCK.fst_vt['ElastoDyn']
-        self.bldFile = DCK.fst_vt['ElastoDynBlade']
-        self.twrFile = DCK.fst_vt['ElastoDynTower']
+        self.DCK     = FASTInputDeck(fstFilename, readlist = readlist)
+        self.FST     = self.DCK.fst_vt['Fst']
+        self.ED      = self.DCK.fst_vt['ElastoDyn']
+        self.bldFile = self.DCK.fst_vt['ElastoDynBlade']
+        self.twrFile = self.DCK.fst_vt['ElastoDynTower']
         # TODO, MoorDyn, BeamDyn 
-        self.SD      = DCK.fst_vt['SubDyn']
-        try:
-            self.WT.gravity = self.FST['gravity']
-        except:
+        self.SD      = self.DCK.fst_vt['SubDyn']
+
+    def setGravity(self, gravity=None):
+        if gravity is not None:
+            self.WT.gravity = gravity
+        else:
             try:
-                self.WT.gravity = self.ED['gravity']
+                self.WT.gravity = self.FST['gravity']
             except:
-                raise Exception('Variable gravity not found in FST file or ED file.')
+                try:
+                    self.WT.gravity = self.ED['gravity']
+                except:
+                    raise Exception('Variable gravity not found in FST file or ED file.')
 
 
     def _defaultNSpanTwr(self, nSpan=None, verbose=False):
@@ -936,7 +945,30 @@ class FASTWindTurbine():
                     print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan))
         return nSpan
 
-    def setupEDGeom(self, zBot=0, bTiltBeforeNac=False):
+
+    def setupSDInit(self):
+        # Mostly to get zBot..
+        # We store everything in SD for convenience
+        self.SD.graph = self.SD.toGraph() # NOTE: this is repeated in bodies.py...
+        self.SD.graph.divideElements(self.SD['NDiv'])
+        self.SD.graph.sortNodesBy('z')
+        df = self.SD.graph.nodalDataFrame()
+        self.SD.zBot = np.min(df['z'])
+        self.SD.zTop = np.max(df['z'])
+        self.SD.RayleighCoeff = None
+        self.SD.DampMat       = None
+        if self.SD['GuyanDampMod']==1:
+            # Rayleigh Damping
+            self.SD.RayleighCoeff=self.SD['RayleighDamp']
+            #if RayleighCoeff[0]==0:
+            #    damp_zeta=omega*RayleighCoeff[1]/2. 
+        elif self.SD['GuyanDampMod']==2:
+            # Full matrix
+            self.SD.DampMat = self.SD['GuyanDampMatrix']
+            self.SD.DampMat = self.SD.DampMat[np.ix_(shapes,shapes)]
+
+
+    def setupEDGeom(self, zBot=0, bTiltBeforeNac=False, flavor=''):
 
         ED = self.ED
         WT = self.WT
@@ -993,6 +1025,12 @@ class FASTWindTurbine():
         # --- Common
         WT.r_NR_inN    = WT.r_NS_inN + WT.R_NS.dot(WT.r_SR_inS)       # Rotor center in N
         WT.r_RGhub_inS = - WT.r_SR_inS + WT.r_SGhub_inS
+
+
+        # --- Monopile
+        if flavor=='monopile_is_tower':
+            WT.r_ET_inE = WT.r_EF_inE
+            WT.r_TN_inT = WT.r_FT_inF+WT.r_TN_inT # assume that F and T are in system E here
 
 
         # --- OpenFAST compatibility
@@ -1077,14 +1115,6 @@ class FASTWindTurbine():
         else:
             nac = RigidBody('Nac', M_nac, (0,JyyNac_atN,0), WT.r_NGnac_inN, s_OP = [0,0,0])
         WT.nac = nac
-
-
-
-
-
-
-
-
 
     def setupEDBld(self, shapes=None, nSpan=None, 
                    spanFrom0=False, bBldMass=1, bldStartAtRotorCenter=True,
@@ -1284,6 +1314,18 @@ class FASTWindTurbine():
 
 
 
+    def setupSD(self, Mtop=0, shapes=None, nSpan=None, bStiffening=True, flavor=''):
+        if self.SD is None:
+            raise Exception('SD is not set')
+        fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity, algo=self.WT.algo)
+        #print(Fnd)
+        #print('Fnd MM\n',Fnd.MM[6:,6:])
+        #print('Fnd KK\n',Fnd.KK[6:,6:])
+        # HACK here because doesn't handle this for now
+        if self.SD['GuyanDampMod']==1:
+            fnd.DD[6:,6:] = fnd.MM[6:,6:]*self.SD.RayleighCoeff[0] + fnd.KK[6:,6:]*self.SD.RayleighCoeff[1] 
+        self.WT.fnd = fnd
+
 
     def setupWTRigid(self):
         WT = self.WT
@@ -1349,6 +1391,36 @@ class FASTWindTurbine():
             DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['FlapDOF2'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F2_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
             DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl'] , 'qd0':0, 'q_channel':'Q_B{}E1_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
         self.WT.DOF = DOFs
+
+    def setActiveDOFs(self, fixedShaft=False, shapes_sub=None, shapes_twr=None, shapes_bld=None, verbose=False):
+        # Override based on model
+        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
+        TWR_NAMES =  ['q_FA1', 'q_SS1','q_FA2', 'q_SS2'] # Twr
+        BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
+
+        NAMEOFF=[]
+        NAMEOFF += [SUB_NAMES[i] for i in range(6) if i not in shapes_sub]
+        NAMEOFF += [TWR_NAMES[i] for i in range(4) if i not in shapes_twr]
+        NAMEOFF += ['theta_y'] # Yaw
+        NAMEOFF += ['nu'] # Shaft torsion
+        if fixedShaft:
+            NAMEOFF += ['psi'] # Shaft torsion
+        for iB in range(3):
+            NAMEOFF += [BLD_NAMES[i].format(iB+1) for i in range(3) if i not in shapes_bld]
+
+        for dof in self.WT.DOF:
+            if dof['name'] in NAMEOFF:
+                if dof['active']:
+                    if verbose:
+                        print('Deactivating {:10s} ({:20s}) eventhough it was active in ED'.format(dof['name'], dof['q_channel']))
+                    dof['active']=False
+            else:
+                if not dof['active']:
+                    if verbose:
+                        print('Activating   {:10s} ({:20s}) eventhough it was inactive in ED'.format(dof['name'], dof['q_channel']))
+                    dof['active']=True
+
+
 
         def setupDebug(self):
             ED = self.ED
