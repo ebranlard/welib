@@ -118,44 +118,6 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --- Useful data
         self.WT.ED=self.ED
 
-    def setupEDDOFs(self, verbose=False):
-        # Call parent first
-        FASTWindTurbine.setupEDDOFs(self)
-        # Override based on model
-        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
-        TWR_NAMES =  ['q_FA1', 'q_SS1','q_FA2', 'q_SS2'] # Twr
-        BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
-
-        NAMEOFF = ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
-        NAMEOFF += ['theta_y'] # Yaw
-        NAMEOFF += ['nu'] # Shaft torsion
-        for iB in range(3):
-            if 0 not in self.shapes_bld:
-                NAMEOFF += [f'q_B{iB+1}Fl1']
-            if 1 not in self.shapes_bld:
-                NAMEOFF += [f'q_B{iB+1}Ed1']
-            if 2 not in self.shapes_bld:
-                NAMEOFF += [f'q_B{iB+1}Fl2']
-        if 0 not in self.shapes_twr:
-            NAMEOFF += ['q_FA1']
-        if 1 not in self.shapes_twr:
-            NAMEOFF += ['q_SS1']
-        if 2 not in self.shapes_twr:
-            NAMEOFF += ['q_FA2']
-        if 3 not in self.shapes_twr:
-            NAMEOFF += ['q_SS2']
-        for dof in self.WT.DOF:
-            if dof['name'] in NAMEOFF:
-                if dof['active']:
-                    if verbose:
-                        print('Deactivating {:10s} ({:20s}) eventhough it was active in ED'.format(dof['name'], dof['q_channel']))
-                    dof['active']=False
-            else:
-                if not dof['active']:
-                    if verbose:
-                        print('Activating   {:10s} ({:20s}) eventhough it was inactive in ED'.format(dof['name'], dof['q_channel']))
-                    dof['active']=True
-
 if __name__=='__main__':
     bStiffening=True
     shapes_twr=[0]

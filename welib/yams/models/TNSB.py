@@ -391,7 +391,7 @@ class TNSBStructure(WindTurbineStructure):
         KK_T     = fBMB(BB_T_inT,twr.KK)
         DD_T     = fBMB(BB_T_inT,twr.DD)
 
-        twr.r_O    = r_ET_inE
+        twr.pos_global    = r_ET_inE
         twr.R_b2g   = R_ET
         twr.B      = B_T    
         twr.B_inB  = B_T_inT
@@ -434,14 +434,14 @@ class TNSBStructure(WindTurbineStructure):
         MM_N     = fBMB(BB_N_inN,nac.MM)
         KK_N     = fBMB(BB_N_inN,nac.KK)
 
-        nac.r_O    = twr.r_O + np.dot(twr.R_b2g, r_TN_inT)
+        nac.pos_global    = twr.pos_global + np.dot(twr.R_b2g, r_TN_inT)
         nac.R_b2g   = R_EN
         nac.B      = B_N    
         nac.B_inB  = B_N_inN
         nac.BB_inB = BB_N_inN
         # TODO YAW
         MM_Y       = fBMB(BB_N_inN, yaw.MM)
-        yaw.r_O    = twr.r_O + np.dot(twr.R_b2g, r_TN_inT)
+        yaw.pos_global    = twr.pos_global + np.dot(twr.R_b2g, r_TN_inT)
         yaw.R_b2g   = R_EN
         yaw.B      = B_N    
         yaw.B_inB  = B_N_inN
@@ -478,7 +478,7 @@ class TNSBStructure(WindTurbineStructure):
         MM_S     = fBMB(BB_S_inS,sft.MM)
         KK_S     = fBMB(BB_S_inS,sft.KK)
 
-        sft.r_O    = nac.r_O + r_NS
+        sft.pos_global    = nac.pos_global + r_NS
         sft.R_b2g   = R_ES
         sft.B      = B_S    
         sft.B_inB  = B_S_inS
@@ -514,7 +514,7 @@ class TNSBStructure(WindTurbineStructure):
             KK_B +=     fBMB(BB_B_inB,B.KK)
             DD_B +=     fBMB(BB_B_inB,B.DD)
 
-            B.r_O    = sft.r_O + r_SR
+            B.pos_global    = sft.pos_global + r_SR
             B.B      = B_R
             B.B_inB  = B_B_inB
             B.BB_inB = BB_B_inB
