@@ -1,7 +1,8 @@
 import unittest
 import numpy as np
+import os
 
-from welib.yams.models.TNSB_FAST import *
+from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
 
 MyDir=os.path.dirname(__file__)
 

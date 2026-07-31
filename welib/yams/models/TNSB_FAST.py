@@ -1,27 +1,14 @@
-##
+#
 import numpy as np
-import copy
-import matplotlib.pyplot as plt
-import os
-
 from welib.yams.windturbine import FASTWindTurbine
-from welib.yams.yams_rec import YAMSRecFASTBeamBody, YAMSRecRigidBody
-from welib.yams.utils import *
 from welib.yams.models.TNSB import TNSBStructure
 
-import welib.weio as weio
-from welib.weio.fast_input_file import FASTInputFile
-from welib.weio.fast_input_deck import FASTInputDeck
-
 # --------------------------------------------------------------------------------}
-# --- Creating a TNSB model from a FAST model
+# --- Creating a TNSB YAWMSRec model from a FAST model
 # --------------------------------------------------------------------------------{
-# TODO TODO TODO
-# TODO TODO TODO HARMONIZE WITH WINDTURBINE.PY AND TNSB..
-# TODO TODO TODO
 class FASTmodel2TNSB(FASTWindTurbine):
     """ 
-    Constructor for a TNSB Wind turbine Structure
+    Constructor for a TNSB Wind Turbine Structure
     """
     
     def __init__(self, FST_file,nB=3, shapes_twr=None, shapes_bld=None, 
@@ -50,6 +37,8 @@ class FASTmodel2TNSB(FASTWindTurbine):
             shapes_twr=[0,1]
         if shapes_bld is None:
             shapes_bld=[]
+        self.shapes_bld = shapes_bld # we store fo convenience
+        self.shapes_twr = shapes_twr # we store fo convenience
 
         # --- Defining a default TNSB structure
         WT = TNSBStructure(
@@ -101,51 +90,65 @@ class FASTmodel2TNSB(FASTWindTurbine):
         #print('Ttw.KKg   \n', Twr.KKg[6:,6:])
         if DEBUG:
             self.setupDebug()
+
+        # --------------------------------------------------------------------------------}
+        # --- Initial conditions and DOFs
+        # --------------------------------------------------------------------------------{
+        # --- Initial conditions
+        if DEBUG:
+            print('Initial conditions:')
+            print(self.WT.q0)
+            print(self.WT.qd0)
+            print(self.WT.z0)
+        self.setupEDDOFs(verbose=verbose)
+        nDOF = len(self.WT.q0) # 1 + len(shapes_twr) + len(shapes_bld) * nB # +1 for Shaft
         # --------------------------------------------------------------------------------}
         # --- Assembly 
         # --------------------------------------------------------------------------------{
-        nDOF = 1 + len(shapes_twr) + len(shapes_bld) * nB # +1 for Shaft
         if q is None:
-            q = np.zeros((nDOF,1)) # TODO, full account of q not done
+            q = np.zeros((nDOF,1)) # Only pos, not vel here.
 
         if assembly=='manual':
             self.WT.manual_assembly(q=q, DEBUG=DEBUG)
         else:
             self.WT.auto_assembly(q=q, DEBUG=DEBUG)
 
-        # --- Initial conditions
-        ED = self.ED
-        omega_init = ED['RotSpeed']*2*np.pi/60 # rad/s
-        psi_init   = ED['Azimuth']*np.pi/180   # rad
-        FA_init    = ED['TTDspFA']
-        iPsi     = self.WT.iPsi
-        nDOFMech = len(self.WT.MM)
-        q_init   = np.zeros(2*nDOFMech) # x2, state space
-
-        if len(shapes_twr)>0:
-            q_init[0] = FA_init
-
-        q_init[iPsi]          = psi_init
-        q_init[nDOFMech+iPsi] = omega_init
-
-        self.WT.q_init = q_init
-        if DEBUG:
-            print('Initial conditions:')
-            print(q_init)
-
         # --- Useful data
-        WT=self.WT
-        self.WT.ED=ED
+        self.WT.ED=self.ED
 
-
-# --------------------------------------------------------------------------------}
-# --- Read Relevant fields from an outb file 
-# --------------------------------------------------------------------------------{
-def readFASTOut():
-    pass
-
-
-
+    def setupEDDOFs(self, verbose=False):
+        # Call parent first
+        FASTWindTurbine.setupEDDOFs(self)
+        # Override based on model
+        NAMEOFF = ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
+        NAMEOFF += ['theta_y'] # Yaw
+        NAMEOFF += ['nu'] # Shaft torsion
+        for iB in range(3):
+            if 0 not in self.shapes_bld:
+                NAMEOFF += [f'q_B{iB+1}Fl1']
+            if 1 not in self.shapes_bld:
+                NAMEOFF += [f'q_B{iB+1}Ed1']
+            if 2 not in self.shapes_bld:
+                NAMEOFF += [f'q_B{iB+1}Fl2']
+        if 0 not in self.shapes_twr:
+            NAMEOFF += ['q_FA1']
+        if 1 not in self.shapes_twr:
+            NAMEOFF += ['q_SS1']
+        if 2 not in self.shapes_twr:
+            NAMEOFF += ['q_FA2']
+        if 3 not in self.shapes_twr:
+            NAMEOFF += ['q_SS2']
+        for dof in self.WT.DOF:
+            if dof['name'] in NAMEOFF:
+                if dof['active']:
+                    if verbose:
+                        print('Deactivating {:10s} ({:20s}) eventhough it was active in ED'.format(dof['name'], dof['q_channel']))
+                    dof['active']=False
+            else:
+                if not dof['active']:
+                    if verbose:
+                        print('Activating   {:10s} ({:20s}) eventhough it was inactive in ED'.format(dof['name'], dof['q_channel']))
+                    dof['active']=True
 
 if __name__=='__main__':
     bStiffening=True
@@ -160,12 +163,10 @@ if __name__=='__main__':
     np.set_printoptions(linewidth=500)
     assembly='auto'
     main_axis='z'
-    #StructA= FASTmodel2TNSB('../data/NREL5MW_ED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     StructA= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     assembly='manual'
 #     assembly='auto'
 #     main_axis='x'
-#     #StructM= FASTmodel2TNSB('../data/NREL5MW_ED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
     StructM= FASTmodel2TNSB('examples/_F0T2RNA/Spar_ED_ForED.dat', shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening)
 #     print('------------------')
     from scipy.linalg import block_diag

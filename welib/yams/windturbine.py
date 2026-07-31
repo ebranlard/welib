@@ -70,7 +70,8 @@ class WindTurbineStructure():
 
 
         # Information relevant for simulation
-        self.DOF    ={'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
+        #self.DOF    ={'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
+        self.DOF    = None # List of {'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
 
         self.algo=None # 'OpenFAST'
         # Derived properties
@@ -1319,6 +1320,7 @@ class FASTWindTurbine():
         WT.K_Moor = K_Moor     # HACK..
 
     def setupEDDOFs(self):
+        # NOTE: may be overriden by child class to adapt to a given model
         ED = self.ED
         # --- Degrees of freedom
         DOFs=[]
