@@ -19,6 +19,10 @@ from welib.yams.rotations import R_x, R_y, R_z
 
 from welib.yams.windturbine import rigidBlades
 from welib.yams.windturbine import WindTurbineStructure, FASTWindTurbine
+from welib.tools.strings import prettyMat
+
+def pm(M, var=None, **kwargs):
+    return prettyMat(M, var, **kwargs, digits=3)
 
 
 class MTNSBStructure(WindTurbineStructure):
@@ -38,27 +42,27 @@ class MTNSBStructure(WindTurbineStructure):
 
     def __repr__(self):
         s='<TNSB {} object> with fields:\n'.format(type(self).__name__)
-        s+=f' - grd twr yaw nac hubgen bld: RigidBody or FASTBeamBody\n'
+        s+=f' - grd fnd twr yaw nac hubgen bld: RigidBody or FASTBeamBody\n'
         s+=f' - MM KK DD: matrices\n'
         if self.q is not None:
-            s+=f' - q : {self.q.flatten()}\n'
-        s+=f' - r_EF_inE: {self.r_EF_inE.flatten()}\n'
-        s+=f' - r_FT_inF: {self.r_FT_inF.flatten()}\n'
-        s+=f' - r_ET_inE: {self.r_ET_inE.flatten()}\n'
-        s+=f' - r_TN_inT: {self.r_TN_inT.flatten()}\n'
-        s+=f' - r_NS_inN: {self.r_NS_inN.flatten()}\n'
-        s+=f' - r_SR_inS: {self.r_SR_inS.flatten()}\n'
+            s+=f' - q : {pm(self.q.flatten())}\n'
+        s+=f' - r_EF_inE: {pm(self.r_EF_inE.flatten())}\n'
+        s+=f' - r_FT_inF: {pm(self.r_FT_inF.flatten())}\n'
+        s+=f' - r_ET_inE: {pm(self.r_ET_inE.flatten())}\n'
+        s+=f' - r_TN_inT: {pm(self.r_TN_inT.flatten())}\n'
+        s+=f' - r_NS_inN: {pm(self.r_NS_inN.flatten())}\n'
+        s+=f' - r_SR_inS: {pm(self.r_SR_inS.flatten())}\n'
         s+=f' - main_axis     : {self.main_axis}\n'
         s+=f' - shaft_tilt    : {self.shaft_tilt*180/np.pi} [deg] (but stored in rad)\n'
         s+=f' - blade_cone    : {self.blade_cone*180/np.pi} [deg] (but stored in rad)\n'
         s+=f' - nac_yaw       : {self.nac_yaw  *180/np.pi}  [deg] (but stored in rad)\n'
         s+=f' - bTiltBeforeNac: {self.bTiltBeforeNac}\n'
-        s+='----------------------------------------------------------------\n'
-        s+=f' * Origin F  : {self.fnd.pos_global.T}\n'
-        s+=f' * Origin T  : {self.twr.pos_global.T}\n'
-        s+=f' * Origin N  : {self.nac.pos_global.T}\n'
-        s+=f' * Origin R  : {self.bld[0].pos_global.T}\n'
-        s+=f' * Origin S  : {self.hubgen.pos_global.T}\n'
+        s+='-------------- BODY ORIGINS (pos_global)---------------------\n'
+        s+=f' * F: {pm(self.fnd.pos_global.T)}\n'
+        s+=f' * T: {pm(self.twr.pos_global.T)}\n'
+        s+=f' * N: {pm(self.nac.pos_global.T)}\n'
+        s+=f' * R: {pm(self.bld[0].pos_global.T)}\n'
+        s+=f' * S: {pm(self.hubgen.pos_global.T)}\n'
         s+='----------------- RNA ---------------------------------------\n'
         # TODO
         s+=f'M_RNA       {self.RNA.mass:.4f}\n'
@@ -68,9 +72,11 @@ class MTNSBStructure(WindTurbineStructure):
 #         s+=f'     r_NGrot_inN {np.asarray(self.r_NGrot_inN).flatten().round(4)} M_rot {self.M_rot:.4f}\n'
         s+='---------------Couplings ---------------------------------------\n'
         s+='Constant: (Bhat_t)\n'
-        s+=str(self.twr.Bhat_t_bc)+'\n'
+        s+=' - fnd: \n'+  pm(self.fnd.Bhat_t_bc)+'\n'
+        s+=' - twr: \n'+  pm(self.twr.Bhat_t_bc)+'\n'
         s+='Time varying:\n'
-        s+=str(self.twr.alpha_couplings)+'\n' # Time varying function of twr.gzf
+        s+=' - fnd: '+pm(self.fnd.alpha_couplings)+'\n' # Time varying function of twr.gzf
+        s+=' - twr: '+pm(self.twr.alpha_couplings)+'\n' # Time varying function of twr.gzf
         s+='---------------More --------------------------------------------\n'
         s+= ' - Additional Props: {}\n'.format(self.additional_properties)
         return s
@@ -126,8 +132,8 @@ class MTNSBStructure(WindTurbineStructure):
         # Connections between bodies
         #grd.connectTo(twr, Point=r_ET_inE, Type='Rigid')
         grd.connectTo(fnd, Point=r_EF_inE, Type='Rigid')
-        fnd.connectTo(twr, Point=r_FT_inF, Type='Rigid')
-        twr.connectTo(nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
+        fnd.connectTo(twr, Point=r_FT_inF, Type='Rigid', BodyPoint='LastPoint')
+        twr.connectTo(nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True, BodyPoint='LastPoint')
         twr.connectTo(yaw, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
         if fixedShaft:
             nac.connectTo (sft   , Point=r_NS_inN, Type='Rigid', RelOrientation = R_cs0, OrientAfter=False)
@@ -157,7 +163,7 @@ class MTNSBStructure(WindTurbineStructure):
 
     def updateKinematics(self, q):
         q = np.asarray(q).reshape((len(q),1))
-        print(q)
+        #print(pm(q.flatten(), 'q', newline=False))
         self.grd.updateChildrenKinematicsNonRecursive(q)
         self.fnd.updateChildrenKinematicsNonRecursive(q)
         self.twr.updateChildrenKinematicsNonRecursive(q)
@@ -326,34 +332,55 @@ class FASTmodel2MTNSB(FASTWindTurbine):
 
 
 if __name__=='__main__':
+    from welib.yams.models.MNSB_FAST import FASTmodel2MNSB
     from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
+    from welib.tools.strings import printMat
+
+    # --- MNSB
+    fstFile = os.path.join('../../../data/Monopile/Main_MT100_JONSWAP.fst')
+    q = [0, np.pi/200] #
+    assembly='auto'
+    WTA = FASTmodel2MNSB(fstFile, q=q, shapes_sub=[0,4], shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly='auto', fixedShaft=True).WT
+    print(WTA)
+
+
+    # ---
+
     fstFile = 'C:/Users/ebranlard/Documents/Work/2024-10-OESI-Digitwin/DigiTwinMonopile/code5_wt/simulations_wt/06_Jonswap/OF_F3T1S1_H1A0_Hs=2.5_Tp=10.fst'
 
-    print('=============================================================================')
-    print('--------------- REF ----------------')
-    q = np.array([[10],[0]])
-    WT = FASTmodel2TNSB(fstFile, q=q, shapes_twr=[0], shapes_bld=[], main_axis='z', assembly='auto').WT
-    print(WT)
+    #print('=============================================================================')
+    #print('--------------- REF ----------------')
+    #q = np.array([[10],[0]])
+    #WT = FASTmodel2TNSB(fstFile, q=q, shapes_twr=[0], shapes_bld=[], main_axis='z', assembly='auto').WT
+    #print(WT)
 
-    print('=============================================================================')
-    print('--------------- REF ----------------')
-    q = [0, 0.0, 0, 0.000]
-    WT = FASTmodel2MTNSB(fstFile, q=q, shapes_sub=[0,4], shapes_twr=[0], main_axis='z').WT
-    print(WT)
-    print('=============================================================================')
-    print('--------------- SURGE---------------')
-    q = [10, 0.0, 0, 0.000]
-    WT.updateKinematics(q)
-    print(WT)
-    print('=============================================================================')
-    print('--------------- PITCH---------------')
-    q = [0, 0.5, 0, 0.000]
-    WT.updateKinematics(q)
-    print(WT)
-    print('=============================================================================')
-    print('--------------- TOWER---------------')
-    q = [0, 0.0, 10, 0.000]
-    WT.updateKinematics(q)
-    print(WT)
-
-    
+#     print('=============================================================================')
+#     print('--------------- REF ----------------')
+#     q = [0, 0.0, 0, 0.000]
+#     WT = FASTmodel2MTNSB(fstFile, q=q, shapes_sub=[0,4], shapes_twr=[0], main_axis='z').WT
+#     print(WT)
+#     printMat(WT.MM)
+    #printMat(WT.twr.B)
+    #printMat(WT.twr.B_inB)
+    #printMat(WT.twr.BB_inB)
+#     print('=============================================================================')
+#     print('--------------- SURGE---------------')
+#     q = [10, 0.0, 0, 0.000]
+#     WT.updateKinematics(q)
+#     #print(WT)
+#     printMat(WT.MM)
+    #print('=============================================================================')
+    #print('--------------- PITCH---------------')
+    #q = [0, 0.01, 0.1, 0.000]
+    #WT.updateKinematics(q)
+    #print(WT)
+#     printMat(WT.MM)
+#     print('=============================================================================')
+#     print('--------------- TOWER---------------')
+#     q = [0, 0.0, 10, 0.000]
+#     WT.updateKinematics(q)
+#     #print(WT)
+#     printMat(WT.MM)
+#     print(WT.q0)
+# 
+#     

@@ -17,13 +17,23 @@ from .bodies import FlexibleBody as GenericFlexibleBody
 from .bodies import BeamBody     as GenericBeamBody
 from .bodies import FASTBeamBody as GenericFASTBeamBody
 from .bodies import InertialBody as GenericInertialBody
-from welib.tools.strings import WARN
+from welib.tools.strings import INFO
+
+from welib.yams.utils import skew
 
 # --- To ease comparison with sympy version
 # from numpy import eye, cross, cos ,sin
 
 import sympy as sp
 from sympy import Matrix, symbols
+
+from welib.tools.strings import prettyMat
+
+def pm(M, var=None, **kwargs):
+    if isinstance(M, sp.Basic):
+        return M
+    else:
+        return prettyMat(M, var, **kwargs, digits=3)
 
 # --------------------------------------------------------------------------------}
 # --- Sympy harmony 
@@ -66,14 +76,27 @@ class Connection():
 
         self.Type=Type
         
-        self.s_C_0_inB = self.vec3(RelPoint)
-        self.s_C_inB   = self.s_C_0_inB
-        self.R_ci_0    = RelOrientation
-        self.R_ci      = self.R_ci_0     
+        self.s_C0_inB  = self.vec3(RelPoint) # CONSTANT - s_BC0 @t=0
+        self.s_C_inB   = self.s_C0_inB       #             s_BC  @t
+        self.R_ci_0    = RelOrientation      #           
+        self.R_ci      = self.R_ci_0         # CONSTANT
         self.OrientAfter= OrientAfter
+        # Related to flexible parent
         self.parentNode = parentNode
         self.parentBody = parentBody
-        self.I_DOF= None  # < Index of joints DOF in global DOF vector
+        self.s_P0C0_inB = None               # CONSTANT - See SKETCHC1 from parent node to connection point @ t=0 (when C_0_inB /= P)
+        self.s_P0_inB   = None               # CONSTANT Stored for completness, not necessary
+        # Related to rigid body joint rotations (e.g. dynamic shaft, but potentially yaw or tilt, less common)
+        self.I_DOF = None  # Index of joints DOF in global DOF vector
+        self.q     = None  # Index of joints DOF in global DOF vector
+
+        if self.parentNode is not None:
+            if self.parentBody is None:
+                raise Exception('ParentBody unknown but parent Node specified')
+            self.s_P0_inB = self.vec3(self.parentBody.s_P0[:,self.parentNode])
+            self.s_P0C0_inB = self.s_C0_inB - self.s_P0_inB # See SKETCHC1
+            if np.sum(np.abs(self.s_P0C0_inB))!=0:
+                INFO(f'Connection point offset is P0C0={self.s_P0C0_inB} from {self.parentBody.name}.')
 
         if self.Type=='Rigid':
             self.nj=0
@@ -83,44 +106,22 @@ class Connection():
         else:
             raise NotImplementedError()
 
-    # --- Generic Tools to work with Sympy and Numpy
-    def vec3(self, v):
-        if self.sympy:
-            return Matrix([[v[0]],[v[1]],[v[2]]])
-        else:
-            v = np.asarray(v).ravel()
-            if len(v)!=3:
-                raise Exception('Vector should be of length 3')
-            return v
+    def updateConnectionKinematics(j, q):
+        """ Connection/joint updateConnectionKinematics
 
-    def Matrix(self, m):
-        if self.sympy:
-            return Matrix(m)
-        else:
-            return np.asarray(m)
+        Update Rotation between bodies (from true joints)
 
-    def cross(self, V1, V2):
-        if self.sympy:
-            return [V1[1]*V2[2]-V1[2]*V2[1], V1[2]*V2[0]-V1[0]*V2[2], (V1[0]*V2[1]-V1[1]*V2[0]) ]
-        else:
-            return np.cross(V1, V2) 
+        NOTE: position of connection point (s_C_inB) is updated by parent kinematics!
 
-    def eye(self, n): 
-        if self.sympy:
-            return Matrix( np.eye(n).astype(int) )
-        else:
-            return np.eye(n)
-    # --- End generic tools
-
-
-    def updateKinematics(j, q):
-        """ Connection updateKinematics"""
+        """
         j.B_ci = j.Matrix(np.zeros((6,j.nj)))
         if j.Type=='Rigid':
             j.R_ci=j.R_ci_0
+
         elif j.Type=='SphericalJoint':
             R = np.eye(3)
             myq    = q   [j.I_DOF,0];
+            j.q = myq
             #myqdot = qdot[j.I_DOF];
 
             for ir,rot in enumerate(j.JointRotations):
@@ -144,27 +145,92 @@ class Connection():
                 else:
                     j.R_ci = j.Matrix(j.R_ci_0 @ R)
 
-        # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
+    def updateConnectionPointPosition(j, R_pc, silent=False):
+        r""" 
+        SKETCHC1 for Connection not at Parent Node P
+                                       uP0P
+         C0                        C0--------->.    C
+          \ s_P0C0                  \          \ R / 
+           \                         \    uP0P  \^/
+            P0           ->           P0-------->P
+            |                         |     _/
+            |                         |  _ /
+            |                         | /
+            B                         B
+
+        Two main equivalent formulations ("from P" or "from C0"):
+          - s_C = s_P(t)         +   R(t)      @ s_P0C0     ("from P")
+          - s_C = s_C0 + uP0P(t) + [ R(t) -I ] @ s_P0C0     ("from C0")
+
+        INPUTS:
+          - R_pc: The rotation the the flexible parent induce
+          -  silent: 
+        """
         if j.parentNode is not None:
-            WARN('Update Joint Kinematics is currently incomplete (Connection)')
             #print('>>>> Joint Kinematics. Updating joint position based on parent node position')
-            iNode=j.parentNode
-            #print('>>> Update of Conn s_C_inB within Conn')
-            uNode_inB = j.vec3(j.parentBody.s_P[:,iNode])-j.vec3(j.parentBody.s_P0[:,iNode])
-            j.s_C_inB = j.s_C_0_inB  + uNode_inB # TODO doesn't account for rotation
+            iNode = j.parentNode
+            # How much the parentBody node has translated in parent body
+            #uP0P = j.vec3(j.parentBody.s_P[:,iNode])-j.vec3(j.parentBody.s_P0[:,iNode])
+            s_P = j.vec3(j.parentBody.s_P[:,iNode])
+            #uP0P = s_P-j.s_PP_0_inB  # KEEP me Translation of P
+            s_PC = R_pc @ j.s_P0C0_inB
+            j.s_C_inB = s_P  + s_PC
+            #if not silent:
+            #    print('>>> s_PC', s_PC)
+            #    print(j)
+
+    def addLinVelJacobianContrib(j, Bhat_x, Bhat_t, R_pc):
+        """ Add contribution due to connection offset from body extremity point"""
+#         if j.s_P0C0_inB is not None:
+#             s_PC = R_pc @ j.s_P0C0_inB 
+#             print('>>>> Bhat_x\n', Bhat_x)
+#             Bhat_x_c = -skew(s_PC, symb = j.sympy) @ Bhat_t
+#             print('>>>> Bhat_x_c\n', Bhat_x_c)
+#             Bhat_x  += Bhat_x_c
+#             print('>>>> Bhat_x\n', Bhat_x)
+        return Bhat_x
 
     def __repr__(self):
         s ='<Connection object>:\n'
         s+='|Properties:\n'
         s+='| - Type:     {} \n'.format(self.Type)
         s+='| - OrientAfter:  {} \n'.format(self.OrientAfter)
-        s+='| - s_C_0_inB:(init pos. of conn. in body)   \n{} \n'.format(self.s_C_0_inB)
-        s+='| - s_C_inB:  (current pos. of conn. in body)\n{} \n'.format(self.s_C_inB)
-        s+='| - R_ci_0:   (init rot. ro conn. in body)   \n{} \n'.format(self.R_ci_0)
-        s+='| - R_ci:     (current rot. ro conn. in body)\n{} \n'.format(self.R_ci)
+        s+='| - s_C0_inB: (init pos.    of C    in body) : {} \n'.format(pm(self.s_C0_inB))
+        s+='| - s_C_inB:  (current pos. of C    in body) : {} \n'.format(pm(self.s_C_inB))
+        s+='| - R_ci_0:   (init rot. ro conn. in body)   :\n{} \n'.format(pm(self.R_ci_0))
+        s+='| - R_ci:     (current rot. ro conn. in body):\n{} \n'.format(pm(self.R_ci))
+        s+='|Related to joint rotations (independent of flex. body)\n'
+        s+='| - I_DOF:    (DOFs involved in joint       ): {} \n'.format(pm(self.I_DOF))
+        s+='| - q_c  :    (DOFs involved in joint       ): {} \n'.format(pm(self.q))
+        s+='|Related to parent body (flexbled body)\n'
+        s+='| - s_P0C0_inB: (offset from body)           : {} \n'.format(pm(self.s_P0C0_inB))
+        s+='| - parentNode index "P"                     : {} \n'.format(self.parentNode)
+        s+='| - parentBody name:                         : {} \n'.format(self.parentBody.name)
         s+='|Methods: updateKinematics\n'
         s+='|Usefull getters: None \n'
         return s
+
+    # --- Generic Tools to work with Sympy and Numpy
+    def vec3(self, v):
+        if self.sympy:
+            return Matrix([[v[0]],[v[1]],[v[2]]])
+        else:
+            v = np.asarray(v).ravel()
+            if len(v)!=3:
+                raise Exception('Vector should be of length 3')
+            return v
+    def Matrix(self, m):
+        if self.sympy:
+            return Matrix(m)
+        else:
+            return np.asarray(m)
+    def eye(self, n): 
+        if self.sympy:
+            return Matrix( np.eye(n).astype(int) )
+        else:
+            return np.eye(n)
+    # --- End generic tools
+
 
 
 # --------------------------------------------------------------------------------}
@@ -179,8 +245,8 @@ class YAMSRecBody(GenericBody):
         B.B           = []     # Velocity transformation matrix
         B.B_inB       = None
         B.BB_inB      = None
-#         B.Bhat_x_bc   = None
-#         B.Bhat_t_bc   = None
+        #  B.Bhat_x_bc   = None
+        #  B.Bhat_t_bc   = None
         B.I_DOF       = None
         B.gzf         = None
 
@@ -250,6 +316,9 @@ class YAMSRecBody(GenericBody):
             qdot = q*0
         if qddot is None:
             qddot = q*0
+
+        q = p.Matrix( np.asarray(q).reshape((-1, 1)) )
+
         # At this stage all the kinematics of the body p are known
         # Useful variables
         R_0p =  p.R_b2g
@@ -259,12 +328,16 @@ class YAMSRecBody(GenericBody):
         nf_all_children=sum([child.nf for child in p.Children])
 
         for ic,(body_i,conn_pi) in enumerate(zip(p.Children,p.Connections)):
+            #print(f'Kinematics connections {p.name} > {body_i.name}')
             # Flexible influence to connection point
-            R_pc  = p.R_bc
-            Bx_pc = p.Bhat_x_bc
-            Bt_pc = p.Bhat_t_bc
-            # Joint influence to next body (R_ci, B_ci)
-            conn_pi.updateKinematics(q) # TODO
+            R_pc  = p.R_bc        # Contain influence of alpha couplings
+            Bx_pc = p.Bhat_x_bc   # NOTE: missing a contributionwhen we have an offset
+            Bt_pc = p.Bhat_t_bc   #
+            conn_pi.updateConnectionPointPosition(p.R_bc) # Update position of connection point 
+            conn_pi.addLinVelJacobianContrib(Bx_pc, Bt_pc, p.R_bc) # Add contribution if rigid body offset
+
+            # Joint influence to next body (R_ci, B_ci) (not a function of flexible body motion!)
+            conn_pi.updateConnectionKinematics(q) # TODO
 
             # Full connection p and j
             R_pi   = R_pc @ conn_pi.R_ci
@@ -299,10 +372,12 @@ class YAMSRecBody(GenericBody):
             body_i.R_b2g      = R_0i
 
             # TODO flexible dofs and velocities/acceleration
-            body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
+            if len(body_i.I_DOF)>0:
+                # NOTE: won't work for sympy if indexing is empty
+                body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
 
 #            TODO TODO TODO: remaining from matlab?????
-            gzf  = q[body_i.I_DOF,0]
+            gzf  = body_i.gzf
 #             gz   = q    (i.I_DOF);
 #             gzp  = qdot (i.I_DOF);
 #             gzpp = qddot(i.I_DOF);
@@ -428,21 +503,29 @@ class YAMSRecBody(GenericBody):
 
     @property
     def R_bc(self):
+        """ Ground/Rigid Body - For flexible look in this file below"""
         return self.eye(3);
+
     @property
     def Bhat_x_bc(self):
+        """ Ground/Rigid Body - For flexible go to bodies.py"""
         return self.Matrix(np.zeros((3,0)))
+
     @property
     def Bhat_t_bc(self):
+        """ Ground/Rigid Body - For flexible go to bodies.py """
         return self.Matrix(np.zeros((3,0)))
+
     @property
     def nf(B):
+        """ Generic"""
         if hasattr(B,'PhiU'):
             return len(B.PhiU)
         else:
             return 0
     @property
     def mass(B):
+        """ Generic"""
         if B.MM is None:
             return 0
         return B.MM[0,0]
@@ -457,7 +540,7 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
     """
     def __init__(B, sympy=False):
         YAMSRecBody.__init__(B, name='Grd', sympy=sympy)
-        GenericInertialBody.__init__(B)
+        GenericInertialBody.__init__(B, sympy=sympy)
         # We'll use the GroundBody object for global "assembly"
         B.nq = 0
         B.q  = []
@@ -596,7 +679,7 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody):
             raise Exception('[INFO] You are using the new interface, it should work, but lets debug it')
         YAMSRecBody.__init__(B, name, sympy=sympy)
         #              Interface:(name, mass, J, s_OG, r_O=[0,0,0], R_b2g=np.eye(3), s_OP=None):
-        GenericRigidBody.__init__(B, name=name, mass=mass, J=J, s_OG=rho_G, r_O=r_O, R_b2g=R_b2g, s_OP=s_OP)
+        GenericRigidBody.__init__(B, name=name, mass=mass, J=J, s_OG=rho_G, r_O=r_O, R_b2g=R_b2g, s_OP=s_OP, sympy=sympy)
 
         B.s_G_inB = B.masscenter
         B.J_G_inB = B.masscenter_inertia
@@ -702,6 +785,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
 
     @property
     def R_bc(self):
+        """ Flexible Body"""
         if self.sympy:
             # We use analytical couplings
             if self.main_axis=='x':
@@ -770,21 +854,24 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
             #rho_G2(2,:) = o.rho_G0(2,:).*cos(o.V(1,:))-o.rho_G0(3,:).*sin(o.V(1,:));
             #rho_G2(3,:) = o.rho_G0(2,:).*sin(o.V(1,:))+o.rho_G0(3,:).*cos(o.V(1,:));
             #compare(o.rho_G,rho_G2,'rho_G');
-            # Position of connection point
+
+            # --- Update Connection Point location
+            # Position of connection point has changed due to flexible bodymotion
+            #R_pc  = o.R_bc
+            #Bx_pc = o.Bhat_x_bc
+            #Bt_pc = o.Bhat_t_bc
+            # We do it for consistency, it is not necessary
             for ic, conn in enumerate(o.Connections):
-                if conn.parentNode is not None:
-                    # TODO: this is done twice see Connection
-                    iNode=conn.parentNode;
-                    WARN('Update Joint Kinematics is currently incomplete (YAMSRecBeamBody)')
-                    #print('>>> Update of Conn s_C_inB', iNode )
-                    #conn.s_C_inB = o.vec3(o.s_P[:,iNode])
-                    uNode_inB = conn.vec3(o.s_P[:,iNode])-conn.vec3(o.s_P0[:,iNode])
-                    conn.s_C_inB = conn.s_C_0_inB  + uNode_inB # TODO doesn't account for rotation
+                conn.updateConnectionPointPosition(o.R_bc, silent=True) 
 
     @property
     def _positions_global(B): # TODO rename
         displ_g = B.R_b2g.dot(B.s_P) # TODO reference line or COG
-        pos_g   = B.pos_global + displ_g
+        r_O = B.pos_global
+        pos_g = displ_g
+        pos_g[0,:] += r_O[0]
+        pos_g[1,:] += r_O[1]
+        pos_g[2,:] += r_O[2]
         return pos_g
 
     @property
@@ -1024,11 +1111,11 @@ def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi, sympy=False):
     # TODO use Translate here
     Bi = MatrixLoc(np.zeros((6,ni+n_p)))
     for j in range(n_p):
-        Bi[:3,j] = Bp[:3,j] + cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
-        Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
+        Bi[0:3,j] = Bp[0:3,j] + cross(Bp[3:6,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
+        Bi[3:6,j] = Bp[3:6,j] # Recursive formula for Bx mentioned after Eq.(12)
     if ni>0:
-        Bi[:3,n_p:] = R0p @ Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
-        Bi[3:,n_p:] = R0p @ Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
+        Bi[0:3,n_p:] = R0p @ Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
+        Bi[3:6,n_p:] = R0p @ Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
     return Bi
 
 def fBMatTranslate(Bp, r_pi, sympy=False):

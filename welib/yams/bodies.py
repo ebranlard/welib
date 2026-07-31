@@ -32,7 +32,17 @@ try:
 except:
     from numpy import trapz as trapezoid
 
+import sympy as sp
 from sympy import Matrix
+
+from welib.tools.strings import prettyMat
+
+def pm(M, var=None, **kwargs):
+    if isinstance(M, sp.Basic):
+        return M
+    else:
+        return prettyMat(M, var, **kwargs, digits=3)
+
 
 # --------------------------------------------------------------------------------}
 # --- Generic Body 
@@ -70,6 +80,13 @@ class Body(object):
                 raise Exception('Vector should be of length 3')
             return v
 
+    def col3(self, v):
+        if self.sympy:
+            return Matrix([[v[0]],[v[1]],[v[2]]])
+        else:
+            v = np.asarray(v).ravel().reshape((3,1))
+            return v
+
     def Matrix(self, m):
         if self.sympy:
             return Matrix(m)
@@ -93,7 +110,7 @@ class Body(object):
 
     def __repr__(self):
         s='<GenericBody {} object>:\n'.format(self.name)
-        s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
+        s+=' - pos_global_init:       {} (origin)\n'.format(pm(self.pos_global_init.T))
         s+=' * mass:                  {}\n'.format(self.mass)
         s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
         s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
@@ -136,15 +153,15 @@ class Body(object):
 # --- Ground Body 
 # --------------------------------------------------------------------------------{
 class InertialBody(Body):
-    def __init__(self, name='Grd'):
-        Body.__init__(self, name=name)
+    def __init__(self, name='Grd', sympy=False):
+        Body.__init__(self, name=name, sympy=sympy)
 
 
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
 class RigidBody(Body):
-    def __init__(self, name, mass, J, s_OG, r_O=None, R_b2g=None, s_OP=None):
+    def __init__(self, name, mass, J, s_OG, r_O=None, R_b2g=None, s_OP=None, sympy=False):
         """
         Creates a rigid body 
 
@@ -167,9 +184,9 @@ class RigidBody(Body):
          - R_b2g : transformation matrix from body to gobal coordinates
 
         """
-        Body.__init__(self, name, r_O=r_O, R_b2g=R_b2g)
+        Body.__init__(self, name, r_O=r_O, R_b2g=R_b2g, sympy=sympy)
         self._mass  = mass
-        self._s_OG = np.asarray(s_OG).ravel()
+        self._s_OG = self.vec3(s_OG)
 
         # Ensuring a 3x3 inertia matrix
         J = np.asarray(J)
@@ -193,7 +210,7 @@ class RigidBody(Body):
         """ change body origin
         s_OOnew: vector from old origin to new origin
         """
-        s_OnewG    = -np.asarray(s_OOnew) + self._s_OG
+        s_OnewG    = -self.vec3(s_OOnew) + self._s_OG
         self._s_OG = s_OnewG
 
     # --------------------------------------------------------------------------------
@@ -208,8 +225,12 @@ class RigidBody(Body):
     def masscenter_pos_global(self):
         """ return masscenter position from inertial frame """
         try:
-            return self._r_O + self.R_b2g.dot(self._s_OG)
+            return self._r_O + self.R_b2g @ self._s_OG
         except:
+            print('>>> r_O'      , self._r_O , type( self._r_O ))
+            print('>>> s_OG'      , self._s_OG, type( self._s_OG))
+            print('>>> R_b2g\n'    , self.R_b2g, type( self.R_b2g))
+            print('>>> Sympy=', self.sympy, 'Name=',self.name, type(self))
             raise Exception()
 
     @property    
@@ -229,7 +250,7 @@ class RigidBody(Body):
          - R_f2g: transformation matrix from a given frame when inertia is wanted to global
         """
         # 
-        s_GP =   np.asarray(s_OP) - self._s_OG
+        s_GP =   self.vec3(s_OP) - self._s_OG
         J = translateInertiaMatrixFromCOG(self._J_G, self.mass, s_GP)
         if R_f2g is not None:
             R_b2f = np.dot(R_f2g.T, self.R_b2g)
@@ -244,20 +265,20 @@ class RigidBody(Body):
     def mass_matrix_at(self, s_OP):
         """ Body mass matrix at a given point"""
         J = self.inertia_at(s_OP)
-        s_PG = -np.asarray(s_OP)+ self._s_OG
+        s_PG = -self.vec3(s_OP)+ self._s_OG
         return buildRigidBodyMassMatrix(self.mass, J, s_PG) # TODO change interface
 
     def __repr__(self):
         s='<RigidBody {} object>:\n'.format(self.name)
-        s+=' - pos_global_init:       {} (origin)\n'.format(np.around(self.pos_global_init,6))
-        s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
-        s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
-        s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
+        s+=' - pos_global_init:       {} (origin)\n'    .format(pm(self.pos_global_init.T))
+        s+=' * pos_global:            {} (origin)\n'    .format(pm(self.pos_global.T))
+        s+=' * masscenter:            {} (body frame)\n'.format(pm(self.masscenter.T))
+        s+=' * masscenter_pos_global: {} \n'            .format(pm(self.masscenter_pos_global.T))
         s+=' * mass:         {}\n'.format(self.mass)
-        s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
-        s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
-        s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
-        s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+        s+=' * R_b2g: \n {}\n'.format(pm(self.R_b2g))
+        s+=' - R_b2g_init: \n {}\n'.format(pm(self.R_b2g_init))
+        s+=' * masscenter_inertia: \n{}\n'              .format(pm(self.masscenter_inertia.T))
+        s+=' * inertia: (at origin)\n{}\n'              .format(pm(self.inertia.T))
         s+=' - Additional Props: {}\n'.format(self.additional_properties)
         s+='Useful getters: inertia_at, mass_matrix\n'
         return s
@@ -658,7 +679,13 @@ class BeamBody(FlexibleBody):
 
     @property
     def Bhat_t_bc(self, iNode=-1):
-        """ unit "alpha" couplings """
+        r""" unit "alpha" couplings 
+
+        \omega_b^c =  partial Bhat_t_bc(q) * qdot
+        \omega_b^c = Bhat_t_bc(q) * qdot
+                              ^
+
+        """
         Bhat_t_bc = self.Matrix(np.zeros((3,self.nf)))
         for j in np.arange(self.nf):
             if self.main_axis=='x':

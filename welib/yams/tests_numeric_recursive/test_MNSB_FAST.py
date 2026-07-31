@@ -1,3 +1,8 @@
+""" 
+NOTE: there is a 1m offset between Monopile top and nacelle. 
+      Platform Pitching will introdu extra displacement of the nacelle
+"""
+
 import unittest
 import numpy as np
 import os
@@ -63,7 +68,7 @@ class TestMNSB(unittest.TestCase):
         #                     [ 420000.,       0., -456000. ,      0.,       0.,       0.],
         #                     [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
         np.testing.assert_almost_equal(WTA.nac.mass, 0)
-        np.testing.assert_almost_equal(WTA.nac.pos_global.ravel(),(3,0,51.0)) # TODO Influence of rotation should actually be felt due to rigid tower of 1m
+        np.testing.assert_almost_equal(WTA.nac.pos_global.ravel(),(3.0998334,0,50.99500), 5) # NOTE Influence of rotation should actually be felt due to rigid tower of 1m
         #np.testing.assert_almost_equal(WTA.nac.MM,nac_MMref)
 
 

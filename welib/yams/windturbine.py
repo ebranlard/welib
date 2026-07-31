@@ -60,7 +60,7 @@ class WindTurbineStructure():
         self.MM   = None
         self.KK   = None
         self.DD   = None
-        self.q    = None
+        self._q   = None
         self.bTiltBeforeNac = None
         self.additional_properties=[] # for user output in __repr__, so I remember what we have in the object
 
@@ -110,6 +110,16 @@ class WindTurbineStructure():
         for name, value in vars(self).items():
             if isinstance(value, np.ndarray) and value.shape == (3,):
                 setattr(self, name, value.reshape((3,1)))
+
+    @property
+    def q(self):
+        if self._q is None:
+            return None
+        return np.asarray(self._q).reshape((-1, 1))
+
+    @q.setter
+    def q(self, q):
+        self._q = np.asarray(q).reshape((-1, 1))
 
     @property
     def q0(self):
