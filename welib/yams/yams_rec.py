@@ -145,6 +145,10 @@ class Connection():
                 else:
                     j.R_ci = j.Matrix(j.R_ci_0 @ R)
 
+        else:
+            raise NotImplementedError('Joint Type' + j.Type)
+
+
     def updateConnectionPointPosition(j, R_pc, silent=False):
         r""" 
         SKETCHC1 for Connection not at Parent Node P
@@ -275,20 +279,27 @@ class YAMSRecBody(GenericBody):
         return s
 
     def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
-        if BodyPoint is not None and Type =='Rigid':
+        """ 
+         - BodyPoint: in FirstPoint or LastPoint 
+        """
+        if Type == 'SphericalJoint': 
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, sympy=self.sympy)
+
+        elif Type == 'Rigid': 
+            i_C_inB    = None
+            parentBody = None
             if BodyPoint is not None:
+                # We find index of closest parent node
                 if BodyPoint == 'FirstPoint':
                     i_C_inB=0;
                 elif BodyPoint == 'LastPoint':
                     i_C_inB=self.nSpan-1
                 else:
                     raise NotImplementedError()
-                RelPoint = self.s_P0[:,i_C_inB]
-                c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self, sympy=self.sympy)
-        elif Type =='Rigid':
-            c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation, sympy=self.sympy)
-        else: # TODO first node, last node
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, sympy=self.sympy)
+                if Point is None:
+                    Point = self.s_P0[:,i_C_inB]
+
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self, sympy=self.sympy)
 
         self.Children.append(Child)
         self.Connections.append(c)
@@ -367,6 +378,7 @@ class YAMSRecBody(GenericBody):
             #print('p.name',p.name)
             #print('r_0p',r_0p)
             #print('r_pi',r_pi)
+            #print('r_0i',r_0i)
             body_i.R_pb       = R_pi
             body_i.pos_global = r_0i
             body_i.R_b2g      = R_0i
@@ -567,7 +579,7 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
         s+='||'+'\n|'.join(GenericInertialBody.__repr__(self).split('\n'))+'--->\n'
         s+='|Properties:\n'
         s+='|- nq: {}\n'.format(self.nq)
-        s+='|- q:  {}\n'.format(self.q)
+        s+='|- q:  {}\n'.format(pm(self.q.T))
         try:
             bnames = [b.name for b in self.bodies]
         except:
@@ -893,7 +905,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
 # --------------------------------------------------------------------------------{
 class YAMSRecUniformBeamBody(YAMSRecBeamBody):
     def __init__(B, name, nShapes, nSpan, L, EI0, m, Mtop=0, jxxG=None, GKt=None, 
-            bAxialCorr=True, bCompatibility=False, bStiffnessFromGM=False, bStiffening=True, 
+            bAxialCorr=True, bStiffnessFromGM=False, bStiffening=True, 
             gravity=None, main_axis='x',
             shapeFunctions='masslessbeam',
             bottomBC='clamped',
@@ -912,6 +924,7 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
         A=1; rho=A*m;
         x=np.linspace(0,L,nSpan);
         BC = '{}-{}'.format(bottomBC, topBC)
+        #print('>>> BC', BC)
         # Mode shapes
         if shapeFunctions=='masslessbeam':
             freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-{}'.format(BC),EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)

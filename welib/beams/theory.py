@@ -178,6 +178,27 @@ def UniformBeamBendingModes(Type, EI, rho, A, L, w=None,x=None,Mtop=0,norm='tip'
             modesU        = lambda x0, l: F(l) * J  (l*x0) - G(l) * H  (l*x0)
             modesV        = lambda x0, l: F(l) * Jp (l*x0) - G(l) * Hp (l*x0)
             modesK        = lambda x0, l: F(l) * Jpp(l*x0) - G(l) * Hpp(l*x0)
+        elif 'unloaded-topmass-free-free' == Type:
+            # TODO VERIFY THIS
+            # Intermediate segment with a top mass attached to a free-free beam
+            if Mtop is None:
+                raise Exception('Please specify value for Mtop for %s', Type)
+            M = rho * A * L
+            freq_function = lambda x: (1 - np.cosh(x)*np.cos(x)) - (x * Mtop / M) * (np.sin(x)*np.cosh(x) - np.cos(x)*np.sinh(x))
+            freq_guess    = lambda i: (2*(i+1) + 1) * np.pi / 2
+            modesU        = lambda x0, l: H(l) * G(l*x0) - J(l) * F(l*x0)
+            modesV        = lambda x0, l: H(l) * Gp(l*x0) - J(l) * Fp(l*x0)
+            modesK        = lambda x0, l: H(l) * Gpp(l*x0) - J(l) * Fpp(l*x0)
+        elif 'unloaded-topmass-hinged-free' == Type:
+            # TODO verify this
+            if Mtop is None:
+                raise Exception('Please specify value for Mtop for %s', Type)
+            M = rho * A * L
+            freq_function = lambda x: np.tan(x) - np.tanh(x) + (2 * x * Mtop / M) * np.tan(x) * np.tanh(x)
+            freq_guess    = lambda i: (i + 0.25) * np.pi if i > 0 else 3.9266
+            modesU        = lambda x0, l: np.sin(l*x0) / np.sin(l) + np.sinh(l*x0) / np.sinh(l)
+            modesV        = lambda x0, l: np.cos(l*x0) / np.sin(l) + np.cosh(l*x0) / np.sinh(l)
+            modesK        = lambda x0, l: -np.sin(l*x0) / np.sin(l) + np.sinh(l*x0) / np.sinh(l)
         elif 'unloaded-hinged-hinged' == Type: # simply-supported
             freq_function = lambda x: np.sin(x) 
             freq_guess    = lambda i: (i+1)*np.pi # NOTE: exact..
