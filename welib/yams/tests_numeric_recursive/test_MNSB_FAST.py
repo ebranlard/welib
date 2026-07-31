@@ -12,7 +12,7 @@ class TestMNSB(unittest.TestCase):
 
         nDOF=2
         q = np.zeros((nDOF,1)) # TODO, full account of q not done
-        q[[0]]=1
+        q[[0]]=3
         q[[1]]=0.1
 
         np.set_printoptions(linewidth=500)
@@ -63,7 +63,7 @@ class TestMNSB(unittest.TestCase):
         #                     [ 420000.,       0., -456000. ,      0.,       0.,       0.],
         #                     [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
         np.testing.assert_almost_equal(WTA.nac.mass, 0)
-        np.testing.assert_almost_equal(WTA.nac.pos_global.ravel(),(0,0,51.0))
+        np.testing.assert_almost_equal(WTA.nac.pos_global.ravel(),(3,0,51.0)) # TODO Influence of rotation should actually be felt due to rigid tower of 1m
         #np.testing.assert_almost_equal(WTA.nac.MM,nac_MMref)
 
 

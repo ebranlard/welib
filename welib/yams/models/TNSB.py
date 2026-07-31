@@ -279,7 +279,7 @@ class TNSBStructure(WindTurbineStructure):
 
         # Connections between bodies
         grd.connectTo(twr, Point=r_ET_inE, Type='Rigid')
-        twr.connectTo(nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
+        twr.connectTo(nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True, BodyPoint='LastPoint')
         twr.connectTo(yaw, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 , OrientAfter=True)
         if fixedShaft:
             nac.connectTo (sft   , Point=r_NS_inN, Type='Rigid', RelOrientation = R_cs0, OrientAfter=False)
@@ -314,16 +314,9 @@ class TNSBStructure(WindTurbineStructure):
         DD = grd.D
 
         MM[np.abs(MM)< 1e-09] = 0
-        # --- returning everthin in a structure class
-#         if WT is None:
-#             WT      = TNSBStructure(main_axis=main_axis,theta_cone=self.blade_cone,theta_tilt=self.shaft_tilt,bTiltBeforeNac=bTiltBeforeNac)
-#         else:
-#         WT.main_axis      = main_axis
-#         WT.theta_cone     = self.blade_cone
-#         WT.theta_tilt     = self.shaft_tilt
-#         self.bTiltBeforeNac = bTiltBeforeNac
-        self.fixedShaft = fixedShaft # TODO?
 
+        # --- TODO TODO
+        self.fixedShaft = fixedShaft # TODO?
         self.grd  = grd # TODO?
         self.MM   = MM
         self.KK   = KK
@@ -585,7 +578,7 @@ class TNSBStructure(WindTurbineStructure):
         self.MM   = MM
         self.KK   = KK
         self.DD   = DD
-        self.q    = q
+        self.q    = q     # TODO
         self.init_trigger()
 
 

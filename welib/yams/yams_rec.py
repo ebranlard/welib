@@ -17,6 +17,7 @@ from .bodies import FlexibleBody as GenericFlexibleBody
 from .bodies import BeamBody     as GenericBeamBody
 from .bodies import FASTBeamBody as GenericFASTBeamBody
 from .bodies import InertialBody as GenericInertialBody
+from welib.tools.strings import WARN
 
 # --- To ease comparison with sympy version
 # from numpy import eye, cross, cos ,sin
@@ -113,6 +114,7 @@ class Connection():
 
 
     def updateKinematics(j, q):
+        """ Connection updateKinematics"""
         j.B_ci = j.Matrix(np.zeros((6,j.nj)))
         if j.Type=='Rigid':
             j.R_ci=j.R_ci_0
@@ -144,9 +146,12 @@ class Connection():
 
         # TODO this is done twice since it's done when parent.updateKinematics is called. CHOSE!
         if j.parentNode is not None:
+            WARN('Update Joint Kinematics is currently incomplete (Connection)')
             #print('>>>> Joint Kinematics. Updating joint position based on parent node position')
             iNode=j.parentNode
-            j.s_C_inB = (j.parentBody.s_P[:,iNode]).reshape(3,1)
+            #print('>>> Update of Conn s_C_inB within Conn')
+            uNode_inB = j.vec3(j.parentBody.s_P[:,iNode])-j.vec3(j.parentBody.s_P0[:,iNode])
+            j.s_C_inB = j.s_C_0_inB  + uNode_inB # TODO doesn't account for rotation
 
     def __repr__(self):
         s ='<Connection object>:\n'
@@ -286,9 +291,12 @@ class YAMSRecBody(GenericBody):
 
             # --- Updating Position and orientation of child body 
             r_0i = r_0p + r_pi  # in 0 system
-            body_i.R_pb = R_pi 
+            #print('p.name',p.name)
+            #print('r_0p',r_0p)
+            #print('r_pi',r_pi)
+            body_i.R_pb       = R_pi
             body_i.pos_global = r_0i
-            body_i.R_b2g = R_0i
+            body_i.R_b2g      = R_0i
 
             # TODO flexible dofs and velocities/acceleration
             body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
@@ -354,6 +362,7 @@ class YAMSRecBody(GenericBody):
 
 
     def updateKinematics(o, x_0=None, R_b2g=None, gz=None, v_0=None, a_v_0=None):
+        """ YAMSRecBody updateKinematics"""
         # NOTE: this is overriden by BeamBody
         # Updating position of body origin in global coordinates
         if x_0 is not None:
@@ -717,8 +726,10 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
                 raise NotImplementedError()
 
     def updateKinematics(o,x_0,R_b2g,gz,v_0,a_v_0, verbose=False):
+        """ YAMSRec BeamBody updateKinematics"""
         super(YAMSRecBeamBody,o).updateKinematics(x_0, R_b2g, gz, v_0, a_v_0)
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
+        #print(f'>>>>>>>>>>>>>>>>>> Update Kin flexible body {o.name} nf={o.nf} nc={len(o.Connections)} sympy={o.sympy}')
         if o.nf>0:
             o.gzpf  = v_0[6:]
             o.gzppf = a_v_0[6:]
@@ -764,7 +775,11 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
                 if conn.parentNode is not None:
                     # TODO: this is done twice see Connection
                     iNode=conn.parentNode;
-                    conn.s_C_inB = o.s_P[:,iNode]
+                    WARN('Update Joint Kinematics is currently incomplete (YAMSRecBeamBody)')
+                    #print('>>> Update of Conn s_C_inB', iNode )
+                    #conn.s_C_inB = o.vec3(o.s_P[:,iNode])
+                    uNode_inB = conn.vec3(o.s_P[:,iNode])-conn.vec3(o.s_P0[:,iNode])
+                    conn.s_C_inB = conn.s_C_0_inB  + uNode_inB # TODO doesn't account for rotation
 
     @property
     def _positions_global(B): # TODO rename
@@ -910,7 +925,7 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
             else:
                 raise NotImplementedError('>> TODO')
 
-        GenericFASTBeamBody.__init__(B, ED, inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
+        GenericFASTBeamBody.__init__(B, ED=ED, inp=inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
                 spanFrom0=spanFrom0,
                 massExpected=massExpected,
                 gravity=gravity,
@@ -925,7 +940,7 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
                 massExpected=massExpected,
                 algo=algo,
-                sympy=sympy
+                sympy=sympy, name=body_type
                 )
 
 # --------------------------------------------------------------------------------}

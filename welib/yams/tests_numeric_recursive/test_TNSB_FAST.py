@@ -89,7 +89,7 @@ class TestTNSB(unittest.TestCase):
                              [ 420000.,       0., -456000. ,      0.,       0.,       0.],
                              [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
         np.testing.assert_almost_equal(StructA.nac.mass, 240000)
-        np.testing.assert_almost_equal(StructA.nac.pos_global,(0,0,87.6))
+        np.testing.assert_almost_equal(StructA.nac.pos_global,(1.1,0,87.6))
         np.testing.assert_almost_equal(StructA.nac.MM,Nac_MMref)
         # print(StructA.Nac.Mass)
         # print(StructA.Nac.MM)
@@ -110,7 +110,7 @@ class TestTNSB(unittest.TestCase):
                             [     -0.    ,   -284984.498   ,       0.    ,         0.    ,         0.       ,1430365.6939118]])
     
         np.testing.assert_almost_equal(StructA.hubgen.mass,56780)
-        np.testing.assert_almost_equal(StructA.hubgen.pos_global,(0.2337605,0,89.5485887))
+        np.testing.assert_almost_equal(StructA.hubgen.pos_global,(1.3337605,0,89.5485887)) # TODO rotation
         np.testing.assert_almost_equal(StructA.hubgen.MM,Sft_MMref)
         #print('Sft: R_S:')
         #print(StructA.Sft.R_b2g)
@@ -140,11 +140,11 @@ class TestTNSB(unittest.TestCase):
                          [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
 
         np.testing.assert_almost_equal(StructA.bld[0].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.bld[0].pos_global,(-4.6785417,0,90.5784681), 3)
+        np.testing.assert_almost_equal(StructA.bld[0].pos_global,(-3.5785417,0,90.5784681), 3) # TODO rotation x-z coords
         np.testing.assert_almost_equal(StructA.bld[0].MM,Bld_MMref)
 
         np.testing.assert_almost_equal(StructA.bld[2].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.bld[2].pos_global,(-4.6785417,0,90.5784681), 3)
+        np.testing.assert_almost_equal(StructA.bld[2].pos_global,(-3.5785417,0,90.5784681), 3) # TODO rotation x-z coords
         np.testing.assert_almost_equal(StructA.bld[2].MM,Bld_MMref)
 
         #   print(StructA.Blds[0].Mass)
