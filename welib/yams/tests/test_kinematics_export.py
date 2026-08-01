@@ -8,7 +8,7 @@ from welib.yams.yams_sympy import YAMSInertialBody, YAMSRigidBody, YAMSFlexibleB
 
 
 class TestKinematicsExport(unittest.TestCase):
-    PRINT_COMPARISONS = True
+    PRINT_COMPARISONS = False
 
     @staticmethod
     def _sympy_vec_to_numpy(vec, frame, subs):
@@ -338,7 +338,7 @@ class TestKinematicsExport(unittest.TestCase):
             sp.symbols('ux1c'): ux1_val,
             sp.symbols('uy2c'): uy2_val,
             sp.symbols('vy1c'): vy1_val,
-            sp.symbols('ux2c'): vx2_val,
+            sp.symbols('vx2c'): vx2_val,
             sp.symbols('L'): L_val,
             q_rec: 0.2,
             q_rec2: -0.1,
@@ -369,9 +369,7 @@ class TestKinematicsExport(unittest.TestCase):
         self._debug_side_by_side('Flexible B (nac rec vs sympy)', B_rec, B_sym)
 
         np.testing.assert_allclose(Bhatx_rec, Bhatx_sym, rtol=1e-10, atol=1e-10)
-        self.assertEqual(Bhatt_rec.shape, Bhatt_sym.shape)
-        self.assertGreater(np.linalg.norm(Bhatt_rec), 0.0)
-        self.assertGreater(np.linalg.norm(Bhatt_sym), 0.0)
+        np.testing.assert_allclose(Bhatt_rec, Bhatt_sym, rtol=1e-10, atol=1e-10)
         self.assertEqual(B_rec.shape, B_sym.shape)
         np.testing.assert_allclose(B_rec[:3, :], B_sym[:3, :], rtol=1e-10, atol=1e-10)
         self.assertGreater(np.linalg.norm(B_rec[3:, :]), 0.0)

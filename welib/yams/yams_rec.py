@@ -857,10 +857,12 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
                 nD = len(B.directions[j])
                 if 'x' in direction:
                     PhiU[0,-1] = symbols('ux{:d}c'.format(j+1))
-                    PhiV[0,-1]=symbols('vy{:d}c'.format(j+1))
+                    # yams_sympy convention: x-deflection contributes alpha_y via v_y*
+                    PhiV[1,-1]=symbols('vy{:d}c'.format(j+1))
                 if 'y' in direction:
                     PhiU[1,-1] = symbols('uy{:d}c'.format(j+1))
-                    PhiV[1,-1] = symbols('ux{:d}c'.format(j+1))
+                    # yams_sympy convention: y-deflection contributes alpha_x via v_x*
+                    PhiV[0,-1] = symbols('vx{:d}c'.format(j+1))
                 B.PhiU.append(PhiU)
                 B.PhiV.append(PhiV)
         else:
@@ -890,37 +892,74 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
 
     @property
     def alpha_couplings(self):
-        gzf = np.atleast_1d(self.gzf)
         if self.sympy:
-            return self.Bhat_t_bc @ gzf
+            return self.Bhat_t_bc @ self.gzf
         else:
+            gzf = np.atleast_1d(self.gzf)
             return (self.Bhat_t_bc @ gzf).ravel()
 
     @property
-    def R_bc(self):
-        """ Flexible Body"""
+    def Bhat_t_bc(self):
+        """Flexible connection rotational coupling Jacobian.
+
+        In sympy mode, align with yams_sympy conventions from
+        YAMSFlexibleBody.defineExtremity:
+          - direction 'x' -> alpha_y term via v_y*
+          - direction 'y' -> alpha_x term via v_x*
+        """
         if self.sympy:
-            # We use analytical couplings
+            Bhat_t_bc = self.Matrix(np.zeros((3, self.nf)))
+            for j, direction in enumerate(self.directions):
+                if 'x' in direction:
+                    Bhat_t_bc[1, j] = symbols('vy{:d}c'.format(j+1))
+                if 'y' in direction:
+                    Bhat_t_bc[0, j] = symbols('vx{:d}c'.format(j+1))
+                if 'z' in direction:
+                    Bhat_t_bc[2, j] = symbols('vz{:d}c'.format(j+1))
+            return Bhat_t_bc
+        return super(YAMSRecBeamBody, self).Bhat_t_bc
+
+    def R_bc_matrix(self, use_symbolic_alpha=None):
+        """Return flexible connection rotation matrix.
+
+        Parameters
+        ----------
+        use_symbolic_alpha : bool or None
+            - True:  use compact symbolic alpha placeholders (legacy sympy-rec form)
+            - False: use expanded alpha couplings from Bhat_t_bc @ gzf
+            - None:  defaults to True in sympy mode, False otherwise
+        """
+        if use_symbolic_alpha is None:
+            use_symbolic_alpha = bool(self.sympy)
+
+        if use_symbolic_alpha:
             if self.main_axis=='x':
-                alpha_y= symbols('alpha_y') #-p.V(3,iNode);
-                alpha_z= symbols('alpha_z') # p.V(2,iNode);
+                alpha_y = symbols('alpha_y')
+                alpha_z = symbols('alpha_z')
                 return R_y(alpha_y) @ R_z(alpha_z)
-
             elif self.main_axis=='z':
-                alpha_x= symbols('alpha_x') #-p.V(2,iNode);
-                alpha_y= symbols('alpha_y') # p.V(1,iNode);
-                return R_x(alpha_x)*R_y(alpha_y)
+                alpha_x = symbols('alpha_x')
+                alpha_y = symbols('alpha_y')
+                return R_x(alpha_x) * R_y(alpha_y)
             else:
                 raise NotImplementedError()
+
+        alpha = self.alpha_couplings
+        if self.main_axis=='x':
+            return R_y(alpha[1]) @ R_z(alpha[2])
+        elif self.main_axis=='z':
+            return R_x(alpha[0]) @ R_y(alpha[1])
         else:
-            alpha = self.alpha_couplings
+            raise NotImplementedError()
 
-            if self.main_axis=='x':
-                return R_y(alpha[1]) @ R_z(alpha[2])
-            elif self.main_axis=='z':
-                return R_x(alpha[0]) @ R_y(alpha[1])
-            else:
-                raise NotImplementedError()
+    @property
+    def R_bc(self):
+        """Flexible-body connection rotation matrix.
+
+        Backward-compatible property equivalent to:
+            R_bc_matrix(use_symbolic_alpha=self.sympy)
+        """
+        return self.R_bc_matrix(use_symbolic_alpha=self.sympy)
 
     def updateKinematics(o,x_0,R_b2g,gz,v_0,a_v_0, verbose=False):
         """ YAMSRec BeamBody updateKinematics"""
