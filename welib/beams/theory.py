@@ -129,8 +129,9 @@ def UniformBeamRitzShapeFunctions(bc_type, L, x=None, nModes=4, norm='tip'):
     This helper is intended for sub-beam modeling where enforcing natural
     conditions at internal interfaces can be too restrictive.
 
-    Supported bc_type values:
+        Supported bc_type values:
       - clamped-interface (alias: clamped-open): u(0)=u'(0)=0 only
+            - clamped-hinged: u(0)=u'(0)=u(1)=0
       - clamped-clamped: u(0)=u'(0)=u(1)=u'(1)=0
       - hinged-hinged: u(0)=u(1)=0
 
@@ -158,6 +159,10 @@ def UniformBeamRitzShapeFunctions(bc_type, L, x=None, nModes=4, norm='tip'):
             g = x0**2
             dg = 2.0 * x0
             ddg = 2.0 * np.ones_like(x0)
+        elif bc == 'clamped-hinged':
+            g = x0**2 * (1.0 - x0)
+            dg = 2.0 * x0 - 3.0 * x0**2
+            ddg = 2.0 - 6.0 * x0
         elif bc == 'clamped-clamped':
             g = x0**2 * (1.0 - x0)**2
             dg = 2.0 * x0 - 6.0 * x0**2 + 4.0 * x0**3

@@ -11,7 +11,7 @@ Top mass
 
 import numpy as np
 import matplotlib.pyplot as plt
-from welib.yams.yams_rec import YAMSRecUniformBeamBody, YAMSRecGroundBody
+from welib.yams.yams_rec import YAMSRecUniformBeamBody, YAMSRecGroundBody, YAMSRecRigidBody
 from welib.tools.clean_exceptions import *
 import welib.beams.theory as bt
 from welib.tools.strings import printVec
@@ -23,12 +23,12 @@ def main(test=False):
     norm = 'tip' # 'max', 'tip'  Method to normalize modes at the end
     useAnalyticalShapeFunctions = False # <<< TODO implement this
     shapeFunctions='admissible'
-#     shapeFunctions='masslessbeam'
+    #shapeFunctions='masslessbeam'
     # shapeFunctions='Guyan'
 
     nSpan_twr         = 101
     bInit             = False # Use some default initial conditions (will change M&K and pos).
-    Mtop              = 0.0e4     # Not sure if this works well for now
+    Mtop              = 10.0e4     # Not sure if this works well for now
     bStiffening       = True  # Not tried yet
     bAxialCorr        = False # Not tried yet
     gravity = 9.81
@@ -73,6 +73,7 @@ def main(test=False):
                 topBC = 'interface' if itwr < nBeams_twr-1 else 'free'
             else:
                 topBC = 'free'
+#             MtopInertia = Mtop if itwr == nBeams_twr-1 else 0.0
             twr= YAMSRecUniformBeamBody('T'+str(itwr+1), nShapes_twr, nSpan_twr, L_sub, EI_twr, m_twr, Mtop=Mtop_sub, 
                                         bottomBC='clamped',
                                         topBC=topBC,
@@ -80,10 +81,17 @@ def main(test=False):
                                         bAxialCorr=bAxialCorr, main_axis='x', bStiffening=bStiffening, gravity=gravity)
             twrs.append(twr)
 
+
+    nac = YAMSRecRigidBody(name='Nac', mass=Mtop, J=0, rho_G=None, s_OP=None, r_O=None, R_b2g=None, sympy=False)
+
+
     # Connection between bodies
     grd.connectTo(twrs[0], Point=None, Type='Rigid')
     for twr_prev, twr_next in zip(twrs[0:-1], twrs[1:]):
-        twr_prev.connectTo(twr_next, BodyPoint='LastPoint', Type='Rigid', RelOrientation = np.eye(3), OrientAfter=True) # <<< Not sure about that yet
+        twr_prev.connectTo(twr_next, BodyPoint='LastPoint', Type='Rigid', RelOrientation = np.eye(3), OrientAfter=True)
+    twrs[-1].connectTo(nac, BodyPoint='LastPoint', Type='Rigid')
+
+
 
     # Init of DOF
     nDOF = grd.setupDOFIndex()
@@ -158,6 +166,6 @@ if __name__ == '__main__':
 
 if __name__ == '__test__':
     freq_err = main(test=True)
-    np.testing.assert_array_less(freq_err, 0.03)
+    np.testing.assert_array_less(freq_err, 0.005) # 0.05%
 
 

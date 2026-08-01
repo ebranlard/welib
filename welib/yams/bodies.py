@@ -650,6 +650,26 @@ class BeamBody(FlexibleBody):
         if s_G is None:
             s_G = B.s_G
         MM, IT = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, method=B.int_method, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
+
+        # Optional point mass at beam tip (e.g. nacelle/top mass).
+        # This is controlled by `MtopInertia` to decouple shape/stiffening proxy masses
+        # from physically added inertia in split-beam models.
+        m_top = getattr(B, 'MtopInertia', 0.0)
+        if m_top is None:
+            m_top = 0.0
+        if m_top > 0:
+            r_tip = np.asarray(B.s_P0[:, -1]).ravel()
+            rtil = np.array([
+                [0, -r_tip[2], r_tip[1]],
+                [r_tip[2], 0, -r_tip[0]],
+                [-r_tip[1], r_tip[0], 0]
+            ])
+            Phi_tip = np.zeros((3, B.nf))
+            for j in range(B.nf):
+                Phi_tip[:, j] = B.PhiU[j][:, -1]
+            J_tip = np.column_stack((np.eye(3), -rtil, Phi_tip))
+            MM += m_top * (J_tip.T @ J_tip)
+
         if len(np.isnan(MM))>0:
             #print('>>> WARNING, some mass matrix values are nan, replacing with 0')
             MM[np.isnan(MM)]=0

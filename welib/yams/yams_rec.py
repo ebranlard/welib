@@ -689,6 +689,8 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody):
         """
         if s_OP is not None:
             raise Exception('[INFO] You are using the new interface, it should work, but lets debug it')
+        if rho_G is None:
+            rho_G = (0,0,0)
         YAMSRecBody.__init__(B, name, sympy=sympy)
         #              Interface:(name, mass, J, s_OG, r_O=[0,0,0], R_b2g=np.eye(3), s_OP=None):
         GenericRigidBody.__init__(B, name=name, mass=mass, J=J, s_OG=rho_G, r_O=r_O, R_b2g=R_b2g, s_OP=s_OP, sympy=sympy)
@@ -910,6 +912,7 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
             shapeFunctions='masslessbeam',
             bottomBC='clamped',
             topBC='free',
+            MtopInertia=None,
             sympy=False
             ):
 
@@ -924,6 +927,11 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
         A=1; rho=A*m;
         x=np.linspace(0,L,nSpan);
         BC = '{}-{}'.format(bottomBC, topBC)
+        # Optional extra tip-mass inertia contribution handled in BeamBody.computeMassMatrix.
+        # Default is no extra contribution so top mass can be represented by an attached rigid body.
+        if MtopInertia is None:
+            MtopInertia = 0.0
+        B.MtopInertia = MtopInertia
         #print('>>> BC', BC)
         # Mode shapes
         if shapeFunctions=='masslessbeam':
@@ -936,22 +944,11 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
             if bottomBC!='clamped':
                 raise NotImplementedError('admissible basis currently supports bottomBC=clamped only')
 
-            if topBC in ['interface', 'open']:
-                ritzBC='clamped-interface'
-            elif topBC=='free':
-                ritzBC='clamped-free'
-            elif topBC=='clamped':
-                ritzBC='clamped-clamped'
-            elif topBC=='hinged':
-                ritzBC='hinged-hinged'
-            else:
-                raise NotImplementedError('Unknown topBC {} for admissible basis'.format(topBC))
-
-            if ritzBC=='clamped-free':
+            if BC=='clamped-free':
                 # Keep analytical clamped-free basis for true free-end terminal segment.
                 freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-clamped-free',EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)
             else:
-                freq,s_span,U,V,K = bt.UniformBeamRitzShapeFunctions(ritzBC, L, x=x, nModes=nShapes, norm='tip')
+                freq,s_span,U,V,K = bt.UniformBeamRitzShapeFunctions(BC, L, x=x, nModes=nShapes, norm='tip')
 
         elif shapeFunctions=='Guyan':
             if BC=='clamped-free':
