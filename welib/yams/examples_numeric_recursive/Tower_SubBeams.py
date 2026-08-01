@@ -22,12 +22,13 @@ def main(test=False):
     nModesPlot  = 6
     norm = 'tip' # 'max', 'tip'  Method to normalize modes at the end
     useAnalyticalShapeFunctions = False # <<< TODO implement this
-    shapeFunctions='masslessbeam'
+    shapeFunctions='admissible'
+#     shapeFunctions='masslessbeam'
     # shapeFunctions='Guyan'
 
     nSpan_twr         = 101
     bInit             = False # Use some default initial conditions (will change M&K and pos).
-    Mtop              = 0.0e3     # Not sure if this works well for now
+    Mtop              = 0.0e4     # Not sure if this works well for now
     bStiffening       = True  # Not tried yet
     bAxialCorr        = False # Not tried yet
     gravity = 9.81
@@ -66,8 +67,15 @@ def main(test=False):
             #        name='T'+str(itwr+1)
             #        )
         else:
-            twr= YAMSRecUniformBeamBody('T'+str(itwr+1), nShapes_twr, nSpan_twr, L_sub, EI_twr, m_twr, Mtop=Mtop, 
-    #                                     bottomBC = 'clamped' if itwr==0 else 'free',
+            # Internal sub-beams are attached to another beam at their tip.
+            # Use an interface-admissible basis there, and clamped-free only for the last segment.
+            if shapeFunctions=='admissible':
+                topBC = 'interface' if itwr < nBeams_twr-1 else 'free'
+            else:
+                topBC = 'free'
+            twr= YAMSRecUniformBeamBody('T'+str(itwr+1), nShapes_twr, nSpan_twr, L_sub, EI_twr, m_twr, Mtop=Mtop_sub, 
+                                        bottomBC='clamped',
+                                        topBC=topBC,
                                         shapeFunctions=shapeFunctions,
                                         bAxialCorr=bAxialCorr, main_axis='x', bStiffening=bStiffening, gravity=gravity)
             twrs.append(twr)
@@ -150,6 +158,6 @@ if __name__ == '__main__':
 
 if __name__ == '__test__':
     freq_err = main(test=True)
-    np.testing.assert_array_less(freq_err, 0.05)
+    np.testing.assert_array_less(freq_err, 0.03)
 
 

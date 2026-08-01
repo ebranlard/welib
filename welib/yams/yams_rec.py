@@ -185,13 +185,13 @@ class Connection():
 
     def addLinVelJacobianContrib(j, Bhat_x, Bhat_t, R_pc):
         """ Add contribution due to connection offset from body extremity point"""
-#         if j.s_P0C0_inB is not None:
-#             s_PC = R_pc @ j.s_P0C0_inB 
-#             print('>>>> Bhat_x\n', Bhat_x)
-#             Bhat_x_c = -skew(s_PC, symb = j.sympy) @ Bhat_t
-#             print('>>>> Bhat_x_c\n', Bhat_x_c)
-#             Bhat_x  += Bhat_x_c
-#             print('>>>> Bhat_x\n', Bhat_x)
+        if j.s_P0C0_inB is not None:
+            s_PC = R_pc @ j.s_P0C0_inB 
+            #print('>>>> Bhat_x\n', Bhat_x)
+            Bhat_x_c = -skew(s_PC, symb = j.sympy) @ Bhat_t
+            #print('>>>> Bhat_x_c\n', Bhat_x_c)
+            Bhat_x  += Bhat_x_c
+            #print('>>>> Bhat_x\n', Bhat_x)
         return Bhat_x
 
     def __repr__(self):
@@ -927,9 +927,36 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
         #print('>>> BC', BC)
         # Mode shapes
         if shapeFunctions=='masslessbeam':
+
             freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-{}'.format(BC),EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)
+
+        elif shapeFunctions=='admissible':
+            # For internal sub-beam interfaces, enforcing free-end natural BC can be
+            # overly restrictive. This Ritz basis enforces only essential BC.
+            if bottomBC!='clamped':
+                raise NotImplementedError('admissible basis currently supports bottomBC=clamped only')
+
+            if topBC in ['interface', 'open']:
+                ritzBC='clamped-interface'
+            elif topBC=='free':
+                ritzBC='clamped-free'
+            elif topBC=='clamped':
+                ritzBC='clamped-clamped'
+            elif topBC=='hinged':
+                ritzBC='hinged-hinged'
+            else:
+                raise NotImplementedError('Unknown topBC {} for admissible basis'.format(topBC))
+
+            if ritzBC=='clamped-free':
+                # Keep analytical clamped-free basis for true free-end terminal segment.
+                freq,s_span,U,V,K = bt.UniformBeamBendingModes('unloaded-topmass-clamped-free',EI0,rho,A,L,x=x,Mtop=Mtop, nModes=nShapes)
+            else:
+                freq,s_span,U,V,K = bt.UniformBeamRitzShapeFunctions(ritzBC, L, x=x, nModes=nShapes, norm='tip')
+
         elif shapeFunctions=='Guyan':
             if BC=='clamped-free':
+                if nShapes>2:
+                    raise Exception('Guyan only valid for 2 shapes')
                 freq,s_span,U,V,K  = bt.UniformBeamGuyanModes(EI0, rho, A, L, x= x, nModes = nShapes)
             else:
                 raise NotImplementedError('{} {}'.format(shapeFunctions, BC))
