@@ -240,6 +240,35 @@ class TestKinematicsExport(unittest.TestCase):
         self._debug_side_by_side('Double pendulum B body-2 (rec vs sympy)', B2_rec, B2_sym)
         np.testing.assert_allclose(B2_rec, B2_sym, rtol=1e-10, atol=1e-10)
 
+        # --- Harmonized mass-matrix API: per-body contributions and full-system matrix
+        speed_symbols = [q1s.diff(), q2s.diff()]
+
+        # Recursive body contributions are naturally sized to each body's active DOFs.
+        M1_rec_local = sp.Matrix(b1_rec.generalized_mass_matrix())
+        M2_rec_full = sp.Matrix(b2_rec.generalized_mass_matrix())
+        M1_rec_full = sp.Matrix([[M1_rec_local[0, 0], 0], [0, 0]])
+
+        M1_sym_full = sp.Matrix(b1_sym.generalized_mass_matrix(speed_symbols=speed_symbols))
+        M2_sym_full = sp.Matrix(b2_sym.generalized_mass_matrix(speed_symbols=speed_symbols))
+
+        Msys_rec = sp.Matrix(grd.system_mass_matrix())
+        Msys_sym = sp.Matrix(e.system_mass_matrix(speed_symbols=speed_symbols))
+
+        M1_rec_num = self._rec_sympy_mat_to_numpy(M1_rec_full, subs_rec)
+        M1_sym_num = self._sympy_mat_to_numpy(M1_sym_full, subs_sym)
+        M2_rec_num = self._rec_sympy_mat_to_numpy(M2_rec_full, subs_rec)
+        M2_sym_num = self._sympy_mat_to_numpy(M2_sym_full, subs_sym)
+        Msys_rec_num = self._rec_sympy_mat_to_numpy(Msys_rec, subs_rec)
+        Msys_sym_num = self._sympy_mat_to_numpy(Msys_sym, subs_sym)
+
+        self._debug_side_by_side('Body-1 generalized mass (rec vs sympy)', M1_rec_num, M1_sym_num)
+        self._debug_side_by_side('Body-2 generalized mass (rec vs sympy)', M2_rec_num, M2_sym_num)
+        self._debug_side_by_side('System mass matrix (rec vs sympy)', Msys_rec_num, Msys_sym_num)
+
+        np.testing.assert_allclose(M1_rec_num, M1_sym_num, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(M2_rec_num, M2_sym_num, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(Msys_rec_num, Msys_sym_num, rtol=1e-10, atol=1e-10)
+
     def test_rec_sympy_true_joint_connection_parity(self):
         q_rec = sp.symbols('q_rec')
         q_val = 0.31

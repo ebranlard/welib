@@ -476,6 +476,53 @@ class YAMSBody(object):
         payload = self.kinematics_export(speed_symbols=speed_symbols)
         return payload['BB_inB']
 
+    def generalized_mass_matrix(self, speed_symbols=None, form='regular'):
+        """Return generalized mass contribution of this body.
+
+        Computes $B'^T M' B'$ using ``B_inB`` for rigid bodies and ``BB_inB``
+        for flexible bodies where ``M'`` has size ``(6+nf) x (6+nf)``.
+        """
+        if not hasattr(self, 'bodyMassMatrix'):
+            raise Exception('Body has no bodyMassMatrix method: {}'.format(self.name))
+        payload = self.kinematics_export(speed_symbols=speed_symbols)
+        Mloc = self.bodyMassMatrix(form=form)
+        if Mloc.shape[0] == 6:
+            J = payload['B_inB']
+        else:
+            J = payload['BB_inB']
+        if J is None:
+            raise Exception('Kinematic matrix unavailable for body {}'.format(self.name))
+        Mgen = J.T * Mloc * J
+        Mgen.simplify()
+        return Mgen
+
+    def system_mass_matrix(self, speed_symbols=None, form='regular', include_self=False):
+        """Return full generalized mass matrix assembled from this subtree.
+
+        For inertial roots this mirrors recursive assembly by summing all body
+        contributions from descendants.
+        """
+        bodies = list(self._iter_bodies())
+        if not include_self and len(bodies) > 0:
+            bodies = bodies[1:]
+
+        if speed_symbols is None:
+            all_speeds = []
+            for b in bodies:
+                p = b.kinematics_export()
+                ds = p.get('speed_symbols', None)
+                if ds is not None:
+                    all_speeds += list(ds)
+            uniq = {str(s): s for s in all_speeds}
+            speed_symbols = [uniq[k] for k in sorted(uniq.keys())]
+
+        n = len(speed_symbols)
+        Msys = Matrix.zeros(n, n)
+        for b in bodies:
+            if hasattr(b, 'bodyMassMatrix'):
+                Msys += b.generalized_mass_matrix(speed_symbols=speed_symbols, form=form)
+        return Msys
+
     def Bhat_matrix(self, kind='x'):
         """Return connection-point Bhat matrix for flexible coupling.
 
@@ -1035,7 +1082,6 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         self.M[0,0] = self.mass
         self.M[1,1] = self.mass
         self.M[2,2] = self.mass
-        print('>>> bodyMassMatrix for rigid bodies is in Beta')
 
         if form=='TaylorExpanded':
             """ Return the term of the mass matrix at a given order.

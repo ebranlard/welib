@@ -356,6 +356,16 @@ class YAMSRecBody(GenericBody):
         """Return augmented body-coordinate BB matrix."""
         return B.BB_inB
 
+    def generalized_mass_matrix(B):
+        """Return generalized mass contribution of this body.
+
+        This is the body-level contribution $B'^T M' B'$ (or $BB^T M' BB$ for
+        flexible bodies via ``BB_inB``), consistent with recursive assembly.
+        """
+        if isinstance(B, YAMSRecGroundBody):
+            raise Exception('Ground body has no standalone generalized mass contribution')
+        return fBMB(B.BB_inB, B.MM, sympy=B.sympy, name=B.name)
+
     def Bhat_matrix(B, kind='x'):
         """Return connection-point Bhat matrix for flexible coupling.
 
@@ -753,6 +763,10 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
         for c in o.Children:
             M=c._getFullM(M)
         return M
+
+    def system_mass_matrix(o):
+        """Return full assembled generalized mass matrix."""
+        return o.M
         
     @property
     def K(o):
