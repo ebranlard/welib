@@ -67,7 +67,7 @@ def cross(u, v):
 # --- Connections 
 # --------------------------------------------------------------------------------{
 class Connection():
-    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True, parentNode=None, parentBody=None, sympy=False):
+    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None, JointTranslations=None, OrientAfter=True, parentNode=None, parentBody=None, sympy=False):
         self.sympy = sympy
         if RelOrientation is None:
             RelOrientation=self.eye(3)
@@ -89,6 +89,8 @@ class Connection():
         # Related to rigid body joint rotations (e.g. dynamic shaft, but potentially yaw or tilt, less common)
         self.I_DOF = None  # Index of joints DOF in global DOF vector
         self.q     = None  # Index of joints DOF in global DOF vector
+        self.JointRotations = JointRotations
+        self.JointTranslations = JointTranslations
 
         if self.parentNode is not None:
             if self.parentBody is None:
@@ -100,11 +102,36 @@ class Connection():
 
         if self.Type=='Rigid':
             self.nj=0
-        elif self.Type=='SphericalJoint':
-            self.JointRotations=JointRotations;
-            self.nj=len(self.JointRotations);
+        elif self.Type in ['SphericalJoint', 'Joint']:
+            if self.JointRotations is None:
+                raise Exception('JointRotations is required for Joint/SphericalJoint')
+            self.nj=len(self.JointRotations)
+        elif self.Type=='Free':
+            if self.JointTranslations is None:
+                self.JointTranslations = ['x', 'y', 'z']
+            if self.JointRotations is None:
+                self.JointRotations = ['x', 'y', 'z']
+            self.nj = len(self.JointTranslations) + len(self.JointRotations)
         else:
             raise NotImplementedError()
+
+    def _axis_unit(j, rot):
+        if rot=='x':
+            return j.vec3([1,0,0])
+        elif rot=='y':
+            return j.vec3([0,1,0])
+        elif rot=='z':
+            return j.vec3([0,0,1])
+        raise Exception('Unknown axis {}'.format(rot))
+
+    def _axis_rotation(j, rot, qval):
+        if rot=='x':
+            return R_x(qval)
+        elif rot=='y':
+            return R_y(qval)
+        elif rot=='z':
+            return R_z(qval)
+        raise Exception('Unknown axis {}'.format(rot))
 
     def updateConnectionKinematics(j, q):
         """ Connection/joint updateConnectionKinematics
@@ -118,32 +145,38 @@ class Connection():
         if j.Type=='Rigid':
             j.R_ci=j.R_ci_0
 
-        elif j.Type=='SphericalJoint':
-            R = np.eye(3)
-            myq    = q   [j.I_DOF,0];
+        elif j.Type in ['SphericalJoint', 'Joint', 'Free']:
+            R = j.eye(3)
+            if j.sympy:
+                myq = [q[int(i), 0] for i in np.asarray(j.I_DOF).ravel()]
+            else:
+                myq = q[j.I_DOF, 0]
             j.q = myq
-            #myqdot = qdot[j.I_DOF];
+            iq = 0
 
-            for ir,rot in enumerate(j.JointRotations):
-                if rot=='x':
-                    I=np.array([1,0,0])
-                    Rj=R_x( myq[ir] )
-                elif rot=='y':
-                    I=np.array([0,1,0])
-                    Rj=R_y( myq[ir] )
-                elif rot=='z':
-                    I=np.array([0,0,1])
-                    Rj=R_z( myq[ir] )
-                else:
-                    raise Exception()
-                # Setting Bhat column by column
-                j.B_ci[3:,ir] = R @ I # NOTE: needs to be done before R updates
+            if j.Type=='Free':
+                s = j.vec3(j.s_C0_inB)
+                for itr,tra in enumerate(j.JointTranslations):
+                    I = j._axis_unit(tra)
+                    qtr = myq[itr]
+                    j.B_ci[:3,iq] = I
+                    s = s + qtr * I
+                    iq += 1
+                j.s_C_inB = s
+
+            for rot in j.JointRotations:
+                I = j._axis_unit(rot)
+                Rj = j._axis_rotation(rot, myq[iq])
+                # Setting Bhat column by column (before R updates)
+                j.B_ci[3:,iq] = R @ I
                 # Updating rotation matrix
                 R      = R @ Rj
-                if j.OrientAfter:
-                    j.R_ci = j.Matrix(R @ j.R_ci_0)
-                else:
-                    j.R_ci = j.Matrix(j.R_ci_0 @ R)
+                iq += 1
+
+            if j.OrientAfter:
+                j.R_ci = j.Matrix(R @ j.R_ci_0)
+            else:
+                j.R_ci = j.Matrix(j.R_ci_0 @ R)
 
         else:
             raise NotImplementedError('Joint Type' + j.Type)
@@ -278,12 +311,43 @@ class YAMSRecBody(GenericBody):
         s+='|Methods: connectTo, updateChildrenKinematicsNonRecursive \n'
         return s
 
-    def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, OrientAfter=True):
+    def kinematics_export(B):
+        """Return a canonical kinematics payload for cross-flavor comparisons.
+
+        This intentionally exposes a stable dictionary schema so the numeric
+        recursive and sympy-mechanics flavors can be compared without forcing
+        implementation unification yet.
+        """
+        def _safe_get(attr, default=None):
+            return getattr(B, attr) if hasattr(B, attr) else default
+
+        return {
+            'name': B.name,
+            'flavor': 'yams_rec',
+            'sympy': bool(B.sympy),
+            'nf': int(B.nf) if hasattr(B, 'nf') else 0,
+            'I_DOF': _safe_get('I_DOF', None),
+            'pos_global': _safe_get('pos_global', None),
+            'R_b2g': _safe_get('R_b2g', None),
+            'R_g2b': _safe_get('R_g2b', None),
+            'R_bc': _safe_get('R_bc', None),
+            'Bhat_x_bc': _safe_get('Bhat_x_bc', None),
+            'Bhat_t_bc': _safe_get('Bhat_t_bc', None),
+            'B': _safe_get('B', None),
+            'B_inB': _safe_get('B_inB', None),
+            'BB_inB': _safe_get('BB_inB', None),
+        }
+
+    def kinematics_export_tree(B):
+        """Return canonical kinematics payload for this body and descendants."""
+        return [b.kinematics_export() for b in B.bodies]
+
+    def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, JointTranslations=None, OrientAfter=True):
         """ 
          - BodyPoint: in FirstPoint or LastPoint 
         """
-        if Type == 'SphericalJoint': 
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, sympy=self.sympy)
+        if Type in ['SphericalJoint', 'Joint', 'Free']:
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, JointTranslations=JointTranslations, OrientAfter=OrientAfter, sympy=self.sympy)
 
         elif Type == 'Rigid': 
             i_C_inB    = None
@@ -299,7 +363,7 @@ class YAMSRecBody(GenericBody):
                 if Point is None:
                     Point = self.s_P0[:,i_C_inB]
 
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self, sympy=self.sympy)
+            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations, JointTranslations=JointTranslations, OrientAfter=OrientAfter, parentNode=i_C_inB, parentBody=self, sympy=self.sympy)
 
         self.Children.append(Child)
         self.Connections.append(c)
@@ -579,7 +643,7 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
         s+='||'+'\n|'.join(GenericInertialBody.__repr__(self).split('\n'))+'--->\n'
         s+='|Properties:\n'
         s+='|- nq: {}\n'.format(self.nq)
-        s+='|- q:  {}\n'.format(pm(self.q.T))
+        s+='|- q:  {}\n'.format(pm(self.q))
         try:
             bnames = [b.name for b in self.bodies]
         except:

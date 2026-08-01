@@ -24,7 +24,7 @@ from sympy import zeros, transpose
 # from sympy.physics.mechanics import Body as SympyBody
 from sympy.physics.mechanics import RigidBody as SympyRigidBody
 from sympy.physics.mechanics import Point, ReferenceFrame, inertia, dynamicsymbols
-from sympy.physics.mechanics.functions import msubs
+from sympy.physics.mechanics.functions import msubs, find_dynamicsymbols
 
 from sympy.physics.vector import init_vprinting, vlatex
 
@@ -363,6 +363,100 @@ class YAMSBody(object):
 
     def __str__(self):
         return self.__repr__()
+
+    def _iter_bodies(self):
+        """Yield this body and descendants in tree order."""
+        yield self
+        for c in self.children:
+            for cc in c._iter_bodies():
+                yield cc
+
+    def kinematics_export(self, speed_symbols=None):
+        """Return a canonical kinematics payload for cross-flavor comparisons.
+
+        The schema mirrors the recursive flavor. Values not available from the
+        sympy-mechanics path yet are set to None.
+        """
+        def _safe_call(callable_obj, default=None):
+            try:
+                return callable_obj()
+            except Exception:
+                return default
+
+        def _safe_get(attr, default=None):
+            return getattr(self, attr) if hasattr(self, attr) else default
+
+        B = None
+        B_inB = None
+        BB_inB = None
+        inferred_speeds = None
+        Bhat_x_bc = None
+        Bhat_t_bc = None
+        R_bc = None
+        try:
+            if self.inertial_frame is not None:
+                v = self.origin.vel(self.inertial_frame).to_matrix(self.inertial_frame)
+                om = self.frame.ang_vel_in(self.inertial_frame).to_matrix(self.inertial_frame)
+                kin_vec = Matrix.vstack(v, om)
+
+                if speed_symbols is None:
+                    # Keep only first-order time derivatives as speed-like symbols.
+                    ds = list(find_dynamicsymbols(kin_vec))
+                    inferred_speeds = [d for d in ds if hasattr(d, 'derivative_count') and d.derivative_count == 1]
+                    inferred_speeds = sorted(inferred_speeds, key=lambda s: str(s))
+                else:
+                    inferred_speeds = list(speed_symbols)
+
+                if len(inferred_speeds) > 0:
+                    B = kin_vec.jacobian(inferred_speeds)
+
+                    # B in body coordinates, mirroring yams_rec.fB_inB.
+                    R = self.R_b2g
+                    B_inB = Matrix.vstack(R.T * B[:3, :], R.T * B[3:, :])
+
+                    # Augmented BB matrix, mirroring yams_rec.fB_aug semantics for a single body export.
+                    nf = int(len(self.q)) if hasattr(self, 'q') else 0
+                    if nf > 0:
+                        Z6 = Matrix.zeros(6, nf)
+                        Zf = Matrix.zeros(nf, B_inB.shape[1])
+                        If = Matrix.eye(nf)
+                        BB_inB = Matrix.vstack(Matrix.hstack(B_inB, Z6), Matrix.hstack(Zf, If))
+                    else:
+                        BB_inB = B_inB
+
+                # Flexible-body connection-level kinematics in body coordinates.
+                if hasattr(self, '_connection_kinematics_bc'):
+                    R_bc, Bhat_x_bc, Bhat_t_bc = self._connection_kinematics_bc()
+        except Exception:
+            B = None
+            B_inB = None
+            BB_inB = None
+            inferred_speeds = None
+            R_bc = None
+            Bhat_x_bc = None
+            Bhat_t_bc = None
+
+        return {
+            'name': self.name,
+            'flavor': 'yams_sympy',
+            'sympy': True,
+            'nf': int(len(self.q)) if hasattr(self, 'q') else 0,
+            'I_DOF': _safe_get('I_DOF', None),
+            'pos_global': _safe_call(lambda: self.pos_global, None),
+            'R_b2g': _safe_call(lambda: self.R_b2g, None),
+            'R_g2b': _safe_call(lambda: self.R_g2b, None),
+            'R_bc': R_bc if R_bc is not None else _safe_get('R_bc', None),
+            'Bhat_x_bc': Bhat_x_bc if Bhat_x_bc is not None else _safe_get('Bhat_x_bc', None),
+            'Bhat_t_bc': Bhat_t_bc if Bhat_t_bc is not None else _safe_get('Bhat_t_bc', None),
+            'B': B if B is not None else _safe_get('B', None),
+            'B_inB': B_inB if B_inB is not None else _safe_get('B_inB', None),
+            'BB_inB': BB_inB if BB_inB is not None else _safe_get('BB_inB', None),
+            'speed_symbols': inferred_speeds,
+        }
+
+    def kinematics_export_tree(self):
+        """Return canonical kinematics payload for this body and descendants."""
+        return [b.kinematics_export() for b in self._iter_bodies()]
 
     # --------------------------------------------------------------------------------}
     # --- Useful getters
@@ -1220,6 +1314,33 @@ class YAMSFlexibleBody(YAMSBody):
         self.ucList =uList # "PhiU" values at connection point for each mode
         self.vcList =vList # "PhiV" values at connection point for each mode
 
+    def _connection_kinematics_bc(self):
+        """Return (R_bc, Bhat_x_bc, Bhat_t_bc) at the body connection point.
+
+        This mirrors the connection-point quantities used by yams_rec for
+        recursive kinematics assembly, using current symbolic extremity
+        substitutions from this flexible body.
+        """
+        nq = len(self.q)
+        if nq == 0:
+            return Matrix.eye(3), Matrix.zeros(3, 0), Matrix.zeros(3, 0)
+
+        # Substituted elastic tip displacement/rotation at connection point.
+        ux = sp.sympify(self.uc[0]).subs(self.ucSubs)
+        uy = sp.sympify(self.uc[1]).subs(self.ucSubs)
+        uz = sp.Integer(0)
+        ax = sp.sympify(self.alpha[0]).subs(self.alphaSubs)
+        ay = sp.sympify(self.alpha[1]).subs(self.alphaSubs)
+        az = sp.sympify(self.alpha[2]).subs(self.alphaSubs)
+
+        u_expr = Matrix([ux, uy, uz])
+        a_expr = Matrix([ax, ay, az])
+
+        Bhat_x_bc = u_expr.jacobian(self.q)
+        Bhat_t_bc = a_expr.jacobian(self.q)
+        R_bc = rotToDCM('SmallRot', (a_expr[0], a_expr[1], a_expr[2]))
+        return R_bc, Bhat_x_bc, Bhat_t_bc
+
     def bodyMassMatrix(self, q=None, form='TaylorExpanded', order=None, dof=None):
         """ Body mass matrix in body coordinates M'(q)
         form is ['symbolic' , 'TaylorExpanded']
@@ -1614,6 +1735,8 @@ class YAMSFlexibleBody(YAMSBody):
           - by default doSubs is True
               alpha_y - > nu y*q 
         """
+        # Ensure scalar entries are SymPy objects so `.subs` works for numeric literals.
+        rel_pos = [sp.sympify(r) for r in rel_pos]
         rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
         # Computing DCM due to elastic motion
         M_B2e = rotToDCM(rot_type_elastic, rot_amounts = parent.alpha, rot_order=rot_order_elastic) # from parent to deformed parent 
