@@ -342,6 +342,34 @@ class YAMSRecBody(GenericBody):
         """Return canonical kinematics payload for this body and descendants."""
         return [b.kinematics_export() for b in B.bodies]
 
+    def B_matrix(B, in_body=False):
+        """Return kinematic B matrix at the body origin.
+
+        Parameters
+        ----------
+        in_body : bool
+            If True, return body-coordinate matrix (B_inB), otherwise global (B).
+        """
+        return B.B_inB if in_body else B.B
+
+    def BB_matrix(B):
+        """Return augmented body-coordinate BB matrix."""
+        return B.BB_inB
+
+    def Bhat_matrix(B, kind='x'):
+        """Return connection-point Bhat matrix for flexible coupling.
+
+        Parameters
+        ----------
+        kind : {'x','t'}
+            'x' for translational part, 't' for rotational part.
+        """
+        if kind == 'x':
+            return B.Bhat_x_bc
+        if kind == 't':
+            return B.Bhat_t_bc
+        raise ValueError("kind should be 'x' or 't'")
+
     def connectTo(self, Child, Point=None, Type=None, BodyPoint=None, RelOrientation=None, JointRotations=None, JointTranslations=None, OrientAfter=True):
         """ 
          - BodyPoint: in FirstPoint or LastPoint 
@@ -450,7 +478,10 @@ class YAMSRecBody(GenericBody):
             # TODO flexible dofs and velocities/acceleration
             if len(body_i.I_DOF)>0:
                 # NOTE: won't work for sympy if indexing is empty
-                body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
+                if p.sympy:
+                    body_i.gzf = Matrix([q[int(i), 0] for i in np.asarray(body_i.I_DOF).ravel()])
+                else:
+                    body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
 
 #            TODO TODO TODO: remaining from matlab?????
             gzf  = body_i.gzf
@@ -762,9 +793,13 @@ class YAMSRecRigidBody(YAMSRecBody,GenericRigidBody):
         B.s_G_inB = B.masscenter
         B.J_G_inB = B.masscenter_inertia
         B.J_O_inB = translateInertiaMatrixFromCOG(B.J_G_inB, mass, -B.s_G_inB)
-        B.MM = buildRigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB) # TODO change interface
-        B.DD = np.zeros((6,6))
-        B.KK = np.zeros((6,6))
+        B.MM = buildRigidBodyMassMatrix(mass, B.J_O_inB, B.s_G_inB, symb=sympy) # TODO change interface
+        if sympy:
+            B.DD = Matrix(np.zeros((6,6)).astype(int))
+            B.KK = Matrix(np.zeros((6,6)).astype(int))
+        else:
+            B.DD = np.zeros((6,6))
+            B.KK = np.zeros((6,6))
         # END - YAMSRec RigidBody
 
     def __repr__(self):

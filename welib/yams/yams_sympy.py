@@ -458,6 +458,39 @@ class YAMSBody(object):
         """Return canonical kinematics payload for this body and descendants."""
         return [b.kinematics_export() for b in self._iter_bodies()]
 
+    def B_matrix(self, in_body=False, speed_symbols=None):
+        """Return kinematic B matrix at the body origin.
+
+        Parameters
+        ----------
+        in_body : bool
+            If True, return body-coordinate matrix (B_inB), otherwise global (B).
+        speed_symbols : list or None
+            Optional speed symbols to force Jacobian column ordering.
+        """
+        payload = self.kinematics_export(speed_symbols=speed_symbols)
+        return payload['B_inB'] if in_body else payload['B']
+
+    def BB_matrix(self, speed_symbols=None):
+        """Return augmented body-coordinate BB matrix."""
+        payload = self.kinematics_export(speed_symbols=speed_symbols)
+        return payload['BB_inB']
+
+    def Bhat_matrix(self, kind='x'):
+        """Return connection-point Bhat matrix for flexible coupling.
+
+        Parameters
+        ----------
+        kind : {'x','t'}
+            'x' for translational part, 't' for rotational part.
+        """
+        payload = self.kinematics_export()
+        if kind == 'x':
+            return payload['Bhat_x_bc']
+        if kind == 't':
+            return payload['Bhat_t_bc']
+        raise ValueError("kind should be 'x' or 't'")
+
     # --------------------------------------------------------------------------------}
     # --- Useful getters
     # --------------------------------------------------------------------------------{
