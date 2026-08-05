@@ -208,7 +208,10 @@ class Connection():
             iNode = j.parentNode
             # How much the parentBody node has translated in parent body
             #uP0P = j.vec3(j.parentBody.s_P[:,iNode])-j.vec3(j.parentBody.s_P0[:,iNode])
-            s_P = j.vec3(j.parentBody.s_P[:,iNode])
+            if j.parentBody.nf>0:
+                s_P = j.vec3(j.parentBody.s_P[:,iNode])
+            else:
+                s_P = j.vec3(j.parentBody.s_P0[:,iNode])
             #uP0P = s_P-j.s_PP_0_inB  # KEEP me Translation of P
             s_PC = R_pc @ j.s_P0C0_inB
             j.s_C_inB = s_P  + s_PC
@@ -492,9 +495,20 @@ class YAMSRecBody(GenericBody):
                     body_i.gzf = Matrix([q[int(i), 0] for i in np.asarray(body_i.I_DOF).ravel()])
                 else:
                     body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
+            else:
+                body_i.gzf = []
 
 #            TODO TODO TODO: remaining from matlab?????
             gzf  = body_i.gzf
+            #print('>>>>> gzf',gzf, 'name:', body_i.name)
+            #if len(gzf)>0:
+            #    try:
+            #        if ~np.isfinite(gzf).any():
+            #            print('>>> gzf not finite 3')
+            #            import pdb; pdb.set_trace()
+            #    except:
+            #        print('>>> gzf not finite 2')
+            #        import pdb; pdb.set_trace()
 #             gz   = q    (i.I_DOF);
 #             gzp  = qdot (i.I_DOF);
 #             gzpp = qddot(i.I_DOF);
@@ -704,40 +718,61 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
         freq_d, zeta, Q, freq_0 = eigMCK(MM, DD, KK, method='full_matrix', sort=True)
         return freq_d, zeta, Q, freq_0
 
-    def modes(o, norm='tip_norm'):
+    def modes(o, norm='tip_norm', main_axis='x', nBodies=None, Q_in=None):
         # Backup current q
         q_before = o.q
         # Perform EVA
         freq_d, zeta, Q, freq_0 = o.eva()
         # Apply each mode, to compute full position of structure
         Modes=[]
-        for q in Q.T: # loop though columns
+        if Q_in is not None:
+            print('[USING USER MODES]')
+            Q=Q_in
+        for iq, q in enumerate(Q.T): # loop though columns
+
+            if np.iscomplex(q).any():
+                amplitude = np.abs(q)
+                phase = np.angle(q, deg=True)
+                q=np.abs(q)
+#                 if iq==0:
+#                     q[:3]=np.asarray([1,0,0])
+#                 elif iq==1:
+#                     q[:3]=np.asarray([0,1,0])
+#                 else:
+#                     q[:3]=np.asarray([0,0,1])
+                print('[INFO] mode is complex, using', q)
             o.setDOF(q)
-            mode = o._all_positions_global
+            mode = o._all_positions_global(nBodies=nBodies)
             Modes.append(mode)
             # --- Mode scaling
             # TODO figure out main "dimension"
+
             # Sript below assumes x is main dimension
-            # TODO TODO normalization is not bullet proof..
-            Uy = mode[1,:]
-            Uz = mode[2,:]
-            maxAmp  = [np.max(np.abs(Uy)), np.max(np.abs(Uz))]
-            iMaxAmp = np.mod(np.argmax(maxAmp)+1,3)
-            iOther  = 1 if iMaxAmp==2 else 2
-            if norm=='tip_norm':
-                tipVal = mode[iMaxAmp, -1]
-                fact = tipVal
-                mode[iMaxAmp,:] /= fact
-                mode[iOther,:] /= fact
-            elif norm=='max':
-                maxVal = np.max(np.abs(mode[iMaxAmp, :]))
-                iMaxVal = np.argmax(np.abs(mode[iMaxAmp,:]))
-                fact = 1 / mode[iMaxAmp, iMaxVal]
-                mode[iMaxAmp,:] /= fact
-                mode[iOther,:] /= fact
-            elif norm=='mode_mass':
-                raise Exception()
-                pass
+
+            if main_axis=='x':
+                Uy = mode[1,:]
+                Uz = mode[2,:]
+                # TODO TODO normalization is not bullet proof..
+                maxAmp  = [np.max(np.abs(Uy)), np.max(np.abs(Uz))]
+                iMaxAmp = np.mod(np.argmax(maxAmp)+1,3)
+                iOther  = 1 if iMaxAmp==2 else 2
+                if norm=='tip_norm':
+                    tipVal = mode[iMaxAmp, -1]
+                    fact = tipVal
+                    mode[iMaxAmp,:] /= fact
+                    mode[iOther,:] /= fact
+                elif norm=='max':
+                    maxVal = np.max(np.abs(mode[iMaxAmp, :]))
+                    iMaxVal = np.argmax(np.abs(mode[iMaxAmp,:]))
+                    fact = 1 / mode[iMaxAmp, iMaxVal]
+                    mode[iMaxAmp,:] /= fact
+                    mode[iOther,:] /= fact
+                elif norm=='mode_mass':
+                    raise Exception()
+                    pass
+            elif main_axis=='z':
+                Uy = mode[0,:]
+                Uz = mode[1,:]
 
 
         # Restore current q
@@ -745,15 +780,19 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
 
         return Modes
 
-    @property
-    def _all_positions_global(o): # TODO rename 
+    def _all_positions_global(o, nBodies=None): # TODO rename 
         """ Return shape of full structure"""
+        if nBodies is None:
+            nBodies = len(o.bodies)
         for ib, b in enumerate(o.bodies):
             pos = b._positions_global
             if ib==0:
                 all_pos = pos
             else:
                 all_pos = np.column_stack((all_pos,pos))
+                if ib >=nBodies:
+#                     print('>>>>>>>>>>> RETURNING', b.name)
+                    return all_pos
         return all_pos
 
 
@@ -978,9 +1017,11 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
     def updateKinematics(o,x_0,R_b2g,gz,v_0,a_v_0, verbose=False):
         """ YAMSRec BeamBody updateKinematics"""
         super(YAMSRecBeamBody,o).updateKinematics(x_0, R_b2g, gz, v_0, a_v_0)
+
         # --- Calculation of deformations wrt straight beam axis, curvature (K) and velocities (UP)
         #print(f'>>>>>>>>>>>>>>>>>> Update Kin flexible body {o.name} nf={o.nf} nc={len(o.Connections)} sympy={o.sympy}')
         if o.nf>0:
+
             o.gzpf  = v_0[6:]
             o.gzppf = a_v_0[6:]
             # Deflections shape
@@ -990,6 +1031,10 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
             #o.U(1,:) = o.s_span; 
             o.UP = np.zeros((3,o.nSpan));
             if not o.sympy:
+                if (~np.isfinite(o.gzf)).any():
+                    print('>>> gzf not finite')
+                    raise Exception()
+
                 # TODO for sympy
                 for j in range(o.nf):
                     o.U [0:3,:] = o.U [0:3,:] + o.gzf[j]  * o.PhiU[j][0:3,:]
@@ -1032,8 +1077,12 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
 
     @property
     def _positions_global(B): # TODO rename
-        displ_g = B.R_b2g.dot(B.s_P) # TODO reference line or COG
+        if hasattr(B, 's_P'):
+            displ_g = B.R_b2g.dot(B.s_P) # TODO reference line or COG
+        else:
+            displ_g = B.R_b2g.dot(B.s_P0) # TODO reference line or COG
         r_O = B.pos_global
+        #print('_positions_global: Body:', B.name, 'Origin:', r_O)
         pos_g = displ_g
         pos_g[0,:] += r_O[0]
         pos_g[1,:] += r_O[1]
@@ -1184,7 +1233,7 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
 class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
             spanFrom0=False, massExpected=None, gravity=None,
-            algo='', # TODO OpenFAST
+            algo='', FEM_method=None,# TODO OpenFAST
             sympy=False
             ):
         """ 
@@ -1205,7 +1254,7 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
                 spanFrom0=spanFrom0,
                 massExpected=massExpected,
                 gravity=gravity,
-                algo=algo
+                algo=algo, FEM_method=FEM_method
                 )
         # We need to inherit from "YAMS" Beam not just generic Beam
         # NOTE: TODO TODO TODO: This will result in "YAMSBeamBody to be called twice...)

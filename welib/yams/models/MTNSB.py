@@ -207,6 +207,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                  bladeMassExpected=None,
                  gravity=None,
                  algo='', # TODO replace with OpenFAST
+                 FEM_method=None
                  ):
         """ 
         Returns the following structure
@@ -282,10 +283,13 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                         flavor='yams_rec')
         # --- FND body
         Mtop = self.WT.RNA.mass
+        #import pdb; pdb.set_trace()
+        print('>>> Potential SubDyn Mtop', Mtop)
         self.setupSD(shapes=shapes_sub, nSpan=nSpan_sub,
                      Mtop = Mtop,
-                     bStiffening=bStiffening,
-                     flavor='yams_rec')
+                     bStiffening=False,
+                     flavor='yams_rec',
+                     FEM_method=FEM_method)
 
         # --------------------------------------------------------------------------------}
         # --- Initial conditions and DOFs
@@ -313,6 +317,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         WT.FST = self.FST
         WT.ED  = self.ED
         WT.SD  = self.SD
+        WT.fnd.WD=self.SD
         WT.Hydro     = self.FST['CompHydro']>0 # FST['CompSeaSt']>0 and 
         WT.HD        = self.DCK.fst_vt['HydroDyn']
         try:
@@ -354,12 +359,12 @@ if __name__=='__main__':
     #WT = FASTmodel2TNSB(fstFile, q=q, shapes_twr=[0], shapes_bld=[], main_axis='z', assembly='auto').WT
     #print(WT)
 
-#     print('=============================================================================')
-#     print('--------------- REF ----------------')
-#     q = [0, 0.0, 0, 0.000]
-#     WT = FASTmodel2MTNSB(fstFile, q=q, shapes_sub=[0,4], shapes_twr=[0], main_axis='z').WT
-#     print(WT)
-#     printMat(WT.MM)
+    print('=============================================================================')
+    print('--------------- REF ----------------')
+    q = [0, 0.0, 0, 0.000]
+    WT = FASTmodel2MTNSB(fstFile, q=q, shapes_sub=[0,4], shapes_twr=[0], main_axis='z').WT
+    print(WT)
+    printMat(WT.MM)
     #printMat(WT.twr.B)
     #printMat(WT.twr.B_inB)
     #printMat(WT.twr.BB_inB)

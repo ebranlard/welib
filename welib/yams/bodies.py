@@ -20,6 +20,7 @@ from welib.yams.utils import buildRigidBodyMassMatrix
 from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GeneralizedMCK_PolyBeam
 from welib.yams.flexibility import checkRegularNode
+from welib.tools.strings import WARN
 # from welib.yams.utils import skew
 
 
@@ -753,15 +754,21 @@ class FASTBeamBody(BeamBody):
             bldStartAtRotorCenter=True,
             massExpected=None,
             gravity=None,
-            algo=''):
+            algo='', FEM_method=None):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
-           inp: blade or tower file, as read by weio
+
+           inp:  
+                  blade, tower or SubDyn file, as read by weio
+                or
+                  instance of SubDyn class
+
            Mtop: top mass if any
            nSpan: number of spanwise station used (interpolated from input)
                   Use -1 or None to use number of stations from input file
         """
+        from welib.fast.subdyn import SubDyn   
         damp_zeta     = None
         RayleighCoeff = None
         DampMat       = None
@@ -770,9 +777,19 @@ class FASTBeamBody(BeamBody):
         if algo=='OpenFAST': 
             int_method='OpenFAST'
 
+        # ---
+        if isinstance(inp, SubDyn):
+            keys = inp.File.keys()
+        else:
+            keys = inp.keys()
+
+
         # --- Reading properties, coefficients
         exp = np.arange(2,7)
-        if 'BldProp' in inp.keys():
+        if 'BldProp' in keys:
+            # --------------------------------------------------------------------------------}
+            # --- Blade
+            # --------------------------------------------------------------------------------{
             # --- Blade
             name      = 'bld'
             shapeBase = ['BldFl1','BldFl2','BldEdg']
@@ -849,10 +866,13 @@ class FASTBeamBody(BeamBody):
             R_SB = np.dot(R_SB, R_y(ED['PreCone(1)']*np.pi/180))  # Blade 2 shaft
             R_b2g= R_SB
 
-        elif 'TowProp' in inp.keys():
+        elif 'TowProp' in keys:
+            # --------------------------------------------------------------------------------}
+            # --- Tower
+            # --------------------------------------------------------------------------------{
             # --- Tower
             name      = 'twr'
-            shapeBase = ['TwFAM1','TwFAM2','TwSSM1','TwSSM2']
+            shapeBase = ['TwFAM1','TwFAM2','TwSSM1','TwSSM2'] # WATCH OUT ORDER
             if shapes is None:
                 shapes=[0,1,2,3]
             coeff = np.zeros((len(exp), len(shapes)))
@@ -879,12 +899,29 @@ class FASTBeamBody(BeamBody):
                     nSpan = ED['TwrNodes']
                     #print('Using nSpan = TwrNodes = ',nSpan)
 
-        elif 'SttcSolve' in inp.keys():
+        elif 'SttcSolve' in keys:
+            # --------------------------------------------------------------------------------}
+            # ---SubDyn
+            # --------------------------------------------------------------------------------{
             # --- Substructure / fnd
-            from welib.fast.subdyn import SubDyn   
             name = 'fnd'
-            sd = SubDyn(inp)
-            p, damp_zeta, RayleighCoeff, DampMat = sd.toYAMSData(shapes)
+            if isinstance(inp, SubDyn):
+                sd = inp
+            else:
+                sd = SubDyn(inp)
+
+            if FEM_method =='cbeam':
+                pass
+            else:
+                sd.init(TP=(0,0,ED['PtfmRefzt'])) # Better to use FEM_method !='cbeam' for proper shape functions
+                print('>>>> freqs', sd._FEM.freq[:3])
+
+            if len(sd.concentrated_masses)>0:
+                # We have the effect of the CM in the shape functions if we use FEM_method!=cbeam
+                # But Since we use the shape function approach, they won't show up in the mass matrix.
+                WARN('Bodies: FASTBeamBody: SubDyn with concentrated mass needs extra thinking')
+
+            p, damp_zeta, RayleighCoeff, DampMat, df_G = sd.toYAMSData(shapes, method=FEM_method)
             r_O   = p['r_O']
             R_b2g = p['R_b2g']
 
@@ -926,5 +963,6 @@ class FASTBeamBody(BeamBody):
         self.FASTInpuFile    = inp
         self.additional_properties+=['shapes', 'FASTInpuFile']
         if 'fnd' in name:
+            #print('Storing SD in body')
             self.SD = sd
             self.additional_properties+=['shapes', 'FASTInpuFile', 'SD']

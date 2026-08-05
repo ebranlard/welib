@@ -912,7 +912,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         # ax.text(2,Ylim2[0]+(Ylim2[1]-Ylim2[0])*0.89, sStats, fontsize=11 )
         # 
         ax.plot(df['Time_[s]'], df['Qaero_ref_[N]' ]    , color=fColrs(1),   label='OpenFAST')
-        ax.plot(df['Time_[s]'], df['Qaero_est_[N]' ],':', color=fColrs(4),  label='Estimated')
+        ax.plot(df['Time_[s]'], df['Qaero_est_[N]' ],':', color=fColrs(4),  label='From WS Estimated')
         # #ax.plot(df['Time_[s]'], df['Qaero_eval_[N]'], '--', label='Evaluated')
         ax.set_ylabel('Qaero [N]')
         # ax.set_ylim(Ylim2)

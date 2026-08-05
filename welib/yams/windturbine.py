@@ -906,7 +906,7 @@ class FASTWindTurbine():
         self.bldFile = self.DCK.fst_vt['ElastoDynBlade']
         self.twrFile = self.DCK.fst_vt['ElastoDynTower']
         # TODO, MoorDyn, BeamDyn 
-        self.SD      = self.DCK.fst_vt['SubDyn']
+        self.SDFile = self.DCK.fst_vt['SubDyn']
 
     def setGravity(self, gravity=None):
         if gravity is not None:
@@ -957,24 +957,26 @@ class FASTWindTurbine():
 
 
     def setupSDInit(self):
+        from welib.fast.subdyn import SubDyn
         # Mostly to get zBot..
+        self.SD = SubDyn(self.SDFile) # TODO TODO
         # We store everything in SD for convenience
-        self.SD.graph = self.SD.toGraph() # NOTE: this is repeated in bodies.py...
-        self.SD.graph.divideElements(self.SD['NDiv'])
-        self.SD.graph.sortNodesBy('z')
-        df = self.SD.graph.nodalDataFrame()
+        self.SD.graph__ = self.SDFile.toGraph() 
+        self.SD.graph__.divideElements(self.SDFile['NDiv'])
+        self.SD.graph__.sortNodesBy('z')
+        df = self.SD.graph__.nodalDataFrame()
         self.SD.zBot = np.min(df['z'])
         self.SD.zTop = np.max(df['z'])
         self.SD.RayleighCoeff = None
         self.SD.DampMat       = None
-        if self.SD['GuyanDampMod']==1:
+        if self.SDFile['GuyanDampMod']==1:
             # Rayleigh Damping
-            self.SD.RayleighCoeff=self.SD['RayleighDamp']
+            self.SD.RayleighCoeff=self.SDFile['RayleighDamp']
             #if RayleighCoeff[0]==0:
             #    damp_zeta=omega*RayleighCoeff[1]/2. 
-        elif self.SD['GuyanDampMod']==2:
+        elif self.SDFile['GuyanDampMod']==2:
             # Full matrix
-            self.SD.DampMat = self.SD['GuyanDampMatrix']
+            self.SD.DampMat = self.SDFile['GuyanDampMatrix']
             self.SD.DampMat = self.SD.DampMat[np.ix_(shapes,shapes)]
 
 
@@ -1276,6 +1278,7 @@ class FASTWindTurbine():
         # --- Twr
         if shapes is None: 
             shapes=[]
+            # TODO WATCH OUT ORDER
             if ED['TwFADOF1']:
                 shapes+=[0]
             if ED['TwFADOF2']:
@@ -1294,6 +1297,17 @@ class FASTWindTurbine():
                                       bStiffening=bStiffening, algo=WT.algo,
                                       gravity=WT.gravity
                                       )
+            if WT.algo=='OpenFAST':
+                WARN('Windturbine: OVERRIDDING Tower values with OpenfAST algorithm computation"')
+                twr.MM[0,0]         = self.pTwr['TwrMass']
+                twr.MM[1,1]         = self.pTwr['TwrMass']
+                twr.MM[2,2]         = self.pTwr['TwrMass']
+                twr.MM      [6:,6:] = self.pTwr['Me']   [np.ix_(shapes,shapes)]
+                twr.KK      [6:,6:] = self.pTwr['Ke']   [np.ix_(shapes,shapes)]
+                twr.KK0     [6:,6:] = self.pTwr['Ke0']  [np.ix_(shapes,shapes)]
+                twr.KKg_self[6:,6:] = self.pTwr['Kg_SW'][np.ix_(shapes,shapes)]
+                #twr.KKg_Mtop[6:,6:] = self.pTwr['Kg_TM'][np.ix_(shapes,shapes)]
+                twr.DD      [6:,6:] = self.pTwr['De']   [np.ix_(shapes,shapes)]
         else:
             twr = FASTBeamBody(ED, self.twrFile, 
                                Mtop=WT.RNA.mass, 
@@ -1324,15 +1338,18 @@ class FASTWindTurbine():
 
 
 
-    def setupSD(self, Mtop=0, shapes=None, nSpan=None, bStiffening=True, flavor=''):
+    def setupSD(self, Mtop=0, shapes=None, nSpan=None, bStiffening=True, flavor='', FEM_method='cbeam'):
         if self.SD is None:
             raise Exception('SD is not set')
-        fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity, algo=self.WT.algo)
+        fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
+                                  main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
+                                  FEM_method=FEM_method) #, algo=self.WT.algo) # NOTE: OpeNFAST commented
+
         #print(Fnd)
         #print('Fnd MM\n',Fnd.MM[6:,6:])
         #print('Fnd KK\n',Fnd.KK[6:,6:])
         # HACK here because doesn't handle this for now
-        if self.SD['GuyanDampMod']==1:
+        if self.SDFile['GuyanDampMod']==1:
             fnd.DD[6:,6:] = fnd.MM[6:,6:]*self.SD.RayleighCoeff[0] + fnd.KK[6:,6:]*self.SD.RayleighCoeff[1] 
         self.WT.fnd = fnd
 
@@ -1405,7 +1422,7 @@ class FASTWindTurbine():
     def setActiveDOFs(self, fixedShaft=False, shapes_sub=None, shapes_twr=None, shapes_bld=None, verbose=False):
         # Override based on model
         SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
-        TWR_NAMES =  ['q_FA1', 'q_SS1','q_FA2', 'q_SS2'] # Twr
+        TWR_NAMES =  ['q_FA1', 'q_FA2', 'q_SS1', 'q_SS2'] # Twr
         BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
 
         NAMEOFF=[]
