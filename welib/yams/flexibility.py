@@ -8,6 +8,8 @@ try:
 except:
     from numpy import trapz as trapezoid
 
+from .utils import translateRigidBodyMassMatrix
+
 from .section_loads import beamSectionLoads1D, beamSectionLoads3D, beamSectionLoadsFromShapeFunctions
 
 '''
@@ -377,7 +379,7 @@ def GKBeam(s_span, EI, ddU, bOrth=False, method='trapz'):
     KK0[6:,6:] = Kgg
     return KK0
     
-def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', V_tot=None, Peq_tot=None, rot_terms=False, method='trapz', U_untwisted=None, M1=False):
+def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=False, IW=None, IW_xm=None, main_axis='x', V_tot=None, Peq_tot=None, rot_terms=False, method='trapz', U_untwisted=None, M1=False, concentrated_inertias=None):
     r"""
     Computes generalized mass matrix for a beam.
     Eq.(2) from [1]
@@ -397,6 +399,12 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
      - rot_terms : if True, outputs the rotational terms as well
      - method: 'trapz', 'Flex', 'OpenFAST' (see below)
      - U_untwsited: untwisted shape functions, used with OpenFAST method only
+    - concentrated_inertias: list of concentrated rigid-body inertias.
+        each entry should at least provide a local 6x6 mass matrix under key `MM`
+        and a location given by one of:
+           - `iNode`: node index along span
+           - ``s_span`: spanwise coordinate
+           - `s_P`: 3-vector location in beam coordinates
 
     OpenFAST method:
       - s_span needs to be [0, np.arange(L/n/2, L, L./n), L]
@@ -620,6 +628,80 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
     MM[:3,:3]   = Mxx; MM[:3,3:6] = Mxt; MM[:3,6:] = Mxg
     MM[3:6,3:6] = Mtt; MM[3:6,6:] = Mtg
     MM[6:,6:]   = Mgg
+
+    # --- Concentrated inertias: add J^T M66 J contributions at selected nodes
+    if concentrated_inertias is not None and len(concentrated_inertias) > 0:
+        axis_map = {'x': 0, 'y': 1, 'z': 2}
+        i_axis = axis_map.get(main_axis, 0)
+
+        def _find_node_from_span(s_target):
+            iNode = int(np.argmin(np.abs(s_span - s_target)))
+            return iNode
+
+        for cm in concentrated_inertias:
+            if cm is None:
+                continue
+            if 'MM' not in cm:
+                raise Exception('Each concentrated inertia entry should provide key `MM` (6x6 mass matrix).')
+
+            M66 = np.asarray(cm['MM'], dtype=float).copy()
+            if M66.shape != (6, 6):
+                raise Exception('Concentrated inertia matrix should be 6x6.')
+
+            # --- Identify target node and translate matrix if needed
+            r_ref = None
+            iNode = None
+            if 'iNode' in cm:
+                n = len(s_span)
+                iNode = int(cm['iNode'])
+                if iNode<0:
+                    iNode=n+iNode
+            elif 's_span' in cm:
+                s_cm = float(cm['s_span'])
+                iNode = _find_node_from_span(s_cm)
+                r_ref = np.zeros(3)
+                r_ref[i_axis] = s_cm
+                #r_ref = np.asarray(s_G[:, iNode]).ravel()
+            elif 's_P' in cm:
+                r_ref = np.asarray(cm['s_P'], dtype=float).ravel()
+                iNode = int(np.argmin(np.linalg.norm((s_G.T - r_ref), axis=1)))
+            else:
+                raise Exception('Concentrated inertia location missing. Provide `iNode`, `s_span`, or `s_P`.')
+
+            if iNode < 0 or iNode >= s_G.shape[1]:
+                raise Exception('Concentrated inertia node index out of bounds.')
+
+
+            r_node = np.asarray(s_G[:, iNode]).ravel()
+            if r_ref is not None:
+                r_old_to_new = r_node - np.asarray(r_ref).ravel()
+                if np.linalg.norm(r_old_to_new) > 0:
+                    M66 = translateRigidBodyMassMatrix(M66, r_old_to_new)
+
+            Phi_node = np.zeros((3, nf))
+            for j in range(nf):
+                Phi_node[:, j] = U[j][:, iNode]
+
+            # --- Add Concentrated mass matrxi to generalized mass matrix
+            B_t = np.zeros((3, nf))
+            if V is not None and nf > 0:
+                for j in range(nf):
+                    if main_axis == 'x':
+                        B_t[1, j] = -V[j][2, iNode]
+                        B_t[2, j] =  V[j][1, iNode]
+                    elif main_axis == 'z':
+                        B_t[0, j] = -V[j][1, iNode]
+                        B_t[1, j] =  V[j][0, iNode]
+                    else:
+                        raise Exception('Axis not supported')
+            Jtr = np.column_stack((np.eye(3), -skew(r_node), Phi_node))
+            Jro = np.column_stack((np.zeros((3, 3)), np.eye(3), B_t))
+            J66 = np.vstack((Jtr, Jro))
+            MM += J66.T @ M66 @ J66
+
+
+
+
 
     i_lower     = np.tril_indices(len(MM), -1)
     MM[i_lower] = MM.T[i_lower]

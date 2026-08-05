@@ -335,6 +335,7 @@ class BeamBody(FlexibleBody):
             r_O=None, R_b2g=None, # Position and orientation in global
             damp_zeta=None, RayleighCoeff=None, DampMat=None,
             bAxialCorr=False, bOrth=False, Mtop=0, Omega=0, bStiffening=True, gravity=None, main_axis='z', massExpected=None,
+            concentrated_inertias=None,
             int_method='Flex'
             ):
         """
@@ -377,6 +378,9 @@ class BeamBody(FlexibleBody):
         self.damp_zeta  = damp_zeta
         self.RayleighCoeff  = RayleighCoeff
         self.DampMat        = DampMat
+        if concentrated_inertias is None:
+            concentrated_inertias = []
+        self.concentrated_inertias = concentrated_inertias
 
         if massExpected is not None:
             self.computeMassMatrix()
@@ -650,26 +654,9 @@ class BeamBody(FlexibleBody):
     def computeMassMatrix(B, s_G = None, inPlace=True):
         if s_G is None:
             s_G = B.s_G
-        MM, IT = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, method=B.int_method, main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True)
-
-        # Optional point mass at beam tip (e.g. nacelle/top mass).
-        # This is controlled by `MtopInertia` to decouple shape/stiffening proxy masses
-        # from physically added inertia in split-beam models.
-        m_top = getattr(B, 'MtopInertia', 0.0)
-        if m_top is None:
-            m_top = 0.0
-        if m_top > 0:
-            r_tip = np.asarray(B.s_P0[:, -1]).ravel()
-            rtil = np.array([
-                [0, -r_tip[2], r_tip[1]],
-                [r_tip[2], 0, -r_tip[0]],
-                [-r_tip[1], r_tip[0], 0]
-            ])
-            Phi_tip = np.zeros((3, B.nf))
-            for j in range(B.nf):
-                Phi_tip[:, j] = B.PhiU[j][:, -1]
-            J_tip = np.column_stack((np.eye(3), -rtil, Phi_tip))
-            MM += m_top * (J_tip.T @ J_tip)
+        MM, IT = GMBeam(s_G, B.s_span, B.m, B.PhiU, jxxG=B.jxxG, method=B.int_method,
+                main_axis=B.main_axis, bAxialCorr=B.bAxialCorr, bOrth=B.bOrth, rot_terms=True,
+                concentrated_inertias=B.concentrated_inertias)
 
         if len(np.isnan(MM))>0:
             #print('>>> WARNING, some mass matrix values are nan, replacing with 0')
@@ -754,7 +741,8 @@ class FASTBeamBody(BeamBody):
             bldStartAtRotorCenter=True,
             massExpected=None,
             gravity=None,
-            algo='', FEM_method=None):
+            algo='', FEM_method=None,
+            concentrated_inertias=None):
         """ 
         INPUTS:
            ED: ElastoDyn inputs as read from weio
@@ -914,16 +902,35 @@ class FASTBeamBody(BeamBody):
                 pass
             else:
                 sd.init(TP=(0,0,ED['PtfmRefzt'])) # Better to use FEM_method !='cbeam' for proper shape functions
-                print('>>>> freqs', sd._FEM.freq[:3])
-
-            if len(sd.concentrated_masses)>0:
-                # We have the effect of the CM in the shape functions if we use FEM_method!=cbeam
-                # But Since we use the shape function approach, they won't show up in the mass matrix.
-                WARN('Bodies: FASTBeamBody: SubDyn with concentrated mass needs extra thinking')
+                #print('>>>> freqs', sd._FEM.freq[:3])
 
             p, damp_zeta, RayleighCoeff, DampMat, df_G = sd.toYAMSData(shapes, method=FEM_method)
             r_O   = p['r_O']
             R_b2g = p['R_b2g']
+            if concentrated_inertias is None:
+                # SubDyn Concentrated inertias
+                concentrated_inertias = p.get('concentrated_inertias', [])
+            else:
+                # SubDyn Concentrated inertias
+                # Accept raw SubDyn masses ({nodeID, MM, ...}) and map them to beam nodes.
+                p_SD_CM = p.get('concentrated_inertias', [])
+                p_SD_CM_by_node = {cm['nodeID']: cm for cm in p_SD_CM if 'nodeID' in cm}
+                # User defined concentrated inertias (sometimes contain the same as SubDyn, so we avoid duplication)
+                cm_norm = []
+                for cm in concentrated_inertias: 
+                    if cm is None:
+                        continue
+                    if ('iNode' in cm) or ('s_span' in cm) or ('s_P' in cm):
+                        cm_norm.append(cm)
+                        continue
+                    if ('nodeID' in cm) and (cm['nodeID'] in p_SD_CM_by_node): # Merge SubDyn and User
+                        cm_ref = p_SD_CM_by_node[cm['nodeID']]
+                        cm_loc = {'iNode': cm_ref['iNode'], 's_span': cm_ref['s']}
+                        cm_loc['MM'] = cm['MM'] if 'MM' in cm else cm_ref['MM']
+                        cm_norm.append(cm_loc)
+                        continue
+                    cm_norm.append(cm)
+                concentrated_inertias = cm_norm
 
         else:
             print(inp.keys())
@@ -957,6 +964,7 @@ class FASTBeamBody(BeamBody):
                 damp_zeta=damp_zeta, RayleighCoeff=RayleighCoeff, DampMat=DampMat,
                 bAxialCorr=bAxialCorr, bOrth=name=='bld', gravity=gravity, Mtop=Mtop, Omega=Omega, bStiffening=bStiffening, main_axis=main_axis,
                 massExpected=massExpected,
+            concentrated_inertias=concentrated_inertias,
                 int_method=int_method
                 )
         self.shapes = shapes

@@ -877,6 +877,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
             bAxialCorr=False, bOrth=False, Mtop=0, bStiffening=True, gravity=None,main_axis='z',
             massExpected=None,
             damp_zeta=None,
+            concentrated_inertias=None,
             name='dummyYAMSRecBeamBody',
             algo='',
             directions=None,
@@ -923,6 +924,7 @@ class YAMSRecBeamBody(GenericBeamBody, YAMSRecBody):
                  bAxialCorr=bAxialCorr, bOrth=bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=gravity, main_axis=main_axis,
                  damp_zeta=damp_zeta,
                  massExpected=massExpected,
+                  concentrated_inertias=concentrated_inertias,
                  int_method=int_method
                 )
 
@@ -1112,8 +1114,8 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
             gravity=None, main_axis='x',
             shapeFunctions='masslessbeam',
             bottomBC='clamped',
+            concentrated_inertias=None,
             topBC='free',
-            MtopInertia=None,
             sympy=False
             ):
 
@@ -1128,11 +1130,6 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
         A=1; rho=A*m;
         x=np.linspace(0,L,nSpan);
         BC = '{}-{}'.format(bottomBC, topBC)
-        # Optional extra tip-mass inertia contribution handled in BeamBody.computeMassMatrix.
-        # Default is no extra contribution so top mass can be represented by an attached rigid body.
-        if MtopInertia is None:
-            MtopInertia = 0.0
-        B.MtopInertia = MtopInertia
         #print('>>> BC', BC)
         # Mode shapes
         if shapeFunctions=='masslessbeam':
@@ -1217,7 +1214,9 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
 
 	# Create a beam body
         super(YAMSRecUniformBeamBody,B).__init__(s_span, s_P0, m, PhiU, PhiV, PhiK, EI, jxxG=jxxG, bAxialCorr=bAxialCorr, Mtop=Mtop, bStiffening=bStiffening,
-                gravity=gravity, main_axis=main_axis, name=name, sympy=sympy)
+                gravity=gravity, main_axis=main_axis, name=name, sympy=sympy,
+                concentrated_inertias=concentrated_inertias
+                                                 )
 
 
     def __repr__(self):
@@ -1234,6 +1233,7 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
     def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
             spanFrom0=False, massExpected=None, gravity=None,
             algo='', FEM_method=None,# TODO OpenFAST
+            concentrated_inertias=None,
             sympy=False
             ):
         """ 
@@ -1254,7 +1254,8 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
                 spanFrom0=spanFrom0,
                 massExpected=massExpected,
                 gravity=gravity,
-                algo=algo, FEM_method=FEM_method
+            algo=algo, FEM_method=FEM_method,
+            concentrated_inertias=concentrated_inertias
                 )
         # We need to inherit from "YAMS" Beam not just generic Beam
         # NOTE: TODO TODO TODO: This will result in "YAMSBeamBody to be called twice...)
@@ -1264,6 +1265,7 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
                 s_min=B.s_min, s_max=B.s_max,
                 bAxialCorr=bAxialCorr, bOrth=B.bOrth, Mtop=Mtop, bStiffening=bStiffening, gravity=B.gravity,main_axis=main_axis,
                 massExpected=massExpected,
+                concentrated_inertias=B.concentrated_inertias,
                 algo=algo,
                 sympy=sympy, name=body_type
                 )

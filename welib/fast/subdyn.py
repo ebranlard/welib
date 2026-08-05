@@ -18,6 +18,7 @@ import re
 # Local 
 from welib.weio.fast_input_file import FASTInputFile
 from welib.tools.tictoc import Timer
+from welib.yams.utils import translateRigidBodyMassMatrix
 
 idGuyanDamp_None     = 0
 idGuyanDamp_Rayleigh = 1
@@ -868,6 +869,42 @@ class SubDyn:
         p['PhiU']  = PhiU
         p['PhiV']  = PhiV
         p['PhiK']  = PhiK
+
+        # --- Concentrated inertias mapped to beam nodes
+        concentrated_inertias = []
+        axis_map = {'x': 0, 'y': 1, 'z': 2}
+        i_axis = axis_map.get(main_axis, 2)
+        z0 = np.min(x)
+
+        graph_nodes = {n.ID: np.array([n.x, n.y, n.z]) for n in self.graph.Nodes}
+        for cm in self.concentrated_masses:
+            if 'MM' not in cm:
+                continue
+            node_id = cm['nodeID']
+            if node_id not in graph_nodes:
+                raise Exception('node_id not in graph for concentrated mass')
+                continue
+
+            xyz_cm = graph_nodes[node_id]
+            s_cm = xyz_cm[i_axis] - z0
+            iNode = int(np.argmin(np.abs(p['s_span'] - s_cm)))
+
+            MM_node = np.asarray(cm['MM']).copy()
+            s_node = p['s_span'][iNode]
+            ds = s_node - s_cm
+            if abs(ds) > 0:
+                r_old_to_new = np.zeros(3)
+                r_old_to_new[i_axis] = ds
+                MM_node = translateRigidBodyMassMatrix(MM_node, r_old_to_new)
+
+            concentrated_inertias.append({
+                'iNode': iNode,
+                's': s_cm,
+                'MM': MM_node,
+                'nodeID': node_id,
+            })
+
+        p['concentrated_inertias'] = concentrated_inertias
 
         # --- Damping
         damp_zeta     = None

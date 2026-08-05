@@ -1343,7 +1343,9 @@ class FASTWindTurbine():
             raise Exception('SD is not set')
         fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
                                   main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
-                                  FEM_method=FEM_method) #, algo=self.WT.algo) # NOTE: OpeNFAST commented
+                                  FEM_method=FEM_method,
+                                  concentrated_inertias=self.SD.concentrated_masses) # TODO, we could remove that to avoid double counting
+        #, algo=self.WT.algo) # NOTE: OpeNFAST commented
 
         #print(Fnd)
         #print('Fnd MM\n',Fnd.MM[6:,6:])

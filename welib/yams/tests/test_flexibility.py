@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 import os
 from welib.yams.flexibility import *
+from welib.yams.utils import rigidBodyMassMatrixAtP, translateRigidBodyMassMatrix
 import welib.weio as weio
 from welib.weio.fast_input_file import FASTInputFile
 
@@ -11,6 +12,60 @@ MyDir=os.path.dirname(__file__)
 # --- TESTS
 # --------------------------------------------------------------------------------{
 class Test(unittest.TestCase):
+    def test_GMBeam_concentrated_inertia_at_node(self):
+        nSpan = 3
+        s_span = np.array([0.0, 5.0, 10.0])
+        s_G = np.zeros((3, nSpan))
+        s_G[2, :] = s_span
+
+        m = np.zeros(nSpan)
+        nf = 1
+        PhiU = np.zeros((nf, 3, nSpan))
+        PhiU[0, 0, :] = np.array([0.0, 0.5, 1.0])
+
+        MM0, _ = GMBeam(s_G, s_span, m, PhiU, method='trapz', main_axis='z')
+
+        M66 = rigidBodyMassMatrixAtP(m=200.0, J_G=np.diag([10.0, 20.0, 30.0]), Ref2COG=np.array([0.2, -0.1, 0.3]))
+        cm = [{'iNode': 2, 'MM': M66}]
+        MM1, _ = GMBeam(s_G, s_span, m, PhiU, method='trapz', main_axis='z', concentrated_inertias=cm)
+
+        r_node = s_G[:, 2]
+        Phi_node = PhiU[0][:, 2].reshape((3, 1))
+        Jtr = np.column_stack((np.eye(3), -skew(r_node), Phi_node))
+        Jro = np.column_stack((np.zeros((3, 3)), np.eye(3), np.zeros((3, 1))))
+        J66 = np.vstack((Jtr, Jro))
+        dMM_ref = J66.T.dot(M66).dot(J66)
+
+        np.testing.assert_allclose(MM1 - MM0, dMM_ref, rtol=1e-10, atol=1e-10)
+
+    def test_GMBeam_concentrated_inertia_span_translation(self):
+        nSpan = 3
+        s_span = np.array([0.0, 5.0, 10.0])
+        s_G = np.zeros((3, nSpan))
+        s_G[2, :] = s_span
+
+        m = np.zeros(nSpan)
+        nf = 1
+        PhiU = np.zeros((nf, 3, nSpan))
+        PhiU[0, 0, :] = np.array([0.0, 0.5, 1.0])
+
+        M66 = rigidBodyMassMatrixAtP(m=150.0, J_G=np.diag([7.0, 8.0, 9.0]), Ref2COG=np.array([0.1, 0.0, -0.2]))
+        cm = [{'s_span': 9.6, 'MM': M66}]
+        MM1, _ = GMBeam(s_G, s_span, m, PhiU, method='trapz', main_axis='z', concentrated_inertias=cm)
+
+        iNode = 2
+        r_node = s_G[:, iNode]
+        r_ref = np.array([0.0, 0.0, 9.6])
+        M66_node = translateRigidBodyMassMatrix(M66, r_node - r_ref)
+
+        Phi_node = PhiU[0][:, iNode].reshape((3, 1))
+        Jtr = np.column_stack((np.eye(3), -skew(r_node), Phi_node))
+        Jro = np.column_stack((np.zeros((3, 3)), np.eye(3), np.zeros((3, 1))))
+        J66 = np.vstack((Jtr, Jro))
+        MM_ref = J66.T.dot(M66_node).dot(J66)
+
+        np.testing.assert_allclose(MM1, MM_ref, rtol=1e-10, atol=1e-10)
+
     def test_GMGKBeam(self):
         #  
         #Given mass, stiffness distribution along the span of a beam and a set of shape functions
