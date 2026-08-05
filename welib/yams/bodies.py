@@ -20,7 +20,7 @@ from welib.yams.utils import buildRigidBodyMassMatrix
 from welib.yams.utils import R_x, R_y, R_z
 from welib.yams.flexibility import GMBeam, GKBeam, GKBeamStiffnening, GeneralizedMCK_PolyBeam
 from welib.yams.flexibility import checkRegularNode
-from welib.tools.strings import WARN
+from welib.tools.strings import WARN, INFO
 # from welib.yams.utils import skew
 
 
@@ -910,6 +910,7 @@ class FASTBeamBody(BeamBody):
             if concentrated_inertias is None:
                 # SubDyn Concentrated inertias
                 concentrated_inertias = p.get('concentrated_inertias', [])
+                INFO(f'Bodies: Concentrated inertias added from SubDyn: {len(cm_norm)}')
             else:
                 # SubDyn Concentrated inertias
                 # Accept raw SubDyn masses ({nodeID, MM, ...}) and map them to beam nodes.
@@ -922,14 +923,17 @@ class FASTBeamBody(BeamBody):
                         continue
                     if ('iNode' in cm) or ('s_span' in cm) or ('s_P' in cm):
                         cm_norm.append(cm)
+                        #print('>>> Adding cm1', cm)
                         continue
                     if ('nodeID' in cm) and (cm['nodeID'] in p_SD_CM_by_node): # Merge SubDyn and User
                         cm_ref = p_SD_CM_by_node[cm['nodeID']]
                         cm_loc = {'iNode': cm_ref['iNode'], 's_span': cm_ref['s']}
                         cm_loc['MM'] = cm['MM'] if 'MM' in cm else cm_ref['MM']
                         cm_norm.append(cm_loc)
+                        #print('>>> Adding cm2', cm_loc)
                         continue
                     cm_norm.append(cm)
+                INFO(f'Bodies: Concentrated inertias added: {len(cm_norm)}')
                 concentrated_inertias = cm_norm
 
         else:

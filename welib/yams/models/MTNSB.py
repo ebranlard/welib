@@ -207,7 +207,9 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                  bladeMassExpected=None,
                  gravity=None,
                  algo='', # TODO replace with OpenFAST
-                 FEM_method=None
+                 FEM_method=None,
+                 SD_bOverride=False,
+                 SD_bCI=True       ,
                  ):
         """ 
         Returns the following structure
@@ -288,7 +290,8 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         self.setupSD(shapes=shapes_sub, nSpan=nSpan_sub,
                      Mtop = Mtop,
                      bStiffening=False,
-                     flavor='yams_rec',
+                     bOverride = SD_bOverride,
+                     bCI       = SD_bCI,
                      FEM_method=FEM_method)
 
         # --------------------------------------------------------------------------------}

@@ -1338,14 +1338,50 @@ class FASTWindTurbine():
 
 
 
-    def setupSD(self, Mtop=0, shapes=None, nSpan=None, bStiffening=True, flavor='', FEM_method='cbeam'):
+    def setupSD(self, Mtop=0, shapes=None, nSpan=None, 
+                bStiffening=True, bCI=True, bOverride=True, # Algo options
+                FEM_method='cbeam'):
         if self.SD is None:
-            raise Exception('SD is not set')
+            raise Exception('SD is not set, call setupSDInit')
+        CI = None
+        if bCI:
+            CI = self.SD.concentrated_masses
+        else:
+            WARN('Concentrated inertia for SubDyn turned off!')
         fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
                                   main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
                                   FEM_method=FEM_method,
-                                  concentrated_inertias=self.SD.concentrated_masses) # TODO, we could remove that to avoid double counting
+                                  concentrated_inertias=CI) # TODO, we could remove that to avoid double counting
         #, algo=self.WT.algo) # NOTE: OpeNFAST commented
+
+        # Optional exact SubDyn reduced-matrix matching for selected Guyan coordinates.
+        # This bypasses GMBeam-integrated modal MM/KK for the foundation flexible block.
+        if self.WT.algo=='OpenFAST' and bOverride:
+            if self.SD._FEM is None or self.SD._FEM.MM_CB is None or self.SD._FEM.KK_CB is None:
+                raise Exception('SubDyn reduced matrices not available. Ensure SD.init/applyCB was run before override.')
+            if shapes is None:
+                raise Exception('For override, `shapes` should be be provided')
+
+            WARN('Windturbine: OVERRIDDING SubDyn values with FEM M_CB and K_CB computation')
+            I = [int(i) for i in shapes]
+            MM_CB = self.SD._FEM.MM_CB
+            KK_CB = self.SD._FEM.KK_CB
+            if np.max(I) >= MM_CB.shape[0] or np.max(I) >= KK_CB.shape[0]:
+                raise Exception('Shape index outside SubDyn reduced matrix size')
+
+            MM_sel = MM_CB[np.ix_(I, I)].copy()
+            KK_sel = KK_CB[np.ix_(I, I)].copy()
+
+            fnd.MM[6:,6:] = MM_sel
+            fnd.KK[6:,6:] = KK_sel
+            fnd.KK0[6:,6:] = KK_sel
+            fnd.KKg[6:,6:] = 0
+            fnd.KKg_self[6:,6:] = 0
+            fnd.KKg_Mtop[6:,6:] = 0
+            fnd.KKg_rot[6:,6:] = 0
+
+            if self.SD.RayleighCoeff is not None:
+                fnd.DD[6:,6:] = MM_sel*self.SD.RayleighCoeff[0] + KK_sel*self.SD.RayleighCoeff[1]
 
         #print(Fnd)
         #print('Fnd MM\n',Fnd.MM[6:,6:])
