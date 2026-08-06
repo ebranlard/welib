@@ -441,7 +441,8 @@ class YAMSRecBody(GenericBody):
         B_p  =  p.B
         r_0p  = p.pos_global  # Position of body origin in global coordinates
 
-        nf_all_children=sum([child.nf for child in p.Children])
+        nf_all_children = sum([child.nf for child in p.Children])
+        nf_prev_children = 0
 
         for ic,(body_i,conn_pi) in enumerate(zip(p.Children,p.Connections)):
             #print(f'Kinematics connections {p.name} > {body_i.name}')
@@ -472,11 +473,19 @@ class YAMSRecBody(GenericBody):
             r_pi    = R_0p @ r_pi_inP 
             B_i      = fBMatRecursion(B_p, Bx_pi, Bt_pi, R_0p, r_pi, sympy=p.sympy)
             B_i_inI  = fB_inB(R_0i, B_i, sympy=p.sympy)
-            BB_i_inI = fB_aug(B_i_inI, body_i.nf, sympy=p.sympy)
+            # When a parent has several flexible children (e.g. 3 blades),
+            # each child must be augmented into a common sibling-flex block
+            # so contributions map to distinct global DOF columns.
+            if nf_all_children > 0:
+                BB_i_inI = fB_aug(B_i_inI, nf_all_children, body_i.nf, nf_prev_children, sympy=p.sympy)
+            else:
+                BB_i_inI = fB_aug(B_i_inI, body_i.nf, sympy=p.sympy)
 
             body_i.B      = B_i    
             body_i.B_inB  = B_i_inI
             body_i.BB_inB = BB_i_inI
+
+            nf_prev_children += body_i.nf
 
             # --- Updating Position and orientation of child body 
             r_0i = r_0p + r_pi  # in 0 system
@@ -679,13 +688,20 @@ class YAMSRecGroundBody(YAMSRecBody, GenericInertialBody):
     def setupDOFIndex(o):
         n=0
         o.nq = o._setupDOFIndex(n)
+        if len(o.Children)==0:
+            raise Exception('Ground body has no children, did you use manual assembly?')
+
         return o.nq
 
     def setDOF(o, q):  
-        q   = q.reshape(o.nq,1)
-        o.q = q
+        if len(o.Children)==0:
+            raise Exception('Ground body has no children, did you use manual assembly?')
+        # Compute DOF Index and set nq
         if o.I_DOF is None:
             o.setupDOFIndex()
+        # Only then can be reshape 
+        q   = q.reshape(o.nq,1)
+        o.q = q
         # Update kinematics of all bodies
         for b in o.bodies:
             b.updateChildrenKinematicsNonRecursive(o.q)

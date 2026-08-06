@@ -958,6 +958,11 @@ class FASTWindTurbine():
 
     def setupSDInit(self):
         from welib.fast.subdyn import SubDyn
+        if self.FST['CompSub']==0:
+            raise Exception('Windturbine: SubDyn cannot be initialized, CompSub=0.')
+            self.SD=None
+            return
+
         # Mostly to get zBot..
         self.SD = SubDyn(self.SDFile) # TODO TODO
         # We store everything in SD for convenience
@@ -1175,18 +1180,18 @@ class FASTWindTurbine():
                                   spanFrom0=spanFrom0, bldStartAtRotorCenter=bldStartAtRotorCenter, algo=WT.algo,
                                   gravity=WT.gravity
                                   ) 
-            if WT.algo.lower()=='openfast':
-                # Overwrite blade props until full compatibility implemented
-                bld[0].MM[0,0]    = self.pBld['BldMass']
-                bld[0].MM[1,1]    = self.pBld['BldMass']
-                bld[0].MM[2,2]    = self.pBld['BldMass']
-                # TODO TODO shapes
-                if shapes==[0,1,2]:
-                    bld[0].MM [6:,6:] = self.pBld['Me']
-                    bld[0].KK0[6:,6:] = self.pBld['Ke0'] # NOTE: Ke has no stiffening
-                    bld[0].DD [6:,6:] = self.pBld['De']
-                else:
-                    raise NotImplementedError()
+
+        if WT.algo.lower()=='openfast':
+            # Overwrite blade generalized matrices with OpenFAST-compatible values.
+            bld[0].MM[0,0] = self.pBld['BldMass']
+            bld[0].MM[1,1] = self.pBld['BldMass']
+            bld[0].MM[2,2] = self.pBld['BldMass']
+            if len(shapes)>0:
+                I = np.asarray(shapes, dtype=int)
+                bld[0].MM [6:,6:] = self.pBld['Me'] [np.ix_(I, I)]
+                bld[0].KK0[6:,6:] = self.pBld['Ke0'][np.ix_(I, I)] # NOTE: OpenFAST uses Ke0
+                bld[0].KK [6:,6:] = self.pBld['Ke'] [np.ix_(I, I)]
+                bld[0].DD [6:,6:] = self.pBld['De'] [np.ix_(I, I)]
 
         # --- Common code
         bld[0].MM *=bBldMass
@@ -1297,7 +1302,7 @@ class FASTWindTurbine():
                                       bStiffening=bStiffening, algo=WT.algo,
                                       gravity=WT.gravity
                                       )
-            if WT.algo=='OpenFAST':
+            if WT.algo.lower()=='openfast':
                 WARN('Windturbine: OVERRIDDING Tower values with OpenfAST algorithm computation"')
                 twr.MM[0,0]         = self.pTwr['TwrMass']
                 twr.MM[1,1]         = self.pTwr['TwrMass']
@@ -1319,7 +1324,7 @@ class FASTWindTurbine():
 
         if flavor!='yams_rec':
             # TODO impose this always?
-            if WT.algo=='OpenFAST':
+            if WT.algo.lower()=='openfast':
                 twr.MM[0,0]         = self.pTwr['TwrMass']
                 twr.MM[1,1]         = self.pTwr['TwrMass']
                 twr.MM[2,2]         = self.pTwr['TwrMass']
@@ -1356,6 +1361,13 @@ class FASTWindTurbine():
 
         # Optional exact SubDyn reduced-matrix matching for selected Guyan coordinates.
         # This bypasses GMBeam-integrated modal MM/KK for the foundation flexible block.
+
+#         printMat('KKg', fnd.KKg[6:,6:])
+#         printMat('KKg_self', fnd.KKg_self[6:,6:])
+#         printMat('KKg_Mtop', fnd.KKg_Mtop[6:,6:])
+#         printMat('KKg_rot', fnd.KKg_rot[6:,6:])
+
+
         if self.WT.algo=='OpenFAST' and bOverride:
             if self.SD._FEM is None or self.SD._FEM.MM_CB is None or self.SD._FEM.KK_CB is None:
                 raise Exception('SubDyn reduced matrices not available. Ensure SD.init/applyCB was run before override.')
@@ -1363,25 +1375,28 @@ class FASTWindTurbine():
                 raise Exception('For override, `shapes` should be be provided')
 
             WARN('Windturbine: OVERRIDDING SubDyn values with FEM M_CB and K_CB computation')
-            I = [int(i) for i in shapes]
-            MM_CB = self.SD._FEM.MM_CB
-            KK_CB = self.SD._FEM.KK_CB
-            if np.max(I) >= MM_CB.shape[0] or np.max(I) >= KK_CB.shape[0]:
-                raise Exception('Shape index outside SubDyn reduced matrix size')
+            if len(shapes)>0:
+                I = [int(i) for i in shapes]
+                MM_CB = self.SD._FEM.MM_CB
+                KK_CB = self.SD._FEM.KK_CB
+                if np.max(I) >= MM_CB.shape[0] or np.max(I) >= KK_CB.shape[0]:
+                    raise Exception('Shape index outside SubDyn reduced matrix size')
 
-            MM_sel = MM_CB[np.ix_(I, I)].copy()
-            KK_sel = KK_CB[np.ix_(I, I)].copy()
+                MM_sel = MM_CB[np.ix_(I, I)].copy()
+                KK_sel = KK_CB[np.ix_(I, I)].copy()
 
-            fnd.MM[6:,6:] = MM_sel
-            fnd.KK[6:,6:] = KK_sel
-            fnd.KK0[6:,6:] = KK_sel
-            fnd.KKg[6:,6:] = 0
-            fnd.KKg_self[6:,6:] = 0
-            fnd.KKg_Mtop[6:,6:] = 0
-            fnd.KKg_rot[6:,6:] = 0
+                fnd.MM[6:,6:] = MM_sel
+                fnd.KK0[6:,6:] = KK_sel
 
-            if self.SD.RayleighCoeff is not None:
-                fnd.DD[6:,6:] = MM_sel*self.SD.RayleighCoeff[0] + KK_sel*self.SD.RayleighCoeff[1]
+#             fnd.KKg_self[6:,6:] = 0
+#             fnd.KKg_Mtop[6:,6:] = 0
+#             fnd.KKg_rot[6:,6:] = 0
+
+                fnd.KKg = fnd.KKg_self + fnd.KKg_Mtop + fnd.KKg_rot  
+                fnd.KK  = fnd.KK0 + fnd.KKg
+
+                if self.SD.RayleighCoeff is not None:
+                    fnd.DD[6:,6:] = MM_sel*self.SD.RayleighCoeff[0] + KK_sel*self.SD.RayleighCoeff[1]
 
         #print(Fnd)
         #print('Fnd MM\n',Fnd.MM[6:,6:])
@@ -1431,6 +1446,14 @@ class FASTWindTurbine():
         ED = self.ED
         # --- Degrees of freedom
         DOFs=[]
+        if hasattr(self, 'SD'):
+            if self.SD is not None:
+                if self.SD.File['Nmodes']>0:
+                    #print('TODO, Need to figure out DOF order with CB')
+                    # TODO SubDyn, let's figure out order...
+                    for iCB in range(int(self.SD.File['Nmodes'])):
+                        DOFs+=[{'name': f'CB{iCB+1}', 'active':True, 'q0':0, 'qd0':0, 'q_channel': f'QCB{iCB+1}_[-]' , 'qd_channel':f'QDCB{iCB+1}_[-]','qdd_channel':f'QD2_CB{iCB+1}_[-]'}]
+
         DOFs+=[{'name':'x'      , 'active':ED['PtfmSgDOF'], 'q0': ED['PtfmSurge']  , 'qd0':0 , 'q_channel':'PtfmSurge_[m]' , 'qd_channel':'QD_Sg_[m/s]','qdd_channel':'QD2_Sg_[m/s^2]'}]
         DOFs+=[{'name':'y'      , 'active':ED['PtfmSwDOF'], 'q0': ED['PtfmSway']   , 'qd0':0 , 'q_channel':'PtfmSway_[m]'  , 'qd_channel':'QD_Sw_[m/s]','qdd_channel':'QD2_Sw_[m/s^2]'}]
         DOFs+=[{'name':'z'      , 'active':ED['PtfmHvDOF'], 'q0': ED['PtfmHeave']  , 'qd0':0 , 'q_channel':'PtfmHeave_[m]' , 'qd_channel':'QD_Hv_[m/s]','qdd_channel':'QD2_Hv_[m/s^2]'}]
@@ -1459,12 +1482,12 @@ class FASTWindTurbine():
 
     def setActiveDOFs(self, fixedShaft=False, shapes_sub=None, shapes_twr=None, shapes_bld=None, verbose=False):
         # Override based on model
-        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z'] # Ptfm
+        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z', 'CB1', 'CB2'] # Ptfm
         TWR_NAMES =  ['q_FA1', 'q_FA2', 'q_SS1', 'q_SS2'] # Twr
         BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
 
         NAMEOFF=[]
-        NAMEOFF += [SUB_NAMES[i] for i in range(6) if i not in shapes_sub]
+        NAMEOFF += [SUB_NAMES[i] for i in range(len(SUB_NAMES)) if i not in shapes_sub]
         NAMEOFF += [TWR_NAMES[i] for i in range(4) if i not in shapes_twr]
         NAMEOFF += ['theta_y'] # Yaw
         NAMEOFF += ['nu'] # Shaft torsion

@@ -98,7 +98,9 @@ class SubDyn:
         else:
             raise NotImplementedError()
         # Get graph
-        with Timer('SubDyn: Running SubDyn FEM'):
+        nModesCB = self.File['Nmodes']
+
+        with Timer(f'SubDyn: Running SubDyn FEM nModesCB={nModesCB}'):
             graph = self.graph
             #print('>>> graph\n',graph)
             #graph.toJSON('_GRAPH.json')
@@ -117,7 +119,6 @@ class SubDyn:
                 Q, freq = FEM.eig(normQ='byMax')
             self._FEM = FEM # Store
 
-            nModesCB = self.File['Nmodes']
             # --- Craig Bampton reduction
             self.applyCB(nModesCB=nModesCB, verbose=verbose)
 
@@ -576,9 +577,11 @@ class SubDyn:
         return zBeam, F_sec, r_sec
 
 
-    def beamModes(self, nCB=8, FEM = None, method='cbeam', verbose=False):
+    def beamModes(self, nCB=None, FEM = None, method='cbeam', verbose=False):
         """ Returns mode shapes for beam-like structures, like Spar/Monopile """
         import welib.FEM.fem_beam as femb
+        if nCB is None:
+            nCB = self.File['Nmodes']
         if method == 'cbeam':
             element  = 'frame3d'      # Type of element used in FEM
             if FEM is None:
@@ -606,13 +609,13 @@ class SubDyn:
                 FEM = self._FEM
 
             nModesCB = len(FEM.f_CB)
-            if len(FEM.f_CB)!=nCB:
+            if len(FEM.f_CB)<nCB:
                 print(f'[INFO] SubDyn: We have to apply CB again with nCB={nCB}')
                 self.applyCB(nModesCB=nCB, verbose=False)
                 FEM = self._FEM
 
 
-            dispGy, rotGy, posGy, INodesGy, dispCB, rotGB, posCB, INodesCB = FEM.getModes(scale=True, maxAmplitude=1, sortDim=2, outputRot=True)
+            dispGy, rotGy, posGy, INodesGy, dispCB, rotCB, posCB, INodesCB = FEM.getModes(scale=True, maxAmplitude=1, sortDim=2, outputRot=True)
             #dispGy, posGy, INodesGy = FEM.nodesDisp(FEM.Q_G, sortDim=2)
             #dispCB, posCB, INodesCB = self.nodesDisp(self.Q_CB, sortDim=2)
 
@@ -631,11 +634,11 @@ class SubDyn:
             #     _, names_G= identifyAndNormalizeModes(Q_G, element=element, normalize=False)
             #     _, names_CB= identifyAndNormalizeModes(Q_CB, element=element, normalize=False)
 
+            DN = ['ux','uy','uz','tx','ty','tz'] 
             # --- Guyan Modes
             M = posGy[:,2]
             Modes_G=dict()
             names_G = ['G{}'.format(i+1) for i in np.arange(len(FEM.f_G))]
-            DN = ['ux','uy','uz','tx','ty','tz'] 
             for i,mn in enumerate(names_G):
                 if i==0:
                     scale = dispGy[-1,0,i]
@@ -667,11 +670,23 @@ class SubDyn:
             # Manual normalization
 
             # --- CB Modes
-            # TODO
+            M = posCB[:,2]
+            Modes_CB=dict()
+            names_CB = ['CB{}'.format(i+1) for i in np.arange(len(FEM.f_CB))]
+            for i,mn in enumerate(names_CB):
+                # TODO normalization
+                ModeComp = [dispCB[:,0,i], dispCB[:,1,i], dispCB[:,2,i], rotCB[:,0,i], rotCB[:,1,i], rotCB[:,2,i]]
+                Modes_G[mn]          = dict()
+                Modes_G[mn]['label'] = names_CB[i]
+                Modes_G[mn]['comp']  = np.column_stack(ModeComp)
+                #Modes_G[mn]['raw']   = Q_G[:,i]
+                M= np.column_stack([M]+ModeComp)
+            colnames=['z']+[m+'_'+d for m in names_CB for d in DN]
+            df_CB=pd.DataFrame(data=M, columns=colnames)
 
             # df_CB.to_csv('_CB.csv',index=False)
             #return Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB 
-            return None, None, df_G, None, Modes_G, None, CB
+            return None, None, df_G, df_CB, Modes_G, Modes_CB, CB
 
     def beamModesPlot(self, FEM=None):
         """ """
@@ -742,7 +757,7 @@ class SubDyn:
 
             # --- Perform Craig-Bampton reduction, fixing the top node of the beam
             FEM = self.beamFEM(df, method=method)
-            Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = self.beamModes(nCB=0, FEM=FEM, method=method)
+            Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = self.beamModes(nCB=None, FEM=FEM, method=method)
 
             x     = df['z'].values
             nSpan = len(x)
@@ -750,7 +765,7 @@ class SubDyn:
         else:
             df = self.beamDataFrame(equispacing=False)
 
-            Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = self.beamModes(nCB=0, method=method)
+            Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = self.beamModes(nCB=None, method=method)
 
             x     = df_G['z'].values
             nSpan = len(x)
@@ -778,37 +793,6 @@ class SubDyn:
         irregular = len(dx)>1
         if irregular:
             raise Exception('Implement irregular gradient')
-#             for iShape, idShape in enumerate(shapes):
-#                 if idShape==0:
-#                     # shape 0 "ux"  (uz in FEM)
-#                     PhiU[iShape][0,:] = df_G['G3_uz'].values
-#                     PhiV[iShape][0,:] =-df_G['G3_ty'].values
-#                     if irregular:
-#                         pass
-#                     else:
-#                         PhiK[iShape][0,:] = gradient_regular(PhiV[iShape][0,:],dx=dx[0],order=4)
-#                 elif idShape==1:
-#                     # shape 1,  "uy"
-#                     PhiU[iShape][1,:] = df_G['G2_uy'].values
-#                     PhiV[iShape][1,:] = df_G['G2_tz'].values
-#                     if irregular:
-#                         pass
-#                     else:
-#                         PhiK[iShape][1,:] = gradient_regular(PhiV[iShape][1,:],dx=dx[0],order=4)
-# 
-#                 elif idShape==4:
-#                     # shape 4,  "vy"  (vz in FEM)
-#                     PhiU[iShape][0,:] = df_G['G6_uy'].values
-#                     PhiV[iShape][0,:] = df_G['G6_tz'].values
-#                     if irregular:
-#                         pass
-#                     else:
-#                         PhiK[iShape][0,:] = gradient_regular(PhiV[iShape][0,:],dx=dx[0],order=4)
-#                 else:
-#                     raise NotImplementedError()
-#                 dfU = pd.DataFrame(data=PhiU[iShape].T, columns=[f'PhiU{iShape}'+s for s in ['x','y','z']])
-#                 dfOut = pd.concat([dfOut.reset_index(drop=True), dfU.reset_index(drop=True)], axis=1)
-#         else:
         for iShape, idShape in enumerate(shapes):
             if idShape==0:
                 # shape i=0, G1, ux  
@@ -839,6 +823,18 @@ class SubDyn:
                     pass
                 else:
                     PhiK[iShape][0,:] = gradient_regular(PhiV[iShape][0,:],dx=dx[0],order=4)
+            elif idShape==6:
+                PhiU[iShape][0,:] = df_CB['CB1_ux'].values
+                PhiU[iShape][1,:] = df_CB['CB1_uy'].values
+                PhiV[iShape][0,:] = df_CB['CB1_ty'].values
+                PhiV[iShape][1,:] = df_CB['CB1_tx'].values
+
+            elif idShape==7:
+                PhiU[iShape][0,:] = df_CB['CB2_ux'].values
+                PhiU[iShape][1,:] = df_CB['CB2_uy'].values
+                PhiV[iShape][0,:] = df_CB['CB2_ty'].values
+                PhiV[iShape][1,:] = df_CB['CB2_tx'].values
+
             else:
                 raise NotImplementedError()
             dfU = pd.DataFrame(data=PhiU[iShape].T, columns=[f'PhiU{iShape}'+s for s in ['x','y','z']])
@@ -1308,14 +1304,15 @@ def xBeam_To_zBeam(df, prefix='G'):
                     break
 
     desired_comp_order = ["ux", "uy", "uz", "tx", "ty", "tz"]
-    g_cols = sorted(
-        [c for c in df_new.columns if c.startswith(prefix)],
-        key=lambda c: (
-            int(c.split("_")[0][1:]),
-            desired_comp_order.index(c.split("_")[1]),
-        ),
-    )
-    df_new = df_new[g_cols]
+    if prefix=='G':
+        g_cols = sorted(
+            [c for c in df_new.columns if c.startswith(prefix)],
+            key=lambda c: (
+                int(c.split("_")[0][1:]),
+                desired_comp_order.index(c.split("_")[1]),
+            ),
+        )
+        df_new = df_new[g_cols]
     df_new.insert(0, 'z', df["x"].values)
     return df_new
 

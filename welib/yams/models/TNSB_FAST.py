@@ -16,6 +16,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
                    shapes_bld=None, nSpan_bld=None, 
                    bHubMass=1, bNacMass=1, bBldMass=1, 
                    DEBUG=False, main_axis ='x', bStiffening=True, assembly='manual', q=None, bTiltBeforeNac=False,
+                   fixedShaft=False,
                    spanFrom0=True, # TODO for legacy, we keep this for now..
                    bladeMassExpected=None,
                    gravity=None,
@@ -27,7 +28,7 @@ class FASTmodel2TNSB(FASTWindTurbine):
           WT.twr :  BeamBody
           WT.shft:  RigiBody
           WT.nac :  RigidBody
-          WT.bld:  List of BeamBodies
+          WT.bld:   List of BeamBodies
 
           MM, KK, DD : mass, stiffness and damping matrix of full system
 
@@ -42,17 +43,15 @@ class FASTmodel2TNSB(FASTWindTurbine):
         self.shapes_twr = shapes_twr # we store fo convenience
         self.shapes_bld = shapes_bld # we store fo convenience
 
-        # --- Defining a default TNSB structure
+        # --- Defining a default structure
         WT = TNSBStructure(
                          main_axis=main_axis, 
                          bTiltBeforeNac=bTiltBeforeNac,
                          )
-
         # --- Calling Parent with that structure 
         FASTWindTurbine.__init__(self, WT=WT,
                                  main_axis=main_axis, 
                                  algo=algo)
-
 
         # --- Read fast input files
         readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
@@ -98,13 +97,13 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --- Initial conditions and DOFs
         # --------------------------------------------------------------------------------{
         # --- Initial conditions
+        self.setupEDDOFs()
+        self.setActiveDOFs(verbose=verbose, shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld, fixedShaft=fixedShaft)
         if DEBUG:
             print('Initial conditions:')
             print(self.WT.q0)
             print(self.WT.qd0)
             print(self.WT.z0)
-        self.setupEDDOFs()
-        self.setActiveDOFs(verbose=verbose, shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld)
         nDOF = len(self.WT.q0) # 1 + len(shapes_twr) + len(shapes_bld) * nB # +1 for Shaft
         if q is None:
             q = np.zeros((nDOF,1)) # Only pos, not vel here.
@@ -112,9 +111,9 @@ class FASTmodel2TNSB(FASTWindTurbine):
         # --- Assembly 
         # --------------------------------------------------------------------------------{
         if assembly=='manual':
-            self.WT.manual_assembly(q=q, DEBUG=DEBUG)
+            self.WT.manual_assembly(q=q, DEBUG=DEBUG, fixedShaft=fixedShaft)
         else:
-            self.WT.auto_assembly(q=q, DEBUG=DEBUG)
+            self.WT.auto_assembly(q=q, DEBUG=DEBUG, fixedShaft=fixedShaft)
 
         # --- Useful data
         self.WT.ED=self.ED

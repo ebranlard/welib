@@ -31,6 +31,7 @@ class MTNSBStructure(WindTurbineStructure):
                  bTiltBeforeNac=False,
                  ):
         #, main_axis='x', theta_tilt=0, theta_yaw=0, theta_cone=0, bTiltBeforeNac=False):
+        # --- Calling parent constructor        
         WindTurbineStructure.__init__(self)	
 
         # --- Additional properties not in Parent class
@@ -115,7 +116,7 @@ class MTNSBStructure(WindTurbineStructure):
                 R_cn0 = R_x (self.nac_yaw) 
                 R_cs0 = np.dot( R_y(self.shaft_tilt) , R_z (np.pi)) # Note: OrientBefore
             Shaft_axis='z'
-        if self.main_axis=='z':
+        elif self.main_axis=='z':
             if self.bTiltBeforeNac:
                 R_cn0 = np.dot(R_z (self.nac_yaw) , R_y(self.shaft_tilt))
                 R_cs0 = R_x (np.pi)
@@ -152,7 +153,7 @@ class MTNSBStructure(WindTurbineStructure):
         nq = grd.setupDOFIndex();
         if nq!=len(q):
            print('>>> ',nq,len(q))
-           raise Exception('Wrong number of dof')
+           raise Exception(f'Wrong number of dof between input `q` (size {len(q)}) and expected from model {nq}')
 
         # TODO TODO
         self.grd  = grd # TODO?
@@ -217,7 +218,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
           WT.twr :  BeamBody
           WT.shft:  RigiBody
           WT.nac :  RigidBody
-          WT.blds:  List of BeamBodies
+          WT.bld:   List of BeamBodies
 
           MM, KK, DD : mass, stiffness and damping matrix of full system
 
@@ -234,7 +235,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         self.shapes_twr = shapes_twr # we store fo convenience
         self.shapes_bld = shapes_bld # we store fo convenience
 
-        # --- Defining a default MNSB structure
+        # --- Defining a default structure
         WT = MTNSBStructure(
                          main_axis=main_axis, 
                          bTiltBeforeNac=bTiltBeforeNac,
@@ -284,12 +285,18 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                         bStiffening=bStiffening,
                         flavor='yams_rec')
         # --- FND body
-        Mtop = self.WT.RNA.mass
+
+        if self.ED['PtfmMass']>0:
+            WARN('MTNSB: Need to introduce a rigid body Ptfm ')
+            raise Exception('MTNSB TODO, introduce Ptfm Element rigidly connected.')
+
         #import pdb; pdb.set_trace()
-        print('>>> Potential SubDyn Mtop', Mtop)
+        Mtop = self.WT.RNA.mass
+        Mtop += self.WT.twr.mass
+        print('>>> Potential SubDyn Mtop (RNA + twr)', Mtop)
         self.setupSD(shapes=shapes_sub, nSpan=nSpan_sub,
                      Mtop = Mtop,
-                     bStiffening=False,
+                     bStiffening=bStiffening, # TODO used to be false
                      bOverride = SD_bOverride,
                      bCI       = SD_bCI,
                      FEM_method=FEM_method)
@@ -299,8 +306,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------{
         # --- Initial conditions
         self.setupEDDOFs()
-        self.setActiveDOFs(shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld, fixedShaft=fixedShaft, verbose=verbose)
-        nDOF = len(self.WT.q0) # 1 + len(shapes_twr) + len(shapes_bld) * nB # +1 for Shaft
+        self.setActiveDOFs(shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld, fixedShaft=fixedShaft, verbose=True)
         if DEBUG:
             print('Initial conditions:')
             print(self.WT.q0)

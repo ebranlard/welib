@@ -22,6 +22,11 @@ from welib.yams.yams_rec import YAMSRecGroundBody, YAMSRecRigidBody
 from welib.yams.rotations import R_x, R_y, R_z
 from welib.yams.windturbine import WindTurbineStructure, rigidBlades
 
+from welib.tools.strings import prettyMat
+
+def pm(M, var=None, **kwargs):
+    return prettyMat(M, var, **kwargs, digits=3)
+
 class TNSBStructure(WindTurbineStructure):
 
     def __init__(self, 
@@ -202,21 +207,22 @@ class TNSBStructure(WindTurbineStructure):
         s='<TNSB {} object> with fields:\n'.format(type(self).__name__)
         s+=f' - grd twr yaw nac hubgen bld: RigidBody or FASTBeamBody\n'
         s+=f' - MM KK DD: matrices\n'
-        s+=f' - q : {self.q.flatten()}\n'
-        s+=f' - r_ET_inE: {self.r_ET_inE.flatten()}\n'
-        s+=f' - r_TN_inT: {self.r_TN_inT.flatten()}\n'
-        s+=f' - r_NS_inN: {self.r_NS_inN.flatten()}\n'
-        s+=f' - r_SR_inS: {self.r_SR_inS.flatten()}\n'
+        if self.q is not None:
+            s+=f' - q : {pm(self.q.flatten())}\n'
+        s+=f' - r_ET_inE: {pm(self.r_ET_inE.flatten())}\n'
+        s+=f' - r_TN_inT: {pm(self.r_TN_inT.flatten())}\n'
+        s+=f' - r_NS_inN: {pm(self.r_NS_inN.flatten())}\n'
+        s+=f' - r_SR_inS: {pm(self.r_SR_inS.flatten())}\n'
         s+=f' - main_axis     : {self.main_axis}\n'
         s+=f' - shaft_tilt    : {self.shaft_tilt*180/np.pi} [deg] (but stored in rad)\n'
         s+=f' - blade_cone    : {self.blade_cone*180/np.pi} [deg] (but stored in rad)\n'
         s+=f' - nac_yaw       : {self.nac_yaw  *180/np.pi}  [deg] (but stored in rad)\n'
         s+=f' - bTiltBeforeNac: {self.bTiltBeforeNac}\n'
-        s+='----------------------------------------------------------------\n'
-        s+=f' * Origin T  : {self.twr.pos_global.T}\n'
-        s+=f' * Origin N  : {self.nac.pos_global.T}\n'
-        s+=f' * Origin R  : {self.bld[0].pos_global.T}\n'
-        s+=f' * Origin S  : {self.hubgen.pos_global.T}\n'
+        s+='-------------- BODY ORIGINS (pos_global)---------------------\n'
+        s+=f' * T: {pm(self.twr.pos_global.T)}\n'
+        s+=f' * N: {pm(self.nac.pos_global.T)}\n'
+        s+=f' * R: {pm(self.bld[0].pos_global.T)}\n'
+        s+=f' * S: {pm(self.hubgen.pos_global.T)}\n'
         s+='----------------- RNA ---------------------------------------\n'
         s+=f'M_RNA       {self.M_RNA:.4f}\n'
         s+=f'r_NGrna_inN {np.asarray(self.r_NGrna_inN).flatten()}\n'
@@ -225,9 +231,9 @@ class TNSBStructure(WindTurbineStructure):
         s+=f'     r_NGrot_inN {np.asarray(self.r_NGrot_inN).flatten().round(4)} M_rot {self.M_rot:.4f}\n'
         s+='---------------Couplings ---------------------------------------\n'
         s+='Constant: (Bhat_t)\n'
-        s+=str(self.twr.Bhat_t_bc)+'\n'
+        s+=' - twr: \n'+  pm(self.twr.Bhat_t_bc)+'\n'
         s+='Time varying:\n'
-        s+=str(self.twr.alpha_couplings)+'\n' # Time varying function of twr.gzf
+        s+=' - twr: '+pm(self.twr.alpha_couplings)+'\n' # Time varying function of twr.gzf
         s+='---------------More --------------------------------------------\n'
         s+= ' - Additional Props: {}\n'.format(self.additional_properties)
         return s
@@ -298,26 +304,31 @@ class TNSBStructure(WindTurbineStructure):
         nq = grd.setupDOFIndex();
         if nq!=len(q):
            print('>>> ',nq,len(q))
-           raise Exception('Wrong number of dof')
+           raise Exception(f'Wrong number of dof between input `q` (size {len(q)}) and expected from model {nq}')
 
-        grd.updateChildrenKinematicsNonRecursive(q)
-        twr.updateChildrenKinematicsNonRecursive(q)
-        yaw.updateChildrenKinematicsNonRecursive(q)
-        nac.updateChildrenKinematicsNonRecursive(q)
-        sft.updateChildrenKinematicsNonRecursive(q)
+        self.grd  = grd # TODO?
+        self.fixedShaft = fixedShaft # TODO?
+
+        self.updateKinematics(q)
+    def updateKinematics(self, q):
+        q = np.asarray(q).reshape((len(q),1))
+        self.grd.updateChildrenKinematicsNonRecursive(q)
+        self.twr.updateChildrenKinematicsNonRecursive(q)
+        self.yawBr.updateChildrenKinematicsNonRecursive(q)
+        self.nac.updateChildrenKinematicsNonRecursive(q)
+        self.hubgen.updateChildrenKinematicsNonRecursive(q)
 
 
         # --- Full system
         nq = len(q)
-        MM = grd.M
-        KK = grd.K
-        DD = grd.D
+        MM = self.grd.M
+        KK = self.grd.K
+        DD = self.grd.D
 
         MM[np.abs(MM)< 1e-09] = 0
 
-        # --- TODO TODO
-        self.fixedShaft = fixedShaft # TODO?
-        self.grd  = grd # TODO?
+        # --- returning everthin in a structure class
+        # TODO
         self.MM   = MM
         self.KK   = KK
         self.DD   = DD
