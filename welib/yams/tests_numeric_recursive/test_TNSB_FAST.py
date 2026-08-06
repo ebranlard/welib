@@ -3,6 +3,7 @@ import numpy as np
 import os
 
 from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
+from welib.tools.strings import printMat
 
 MyDir=os.path.dirname(__file__)
 
@@ -86,8 +87,8 @@ class TestTNSB(unittest.TestCase):
                              [      0.,  240000.,       0. ,-420000.,       0.,  456000.],
                              [      0.,       0.,  240000. ,      0., -456000.,       0.],
                              [      0., -420000.,       0. ,      0.,       0.,       0.],
-                             [ 420000.,       0., -456000. ,      0.,       0.,       0.],
-                             [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
+                             [ 420000.,       0., -456000. ,      0.,    2607890. ,       0.],
+                             [     -0.,  456000.,       0. ,      0.,       0.     , 0.]])
         np.testing.assert_almost_equal(StructA.nac.mass, 240000)
         np.testing.assert_almost_equal(StructA.nac.pos_global,(1.1,0,87.6))
         np.testing.assert_almost_equal(StructA.nac.MM,Nac_MMref)
@@ -215,10 +216,15 @@ class TestTNSB(unittest.TestCase):
         #MMref=np.array([[ 4.36621608e+05,  7.46151067e+05,  0.00000000e+00],
         #                [ 7.46151067e+05,  4.83252038e+07, -1.16415322e-09],
         #                [ 0.00000000e+00,  0.00000000e+00,  4.33678529e+07]])
-        MMref=np.array( [[  436621.49402492,   746008.31028306,        0.        ],
-                         [  746008.31028306, 48279102.40225491,        0.        ],
-                         [       0.        ,        0.        , 43367852.87936865]])
+        #MMref=np.array( [[  436621.49402492,   746008.31028306,        0.        ],
+        #                 [  746008.31028306, 48279102.40225491,        0.        ],
+        #                 [       0.        ,        0.        , 43367852.87936865]])
+        MMref=np.array( [[  437761.43326031,   799706.67819122,        0.        ],
+                         [  799706.67819122, 50808636.10587204,        0.        ],
+                         [       0.        ,        0.        , 43367852.87936863]])
 
+        #printMat(StructA.MM, digits=6)
+        #printMat(StructM.MM, digits=6)
         np.testing.assert_almost_equal(StructA.MM/1e5,     MMref/1e5 , 5)
         np.testing.assert_almost_equal(StructM.MM/1e5,StructA.MM/1e5 , 5)
         # print('Mass matrix:')

@@ -1007,7 +1007,7 @@ class FASTWindTurbine():
                WT.R_NS0 = R_y(WT.shaft_tilt)
                WT.R_TN0 = np.eye(3)
                WT.R_NS  = R_y(WT.shaft_tilt)
-               WT.r_NGnac_inN = np.array([ED['NacCMzn'],0,ED['NacCMxn']] )
+               WT.r_NGnac_inN = np.array([ED['NacCMzn'],ED['NacCMyn'],ED['NacCMxn']] )
                WT.r_NS_inN    = np.array([ED['Twr2Shft'] ,0,0]) # S on tower axis
            WT.r_SR_inS    = np.array([0,0,ED['OverHang']] ) # S and R 
            WT.r_SGhub_inS = np.array([0,0,ED['OverHang']+ED['HubCM']]   ) # 
@@ -1032,7 +1032,7 @@ class FASTWindTurbine():
                 WT.R_NS0 = R_y(WT.shaft_tilt)  # Rotation fromShaft to Nacelle
                 WT.R_TN0 = np.eye(3)
                 WT.R_NS  = R_y(WT.shaft_tilt)  # Rotation fromShaft to Nacelle
-                WT.r_NGnac_inN = np.array([ED['NacCMxn'],0,ED['NacCMzn']    ])                  # Nacelle G in N
+                WT.r_NGnac_inN = np.array([ED['NacCMxn'],ED['NacCMyn'], ED['NacCMzn']    ])                  # Nacelle G in N
                 WT.r_NS_inN    = np.array([0             , 0, ED['Twr2Shft']]) # Shaft start in N
             WT.r_SR_inS    = np.array([ED['OverHang'], 0, 0             ]) # Rotor center in S
             WT.r_SGhub_inS = np.array([ED['HubCM']   , 0, 0             ]) + WT.r_SR_inS # Hub G in S
@@ -1119,14 +1119,11 @@ class FASTWindTurbine():
 
         if flavor=='yams_rec':
             I0_nac = np.zeros((3,3)) 
-            if self.main_axis=='x':
-                I0_nac[0,0]= ED['NacYIner']
-            elif self.main_axis=='z':
-                I0_nac[2,2] = ED['NacYIner'] # TODO TODO TODO why 2,2 for a y inertia???
+            # ElastoDyn NacYIner is the inertia about nacelle local y-axis.
+            I0_nac[1,1] = ED['NacYIner']
             I0_nac = I0_nac * bNacMass
             IG_nac = translateInertiaMatrixToCOG(I0_nac, M_nac, WT.r_NGnac_inN)
             # Nacelle Body
-            print('windturbine.py: TODO Not sure about Nacelle inertia definition')
             nac = YAMSRecRigidBody('Nacelle', M_nac, IG_nac, WT.r_NGnac_inN)
 
         else:
@@ -1183,12 +1180,30 @@ class FASTWindTurbine():
 
         if WT.algo.lower()=='openfast':
             # Overwrite blade generalized matrices with OpenFAST-compatible values.
-            bld[0].MM[0,0] = self.pBld['BldMass']
-            bld[0].MM[1,1] = self.pBld['BldMass']
-            bld[0].MM[2,2] = self.pBld['BldMass']
+            M = self.pBld['BldMass']
+            mdCM = np.asarray(self.pBld['mdCM']).ravel()
+            J = np.asarray(self.pBld['J'])
+
+            MM_of = np.zeros_like(bld[0].MM)
+            MM_of[0,0] = M
+            MM_of[1,1] = M
+            MM_of[2,2] = M
+            MM_of[0:3,3:6] = -np.array([
+                [0, -mdCM[2], mdCM[1]],
+                [mdCM[2], 0, -mdCM[0]],
+                [-mdCM[1], mdCM[0], 0],
+            ])
+            MM_of[3:6,0:3] = MM_of[0:3,3:6].T
+            MM_of[3:6,3:6] = J
             if len(shapes)>0:
                 I = np.asarray(shapes, dtype=int)
-                bld[0].MM [6:,6:] = self.pBld['Me'] [np.ix_(I, I)]
+                MM_of[0:3,6:] = self.pBld['Ct'][I,:].T
+                MM_of[3:6,6:] = self.pBld['Cr'][I,:].T
+                MM_of[6:,0:3] = MM_of[0:3,6:].T
+                MM_of[6:,3:6] = MM_of[3:6,6:].T
+                MM_of[6:,6:] = self.pBld['Me'][np.ix_(I, I)]
+
+                bld[0].MM[:,:] = MM_of
                 bld[0].KK0[6:,6:] = self.pBld['Ke0'][np.ix_(I, I)] # NOTE: OpenFAST uses Ke0
                 bld[0].KK [6:,6:] = self.pBld['Ke'] [np.ix_(I, I)]
                 bld[0].DD [6:,6:] = self.pBld['De'] [np.ix_(I, I)]

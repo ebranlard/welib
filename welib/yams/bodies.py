@@ -910,7 +910,7 @@ class FASTBeamBody(BeamBody):
             if concentrated_inertias is None:
                 # SubDyn Concentrated inertias
                 concentrated_inertias = p.get('concentrated_inertias', [])
-                INFO(f'Bodies: Concentrated inertias added from SubDyn: {len(cm_norm)}')
+                INFO(f'Bodies: Concentrated inertias added from SubDyn: {len(concentrated_inertias)}')
             else:
                 # SubDyn Concentrated inertias
                 # Accept raw SubDyn masses ({nodeID, MM, ...}) and map them to beam nodes.
