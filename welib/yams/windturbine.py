@@ -1188,11 +1188,7 @@ class FASTWindTurbine():
             MM_of[0,0] = M
             MM_of[1,1] = M
             MM_of[2,2] = M
-            MM_of[0:3,3:6] = -np.array([
-                [0, -mdCM[2], mdCM[1]],
-                [mdCM[2], 0, -mdCM[0]],
-                [-mdCM[1], mdCM[0], 0],
-            ])
+            MM_of[0:3,3:6] = -np.array([ [0, -mdCM[2], mdCM[1]], [mdCM[2], 0, -mdCM[0]], [-mdCM[1], mdCM[0], 0], ])
             MM_of[3:6,0:3] = MM_of[0:3,3:6].T
             MM_of[3:6,3:6] = J
             if len(shapes)>0:
@@ -1318,15 +1314,36 @@ class FASTWindTurbine():
                                       gravity=WT.gravity
                                       )
             if WT.algo.lower()=='openfast':
-                WARN('Windturbine: OVERRIDDING Tower values with OpenfAST algorithm computation"')
-                twr.MM[0,0]         = self.pTwr['TwrMass']
-                twr.MM[1,1]         = self.pTwr['TwrMass']
-                twr.MM[2,2]         = self.pTwr['TwrMass']
-                twr.MM      [6:,6:] = self.pTwr['Me']   [np.ix_(shapes,shapes)]
+                WARN('Windturbine: applying targeted OpenFAST tower override (Kg_SW only) for yams_rec parity.')
+
+                M = self.pTwr['TwrMass']
+                mdCM = np.asarray(self.pTwr['mdCM']).ravel()
+                J = np.asarray(self.pTwr['J'])
+                MM_OF = np.zeros_like(twr.MM)
+                MM_OF[0,0] = M
+                MM_OF[1,1] = M
+                MM_OF[2,2] = M
+                MM_OF[0:3,3:6] = -np.array([ [0, -mdCM[2], mdCM[1]], [mdCM[2], 0, -mdCM[0]], [-mdCM[1], mdCM[0], 0], ])
+                MM_OF[3:6,0:3] = MM_OF[0:3,3:6].T
+                MM_OF[3:6,3:6] = J
+                if len(shapes)>0:
+                    I = np.asarray(shapes, dtype=int)
+                    MM_OF[0:3,6:] = self.pTwr['Ct'][I,:].T
+                    MM_OF[3:6,6:] = self.pTwr['Cr'][I,:].T
+                    MM_OF[6:,0:3] = MM_OF[0:3,6:].T
+                    MM_OF[6:,3:6] = MM_OF[3:6,6:].T
+                    MM_OF[6:,6:] = self.pBld['Me'][np.ix_(I, I)]
+#                     twr.MM[:,:] = MM_OF
+
+                #twr.MM[0,0]         = self.pTwr['TwrMass']
+                #twr.MM[1,1]         = self.pTwr['TwrMass']
+                #twr.MM[2,2]         = self.pTwr['TwrMass']
+#                 #twr.MM      [6:,6:] = self.pTwr['Me']   [np.ix_(shapes,shapes)] # TODO TODO a bit too strong for second mode
                 twr.KK      [6:,6:] = self.pTwr['Ke']   [np.ix_(shapes,shapes)]
                 twr.KK0     [6:,6:] = self.pTwr['Ke0']  [np.ix_(shapes,shapes)]
                 twr.KKg_self[6:,6:] = self.pTwr['Kg_SW'][np.ix_(shapes,shapes)]
-                #twr.KKg_Mtop[6:,6:] = self.pTwr['Kg_TM'][np.ix_(shapes,shapes)]
+                twr.KKg_Mtop[6:,6:] = self.pTwr['Kg_TM'][np.ix_(shapes,shapes)]
+                #twr.KK  = twr.KK0 + twr.KKg
                 twr.DD      [6:,6:] = self.pTwr['De']   [np.ix_(shapes,shapes)]
         else:
             twr = FASTBeamBody(ED, self.twrFile, 
@@ -1383,7 +1400,8 @@ class FASTWindTurbine():
 #         printMat('KKg_rot', fnd.KKg_rot[6:,6:])
 
 
-        if self.WT.algo=='OpenFAST' and bOverride:
+        #if self.WT.algo=='OpenFAST' and bOverride:
+        if bOverride:
             if self.SD._FEM is None or self.SD._FEM.MM_CB is None or self.SD._FEM.KK_CB is None:
                 raise Exception('SubDyn reduced matrices not available. Ensure SD.init/applyCB was run before override.')
             if shapes is None:

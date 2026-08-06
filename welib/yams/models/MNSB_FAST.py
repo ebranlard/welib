@@ -40,7 +40,9 @@ class FASTmodel2MNSB(FASTWindTurbine):
                  bladeMassExpected=None,
                  gravity=None,
                  algo='', # TODO replace with OpenFAST
-                 SD_override=True,
+                 FEM_method=None,                 
+                 SD_bOverride=True,
+                 SD_bCI = False,
                  verbose=False
 	    ):
         """ 
@@ -125,7 +127,10 @@ class FASTmodel2MNSB(FASTWindTurbine):
         self.setupSD(shapes=shapes_sub, nSpan=nSpan_sub,
                      Mtop = Mtop,
                      bStiffening=bStiffening,
-                     bOverride=SD_override)
+                     bOverride = SD_bOverride,
+                     bCI       = SD_bCI,
+                     FEM_method=FEM_method
+                     )
 
         self.WT.twr = self.WT.fnd # TNSBStructure will ignore fnd
         self.WT.fnd = None

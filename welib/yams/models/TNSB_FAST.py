@@ -57,6 +57,8 @@ class FASTmodel2TNSB(FASTWindTurbine):
         readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
         self.loadFST(FST_file, readlist=readlist)
         self.setGravity(gravity)
+        if self.FST['CompSub']>0:
+            raise Exception('Do not use TNSB_FAST when CompSub>0 (SubDyn), use MTNSB or MNSB')
 
         # --- Default arguments (needs ED loaded)
         nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose)

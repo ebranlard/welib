@@ -26,10 +26,10 @@ class TestMNSB(unittest.TestCase):
 
         # --- Auto assembly with z axis
         assembly='auto'
-        WTA = FASTmodel2MNSB(fstFile, q=q, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True).WT
+        WTA = FASTmodel2MNSB(fstFile, q=q, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True, SD_bOverride=False).WT
         # --- Manual assembly with x axis
         assembly='manual'
-        WTM = FASTmodel2MNSB(fstFile, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True).WT
+        WTM = FASTmodel2MNSB(fstFile, shapes_sub=shapes_sub, shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', assembly=assembly, fixedShaft=True, SD_bOverride=False).WT
         #WTM = WTA.copy()
         #WTM.MM=0
         #WTM.DD=0

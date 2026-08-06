@@ -745,6 +745,8 @@ class SubDyn:
         print('SubDyn: toYamsDATA, method:', method)
 
         dfOut=None
+        if method is None:
+            method ='cbeam'
 
         if method.lower() == 'cbeam':
             # --- Use Beam FEM representation
