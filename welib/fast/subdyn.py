@@ -815,7 +815,14 @@ class SubDyn:
                     PhiK[iShape][1,:] = gradient_regular(PhiV[iShape][1,:],dx=dx[0],order=4)
         
                 # shape i=2, G3, uz
+            elif idShape==3:
                 # shape i=3, G4, vx
+                PhiU[iShape][1,:] = df_G['G5_uy'].values
+                PhiV[iShape][1,:] = df_G['G5_tx'].values # TODO p/m
+                if irregular:
+                    pass
+                else:
+                    PhiK[iShape][1,:] = gradient_regular(PhiV[iShape][1,:],dx=dx[0],order=4)
 
             elif idShape==4:
                 # shape i=4, G5 vy
