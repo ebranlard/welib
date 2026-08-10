@@ -275,7 +275,8 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
         if not oneSimPerDir:
             # we can only detele template files that were used by ALL simulations
             TemplateFiles=[t for nc,t in zip(nCounts, TemplateFiles) if nc==len(PARAMS)]
-        for tf in TemplateFiles:
+        TemplateFilesInOutputDir = [ f for f in TemplateFiles if os.path.dirname(os.path.relpath(f, outputDir)) in ('', '.') ]
+        for tf in TemplateFilesInOutputDir:
             try:
                 os.remove(tf)
             except:
@@ -283,7 +284,6 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
                 pass
     return files
 
-# def templateReplace(PARAMS, *args, **kwargs):
 def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False, dryRun=False):
     """ 
     see templateReplaceGeneral

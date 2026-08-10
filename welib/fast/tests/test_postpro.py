@@ -13,7 +13,7 @@ class Test(unittest.TestCase):
     def setUpClass(cls):
         # This code will be run once, before all the tests in the class are run.
         # FAST With ED and AD radial outputs (not a full period available..)
-        outFile1 = os.path.join(scriptDir,'../../../data/example_files/fastout_allnodes.outb')
+        outFile1 = os.path.join(scriptDir,'../../../data/example_files/fastout_allnodes.outb') # Note: Has "alpha" instead of "Alpha"
         cls.df1 = FASTOutputFile(outFile1).toDataFrame()
 
         # AD driver with radial outputs, more than a period
@@ -30,9 +30,9 @@ class Test(unittest.TestCase):
         np.testing.assert_equal(list(out.keys()), ['AD', 'ED_bld', 'ED_twr', 'BD', 'SD_MembersOut', 'SD_JointsOut'])
 
         # --- Test AD
-        cols =['r/R_[-]','B1Cl_[-]','B1Fx_[N/m]','B1Fy_[N/m]','i_[#]','r_[m]']
-        Mf = np.array([0.023810, 0.000000, 108.233875,  -1.211481 ,    1,  1.5000])
-        Ml = np.array([0.999998, 0.276654, 126.151657,   4.402287 ,   19, 62.9999])
+        cols =['r/R_[-]','B1Cl_[-]','B1Fx_[N/m]','B1Fy_[N/m]','B1alpha_[deg]', 'i_[#]','r_[m]']
+        Mf = np.array([0.023810, 0.000000, 108.233875,  -1.211481 , 76.050920,   1,  1.5000])
+        Ml = np.array([0.999998, 0.276654, 126.151657,   4.402287 , 80.380341,  19, 62.9999])
         dfAD2 = pd.DataFrame(data=np.vstack((Mf,Ml)), columns=cols)
 
         dfAD1 = out['AD']
