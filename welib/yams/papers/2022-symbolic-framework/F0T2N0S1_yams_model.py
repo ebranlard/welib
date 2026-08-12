@@ -60,6 +60,7 @@ def main(runSim=True, runFAST=False, create=True):
             import welib.weio as weio
             dfFS = weio.read(fstFilename.replace('.fst','.outb')).toDataFrame()
             time =dfFS['Time_[s]'].values
+            dfFS = WT._insertOFDOFsInDF(dfFS)
         else:
             time = np.linspace(0,50,1000)
             dfFS = None
@@ -95,17 +96,17 @@ if __name__=="__test__":
     from welib.tools.stats import mean_rel_err
     vb = False
     method='minmax'
-    eps1= mean_rel_err(y1=dfNL['Azimuth_[deg]'],   y2=dfFS['Azimuth_[deg]']  , method=method, verbose=vb)
-    eps2= mean_rel_err(y1=dfNL['Q_TFA1_[m]'],      y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
-    eps3= mean_rel_err(y1=dfNL['Q_TSS1_[m]'],      y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
+    eps1= mean_rel_err(y1=dfNL['Q_GeAz_[rad]'],   y2=dfFS['Q_GeAz_[rad]']   , method=method, verbose=vb)
+    eps2= mean_rel_err(y1=dfNL['Q_TFA1_[m]'],     y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
+    eps3= mean_rel_err(y1=dfNL['Q_TSS1_[m]'],     y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
     np.testing.assert_array_less(eps1, 0.57)
     np.testing.assert_array_less(eps2, 0.58)
     np.testing.assert_array_less(eps3, 0.59)
 
 
-    eps1= mean_rel_err(y1=dfLI['Azimuth_[deg]'],   y2=dfFS['Azimuth_[deg]']  , method=method, verbose=vb)
-    eps2= mean_rel_err(y1=dfLI['Q_TFA1_[m]'],      y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
-    eps3= mean_rel_err(y1=dfLI['Q_TSS1_[m]'],      y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
+    eps1= mean_rel_err(y1=dfLI['Q_GeAz_[rad]'],   y2=dfFS['Q_GeAz_[rad]']  , method=method, verbose=vb)
+    eps2= mean_rel_err(y1=dfLI['Q_TFA1_[m]'],     y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
+    eps3= mean_rel_err(y1=dfLI['Q_TSS1_[m]'],     y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
     np.testing.assert_array_less(eps1, 0.57)
     np.testing.assert_array_less(eps2, 0.58)
     np.testing.assert_array_less(eps3, 0.59)

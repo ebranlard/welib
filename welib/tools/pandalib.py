@@ -31,13 +31,12 @@ def create_dummy_dataframe(size):
     return pd.DataFrame(data={'col1': np.linspace(0,1,size), 'col2': np.random.normal(0,1,size)})
 
 
-def remove_duplicated_col_df(df, inPlace=False):
-    dup_cols = df.columns[df.columns.duplicated()]
-    if inPlace:
-        df.drop(columns=dup_cols, inplace=True)
-        return None
-    else:
-        return df.drop(columns=dup_cols, inplace=False)
+def remove_duplicated_col_df(df):
+    """ Remove duplicated columns, but keep the first instance """
+    return df.loc[:,~df.columns.duplicated()].copy()
+    # IF we want to remove them all, Remove them all:
+    # dup_cols = df.columns[df.columns.duplicated()]
+    # df.drop(columns=dup_cols, inplace=False)
 
 def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, verbose=False, raiseIfAbsent=False):
     """ 
@@ -96,8 +95,8 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
                 # --- This is an advanced substitution using formulae
                 search_results = re.finditer(r'\{.*?\}', v)
                 expr=v
-                if verbose:
-                    print('Attempt to insert column {:15s} with expr {}'.format(k,v))
+                #if verbose:
+                #    print('Attempt to insert column {:15s} with expr {}'.format(k,v))
                 # For more advanced operations, we use an eval
                 bFail=False
                 for item in search_results:
@@ -111,6 +110,12 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
                         expr=expr.replace(item.group(0),'df[\''+col+'\']')
                 #print(k, '=', expr)
                 if not bFail:
+                    if k in df:
+                        if verbose:
+                            print(f'Overwriting column {k:15s} with extr {v}')
+                    else:
+                        if verbose:
+                            print(f'Inserting    column {k:15s} with expr {v}')
                     df[k]=eval(expr)
                     ColNew.append(k)
                 else:
@@ -125,7 +130,7 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
                         print('[WARN] Column not present in dataframe: ',v)
                 else:
                     if k in RenameMap.keys():
-                        print('[WARN] Not renaming {} with {} as the key is already present'.format(k,v))
+                        print('[WARN] Not renaming {} with {} as the key is already present in RenameMap'.format(k,v))
                     else:
                         RenameMap[k]=v
                         Found=True
@@ -138,15 +143,17 @@ def remap_df(df, ColMap, bColKeepNewOnly=False, inPlace=False, dataDict=None, ve
             ColMapMiss+=ColMapMissLoc
 
 
-    # Applying renaming only now so that expressions may be applied in any order
+    # --- Applying renaming only now so that expressions may be applied in any order
+    ColNames = list(df.columns.values)
     for k,v in RenameMap.items():
         if verbose:
             print('Renaming column {:15s} > {}'.format(v,k))
         k=k.strip()
-        iCol = list(df.columns).index(v)
-        df.columns.values[iCol]=k
+        iCol = ColNames.index(v)
+        ColNames[iCol] = k
         ColNew.append(k)
-    df.columns = df.columns.values # Hack to ensure columns are updated
+    #df.columns = df.columns.values # Hack to ensure columns are updated
+    df.columns = ColNames
 
     if len(ColMapMiss)>0:
         print('[FAIL] The following columns were not found in the dataframe:',ColMapMiss)

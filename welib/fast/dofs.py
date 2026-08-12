@@ -103,6 +103,11 @@ COLMAP_QSHORT_TO_QOF={
     'QD2_P_[rad/s^2]'     : 'ddphi_y',
     'QD2_Y_[rad/s^2]'     : 'ddphi_z',
 }
+QOF = COLMAP_QSHORT_TO_QOF.keys()
+
+
+# COLMAP_QOF_TO_QSHORT = inverse_colmap(COLMAP_QSHORT_TO_QOF)  # Or simply
+COLMAP_QOF_TO_QSHORT = {v: k for k, v in COLMAP_QSHORT_TO_QOF.items()}
 
 # COLMAP_OFQ_TO_SHORT={
 #   'x'       : 'Q_Sg_[m]'           , 

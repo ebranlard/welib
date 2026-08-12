@@ -2,7 +2,6 @@ import unittest
 import numpy as np    
 import glob
 import os
-import warnings
 
 def execfile(filepath, globals=None, locals=None):
     """ Execute a given python file """
