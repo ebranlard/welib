@@ -153,7 +153,7 @@ class MTNSBStructure(WindTurbineStructure):
         nq = grd.setupDOFIndex();
         if nq!=len(q):
            print('>>> ',nq,len(q))
-           raise Exception(f'Wrong number of dof between input `q` (size {len(q)}) and expected from model {nq}')
+           raise Exception(f'Wrong number of dof between input `q` (size {len(q)}) and expected from model: {nq}')
 
         # TODO TODO
         self.grd  = grd # TODO?
@@ -246,7 +246,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                                  algo=algo)
 
         # --- Read fast input files
-        readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD']
+        readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD', 'HD']
         self.loadFST(FST_file, readlist=readlist)
         self.setGravity(gravity)
 
@@ -299,7 +299,9 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                      bStiffening=bStiffening, # TODO used to be false
                      bOverride = SD_bOverride,
                      bCI       = SD_bCI,
-                     FEM_method=FEM_method)
+                     FEM_method=FEM_method,
+                     flavor='yams_rec'
+                     )
 
         # --------------------------------------------------------------------------------}
         # --- Initial conditions and DOFs
@@ -339,8 +341,6 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         WT.DampMat       = self.SD.DampMat
         WT.RayleighCoeff = self.SD.RayleighCoeff
         WT.additional_properties +=['DCK', 'FST', 'ED', 'DampMat', 'RayleighCoeff', 'WaterDepth','Hydro']
-
-
 
 
 

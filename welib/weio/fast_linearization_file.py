@@ -336,9 +336,8 @@ class FASTLinearizationFile(File):
         return s
 
     def toDataFrame(self):
-        import pandas as pd
         dfs={}
-        keys = ['B', 'C', 'D', 'x', 'xd', 'xdot', 'u', 'y', 'z', 'M', 'dUdu', 'dUdy']
+        keys = ['A', 'B', 'C', 'D', 'x', 'xd', 'xdot', 'u', 'y', 'z', 'M', 'dUdu', 'dUdy']
         dfs = {k: getattr(self, k) for k in keys if getattr(self, k) is not None}
         return dfs
 

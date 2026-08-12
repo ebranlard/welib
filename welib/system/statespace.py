@@ -651,9 +651,14 @@ class StateSpace(System):
         except TypeError:
             print("[FAIL] Error evaluating model outputs. Does the function dqdt has the argument `calcOutput`?")
             return None
+
         if not isinstance(out, pd.core.series.Series):
-            # If array
+            # If array, we use dummy columns
             cols = ['y{:d}'.format(i+1) for i in range(len(out))]
+            # If calcOutput return the same number of cols as our sY, then use sY
+            if self.sY is not None:
+                if len(self.sY)==len(cols):
+                    cols = self.sY 
         else:
             # If pandas series
             cols     = out.index
@@ -661,9 +666,8 @@ class StateSpace(System):
         # --- Check consistency with self.sY
         if self.sY is not None:
             if len(self.sY)!=len(cols):
-                #raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
-                print('[WARN] Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):'.format(len(cols), self.sY))
-            #cols = self.sY
+                raise Exception("Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):".format(len(cols), self.sY))
+                #print('[WARN] Inconsistency in length of output columnnames. Number of columns detected from `calcOuputt`: {}. Ouput columNames (sY):'.format(len(cols), self.sY))
         return cols
 
     def _inferInputCols(self, time=None, q=None):

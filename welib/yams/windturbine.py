@@ -29,6 +29,40 @@ from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrix
 
+from welib.tools.pandalib import remap_df
+
+# Handling aliases
+COL_MAP_To_Q={
+  'Q_Sg_[m]'        : 'PtfmSurge_[m]',
+  'Q_Sw_[m]'        : 'PtfmSway_[m]',
+  'Q_Hv_[m]'        : 'PtfmHeave_[m]',
+  'Q_R_[rad]'       : '{PtfmRoll_[deg]}   * np.pi/180', # SI [deg] -> [rad]
+  'Q_P_[rad]'       : '{PtfmPitch_[deg]}  * np.pi/180', # SI [deg] -> [rad]
+  'Q_Y_[rad]'       : '{PtfmYaw_[deg]}    * np.pi/180', # SI [deg] -> [rad]
+  'Q_GeAz_[rad]'    : '{Azimuth_[deg]}    * np.pi/180', # SI [deg] -> [rad]
+  'QD_GeAz_[rad/s]' : '{RotSpeed_[rpm]}   * 2*np.pi/60', # SI [rpm] -> [rad/s]
+#   ' dq_FA1 ' : ' QD_TFA1_[m/s]               '                ,
+#   ' dq_SS1 ' : ' QD_TSS1_[m/s]               '                ,
+#   ' dx     ' : ' QD_Sg_[m/s]               '              ,
+#   ' dy     ' : ' QD_Sw_[m/s]                '               ,
+#   ' dz     ' : ' QD_Hv_[m/s]               '              ,
+#   ' dphi_x ' : ' QD_R_[rad/s]                             ' ,
+#   ' dphi_y ' : ' QD_P_[rad/s]                             ',
+#   ' dphi_z ' : ' QD_Y_[rad/s]                             '  ,
+#   ' ddpsi  ' : 'QD2_GeAz_[rad/s^2]'  ,
+#   ' ddq_FA1' : 'QD2_TFA1_[m/s^2]               '                ,
+#   ' ddq_SS1' : 'QD2_TSS1_[m/s^2]               '                ,
+#   ' ddx    ' : 'QD2_Sg_[m/s^2]               '              ,
+#   ' ddy    ' : 'QD2_Sw_[m/s^2]                '               ,
+#   ' ddz    ' : 'QD2_Hv_[m/s^2]               '              ,
+#   ' ddphi_x' : 'QD2_R_[rad/s^2]                             ' ,
+#   ' ddphi_y' : 'QD2_P_[rad/s^2]                             ',
+#   ' ddphi_z' : 'QD2_Y_[rad/s^2]                             '  ,
+}
+
+
+
+
 class WindTurbineStructure():
     def __init__(self):
         self.bld = None # list of blades
@@ -541,6 +575,60 @@ class WindTurbineStructure():
 
         return d
 
+    def _insertDummyDOFsInDF(self, df):
+        """ 
+        Insert missing DOF time series in dataframe.
+            If a DOF is turned off, we insert zero
+            Otherwise, we warn the user
+        """ 
+
+        #return np.array([dof['q_channel'] for dof in self.DOF if dof['active']])
+        _sq   = self.q_channels
+        _sqd  = self.qd_channels
+        _sqdd = self.qdd_channels
+
+        keys = list(df.keys())
+
+#          DOFs+=[{'name': f'CB{iCB+1}', 'active':True, 'q0':0, 'qd0':0, 'q_channel': f'QCB{iCB+1}_[-]' , 'qd_channel':f'QDCB{iCB+1}_[-]','qdd_channel':f'QD2_CB{iCB+1}_[-]'}]
+#         # TODO TODO TODO handle alias Q_Sg
+#         DOFs+=[{'name':'x'      , 'active':ED['PtfmSgDOF'], 'q0': ED['PtfmSurge']  , 'qd0':0 , 'q_channel':'PtfmSurge_[m]' , 'qd_channel':'QD_Sg_[m/s]','qdd_channel':'QD2_Sg_[m/s^2]'}]
+#         DOFs+=[{'name':'y'      , 'active':ED['PtfmSwDOF'], 'q0': ED['PtfmSway']   , 'qd0':0 , 'q_channel':'PtfmSway_[m]'  , 'qd_channel':'QD_Sw_[m/s]','qdd_channel':'QD2_Sw_[m/s^2]'}]
+#         DOFs+=[{'name':'z'      , 'active':ED['PtfmHvDOF'], 'q0': ED['PtfmHeave']  , 'qd0':0 , 'q_channel':'PtfmHeave_[m]' , 'qd_channel':'QD_Hv_[m/s]','qdd_channel':'QD2_Hv_[m/s^2]'}]
+#         # TODO TODO TODO issue here with deg and rad
+#         DOFs+=[{'name':'phi_x' , 'active':ED['PtfmRDOF'] , 'q0': ED['PtfmRoll']*np.pi/180  , 'qd0':0 , 'q_channel':'PtfmRoll_[deg]'  , 'qd_channel':'QD_R_[rad/s]', 'qdd_channel':'QD2_R_[rad/s^2]'}]
+#         DOFs+=[{'name':'phi_y' , 'active':ED['PtfmPDOF'] , 'q0': ED['PtfmPitch']*np.pi/180 , 'qd0':0 , 'q_channel':'PtfmPitch_[deg]' , 'qd_channel':'QD_P_[rad/s]', 'qdd_channel':'QD2_P_[rad/s^2]'}]
+#         DOFs+=[{'name':'phi_z' , 'active':ED['PtfmYDOF'] , 'q0': ED['PtfmYaw']*np.pi/180   , 'qd0':0 , 'q_channel':'PtfmYaw_[deg]'   , 'qd_channel':'QD_Y_[rad/s]', 'qdd_channel':'QD2_Y_[rad/s^2]'}]
+# 
+#         DOFs+=[{'name':'q_FA1'  , 'active':ED['TwFADOF1'] , 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA1_[m]', 'qd_channel':'QD_TFA1_[m/s]', 'qdd_channel':'QD2_TFA1_[m/s^2]'}]
+#         DOFs+=[{'name':'q_SS1'  , 'active':ED['TwSSDOF1'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS1_[m]', 'qd_channel':'QD_TSS1_[m/s]', 'qdd_channel':'QD2_TSS1_[m/s^2]'}]
+#         DOFs+=[{'name':'q_FA2'  , 'active':ED['TwFADOF2'] , 'q0': ED['TTDspFA']  , 'qd0':0 , 'q_channel':'Q_TFA2_[m]', 'qd_channel':'QD_TFA2_[m/s]', 'qdd_channel':'QD2_TFA2_[m/s^2]'}]
+#         DOFs+=[{'name':'q_SS2'  , 'active':ED['TwSSDOF2'] , 'q0': ED['TTDspSS']  , 'qd0':0 , 'q_channel':'Q_TSS2_[m]', 'qd_channel':'QD_TSS2_[m/s]', 'qdd_channel':'QD2_TSS2_[m/s^2]'}]
+# 
+#         DOFs+=[{'name':'theta_y','active':ED['YawDOF']  , 'q0': ED['NacYaw']*np.pi/180   , 'qd0':0 ,          'q_channel':'NacYaw_[deg]' , 'qd_channel':'QD_Yaw_[rad/s]', 'qdd_channel':'QD2_Yaw_[rad/s^2]'}]
+#         DOFs+=[{'name':'psi'    ,'active':ED['GenDOF']  , 'q0': ED['Azimuth']*np.pi/180  , 'qd0':ED['RotSpeed']*2*np.pi/60 , 'q_channel':'Azimuth_[deg]', 'qd_channel':'RotSpeed_[rpm]', 'qdd_channel': 'QD2_GeAz_[rad/s^2]'}]
+# 
+#         DOFs+=[{'name':'nu'     ,'active':ED['DrTrDOF'] , 'q0': 0  , 'qd0':0 , 'q_channel':'Q_DrTr_[rad]', 'qd_channel':'QD_DrTr_[rad/s]', 'qdd_channel':'QD2_DrTr_[rad/s^2]'}]
+#         DOFs+=[{'name':'q_B{}Fl1'.format(B), 'active':ED['FlapDOF1'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F1_[m]'.format(B), 'qd_channel':'QD_B{}F1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}F1_[m/s^2]'.format(B)}]
+#         DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['FlapDOF2'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F2_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
+#         DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl'] , 'qd0':0, 'q_channel':'Q_B{}E1_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
+
+#         if 'Q_Sg_[m]' not in keys or 'PtfmSurge_[m]' not in keys:
+#             if 'x' in self.DOFname:
+#                 print('[WARN] Missing DOF from dataframe: Q_Sg')
+# 
+# 
+#         DOFNames = ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+#         sq   = ['Q_'+s for s in DOFNames]
+#         sqd  = ['QD_'+s for s in DOFNames]
+#         sqdd = ['QD2_'+s for s in DOFNames]
+#         sqall = sq+sqd+sqdd
+#         for s in sqall:
+#             if s not in df.keys():
+#                 print('[WARN] Missing DOF from dataframe: {}'.format(s))
+#                 import pdb; pdb.set_trace()
+#                 df[s]=0
+        return df
+
 
     def calcOutputsFromDF(WT, df, noAcc=False, useTopLoadsFromDF=False):
         """ 
@@ -561,8 +649,7 @@ class WindTurbineStructure():
         #from welib.fast.elastodyn import rotorParameters, towerParameters, ED_Parameters, ED_CoordSys, ED_Positions
         #from welib.fast.elastodyn import ED_AngPosVelPAcc, ED_LinVelPAcc, ED_qDict2q
         #from welib.weio.fast_input_deck import FASTInputDeck
-        #from welib.yams.windturbine import FASTWindTurbine
-        from welib.yams.flexibility import beamSectionLoads3D  # calls beamSectionLoads1D
+        from welib.yams.section_loads import beamSectionLoads3D  # calls beamSectionLoads1D
         #from welib.yams.rotations import rotMat, R_y, R_z, R_x
         #from welib.yams.kinematics import *
 
@@ -576,10 +663,11 @@ class WindTurbineStructure():
             gravity_vec = np.array((0.,0.,-gravity)) # external acceleration (gravity/earthquake)
             a_ext = R_g2t.dot(gravity_vec)
             # NOTE: assumes that U,V, K have been computed using twr.updateFlexibleKinematics 
-            F_sec, M_sec =  beamSectionLoads3D(p_ext=p_ext, F_top=F_top_t, M_top=M_top_t, s_span=twr.s_span, m=twr.m, U=twr.U, V=twr.V, K=twr.K, a_struct=a_struct_t, 
+            F_sec, M_sec, outDBG =  beamSectionLoads3D(p_ext=p_ext, F_top=F_top_t, M_top=M_top_t, s_span=twr.s_span, m=twr.m, U=twr.U, V=twr.V, K=twr.K, a_struct=a_struct_t, 
                      a_ext=a_ext, corrections=1)
             return F_sec, M_sec
 
+        df = WT._insertDummyDOFsInDF(df)
 
         # Sanitization of input dataframe
         df = df.loc[:,~df.columns.duplicated()].copy()
@@ -650,11 +738,11 @@ class WindTurbineStructure():
     #             q['TSS2'] = -q['TSS2']
 
                 dd = WT.kinematics(q, qd, qdd)
-                dfOut['Time_[s]'].loc[it] = t
+                dfOut.loc[it, 'Time_[s]'] = t
                 # TDi includes all platform motions
-                dfOut['TwrTpTDxi'].loc[it] = dd['u_N_tot'][0] 
-                dfOut['TwrTpTDyi'].loc[it] = dd['u_N_tot'][1]
-                dfOut['TwrTpTDzi'].loc[it] = dd['u_N_tot'][2]
+                dfOut.loc[it, 'TwrTpTDxi'] = dd['u_N_tot'][0] 
+                dfOut.loc[it, 'TwrTpTDyi'] = dd['u_N_tot'][1]
+                dfOut.loc[it, 'TwrTpTDzi'] = dd['u_N_tot'][2]
 
                 u_N = dd['u_N']
                 v_N = dd['v_N']
@@ -668,25 +756,25 @@ class WindTurbineStructure():
                 om_N_p = dd['R_g2p'].dot(om_N)
                 omd_N_p = dd['R_g2p'].dot(omd_N)
 
-                dfOut['YawBrTDxt'].loc[it] = u_N_t[0]
-                dfOut['YawBrTDyt'].loc[it] = u_N_t[1]
-                dfOut['YawBrTDzt'].loc[it] = u_N_t[2]
-                dfOut['YawBrTDxp'].loc[it] = u_N_p[0]
-                dfOut['YawBrTDyp'].loc[it] = u_N_p[1]
-                dfOut['YawBrTDzp'].loc[it] = u_N_p[2]
+                dfOut.loc[it, 'YawBrTDxt'] = u_N_t[0]
+                dfOut.loc[it, 'YawBrTDyt'] = u_N_t[1]
+                dfOut.loc[it, 'YawBrTDzt'] = u_N_t[2]
+                dfOut.loc[it, 'YawBrTDxp'] = u_N_p[0]
+                dfOut.loc[it, 'YawBrTDyp'] = u_N_p[1]
+                dfOut.loc[it, 'YawBrTDzp'] = u_N_p[2]
 
-                dfOut['YawBrTVxp'].loc[it] = v_N_p[0]
-                dfOut['YawBrTVyp'].loc[it] = v_N_p[1]
-                dfOut['YawBrTVzp'].loc[it] = v_N_p[2]
-                dfOut['YawBrTAxp'].loc[it] = a_N_p[0]
-                dfOut['YawBrTAyp'].loc[it] = a_N_p[1]
-                dfOut['YawBrTAzp'].loc[it] = a_N_p[2]
-                dfOut['YawBrRVxp'].loc[it] = om_N_p[0] * 180/np.pi
-                dfOut['YawBrRVyp'].loc[it] = om_N_p[1] * 180/np.pi
-                dfOut['YawBrRVzp'].loc[it] = om_N_p[2] * 180/np.pi
-                dfOut['YawBrRAxp'].loc[it] = omd_N_p[0] * 180/np.pi
-                dfOut['YawBrRAyp'].loc[it] = omd_N_p[1] * 180/np.pi
-                dfOut['YawBrRAzp'].loc[it] = omd_N_p[2] * 180/np.pi
+                dfOut.loc[it, 'YawBrTVxp'] = v_N_p[0]
+                dfOut.loc[it, 'YawBrTVyp'] = v_N_p[1]
+                dfOut.loc[it, 'YawBrTVzp'] = v_N_p[2]
+                dfOut.loc[it, 'YawBrTAxp'] = a_N_p[0]
+                dfOut.loc[it, 'YawBrTAyp'] = a_N_p[1]
+                dfOut.loc[it, 'YawBrTAzp'] = a_N_p[2]
+                dfOut.loc[it, 'YawBrRVxp'] = om_N_p[0] * 180/np.pi
+                dfOut.loc[it, 'YawBrRVyp'] = om_N_p[1] * 180/np.pi
+                dfOut.loc[it, 'YawBrRVzp'] = om_N_p[2] * 180/np.pi
+                dfOut.loc[it, 'YawBrRAxp'] = omd_N_p[0] * 180/np.pi
+                dfOut.loc[it, 'YawBrRAyp'] = omd_N_p[1] * 180/np.pi
+                dfOut.loc[it, 'YawBrRAzp'] = omd_N_p[2] * 180/np.pi
 
                 a_IMU = dd['a_IMU']
                 v_IMU = dd['v_IMU']
@@ -698,19 +786,19 @@ class WindTurbineStructure():
                 om_IMU_s = dd['R_g2s'].dot(om_IMU)
                 omd_IMU_s = dd['R_g2s'].dot(omd_IMU)
 
-                dfOut['NcIMUTVxs'].loc[it] = v_IMU_s[0]
-                dfOut['NcIMUTVys'].loc[it] = v_IMU_s[1]
-                dfOut['NcIMUTVzs'].loc[it] = v_IMU_s[2]
-                dfOut['NcIMUTAxs'].loc[it] = a_IMU_s[0]
-                dfOut['NcIMUTAys'].loc[it] = a_IMU_s[1]
-                dfOut['NcIMUTAzs'].loc[it] = a_IMU_s[2]
-                dfOut['NcIMURVxs'].loc[it] = om_IMU_s[0] * 180/np.pi
-                dfOut['NcIMURVys'].loc[it] = om_IMU_s[1] * 180/np.pi
-                dfOut['NcIMURVzs'].loc[it] = om_IMU_s[2] * 180/np.pi
-                dfOut['NcIMURAxs'].loc[it] = omd_IMU_s[0] * 180/np.pi
-                dfOut['NcIMURAys'].loc[it] = omd_IMU_s[1] * 180/np.pi
-                dfOut['NcIMURAzs'].loc[it] = omd_IMU_s[2] * 180/np.pi
-        
+                dfOut.loc[it, 'NcIMUTVxs'] = v_IMU_s[0]
+                dfOut.loc[it, 'NcIMUTVys'] = v_IMU_s[1]
+                dfOut.loc[it, 'NcIMUTVzs'] = v_IMU_s[2]
+                dfOut.loc[it, 'NcIMUTAxs'] = a_IMU_s[0]
+                dfOut.loc[it, 'NcIMUTAys'] = a_IMU_s[1]
+                dfOut.loc[it, 'NcIMUTAzs'] = a_IMU_s[2]
+                dfOut.loc[it, 'NcIMURVxs'] = om_IMU_s[0] * 180/np.pi
+                dfOut.loc[it, 'NcIMURVys'] = om_IMU_s[1] * 180/np.pi
+                dfOut.loc[it, 'NcIMURVzs'] = om_IMU_s[2] * 180/np.pi
+                dfOut.loc[it, 'NcIMURAxs'] = omd_IMU_s[0] * 180/np.pi
+                dfOut.loc[it, 'NcIMURAys'] = omd_IMU_s[1] * 180/np.pi
+                dfOut.loc[it, 'NcIMURAzs'] = omd_IMU_s[2] * 180/np.pi
+
 
                 # --- Loads
                 gravity_vec = np.array([0,0,-WT.gravity])
@@ -753,12 +841,12 @@ class WindTurbineStructure():
                 F_N_p = R_g2p.dot(F_N)
                 M_N_p = R_g2p.dot(M_N)
 
-                dfOut['YawBrFxp'].loc[it] = F_N_p[0]/1000
-                dfOut['YawBrFyp'].loc[it] = F_N_p[1]/1000
-                dfOut['YawBrFzp'].loc[it] = F_N_p[2]/1000
-                dfOut['YawBrMxp'].loc[it] = M_N_p[0]/1000
-                dfOut['YawBrMyp'].loc[it] = M_N_p[1]/1000
-                dfOut['YawBrMzp'].loc[it] = M_N_p[2]/1000
+                dfOut.loc[it, 'YawBrFxp'] = F_N_p[0]/1000
+                dfOut.loc[it, 'YawBrFyp'] = F_N_p[1]/1000
+                dfOut.loc[it, 'YawBrFzp'] = F_N_p[2]/1000
+                dfOut.loc[it, 'YawBrMxp'] = M_N_p[0]/1000
+                dfOut.loc[it, 'YawBrMyp'] = M_N_p[1]/1000
+                dfOut.loc[it, 'YawBrMzp'] = M_N_p[2]/1000
 
 
                 if useTopLoadsFromDF:
@@ -785,27 +873,27 @@ class WindTurbineStructure():
                     hSL = WT.twr.s_span[iSL]
 
                     sT='TwHt{}'.format(iiSL+1)
-                    dfOut[sT+'FLxt_[kN]'  ].loc[it] = F_sec[0, iSL]/1000
-                    dfOut[sT+'FLyt_[kN]'  ].loc[it] = F_sec[1, iSL]/1000
-                    dfOut[sT+'FLzt_[kN]'  ].loc[it] = F_sec[2, iSL]/1000
-                    dfOut[sT+'MLxt_[kN-m]'].loc[it] = M_sec[0, iSL]/1000
-                    dfOut[sT+'MLyt_[kN-m]'].loc[it] = M_sec[1, iSL]/1000
-                    dfOut[sT+'MLzt_[kN-m]'].loc[it] = M_sec[2, iSL]/1000
+                    dfOut.loc[it, sT+'FLxt_[kN]']   = F_sec[0, iSL]/1000
+                    dfOut.loc[it, sT+'FLyt_[kN]']   = F_sec[1, iSL]/1000
+                    dfOut.loc[it, sT+'FLzt_[kN]']   = F_sec[2, iSL]/1000
+                    dfOut.loc[it, sT+'MLxt_[kN-m]'] = M_sec[0, iSL]/1000
+                    dfOut.loc[it, sT+'MLyt_[kN-m]'] = M_sec[1, iSL]/1000
+                    dfOut.loc[it, sT+'MLzt_[kN-m]'] = M_sec[2, iSL]/1000
 
-                    dfOut[sT+'TDxt_[m]'].loc[it] = dd['u_Ts_in_t'][iSL,0]
-                    dfOut[sT+'TDyt_[m]'].loc[it] = dd['u_Ts_in_t'][iSL,1]
-                    dfOut[sT+'TDzt_[m]'].loc[it] = dd['u_Ts_in_t'][iSL,2]
-                    dfOut[sT+'RDxt_[deg]'].loc[it] = dd['theta_TTs_in_t'][iSL,0]*180/np.pi
-                    dfOut[sT+'RDyt_[deg]'].loc[it] = dd['theta_TTs_in_t'][iSL,1]*180/np.pi
-                    dfOut[sT+'RDzt_[deg]'].loc[it] = dd['theta_TTs_in_t'][iSL,2]*180/np.pi
+                    dfOut.loc[it, sT+'TDxt_[m]'] = dd['u_Ts_in_t'][iSL,0]
+                    dfOut.loc[it, sT+'TDyt_[m]'] = dd['u_Ts_in_t'][iSL,1]
+                    dfOut.loc[it, sT+'TDzt_[m]'] = dd['u_Ts_in_t'][iSL,2]
+                    dfOut.loc[it, sT+'RDxt_[deg]'] = dd['theta_TTs_in_t'][iSL,0]*180/np.pi
+                    dfOut.loc[it, sT+'RDyt_[deg]'] = dd['theta_TTs_in_t'][iSL,1]*180/np.pi
+                    dfOut.loc[it, sT+'RDzt_[deg]'] = dd['theta_TTs_in_t'][iSL,2]*180/np.pi
                     a_Ts = R_g2t.dot(dd['a_Ts'][iSL])
-                    dfOut[sT+'ALxt_[m/s^2]'].loc[it] = a_Ts[0]
-                    dfOut[sT+'ALyt_[m/s^2]'].loc[it] = a_Ts[1]
-                    dfOut[sT+'ALzt_[m/s^2]'].loc[it] = a_Ts[2]
+                    dfOut.loc[it, sT+'ALxt_[m/s^2]'] = a_Ts[0]
+                    dfOut.loc[it, sT+'ALyt_[m/s^2]'] = a_Ts[1]
+                    dfOut.loc[it, sT+'ALzt_[m/s^2]'] = a_Ts[2]
 
-                    dfOut[sT+'TPxi_[m]'].loc[it] = dd['r_Ts'][iSL,0]
-                    dfOut[sT+'TPyi_[m]'].loc[it] = dd['r_Ts'][iSL,1]
-                    dfOut[sT+'TPzi_[m]'].loc[it] = dd['r_Ts'][iSL,2]
+                    dfOut.loc[it, sT+'TPxi_[m]'] = dd['r_Ts'][iSL,0]
+                    dfOut.loc[it, sT+'TPyi_[m]'] = dd['r_Ts'][iSL,1]
+                    dfOut.loc[it, sT+'TPzi_[m]'] = dd['r_Ts'][iSL,2]
 
         return dfOut
 
@@ -878,6 +966,7 @@ class FASTWindTurbine():
             self.setupEDRNA()
             if self.FST['CompSub']>0:
                 FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
+                self.setupEDRigidFloat()
             else:
                 self.setupEDRigidFloat()
             self.setupEDTwr(shapes=twrShapes, nSpan=nSpanTwr)
@@ -889,12 +978,10 @@ class FASTWindTurbine():
 
 
     def loadFST(self, fstFilename, readlist=None):
-        # TODO TODO TODO  Harmonize with TNSB.py
-        # TODO TODO TODO  Harmonize with fast.elastodyn when algo is OpenFAST
         from welib.weio.fast_input_deck import FASTInputDeck
 
         if readlist is None:
-            readlist = ['Fst', 'ED', 'EDtwr', 'EDbld']
+            readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD']
 
         # --- Reading main OpenFAST files
         ext=os.path.splitext(fstFilename)[1]
@@ -1135,6 +1222,7 @@ class FASTWindTurbine():
                    massExpected=None,
                    flavor=''
                    ):
+        # TODO TODO TODO  Harmonize with fast.elastodyn when algo is OpenFAST
         ED = self.ED
         WT = self.WT
         # --- Blades 
@@ -1274,7 +1362,7 @@ class FASTWindTurbine():
         WT.RNA = RNA
         WT.RNA_noYawBr = RNA_noYawBr
 
-    def setupEDRigidFloat(self):
+    def setupEDRigidFloat(self, flavor=''):
         ED = self.ED
         WT = self.WT
         # --- Fnd (defined wrt ground/MSL "E")
@@ -1283,12 +1371,16 @@ class FASTWindTurbine():
         r_EGfnd_inF = np.array([ED['PtfmCMxt'],ED['PtfmCMyt'],ED['PtfmCMzt']])
         r_EPtfm_inF    = np.array([0             ,0             ,ED['PtfmRefzt']]) # TODO, this is wrong
         r_PtfmGfnd_inF = -r_EPtfm_inF + r_EGfnd_inF
-        WT.fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
+        if flavor=='yams_rec':
+            raise NotImplementedError()
+        else:
+            WT.fnd = RigidBody('fnd', M_fnd, (ED['PtfmRIner'], ED['PtfmPIner'], ED['PtfmYIner']), s_OG=r_PtfmGfnd_inF, r_O=r_EPtfm_inF) 
         
     def setupEDTwr(self, shapes=None, nSpan=None, 
                    flavor='', 
                    bAxialCorr=False, bStiffening=True
                    ):
+        # TODO TODO TODO  Harmonize with fast.elastodyn when algo is OpenFAST
         ED = self.ED
         WT = self.WT
         # --- Twr
@@ -1377,7 +1469,9 @@ class FASTWindTurbine():
 
     def setupSD(self, Mtop=0, shapes=None, nSpan=None, 
                 bStiffening=True, bCI=True, bOverride=True, # Algo options
-                FEM_method='cbeam'):
+                FEM_method='cbeam',
+                flavor=''
+                ):
         if self.SD is None:
             raise Exception('SD is not set, call setupSDInit')
         CI = None
@@ -1385,10 +1479,14 @@ class FASTWindTurbine():
             CI = self.SD.concentrated_masses
         else:
             WARN('Concentrated inertia for SubDyn turned off!')
-        fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
-                                  main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
-                                  FEM_method=FEM_method,
-                                  concentrated_inertias=CI) # TODO, we could remove that to avoid double counting
+
+        if flavor=='yams_rec':
+            fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
+                                      main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
+                                      FEM_method=FEM_method,
+                                      concentrated_inertias=CI) # TODO, we could remove that to avoid double counting
+        else:
+            raise NotImplementedError()
         #, algo=self.WT.algo) # NOTE: OpeNFAST commented
 
         # Optional exact SubDyn reduced-matrix matching for selected Guyan coordinates.
@@ -1487,10 +1585,12 @@ class FASTWindTurbine():
                     for iCB in range(int(self.SD.File['Nmodes'])):
                         DOFs+=[{'name': f'CB{iCB+1}', 'active':True, 'q0':0, 'qd0':0, 'q_channel': f'QCB{iCB+1}_[-]' , 'qd_channel':f'QDCB{iCB+1}_[-]','qdd_channel':f'QD2_CB{iCB+1}_[-]'}]
 
+        # TODO TODO TODO handle alias Q_Sg
         DOFs+=[{'name':'x'      , 'active':ED['PtfmSgDOF'], 'q0': ED['PtfmSurge']  , 'qd0':0 , 'q_channel':'PtfmSurge_[m]' , 'qd_channel':'QD_Sg_[m/s]','qdd_channel':'QD2_Sg_[m/s^2]'}]
         DOFs+=[{'name':'y'      , 'active':ED['PtfmSwDOF'], 'q0': ED['PtfmSway']   , 'qd0':0 , 'q_channel':'PtfmSway_[m]'  , 'qd_channel':'QD_Sw_[m/s]','qdd_channel':'QD2_Sw_[m/s^2]'}]
         DOFs+=[{'name':'z'      , 'active':ED['PtfmHvDOF'], 'q0': ED['PtfmHeave']  , 'qd0':0 , 'q_channel':'PtfmHeave_[m]' , 'qd_channel':'QD_Hv_[m/s]','qdd_channel':'QD2_Hv_[m/s^2]'}]
 
+        # TODO TODO TODO issue here with deg and rad
         DOFs+=[{'name':'phi_x' , 'active':ED['PtfmRDOF'] , 'q0': ED['PtfmRoll']*np.pi/180  , 'qd0':0 , 'q_channel':'PtfmRoll_[deg]'  , 'qd_channel':'QD_R_[rad/s]', 'qdd_channel':'QD2_R_[rad/s^2]'}]
         DOFs+=[{'name':'phi_y' , 'active':ED['PtfmPDOF'] , 'q0': ED['PtfmPitch']*np.pi/180 , 'qd0':0 , 'q_channel':'PtfmPitch_[deg]' , 'qd_channel':'QD_P_[rad/s]', 'qdd_channel':'QD2_P_[rad/s^2]'}]
         DOFs+=[{'name':'phi_z' , 'active':ED['PtfmYDOF'] , 'q0': ED['PtfmYaw']*np.pi/180   , 'qd0':0 , 'q_channel':'PtfmYaw_[deg]'   , 'qd_channel':'QD_Y_[rad/s]', 'qdd_channel':'QD2_Y_[rad/s^2]'}]
@@ -1515,7 +1615,7 @@ class FASTWindTurbine():
 
     def setActiveDOFs(self, fixedShaft=False, shapes_sub=None, shapes_twr=None, shapes_bld=None, verbose=False):
         # Override based on model
-        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z', 'CB1', 'CB2'] # Ptfm
+        SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z', 'CB1', 'CB2', 'CB3', 'CB4', 'CB5', 'CB6', 'CB7', 'CB8', 'CB9', 'CB10'] # Ptfm
         TWR_NAMES =  ['q_FA1', 'q_FA2', 'q_SS1', 'q_SS2'] # Twr
         BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
 

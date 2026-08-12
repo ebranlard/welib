@@ -178,7 +178,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         pitch = self.OP['Pitch_[deg]'].values[:]
         phiy  = self.OP['PhiY_[deg]'].values[:]
         self.OP['Paero_i_[W]'] = self.Power(WS, omega, pitch, phiy) # Interpolated power
-        self.OP['Qaero_i_[Nm]'] = self.OP['Paero_i_[W]']/Omega
+        self.OP['Qaero_i_[Nm]'] = self.OP['Paero_i_[W]']/omega
 #         Q2                     = self.Torque(WS, Omega, pitch, phiy) # Interpolated torque
 #         Q1                      = self.OP['Paero_i_[W]']/Omega
 #         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)

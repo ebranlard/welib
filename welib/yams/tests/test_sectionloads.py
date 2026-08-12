@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import os
-from welib.yams.flexibility import *
+from welib.yams.section_loads import *
 import welib.weio as weio
 
 try:

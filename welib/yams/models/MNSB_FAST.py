@@ -77,7 +77,7 @@ class FASTmodel2MNSB(FASTWindTurbine):
                                  algo=algo)
 
         # --- Read fast input files
-        readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD']
+        readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD','HD']
         self.loadFST(FST_file, readlist=readlist)
         self.setGravity(gravity)
         #if SD is None:
@@ -129,7 +129,8 @@ class FASTmodel2MNSB(FASTWindTurbine):
                      bStiffening=bStiffening,
                      bOverride = SD_bOverride,
                      bCI       = SD_bCI,
-                     FEM_method=FEM_method
+                     FEM_method=FEM_method,
+                     flavor='yams_rec'
                      )
 
         self.WT.twr = self.WT.fnd # TNSBStructure will ignore fnd

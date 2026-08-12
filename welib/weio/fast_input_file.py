@@ -482,7 +482,7 @@ class FASTInputFileBase(File):
             NUMTAB_FROM_VAL_DIM_VAR += [ 1             ,  1             , 'NCoefDpth' , 'NFillGroups' , 'NMGDepths' ]
             NUMTAB_FROM_VAL_VARNAME += [ 'SmplPropCyl' ,  'SmplPropRec' , 'DpthProp'  , 'FillGroups'  , 'MGProp'    ]
             NUMTAB_FROM_VAL_NHEADER += [ 2             ,  2              , 2           , 2             , 2           ]
-            NUMTAB_FROM_VAL_TYPE    += [ 'num'         ,  'num'          , 'num'       , 'num'         , 'num'       ]
+            NUMTAB_FROM_VAL_TYPE    += [ 'num'         ,  'num'          , 'num'       , 'mix'         , 'num'       ]
         # SubDyn
         if self.module == 'subdyn' or self.module is None:
             NUMTAB_FROM_VAL_DETECT  += [ 'RJointID'        , 'IJointID'        , 'COSMID'             , 'CMJointID'         ]

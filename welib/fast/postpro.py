@@ -381,13 +381,13 @@ def insert_spanwise_columns(df, vr=None, R=None, IR=None, sspan='r', sspan_bar='
             df[k] = v
     return df
 
-def find_matching_columns(Cols, PatternMap):
+def find_matching_columns(Cols, PatternMap, ignore_case=False):
     ColsInfo=[]
     nrMax=0
     processed_cols = set()
     for colpattern,colmap in PatternMap.items():
         # Extracting columns matching pattern
-        cols, sIdx = find_matching_pattern(Cols, colpattern)
+        cols, sIdx = find_matching_pattern(Cols, colpattern, ignore_case=ignore_case)
         if len(cols)>0:
             # Sorting by ID
             cols  = np.asarray(cols)
@@ -1160,7 +1160,9 @@ def spanwisePostPro(FST_In=None, avgMethod='constantwindow', avgParam=5, out_ext
     # --- ED Twr
     ColsInfoED, nrMaxEDt, Cols_new = spanwiseColEDTwr(Cols)
     dfRad_EDt           = extract_spanwise_data(ColsInfoED, nrMaxEDt, df=None, ts=dfAvg.iloc[0])
-    dfRad_EDt2          = insert_spanwise_columns(dfRad_EDt, r_ED_twr, R=TwrLen, IR=IR_ED_twr, sspan='H',sspan_bar='H/L')
+    dfRad_EDt           = insert_spanwise_columns(dfRad_EDt, r_ED_twr, R=TwrLen, IR=IR_ED_twr, sspan='H',sspan_bar='H/L')
+    if dfRad_EDt is not None:
+        dfRad_EDt['z_[m]'] = dfRad_EDt['H_[m]']
     # TODO we could insert TwrBs and TwrTp quantities here...
     out['ED_twr'] = dfRad_EDt
     # --- BD
@@ -1169,14 +1171,14 @@ def spanwisePostPro(FST_In=None, avgMethod='constantwindow', avgParam=5, out_ext
     dfRad_BD            = insert_spanwise_columns(dfRad_BD, r_BD, R=R, IR=IR_BD)
     out['BD'] = dfRad_BD
     # --- SubDyn
-    try:
         # NOTE: fst might be None
+    if fst.SD is not None:
         sd = SubDyn(fst.SD)
         #MN = sd.pointsMN
         MNout, MJout = sd.memberPostPro(dfAvg)
         out['SD_MembersOut'] = MNout
         out['SD_JointsOut'] = MJout
-    except:
+    else:
         out['SD_MembersOut'] = None
         out['SD_JointsOut'] = None
 
@@ -1223,9 +1225,15 @@ def radialAvg(filename, avgMethod, avgParam, raw_name='', df=None, raiseExceptio
 
         try:
             out = spanwisePostPro(fst_in, avgMethod=avgMethod, avgParam=avgParam, out_ext=out_ext, df = df)
-            dfRadED=out['ED_bld']; dfRadAD = out['AD']; dfRadBD = out['BD']
-            dfs_new  = [dfRadAD, dfRadED, dfRadBD]
+            dfRadED_bld=out['ED_bld']; dfRadAD = out['AD']; dfRadBD = out['BD']
+            dfRadED_twr=out['ED_twr'];
+            dfRadSD_mbr=out['SD_MembersOut'];
+            dfRadSD_jnt=out['SD_JointsOut'];
+            dfs_new  = [dfRadAD, dfRadED_bld, dfRadBD, dfRadED_twr, dfRadSD_mbr, dfRadSD_jnt]
             names_new=[raw_name+'_AD', raw_name+'_ED', raw_name+'_BD'] 
+            names_new+=[raw_name+ '_ED_twr'] 
+            names_new+=[raw_name+ '_SD_mbr'] 
+            names_new+=[raw_name+ '_SD_jnt'] 
         except:
             if raiseException:
                 raise
@@ -1640,7 +1648,7 @@ def _zero_crossings(y,x=None,direction=None):
         raise Exception('Direction should be either `up` or `down`')
     return xzc, iBef, sign
 
-def find_matching_pattern(List, pattern, sort=False, integers=True, n=1):
+def find_matching_pattern(List, pattern, sort=False, integers=True, n=1, ignore_case=False):
     r""" Return elements of a list of strings that match a pattern
         and return the n first matching group
 
@@ -1649,14 +1657,15 @@ def find_matching_pattern(List, pattern, sort=False, integers=True, n=1):
         find_matching_pattern(['Misc','TxN1_[m]', 'TxN20_[m]'], 'TxN(\d+)_\[m\]')
         returns: Matches = 1,20
     """
-    reg_pattern=re.compile(pattern)
-    MatchedElements=[]
-    Matches=[]
+    flags = re.IGNORECASE if ignore_case else 0
+    reg_pattern = re.compile(pattern, flags)
+    MatchedElements = []
+    Matches = []
     for l in List:
-        match=reg_pattern.search(l)
+        match = reg_pattern.search(l)
         if match:
             MatchedElements.append(l)
-            if len(match.groups(1))>0:
+            if len(match.groups(1)) > 0:
                 Matches.append(match.groups(1)[0])
             else:
                 Matches.append('')
@@ -1665,7 +1674,7 @@ def find_matching_pattern(List, pattern, sort=False, integers=True, n=1):
     Matches         = np.asarray(Matches)
 
     if integers:
-        Matches  = Matches.astype(int)
+        Matches = Matches.astype(int)
 
     if sort:
         # Sorting by Matched string, NOTE: assumes that MatchedStrings are int.
@@ -1676,7 +1685,6 @@ def find_matching_pattern(List, pattern, sort=False, integers=True, n=1):
         Matches         = Matches[Isort]
 
     return MatchedElements, Matches
-
         
 def extractSpanTS(df, pattern):
     r"""
@@ -2188,6 +2196,25 @@ def integrateMomentTS(r, F):
 
 if __name__ == '__main__':
 
-    df = FASTOutputFile('ad_driver_yaw.6.outb').toDataFrame()
-    dfCat = spanwiseConcat(df)
-    print(dfCat)
+#     df = FASTOutputFile('ad_driver_yaw.6.outb').toDataFrame()
+#     dfCat = spanwiseConcat(df)
+#     print(dfCat)
+# 
+    from welib.weio.fast_output_file import FASTOutputFile
+    fst = 'C:/Work/2024-10-OESI-Digitwin/DigiTwinMonopile/code5_section_loads/05_RegWave/OF_F3T0_NoRNA.fst'
+    outb = 'C:/Work/2024-10-OESI-Digitwin/DigiTwinMonopile/code5_section_loads/05_RegWave/OF_F3T0_NoRNA.outb'
+    df = FASTOutputFile(outb).toDataFrame()
+
+# 
+#     dfs_new, names_new = radialAvg(filename=filename, df=df, avgMethod='constantwindow', avgParam=2)
+#     print(len(dfs_new), names_new)
+#     print(dfs_new)
+
+    out = spanwisePostPro(fst, avgMethod='constantwindow', avgParam=2, out_ext='.outb', df = df)
+    print(out.keys())
+    print(out['ED_twr'])
+    print(out['SD_MembersOut'])
+#     dfRadED=out['ED_bld']; dfRadAD = out['AD']; dfRadBD = out['BD']
+#     dfs_new  = [dfRadAD, dfRadED, dfRadBD]
+#     names_new=[raw_name+'_AD', raw_name+'_ED', raw_name+'_BD'] 
+    import pdb; pdb.set_trace()

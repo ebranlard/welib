@@ -18,7 +18,7 @@ import re
 # Local 
 from welib.weio.fast_input_file import FASTInputFile
 from welib.tools.tictoc import Timer
-from welib.yams.utils import translateRigidBodyMassMatrix
+
 
 idGuyanDamp_None     = 0
 idGuyanDamp_Rayleigh = 1
@@ -349,7 +349,7 @@ class SubDyn:
         Map['^'+r'M(\d*)N(\d*)MKxe_\[N\*m\]'] = 'MKxe_[Nm]'
         Map['^'+r'M(\d*)N(\d*)MKye_\[N\*m\]'] = 'MKye_[Nm]'
         Map['^'+r'M(\d*)N(\d*)MKze_\[N\*m\]'] = 'MKze_[Nm]'
-        ColsInfo, _ = postpro.find_matching_columns(dfAvg.columns, Map)
+        ColsInfo, _, _ = postpro.find_matching_columns(dfAvg.columns, Map, ignore_case=True)
         nCols = len(ColsInfo)
         if nCols>0:
             newCols=[c['name'] for c in ColsInfo ]
@@ -381,7 +381,7 @@ class SubDyn:
         Map['^'+r'M(\d*)J(\d*)MMxe_\[N\*m\]']='MMxe_[Nm]'
         Map['^'+r'M(\d*)J(\d*)MMye_\[N\*m\]']='MMye_[Nm]'
         Map['^'+r'M(\d*)J(\d*)MMze_\[N\*m\]']='MMze_[Nm]'
-        ColsInfo, _ = postpro.find_matching_columns(dfAvg.columns, Map)
+        ColsInfo, _, _ = postpro.find_matching_columns(dfAvg.columns, Map, ignore_case=True)
         nCols = len(ColsInfo)
         if nCols>0:
             newCols=[c['name'] for c in ColsInfo ]
@@ -742,6 +742,7 @@ class SubDyn:
         Convert to Data needed to setup a Beam Model in YAMS (see bodies.py in yams)
         """
         from welib.mesh.gradient import gradient_regular
+        from welib.yams.utils import translateRigidBodyMassMatrix        
         print('SubDyn: toYamsDATA, method:', method)
 
         dfOut=None

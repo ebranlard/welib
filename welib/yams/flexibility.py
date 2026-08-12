@@ -8,9 +8,8 @@ try:
 except:
     from numpy import trapz as trapezoid
 
-from .utils import translateRigidBodyMassMatrix
 
-from .section_loads import beamSectionLoads1D, beamSectionLoads3D, beamSectionLoadsFromShapeFunctions
+# from .section_loads import beamSectionLoads1D, beamSectionLoads3D, beamSectionLoadsFromShapeFunctions
 
 '''
 Flexible beam tools:
@@ -674,6 +673,7 @@ def GMBeam(s_G, s_span, m, U=None, V=None, jxxG=None, bOrth=False, bAxialCorr=Fa
 
             r_node = np.asarray(s_G[:, iNode]).ravel()
             if r_ref is not None:
+                from welib.yams.utils import translateRigidBodyMassMatrix
                 r_old_to_new = r_node - np.asarray(r_ref).ravel()
                 if np.linalg.norm(r_old_to_new) > 0:
                     M66 = translateRigidBodyMassMatrix(M66, r_old_to_new)

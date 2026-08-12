@@ -1,3 +1,4 @@
+import os
 from setuptools import setup, find_packages
 
 VERSION='4.2.0'
@@ -10,6 +11,9 @@ EXTRAS = {
         'sphinxcontrib-napoleon>=0.7'
     }
 }
+
+with open(os.path.join(os.path.dirname(__file__), 'requirements.txt'), 'r', encoding='utf-8') as f:
+    install_requires = [line.strip() for line in f if line.strip() and not line.startswith('#') ]
 
 setup(
     name='welib',
@@ -24,15 +28,16 @@ Wind energy library: suite of python tools for aero-servo-hydro-elasticity (aero
     license='MIT',
     python_requires=">=3.6",
     packages=find_packages(exclude=["tests"]),
-    install_requires=[
-        'matplotlib', 
-        'xlrd',
-        'numpy',
-        'pandas', 
-        'chardet',
-        'scipy', 
-        'sympy'
-    ],
+    install_requires=install_requires,
+#     install_requires=[
+#         'matplotlib', 
+#         'xlrd',
+#         'numpy',
+#         'pandas', 
+#         'chardet',
+#         'scipy', 
+#         'sympy'
+#     ],
     extras_require       = EXTRAS,
     include_package_date = True,
     zip_safe=False,
