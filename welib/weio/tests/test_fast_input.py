@@ -121,6 +121,7 @@ class Test(unittest.TestCase):
 
         F = ADPolarFile(numTabs=2)
         F.write('_DUMMY')
+        os.remove('_DUMMY')
 
     def test_FASTEDBld(self):
         F=FASTInputFile(os.path.join(MyDir,'FASTIn_ED_bld.dat'))

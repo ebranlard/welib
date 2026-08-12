@@ -20,6 +20,8 @@ import importlib
 from welib.yams.models.FTNSB_sympy import get_model
 from welib.yams.models.FTNSB_sympy_symbols import *
 
+scriptDir = os.path.dirname(__file__)
+
 def main(runSim=True, runFAST=False, create=True):
 
     if create:
@@ -34,14 +36,16 @@ def main(runSim=True, runFAST=False, create=True):
         smallAngles  = [(model.twr.vcList, 2)]
         smallAngles += [([theta_tilt]    , 1)]
         replaceDict={'theta_tilt':('tilt',None)}
-        model.exportPackage(path='_F0T2N0S1', extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex='_F0T2N0S1')
+        model.exportPackage(path=os.path.join(scriptDir, '_F0T2N0S1'), extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex=os.path.join(scriptDir,'_F0T2N0S1'))
 
 
 
     # --- Run non linear and linear simulation using a FAST model as input
     if runSim:
         # --- Import the python module that was generated
-        model_pkg = importlib.import_module('_F0T2N0S1')
+        #model_pkg = importlib.import_module('_F0T2N0S1')
+        #model_pkg = importlib.import_module('._F0T2N0S1', package=__package__)
+        model_pkg = importlib.import_module('welib.yams.papers.2022-symbolic-framework._F0T2N0S1')
 
         # --- Load the wind turbine model, and extract relevant parameters "p"
         MyDir=os.path.dirname(__file__)

@@ -20,12 +20,14 @@ if __name__ == '__main__':
     write_coords(digits='4416', n=600)
     write_coords(digits='4418', n=600)
     write_coords(digits='4430', n=600)
-
-
     plt.show()
+
 if __name__ == '__test__':
+    import os
     write_coords(digits='0018', n=36)
+    os.remove('_Naca0018.csv')
     pass
+
 if __name__=="__export__":
     write_coords(digits='0018', n=36)
     from welib.tools.repo import export_figs_callback

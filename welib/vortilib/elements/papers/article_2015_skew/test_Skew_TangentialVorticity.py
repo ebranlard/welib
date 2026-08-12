@@ -367,8 +367,6 @@ def main(test=False):
     plt.ylabel(r'$R^2$')
     plt.title('ErrorSinModelForKzt')
 
-    if not test:
-        plt.show()
 
 
 
@@ -377,8 +375,10 @@ class Test(unittest.TestCase):
         import sys
         if sys.version_info >= (3, 0):
             main(test=True)
+            plt.close('all')
         else:
             print('Test skipped due to travis display error')
 
 if __name__ == "__main__":
     main()
+    plt.show()

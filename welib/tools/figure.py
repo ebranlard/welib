@@ -635,7 +635,7 @@ def _move_fig(fig, w, h, x, y):
 # --------------------------------------------------------------------------------
 # --- Example/tests
 # --------------------------------------------------------------------------------
-def test_fig_move():
+def mytest_fig_move():
     import numpy as np
     import matplotlib.pyplot as plt
     # --- Test fig_move
@@ -681,20 +681,20 @@ def test_fig_move():
 #         a = np.random.rand(n,n); ainv = inv(a)
 #     plt.pause(3)    
 
-def test_export():
+def mytest_export(): # DO NOT RUN PYTEST
     #from ebra.export import *
     from numpy import linspace,sin,pi
     from matplotlib import pyplot as plt
     setFigurePath('./')
 
+    raise Exception()
     x=linspace(0,2*pi,100);
-    plt.figure()
-    plt.title('First Example Figure')
-    plt.grid()
-    plt.plot(x,sin(x),'-')
-    plt.xlabel('x coordinate [m]')
-    plt.ylabel('Velocity  U_i [m/s]')
-    plt.xlim([0,2*pi])
+    fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+    ax.set_title('First Example Figure')
+    ax.plot(x,sin(x),'-')
+    ax.set_xlabel('x coordinate [m]')
+    ax.set_ylabel('Velocity  U_i [m/s]')
+    ax.set_xlim([0,2*pi])
 
     #plt.figure()
     #plt.title('Second Example Figure')
@@ -705,6 +705,7 @@ def test_export():
     #plt.xlim([0,2*pi])
 
     export2pdf()
+    plt.close('all')
 
 if __name__ == "__main__":
     test_fig_move()

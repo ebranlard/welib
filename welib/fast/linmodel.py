@@ -125,7 +125,7 @@ DEFAULT_COL_MAP_OF ={
   'Q_TSS1_[m]'      : 'q_FA1',
   'Q_TFA2_[m]'      : 'q_FA2',
   'Q_TSS2_[m]'      : 'q_SS2',
-  'Q_Yaw_[m]'       : 'yaw',
+  'Q_Yaw_[rad]'     : 'yaw',
   'NacYaw_[rad]'    : 'yaw',
   'Azimuth_[rad]'   : 'psi'      ,
   'Q_DrTr_[rad]'    : 'nu'   ,

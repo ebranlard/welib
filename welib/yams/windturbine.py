@@ -29,36 +29,42 @@ from welib.yams.rotations import R_x, R_y, R_z, rotMat
 from welib.yams.kinematics import rigidBodyMotion2Points
 from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrix
 
-from welib.tools.pandalib import remap_df
+from welib.tools.pandalib import remap_df, remove_duplicated_col_df
 
-# Handling aliases
-COL_MAP_To_Q={
-  'Q_Sg_[m]'        : 'PtfmSurge_[m]',
-  'Q_Sw_[m]'        : 'PtfmSway_[m]',
-  'Q_Hv_[m]'        : 'PtfmHeave_[m]',
-  'Q_R_[rad]'       : '{PtfmRoll_[deg]}   * np.pi/180', # SI [deg] -> [rad]
-  'Q_P_[rad]'       : '{PtfmPitch_[deg]}  * np.pi/180', # SI [deg] -> [rad]
-  'Q_Y_[rad]'       : '{PtfmYaw_[deg]}    * np.pi/180', # SI [deg] -> [rad]
-  'Q_GeAz_[rad]'    : '{Azimuth_[deg]}    * np.pi/180', # SI [deg] -> [rad]
-  'QD_GeAz_[rad/s]' : '{RotSpeed_[rpm]}   * 2*np.pi/60', # SI [rpm] -> [rad/s]
-#   ' dq_FA1 ' : ' QD_TFA1_[m/s]               '                ,
-#   ' dq_SS1 ' : ' QD_TSS1_[m/s]               '                ,
-#   ' dx     ' : ' QD_Sg_[m/s]               '              ,
-#   ' dy     ' : ' QD_Sw_[m/s]                '               ,
-#   ' dz     ' : ' QD_Hv_[m/s]               '              ,
-#   ' dphi_x ' : ' QD_R_[rad/s]                             ' ,
-#   ' dphi_y ' : ' QD_P_[rad/s]                             ',
-#   ' dphi_z ' : ' QD_Y_[rad/s]                             '  ,
-#   ' ddpsi  ' : 'QD2_GeAz_[rad/s^2]'  ,
-#   ' ddq_FA1' : 'QD2_TFA1_[m/s^2]               '                ,
-#   ' ddq_SS1' : 'QD2_TSS1_[m/s^2]               '                ,
-#   ' ddx    ' : 'QD2_Sg_[m/s^2]               '              ,
-#   ' ddy    ' : 'QD2_Sw_[m/s^2]                '               ,
-#   ' ddz    ' : 'QD2_Hv_[m/s^2]               '              ,
-#   ' ddphi_x' : 'QD2_R_[rad/s^2]                             ' ,
-#   ' ddphi_y' : 'QD2_P_[rad/s^2]                             ',
-#   ' ddphi_z' : 'QD2_Y_[rad/s^2]                             '  ,
+
+COLMAP_OFQ_TO_Q={
+  'x'       : 'Q_Sg_[m]'           , 
+  'y'       : 'Q_Sw_[m]'           , 
+  'z'       : 'Q_Hv_[m]'           , 
+  'phi_x'   : 'Q_R_[rad]'          , 
+  'phi_y'   : 'Q_P_[rad]'          , 
+  'phi_z'   : 'Q_Y_[rad]'          , 
+  'q_FA1'   : 'Q_TFA1_[m]'         , 
+  'q_SS1'   : 'Q_TSS1_[m]'         , 
+  'psi'     : 'Q_GeAz_[rad]'       , 
+  # TODO
+# 
+  'dx'      : 'QD_Sg_[m/s]'        , 
+  'dy'      : 'QD_Sw_[m/s]'        , 
+  'dz'      : 'QD_Hv_[m/s]'        , 
+  'dphi_x'  : 'QD_R_[rad/s]'       , 
+  'dphi_y'  : 'QD_P_[rad/s]'       , 
+  'dphi_z'  : 'QD_Y_[rad/s]'       , 
+  'dq_FA1'  : 'QD_TFA1_[m/s]'      , 
+  'dq_SS1'  : 'QD_TSS1_[m/s]'      , 
+  'dpsi'    : 'QD_GeAz_[rad/s]'    ,
+# 
+  'ddpsi'   : 'QD2_GeAz_[rad/s^2]' , 
+  'ddq_FA1' : 'QD2_TFA1_[m/s^2]'   , 
+  'ddq_SS1' : 'QD2_TSS1_[m/s^2]'   , 
+  'ddx'     : 'QD2_Sg_[m/s^2]'     , 
+  'ddy'     : 'QD2_Sw_[m/s^2]'     , 
+  'ddz'     : 'QD2_Hv_[m/s^2]'     , 
+  'ddphi_x' : 'QD2_R_[rad/s^2]'    , 
+  'ddphi_y' : 'QD2_P_[rad/s^2]'    , 
+  'ddphi_z' : 'QD2_Y_[rad/s^2]'    , 
 }
+
 
 
 
@@ -575,7 +581,7 @@ class WindTurbineStructure():
 
         return d
 
-    def _insertDummyDOFsInDF(self, df):
+    def _insertDummyDOFsInDF(self, df, fill_value = 0):
         """ 
         Insert missing DOF time series in dataframe.
             If a DOF is turned off, we insert zero
@@ -588,6 +594,28 @@ class WindTurbineStructure():
         _sqdd = self.qdd_channels
 
         keys = list(df.keys())
+        df = remap_df(df, COLMAP_TO_Q, bColKeepNewOnly=False, inPlace=False, verbose=True, raiseIfAbsent=False)
+        df = remove_duplicated_col_df(df, inPlace=False)
+
+
+        import pdb; pdb.set_trace()
+
+        missing_cols = [c for c in required_cols if c not in df.columns]
+        
+        if missing_cols and verbose and active_dofs is not None:
+            for col in missing_cols:
+                is_active = False
+                if isinstance(active_dofs, dict):
+                    is_active = bool(active_dofs.get(col, False))
+                elif isinstance(active_dofs, (list, set, tuple, np.ndarray)):
+                    is_active = col in active_dofs
+                    
+                if is_active:
+                    print(f"[WARN] Column '{col}' is missing from DataFrame but degree of freedom is ACTIVE. Filled with {fill_value}.")
+
+        # Fast insertion of missing columns while preserving/extending columns list
+        df = df.reindex(columns=df.columns.union(required_cols, sort=False), fill_value=fill_value)
+
 
 #          DOFs+=[{'name': f'CB{iCB+1}', 'active':True, 'q0':0, 'qd0':0, 'q_channel': f'QCB{iCB+1}_[-]' , 'qd_channel':f'QDCB{iCB+1}_[-]','qdd_channel':f'QD2_CB{iCB+1}_[-]'}]
 #         # TODO TODO TODO handle alias Q_Sg
@@ -1608,16 +1636,16 @@ class FASTWindTurbine():
         # 
         for ib in np.arange(ED['NumBl']):
             B=str(ib+1)
-            DOFs+=[{'name':'q_B{}Fl1'.format(B), 'active':ED['FlapDOF1'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F1_[m]'.format(B), 'qd_channel':'QD_B{}F1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}F1_[m/s^2]'.format(B)}]
-            DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['FlapDOF2'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F2_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
-            DOFs+=[{'name':'q_B{}Ed1'.format(B), 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl'] , 'qd0':0, 'q_channel':'Q_B{}E1_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
+            DOFs+=[{'name':'q_B{}F1'.format(B), 'active':ED['FlapDOF1'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F1_[m]'.format(B), 'qd_channel':'QD_B{}F1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}F1_[m/s^2]'.format(B)}]
+            DOFs+=[{'name':'q_B{}E1'.format(B), 'active':ED['FlapDOF2'] , 'q0': ED['OOPDefl'], 'qd0':0, 'q_channel':'Q_B{}F2_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
+            DOFs+=[{'name':'q_B{}E1'.format(B), 'active':ED['EdgeDOF']  , 'q0': ED['IPDefl'] , 'qd0':0, 'q_channel':'Q_B{}E1_[m]'.format(B), 'qd_channel':'QD_B{}E1_[m/s]'.format(B), 'qdd_channel':'QD2_B{}E1_[m/s^2]'.format(B)}]
         self.WT.DOF = DOFs
 
     def setActiveDOFs(self, fixedShaft=False, shapes_sub=None, shapes_twr=None, shapes_bld=None, verbose=False):
         # Override based on model
         SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z', 'CB1', 'CB2', 'CB3', 'CB4', 'CB5', 'CB6', 'CB7', 'CB8', 'CB9', 'CB10'] # Ptfm
         TWR_NAMES =  ['q_FA1', 'q_FA2', 'q_SS1', 'q_SS2'] # Twr
-        BLD_NAMES =  ['q_B{}Fl1', 'q_B{}Ed1', 'q_B{}Ed2'] # Twr
+        BLD_NAMES =  ['q_B{}F1', 'q_B{}E1', 'q_B{}E2'] # Twr
 
         NAMEOFF=[]
         NAMEOFF += [SUB_NAMES[i] for i in range(len(SUB_NAMES)) if i not in shapes_sub]

@@ -50,11 +50,8 @@ if __name__ == '__test__':
     outbase  = os.path.join(MyDir, '_' + filebase )
     sd.toYAML (outbase+'.python.yaml')
     model.toJSON(outbase+'.python.json')
-    try:
-        os.delete(outbase+'.yaml')
-        os.delete(outbase+'.json')
-    except:
-        pass
+    os.remove(outbase+'.python.yaml')
+    os.remove(outbase+'.python.json')
     # Test data
     np.testing.assert_almost_equal(model.M_O [0,0]/1e5, 3.85591, 4)
     np.testing.assert_almost_equal(model.M_O [3,3]/1e9, 1.29432, 4)

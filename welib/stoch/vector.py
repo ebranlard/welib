@@ -199,6 +199,10 @@ class StochasticVector():
             if np.isnan(fY):
                 print('fY is NaN')
                 fY=0
+            if np.iscomplexobj(fY):
+                if np.abs(np.imag(fY))>1e-8:
+                    print(f'fY is complex {fY}')
+                fY = np.real(fY)
             return fY
         vec2.set_pdf_f(f_pdf)
         return vec2

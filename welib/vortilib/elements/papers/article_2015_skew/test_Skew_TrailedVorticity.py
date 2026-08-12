@@ -43,15 +43,16 @@ def main(test=False):
     uy0 - gamma_longi / 2 * np.tan(chi / 2)
     # Kx,Ky0,Kz,Ky2 = fKl(vr,m)
     # Gl,Fl,Gl_fit,Fl_fit = fKlApprox(vr)
-    plt.figure()
-    for ir,r in enumerate(vr):
-        plt.plot(vpsi*180/pi,np.squeeze(v_y[:,ir,:])/uy0,label='$r/R=%2.1f$'%r)
-    plt.legend()
-    plt.xlabel(r'Azimuthal position $\psi$ [deg]')
-    plt.ylabel(r'Vertical induced velocity $u_{y,l} / u_{y,0}$')
-    plt.xlim(np.array([- 180,180]))
-    # set(gca,'XTick',np.array([- 180,- 90,0,90,180]))
-    plt.title('TrailedOnlyUyRadial_chi{:03d}'.format(int(np.round(np.arctan(m) * 180 / pi))))
+    if not test:
+        plt.figure()
+        for ir,r in enumerate(vr):
+            plt.plot(vpsi*180/pi,np.squeeze(v_y[:,ir,:])/uy0,label='$r/R=%2.1f$'%r)
+        plt.legend()
+        plt.xlabel(r'Azimuthal position $\psi$ [deg]')
+        plt.ylabel(r'Vertical induced velocity $u_{y,l} / u_{y,0}$')
+        plt.xlim(np.array([- 180,180]))
+        # set(gca,'XTick',np.array([- 180,- 90,0,90,180]))
+        plt.title('TrailedOnlyUyRadial_chi{:03d}'.format(int(np.round(np.arctan(m) * 180 / pi))))
 
 
     # ## Polyfit of Myl and Ayl (G_l and F_l)
@@ -88,7 +89,6 @@ def main(test=False):
 
 
     ## --- Z-Component Azimuthal survey
-    plt.figure()
     gamma_longi = 1
     npsi        = 360
     vpsi        = np.linspace(- pi,pi,npsi)
@@ -100,14 +100,16 @@ def main(test=False):
     uiz_trailed,__,uix_trailed = fV_Trailed(VR,VPSI,VZ0,m,gamma_longi,ntheta,nout=3)
     uy0 = gamma_longi * (np.sqrt(1 + m ** 2) - 1) / (2 * m)
     # Gl,Fl = fKlApprox(vr)
-    for ir,r in enumerate(vr):
-        plt.plot(vpsi*180/pi,np.squeeze(uiz_trailed[:,ir,:]), label='$r/R=%2.1f$'%r)
-    plt.legend()
-    plt.xlabel(r'Azimuthal position $\psi$ [deg]')
-    plt.ylabel(r'Axial induced velocity $u_{z,l} / u_{y,0}$')
-    plt.xlim(np.array([- 180,180]))
-    # set(gca,'XTick',np.array([- 180,- 90,0,90,180]))
-    plt.title('TrailedOnlyUzRadial_chi%03d'%np.round(np.arctan(m) * 180 / pi))
+    if not test:
+        plt.figure()
+        for ir,r in enumerate(vr):
+            plt.plot(vpsi*180/pi,np.squeeze(uiz_trailed[:,ir,:]), label='$r/R=%2.1f$'%r)
+        plt.legend()
+        plt.xlabel(r'Azimuthal position $\psi$ [deg]')
+        plt.ylabel(r'Axial induced velocity $u_{z,l} / u_{y,0}$')
+        plt.xlim(np.array([- 180,180]))
+        # set(gca,'XTick',np.array([- 180,- 90,0,90,180]))
+        plt.title('TrailedOnlyUzRadial_chi%03d'%np.round(np.arctan(m) * 180 / pi))
 
 
 
@@ -130,20 +132,21 @@ def main(test=False):
     Y = np.multiply(VR,np.sin(VPSI))
     scale = 9
     uy0 = gamma_longi * (np.sqrt(1 + m ** 2) - 1) / (2 * m)
-    plt.figure()
-    plt.quiver(np.squeeze(X),np.squeeze(Y),np.squeeze(ux) / uy0 / scale,np.squeeze(uy) / uy0 / scale,scale=1,angles='xy',scale_units='xy',headwidth=2,headlength=3,headaxislength=3)
-    # ArrowLength = 0.05
-    # ArrowAngle = 20
-    # vectarrowb(np.array([1.2,0.5]),np.array([1.2,0.5 + 1 / scale]),1,'k',1.5,ArrowLength,ArrowAngle)
-    # text(1.16,0.5 + 1 / (2 * scale),'= 1','HorizontalAlignment','Left','VerticalAlignment','Middle')
-    vtheta = np.linspace(0,2 * pi,100)
-    plt.plot(R * np.cos(vtheta),R * np.sin(vtheta),'k')
-    plt.axis('square')
-    plt.xlim(np.array([  1.3,- 1.3])) # NOTE: flipped
-    plt.ylim(np.array([- 1.3,1.3]))
-    plt.title('TrailedOnlyQuiver_chi%03d'%np.round(np.arctan(m) * 180 / pi))
-    plt.xlabel('x/R')
-    plt.ylabel('y/R')
+    if not test:
+        plt.figure()
+        plt.quiver(np.squeeze(X),np.squeeze(Y),np.squeeze(ux) / uy0 / scale,np.squeeze(uy) / uy0 / scale,scale=1,angles='xy',scale_units='xy',headwidth=2,headlength=3,headaxislength=3)
+        # ArrowLength = 0.05
+        # ArrowAngle = 20
+        # vectarrowb(np.array([1.2,0.5]),np.array([1.2,0.5 + 1 / scale]),1,'k',1.5,ArrowLength,ArrowAngle)
+        # text(1.16,0.5 + 1 / (2 * scale),'= 1','HorizontalAlignment','Left','VerticalAlignment','Middle')
+        vtheta = np.linspace(0,2 * pi,100)
+        plt.plot(R * np.cos(vtheta),R * np.sin(vtheta),'k')
+        plt.axis('square')
+        plt.xlim(np.array([  1.3,- 1.3])) # NOTE: flipped
+        plt.ylim(np.array([- 1.3,1.3]))
+        plt.title('TrailedOnlyQuiver_chi%03d'%np.round(np.arctan(m) * 180 / pi))
+        plt.xlabel('x/R')
+        plt.ylabel('y/R')
     # 
     ## Surface plot of axial velocity
     # chi         = 30*pi/180
@@ -213,40 +216,38 @@ def main(test=False):
     uz = fV_Trailed(VR,VPSI,VZ0,m,gamma_longi,ntheta,nout=1)
     uz[Yplane==0] = 0
     #
-    plt.figure()
     ContourVal = np.array([0.5,2,5,10])
     ContourVal =np.unique(np.sort(np.array(np.concatenate([- ContourVal,ContourVal]))))
-    CS = plt.contour(Xplane/R, Yplane/R, 100*uz/uy0, levels=ContourVal)
-    manual_locations=[(-0.608,0.603),(-0.48,0.48),(-0.338,0.34),(-0.196,0.196),(0.488,0.49),(0.482,-0.481),(-0.465,-0.468)]
-    lbs=plt.clabel(CS,inline=1,fontsize=10,manual=manual_locations)
-    rots=[-45.0,-45.0,-45.0,-45.0,-315.0,-45.0,-315.0]
-    for l,r in zip(lbs,rots):
-        l.set_rotation(r)
-    plt.axis('equal')
-    vtheta = np.linspace(0,2 * pi,100)
-    plt.plot(R * np.cos(vtheta),R * np.sin(vtheta),'k')
-    plt.plot(np.array([- R,R]),np.array([0,0]))
-    plt.plot(np.array([0,0]),np.array([- R,R]))
-    plt.axis('square')
-    plt.xlim(np.array([  1.3,-1.3]))# NOTE: flipped
-    plt.ylim(np.array([- 1.3,1.3]))
-    plt.title('LongiOnlyContourAxial_chi%03d'%np.round(np.arctan(m) * 180 / pi))
-    plt.xlabel('x/R')
-    plt.ylabel('y/R')
-
-
     if not test:
-        plt.show()
-    else:
-        plt.close('all')
+        fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+        CS = ax.contour(Xplane/R, Yplane/R, 100*uz/uy0, levels=ContourVal)
+        manual_locations=[(-0.608,0.603),(-0.48,0.48),(-0.338,0.34),(-0.196,0.196),(0.488,0.49),(0.482,-0.481),(-0.465,-0.468)]
+        lbs=plt.clabel(CS,inline=1,fontsize=10,manual=manual_locations)
+        rots=[-45.0,-45.0,-45.0,-45.0,-315.0,-45.0,-315.0]
+        for l,r in zip(lbs,rots):
+            l.set_rotation(r)
+        ax.set_aspect('equal')
+        vtheta = np.linspace(0,2 * pi,100)
+        ax.plot(R * np.cos(vtheta),R * np.sin(vtheta),'k')
+        ax.plot(np.array([- R,R]),np.array([0,0]))
+        ax.plot(np.array([0,0]),np.array([- R,R]))
+        #plt.axis('square')
+        ax.set_xlim(np.array([  1.3,-1.3]))# NOTE: flipped
+        ax.set_ylim(np.array([- 1.3,1.3]))
+        ax.set_title('LongiOnlyContourAxial_chi%03d'%np.round(np.arctan(m) * 180 / pi))
+        ax.set_xlabel('x/R')
+        ax.set_ylabel('y/R')
+
 
 class Test(unittest.TestCase):
     def test_Article_Skew_TrailedVorticity(self):
         import sys
         if sys.version_info >= (3, 0):
             main(test=True)
+            plt.close('all')
         else:
             print('Test skipped due to travis display error')
 
 if __name__ == "__main__":
     main()
+    plt.show()

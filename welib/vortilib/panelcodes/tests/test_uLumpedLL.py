@@ -1,5 +1,6 @@
 
 import unittest
+import os
 import numpy as np
 
 from welib.vortilib.panelcodes.uLumpedLL import flat_plate_lin_acc
@@ -12,6 +13,10 @@ class TestFlatPlateAcc(unittest.TestCase):
         idxs      = [1, 2, -1]
         np.testing.assert_almost_equal(df['Cl_rel'].to_numpy()[idxs],   ref_clt,   decimal=4)
         np.testing.assert_almost_equal(df['Gamma_rel'].to_numpy()[idxs], ref_Gammat, decimal=4)
+
+        scriptDir='./'
+        os.remove(os.path.join(scriptDir, '_uLumpedLL.csv'))
+        os.remove(os.path.join(scriptDir, '_uLumpedLL_Wake.csv'))
 
 
 if __name__ == "__main__":

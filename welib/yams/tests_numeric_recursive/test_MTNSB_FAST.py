@@ -84,8 +84,6 @@ class TestMTNSB(unittest.TestCase):
         np.testing.assert_allclose(out['dM00'], 1.0e5, rtol=0, atol=1e-6)
         np.testing.assert_array_less(out['freq_0_cm'][:2], out['freq_0_no'][:2])
 
-        return out
-
 
 if __name__=='__main__':
     TestMTNSB().test_MTNSB_FAST_SubDyn_CM()
