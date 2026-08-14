@@ -14,6 +14,7 @@ from welib.yams.yams_sympy       import YAMSRigidBody, YAMSInertialBody, YAMSFle
 from welib.yams.yams_sympy_model import YAMSModel
 from welib.yams.models.FTNSB_sympy_symbols import *
 from welib.yams.models.utils import stiffness6DOF
+from welib.tools.strings import WARN, INFO, FAIL
 
 
 _defaultOpts={
@@ -194,6 +195,10 @@ def get_model(model_name, **opts):
             # Ridid tower
             twr = YAMSRigidBody('T', rho_G = [0,0,z_TG], J_form='diag') 
         elif nDOF_twr<=4:
+            if nDOF_twr>1:
+                if opts['twrDOFDir'][1]!='x':
+                    sTwr = str(opts["twrDOFDir"]).replace(" ",'').replace("'","")
+                    WARN(f'TFNSB_sympy: twrDOFDir {sTwr} is different than OpenFAST convention [x,x,y,y], watch out!')
             # Flexible tower
             twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'][:nDOF_twr], orderMM=opts['orderMM'], orderH=opts['orderH'], 
                                    predefined_kind='twr-z', tip_unit_deflect=opts['twr_tip_unit_deflect'], tip_rotate=opts['twr_tip_rotate'],

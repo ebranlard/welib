@@ -19,7 +19,7 @@ from welib.yams.rotations import R_x, R_y, R_z
 
 from welib.yams.windturbine import rigidBlades
 from welib.yams.windturbine import WindTurbineStructure, FASTWindTurbine
-from welib.tools.strings import prettyMat
+from welib.tools.strings import prettyMat, WARN
 
 def pm(M, var=None, **kwargs):
     return prettyMat(M, var, **kwargs, digits=3)
@@ -199,7 +199,6 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                  shapes_sub=[0,4], nSpan_sub=None,
                  shapes_twr=None, nSpan_twr=None,
                  shapes_bld=None, nSpan_bld=None, 
-                 bHubMass=1, bNacMass=1, bBldMass=1, 
                  bStiffening=True, bTiltBeforeNac=False, spanFrom0=True, # TODO for legacy, we keep this for now..
                  DEBUG=False, verbose=False,
                  main_axis ='x',
@@ -208,9 +207,10 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                  bladeMassExpected=None,
                  gravity=None,
                  algo='', # TODO replace with OpenFAST
-                 FEM_method=None,
+                 bHubMass=1, bNacMass=1, bBldMass=1, 
+                 SD_FEM_method=None,
                  SD_bOverride=False,
-                 SD_bCI=True       ,
+                 SD_bCI=True       , # True: include concentrated inertias in SubDyn
                  ):
         """ 
         Returns the following structure
@@ -255,36 +255,31 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         zBot = self.SD.zBot
 
         # --- Default arguments (needs ED loaded)
-        nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose)
-        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose)
+        # TODO in the future remove me
+        nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose, fallback=101)
+        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose, fallback=61)
 
         # --------------------------------------------------------------------------------}
         ## --- Creating bodies
         # --------------------------------------------------------------------------------{
-        ## --- Strucural and geometrical Inputs
+        # --- Strucural and geometrical Inputs
         self.setupEDGeom(zBot=zBot, bTiltBeforeNac=bTiltBeforeNac, flavor='')
-        # --- Sft = Hub + Gen
-        self.setupEDHubGen(bHubMass=bHubMass, flavor='yams_rec') 
-        # --- Gen only
+        self.setupEDHubGen(flavor='yams_rec', bHubMass=bHubMass) 
+        self.setupEDHub(flavor='') #flavor='yams_rec')
         self.setupEDGen(flavor='yams_rec')
-        # --- Nac
-        self.setupEDNac(bNacMass=bNacMass, flavor='yams_rec')
-        # --- Yaw
+        self.setupEDNac(flavor='yams_rec', bNacMass=bNacMass)
         self.setupEDYaw(flavor='yams_rec')
-        # --- Hub
-        self.setupEDHub() #flavor='yams_rec')
-        # WT.bld
+        # --- WT.bld & RNA
         self.setupEDBld(shapes=shapes_bld, nSpan=nSpan_bld,
                         spanFrom0=spanFrom0, massExpected=bladeMassExpected,
                         flavor='yams_rec')
         self.setupEDRot()   # WT.rot and rotgen  (Generic Rigid Body)
         self.setupEDRNA()   # WT.RNA             (Generic Rigid Body)
-        #--------------------------- HUB NAC YAW RNA COMMON WITH FTNSB 
-        # WT.twr
+        # --- WT.twr
         self.setupEDTwr(shapes=shapes_twr, nSpan=nSpan_twr, 
                         bStiffening=bStiffening,
                         flavor='yams_rec')
-        # --- FND body
+        # --- WT.FND
 
         if self.ED['PtfmMass']>0:
             WARN('MTNSB: Need to introduce a rigid body Ptfm ')
@@ -298,9 +293,8 @@ class FASTmodel2MTNSB(FASTWindTurbine):
                      Mtop = Mtop,
                      bStiffening=bStiffening, # TODO used to be false
                      bOverride = SD_bOverride,
+                     FEM_method= SD_FEM_method,
                      bCI       = SD_bCI,
-                     FEM_method=FEM_method,
-                     flavor='yams_rec'
                      )
 
         # --------------------------------------------------------------------------------}
@@ -308,7 +302,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------{
         # --- Initial conditions
         self.setupEDDOFs()
-        self.setActiveDOFs(shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld, fixedShaft=fixedShaft, verbose=True)
+        self.setActiveDOFs(shapes_sub=self.shapes_sub, shapes_twr=self.shapes_twr, shapes_bld=shapes_bld, fixedShaft=fixedShaft, verbose=verbose)
         if DEBUG:
             print('Initial conditions:')
             print(self.WT.q0)

@@ -40,9 +40,9 @@ class FASTmodel2MNSB(FASTWindTurbine):
                  bladeMassExpected=None,
                  gravity=None,
                  algo='', # TODO replace with OpenFAST
-                 FEM_method=None,                 
+                 SD_FEM_method=None,                 
                  SD_bOverride=True,
-                 SD_bCI = False,
+                 SD_bCI = True, # True = Turn on concentrated masses
                  verbose=False
 	    ):
         """ 
@@ -91,7 +91,7 @@ class FASTmodel2MNSB(FASTWindTurbine):
 
         # --- Default arguments (needs ED loaded)
         #nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose)
-        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose)
+        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose, fallback=61)
 
         # --------------------------------------------------------------------------------}
         ## --- Creating bodies
@@ -129,8 +129,7 @@ class FASTmodel2MNSB(FASTWindTurbine):
                      bStiffening=bStiffening,
                      bOverride = SD_bOverride,
                      bCI       = SD_bCI,
-                     FEM_method=FEM_method,
-                     flavor='yams_rec'
+                     FEM_method= SD_FEM_method,
                      )
 
         self.WT.twr = self.WT.fnd # TNSBStructure will ignore fnd

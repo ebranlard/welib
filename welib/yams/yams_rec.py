@@ -1246,7 +1246,7 @@ class YAMSRecUniformBeamBody(YAMSRecBeamBody):
 # --- FAST Beam body 
 # --------------------------------------------------------------------------------{
 class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
-    def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, nShapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
+    def __init__(B, body_type, ED, inp, Mtop=0, shapes=None, main_axis='x',nSpan=None,bAxialCorr=False,bStiffening=True, 
             spanFrom0=False, massExpected=None, gravity=None,
             algo='', FEM_method=None,# TODO OpenFAST
             concentrated_inertias=None,
@@ -1254,18 +1254,6 @@ class YAMSRecFASTBeamBody(YAMSRecBeamBody, GenericFASTBeamBody):
             ):
         """ 
         """
-        if nShapes is not None:
-            raise Exception('nShapes is depreciated use shapes instead')
-        if shapes is None:
-            if nShapes==2:
-                shapes=[0,1]
-            elif nShapes==0:
-                shapes=[]
-            elif nShapes==1:
-                shapes=[0]
-            else:
-                raise NotImplementedError('>> TODO')
-
         GenericFASTBeamBody.__init__(B, ED=ED, inp=inp, Mtop=Mtop, shapes=shapes, main_axis=main_axis, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, 
                 spanFrom0=spanFrom0,
                 massExpected=massExpected,

@@ -965,38 +965,38 @@ class FASTWindTurbine():
                     raise Exception('Variable gravity not found in FST file or ED file.')
 
 
-    def _defaultNSpanTwr(self, nSpan=None, verbose=False):
-        ED = self.ED
+    def _defaultNSpanTwr(self, nSpan=None, verbose=False, fallback=101):
+        nSpanED = self.ED['TwrNodes']
         if nSpan is None:
             if self.WT.algo=='OpenFAST':
-                nSpan = ED['TwrNodes']
+                nSpan = nSpanED
                 if verbose:
-                    print('[INFO] TNSB_FAST: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan))
+                    print('[INFO] windturbine: Using number of tower nodes ({}) from OpenFAST Input file.'.format(nSpan))
             else:
-                nSpan=101
+                nSpan=fallback
                 if verbose:
-                    print('[INFO] TNSB_FAST: Using default of tower nodes ({}).'.format(nSpan))
+                    print('[INFO] windturbine: Using default of tower nodes ({}).'.format(nSpan))
         else:
             if self.WT.algo=='OpenFAST':
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using user-specified number of tower nodes ({}).'.format(nSpan))
+                if nSpan!=nSpanED:
+                    INFO('windturbine: Using user-specified number of tower nodes ({}) instead of ED({}).'.format(nSpan, nSpanED))
         return nSpan
 
-    def _defaultNSpanBld(self, nSpan=None, verbose=False):
-        ED = self.ED
+    def _defaultNSpanBld(self, nSpan=None, verbose=False, fallback=61):
+        nSpanED = self.ED['BldNodes']
         if nSpan is None:
             if self.WT.algo=='OpenFAST':
-                nSpan = ED['BldNodes']
+                nSpan = nSpanED
                 if verbose:
-                    print('[INFO] TNSB_FAST: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan))
+                    print('[INFO] windturbine: Using number of blade nodes ({}) from OpenFAST Input file.'.format(nSpan))
             else:
-                nSpan=61
+                nSpan=fallback
                 if verbose:
-                    print('[INFO] TNSB_FAST: Using default number of blade nodes ({}).'.format(nSpan))
+                    print('[INFO] windturbine: Using default number of blade nodes ({}).'.format(nSpan))
         else:
             if self.WT.algo=='OpenFAST':
-                if verbose:
-                    print('[INFO] TNSB_FAST: Using user-specified number of blade nodes ({}).'.format(nSpan))
+                if nSpan!=nSpanED:
+                    WARN('windturbine: Using user-specified number of blade nodes ({}) instead of ED({}).'.format(nSpan, nSpanED))
         return nSpan
 
 
@@ -1427,8 +1427,14 @@ class FASTWindTurbine():
     def setupSD(self, Mtop=0, shapes=None, nSpan=None, 
                 bStiffening=True, bCI=True, bOverride=True, # Algo options
                 FEM_method='cbeam',
-                flavor=''
                 ):
+        """ 
+        INPUTS:
+           -bOverride :  Override some MM, KK values based on internal FEM CB values, closer to SubDyn
+           -bCI       :  Turn on or off the concentrated masses
+           -FEM_method:  'cbeam' simplified continuous beam FEM
+                         'full'  similar to SubDyn, uses graph, recommended
+        """
         if self.SD is None:
             raise Exception('SD is not set, call setupSDInit')
         CI = None
@@ -1437,14 +1443,10 @@ class FASTWindTurbine():
         else:
             WARN('Concentrated inertia for SubDyn turned off!')
 
-        if flavor=='yams_rec':
-            fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
-                                      main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
-                                      FEM_method=FEM_method,
-                                      concentrated_inertias=CI) # TODO, we could remove that to avoid double counting
-        else:
-            raise NotImplementedError()
-        #, algo=self.WT.algo) # NOTE: OpeNFAST commented
+        fnd = YAMSRecFASTBeamBody('substructure', self.ED, self.SD, Mtop=Mtop, shapes=shapes, nSpan=nSpan, 
+                                  main_axis=self.main_axis, bStiffening=bStiffening, gravity=self.WT.gravity,
+                                  FEM_method=FEM_method,
+                                  concentrated_inertias=CI) # TODO, we could remove that to avoid double counting
 
         # Optional exact SubDyn reduced-matrix matching for selected Guyan coordinates.
         # This bypasses GMBeam-integrated modal MM/KK for the foundation flexible block.

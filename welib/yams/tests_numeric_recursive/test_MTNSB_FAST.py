@@ -32,7 +32,7 @@ class TestMTNSB(unittest.TestCase):
             main_axis='z',
             fixedShaft=True,
             algo='OpenFAST',
-            FEM_method='full',
+            SD_FEM_method='full',
         ).WT
 
         q = np.zeros((len(WT.q0), 1))
@@ -53,7 +53,7 @@ class TestMTNSB(unittest.TestCase):
         dM00 = M_cm[0, 0] - M_no[0, 0]
         dF = freq_0_cm[:4] - freq_0_no[:4]
 
-        test=False
+        test=True
         if not test:
             print('FAST file:', fstFile)
             print('SubDyn concentrated inertias count:', len(cm_saved))
@@ -86,5 +86,5 @@ class TestMTNSB(unittest.TestCase):
 
 
 if __name__=='__main__':
-    TestMTNSB().test_MTNSB_FAST_SubDyn_CM()
-#     unittest.main()
+#     TestMTNSB().test_MTNSB_FAST_SubDyn_CM()
+    unittest.main()

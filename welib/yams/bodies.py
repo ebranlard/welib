@@ -541,6 +541,7 @@ class BeamBody(FlexibleBody):
     @property    
     def first_moment_inertia(self):
         """ Returns first moment of inertia from body origin"""
+        # TODO this is OpenFAST integration
         if self.int_method =='OpenFAST':
             dr = checkRegularNode(self.s_span)
             s_span = self.s_span[1:-1] # NOTE: temporary, m shouldn't me used with this method
@@ -554,25 +555,22 @@ class BeamBody(FlexibleBody):
             return S1x, S1y, S1z
 
         else:
-            raise NotImplementedError()
+            # Trapezoidal numerical integration: integrate (position * linear_mass) over span
+            S1x = trapezoid(self.s_G[0, :] * self.m, self.s_span)
+            S1y = trapezoid(self.s_G[1, :] * self.m, self.s_span)
+            S1z = trapezoid(self.s_G[2, :] * self.m, self.s_span)
+            return S1x, S1y, S1z
+
     @property
     def first_moment_inertia_from_start(self):
         """ Returns first moment of inertia from start position of body (not origin)"""
-        if self.int_method =='OpenFAST':
-            dr = checkRegularNode(self.s_span)
-            s_span = self.s_span[1:-1] # NOTE: temporary, m shouldn't me used with this method
-            m      = self.m[1:-1] *dr   # Important HACK 
-            s_G    = self.s_G[:,1:-1]
-            #np.sum(yy) 
-            #p['FirstMom']  = sum(p['BElmntMass']*p['RNodes'])    + p['TipMass']*p['BldFlexL']               # wrt blade root    
-            S0 = self.start_pos
-            S1x = np.sum((s_G[0,:]-S0[0])*m)
-            S1y = np.sum((s_G[1,:]-S0[1])*m)
-            S1z = np.sum((s_G[2,:]-S0[2])*m)
-            return S1x, S1y, S1z
-
-        else:
-            raise NotImplementedError()
+        #  S0 = self.start_pos
+        #  S1x = trapezoid((self.s_G[0, :] - S0[0]) * self.m, self.s_span)
+        #  S1y = trapezoid((self.s_G[1, :] - S0[1]) * self.m, self.s_span)
+        #  S1z = trapezoid((self.s_G[2, :] - S0[2]) * self.m, self.s_span)
+        S1 = np.array(self.first_moment_inertia)
+        S0 = np.array(self.start_pos)
+        return tuple(S1 - S0 * self.mass)
 
     @property
     def mass_matrix(self):
@@ -711,17 +709,24 @@ class BeamBody(FlexibleBody):
         if self.sympy:
             pass
         else:
-            s+=' - pos_global_init        {} (origin)\n'.format(np.around(self.pos_global_init,6))
-            s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
-            s+=' * pos_global:            {} (origin)\n'.format(np.around(self.pos_global,6))
-            s+=' * masscenter:            {} (body frame)\n'.format(np.around(self.masscenter,6))
-            s+=' * masscenter_pos_global: {} \n'.format(np.around(self.masscenter_pos_global,6))
-            s+=' * mass:         {}\n'.format(self.mass)
-            s+=' * length:      {}\n'.format(self.length)
-            s+=' - R_b2g_init: \n {}\n'.format(self.R_b2g_init)
-            s+=' * R_b2g: \n {}\n'.format(self.R_b2g)
-            s+=' * masscenter_inertia: \n{}\n'.format(np.around(self.masscenter_inertia,6))
-            s+=' * inertia: (at origin)\n{}\n'.format(np.around(self.inertia,6))
+            s+=' * nf:                       {}         \n'    .format(self.nf)
+            s+=' * nSpan:                    {}         \n'    .format(self.nSpan)
+            s+=' * length:                   {}         \n'    .format(self.length)
+            s+=' * mass:                     {}\n'.format(self.mass)
+            s+=' - pos_global_init:          {} (origin)\n'    .format(pm(self.pos_global_init))
+            s+=' * pos_global(t):            {} (origin)\n'    .format(pm(self.pos_global))
+            s+=' * masscenter:               {} (body frame)\n'.format(pm(self.masscenter))
+            s+=' * masscenter_pos_global(t): {} \n'            .format(pm(self.masscenter_pos_global))
+            s+=' * start_pos:                {} (start of body wrt origin)\n'.format(pm(self.start_pos))
+            s+=' * end_pos:                  {} (start of body wrt origin)\n'.format(pm(self.end_pos))
+            s+=' * first_moment_inertia(t):  {} (from body origin)\n'.format(pm(self.first_moment_inertia))
+            s+=' * first_moment_inertia_s(t):{} (from start_pos)\n'.format(pm(self.first_moment_inertia_from_start))
+            s+=' - R_b2g_init: \n{}\n'.format(pm(self.R_b2g_init))
+            s+=' * R_b2g: \n{}\n'.format(pm(self.R_b2g))
+            s+=' * masscenter_inertia: \n{}\n'.format(pm(self.masscenter_inertia))
+            s+=' * inertia: (at origin)\n{}\n'.format(pm(self.inertia))
+            s+=' * B_hat_x_bc:\n{}\n'.format(pm(self.Bhat_x_bc))
+            s+=' * B_hat_t_bc:\n{}\n'.format(pm(self.Bhat_t_bc))
             s+=' - Properties: s_span, m, EI, Mtop, s_G0, PhiU, PhiV, PhiK\n'
             s+='               jxxG, s_P0, s_G\n'
             s+='               bAxialCorr, bOrth, bStiffening\n'
@@ -814,6 +819,11 @@ class FASTBeamBody(BeamBody):
                 R                        RBS0                    RB
 
             """
+            # NOTE:
+            #   Before calling flexibility nSpan can be different from s_span
+            #   nSpan is the user requested length
+            # 
+            # 
 
             if algo=='OpenFAST': 
                 if (nSpan is None or nSpan==-1):
@@ -831,6 +841,7 @@ class FASTBeamBody(BeamBody):
 #                     r_O = [0,0,ED['HubRad']] # NOTE: blade defined wrt point BldRoot
                 # TODO we need two or three options with better naming
                 if spanFrom0:
+                    # THIS IS USED BY MNTSB and TNSB
                     s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
                     if np.abs(s_span[0])<1e-6:
                         pass    
@@ -843,7 +854,9 @@ class FASTBeamBody(BeamBody):
                     #s_span=s_bar*ED['TipRad'] # NOTE: this is a wrong scaling
                 else:
                     s_span=s_bar*(ED['TipRad']-ED['HubRad']) + ED['HubRad'] # NOTE: span starting at HubRad
+                    s_start = s_span[0] # For backward compatibility
                 r_O = [0,0,0] # NOTE: blade defined wrt point R for now
+            #print('>>> s_start', s_start)
             #print(s_span)
 
             psi_B= 0
@@ -948,6 +961,8 @@ class FASTBeamBody(BeamBody):
 
         if name in ['twr','bld']:
             m *= mass_fact
+            # NOTE: nSpan and len(s_span) are alowed to diafree
+            #print('>>>>>>>>>>>>>>>>>>>>>>>> ', len(s_span), nSpan, 'algo:',algo)
             p = GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeff, exp, damp_zeta, jxxG=jxxG, 
                     gravity=gravity, Mtop=Mtop, Omega=Omega, nSpan=nSpan, bAxialCorr=bAxialCorr, bStiffening=bStiffening, main_axis=main_axis, shapes=shapes, algo=algo, s_start=s_start)
 #             from welib.fast.elastodyn import bladeParameters

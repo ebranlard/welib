@@ -24,6 +24,8 @@ class TestWTSparOF(unittest.TestCase):
         # --- Blade
         # NOTE: bldes have "R" as origin
         bld0=self.WT.bld[0]
+        self.assertEqual(bld0.nSpan,    102)
+        self.assertEqual(bld0.s_span[0], 1.5)
         #print(bld0)
         #print('start_pos',bld0.start_pos)
         #print('s_span',bld0.s_span)
@@ -114,6 +116,8 @@ class TestWTSparOF(unittest.TestCase):
     def test_WT_00_twr(self):
         # --- Tower
         twr=self.WT.twr
+        assert twr.nSpan ==13
+        assert twr.s_span[0] ==0
         #print(twr)
 	# Comparison with ElastoDyn summary file
         # Tower Mass            (kg)       217511.246
@@ -185,13 +189,16 @@ class TestWindTurbSpar(unittest.TestCase):
                               [  -6.749999E+08,   0.000000E+00,   0.000000E+00,   0.000000E+00,   6.494974E+10,   0.000000E+00],
                               [   0.000000E+00,   0.000000E+00,   0.000000E+00,   0.000000E+00,   0.000000E+00,   1.600015E+08]])
 
-        np.testing.assert_allclose(fnd.mass_matrix_at([0,0,-20]),Mfnd_ref, 1e-5)
-        np.testing.assert_allclose(fnd.mass, 7.500000E+06)
+        np.testing.assert_allclose(fnd.pos_global, [0,0,20])
         np.testing.assert_allclose(fnd.masscenter_pos_global, [0,0,-90])
+        np.testing.assert_allclose(fnd.mass, 7.500000E+06)
+        np.testing.assert_allclose(fnd.mass_matrix_at([0,0,-20]),Mfnd_ref, 1e-5)
 
     def test_twr(self):
         # --- Tower
         twr=self.WT.twr
+        self.assertEqual(twr.nSpan,    11)
+        self.assertEqual(twr.s_span[0], 0)
         np.testing.assert_allclose(twr.pos_global, [0,0,20])
         np.testing.assert_allclose(twr.mass,        217537.844)
         np.testing.assert_allclose(twr.masscenter, [0,0, 28.9555])
@@ -219,6 +226,8 @@ class TestWindTurbSpar(unittest.TestCase):
         # --- Blade
         # NOTE: bldes have "R" as origin
         bld0=self.WT.bld[0]
+        self.assertEqual(bld0.nSpan,    49)
+        self.assertEqual(bld0.s_span[0], 1.5)
         # print(bld0)
         #print(bld0.start_pos)
         #print(bld0.end_pos)
