@@ -316,6 +316,11 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         # --------------------------------------------------------------------------------{
         self.WT.auto_assembly(q=q, DEBUG=DEBUG, fixedShaft=fixedShaft)
 
+        # --------------------------------------------------------------------------------}
+        # --- Environmental conditions
+        # --------------------------------------------------------------------------------{
+        self.setupSeaState()
+        self.setupHydro()
         # --- Useful data
         WT=self.WT
         WT.DCK = self.DCK
@@ -323,14 +328,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
         WT.ED  = self.ED
         WT.SD  = self.SD
         WT.fnd.WD=self.SD
-        WT.Hydro     = self.FST['CompHydro']>0 # FST['CompSeaSt']>0 and 
-        WT.HD        = self.DCK.fst_vt['HydroDyn']
-        try:
-            WT.WtrDens   = self.FST['WtrDens']
-            WT.WtrDpth   = self.FST['WtrDpth']
-        except:
-            WT.WtrDens   = self.HD['WtrDens']
-            WT.WtrDpth   = self.HD['WtrDpth']
+
 
         WT.DampMat       = self.SD.DampMat
         WT.RayleighCoeff = self.SD.RayleighCoeff

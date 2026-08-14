@@ -61,8 +61,9 @@ class FASTmodel2TNSB(FASTWindTurbine):
             raise Exception('Do not use TNSB_FAST when CompSub>0 (SubDyn), use MTNSB or MNSB')
 
         # --- Default arguments (needs ED loaded)
-        nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose)
-        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose)
+        # TODO in the future remove me
+        nSpan_twr = self._defaultNSpanTwr(nSpan_twr, verbose=verbose, fallback=101)
+        nSpan_bld = self._defaultNSpanBld(nSpan_bld, verbose=verbose, fallback=61)
 
         # --------------------------------------------------------------------------------}
         ## --- Creating bodies

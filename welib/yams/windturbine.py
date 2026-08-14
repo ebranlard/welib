@@ -19,10 +19,11 @@ import os
 import numpy as np
 import pandas as pd
 import copy
+import sys
 import welib.weio as weio
 from collections import OrderedDict
 from welib.essentials import *
-from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody
+from welib.yams.bodies import RigidBody, FlexibleBody, FASTBeamBody, BeamBody
 from welib.yams.yams_rec import YAMSRecRigidBody
 from welib.yams.yams_rec import YAMSRecFASTBeamBody
 from welib.yams.rotations import R_x, R_y, R_z, rotMat
@@ -31,6 +32,13 @@ from welib.yams.utils import translateInertiaMatrixToCOG, translateInertiaMatrix
 from welib.weio.dataframe import WEIODataFrame
 
 from welib.tools.pandalib import remap_df, remove_duplicated_col_df
+from welib.tools.decorators import require_attrs
+
+from welib.tools.compare import compare
+
+from welib.yams.section_loads import beamSectionLoads3D, beamSectionLoadsFromShapeFunctions
+from welib.hydro.morison import monopileHydroLoads1D
+
 
 
 
@@ -70,18 +78,19 @@ class WindTurbineStructure():
         self.DD   = None
         self._q   = None
         self.bTiltBeforeNac = None
-        self.additional_properties=[] # for user output in __repr__, so I remember what we have in the object
 
-        # --- TODO
+        # --- Environment
         self._gravity = None
+        self.pHD = None # Hydrodynamics
+        self.pAD = None # Aerodynamics
+        self.pSS = None
 
-
-
-        # Information relevant for simulation
-        #self.DOF    ={'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
+        # --- Simulation data
         self.DOF    = None # List of {'name':'', 'active':None, 'q0':None, 'qd0':None,'q_channel':None, 'qd_channel':None, 'qdd_channel':None}
 
-        self.algo=None # 'OpenFAST'
+        # --- Any other data
+        self.additional_properties=[] # for user output in __repr__, so I remember what we have in the object
+
         # Derived properties
         #self.DOFname
         #self.q0     
@@ -305,10 +314,12 @@ class WindTurbineStructure():
             p['u_xT1c']   = 1 # TODO remove in equations
             # TODO TODO TODO THIS IS NOT GENERIC
             p['v_yT1c']   = WT.twr.Bhat_t_bc[1,0]  # Mode 1  3 x nShapes
-            try:
-                p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
-            except:
-                print('[FAIL] YAMS: WindTurbine, TODO which mode shape is which for tower top rotations factors')
+            if WT.twr.nf>1:
+                try:
+                    p['v_xT2c']   = WT.twr.Bhat_t_bc[0,1]  # Mode 2
+                except:
+                    # TODO use directions
+                    WARN('YAMS: WindTurbine, which mode shape is which for tower top rotations factors, TODO.')
             p['DD_T']     = WT.twr.DD
             p['KK_T']     = WT.twr.KK
             # Rotor (blades + hub)
@@ -458,7 +469,6 @@ class WindTurbineStructure():
                 sStates=self.channels, Factors=self.FASTDOFScales, sAcc=self.acc_channels)
         if verbose:
             print('-----------------------------------------------------------------------------')
-        print(dfNL.columns)
 
         return resNL, sysNL, dfNL
 
@@ -550,7 +560,74 @@ class WindTurbineStructure():
 
         return d
 
-    def _insertOFDOFsInDF(self, df, fill_value = 0):
+
+    # --------------------------------------------------------------------------------}
+    # --- Sea state related (might need an object in the future)
+    # --------------------------------------------------------------------------------{
+    @require_attrs(['pSS', 'gravity'])
+    def SS_setComponents(self, compFile=None, ap=None, fp=None, epsp=None):
+        from welib.hydro.wavekin import wavenumber
+        pSS = self.pSS
+        if compFile is not None:
+            dfComp = weio.read(compFile).toDataFrame()
+            pSS['ap']   = dfComp['Amplitude_[m]']
+            pSS['fp']   = dfComp['Frequency_[Hz]']
+            pSS['epsp'] = dfComp['Phase_[rad]']
+        else:
+            print('>>> Using Wave of amplitude 3 and period 12 for now')
+            pSS['ap']   = np.array([3])     # Amplitudes
+            pSS['fp']   = np.array([1/12])  # frequencies [Hz]
+            pSS['epsp'] = np.array([np.pi]) # Deterministic phas
+        # --- Wave Kinematics
+        pSS['kp'] = wavenumber(pSS['fp'], pSS['WaterDepth'], self.gravity) # Wave numbers
+        pSS['compFile'] = compFile
+        return pSS
+
+    @require_attrs(['pSS'])
+    def SS_computeEta(self, time):
+        from welib.hydro.wavekin import elevation2d
+        pSS = self.pSS
+        if 'ap' not in pSS:
+            raise Exception('windturbine: Cannot compute Eta, components not set yet (call SS_setComponents)')
+
+        time = np.asarray(time, dtype=float)
+        eta_sim = elevation2d(pSS['ap'], pSS['fp'], pSS['kp'], pSS['epsp'], time, x=0)
+        if len(time)>0:
+            dt = time[1]-time[0]
+            eta_dot = np.gradient(eta_sim, dt) # Velocity state
+        else:
+            print('[WARN] time is empty, eta dot is zero')
+            eta_dot = eta_sim*0
+        pSS['eta_time'] = time
+        pSS['eta']      = eta_sim
+        pSS['eta_dot']  = eta_dot
+        return pSS
+
+
+    # --------------------------------------------------------------------------------}
+    # --- Hydro 
+    # --------------------------------------------------------------------------------{
+    @require_attrs(['pHD', 'fnd'])
+    def HD_setShapeFunction(self, hydroShape):
+        if hydroShape is None:
+            raise Exception('hydroShape is None')
+        pHD = self.pHD
+        dfH = weio.read(hydroShape).toDataFrame()
+        if not np.array_equal(dfH['z_[m]'],pHD['zDepth']):
+            raise Exception('z depth different with shape function and hydrodyn, TODO interpolate')
+        pHD['phi']  = dfH['phi_[Ns/m^2]'].values # Used to be called k_h_z
+        pHD['phit'] = dfH['phit_[-]'].values
+        bWet = pHD['zDepth']<=0
+        k_h = np.zeros(len(self.WT.fnd.PhiU))
+        for i, phi in enumerate(self.WT.fnd.PhiU):
+            phi_x = phi[0,:]
+            k_h[i] = np.trapezoid(pHD['phi'][bWet] * phi_x[bWet], pHD['zDepth'][bWet])
+        print('k_h     : ', k_h)
+        pHD['k_h'] = k_h
+
+
+
+    def _insertOFDOFsInDF(self, df, fill_value = 0, verbose=False):
         """ 
         Insert missing DOF time series in dataframe.
             If a DOF is turned off, we insert zero
@@ -564,7 +641,7 @@ class WindTurbineStructure():
         _sqdd = self.qdd_channels
 
         keys = list(df.keys())
-        df = remap_df(df, COLMAP_OFout_TO_QOF, bColKeepNewOnly=False, inPlace=False, verbose=True, raiseIfAbsent=False)
+        df = remap_df(df, COLMAP_OFout_TO_QOF, bColKeepNewOnly=False, inPlace=False, verbose=verbose, raiseIfAbsent=False)
         df = remove_duplicated_col_df(df)
 
         active_OF_DOF = set(self.q_channels + self.qd_channels + self.qdd_channels)
@@ -592,15 +669,7 @@ class WindTurbineStructure():
          - noAcc: set accelerations to zero
         """
         from welib.tools.tictoc import Timer
-        #from welib.beams.theory import UniformBeamGuyanModes, UniformBeamBendingModes
-        #from welib.yams.yams import UniformBeamBody
         from welib.fast.postpro import ED_TwrGag #, ED_TwrStations, getEDClass
-        #from welib.fast.elastodyn import rotorParameters, towerParameters, ED_Parameters, ED_CoordSys, ED_Positions
-        #from welib.fast.elastodyn import ED_AngPosVelPAcc, ED_LinVelPAcc, ED_qDict2q
-        #from welib.weio.fast_input_deck import FASTInputDeck
-        from welib.yams.section_loads import beamSectionLoads3D  # calls beamSectionLoads1D
-        #from welib.yams.rotations import rotMat, R_y, R_z, R_x
-        #from welib.yams.kinematics import *
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
 
@@ -664,6 +733,12 @@ class WindTurbineStructure():
         colOut+= ['YawBrMxp','YawBrMyp','YawBrMzp']
         # ED Outputs
         HEDOut, I = ED_TwrGag(WT.ED, addBase=False)
+#         hSL = WT.twr.s_span[iSL] # TODO TODO
+#         twr_IOut = [
+#         iSL = np.argmin(np.abs(hSL-WT.twr.s_span))
+#         sT='TwHt{}'.format(iiSL+1)
+
+
         for iiSL,hED in enumerate(HEDOut):
             sT='TwHt{}'.format(iiSL+1)
             colOut+=[sT+'TPxi_[m]'  , sT+'TPyi_[m]'  , sT+'TPzi_[m]']
@@ -673,44 +748,46 @@ class WindTurbineStructure():
             colOut+=[sT+'FLxt_[kN]', sT+'FLyt_[kN]', sT+'FLzt_[kN]']
             colOut+=[sT+'MLxt_[kN-m]', sT+'MLyt_[kN-m]', sT+'MLzt_[kN-m]']
         # TODO TODO TODO FIGURE OUT WHY THIS RETURN DTYPE OBJECT
-        #dfOut = pd.DataFrame(index=df.index, columns=colOut)
-        dfOut = WEIODataFrame(index=df.index, columns=colOut)
+        #dfOut = pd.DataFrame(index=df.index, columns=colOut, dtype=float)
+        dfOut = WEIODataFrame(index=df.index, columns=colOut, dtype=float)
+        gravity_vec = np.array([0,0,-WT.gravity])
 
         # --- Calc Output per time step
-        with Timer('Kinematics'):
+
+        with Timer('Time Loop'):
             for it,t in enumerate(df['Time_[s]']):
                 if np.mod(it,1000)==0:
-                    print(f'Kinematics {it}/{len(df)}')
+                    print(f'Time Loop {it}/{len(df)}')
                 # --- Main DOFs
                 q   = Q.iloc[it,:].copy()
                 qd  = QD.iloc[it,:].copy()
                 qdd = QDD.iloc[it,:].copy()
-    #             q['TSS2'] = -q['TSS2']
                 dfOut.loc[it, sq]   = q.values
                 dfOut.loc[it, sqd]  = qd.values
                 dfOut.loc[it, sqdd] = qdd.values
 
+                # --------------------------------------------------------------------------------}
+                # --- Kinematics 
+                # --------------------------------------------------------------------------------{
                 # --- Kinematics
                 dd = WT.kinematics(q, qd, qdd)
-                #print(dd)
-                #if it==2:
-                #    import pdb; pdb.set_trace()
                 dfOut.loc[it, 'Time_[s]'] = t
                 # TDi includes all platform motions
                 dfOut.loc[it, 'TwrTpTDxi'] = dd['u_N_tot'][0] 
                 dfOut.loc[it, 'TwrTpTDyi'] = dd['u_N_tot'][1]
                 dfOut.loc[it, 'TwrTpTDzi'] = dd['u_N_tot'][2]
 
-                u_N = dd['u_N']
-                v_N = dd['v_N']
-                a_N = dd['a_N']
-                om_N = dd['omega_n']
-                omd_N = dd['omegad_n']
-                u_N_p = dd['R_g2p'].dot(u_N)
-                u_N_t = dd['R_g2t'].dot(u_N)
-                v_N_p = dd['R_g2p'].dot(v_N)
-                a_N_p = dd['R_g2p'].dot(a_N)
-                om_N_p = dd['R_g2p'].dot(om_N)
+                # Alias
+                u_N     = dd['u_N']
+                v_N     = dd['v_N']
+                a_N     = dd['a_N']
+                om_N    = dd['omega_n']
+                omd_N   = dd['omegad_n']
+                u_N_p   = dd['R_g2p'].dot(u_N)
+                u_N_t   = dd['R_g2t'].dot(u_N)
+                v_N_p   = dd['R_g2p'].dot(v_N)
+                a_N_p   = dd['R_g2p'].dot(a_N)
+                om_N_p  = dd['R_g2p'].dot(om_N)
                 omd_N_p = dd['R_g2p'].dot(omd_N)
 
                 dfOut.loc[it, 'YawBrTDxt'] = u_N_t[0]
@@ -733,14 +810,14 @@ class WindTurbineStructure():
                 dfOut.loc[it, 'YawBrRAyp'] = omd_N_p[1] * 180/np.pi
                 dfOut.loc[it, 'YawBrRAzp'] = omd_N_p[2] * 180/np.pi
 
-                a_IMU = dd['a_IMU']
-                v_IMU = dd['v_IMU']
-                om_IMU = dd['omega_n']
-                omd_IMU = dd['omegad_n']
-
-                a_IMU_s = dd['R_g2s'].dot(a_IMU)
-                v_IMU_s = dd['R_g2s'].dot(v_IMU)
-                om_IMU_s = dd['R_g2s'].dot(om_IMU)
+                # Alias
+                a_IMU     = dd['a_IMU']
+                v_IMU     = dd['v_IMU']
+                om_IMU    = dd['omega_n']
+                omd_IMU   = dd['omegad_n']
+                a_IMU_s   = dd['R_g2s'].dot(a_IMU)
+                v_IMU_s   = dd['R_g2s'].dot(v_IMU)
+                om_IMU_s  = dd['R_g2s'].dot(om_IMU)
                 omd_IMU_s = dd['R_g2s'].dot(omd_IMU)
 
                 dfOut.loc[it, 'NcIMUTVxs'] = v_IMU_s[0]
@@ -756,26 +833,29 @@ class WindTurbineStructure():
                 dfOut.loc[it, 'NcIMURAys'] = omd_IMU_s[1] * 180/np.pi
                 dfOut.loc[it, 'NcIMURAzs'] = omd_IMU_s[2] * 180/np.pi
 
-
-                # --- Loads
-                gravity_vec = np.array([0,0,-WT.gravity])
                 # --- RNA (without Yaw Br) loads
-                omd_n = dd['omegad_n']
-                om_n = dd['omega_n']
-                R_g2p = dd['R_g2p']
-                R_g2n = dd['R_g2n']
-                r_Grna = dd['r_Grna']
-                a_Grna = dd['a_Grna']
-                Mrna  = WT.RNA_noYawBr.mass
-                JGrna = WT.RNA_noYawBr.masscenter_inertia
-                JGrna_g = (R_g2n.T).dot(JGrna).dot(R_g2n)
-                F_Grna_grav =  Mrna *gravity_vec
-                r_NGrna = dd['r_NGrna']
+                omd_n       = dd['omegad_n']
+                om_n        = dd['omega_n']
+                R_g2p       = dd['R_g2p']
+                R_g2n       = dd['R_g2n']
+                r_Grna      = dd['r_Grna']
+                a_Grna      = dd['a_Grna']
+
+                # --------------------------------------------------------------------------------}
+                # --- Loads
+                # --------------------------------------------------------------------------------{
+                rowDF_in = df.iloc[it] # Prescribed loads from input for Hacking only
+                Mrna        = WT.RNA_noYawBr.mass
+                JGrna       = WT.RNA_noYawBr.masscenter_inertia
+                JGrna_g     = (R_g2n.T).dot(JGrna).dot(R_g2n)
+                F_Grna_grav = Mrna *gravity_vec
+                r_NGrna     = dd['r_NGrna']
 
                 R_N   = Mrna * a_Grna - F_Grna_grav
                 tau_N = np.cross(r_NGrna, R_N)
                 tau_N += JGrna_g.dot(omd_n)
                 tau_N += np.cross(om_n, JGrna_g.dot(om_n))
+
                 # --- Force at N without YawBr Mass (such are "YawBr" sensors..) in global coordinates
                 F_N = -R_N
                 M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
@@ -822,13 +902,21 @@ class WindTurbineStructure():
                 M_N_t = R_g2t.dot(M_N)
                 TopLoad_t = np.concatenate((F_N_t, M_N_t))
 
-                # --- Section Loads
+                # --------------------------------------------------------------------------------}
+                # ---  Tower Section Loads and Kinematics
+                # --------------------------------------------------------------------------------{
                 F_sec, M_sec = towerSectionLoads(WT.twr, F_N_t, M_N_t, kin=dd, gravity=WT.gravity)
 
-                for iiSL, hSL in enumerate(HEDOut):
-                    iSL = np.argmin(np.abs(hSL-WT.twr.s_span))
-                    hSL = WT.twr.s_span[iSL]
+                dfOut.loc[it, 'TwrBsFxt_[kN]']   = F_sec[0, 0] /1000
+                dfOut.loc[it, 'TwrBsFyt_[kN]']   = F_sec[1, 0] /1000
+                dfOut.loc[it, 'TwrBsFzt_[kN]']   = F_sec[2, 0] /1000
+                dfOut.loc[it, 'TwrBsMxt_[kN-m]'] = M_sec[0, 0] /1000
+                dfOut.loc[it, 'TwrBsMyt_[kN-m]'] = M_sec[1, 0] /1000
+                dfOut.loc[it, 'TwrBsMzt_[kN-m]'] = M_sec[2, 0] /1000
 
+                for iiSL, hSL in enumerate(HEDOut): # At ED output sections only
+                    iSL = np.argmin(np.abs(hSL-WT.twr.s_span)) # TODO precompute
+                    hSL = WT.twr.s_span[iSL]
                     sT='TwHt{}'.format(iiSL+1)
                     dfOut.loc[it, sT+'FLxt_[kN]']   = F_sec[0, iSL]/1000
                     dfOut.loc[it, sT+'FLyt_[kN]']   = F_sec[1, iSL]/1000
@@ -851,8 +939,10 @@ class WindTurbineStructure():
                     dfOut.loc[it, sT+'TPxi_[m]'] = dd['r_Ts'][iSL,0]
                     dfOut.loc[it, sT+'TPyi_[m]'] = dd['r_Ts'][iSL,1]
                     dfOut.loc[it, sT+'TPzi_[m]'] = dd['r_Ts'][iSL,2]
-
-        return dfOut
+                    
+        # --- Combine Section loads into a dicitonary                    
+        sections=None
+        return dfOut, sections
 
 
 
@@ -881,64 +971,80 @@ class FASTWindTurbine():
     def __init__(self, fstFilename=None, main_axis='z', 
                     nSpanTwr=None, twrShapes=None, 
                     nSpanBld=None, bldShapes=None,
+                    nSpanSub=None, subShapes=None,
+                    fixedShaft=False,
                     algo='', bldStartAtRotorCenter=True,
                     gravity=None,
-                    WT=None
+                    WT=None,
+                    verbose=False,
+                    # HD options
+                    HD_compFile=None, # Nasty HD component files for wave elevation
+                    # SD options
+                    SD_bOverride = False ,
+                    SD_FEM_method= 'full', # full (SubDYn) or cbeam, will affect shape functions
                  ):
         """
         INPUTS:
          - twrShapes: Select shapes to use for tower. If None, twrShapes=[0,1,2,3]
 
         """
-        # --- Storing a general windturbine structure
-
-        self.ED  = None
-        self.FST = None
-        self.twrFile = None # TODO
-        self.bldFile = None
+        # --- Main Data
+        self.ED          = None
+        self.FST         = None
+        self.twrFile     = None        # TODO
+        self.bldFile     = None
         self.main_axis   = main_axis
         self.fstFilename = fstFilename
-        self.pBld = None
-        self.pTwr = None
+        self.pBld        = None
+        self.pTwr        = None
+        self.algo        = None
 
+        # --- Sanity checks
         if WT is not None and fstFilename is not None:
             raise Exception('Cannot provide both a WT and a fstFilename')
+
+        # --- Store direct inputs
         if WT is None:
             self.WT = WindTurbineStructure()
         else:
             self.WT = WT
-        self.WT.algo = algo
+        self.WT.algo = algo #<<<<< Setting algo early on
+        self.verbose = verbose
+        self.twrShapes = twrShapes # will be overriden later
+        self.bldShapes = bldShapes # will be overriden later
+        self.subShapes = subShapes # will be overriden later
 
-        if fstFilename is not None:
-            # TODO for harmonization, these might not need to all be called
-            self.loadFST(fstFilename) # self.FST, self.ED, self.gravity
-            self.setGravity(gravity) # self.FST, self.ED, self.gravity
-            self.setupEDGeom()
-            self.setupEDHub()
-            self.setupEDGen()
-            self.setupEDNac()
-            self.setupEDBld(shapes=bldShapes, nSpan=nSpanBld, bldStartAtRotorCenter=bldStartAtRotorCenter)
-            self.setupEDRot()
-            self.setupEDYaw()
-            self.setupEDRNA()
-            if self.FST['CompSub']>0:
-                FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
-                self.setupEDRigidFloat()
-            else:
-                self.setupEDRigidFloat()
-            self.setupEDTwr(shapes=twrShapes, nSpan=nSpanTwr)
-            self.setupWTRigid()
-            self.setupMAP()
-            self.setupEDDOFs()
-            
-            self.WT.ED = self.ED # TODO 
+        if fstFilename is None:
+            return
+        # --- Read fast input files
+        self.loadFST(fstFilename) # self.FST, self.ED, self.gravity
+        self.setGravity(gravity) # self.FST, self.ED, self.gravity
+        self.setupEDGeom()
+        self.setupEDHub()
+        self.setupEDGen()
+        self.setupEDNac()
+        self.setupEDBld(shapes=bldShapes, nSpan=nSpanBld, bldStartAtRotorCenter=bldStartAtRotorCenter)
+        self.setupEDRot()
+        self.setupEDYaw()
+        self.setupEDRNA()
+        if self.FST['CompSub']>0:
+            FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
+            self.setupEDRigidFloat()
+        else:
+            self.setupEDRigidFloat()
+        self.setupEDTwr(shapes=twrShapes, nSpan=nSpanTwr)
+        self.setupWTRigid()
+        self.setupMAP()
+        self.setupEDDOFs()
+        
+        self.WT.ED = self.ED # TODO 
 
 
     def loadFST(self, fstFilename, readlist=None):
         from welib.weio.fast_input_deck import FASTInputDeck
 
         if readlist is None:
-            readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD']
+            readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD', 'HD', 'SS']
 
         # --- Reading main OpenFAST files
         ext=os.path.splitext(fstFilename)[1]
@@ -951,6 +1057,9 @@ class FASTWindTurbine():
         self.twrFile = self.DCK.fst_vt['ElastoDynTower']
         # TODO, MoorDyn, BeamDyn 
         self.SDFile = self.DCK.fst_vt['SubDyn']
+        self.HDFile = self.DCK.fst_vt['HydroDyn']
+        self.SSFile = self.DCK.fst_vt['SeaState']
+
 
     def setGravity(self, gravity=None):
         if gravity is not None:
@@ -1182,8 +1291,8 @@ class FASTWindTurbine():
         # TODO TODO TODO  Harmonize with fast.elastodyn when algo is OpenFAST
         ED = self.ED
         WT = self.WT
-        # --- Blades 
-        if shapes is None: 
+        # --- Default arguments 
+        if shapes is None:  # if not provided we respect the ED file
             shapes=[]
             if ED['FlapDOF1']:
                 shapes+=[0]
@@ -1191,6 +1300,7 @@ class FASTWindTurbine():
                 shapes+=[1]
             if ED['EdgeDOF']:
                 shapes+=[2]
+        self.bldShapes = shapes
 
         m    = self.bldFile['BldProp'][:,3]
         jxxG=0*m
@@ -1319,11 +1429,19 @@ class FASTWindTurbine():
         WT.RNA = RNA
         WT.RNA_noYawBr = RNA_noYawBr
 
-    def setupEDRigidFloat(self, flavor=''):
+    def setupEDRigidFloat(self, DOFs=None, flavor=''):
+        """ 
+        - DOFs : e.g. [0,4] for surge and pitch
+        """
         ED = self.ED
         WT = self.WT
+        dofs = ['PtfmSgDOF', 'PtfmSwDOF', 'PtfmHvDOF', 'PtfmRDOF', 'PtfmPDOF', 'PtfmYDOF']
+        if DOFs is None:
+            self.subShapes = [i for i, dof in enumerate(dofs) if ED[dof]]
+        else:
+            self.subShapes = DOFs
         # --- Fnd (defined wrt ground/MSL "E")
-    #     print(FST.keys())
+        # print(FST.keys())
         M_fnd = ED['PtfmMass']
         r_EGfnd_inF = np.array([ED['PtfmCMxt'],ED['PtfmCMyt'],ED['PtfmCMzt']])
         r_EPtfm_inF    = np.array([0             ,0             ,ED['PtfmRefzt']]) # TODO, this is wrong
@@ -1341,8 +1459,8 @@ class FASTWindTurbine():
         ED = self.ED
         WT = self.WT
         # --- Twr
-        if shapes is None: 
-            shapes=[]
+        if shapes is None:  # If not provided we respect the ED setttings
+            shapes=[] 
             # TODO WATCH OUT ORDER
             if ED['TwFADOF1']:
                 shapes+=[0]
@@ -1352,6 +1470,7 @@ class FASTWindTurbine():
                 shapes+=[2]
             if ED['TwSSDOF2']:
                 shapes+=[3]
+        self.twrShapes = shapes
 
         if flavor=='yams_rec':
             # Tower Body
@@ -1424,6 +1543,7 @@ class FASTWindTurbine():
 
 
 
+    @require_attrs(['SD'], 'call setupSDInit first')
     def setupSD(self, Mtop=0, shapes=None, nSpan=None, 
                 bStiffening=True, bCI=True, bOverride=True, # Algo options
                 FEM_method='cbeam',
@@ -1435,8 +1555,15 @@ class FASTWindTurbine():
            -FEM_method:  'cbeam' simplified continuous beam FEM
                          'full'  similar to SubDyn, uses graph, recommended
         """
-        if self.SD is None:
-            raise Exception('SD is not set, call setupSDInit')
+        # --- Default arguments
+        ED = self.ED
+        if shapes is None:
+            shapes=[] 
+            dofs = ['PtfmSgDOF', 'PtfmSwDOF', 'PtfmHvDOF', 'PtfmRDOF', 'PtfmPDOF', 'PtfmYDOF']
+            shapes = [i for i, dof in enumerate(dofs) if ED[dof]]
+            # TODO CB
+            self.subShapes = shapes
+
         CI = None
         if bCI:
             CI = self.SD.concentrated_masses
@@ -1532,7 +1659,7 @@ class FASTWindTurbine():
         WT.K_Moor = K_Moor     # HACK..
 
     def setupEDDOFs(self):
-        # NOTE: may be overriden by child class to adapt to a given model
+        # NOTE: may be overriden by setActiveDOFs to adapt to a given model
         ED = self.ED
         # --- Degrees of freedom
         DOFs=[]
@@ -1573,6 +1700,8 @@ class FASTWindTurbine():
         self.WT.DOF = DOFs
 
     def setActiveDOFs(self, fixedShaft=False, shapes_sub=None, shapes_twr=None, shapes_bld=None, verbose=False):
+        if shapes_sub is None:
+            shapes_sub =[]
         # Override based on model
         SUB_NAMES =  ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z', 'CB1', 'CB2', 'CB3', 'CB4', 'CB5', 'CB6', 'CB7', 'CB8', 'CB9', 'CB10'] # Ptfm
         TWR_NAMES =  ['q_FA1', 'q_FA2', 'q_SS1', 'q_SS2'] # Twr
@@ -1583,7 +1712,9 @@ class FASTWindTurbine():
         NAMEOFF += [TWR_NAMES[i] for i in range(4) if i not in shapes_twr]
         NAMEOFF += ['theta_y'] # Yaw
         NAMEOFF += ['nu'] # Shaft torsion
-        if fixedShaft:
+        if fixedShaft is None:
+            pass
+        elif fixedShaft:
             NAMEOFF += ['psi'] # Shaft torsion
         for iB in range(3):
             NAMEOFF += [BLD_NAMES[i].format(iB+1) for i in range(3) if i not in shapes_bld]
@@ -1602,38 +1733,146 @@ class FASTWindTurbine():
 
 
 
-        def setupDebug(self):
-            ED = self.ED
-            WT = self.WT
-            print('HubMass',WT.sft.mass)
-            print('NacMass',WT.nac.mass)
-#             print('RotMass',M_rot)
-#             print('RNAMass',M_RNA)
-#             print('IG_hub')
-#             print(IG_hub)
-#             print('IG_nac')
-#             print(IG_nac)
-            print('I_gen_LSS', ED['GenIner']*ED['GBRatio']**2)
-            print('I_hub_LSS', ED['hubIner'])
-#             print('I_rot_LSS', nB*Blds[0].MM[5,5])
-#             print('I_tot_LSS', nB*Blds[0].MM[5,5]+ED['hubIner']+ED['GenIner']*ED['GBRatio']**2) 
-            print('r_NGnac_inN',WT.r_NGnac_inN.T)
-            print('r_SGhub_inS',WT.r_SGhub_inS.T)
+    def setupSeaState(self, compFile=None):
+        if self.verbose:
+            INFO('Setting up SeaState')
+        pSS = None
+
+        # --- Return None if not active
+        if 'CompSeaSt' not in self.FST:
+            #WARN('Not supporting sea state for old OpenFAST input files')
+            self.WT.pSS = None # Store data in WT class
+            return pSS
+        if self.FST['CompSeaSt']==0:
+            #WARN('Sea State is None')
+            self.WT.pSS = None # Store data in WT class
+            return pSS
+
+        # --- Setting main data from input file
+        pSS = dict() # TODO might deserve an object
+        self.WT.pSS = pSS # Store data in WT class
+
+        # --- TODO get rid of these
+        try:
+            self.WT.WtrDens   = self.FST['WtrDens']
+            self.WT.WtrDpth   = self.FST['WtrDpth']
+        except:
+            # Legacy
+            self.WT.WtrDens   = self.HDFile['WtrDens']
+            self.WT.WtrDpth   = self.HDFile['WtrDpth']
+
+        pSS['rho']        = self.WT.WtrDens      # [kg/m3]
+        pSS['WaterDepth'] = self.WT.WtrDpth      # [m]
 
 
-    # ---------------------- DEGREES OF FREEDOM --------------------------------------
-    # False          FlapDOF1    - First flapwise blade mode DOF (flag)
-    # False          FlapDOF2    - Second flapwise blade mode DOF (flag)
-    # False          EdgeDOF     - First edgewise blade mode DOF (flag)
-    # ---------------------- INITIAL CONDITIONS --------------------------------------
-    #           0   OoPDefl     - Initial out-of-plane blade-tip displacement (meters)
-    #           0   IPDefl      - Initial in-plane blade-tip deflection (meters)
+        if compFile is not None:
+            WARN('Not recommended to set component at this stage')
+            self.WT.SS_setComponents(compFile)
 
+    def setupHydro(self, hydroShape=None):
+        if self.verbose:
+            INFO('Setting up Hydro')
+
+        pHD = None
+        if 'CompSeaSt' not in self.FST:
+            WARN('Not supporting hydro for old OpenFAST input files')
+            self.WT.pHD = None # Store data in WT class
+            return 
+        # --- Return None if not active
+        if self.FST['CompHydro']==0:
+            #WARN('Hydro is None')
+            self.pHD = pHD # Store data in class
+            return
+
+        # --- Safety checks
+        if self.WT.pSS is None:
+            raise Exception('windturbine: setupHydro: Cannot setup Hydro, call setupSeaState first.')
+        if self.WT.fnd is None:
+            raise Exception('windturbine: setupHydro: Cannot setup Hydro, need fnd setup.')
+
+        # --- Setting main data from input file
+        pHD = dict() # TODO might deserve an object
+        self.WT.pHD = pHD # Store data in class
+
+        # --- TODO get rid of these
+        self.WT.Hydro     = self.FST['CompHydro']>0 # FST['CompSeaSt']>0 and 
+        self.WT.HD        = self.HDFile
+        # TODO get rid of these
+        try:
+            self.WT.WtrDens   = self.FST['WtrDens']
+            self.WT.WtrDpth   = self.FST['WtrDpth']
+        except:
+            # Legacy
+            self.WT.WtrDens   = self.HDFile['WtrDens']
+            self.WT.WtrDpth   = self.HDFile['WtrDpth']
+
+        # --- Hydro floaters
+        if self.WT.fnd.SD is None:
+            FAIL('Setting up hydro with out SD not supported yet')
+            return pHD
+
+        # --- Hydro Monopile specific
+        if not hasattr(self.WT.fnd, 'PhiU'):
+            raise Exception('For hydro monopile setup we need a shape function')
+
+
+        zBeam = np.array(sorted(self.WT.fnd.SD.pointsMN['z'].unique()))
+        zDepth = self.WT.fnd.s_span - self.WT.pSS['WaterDepth'] # For check
+        zDepth = zBeam
+        HD = self.HDFile
+        try:
+            cprop = HD.getTab('SectionPropCyl')
+        except:
+            cprop = HD.getTab('SectionProp')
+        D_ = cprop['PropD'].values[0]
+        sprop = HD.getTab('SmplPropCyl')
+        Cp_ = sprop['SimplCp'].values[0]
+        Cd_ = sprop['SimplCd'].values[0]
+        Ca_ = sprop['SimplCa'].values[0]
+        print(f'HD props: Cp={Cp_} Cd={Cd_} Ca={Ca_} D={D_} ')
+        PlaceHolderOnes = np.ones([len(zDepth),1])
+        pHD['zDepth']   = zDepth
+        pHD['D']        = D_  * PlaceHolderOnes
+        pHD['Cd']       = Cd_ * PlaceHolderOnes
+        pHD['CM']       = (Ca_+Cp_) *PlaceHolderOnes
+        pHD['Ca']       = Ca_ * PlaceHolderOnes
+        pHD['Cp']       = Cp_ * PlaceHolderOnes
+        pHD['m_hydro']  = self.WT.pSS['rho'] * np.pi / 4 * pHD['D'].ravel()**2 * pHD['Ca'].ravel()
+            
+        # Generalized hydro mass matrix 
+        GM_hydro = np.zeros((len(self.WT.fnd.PhiU),len(self.WT.fnd.PhiU)))
+        bWet = zDepth<=0
+        for i, phi in enumerate(self.WT.fnd.PhiU):
+            phi_x = phi[0,:]
+            GM_hydro[i,i] = np.trapezoid(pHD['m_hydro'][bWet] * phi_x[bWet]**2, zDepth[bWet])
+
+        pHD['GM_hydro']= GM_hydro
+        INFO('Remember to add GM_hydro to mass matrix for models with full assembly')
+        # TODO add GM_hydro after assembly
+#         print('GM_hydro:\n', GM_hydro)
+#         for i, phi in enumerate(WT.fnd.PhiU):
+#             # NOTE: diagonal only?
+#             WT.MM[i,i]+=GM_hydro[i,i]
+#     if tuneM:
+#         raise Exception('Removed ?')
+#         # TODO remove this, it's application specific
+#         # Tuning
+#         factM1=1.009
+#         factM2=1.003
+#         WT2.MM[0,0]*=factM1
+#         WT2.MM[1,1]*=factM2
+#         WT2.KK[0,0]*=factM1
+#         WT2.KK[1,1]*=factM2
+
+        # --- Load hydroShape
+        if hydroShape is not None:
+            WARN('Not recommended to set hydroShape at this stage')
+            self.WT.HD_setShapeFunction(hydroShape)
 
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
-def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NGn0=None, 
+def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, fnd=None, s_NGn0=None, 
         tilt=0,
         algo='OpenFAST'):
     """ 
@@ -1646,6 +1885,7 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NG
      - r_FT0:    undisplaced position of tower base        , in global coord  (0, 0, TowerBsHt)
      - s_NGn0:   undisplaced position of nacelle COG      , in nacelle coord (NacCMxn, NacCMyn, NacCMzn)
      - twr: BeamBody 
+     - fnd: BeamBody 
 
     """
 
@@ -1675,6 +1915,13 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NG
     qddYaw = qddDict['Yaw']
 
     d = dict() # Outputs
+
+    # --- Monopile flexible motion
+    if fnd is not None:
+        fnd.updateFlexibleKinematics(q_f, qd_f, qdd_f)
+
+
+
 
     # --- Ref point/fnd motion
     r_F      = r_F0 + q_f[:3]
@@ -1727,7 +1974,7 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, s_NG
     theta_Ts  = np.zeros((nTwrSpan,3))
     omega_Ts  = np.zeros((nTwrSpan,3))
     omegad_Ts = np.zeros((nTwrSpan,3))
-    twr.updateFlexibleKinematics(q_t, qd_t, qdd_t) # yams.bodies.py
+    twr.updateFlexibleKinematics(q_t, qd_t, qdd_t) # yams.bodies.py <<<<<<<<<<<<<<<<<<<<<<<<<
     for j in range(nTwrSpan):
         # TODO TODO TODO
         # Missing dipsplacement, velocity, and acceleration due to shoterning of beam
