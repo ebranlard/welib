@@ -1046,7 +1046,7 @@ def EDSysVecRot(R,z1,z2,z3):
 
 
 
-def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None):
+def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None, smallRot=True):
     """ 
     Return ElastoDyn coordinate systems in ElastoDyn and IEC convention:
 
@@ -1073,7 +1073,40 @@ def ED_CoordSys(q=None, qDict=None, TwrFASF=None, TwrSSSF=None):
     # Vector / direction a1 (=  xt from the IEC coord. system)
     # Vector / direction a2 (=  zt from the IEC coord. system)
     # Vector / direction a3 (= -yt from the IEC coord. system)
-    R = smallRot_OF(q[DOF_R], q[DOF_Y], -q[DOF_P])
+    if smallRot: 
+        R = smallRot_OF(q[DOF_R], q[DOF_Y], -q[DOF_P])
+
+    else:
+        raise NotImplementedError()
+        #       ! Platform orientation after yaw
+        #    CoordSys%alpha1 =  cos(x%QT(DOF_Y))*CoordSys%z1 - sin(x%QT(DOF_Y))*CoordSys%z3
+        #    CoordSys%alpha2 =  CoordSys%z2
+        #    CoordSys%alpha3 =  sin(x%QT(DOF_Y))*CoordSys%z1 + cos(x%QT(DOF_Y))*CoordSys%z3
+        # 
+        #       ! Platform orientation after pitch
+        #    CoordSys%beta1  =  cos(x%QT(DOF_P))*CoordSys%alpha1 - sin(x%QT(DOF_P))*CoordSys%alpha2
+        #    CoordSys%beta2  =  sin(x%QT(DOF_P))*CoordSys%alpha1 + cos(x%QT(DOF_P))*CoordSys%alpha2
+        #    CoordSys%beta3  =  CoordSys%alpha3
+        # 
+        #       ! Platform orientation after roll
+        #    CoordSys%a1     =  CoordSys%beta1 
+        #    CoordSys%a2     =  cos(x%QT(DOF_R))*CoordSys%beta2 + sin(x%QT(DOF_R))*CoordSys%beta3
+        #    CoordSys%a3     = -sin(x%QT(DOF_R))*CoordSys%beta2 + cos(x%QT(DOF_R))*CoordSys%beta3
+        # Platform orientation after yaw
+        alpha1 =  np.cos(q[DOF_Y]) * z1 - np.sin(q[DOF_Y]) * z3
+        alpha2 =  z2
+        alpha3 =  np.sin(q[DOF_Y]) * z1 + np.cos(q[DOF_Y]) * z3
+
+        # Platform orientation after pitch
+        beta1  =  np.cos(q[DOF_P]) * alpha1 - np.sin(q[DOF_P]) * alpha2
+        beta2  =  np.sin(q[DOF_P]) * alpha1 + np.cos(q[DOF_P]) * alpha2
+        beta3  =  alpha3
+
+        # Platform orientation after roll
+        a1     =  beta1
+        a2     =  np.cos(q[DOF_R]) * beta2 + np.sin(q[DOF_R]) * beta3
+        a3     = -np.sin(q[DOF_R]) * beta2 + np.cos(q[DOF_R]) * beta3
+
     a1, a2, a3 = EDSysVecRot(R, z1, z2, z3)
     # IEC Coordinate system
     R_g2t = EDSysVectoIECDCM(a1, a2, a3)
