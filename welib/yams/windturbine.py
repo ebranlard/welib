@@ -43,6 +43,23 @@ from welib.hydro.morison import monopileHydroLoads1D
 
 
 
+def towerSectionLoads(twr, F_top_t, M_top_t, kin, gravity):
+    nSpan = len(twr.s_span)
+    p_ext = np.zeros(nSpan)
+    a_struct_t = np.zeros((3, nSpan))
+    R_g2t = kin['R_g2t']
+    for j in range(nSpan):
+        a_struct_t[:, j] = R_g2t.dot(kin['a_Ts'][j, :])
+    gravity_vec = np.array((0., 0., -gravity))
+    a_ext = R_g2t.dot(gravity_vec)
+    F_sec, M_sec, outDBG = beamSectionLoads3D( p_ext=p_ext, F_top=F_top_t, M_top=M_top_t,
+        s_span=twr.s_span, m=twr.m,
+        U=twr.U, V=twr.V, K=twr.K,
+        a_struct=a_struct_t, a_ext=a_ext,
+        corrections=1)
+    return F_sec, M_sec, outDBG
+
+
 
 
 class WindTurbineStructure():
@@ -673,21 +690,8 @@ class WindTurbineStructure():
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
 
-        def towerSectionLoads(twr, F_top_t, M_top_t, kin, gravity):
-            nSpan = len(twr.s_span)
-            p_ext = np.zeros(nSpan)
-            a_struct_t = np.zeros((3,nSpan))
-            R_g2t = kin['R_g2t']
-            for j in range(nSpan):
-                a_struct_t[:,j] = R_g2t.dot(kin['a_Ts'][j,:])
-            gravity_vec = np.array((0.,0.,-gravity)) # external acceleration (gravity/earthquake)
-            a_ext = R_g2t.dot(gravity_vec)
-            # NOTE: assumes that U,V, K have been computed using twr.updateFlexibleKinematics 
-            F_sec, M_sec, outDBG =  beamSectionLoads3D(p_ext=p_ext, F_top=F_top_t, M_top=M_top_t, s_span=twr.s_span, m=twr.m, U=twr.U, V=twr.V, K=twr.K, a_struct=a_struct_t, 
-                     a_ext=a_ext, corrections=1)
-            return F_sec, M_sec
-
         df = WT._insertOFDOFsInDF(df)
+        df = df.reset_index(drop=True)
 
         # --- States
         sq   = [ "Q_Sg_[m]"       , "Q_Sw_[m]"       , "Q_Hv_[m]"       , "Q_R_[rad]"       , "Q_P_[rad]"       , "Q_Y_[rad]"       , "Q_TFA1_[m]"      , "Q_TFA2_[m]"       , "Q_TSS1_[m]"       , "Q_TSS2_[m]"       , "Q_Yaw_[rad]"       , ]
@@ -747,9 +751,14 @@ class WindTurbineStructure():
             colOut+=[sT+'ALxt_[m/s^2]', sT+'ALyt_[m/s^2]', sT+'ALzt_[m/s^2]']
             colOut+=[sT+'FLxt_[kN]', sT+'FLyt_[kN]', sT+'FLzt_[kN]']
             colOut+=[sT+'MLxt_[kN-m]', sT+'MLyt_[kN-m]', sT+'MLzt_[kN-m]']
-        # TODO TODO TODO FIGURE OUT WHY THIS RETURN DTYPE OBJECT
+        colOut+= ['TwrBsFxt_[kN]'  , 'TwrBsFyt_[kN]'  , 'TwrBsFzt_[kN]']
+        colOut+= ['TwrBsMxt_[kN-m]', 'TwrBsMyt_[kN-m]', 'TwrBsMzt_[kN-m]']
         #dfOut = pd.DataFrame(index=df.index, columns=colOut, dtype=float)
         dfOut = WEIODataFrame(index=df.index, columns=colOut, dtype=float)
+
+        # --- Initialize section loads
+        sections  = dict()
+        twr_F_sec = np.zeros((6, len(WT.twr.s_span), len(df))) 
         gravity_vec = np.array([0,0,-WT.gravity])
 
         # --- Calc Output per time step
@@ -758,6 +767,7 @@ class WindTurbineStructure():
             for it,t in enumerate(df['Time_[s]']):
                 if np.mod(it,1000)==0:
                     print(f'Time Loop {it}/{len(df)}')
+
                 # --- Main DOFs
                 q   = Q.iloc[it,:].copy()
                 qd  = QD.iloc[it,:].copy()
@@ -859,22 +869,19 @@ class WindTurbineStructure():
                 # --- Force at N without YawBr Mass (such are "YawBr" sensors..) in global coordinates
                 F_N = -R_N
                 M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
-                if not useTopLoadsFromDF:
-                    # Aero force
-                    # TODO gen?
-                    R_g2s = dd['R_g2s']
-                    if 'Fadd_R_xs' in df.keys():
-                        Fadd_R_in_g = R_g2s.T.dot((df['Fadd_R_xs'].loc[it],0 ,0))
-                        Madd_R_in_g = R_g2s.T.dot((df['Madd_R_xs'].loc[it],0 ,0))
-                        r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
-                        r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
-                        Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
-                        Fadd_N = Fadd_R_in_g
-                        Madd_N = Madd_R_in_g + Madd_R_N*0 # TODO experiment
-                        F_N += Fadd_N
-                        M_N += Madd_N
-#                     else:
-#                         raise Exception('Temporary safety')
+                # Aero force
+                # TODO gen?
+                R_g2s = dd['R_g2s']
+                if 'Fadd_R_xs' in df.keys():
+                    Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],0 ,0))
+                    Madd_R_in_g = R_g2s.T.dot((rowDF_in['Madd_R_xs'],0 ,0))
+                    r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+                    r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
+                    Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+                    Fadd_N = Fadd_R_in_g
+                    Madd_N = Madd_R_in_g + Madd_R_N*0 # TODO experiment
+                    F_N += Fadd_N
+                    M_N += Madd_N
                 F_N_p = R_g2p.dot(F_N)
                 M_N_p = R_g2p.dot(M_N)
 
@@ -885,12 +892,12 @@ class WindTurbineStructure():
                 dfOut.loc[it, 'YawBrMyp'] = M_N_p[1]/1000
                 dfOut.loc[it, 'YawBrMzp'] = M_N_p[2]/1000
 
-
+                # --- Override F_N and M_N from DataFrame for debug only
                 if useTopLoadsFromDF:
-                    F_N_p = np.array((df['YawBrFxp_[kN]'].loc[it], df['YawBrFyp_[kN]'].loc[it], df['YawBrFzp_[kN]'].loc[it]))*1000
-                    M_N_p = np.array((df['YawBrMxp_[kN-m]'].loc[it], df['YawBrMyp_[kN-m]'].loc[it], df['YawBrMzp_[kN-m]'].loc[it]))*1000
-                    F_N = (R_g2p.T).dot(F_N_p)
-                    M_N = (R_g2p.T).dot(M_N_p)
+                    F_N_p2 = np.array((df['YawBrFxp_[kN]'].loc[it], df['YawBrFyp_[kN]'].loc[it], df['YawBrFzp_[kN]'].loc[it]))*1000
+                    M_N_p2 = np.array((df['YawBrMxp_[kN-m]'].loc[it], df['YawBrMyp_[kN-m]'].loc[it], df['YawBrMzp_[kN-m]'].loc[it]))*1000
+                    F_N = (R_g2p.T).dot(F_N_p2)
+                    M_N = (R_g2p.T).dot(M_N_p2)
                 
                 # Yaw Brake contribution at N
                 F_N_YawBr = WT.yawBr.mass * gravity_vec
@@ -905,7 +912,8 @@ class WindTurbineStructure():
                 # --------------------------------------------------------------------------------}
                 # ---  Tower Section Loads and Kinematics
                 # --------------------------------------------------------------------------------{
-                F_sec, M_sec = towerSectionLoads(WT.twr, F_N_t, M_N_t, kin=dd, gravity=WT.gravity)
+                F_sec, M_sec, _ = towerSectionLoads(WT.twr, F_top_t=F_N_t, M_top_t=M_N_t, kin=dd, gravity=WT.gravity)
+                twr_F_sec[:, :, it] = np.vstack((F_sec, M_sec)) # Store all section loads
 
                 dfOut.loc[it, 'TwrBsFxt_[kN]']   = F_sec[0, 0] /1000
                 dfOut.loc[it, 'TwrBsFyt_[kN]']   = F_sec[1, 0] /1000
@@ -1017,26 +1025,63 @@ class FASTWindTurbine():
         if fstFilename is None:
             return
         # --- Read fast input files
-        self.loadFST(fstFilename) # self.FST, self.ED, self.gravity
+        readlist = ['Fst', 'ED', 'EDtwr', 'EDbld', 'SD', 'HD', 'SS']
+        self.loadFST(fstFilename, readlist=readlist)
         self.setGravity(gravity) # self.FST, self.ED, self.gravity
-        self.setupEDGeom()
-        self.setupEDHub()
-        self.setupEDGen()
-        self.setupEDNac()
-        self.setupEDBld(shapes=bldShapes, nSpan=nSpanBld, bldStartAtRotorCenter=bldStartAtRotorCenter)
-        self.setupEDRot()
-        self.setupEDYaw()
-        self.setupEDRNA()
+        # --- Reading SubDyn file
+        zBot = 0
         if self.FST['CompSub']>0:
-            FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
-            self.setupEDRigidFloat()
+            self.setupSDInit() # Needed to get zBot
+            zBot = self.SD.zBot
+        # --------------------------------------------------------------------------------}
+        ## --- Creating bodies
+        # --------------------------------------------------------------------------------{
+        # --- Strucural and geometrical Inputs
+        self.setupEDGeom(zBot=zBot, flavor='')
+        #self.setupEDHubGen(flavor='')  #  Not Used Sft = Hub + Gen # NOTE: MNTSB uses yams_rec 
+        self.setupEDHub(flavor='')  # 
+        self.setupEDGen(flavor='')  # NOTE: MNTSB uses yams_rec 
+        self.setupEDNac(flavor='')  # NOTE: MNTSB uses yams_rec 
+        self.setupEDYaw(flavor='')  # NOTE: MNTSB uses yams_rec 
+        # --- WT.bld & RNA
+        self.setupEDBld(shapes=bldShapes, nSpan=nSpanBld, bldStartAtRotorCenter=bldStartAtRotorCenter) # NOTE: MNTSB uses yams_rec
+        self.setupEDRot()   # WT.rot and rotgen  (Generic Rigid Body)
+        self.setupEDRNA()   # WT.RNA             (Generic Rigid Body)
+        # --- WT.twr
+        self.setupEDTwr(shapes=twrShapes, nSpan=nSpanTwr)
+        # --- WT.FND
+        if self.FST['CompSub']>0:
+            #FAIL('windturbine.py: SubDyn `fnd` not implemented, only ED rigid body platform included.')
+            INFO('windturbine.py: Using SubDyn `fnd`')
+            # TODO
+            #self.setupEDRigidFloat()
+            Mtop = self.WT.RNA.mass
+            Mtop += self.WT.twr.mass
+            #print('>>> Potential SubDyn Mtop (RNA + twr)', Mtop)
+            self.setupSD(shapes=subShapes, nSpan=nSpanSub,
+                         Mtop = Mtop,
+                         bStiffening=True, # TODO used to be false
+                         bOverride = SD_bOverride,
+                         FEM_method= SD_FEM_method,
+                         )
         else:
             self.setupEDRigidFloat()
-        self.setupEDTwr(shapes=twrShapes, nSpan=nSpanTwr)
         self.setupWTRigid()
         self.setupMAP()
-        self.setupEDDOFs()
+
+
+        # --- Initial conditions
+        self.setupEDDOFs() # set DOFs according to ElastoDyn
         
+
+        # --- Assembly NOTE: only for yams_rec
+        # self.WT.auto_assembly(q=q, DEBUG=DEBUG, fixedShaft=fixedShaft)
+
+        # --- Environmental conditions
+        self.setupSeaState()
+        self.setupHydro()
+
+        # --- Provide additional data that may be useful to WT
         self.WT.ED = self.ED # TODO 
 
 
