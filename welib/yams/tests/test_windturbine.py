@@ -142,7 +142,7 @@ class TestWTSparOF(unittest.TestCase):
 #         qdDict  = {'Sg':  0.0, 'Sw': 0.0, 'Hv': 0.0, 'R':0.0, 'P':0.0, 'Y':0, 'TFA1':0.0, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':100.0}
 #         qddDict = {'Sg':  0.0, 'Sw': 0.0, 'Hv': 0.0, 'R':0.0, 'P':0.0, 'Y':0, 'TFA1':0.0, 'TSS1':0.0, 'TFA2':0, 'TSS2':0, 'Yaw':0.0}
 
-        kin = self.WT.kinematics(qDict, qdDict, qddDict)
+        kin = self.WT.kinematics(qDict, qdDict, qddDict, rot_type='smallRot_OF')
 
         if True:
             from welib.fast.elastodyn import ED_Parameters, ED_CalcOutputs

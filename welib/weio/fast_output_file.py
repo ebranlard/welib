@@ -913,6 +913,10 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
     # Data sanitization
     chanNames = list(chanNames)
     channels  = np.asarray(channels)
+    #nan_col_indices = np.where(np.isnan(channels).any(axis=0))[0]
+    #if len(nan_col_indices)>0:
+    #    print('[WARN] writeBinary: The following columns have NaN: ', np.asarray(chanNames)[nan_col_indices.astype(int)])
+    #    channels[:,nan_col_indices] = 0
     if chanUnits[0][0]!='(':
         chanUnits = ['('+u+')' for u in chanUnits] # units surrounded by parenthesis to match OpenFAST convention
 
@@ -931,7 +935,7 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
     timeStart = time[0]
     timeIncr = (time[-1]-time[0])/(nT-1)
     dataWithoutTime = channels[:,1:]
-        
+
     # Compute data range, scaling and offsets to convert to int16
     #   To use the int16 range to its fullest, the max float is matched to 2^15-1 and the
     #   the min float is matched to -2^15. Thus, we have the to equations we need
@@ -1024,6 +1028,11 @@ def writeBinary(fileName, channels, chanNames, chanUnits, fileID=4, descStr=''):
 
 def writeDataFrame(df, filename, binary=True):
     """ write a DataFrame to OpenFAST output format"""
+    # Sanity
+#     nan_cols = df.columns[df.isna().any()].tolist()
+#     if len(nan_cols)>0:
+#         print('[WARN]: The following columns have NaN ' + str(nan_cols))
+#         #df[nan_cols]=0
     channels  = df.values
     # attempt to extract units from channel names
     chanNames=[]

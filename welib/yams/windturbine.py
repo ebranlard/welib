@@ -1139,7 +1139,7 @@ class WindTurbineStructure():
 
 
 
-    def _insertOFDOFsInDF(self, df, fill_value = 0, verbose=False):
+    def _insertOFDOFsInDF(self, df, fill_value = 0, verbose=False, accMissing='warn'):
         """ 
         Insert missing DOF time series in dataframe.
             If a DOF is turned off, we insert zero
