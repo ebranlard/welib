@@ -1301,6 +1301,7 @@ class FASTWindTurbine():
             if ED['EdgeDOF']:
                 shapes+=[2]
         self.bldShapes = shapes
+        nSpan = self._defaultNSpanBld(nSpan, verbose=self.verbose)
 
         m    = self.bldFile['BldProp'][:,3]
         jxxG=0*m
@@ -1471,6 +1472,8 @@ class FASTWindTurbine():
             if ED['TwSSDOF2']:
                 shapes+=[3]
         self.twrShapes = shapes
+        nSpan = self._defaultNSpanTwr(nSpan, verbose=self.verbose)
+
 
         if flavor=='yams_rec':
             # Tower Body

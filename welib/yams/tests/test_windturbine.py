@@ -17,7 +17,7 @@ class TestWTSparOF(unittest.TestCase):
     def setUpClass(cls):
         # Read FAST structural model
         fstSim = os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst')
-        cls.WT = FASTWindTurbine(fstSim, algo='OpenFAST', bldShapes=[0,1,2]).WT #, bldStartAtRotorCenter=False )
+        cls.WT = FASTWindTurbine(fstSim, algo='OpenFAST', bldShapes=[0,1,2], nSpanBld=100).WT #, bldStartAtRotorCenter=False )
         cls.fstSim = fstSim
 
     def test_WT_00_bld(self):
@@ -176,7 +176,10 @@ class TestWindTurbSpar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Read FAST structural model
-        cls.WT = FASTWindTurbine(os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst'), algo='', twrShapes=[0,1,2,3]).WT
+        cls.WT = FASTWindTurbine(os.path.join(MyDir,'./../../../data/Spar/Main_Spar_ED.fst')
+                                 , algo='',
+                                 twrShapes=[0,1,2,3], nSpanTwr=11,
+                                 nSpanBld=49, bldStartAtRotorCenter=True).WT
 
     def test_fnd_ED(self):
         # --- Floater

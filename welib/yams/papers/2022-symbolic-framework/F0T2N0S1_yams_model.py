@@ -30,7 +30,7 @@ def main(runSim=True, runFAST=False, create=True):
                           rot_elastic_type='SmallRot', #rot_elastic_type='Body', 'Body' or 'SmallRot'
                           orderMM=1,
                           orderH=1,
-                          twrDOFDir=['x','y','x','y'], # Order in which the flexible DOF of the tower are set
+                          twrDOFDir=['x','y'], # Order in which the flexible DOF of the tower are set
                          )
         extraSubs=model.shapeNormSubs # shape functions normalized to unity
         smallAngles  = [(model.twr.vcList, 2)]
@@ -52,7 +52,7 @@ def main(runSim=True, runFAST=False, create=True):
         #fstFilename = os.path.join(MyDir, '../../../data/NREL5MW/Main_Onshore.fst')
         fstFilename = os.path.join(MyDir, 'F0T2N0S1/Main_Spar_ED.fst')
         from welib.yams.windturbine import FASTWindTurbine
-        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50).WT
+        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50, nSpanBld=49).WT
         p = WT.yams_parameters()
 
         # --- Perform time integration

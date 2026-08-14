@@ -9,8 +9,6 @@ except:
     from numpy import trapz as trapezoid
 
 
-# from .section_loads import beamSectionLoads1D, beamSectionLoads3D, beamSectionLoadsFromShapeFunctions
-
 '''
 Flexible beam tools:
     - computation of generalized mass and stiffness matrix
@@ -1223,14 +1221,18 @@ def GeneralizedMCK_PolyBeam(s_span, m, EIFlp, EIEdg, coeffs, exp, damp_zeta, jxx
     else:
         method= 'Flex'
         if nSpan is not None:
-            if s_min>0:
-                print('TODO flexibility.py, support s_span0/=0')
-            s_span0 = s_span
-            s_span  = np.linspace(0,np.max(s_span),nSpan)
-            m       = np.interp(s_span, s_span0, m)
-            EIFlp   = np.interp(s_span, s_span0, EIFlp)
-            EIEdg   = np.interp(s_span, s_span0, EIEdg)
-            jxxG    = np.interp(s_span, s_span0, jxxG)
+            if nSpan==len(s_span):
+                # For backward compatibility, we do nothing here
+                pass
+            else:
+                if s_min>0:
+                    print('TODO flexibility.py, support s_span0/=0')
+                s_span0 = s_span
+                s_span  = np.linspace(0,np.max(s_span),nSpan)
+                m       = np.interp(s_span, s_span0, m)
+                EIFlp   = np.interp(s_span, s_span0, EIFlp)
+                EIEdg   = np.interp(s_span, s_span0, EIEdg)
+                jxxG    = np.interp(s_span, s_span0, jxxG)
     nSpan=len(s_span)
 
     # --- Definition of main directions
