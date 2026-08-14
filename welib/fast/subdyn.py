@@ -846,7 +846,7 @@ class SubDyn:
                 PhiV[iShape][1,:] = df_CB['CB2_tx'].values
 
             else:
-                raise NotImplementedError()
+                raise NotImplementedError(f'SubDyn: idShape {idShape}')
             dfU = pd.DataFrame(data=PhiU[iShape].T, columns=[f'PhiU{iShape}'+s for s in ['x','y','z']])
             dfV = pd.DataFrame(data=PhiV[iShape].T, columns=[f'PhiV{iShape}'+s for s in ['x','y','z']])
             dfOut = pd.concat([dfOut, dfU, dfV], axis=1)

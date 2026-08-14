@@ -4,5 +4,5 @@ from welib.tools.colors import fColrs, python_colors, color_scales, lighten_colo
 from welib.tools.figure import setFigurePath, setFigureFont, export2png, export2pdf
 from welib.tools.clean_exceptions import *
 from welib.tools.strings import printMat, printVec, printDict, printVar, printVarTex, pretty_num
-from welib.tools.strings import OK, FAIL, WARN, INFO
+from welib.tools.strings import OK, FAIL, WARN, INFO, NOTE
 from welib.common import WELIBException

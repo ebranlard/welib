@@ -304,9 +304,7 @@ class FASTInputDeck(dict):
             self.readHD()
 
             # SeaState
-            if 'CompSeaSt' in self.fst_vt['Fst'].keys():
-                if self.fst_vt['Fst']['CompSeaSt']>0:
-                    self.fst_vt['SeaState'] = self._read(self.fst_vt['Fst']['SeaStFile'],'SS')
+            self.readSS()
 
             # SubDyn
             self.readSD()
@@ -333,6 +331,12 @@ class FASTInputDeck(dict):
     def readSD(self, force=False):
         if self.fst_vt['Fst']['CompSub']==1 or force:
             self.fst_vt['SubDyn'] = self._read(self.fst_vt['Fst']['SubFile'], 'SD')
+
+    def readSS(self, force=False):
+        if 'CompSeaSt' in self.fst_vt['Fst'].keys():
+            if self.fst_vt['Fst']['CompSeaSt']>0 or force:
+                self.fst_vt['SeaState'] = self._read(self.fst_vt['Fst']['SeaStFile'],'SS')
+
 
     def readMD(self, force=False):
         if self.fst_vt['Fst']['CompMooring']==1:
