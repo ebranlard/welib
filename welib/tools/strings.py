@@ -215,6 +215,11 @@ def INFO(msg, label='[INFO] ', **kwargs):
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
     cprint(msg, **kwargs)
 
+def NOTE(msg, label='[NOTE] ', **kwargs):
+    msg = str(msg)
+    msg = ('\n' + ' ' * len(label)).join((label + msg).split('\n'))
+    cprint(msg, color='cyan', attrs=['bold'], **kwargs)
+
 
 # --------------------------------------------------------------------------------
 # --- Pretty prints
