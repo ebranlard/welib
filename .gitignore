@@ -28,3 +28,5 @@ dist
 .vscode
 
 README_OUTPUT.md
+
+pytest.ini

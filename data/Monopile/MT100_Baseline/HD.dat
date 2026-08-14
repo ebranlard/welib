@@ -129,9 +129,5 @@ False            OutAll         - Output all user-specified member and joint loa
 "A11"            OutSFmt        - Output format for header strings (quoted string) [not checked for validity!]
 ---------------------- OUTPUT CHANNELS -----------------------------------------
 HydroFxi		Total integrated hydrodynamic load along the global x-direction from both potential flow and strip theory at (0,0,0)		(N)
-HydroFyi		Total integrated hydrodynamic load along the global y-direction from both potential flow and strip theory at (0,0,0)		(N)
-HydroFzi		Total integrated hydrodynamic load along the global z-direction from both potential flow and strip theory at (0,0,0)		(N)
-HydroMxi		Total integrated hydrodynamic moment about the global x-axis from both potential flow and strip theory at (0,0,0)		(N-m)
 HydroMyi		Total integrated hydrodynamic moment about the global y-axis from both potential flow and strip theory at (0,0,0)		(N-m)
-HydroMzi		Total integrated hydrodynamic moment about the global z-axis from both potential flow and strip theory at (0,0,0)		(N-m)
 END of output channels and end of file. (the word "END" must appear in the first 3 columns of this line)

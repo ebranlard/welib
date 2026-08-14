@@ -10,3 +10,4 @@ scipy
 chardet
 sympy
 pyyaml # for yaml
+pytest
