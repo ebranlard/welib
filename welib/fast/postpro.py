@@ -538,6 +538,9 @@ def spanwise_timeSeries_to_DF(ds, prefix="N", node_dim="ir", time_dim="it", ds_O
 
     if ds_Other is not None:
         if isinstance(ds_Other, xr.Dataset):
+            is_multi_index = len(ds_Other.dims) > 1
+            if is_multi_index:
+                raise Exception(f"postpro: ds_other xarray has more than one dimentions: {list(ds_Other.dims.keys())}. resulting in a MultiIndex dataframe.")
             df_other = ds_Other.to_dataframe()
         elif isinstance(ds_Other, pd.DataFrame):
             df_other = ds_Other.copy()
@@ -1173,7 +1176,7 @@ def spanwisePostPro(FST_In=None, avgMethod='constantwindow', avgParam=5, out_ext
     out['BD'] = dfRad_BD
     # --- SubDyn
         # NOTE: fst might be None
-    if fst.SD is not None:
+    if fst is not None and fst.SD is not None:
         sd = SubDyn(fst.SD)
         #MN = sd.pointsMN
         MNout, MJout = sd.memberPostPro(dfAvg)
