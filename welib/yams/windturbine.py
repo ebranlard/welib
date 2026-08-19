@@ -1316,6 +1316,7 @@ class WindTurbineStructure():
         if hasMonopile:
             mnp_F_sec = np.zeros((6, len(WT.fnd.s_span), len(df))) 
             if useInterfaceLoadsFromDF:
+                WARN('Prescribing interface loads')
                 # try to see if columns are present for  
                 F_top_mnp, M_top_mnp = interfaceLoadsFromDF(df.iloc[0], fallbackF=None, fallbackM=None, raiseError=True, verbose=True)
 

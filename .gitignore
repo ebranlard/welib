@@ -3,6 +3,7 @@
 *.sum
 *.out
 *.outb
+*.bts
 *.mat
 *.png
 *.zip

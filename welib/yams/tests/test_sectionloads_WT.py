@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from welib.essentials import *
 from welib.tools.colors import MW_Orange, fColrs
 import welib.weio as weio
-from welib.tools.stats import comparison_stats
+from welib.tools.stats import comparison_stats, allclose_errors
 
 import pytest
 
@@ -35,6 +35,55 @@ colRef=COLRS[0]
 colSim=COLRS[1]
 LWRef=2.4
 LWSim=1.5
+
+
+def compareSigWithStats(y1, y2, t=None, sig=None, epsTolP=0.01, rtol=1e-3, atol=None, atolP=0.01, printStats=False, test=True, factor=1):
+    """ 
+    Provide either:
+       y1, y2, t
+    or 
+       y1=df1
+       y2=df2
+       sig
+
+    - y1: actual
+    - y2: desired
+    - epsTolP: Tolerance for relative error, default epsTolP=0.01 = 1% 
+    - aTopP:  Tolerance for absolute error in percent of range, default atolP=0.01 = 1% 
+    """
+    if t is None:
+        t1, y1 = y1['Time_[s]'].values ,y1[sig].values # Actual
+        t2, y2 = y2['Time_[s]'].values ,y2[sig].values # Desired
+        if sig is None:
+            sig = 'Unknown' 
+    else:
+        t1=t
+        t2=t
+        pass
+    y1 = y1.copy() /factor
+    y2 = y2.copy() /factor
+
+    stats, sStats =  comparison_stats(t2, y2, t1, y1, stats='eps', method='mean', latex=False)
+
+    atol_e, rtol_e = allclose_errors(y1, y2)
+
+    if printStats:
+        print(f'{sig:20s}: atol:{atol_e:.4f} - rtol:{rtol_e:.4f} - {sStats}')
+
+    if test:
+        # np.testing.assert_array_less(1-np.abs(stats['sigRatio']), 0.08)
+        np.testing.assert_array_less(np.abs(stats['eps']), epsTolP*100)
+        # np.testing.assert_array_less(1-np.abs(stats['R2']), 0.08)
+
+        if atol is not None:
+            pass
+        else:
+            signal_range = np.ptp(y2)  # Peak-to-peak range
+            atol = atopP * signal_range  # % of total signal range
+
+        np.testing.assert_allclose(y1, y2, rtol=rtol, atol=atol)
+    return t1, y1, t2, y2
+
 
 def meanabs(x, **kwargs):
     return np.mean(np.abs(x), **kwargs)
@@ -145,23 +194,18 @@ def sec_plot(vTime, zDepth, sec, ref=None, other=None, stat='mean', tRange=None,
 
 
 
-def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, tMin=1, tMax=100, plot=False, dtSamp=0.1):
+def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, tMin=1, tMax=100, plot=False, dtSamp=0.1, fixedShaft=False):
     """"
     Wrapper, that should rely heavily on windturbine.py (WindTurbineStructure)
     Should compute section loads along tower and monopile
     Should work for a monopile or a floater
     """
-    fstFile = os.path.join(scriptDir, fstFile)
-    if compFile is not None:
-        compFile = os.path.join(scriptDir, compFile)
-
-    Isec = [0,4,7] # Section indices
-
     # --- Derived parameters
-    fstOut = fstFile.replace('.fst','.outb')
-    outFile = fstOut.replace('.out','').replace('.outb','')
-    outFileSL = outFile + '_SL_YAMS.outb'
-
+    fstOut    = fstFile.replace('.fst','.outb')
+    outBase   = fstOut.replace('.out','').replace('.outb','')
+    outFigDir = os.path.join(os.path.dirname(fstOut),  'figs/')
+    outFile   = os.path.join(outFigDir, os.path.basename(outBase))
+    os.makedirs(outFigDir, exist_ok=True)
 
     # --- Reference Time series for verification
     df = weio.read(fstOut).toDataFrame()
@@ -173,10 +217,9 @@ def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, t
     f = interp1d(df['Time_[s]'], df.drop(columns=['Time_[s]']), axis=0, kind='linear', fill_value='extrapolate')
     dfRef = pd.DataFrame(f(t_new), columns=df.columns.drop('Time_[s]'))
     dfRef.insert(0, 'Time_[s]', t_new)
-#     dfRef = df
 
     # --- Start
-    WT = FASTWindTurbine(fstFile, algo='OpenFAST', HD_compFile=compFile, SD_FEM_method='cbeam', subShapes=subShapes, verbose=True).WT
+    WT = FASTWindTurbine(fstFile, algo='OpenFAST', HD_compFile=compFile, SD_FEM_method='cbeam', subShapes=subShapes, verbose=True, fixedShaft=fixedShaft).WT
     YSL = YAMSSectionLoadCalculator(WT=WT)
 
     if WT.pSS is not None:
@@ -187,27 +230,19 @@ def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, t
         if hydroShapeFile is not None:
             WT.HD_setShapeFunction(hydroShapeFile)
 
-
-        # --- LEGACY
-#         shapes_sub = [0, 4]
-#         pSTm, pSSm, pHDm, Sysm, WTm, refm = monopileSetupFromOpenFAST( fstFile, shapes_sub=shapes_sub, TMIN=tMin, TMAX=tMax, compFile=compFile, tuneM=False)
-#         WT.monopileSetup = {'WTm':WTm, 'pST': pSTm, 'ref': refm, 'sys': Sysm}
-#         #b1=compare(WT.pSS, pSSm, verbose=False)
-#         #b2=compare(WT.pHD, pHDm, verbose=False)
-#         #b2=compare(WT.fnd, WTm.fnd, verbose=False)
-#         # compare(self.WT, WTm, verbose=False, n1='WT', n2='WTm')
         zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(dfRef, verbose=False)
     else:
         F_secRef = None
 
-    dfOut, sections = YSL.fromDF(dfRef, useTopLoadsFromDF=True, useInterfaceLoadsFromDF=True) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TODO
+    dfOut, sections = YSL.fromDF(dfRef, useTopLoadsFromDF=True, useInterfaceLoadsFromDF=False)
 
-    dfOut.export(outFileSL)
+    dfOut.export(outBase + '.YAMS.outb')
 
     # --------------------------------------------------------------------------------}
     # --- PLOT Tower sections
     # --------------------------------------------------------------------------------{
     if plot:
+        Isec = [0,4,8] # Section indices
         if 'TwHt1MLyt_[kN-m]' not in dfRef:
             WARN('Not plotting tower section loads, no data ref')
         else:
@@ -228,10 +263,22 @@ def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, t
             ax.set_xlabel('')
             ax.set_ylabel('')
             ax.legend()
+            fig.savefig(outFile + '_SL_TWR.png')
 
-            outFileFigTwr = outFile + '_SL_TWR.png'
-            fig.savefig(outFileFigTwr)
-
+        # ---- Acceleration plots
+        if 'TwHt1ALxt_[m/s^2]' not in dfRef and 'NcIMUTAxs_[m/s^2]' not in dfRef:
+            WARN('Not plotting tower accelerations, no data ref')
+        else:
+            j=-1
+            fig,axes = plt.subplots(4, 1, sharey=False, figsize=(6.4,5.8)) # (6.4,4.8)
+            fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+            if 'NcIMUTAxs_[m/s^2]' in dfRef:
+                j=j+1;sig = 'NcIMUTAxs_[m/s^2]'; t1, y1, t2, y2 = dfRef['Time_[s]'].values ,dfRef[sig].values ,dfOut['Time_[s]'].values ,dfOut[sig].values; axes[j].plot(t1, y1, 'k-'); axes[j].plot(t1, y2, '--'); axes[j].set_ylabel(sig); stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); print(sig, stats)
+            if 'TwHt1ALxt_[m/s^2]' in dfRef:
+                j=j+1;sig = 'TwHt9ALxt_[m/s^2]'; t1, y1, t2, y2 = dfRef['Time_[s]'].values ,dfRef[sig].values ,dfOut['Time_[s]'].values ,dfOut[sig].values; axes[j].plot(t1, y1, 'k-'); axes[j].plot(t1, y2, '--'); axes[j].set_ylabel(sig); stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); print(sig, stats)
+                j=j+1;sig = 'TwHt5ALxt_[m/s^2]'; t1, y1, t2, y2 = dfRef['Time_[s]'].values ,dfRef[sig].values ,dfOut['Time_[s]'].values ,dfOut[sig].values; axes[j].plot(t1, y1, 'k-'); axes[j].plot(t1, y2, '--'); axes[j].set_ylabel(sig); stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); print(sig, stats)
+                j=j+1;sig = 'TwHt1ALxt_[m/s^2]'; t1, y1, t2, y2 = dfRef['Time_[s]'].values ,dfRef[sig].values ,dfOut['Time_[s]'].values ,dfOut[sig].values; axes[j].plot(t1, y1, 'k-'); axes[j].plot(t1, y2, '--'); axes[j].set_ylabel(sig); stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); print(sig, stats)
+            fig.savefig(outFile + '_SL_TWR_Acc.png')
 
     # --------------------------------------------------------------------------------}
     # --- Plots Monpile
@@ -285,7 +332,7 @@ def test_floating_tower_TS(plot=False, test=True):
     return
 
     # Test for tower loads only since this test case has no "monopile", just a floater
-    fstFile='06_Jonswap_TS/Main.fst';
+    fstFile='_06_Jonswap_TS/Main.fst';
     if test:
         out = section_loads(fstFile, plot=plot, tMin=10, tMax=40, dtSamp=0.2)
     else:
@@ -323,9 +370,9 @@ def test_monopile_only_MT100(plot=False, test=True):
     fstFile  = os.path.join(scriptDir, '../../../data/Monopile/Main_MT100_JONSWAP_UserDef.fst')
     compFile = os.path.join(scriptDir, '../../../data/Monopile/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=50.csv')
     if test:
-        out = section_loads(fstFile, compFile=compFile, tMin=8, tMax=12, plot=plot, subShapes=[0,4])
+        out = section_loads(fstFile, compFile=compFile, tMin=8, tMax=12, plot=plot, subShapes=[0,4], fixedShaft=True)
     else:
-        out = section_loads(fstFile, compFile=compFile, tMin=35, tMax=100, plot=plot, subShapes=[0,4])
+        out = section_loads(fstFile, compFile=compFile, tMin=35, tMax=100, plot=plot, subShapes=[0,4], fixedShaft=True)
 
     dfRef = out['dfRef']
     dfOut = out['dfOut']
@@ -362,83 +409,92 @@ def test_monopile_only_MT100(plot=False, test=True):
     np.testing.assert_allclose(F_secRef[4,0,:]/1e9, F_sec[4,0,:]/1e9, atol=0.015)
 
 
+
+
 def test_monopile_tower_IEA(plot=False, test=True):
-    return
-    # fstFile='06_Jonswap_IEA/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'
-    #fstFile='06_Jonswap_IEA/OF_F2T1S0_H1A1_Hs=8.1_Tp=12.7.fst'; 
-    fstFile='06_Jonswap_IEA/OF_F2T1S1_H1A1_Hs=8.1_Tp=12.7.fst'; 
-    compFile =f'Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv'
+    fstFile='_06_Jonswap_IEA/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'; 
+#     fstFile='_06_Jonswap_IEA/OF_F2T1S1_H1A1_Hs=8.1_Tp=12.7_CB0.fst'; 
+#     fstFile='_06_Jonswap_IEA/OF_F01T0S1_H1A1_Hs=8.1_Tp=12.7_CB0_InitPitch.fst'; 
+    fstFile  = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    compFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/Jonswap/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    # [20 100]
     tMin=20
     if test:
         tMax=100
     else:
         tMax=150
+        tMin,tMax=100, 130
+    tMin,tMax=5, 10
+#     tMin,tMax=0, 1
 
-    out = section_loads(fstFile, plot=plot, compFile=compFile, tMin=tMin, tMax=tMax, dtSamp=0.2)
-
-
+    out = section_loads(fstFile, plot=plot, compFile=compFile, tMin=tMin, tMax=tMax, dtSamp=0.05, subShapes=[0,4])
     dfRef = out['dfRef']
     dfOut = out['dfOut']
     zDepth    = out['zDepth']
     F_secRef  = out['F_secRef']
     F_sec     = out['sections']['monopile']['F_sec']
-    
-    IsecTwr = [0,4,7] # Section indices
+
+    print('')
+        
+    # --- Tower Disp
+    compareSigWithStats(dfOut, dfRef, sig='TwHt9TDxt_[m]', epsTolP=1e-5, atol=1e-6, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt5TDxt_[m]', epsTolP=1e-5, atol=1e-6, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt1TDxt_[m]', epsTolP=1e-5, atol=1e-6, printStats=True, test=test)
+    # TODO TDz not ready
+    compareSigWithStats(dfOut, dfRef, sig='TwHt9TPxi_[m]', epsTolP=1e-3, atol=1e-4, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt5TPxi_[m]', epsTolP=1e-3, atol=1e-4, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt1TPxi_[m]', epsTolP=1e-3, atol=1e-4, printStats=True, test=test)
+
+
+    # --- Tower and RNA accelerations
+    compareSigWithStats(dfOut, dfRef, sig='NcIMUTAxs_[m/s^2]', epsTolP=0.012, atol=0.0012, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt9ALxt_[m/s^2]', epsTolP=0.003, atol=0.0005, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt5ALxt_[m/s^2]', epsTolP=0.003, atol=0.0005, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='TwHt1ALxt_[m/s^2]', epsTolP=0.003, atol=0.0005, printStats=True, test=test)
+
+    # --- Tower section loads
+    IsecTwr = [0,4,8] # Section indices
     for iiED,iED in enumerate(IsecTwr):
-        t1 = dfRef['Time_[s]'].values
-        t2 = dfOut ['Time_[s]'].values
-        y1 = np.asarray(dfRef['TwHt{}MLyt_[kN-m]'.format(iED+1)].values, dtype=float)/1000
-        y2 = np.asarray(dfOut ['TwHt{}MLyt_[kN-m]'.format(iED+1)  ].values, dtype=float)/1000
-        stats, sStats =  comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean')
-        print(stats)
+        compareSigWithStats(dfOut, dfRef, sig = f'TwHt{iED+1}MLxt_[kN-m]', epsTolP=0.005, atol=0.085, printStats=True, test=test, factor=1e3)
+    for iiED,iED in enumerate(IsecTwr):
+        compareSigWithStats(dfOut, dfRef, sig = f'TwHt{iED+1}MLyt_[kN-m]', epsTolP=0.05, atol=0.310, printStats=True, test=test, factor=1e4)
+    for iiED,iED in enumerate(IsecTwr):
+        compareSigWithStats(dfOut, dfRef, sig = f'TwHt{iED+1}MLzt_[kN-m]', epsTolP=0.015, atol=0.050, printStats=True, test=test, factor=1e3)
+    for iiED,iED in enumerate(IsecTwr):
+        compareSigWithStats(dfOut, dfRef, sig = f'TwHt{iED+1}FLxt_[kN]', epsTolP=0.02, atol=0.310, printStats=True, test=test, factor=1e2)
+    for iiED,iED in enumerate(IsecTwr):
+        compareSigWithStats(dfOut, dfRef, sig = f'TwHt{iED+1}FLyt_[kN]', epsTolP=0.03, atol=0.110, printStats=True, test=test, factor=1e1)
+    for iiED,iED in enumerate(IsecTwr):
+        compareSigWithStats(dfOut, dfRef, sig = f'TwHt{iED+1}FLzt_[kN]', epsTolP=0.05, atol=0.001, printStats=True, test=test, factor=1e4)
 
-        # TODO AI: Accuracy is low, figure out why
-        if test:
-            np.testing.assert_array_less(1-np.abs(stats['sigRatio']), 0.08)
-            np.testing.assert_array_less(np.abs(stats['eps']), 18)
-            np.testing.assert_array_less(1-np.abs(stats['R2']), 0.08)
-
-            signal_range = np.ptp(y2)  # Peak-to-peak range
-            atol = 0.30 * signal_range  # % of total signal range
-            np.testing.assert_allclose(y1, y2, rtol=1e-3, atol=atol)
-
-    # --- Monopile loads from the same consolidated wrapper
-
-    # --- Section loads as function of depth
+    # --- Monopile Section loads as function of depth
     Fx_sec0 = meanabs(F_sec   [0,:,:],axis=0) # 3, nSpan, nT
     My_sec0 = meanabs(F_sec   [4,:,:],axis=0)
     Fx_sec1 = meanabs(F_secRef[0,:,:],axis=0) # 3, nSpan, nT
     My_sec1 = meanabs(F_secRef[4,:,:],axis=0)
-    if test:
-        np.testing.assert_allclose(Fx_sec0/1e6, Fx_sec1/1e6, atol=2.500)
-        np.testing.assert_allclose(My_sec0/1e8, My_sec1/1e8, atol=2.500)
+    compareSigWithStats(Fx_sec0, Fx_sec1, t=zDepth, sig='Fx_sec(z)', epsTolP=0.060, atol=0.21, printStats=True, test=test, factor=1e6)
+    compareSigWithStats(My_sec0, My_sec1, t=zDepth, sig='My_sec(z)', epsTolP=0.030, atol=0.05, printStats=True, test=test, factor=1e8)
 
-    # --- Section loads as function of time and depth
+    # --- Monopile Section loads as function of time and depth
     vTime = dfRef['Time_[s]']
-    IZ = [int(3*len(zDepth)/6)-5, int(2*len(zDepth)/6), int(1*len(zDepth)/6), 0]
+    IZ = [int(3*len(zDepth)/6)-5, int(2*len(zDepth)/6), int(1*len(zDepth)/6), 0] # Sea bed is zero
     for ii, iz in enumerate(IZ):
-        stats, sStats =  comparison_stats(vTime, F_secRef[0,iz,:]/1e6, vTime, F_sec[0,iz,:]/1e6, stats='sigRatio,eps,R2', method='meanabs')
-        #print(f'z {zDepth[iz]:5.0f}: ', stats)
-        #np.testing.assert_array_less(np.abs(stats['eps']), 33)
-        #np.testing.assert_array_less(1-np.abs(stats['R2']), 0.09)
-        if test:
-            np.testing.assert_allclose(F_secRef[0,iz,:]/1e6, F_sec[0,iz,:]/1e6, atol=2.60 )
+        compareSigWithStats(F_sec[0,iz,:], F_secRef[0,iz,:], t=vTime, sig=f'Fx_sec{iz}', epsTolP=35.5, atol=0.33, printStats=True, test=test, factor=1e6)
+    for ii, iz in enumerate(IZ):
+        compareSigWithStats(F_sec[4,iz,:], F_secRef[4,iz,:], t=vTime, sig=f'My_sec{iz}', epsTolP=35.0, atol=11.0, printStats=True, test=test, factor=1e6)
+    # TODO FKz Not ready
 
-    if test:
-        # Wave elevation and hydro loads are quite accurate
-        np.testing.assert_allclose(dfRef['Wave1Elev_[m]']   , dfOut['Wave1Elev_[m]']   , atol=0.0001)
-        np.testing.assert_allclose(dfRef['HydroFxi_[N]']/1e7, dfOut['HydroFxi_[N]']/1e7, atol=0.018)
-
-        # Sea bed moment
-        np.testing.assert_allclose(F_secRef[4,0,:]/1e9, F_sec[4,0,:]/1e9, atol=0.050)
+    compareSigWithStats(dfOut, dfRef, sig='Wave1Elev_[m]', epsTolP=0.001, atol=0.0003, printStats=True, test=True)
+    compareSigWithStats(dfOut, dfRef, sig='HydroFxi_[N]',  epsTolP=0.03,  atol=0.22, printStats=True, test=True, factor=1e6)
 
 
 
 if __name__ == '__main__':
     PLOT = True # KEEP ME FOR EASY DEBUG
-    TEST=False
+    PLOT = False # KEEP ME FOR EASY DEBUG
+#     TEST=False
     TEST=True
-#     test_monopile_tower_IEA(plot=PLOT, test=TEST)  # Was used to develop monopile only 
-    test_monopile_only_MT100(plot=PLOT, test=TEST) # Need updating of main code in windturbine and merging of "debug_*" functions
-#     test_floating_tower_TS(plot=PLOT, test=TEST)   # Was used to develop tower only
+    test_monopile_tower_IEA(plot=PLOT, test=TEST)  # Was used to develop monopile only 
+#     test_monopile_only_MT100(plot=PLOT, test=TEST) # Need updating of main code in windturbine and merging of "debug_*" functions
+    #test_floating_tower_TS(plot=PLOT, test=TEST)   # Was used to develop tower only
     plt.show()

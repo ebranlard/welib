@@ -19,7 +19,7 @@ class TestSvD(unittest.TestCase):
             if WT == 1:
                 svdFile = os.path.join(scriptDir, '../../../data/NREL5MW/5MW_Baseline/NREL5MW_SvD_Simple.dat')
             else:
-                svdFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/IEA-22-280-RWT_ServoDyn.dat')
+                svdFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/IEA-22-280-RWT/IEA-22-280-RWT_ServoDyn.dat')
 
             svd = ServoDyn(svdFile)
 
@@ -54,7 +54,7 @@ class TestSvD(unittest.TestCase):
             if WT == 1:
                 svdFile = os.path.join(scriptDir, '../../../data/NREL5MW/5MW_Baseline/NREL5MW_SvD_Simple.dat')
             else:
-                svdFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/IEA-22-280-RWT_ServoDyn.dat')
+                svdFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/IEA-22-280-RWT/IEA-22-280-RWT_ServoDyn.dat')
 
             svd = ServoDyn(svdFile)
 
@@ -79,11 +79,11 @@ class TestSvD(unittest.TestCase):
                 ax.grid(True)
 
             # Compare fitted parameters with ground-truth ServoDyn input parameters (allowing ~2% relative tolerance)
-            print('WT', WT)
-            print('RtGnSp', 'Fit:', coeffs['RtGnSp'], '   File:', svd.File['VS_RtGnSp'])
-            print('RtTq'  , 'Fit:', coeffs['RtTq']  , '   File:', svd.File['VS_RtTq'])
-            print('Rgn2K' , 'Fit:', coeffs['Rgn2K'] , '   File:', svd.File['VS_Rgn2K'])
-            print('SlPc'  , 'Fit:', coeffs['SlPc']  , '   File:', svd.File['VS_SlPc'])
+            #print('WT', WT)
+            #print('RtGnSp', 'Fit:', coeffs['RtGnSp'], '   File:', svd.File['VS_RtGnSp'])
+            #print('RtTq'  , 'Fit:', coeffs['RtTq']  , '   File:', svd.File['VS_RtTq'])
+            #print('Rgn2K' , 'Fit:', coeffs['Rgn2K'] , '   File:', svd.File['VS_Rgn2K'])
+            #print('SlPc'  , 'Fit:', coeffs['SlPc']  , '   File:', svd.File['VS_SlPc'])
 
             np.testing.assert_allclose(coeffs['RtGnSp'], svd.File['VS_RtGnSp'], rtol=0.03)
             np.testing.assert_allclose(coeffs['RtTq']  , svd.File['VS_RtTq'], rtol=0.03)
