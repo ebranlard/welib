@@ -130,7 +130,7 @@ class SteadyBEM():
         self.chord = chord # np.stack([chord]*self.nB)
         self.twist = F.AD.Bld1['BldAeroNodes'][:,4] # TODO unsteady is in rad! *np.pi/180
         polars=[]
-        ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
+        ProfileID=F.AD.Bld1['BldAeroNodes'][:,6].astype(int)
         for ipolar in  ProfileID:
             nTabs = F.AD.AF[ipolar-1]['NumTabs']
             if nTabs==1:
@@ -842,10 +842,10 @@ def FASTFile2SteadyBEM(FASTFileName):
     nB   =  F.ED['NumBl']
     cone = -F.ED['PreCone(1)']
     r     = F.AD.Bld1['BldAeroNodes'][:,0] + F.ED['HubRad']
-    chord = F.AD.Bld1['BldAeroNodes'][:,-2] 
-    twist = F.AD.Bld1['BldAeroNodes'][:,-3]
+    chord = F.AD.Bld1['BldAeroNodes'][:,5] 
+    twist = F.AD.Bld1['BldAeroNodes'][:,4]
     polars=[]
-    ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
+    ProfileID=F.AD.Bld1['BldAeroNodes'][:,6].astype(int)
     for ipolar in  ProfileID:
         polars.append(F.AD.AF[ipolar-1]['AFCoeff'])
     return nB,cone,r,chord,twist,polars,rho,KinVisc

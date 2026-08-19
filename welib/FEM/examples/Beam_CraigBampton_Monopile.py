@@ -22,6 +22,7 @@ from welib.FEM.reduction import CraigBampton, augmentModes
 from welib.FEM.fem_model import FEMModel
 
 import welib.weio as weio
+from welib.weio.fast_input_file import FASTInputFile
 
 scriptDir=os.path.dirname(__file__)
 

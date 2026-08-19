@@ -1,0 +1,170 @@
+path_params:
+  FAST_InputFile: 'OF.fst'  # Name of *.fst file
+  FAST_directory: '.'        # Main OpenFAST model directory, where the *.fst lives 
+  rotor_performance_filename: ./IEA-22-280-RWT_Cp_Ct_Cq.rpf  # Relative to FAST_directory or absolute
+
+controller_params:
+    flag: true
+    PS_Mode: 3
+    ps_percent: 0.8
+    Fl_Mode: 0
+    zeta_pc: [0.847280836303482, 1.756230134689656, 0.7443639812392495]
+    omega_pc: [0.1039601890550169, 0.11266788743371176, 0.289233848967533]
+    U_pc: [12, 18, 24]
+    zeta_vs: 0.85
+    omega_vs: 0.12
+    twr_freq: 1.4799073778145184
+    ptfm_freq: 0.2717484204906427
+    Kp_float: -0.1477808226207514
+    PA_Mode: 2
+    PA_CornerFreq: 6.2831
+    PA_Damping: 0.707
+    DISCON:
+        PS_BldPitchMin_N: 55
+        PS_WindSpeeds: [3.0, 3.293602652413793, 3.5872053048275863, 3.8808079572413794, 4.1744106096551725, 4.468013262068966, 4.761615914482759, 5.055218566896551, 5.348821219310345, 5.642423871724137, 5.936026524137931, 6.2296291765517235, 6.523231828965517, 6.81683448137931, 7.110437133793103, 7.404039786206896, 7.697642438620689, 7.991245091034482, 8.284847743448275, 8.578450395862069, 8.872053048275863, 9.165655700689655, 9.459258353103447, 9.752861005517241, 10.046463657931033, 10.340066310344827, 10.63366896275862, 10.927271615172412, 13.312546664, 13.7620641, 14.211581536, 14.661098972, 15.110616408, 15.560133844, 16.00965128, 16.459168716, 16.908686152, 17.358203588, 17.807721024, 18.25723846, 18.706755896, 19.156273331999998, 19.605790768, 20.055308204, 20.50482564, 20.954343076, 21.403860512, 21.853377948000002, 22.302895384, 22.75241282, 23.201930255999997, 23.651447691999998, 24.100965128, 24.550482564, 25.0]
+        PS_BldPitchMin: [0.010134134689474161, 0.008890654841537265, 0.007647174993600368, 0.006403695145663473, 0.004897910285125212, 0.0032128664314580594, 0.0015278225777909066, -0.00017484649708520095, -0.0019536054177519305, -0.003732364338418649, -0.005511123259085379, -0.00710433230213372, -0.008645848129209769, -0.010187363956285818, -0.011806639639099262, -0.013554883937946271, -0.015303128236793282, -0.01705137253564029, -0.01882781154418327, -0.020605117128370175, -0.022382422712557085, -0.01720472159549787, -0.006655204700649608, 0.003894312194198717, 0.01415024002935629, 0.02284457525140558, 0.03153891047345481, 0.04023324569550405, 0.0647326750457107, 0.07407255376037825, 0.08323958732610008, 0.09228882256589924, 0.10100580740160507, 0.10941339617523836, 0.11774531584531114, 0.1260169565142121, 0.1342479449981455, 0.14246118805573746, 0.15025937711579493, 0.15801933619090547, 0.16574907537323286, 0.17345808718225653, 0.1811649007590028, 0.1888674441665616, 0.1962139422625003, 0.20355027318227126, 0.21088165775365794, 0.21821714603282627, 0.22556988033954484, 0.2329569751640036, 0.24002511744603774, 0.2470143797369002, 0.2540039318538232, 0.26100555361604105, 0.2680342874757688]
+        Echo: 0
+        DLL_FileName: unused
+        DLL_InFile: unused
+        DLL_ProcName: DISCON
+        PF_Offsets: [0, 0, 0]
+        CC_Group_N: 0
+        CC_GroupIndex: [0]
+        CC_ActTau: 20
+        StC_Group_N: 0
+        StC_GroupIndex: [0]
+        AWC_Mode: 0
+        AWC_NumModes: 1
+        AWC_n: [1]
+        AWC_harmonic: [1]
+        AWC_freq: [0.05]
+        AWC_amp: [1.0]
+        AWC_clockangle: [0]
+        DT_Out: 0
+        Ext_Interface: 1
+        VS_PwrFiltF: 0.314
+        PRC_LPF_Freq: 0.078539
+        TRA_ExclSpeed: 0.0
+        TRA_ExclBand: 0.0
+        TRA_RateLimit: 0.0
+        RP_Gains: [0, 0, 0, 0]
+        ZMQ_CommAddress: tcp://localhost:5555
+        ZMQ_UpdatePeriod: 1.0
+        ZMQ_ID: 0
+        PRC_Comm: 0
+        PRC_R_Torque: 1
+        PRC_R_Speed: 1
+        PRC_R_Pitch: 1
+        PRC_Table_n: 20
+        PRC_Pitch_Table: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        PRC_R_Table: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        SU_StartTime: 120
+        SU_FW_MinDuration: 200
+        SU_RotorSpeedThresh: 0.52
+        SU_RotorSpeedCornerFreq: 0.41888
+        SU_LoadStages_N: 2
+        SU_LoadStages: [0.2, 1.0]
+        SU_LoadRampDuration: [100, 100]
+        SU_LoadHoldDuration: [200, 100]
+        SD_TimeActivate: 0
+        SD_EnablePitch: 0
+        SD_EnableYawError: 0
+        SD_EnableGenSpeed: 0
+        SD_EnableTime: 0
+        SD_PitchCornerFreq: 0.41888
+        SD_YawErrorCornerFreq: 0.41888
+        SD_GenSpdCornerFreq: 0.41888
+        SD_Time: 9999
+        SD_Method: 1
+        OL_BP_FiltFreq: 0
+        PF_TimeStuck: [9999, 9999, 9999]
+        AWC_phaseoffset: 0
+        AWC_CntrGains: [0.0, 0.0]
+    LoggingLevel: 2
+    F_LPFType: 1
+    F_NotchType: 0
+    IPC_ControlMode: 0
+    VS_ControlMode: 2
+    VS_ConstPower: 1
+    PC_ControlMode: 1
+    Y_ControlMode: 0
+    SS_Mode: 1
+    WE_Mode: 2
+    SD_Mode: 0
+    TD_Mode: 0
+    Flp_Mode: 0
+    PwC_Mode: 0
+    ZMQ_Mode: 0
+    Ext_Mode: 0
+    interp_type: sigma
+    max_pitch: 1.57
+    min_pitch: -0.07
+    vs_minspd: 0.0
+    ss_vsgain: 1.0
+    ss_pcgain: 0.001
+    sd_maxpit: 0.6981
+    flp_maxpit: 0.1745
+    WS_GS_n: 60
+    PC_GS_n: 30
+    tune_Fl: false
+    max_torque_factor: 1.1
+    IPC_Kp1p: 0.0
+    IPC_Kp2p: 0.0
+    IPC_Ki1p: 0.0
+    IPC_Ki2p: 0.0
+    IPC_Vramp: [0.0, 0.0]
+    filter_params: {f_we_cornerfreq: 0.20944, f_fl_highpassfreq: 0.01042, f_ss_cornerfreq: 0.6283, f_yawerr: 0.17952, f_sd_cornerfreq: 0.41888, f_sd_pitchcornerfreq: 0.41888, f_sd_yawerrorcornerfreq: 0.41888, f_sd_genspdcornerfreq: 0.41888, f_vs_refspd_cornerfreq: 0.20944}
+    open_loop:
+        flag: false
+        filename: unused
+        OL_Ind_Breakpoint: 1
+        OL_Ind_BldPitch: 0
+        OL_Ind_GenTq: 0
+        OL_Ind_YawRate: 0
+        Ind_Breakpoint: 1
+        Ind_BldPitch: [0, 0, 0]
+        Ind_GenTq: 0
+        Ind_YawRate: 0
+        Ind_Azimuth: 0
+        OL_BP_Mode: 0
+        Ind_R_Speed: 0
+        Ind_R_Torque: 0
+        Ind_R_Pitch: 0
+        Ind_CableControl: [0]
+        Ind_StructControl: [0]
+    linmodel_tuning:
+        type: none
+        linfile_path: none
+        lintune_outpath: lintune_outfiles
+        load_parallel: false
+        stability_margin: 0.1
+        omega_pc: {}
+    omega_flp: 0.0
+    zeta_flp: 0.0
+    PF_Mode: 0
+    AWC_Mode: 0
+    CC_Mode: 0
+    StC_Mode: 0
+    TRA_Mode: 0
+    ZMQ_UpdatePeriod: 2
+    OL_Mode: 0
+    U_Fl: []
+    rgn2k_factor: 1
+    n_pitch: 36
+    n_tsr: 26
+    n_U: 1
+    VS_FBP: 0
+    SU_Mode: 0
+    PRC_Mode: 0
+    VS_FBP_power_mode: 0
+    VS_FBP_speed_mode: 0
+    VS_FBP_U: [1.0, 2.0]
+    VS_FBP_P: [1.0, 1.0]
+turbine_params: {rotor_inertia: 749154917.0, rated_rotor_speed: 0.739436, v_min: 3.0, v_rated: 11.51447692, v_max: 25.0, max_pitch_rate: 0.03490659, max_torque_rate: 4500000.0, rated_power: 22000000.0, bld_edgewise_freq: 3.6531113561725572, bld_flapwise_freq: 2.7716172770411616, TSR_operational: 9.15, reynolds_ref: 0}
+linmodel_tuning:
+    type: none
+    linfile_path: none
+    lintune_outpath: lintune_outfiles
+    load_parallel: false
+    stability_margin: 0.1
+    omega_pc: {}

@@ -182,7 +182,7 @@ class UnsteadyBEM():
             self.meanLineAC[iB,:,2] = self.r
         self.twist    = F.AD.Bld1['BldAeroNodes'][:,4]*np.pi/180
         polars=[]
-        ProfileID=F.AD.Bld1['BldAeroNodes'][:,-1].astype(int)
+        ProfileID=F.AD.Bld1['BldAeroNodes'][:,6].astype(int)
         for ipolar in  ProfileID:
             nTabs = F.AD.AF[ipolar-1]['NumTabs']
             if nTabs==1:

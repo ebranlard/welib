@@ -4,6 +4,7 @@
 *.out
 *.outb
 *.bts
+*.lin
 *.mat
 *.png
 *.zip

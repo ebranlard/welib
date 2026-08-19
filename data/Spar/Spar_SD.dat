@@ -19,6 +19,10 @@ False            SttcSolve   - Solve dynamics about static equilibrium point
 0 0 0 0 0 0
 0 0 0 0 0 0
 0 0 0 0 0 0               
+------- INITIAL RIGID-BODY DISPLACEMENT [used only for floating structure with more than one transition pieces] -------
+RBSurge    RBSway     RBHeave    RBRoll     RBPitch    RBYaw
+  (m)        (m)        (m)      (deg)      (deg)      (deg)
+  0.0        0.0        0.0       0.0        0.0        0.0
 ---- STRUCTURE JOINTS: joints connect structure members (~Hydrodyn Input File)---
   15            NJoints     - Number of joints (-)
 JointID          JointXss               JointYss               JointZss    JointType JointDirX JointDirY JointDirZ JointStiff    ![Coordinates of Member joints in SS-Coordinate System][JointType={1:cantilever, 2:universal joint, 3:revolute joint, 4:spherical joint}]
@@ -40,16 +44,16 @@ JointID          JointXss               JointYss               JointZss    Joint
   15                0                       0                   -120          1        0            0          0           0  
 ------------------- BASE REACTION JOINTS: 1/0 for Locked/Free DOF @ each Reaction Node ---------------------
               0   NReact      - Number of Joints with reaction forces; be sure to remove all rigid motion DOFs of the structure  (else det([K])=[0])
-RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss     [Global Coordinate System]
-  (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
+RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss   SSIfile      ![Global Coordinate System]
+  (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)    (string)
 ------- INTERFACE JOINTS: 1/0 for Locked (to the TP)/Free DOF @each Interface Joint (only Locked-to-TP implemented thus far (=rigid TP)) ---------
              1   NInterf     - Number of interface joints locked to the Transition Piece (TP):  be sure to remove all rigid motion dofs
-IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss     [Global Coordinate System]
-  (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
-   1           1           1           1           1           1           1
------------------------------------ MEMBERS --------------------------------------
-          14   NMembers    - Number of frame members
-MemberID   MJointID1   MJointID2  MPropSetID1   MPropSetID2   MType    MSpin/COSMID   ! [MType={1c:beam circ., 1r:beam rect., 2:cable, 3:rigid, 4:beam arb., 5:spring}. COMSID={-1:none}]
+IJointID     TPID    ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss
+  (-)       (-)     (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
+   1         0       1           1           1           1           1           1
+----------------------------------- MEMBERS -------------------------------------------
+            14   NMembers    - Number of members (-)
+MemberID   MJointID1   MJointID2   MPropSetID1   MPropSetID2     MType    MSpin/COSMID   ![MType={1:beam circ., 2:cable, 3:rigid, 4:beam arb.}. COMSID={-1:none}]
   (-)         (-)         (-)       (-)           (-)         (-)       (deg/-)
    1            1           2       1              1           1c         0
    2            2           3       1              1           1c         0
@@ -80,8 +84,8 @@ PropSetID     YoungE          ShearG          MatDens          XsecA          Xs
   (-)         (N/m2)          (N/m2)          (kg/m3)          (m2)            (m2)          (m2)          (m4)          (m4)          (m4)
 -------------------------- CABLE PROPERTIES  -------------------------------------
              0   NCablePropSets   - Number of cable cable properties
-PropSetID     EA          MatDens          T0 
-  (-)         (N)         (kg/m)           (N)
+PropSetID     EA          MatDens        T0         CtrlChannel
+  (-)         (N)         (kg/m)        (N)             (-)
 ----------------------- RIGID LINK PROPERTIES ------------------------------------
              0   NRigidPropSets - Number of rigid link properties
 PropSetID   MatDens   

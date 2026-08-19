@@ -12,13 +12,17 @@ True             SttcSolve   - Solve dynamics about static equilibrium point
            0.1   JDampings   - Damping Ratios for each retained mode (% of critical) If Nmodes>0, list Nmodes structural damping ratios for each retained mode (% of critical), or a single damping ratio to be applied to all retained modes. (last entered value will be used for all remaining modes).
              1   GuyanDampMod - Guyan damping {0=none, 1=Rayleigh Damping, 2=user specified 6x6 matrix}.
 0.000, 0.006     RayleighDamp - Mass and stiffness proportional damping  coefficients (Rayleigh Damping) [only if GuyanDampMod=1].
-             6   GuyanDampSize - Guyan damping matrix (6x6) [only if GuyanDampMod=2].
+             6   GuyanDampSize - Guyan damping matrix  (6nTPx6nTP if fixed bottom or 6(nTP-1)-by-6(nTP-1) if floating) [only if GuyanDampMod=2]
            0.0            0.0            0.0            0.0            0.0            0.0
            0.0            0.0            0.0            0.0            0.0            0.0
            0.0            0.0            0.0            0.0            0.0            0.0
            0.0            0.0            0.0            0.0            0.0            0.0
            0.0            0.0            0.0            0.0            0.0            0.0
            0.0            0.0            0.0            0.0            0.0            0.0
+------- INITIAL RIGID-BODY DISPLACEMENT [used only for floating structure with more than one transition pieces] -------
+RBSurge    RBSway     RBHeave    RBRoll     RBPitch    RBYaw
+  (m)        (m)        (m)      (deg)      (deg)      (deg)
+  0.0        0.0        0.0       0.0        0.0        0.0
 ---- STRUCTURE JOINTS: joints connect structure members (~Hydrodyn Input File) --------
              3   NJoints     - Number of joints (-)
 JointID    JointXss    JointYss    JointZss    JointType   JointDirX   JointDirY   JointDirZ  JointStiff      ![Coordinates of Member joints in SS-Coordinate System][JointType={1:cantilever, 2:universal joint, 3:revolute joint, 4:spherical joint}]
@@ -33,33 +37,33 @@ RJointID   RctTDXss    RctTDYss    RctTDZss    RctRDXss    RctRDYss    RctRDZss 
    1           1           1           1           1           1           1   ""
 ------- INTERFACE JOINTS: 1/0 for Locked (to the TP)/Free DOF @each Interface Joint (only Locked-to-TP implemented thus far (=rigid TP)) ---------
              1   NInterf     - Number of interface joints locked to the Transition Piece (TP):  be sure to remove all rigid motion dofs
-IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss   !  [Global Coordinate System]
-  (-)       (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
-   3           1           1           1           1           1           1
+IJointID   TPID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss
+  (-)      (-)     (flag)      (flag)      (flag)      (flag)      (flag)      (flag)
+   3        0         1           1           1           1           1           1
 ----------------------------------- MEMBERS --------------------------------------
-             2   NMembers    - Number of frame members
+             2   NMembers    - Number of members (-)
 MemberID    MJointID1   MJointID2  MPropSetID1 MPropSetID2    MType      MSpin/COSMID   ![MType={1c:beam circ., 1r:beam rect., 2:cable, 3:rigid, 4:beam arb., 5:spring}. COMSID={-1:none}]
     (-)         (-)         (-)         (-)         (-)         (-)         (deg/-)
 1	1	2	1	1          1c            0
 2	2	3	1	1          1c            0
 ------------------ CIRCULAR BEAM CROSS-SECTION PROPERTIES -----------------------------
-             1   NPropSets       - Number of structurally unique cross-sections
+             1   NPropSetsCyl - Number of structurally unique circular cross-sections (if 0 the following table is ignored)
 PropSetID     YoungE          ShearG          MatDens          XsecD           XsecT
   (-)         (N/m2)          (N/m2)          (kg/m3)           (m)             (m)
    1        2.10000e+11     7.93000e+10       7850.00        8.1966401       0.04476779
 ----------------- RECTANGULAR BEAM CROSS-SECTION PROPERTIES ---------------------------
-             0   NPropSetsRec   - Number of structurally unique cross-sections (if 0 the following table is ignored)
-PropSetID     YoungE          ShearG          MatDens          XsecA          XsecB           XsecT
+             0   NPropSetsRec - Number of structurally unique rectangular cross-sections (if 0 the following table is ignored)
+PropSetID     YoungE          ShearG          MatDens          XsecSa         XsecSb          XsecT
   (-)         (N/m2)          (N/m2)          (kg/m3)           (m)            (m)             (m)
 ----------------- ARBITRARY BEAM CROSS-SECTION PROPERTIES -----------------------------
-             0   NXPropSets  - Number of structurally unique non-circular x-sections (if 0 the following table is ignored)
-PropSetID     YoungE      ShearG2     MatDens      XsecA      XsecAsx     XsecAsy     XsecJxx     XsecJyy     XsecJ0
-  (-)         (N/m2)          (N/m2)          (kg/m3)          (m2)            (m2)          (m2)          (m4)          (m4)          (m4)
--------------------------- CABLE PROPERTIES  -------------------------------------
+             0   NXPropSets   - Number of structurally unique arbitrary cross-sections (if 0 the following table is ignored)
+PropSetID     YoungE          ShearG          MatDens          XsecA          XsecAsx       XsecAsy       XsecJxx       XsecJyy       XsecJ0        XsecJt
+  (-)         (N/m2)          (N/m2)          (kg/m3)          (m2)            (m2)          (m2)          (m4)          (m4)          (m4)          (m4)
+-------------------------- CABLE PROPERTIES -------------------------------------------
 0                      NCablePropSets - Number of cable cable properties
- PropSetID      EA        MatDens       T0
-    (-)         (N)       (kg/m)        (N)
------------------------ RIGID LINK PROPERTIES ------------------------------------
+PropSetID     EA          MatDens        T0         CtrlChannel
+  (-)         (N)         (kg/m)        (N)             (-)
+----------------------- RIGID LINK PROPERTIES -----------------------------------------
 0                      NRigidPropSets - Number of rigid link properties
  PropSetID    MatDens
     (-)       (kg/m)
@@ -75,8 +79,8 @@ COSMID    COSM11    COSM12    COSM13    COSM21    COSM22    COSM23    COSM31    
              0   NCmass      - Number of joints with concentrated masses; Global Coordinate System
 CMJointID      JMass       JMXX        JMYY        JMZZ        JMXY        JMXZ        JMYZ        MCGX        MCGY        MCGZ
     (-)        (kg)      (kg*m^2)    (kg*m^2)    (kg*m^2)    (kg*m^2)    (kg*m^2)    (kg*m^2)       (m)         (m)         (m)
----------------------------- OUTPUT: SUMMARY & OUTFILE ------------------------------
-False            SumPrint       - Output a Summary File (flag).It contains: matrices K,M  and C-B reduced M_BB, M-BM, K_BB, K_MM(OMG^2), PHI_R, PHI_L. It can also contain COSMs if requested.
+---------------------------- OUTPUT: SUMMARY & OUTFILE --------------------------------
+False            SumPrint    - Output a Summary File (flag)
 0                OutCBModes  - Output Guyan and Craig-Bampton modes {0: No output, 1: JSON output}, (flag)
 0                OutFEMModes - Output first 30 FEM modes {0: No output, 1: JSON output} (flag)
 False            OutCOSM     - Output cosine matrices with the selected output member forces (flag)
