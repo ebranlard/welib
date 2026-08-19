@@ -13,7 +13,7 @@ from welib.fast.hydrodyn_waves import Waves
 
 class HydroDyn:
 
-    def __init__(self, filename=None, hdData=None):
+    def __init__(self, filename=None, hdData=None, SS=None):
         """ 
         INPUTS:
           - filename: optional, name of HydroDyn input file, or OpenFAST or HydroDyn Driver input file
@@ -21,6 +21,7 @@ class HydroDyn:
         """
         # Main object data
         self.File        = None
+        self.FileSS      = None
         self.outFilename = None
         self.p           = {}
         self.m           = {}
@@ -28,15 +29,18 @@ class HydroDyn:
         self.y           = {}
         self._graph      = None
 
+
         # Read HydroDyn file (and optionally Driver file)
         if filename is not None:
             File = FASTInputFile(filename)
-            if 'WaveMod' in File.keys(): # User provided a HydroDyn input file
+            if 'PotMod' in File.keys(): # User provided a HydroDyn input file
                 self.File = File
                 self.outFilename = os.path.splitext(filename)[0]+'.pyHD.outb'
             else:
                 if 'HydroFile' in File.keys(): # User provided and OpenFAST inputs file
                     hdFilename = os.path.join(os.path.dirname(filename), File['HydroFile'].replace('"','') )
+                    if 'SeaStFile' in File.keys():
+                        ssFilename = os.path.join(os.path.dirname(filename), File['SeaStFile'].replace('"','') )
                     outFilenames= [filename.replace('.fst',ext) for ext in ['.outb','.out'] if os.path.exists(filename.replace('.fst',ext))]
                     if len(outFilenames)==0:
                         self.outFilename = filename.replace('.fst','.outb')
@@ -45,11 +49,15 @@ class HydroDyn:
 
                 elif 'HDInputFile' in File.keys(): # User provided a hydrodyn driver input file
                     hdFilename = os.path.join(os.path.dirname(filename), File['HDInputFile'].replace('"','') )
+                    if 'SeaStateInputFile' in File.keys():
+                        ssFilename = os.path.join(os.path.dirname(filename), File['SeaStateInputFile'].replace('"','') )
                     self.outFilename = filename.replace('.dvr','.HD.out')
                 else:
                     raise Exception()
 
-                self.File = FASTInputFile(hdFilename)
+                self.File   = FASTInputFile(hdFilename)
+                if ssFilename is not None:
+                    self.FileSS = FASTInputFile(ssFilename)
 
                 # Calling init since we know important environmental conditions
                 self.init(Gravity = File['Gravity'], WtrDens=File['WtrDens'], WtrDpth=File['WtrDpth'])
@@ -58,11 +66,21 @@ class HydroDyn:
         elif hdData is not None:
             self.File = hdData
 
+        if SS is not None:
+            self.FileSS = FASTInputFile(SS)
+
+        if self.FileSS is None:
+            if 'WaveMod' not in self.File:
+                raise Exception('A sea-state file needs to be provided, or a legacy HydroDyn file')
+            else:
+                self.FileSS = self.File
+
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
         s+='|properties:\n'
-        s+='|- File: (input file data)\n'
+        s+='|- File: (hydrodyn file data)\n'
+        s+='|- FileSS: (sea-state file data)\n'
         s+='|methods:\n'
         s+='|- init\n'
         return s
@@ -116,7 +134,7 @@ class HydroDyn:
         Current_NodesZ      = Nodes[:,2]
 
         # --- Waves Inits
-        self.Waves = Waves(File=self.File, WtrDpth=self.p['WtrDpth'], MSL2SWL=MSL2SWL)
+        self.Waves = Waves(File=self.FileSS, WtrDpth=self.p['WtrDpth'], MSL2SWL=MSL2SWL)
         self.Waves.init(Gravity=self.p['Gravity'])
 
         # --- WvStretch_Init in HydroDyn.f90
@@ -126,7 +144,7 @@ class HydroDyn:
         WaveVel     = np.zeros( (NStepWave, len(Waves_WaveKin_Nodes), 3 ))
         WaveAcc     = np.zeros( (NStepWave, len(Waves_WaveKin_Nodes), 3 ))
         WtrDpth   = self.p['WtrDpth']
-        if f['WaveStMod']==0:
+        if self.FileSS['WaveStMod']==0:
             for j, p in enumerate(Waves_WaveKin_Nodes):
                 if p[2] < -WtrDpth or p[2] >0:
                     pass # all is zero

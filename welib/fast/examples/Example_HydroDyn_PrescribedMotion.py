@@ -41,8 +41,7 @@ def hydroSim(fstFilename, plot=True, json=True, tMax=None):
     fst = FASTInputFile(fstFilename)
     if 'HydroFile' in fst.keys():
         hdFilename = os.path.join(os.path.dirname(fstFilename), fst['HydroFile'].replace('"','') )
-        outFilenames = [fstFilename.replace('.fst',ext) for ext in ['.outb','.out'] if os.path.exists(fstFilename.replace('.fst',ext))]
-        outFilename = outFilenames[0]
+        outFilename = [fstFilename.replace('.fst',ext) for ext in ['.outb','.out'] if os.path.exists(fstFilename.replace('.fst',ext))][0]
     else:
         hdFilename = os.path.join(os.path.dirname(fstFilename), fst['HDInputFile'].replace('"','') )
         outFilename = fstFilename.replace('.dvr','.HD.out')
@@ -54,7 +53,7 @@ def hydroSim(fstFilename, plot=True, json=True, tMax=None):
         dfOF=dfOF[dfOF['Time_[s]']<=tMax]
 
     # --- Initialize a python HydroDyn instance
-    hd = HydroDyn(hdFilename)
+    hd = HydroDyn(fstFilename)
     u, y = hd.init(Gravity = fst['Gravity'], WtrDens=fst['WtrDens'], WtrDpth=fst['WtrDpth'])
     hd.writeSummary(hdFilename.replace('.dat','.HD_python.sum'))
     umesh = u['Morison']['Mesh']

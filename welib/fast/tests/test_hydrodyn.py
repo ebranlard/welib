@@ -3,16 +3,18 @@ import os
 import unittest
 import numpy as np
 from welib.fast.hydrodyn import *
+from welib.essentials import *
 
 MyDir=os.path.dirname(__file__)
 
 
 def getHDSpar():
-    filename = os.path.join(MyDir,'../../../data/Spar/Spar_HD.dat')
+    HDfilename = os.path.join(MyDir,'../../../data/Spar/Spar_HD.dat')
+    SSfilename = os.path.join(MyDir,'../../../data/Spar/Spar_SS.dat')
     WtrDens=1025
     WtrDpth= 320
     Gravity=9.8
-    hd = HydroDyn(filename)
+    hd = HydroDyn(HDfilename, SS=SSfilename)
     u, y = hd.init(Gravity=Gravity, WtrDens=WtrDens, WtrDpth=WtrDpth)
     #hd.writeSummary(filename.replace('.dat','.HD_python.sum'))
     return hd, u, y

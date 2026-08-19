@@ -13,7 +13,7 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
           1   CompElast   - Compute structural dynamics (switch) {1=ElastoDyn; 2=ElastoDyn + BeamDyn for blades; 3=Simplified ElastoDyn}
           1   CompInflow  - Compute inflow wind velocities (switch) {0=still air; 1=InflowWind; 2=external from ExtInflow}
           2   CompAero        - Compute aerodynamic loads (switch) {0=None; 1=AeroDisk; 2=AeroDyn; 3=ExtLoads}
-          1   CompServo       - Compute control and electrical-drive dynamics (switch) {0=None; 1=ServoDyn}
+          0   CompServo       - Compute control and electrical-drive dynamics (switch) {0=None; 1=ServoDyn}
           0   CompSeaSt       - Compute sea state information (switch) {0=None; 1=SeaState}
           0   CompHydro       - Compute hydrodynamic loads (switch) {0=None; 1=HydroDyn}
           0   CompSub     - Compute sub-structural dynamics (switch) {0=None; 1=SubDyn; 2=External Platform MCKF}
@@ -31,15 +31,15 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
 0                      WtrDpth       - Water depth (m)
 0                      MSL2SWL       - Offset between still-water level and mean sea level (m) [positive upward]
 ---------------------- INPUT FILES ---------------------------------------------
-"NREL5MW_ED_Offshore_Legacy.dat"    EDFile          - Name of file containing ElastoDyn input parameters (quoted string)
+"NREL5MW_ED_Offshore.dat"    EDFile          - Name of file containing ElastoDyn input parameters (quoted string)
 "NA"          BDBldFile(1)    - Name of file containing BeamDyn input parameters for blade 1 (quoted string)
 "NA"          BDBldFile(2)    - Name of file containing BeamDyn input parameters for blade 2 (quoted string)
 "NA"          BDBldFile(3)    - Name of file containing BeamDyn input parameters for blade 3 (quoted string)
 "../5MW_Baseline/NREL5MW_IW.dat"    InflowFile      - Name of file containing inflow wind input parameters (quoted string)
-"../onshore/NREL5MW_AD.dat"    AeroFile        - Name of file containing aerodynamic input parameters (quoted string)
+"NREL5MW_AD.dat"    AeroFile        - Name of file containing aerodynamic input parameters (quoted string)
 "../5MW_Baseline/NREL5MW_SvD_Simple.dat"    ServoFile       - Name of file containing control and electrical-drive input parameters (quoted string)
-"NA"          SeaStFile       - Name of file containing sea state input parameters (quoted string)
-"NA"          HydroFile       - Name of file containing hydrodynamic input parameters (quoted string)
+"SeaState.dat"          SeaStFile       - Name of file containing sea state input parameters (quoted string)
+"NREL5MW_HD.dat"          HydroFile       - Name of file containing hydrodynamic input parameters (quoted string)
 "NA"          SubFile         - Name of file containing sub-structural input parameters (quoted string)
 "NA"          MooringFile     - Name of file containing mooring system input parameters (quoted string)
 "NA"          IceFile         - Name of file containing ice input parameters (quoted string)

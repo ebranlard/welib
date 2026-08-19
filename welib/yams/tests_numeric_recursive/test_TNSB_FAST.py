@@ -20,7 +20,7 @@ class TestTNSB(unittest.TestCase):
         q[[2]]=0*np.pi/4.
 
         np.set_printoptions(linewidth=500)
-        FSTFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/Main_Offshore_Legacy.fst')
+        FSTFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/Main_Offshore.fst')
 
         # --- Auto assembly with z axis
         main_axis='z'

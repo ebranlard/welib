@@ -2464,8 +2464,8 @@ class FASTWindTurbine():
             self.WT.WtrDpth   = self.HDFile['WtrDpth']
 
         # --- Hydro floaters
-        if self.WT.fnd.SD is None:
-            FAIL('Setting up hydro with out SD not supported yet')
+        if not hasattr(self.WT.fnd,'SD') or self.WT.fnd.SD is None:
+            FAIL('Setting up hydro without SD not supported yet')
             return pHD
 
         # --- Hydro Monopile specific
