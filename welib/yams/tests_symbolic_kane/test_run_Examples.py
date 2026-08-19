@@ -14,7 +14,7 @@ def execfile(filepath, globals=None, locals=None):
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
 class TestExamples(unittest.TestCase):
-    def test_run_examples(self):
+    def test_run_examples_kane_paper(self):
         exclude_list=[]
         # Add tests to class
         MyDir=os.path.dirname(__file__)
@@ -31,6 +31,22 @@ class TestExamples(unittest.TestCase):
             except:
                 pass
 
+    def test_run_examples_symbolic_rec(self):
+        exclude_list=[]
+        # Add tests to class
+        MyDir=os.path.dirname(__file__)
+        files = glob.glob(os.path.join(MyDir,'../examples_symbolic_recursive/[a-zA-Z0-9]*.py'))
+        import matplotlib.pyplot as plt
+        print('\n--------------------------------------------------------------')
+        for f in files:
+            print('Running: {}'.format(os.path.relpath(f, MyDir)))
+            if hasattr(self,'subTest'):
+                with self.subTest(filename=os.path.basename(f)):
+                    execfile(f, {'__name__': '__test__', 'print': lambda *_:None})
+            try:
+                plt.close('all')
+            except:
+                pass
 
 if __name__ == '__main__':
     unittest.main()

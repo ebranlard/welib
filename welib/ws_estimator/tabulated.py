@@ -7,6 +7,10 @@ from scipy.optimize import minimize_scalar
 
 from welib.weio.fast_input_deck import FASTInputDeck
 from welib.tools.signal_analysis import zero_crossings
+from welib.tools.strings import WARN, OK, INFO, FAIL
+from welib.tools.clean_exceptions import *
+from welib.tools.colors import python_colors, fColrs, lighten_color
+from welib.tools.stats import rsquare, mean_rel_err, comparison_stats
 
 # ---
 def interp2d_pairs(X, Y, Z, kind='cubic', **kwargs):
@@ -43,46 +47,46 @@ def interp2d_pairs(X, Y, Z, kind='cubic', **kwargs):
     return interpolant
 
 
-def Paero(WS, Pitch, Omega, R, rho, fCP):
+def Paero(WS, pitch, omega, R, rho, fCP):
     """ Taero returns the aerodynamic power
-         - Pitch  [deg]
-         - Omega [rad/s]
+         - pitch  [deg]
+         - omega [rad/s]
          - R : the blade radius [m]
-         - fCP : an interpolant for CP(Pitch,lambda) as returned by interp2d_paris
+         - fCP : an interpolant for CP(pitch,lambda) as returned by interp2d_paris
          - rho : the air density [kg/m^3]
     """
-    Lambda = Omega * R / WS
-    CP     = fCP(Pitch, Lambda)
+    Lambda = omega * R / WS
+    CP     = fCP(pitch, Lambda)
     P      = 1/2*rho*np.pi*R**2*WS**3*CP
     return P
 
 
-def Qaero(WS, Pitch, Omega, R, rho, fCP):
+def Qaero(WS, pitch, omega, R, rho, fCP):
     """ Qaero returns the aerodynamic torque
-         - Pitch [deg]
-         - Omega [rad/s]
+         - pitch [deg]
+         - omega [rad/s]
          - R : the blade radius
-         - fCP : an interpolant for CP(Pitch,lambda)
+         - fCP : an interpolant for CP(pitch,lambda)
          - rho : the air density
     """
-    Pitch = np.asarray(Pitch)
+    pitch = np.asarray(pitch)
     WS    = np.asarray(WS)
-    Omega = np.asarray(Omega)
-    Lambda = Omega * R / WS
-    CP = fCP(Pitch, Lambda)
-    Q = 1/2*rho*np.pi*R**2*WS**3/Omega*CP
+    omega = np.asarray(omega)
+    Lambda = omega * R / WS
+    CP = fCP(pitch, Lambda)
+    Q = 1/2*rho*np.pi*R**2*WS**3/omega*CP
     return Q
 
-def Taero(WS, Pitch, Omega, R, rho, fCT):
+def Taero(WS, pitch, omega, R, rho, fCT):
     """ Taero returns the aerodynamic thrust of a given turbine
-         - Pitch [deg]
-         - Omega [rad/s]
+         - pitch [deg]
+         - omega [rad/s]
          - R : the blade radius
-         - fCP : an interpolant for CP(Pitch,lambda)
+         - fCP : an interpolant for CP(pitch,lambda)
          - rho : the air density
     """
-    Lambda = Omega * R / WS
-    CT = fCT(Pitch,Lambda)
+    Lambda = omega * R / WS
+    CT = fCT(pitch,Lambda)
     T = 1/2*rho*np.pi*R**2*WS**2*CT
     return T
 
@@ -103,11 +107,16 @@ class TabulatedWSEstimatorBase():
         self.WSmax = 35
         self.CP    = None
         self.CT    = None
+        self.CQ    = None
         self.OP    = None
+
+        self.fCP    = None
+        self.fCT    = None
+        self.fCQ    = None
 
         # ---
         if fstFile:
-            fst = FASTInputDeck(fstFile)
+            fst = FASTInputDeck(fstFile, readlist=['Fst', 'ED', 'AD'])
             R       = fst.ED['TipRad']
             if fst.AD is None:
                 raise Exception('AeroDyn file not read but needed for wind speed estimator, while reading {}'.format(fstFile))
@@ -118,10 +127,14 @@ class TabulatedWSEstimatorBase():
                 rho_main = rho_AD
             if isinstance(rho_AD, str):
                 rho_AD = rho_main
+            outAD = [c.strip('"').strip().lower() for c in fst.AD['OutList']]
+            outAD = [c for c in outAD if len(c)>0]
+            if 'rtaeromxh' not in outAD:
+                WARN('RtAeroMxh not found in AD out list')
 
-        self.fstFile  = fstFile
+        self.fstFile = fstFile
         self.R       = R
-        self.rho = rho
+        self.rho     = rho
 
     def _sanitizeOP(self, OP, expectedCols=None, onlyExpected=True):
         if expectedCols is None:
@@ -130,27 +143,43 @@ class TabulatedWSEstimatorBase():
         # --- Trying to be nice about column names
         OP.columns = [c.lower().replace(' ','_').replace('(','[').replace(')',']') for c in OP.columns]
 
-        d =dict([(k, 'WS_[m/s]') for k in ['ws_[m/s]', 'ws']])
+        d =dict([(k, 'WS_[m/s]') for k in ['ws_[m/s]', 'ws', 'wind_[m/s]', 'wind_speed_[m/s]']])
         OP.rename(columns = d, inplace=True)
 
         d =dict([(k, 'Pitch_[deg]') for k in ['bldpitch1_[deg]', 'bldpitch_[deg]','pitch_[deg]', 'pitch']])
         OP.rename(columns = d, inplace=True)
 
-        d =dict([(k, 'RotSpeed_[rpm]') for k in ['rotspeed_[rpm]', 'rpm', 'rpm_[rpm]', 'omega_[rpm]']])
+        d =dict([(k, 'RotSpeed_[rpm]') for k in ['rotspeed_[rpm]', 'rpm', 'rpm_[rpm]', 'omega_[rpm]', 'rotor_speed_[rpm]']])
         OP.rename(columns = d, inplace=True)
 
-        if 'rtaeromxh_[kn-m]' in OP.keys(): # TODO standardize Units WE
+        d =dict([(k, 'AeroPower_[kW]') for k in ['mech_power_[kw]', 'rtaeropwr_[kw]']])
+        OP.rename(columns = d, inplace=True)
+
+        d =dict([(k, 'TSR_[-]') for k in ['tsr', 'rtaerotsr_[-]']])
+        OP.rename(columns = d, inplace=True)
+
+        d =dict([(k, 'CP_[-]') for k in ['cp', 'cp_[-]']])
+        OP.rename(columns = d, inplace=True)
+
+        # TODO standardize Units WE
+        if 'rtaeromxh_[kn-m]' in OP.keys(): 
             OP['rtaeromxh_[n-m]'] =  OP['rtaeromxh_[kn-m]'].values*1000
-        d =dict([(k, 'Qaero_[Nm]') for k in ['rtaeromxh_[n-m]']])
+        if 'torque_[knm]' in OP.keys(): 
+            OP['torque_[nm]'] =  OP['torque_[knm]'].values*1000
+        d =dict([(k, 'Qaero_[Nm]') for k in ['rtaeromxh_[n-m]', 'torque_[nm]']])
         OP.rename(columns = d, inplace=True)
 
         d =dict([(k, 'PhiY_[deg]') for k in ['phiy_[deg]']])
         OP.rename(columns = d, inplace=True)
 
-        for c in expectedCols:
-            if c not in OP:
-                print('>>> Columns', OP.keys())
-                raise Exception('OP is missing: {}'.format(c))
+        missing = [c for c in expectedCols if c not in OP]
+        if len(missing)>0:
+            print('>>> Columns', OP.keys())
+            raise Exception('Missing columns : {}'.format(missing))
+
+
+        if 'CP_[-]' not in OP and 'AeroPower_[kW]' in OP:
+            OP['CP_[-]'] = OP['AeroPower_[kW]' ]*1000 / (1/2* self.rho * OP['WS_[m/s]']**3 * self.R**2 * np.pi )
 
         if onlyExpected:
             OP = OP[expectedCols]
@@ -160,7 +189,7 @@ class TabulatedWSEstimatorBase():
 
 class TabulatedWSEstimator(TabulatedWSEstimatorBase):
 
-    def __init__(self, R=None, rho=1.225, fstFile=None, basename=None, operFile=None, aeroMapFile=None, OmegaLow=0, OmegaRated=10):
+    def __init__(self, R=None, rho=1.225, fstFile=None, basename=None, operFile=None, aeroMapFile=None, omegaLow=0, omegaRated=10):
         """ 
         INPUTS:
           either:
@@ -177,41 +206,158 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             operFile    = basename+'_Oper.csv'
 
         # --- DATA
-        self.Pitch    = None
+        self.pitch    = None
         self.Lambda   = None
         # Operating condition
-        self.OmegaLow   = OmegaLow
-        self.OmegaRated = OmegaRated
+        self.omegaLow   = omegaLow
+        self.omegaRated = omegaRated
         self.OP     = None
         # Files
         self.operFile = operFile
         self.aeroMapFile = aeroMapFile
 
+        if aeroMapFile is not None:
+            self.loadAeroMap(aeroMapFile)
         if operFile is not None:
             self.loadOper(operFile)
 
-        if aeroMapFile is not None:
-            self.loadAeroMap(aeroMapFile)
-
 
     def loadOper(self, operFile):
+
         if not os.path.exists(operFile):
             print('[WARN] Operating point file not found: ',operFile)
+            operFile+'    [NOT FOUND]'
         else:
             #print('>>> Loading oper file: ',operFile)
             import welib.weio as weio
             OP = weio.read(operFile).toDataFrame()
+            self._setOP(OP)
+        self.operFile = operFile
+        self._interpOP() # (Needs weights to be computed first)
 
-            OP = self._sanitizeOP(OP, ['WS_[m/s]', 'Pitch_[deg]', 'RotSpeed_[rpm]', 'Qaero_[Nm]'], onlyExpected=False)
+    def setDB(self, WS, pitch, rpm, phiy, CP, CT):
+        print('TODO taken from Floating, need care')
+        self.WS     = np.asarray(WS)
+        self.pitch  = np.asarray(pitch)
+        self.omega  = np.asarray(rpm)*np.pi/30
+        self.CP     = CP
+        self.CT     = CT
+        MWS     = np.full((len(WS), len(rpm), len(pitch)), np.nan)
+        Momega  = np.full((len(WS), len(rpm), len(pitch)), np.nan)
+        assert(MWS.shape == CP.shape)
+        assert(CP.shape == CT.shape)
+        # TODO vectorize
+        for i,ws in enumerate(WS): 
+            for j,om in enumerate(self.omega): 
+                for k,pit in enumerate(pitch): 
+                    MWS   [i,j,k,l] = ws
+                    Momega[i,j,k,l] = om
+        #         MWS     = MWS             # TODO generated from WS...
+        #         Momega  = MRPM*np.pi/30
+        self.CP[np.isnan(self.CP)]=0
+        self.CP[self.CP<0]=0
+        self.CT[np.isnan(self.CT)]=0
+        self.CT[self.CT<0]=0
 
-            self.WS   =OP['WS_[m/s]'].values
-            self.Omega=OP['RotSpeed_[rpm]'].values*2*np.pi/60
-            self.OmegaRated=np.max(self.Omega)
-            self.OmegaLow  =0.4*self.OmegaRated
-            self.WSRated=np.interp(self.OmegaRated*0.98,self.Omega,self.WS)
-            self.WSCutOff=28
-            self.OP=OP
-            self.operFile = operFile
+        # --- Computing weights
+        if self.R is None:
+            raise Exception('R should be set')
+        if self.rho is None:
+            raise Exception('rho should be set')
+        P = self.CP * 1/2 * self.rho * np.pi * self.R**2 * MWS**3
+        self.P = P
+        if self.CT is not None:
+            T = self.CT * 1/2 * self.rho * np.pi * self.R**2 * MWS**2
+        Q = P/Momega
+        self.Q = Q
+        self.computeWeights(P, Q, T) # TODO
+
+        if self.OP is not None:
+            # Trigger
+            self._interpOP() # (Needs weights to be computed first)
+
+
+    def setFromTimeSeries(self, df, nWS=6, nRPM=6, nPitch=5, nPhi=4):
+        """ """
+        print('TODO taken from Floating, need care')
+        # --- Time series
+        Q     = df['Qaero'].values
+        WS    = df['WS'].values
+        omega = df['dpsi'].values          # rad/s
+        rpm   = omega * 30/ np.pi
+        pitch = df['pitch'].values*180/np.pi # deg
+        P     = df['power'].values
+        T     = df['Thrust'].values # ...Hoping that's correct
+        R   = self.R
+        rho = self.rho
+        CP = P / (1/2 * rho * np.pi * R**2 * WS**3)
+        CT = T / (1/2 * rho * np.pi * R**2 * WS**2)
+
+        # ---- Bins
+        WSb    = np.linspace(np.min(WS)  , np.max(WS), nWS)
+        RPMb   = np.linspace(np.min(rpm) , np.max(rpm), nRPM)
+        Pitchb = np.linspace(np.min(pitch), np.max(pitch), nPitch)
+        dws = np.diff(WSb)[0]
+        dom = np.diff(RPMb)[0]
+        dpi = np.diff(Pitchb)[0]
+        dph = np.diff(Phiyb)[0]
+
+        # --- Filling up CP/CT
+        MCP = np.full((len(WSb), len(RPMb), len(Pitchb)), np.nan)
+        MCT = np.full((len(WSb), len(RPMb), len(Pitchb)), np.nan)
+        for i,ws in enumerate(WSb): 
+            for j,om in enumerate(RPMb): 
+                for k,pit in enumerate(Pitchb): 
+                    bWS = np.logical_and(WS    >= ws-dws , WS    <= ws+dws)
+                    bOM = np.logical_and(rpm   >= om-dom , rpm   <= om+dom)
+                    bPI = np.logical_and(pitch >= pit-dpi, pitch <= pit+dpi)
+                    bPH = np.logical_and(phiy  >= ph-dph , phiy  <= ph+dph)
+                    if len(bWS)==0:
+                        print('>>> NO WS SELECTION')
+                    if len(bOM)==0:
+                        print('>>> NO OMEGA SELECTION')
+                    if len(bPI)==0:
+                        print('>>> NO PITCH SELECTION')
+                    bAll = np.logical_and.reduce((bWS,bOM,bPI,bPH))
+                    IAll = np.where(bAll)[0]
+                    #if len(IAll)==0:
+                    #    print('>>> NO Total SELECTION')
+                    MCP[i,j,k] = np.mean(CP[bAll])
+                    MCT[i,j,k] = np.mean(CT[bAll])
+        # --- Reset DB
+        self.setDB(WSb, Pitchb, RPMb, MCP, MCT)
+
+    def _setOP(self, OP):
+        # --- Operating conditions
+        OP = self._sanitizeOP(OP, expectedCols=['WS_[m/s]', 'Pitch_[deg]', 'RotSpeed_[rpm]', 'Qaero_[Nm]'], onlyExpected=False)
+ 
+        self.OP=OP
+        self.WS_op      = OP['WS_[m/s]'].values
+        self.omega_op   = OP['RotSpeed_[rpm]'].values*2*np.pi/60 # [rad/s]
+        self.omegaRated = np.max(self.omega_op)
+        self.omegaLow   = 0.4 * self.omegaRated                                      # TODO
+        self.WSRated    = np.interp(self.omegaRated*0.98, self.omega_op, self.WS_op) # TODO
+        self.WSCutOff   = 28
+
+
+    def _interpOP(self):
+        # Needs Weights to be computed
+        # ---  Compute interpolated values at Operating points to be consistent
+        WS    = self.OP['WS_[m/s]'].values[:]
+        omega = self.OP['RotSpeed_[rpm]'].values[:] *np.pi/30
+        pitch = self.OP['Pitch_[deg]'].values[:]
+        self.OP['Paero_i_[W]'] = self.Power(WS, omega, pitch) # Interpolated power
+        self.OP['Qaero_i_[Nm]'] = self.OP['Paero_i_[W]']/omega
+#         Q2                     = self.Torque(WS, omega, pitch, phiy) # Interpolated torque
+#         Q1                      = self.OP['Paero_i_[W]']/omega
+#         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
+#         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#         ax.plot(WS, Q1 ,'-'   , label='')
+#         ax.plot(WS, Q2 ,'--'   , label='')
+#         ax.set_xlabel('')
+#         ax.set_ylabel('')
+#         ax.legend()
+#         plt.show()
 
     def loadAeroMap(self, aeroMapFile):
         """ Load file containing aeromap: CP(Lambda, Pitch) """
@@ -219,10 +365,11 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         # TODO more file formats
         from welib.weio.rosco_performance_file import ROSCOPerformanceFile
         rs = ROSCOPerformanceFile(aeroMapFile)
-        self.Pitch  = rs['pitch']
+        self.pitch  = rs['pitch']
         self.Lambda = rs['TSR']
         self.CP     = rs['CP']
         self.CT     = rs['CT']
+        self.CQ     = rs['CQ']
         # Trigger
         self.aeroMapFile = aeroMapFile
         self.computeWeights()
@@ -240,7 +387,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             PitchFile   = basename + '_Pitch'+suffix+'.csv'
             CPFile      = basename + '_CP'+suffix+'.csv'
             CTFile      = basename + '_CT'+suffix+'.csv'
-            self.Pitch  = pd.read_csv(PitchFile ,header = None).values.ravel()
+            self.pitch  = pd.read_csv(PitchFile ,header = None).values.ravel()
             self.Lambda = pd.read_csv(LambdaFile,header = None).values.ravel()
             self.CP     = pd.read_csv(CPFile,header     = None).values
             self.CP[self.CP<=0]=0
@@ -255,46 +402,90 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
     def computeWeights(self):
         # Compute interpolants
         self.CP[self.CP<=0]=0
-        self.fCP = interp2d_pairs(self.Pitch,self.Lambda,self.CP,kind='cubic')
+        self.fCP = interp2d_pairs(self.pitch, self.Lambda, self.CP, kind='cubic')
+
+        if self.CQ is not None:
+            self.CQ[self.CQ<=0]=0
+            self.fCQ = interp2d_pairs(self.pitch, self.Lambda, self.CQ, kind='cubic')
+
         if self.CT is not None:
             self.CT[self.CT<=0]=0
-            self.fCT = interp2d_pairs(self.Pitch,self.Lambda,self.CT,kind='cubic')
-        else:
-            self.fCT = None
+            self.fCT = interp2d_pairs(self.pitch, self.Lambda, self.CT, kind='cubic')
+
 
         # --- Lambda at higher res
         LambdaMid = self.Lambda[:-1] + np.diff(self.Lambda)/2
         Lambda = np.sort(np.concatenate((self.Lambda, LambdaMid)))
         self.LambdaHR = Lambda
 
-    def Power(self,WS,Pitch,Omega):
-        return Paero(WS, Pitch, Omega, self.R, self.rho, self.fCP)
 
-    def Thrust(self,WS,Pitch,Omega):
-        return Taero(WS, Pitch, Omega, self.R, self.rho, self.fCT)
+    def CP_eval(self, WS, pitch, omega):
+        #P = Paero(WS, pitch, omega, self.R, self.rho, self.fCP)
+        Lambda = omega * self.R / WS
+        CP     = self.fCP(pitch, Lambda)
+        return CP
 
-    def Torque(self,WS,Pitch,Omega):
-        return Qaero(WS, Pitch, Omega, self.R, self.rho, self.fCP)
+    def Power(self, WS, pitch, omega):
+        """
+        Return power from fCP
+         - WS: wind speed [m/s]
+         - omega: rotational speed [rad/s]
+         - pitch: pitch angle [deg]
+         - phiy: platform pitch angle [deg]
+         """
+        return Paero(WS, pitch, omega, self.R, self.rho, self.fCP)
 
-    def TorqueAt(self, Pitch, Omega):
+    def Thrust(self, WS, pitch, omega):
+        """
+        Return Thrust from fCP
+         - WS: wind speed [m/s]
+         - omega: rotational speed [rad/s]
+         - pitch: pitch angle [deg]
+         - phiy: platform pitch angle [deg]
+         """
+        return Taero(WS, pitch, omega, self.R, self.rho, self.fCT)
+
+    def Torque(self, WS, pitch, omega):
+        """
+        Return Torque from fCP
+         - WS: wind speed [m/s]
+         - omega: rotational speed [rad/s]
+         - pitch: pitch angle [deg]
+         - phiy: platform pitch angle [deg]
+        """
+        return Qaero(WS, pitch, omega, self.R, self.rho, self.fCP)
+
+    def TorqueFromCQ(self, WS, pitch, omega):
+        pitch = np.asarray(pitch)
+        WS    = np.asarray(WS)
+        omega = np.asarray(omega)
+        Lambda = omega * self.R / WS
+        CQ = self.fCQ(pitch, Lambda)
+        Q = 1/2 * self.rho * np.pi * self.R**3 * WS**2 * CQ
+        return Q
+
+    def TorqueAt(self, pitch, omega):
         """ 
         Return Torque(WS) curve for a given pitch and rotational speed
-        Pitch,Omega: scalar
+        Pitch,omega: scalar
         """
-        WS     = Omega * self.R / self.LambdaHR[-1::-1] # NOTE using LambdaHR to benefit from cubic interpolation
+        WS     = omega * self.R / self.LambdaHR[-1::-1] # NOTE using LambdaHR to benefit from cubic interpolation
         WS = WS[WS<self.WSmax]
-        vPitch = np.array([Pitch]*len(WS))
-        vOmega = np.array([Omega]*len(WS))
-        return WS, self.Torque(WS, vPitch, vOmega)
+        vPitch = np.array([pitch]*len(WS))
+        vomega = np.array([omega]*len(WS))
+        return WS, self.Torque(WS, vPitch, vomega)
 
-    def estimate(self, Qa, pitch, omega, WS0, relaxation=0, WSavg=None, debug=False, method='min', deltaWSMax=1): 
+    def estimate(self, Qa, pitch, omega, WS0, relaxation=0, WSavg=None, method='min', deltaWSMax=1, verbose=False, debug=False, t=0): 
         """
         INPUTS:
          - Qa: aerodynamic torque [Nm]
          - omega: rotational speed [rad/s]
          - pitch: pitch angle [deg]
          - WS0:  wind speed guess/previous estimate [m/s]
-         - method: method
+         - method: method in 
+              'min'     : use minimize_scalar optimization
+              'oper'    : use operating conditions only
+              'crossing': use crossings with Cp curve
          # TODO compute rolling average on the fly
 
         NOTE: 
@@ -302,15 +493,22 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
           - 'crossing': uses linear interpolation (but at higher res thanks)
         """
         info=None
-        if debug:
+
+        def saveState(info=None):
+            if info is None:
+                info={}
             # Store state
-            info={}
             info['Qa']=Qa; info['pitch']=pitch; info['omega']=omega; info['WS0']=WS0
             info['relaxation']=relaxation; info['method']=method; info['deltaWSMax']=deltaWSMax;
+            info['t']=t
+            return info
+            
+        if debug:
+            info = saveState()
 
 
         def estim(WS0, delta, maxiter=50, tol=0.0001):
-            vWS, vQ = self.TorqueAt(Pitch=pitch, Omega=omega)
+            vWS, vQ = self.TorqueAt(pitch=pitch, omega=omega)
             try:
                 fQ = si.interp1d(vWS, vQ, kind='cubic')
             except:
@@ -335,9 +533,9 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         if method.find('min')>=0:
             if omega<=0.1:
                 WS_est = WS0
-            elif omega<self.OmegaLow:
+            elif omega<self.omegaLow:
                 if self.OP is not None:
-                    ws_guess=np.interp(omega, self.Omega, self.WS)
+                    ws_guess=np.interp(omega, self.omega_op, self.WS_op)
                 else:
                     ws_guess=WS0 # TODO
                 WS1,residual = estim(WS0, delta=2)
@@ -358,11 +556,13 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             WScrossOP, _, _ = zero_crossings(QaeroOP-Qa, x=WSOP)
             if len(WScrossOP)==0:
                 # Can happen if torque below minimum or above maximum torque
-                #print('>>> No crossing OP', pitch, omega, Qa)
+                if verbose:
+                    print('>>> No crossing OP', pitch, omega, Qa)
+                    print('{} OPcross p={:8.3f} om={:8.3} Qa={:10.2f} WS0={:7.3f}'.format(len(WScrossOP), pitch, omega, Qa, WS0), WScrossOP)
                 #import matplotlib.pyplot as plt
                 #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
                 #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-                #ax.plot(WSOP, QaeroOP, label='Omega = {:3.1f}'.format(omega))
+                #ax.plot(WSOP, QaeroOP, label='omega = {:3.1f}'.format(omega))
                 #ax.plot(WSOP, Qa+WSOP*0)
                 #ax.set_xlabel('WS [m/s]')
                 #ax.set_ylabel('Q [N]')
@@ -372,14 +572,17 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
                 #plt.show()
                 WSoper = WS0
             elif len(WScrossOP)==1:
+                if verbose:
+                    print('{} OPcross p={:8.3f} om={:8.3} Qa={:10.2f} WS0={:7.3f}'.format(len(WScrossOP), pitch, omega, Qa, WS0), WScrossOP)
                 WSoper = WScrossOP[0]
             elif len(WScrossOP)>=1:
-                #print('{} OPcross p={:8.3f} om={:8.3} Qa={:10.2f} WS0={:7.3f}'.format(len(WScrossOP), pitch, omega, Qa, WS0), WScrossOP)
+                if verbose:
+                    print('{} OPcross p={:8.3f} om={:8.3} Qa={:10.2f} WS0={:7.3f}'.format(len(WScrossOP), pitch, omega, Qa, WS0), WScrossOP)
                 WSoper=WScrossOP[0]
                 #import matplotlib.pyplot as plt
                 #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
                 #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-                #ax.plot(WSOP, QaeroOP, label='Omega = {:3.1f}'.format(omega))
+                #ax.plot(WSOP, QaeroOP, label='omega = {:3.1f}'.format(omega))
                 #ax.plot(WSOP, Qa+WSOP*0)
                 #ax.set_xlabel('WS [m/s]')
                 #ax.set_ylabel('Q [N]')
@@ -397,14 +600,14 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         if method.find('crossing')>=0:
             if omega>0:
                 iNear = None
-                vWS, vQ = self.TorqueAt(Pitch=pitch, Omega=omega)
+                vWS, vQ = self.TorqueAt(pitch=pitch, omega=omega)
                 WScross, iBef, sign = zero_crossings(vQ-Qa, x=vWS)
                 if len(WScross)==0:
                     #print('{} cross p={:8.3f} om={:8.3} Qa={:10.2f} WS0={:7.3f}'.format(len(WScross), pitch, omega, Qa, WS0), WScross)
                     #import matplotlib.pyplot as plt
                     #fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
                     #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-                    #ax.plot(vWS, vQ, label='Omega = {:3.1f}'.format(omega))
+                    #ax.plot(vWS, vQ, label='omega = {:3.1f}'.format(omega))
                     #ax.plot(vWS, Qa+vWS*0)
                     #ax.set_xlabel('WS [m/s]')
                     #ax.set_ylabel('Q [N]')
@@ -434,7 +637,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         #             import matplotlib.pyplot as plt
         #             fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
         #             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-        #             ax.plot(vWS, vQ, label='Omega = {:3.1f}'.format(omega))
+        #             ax.plot(vWS, vQ, label='omega = {:3.1f}'.format(omega))
         #             ax.plot(vWS, Qa+vWS*0)
         #             ax.set_xlabel('WS [m/s]')
         #             ax.set_ylabel('Q [N]')
@@ -443,15 +646,17 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         #             ax.legend()
         #             plt.show()
 
+                # --- If estimate is far away, change it
                 # --- Use closest point
                 if WSoper is not None:
                     WS_guess = (WSoper+WS0)/2
                 else:
                     WS_guess = WS0
                 if abs(WS_est - WS_guess) > deltaWSMax:
-                    #print('>>>', WS_est)
+                    if verbose:
+                        print('Icross, jump too big')
                     dist = np.sqrt( ((vWS-WS_guess)/WS_guess)**2 + ((vQ-Qa)/Qa)**2 )
-                    i = np.argmin(dist)
+                    i = np.nanargmin(dist)
                     WS_est = vWS[i]
 
                 if debug:
@@ -461,45 +666,6 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
                     #info['cross_vWS'] = vWS
 
             
-
-
-
-#         if omega<self.OmegaRated*0.95:
-#             #  Below rated, we have the quasi steady ws as functin of omega as a best guess
-#             ws_qs=np.interp(omega,self.Omega,self.WS)
-#             if omega<self.OmegaLow:
-#                 WS1,residual = estim(WS0,3)
-#                 WS=(4*WS1+ws_qs)/5
-#             else:
-#                 WS,residual = estim(WS0,3)
-# 
-#             if np.abs(WS-ws_qs)>4:
-#                 WS,residual = estim(ws_qs,3, maxiter=1000)
-# 
-#             if np.abs(residual)/Qa>0.1:
-#                 WS,residual = estim(ws_qs, 17, maxiter=1000)
-# 
-#             if np.abs(residual)/Qa>0.1:
-#                 WS,residual = estim(ws_qs+10, 10, maxiter=1000)
-# 
-#             if np.abs(residual)/Qa>0.1:
-#                 if WSavg is not None:
-#                     print('NOT GOOD 1 - WS={:.1f} WSqs={:.1f} WSavg={:.1f} - om={:.2f} pitch={:.2f}'.format(WS,ws_qs,WSavg,omega,pitch))
-#                 else:
-#                     print('NOT GOOD 1 - WS={:.1f} WSqs={:.1f} - om={:.2f} pitch={:.2f}'.format(WS,ws_qs,omega,pitch))
-#         else:
-#             # above omega rated, we are between WSrated-3 and WSCutoff
-#             WS,residual = estim(WS0,3)
-#             if WS<self.WSRated:
-#                 WSmid=(self.WSCutOff+self.WSRated)/2
-#                 WS,residual = estim(WSmid, 16, maxiter=1000)
-# 
-# #                 if WSavg is not None:
-# #                     if np.abs(WS-WSavg)>4:
-# #                         WS,residual = estim(WSavg, 6, maxiter=1000)
-# 
-#             if np.abs(residual)/Qa>0.1:
-#                 print('NOT GOOD 2 - WS={:.1f} WS0={:.1f} - om={:.2f} pitch={:.2f}'.format(WS,WS0,omega,pitch))
 
         WS = WS0*relaxation + (1-relaxation)*WS_est
 
@@ -511,19 +677,18 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         return WS, info
 
 
-    def estimateTimeSeries(self, Qaero, Pitch, Omega, WS_prev=None, WS_ref=None, debug=False, **kwargs):
+    def estimateTimeSeries(self, Qaero, pitch, omega, WS_prev=None, WS_ref=None, debug=False, **kwargs):
         """ 
         Perform wind speed estimation given a time series of aerodynamic torque, pitch and rotational speed
         """
-        print('Estimating WS on time series...')
-        WS_est = np.zeros(Omega.shape)
+        WS_est = np.zeros(omega.shape)
         if WS_prev is None:
             WS_prev = 1
         ts_info = None
         if debug:
             # Storage for debug
             pass
-        for i,(Qa, pitch, omega) in enumerate(zip(Qaero, Pitch, Omega)):
+        for i,(Qa, pitch, omega) in enumerate(zip(Qaero, pitch, omega)):
             ws_hat, info    = self.estimate(Qa, pitch, omega, WS_prev, debug=debug, **kwargs)
             WS_est[i] = ws_hat
             WS_prev   = ws_hat
@@ -547,24 +712,28 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             df = df[np.logical_and(df['Time_[s]']>=tRange[0],df['Time_[s]']<=tRange[1])]
         time       = df['Time_[s]'].values
         WS_ref     = df['RtVAvgxh_[m/s]'].values # Rotor avg
-        Pitch      = df['BldPitch1_[deg]'].values
-        Qaero_ref  = df['RtFldMxh_[N-m]'].values
-        Omega      = df['RotSpeed_[rpm]'].values*2*np.pi/60 # rad/s
-        lambda_ref = Omega*self.R/WS_ref
+        pitch      = df['BldPitch1_[deg]'].values
+        try:
+            Qaero_ref  = df['RtAeroMxh_[N-m]'].values
+        except:
+            Qaero_ref  = df['RtFldMxh_[N-m]'].values
+        omega      = df['RotSpeed_[rpm]'].values*2*np.pi/60 # rad/s
+        lambda_ref = omega*self.R/WS_ref
         # Estimating wind speed on time series
-        WS_est, ts_info = self.estimateTimeSeries(Qaero_ref, Pitch, Omega, WS_prev=WS_ref[0]*0.9, WS_ref=WS_ref, **kwargs)
+        WS_est, ts_info = self.estimateTimeSeries(Qaero_ref, pitch, omega, WS_prev=WS_ref[0]*0.9, WS_ref=WS_ref, **kwargs)
         # Evaluating torque
-        Qaero_eval = self.Torque(WS_ref, Pitch, Omega)
-        Qaero_est  = self.Torque(WS_est, Pitch, Omega)
+        Qaero_eval = self.Torque(WS_ref, pitch, omega)
+        Qaero_est  = self.Torque(WS_est, pitch, omega)
         # Storing data into a dataframe
-        M    = np.column_stack((time, WS_ref, WS_est, Qaero_ref, Qaero_eval, Qaero_est, Omega, Pitch))
-        cols = ['Time_[s]','WS_ref_[m/s]','WS_est_[m/s]','Qaero_ref_[N]','Qaero_eval_[N]','Qaero_est_[N]','Omega_[rad/s]','Pitch_[deg]']
+        M    = np.column_stack((time, WS_ref, WS_est, Qaero_ref, Qaero_eval, Qaero_est, omega, pitch))
+        cols = ['Time_[s]','WS_ref_[m/s]','WS_est_[m/s]','Qaero_ref_[N]','Qaero_eval_[N]','Qaero_est_[N]','omega_[rad/s]','Pitch_[deg]']
         dfOut = pd.DataFrame(data=M, columns=cols)
+
+        self.df = dfOut
         return dfOut
 
     def debugPlot(self, info=None, HR=False):
         from welib.tools.colors import python_colors
-
 
         if info is None:
             info = self._debug_info
@@ -587,9 +756,9 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         except:
             WS_ref = None
 
-        WS0, Q0 = self.TorqueAt(Pitch=pitch, Omega=omega)
-        WS1, Q1 = self.TorqueAt(Pitch=pitch, Omega=omega*0.95)
-        WS2, Q2 = self.TorqueAt(Pitch=pitch, Omega=omega*1.05)
+        WS0, Q0 = self.TorqueAt(pitch=pitch, omega=omega)
+        WS1, Q1 = self.TorqueAt(pitch=pitch, omega=omega*0.95)
+        WS2, Q2 = self.TorqueAt(pitch=pitch, omega=omega*1.05)
 
 
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -627,22 +796,184 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         ax.set_ylabel('Torque [N]')
         ax.legend()
 
+    def operPlot(self):
+        if self.OP is None:
+            raise Exception()
+
+
+    
+        WS     = self.OP['WS_[m/s]'].values
+        omega  = self.OP['RotSpeed_[rpm]'].values * 2*np.pi/60
+        pitch  = self.OP['Pitch_[deg]'].values
+        Qa_ref = self.OP['Qaero_[Nm]'].values
+
+
+
+        # --- Method 1 just call raw method fCP
+        Lambda = omega * self.R / WS
+        CP = self.fCP(pitch, Lambda)
+        Qa = self.Torque(WS, pitch, omega)
+        Pa = self.Power (WS, pitch, omega)
+        Qa2 = self.TorqueFromCQ(WS, pitch, omega)
+
+        print(self.OP.keys())
+
+        # --- Torque
+        fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(WS, Qa_ref, 'k-', label='Reference from Oper')
+        ax.plot(WS, Qa , '--', label='From CP')
+        ax.plot(WS, Qa2, ':', label='From CQ')
+        ax.set_xlabel('Wind speed [m/s]')
+        ax.set_ylabel('Torque [Nm]')
+        ax.legend()
+# 
+#         if 'TSR_[-]' in self.OP:
+#             fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+#             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#             ax.plot(WS, self.OP['TSR_[-]'], 'k-', label='Reference from Oper')
+#             ax.plot(WS, Lambda, '--')
+#             ax.set_xlabel('Wind speed [m/s]')
+#             ax.set_ylabel('TSR [-]')
+#             ax.legend()
+# 
+#         if 'AeroPower_[kW]' in self.OP:
+#             fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+#             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+#             ax.plot(WS, self.OP['AeroPower_[kW]']*1000, 'k-', label='Reference from Oper')
+#             ax.plot(WS, Pa, '--')
+#             ax.set_xlabel('Wind speed [m/s]')
+#             ax.set_ylabel('Power [kW]')
+#             ax.legend()
+
+        fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        if 'CP_[-]' in self.OP:
+            ax.plot(WS, self.OP['CP_[-]'], 'k-')
+        ax.plot(WS, CP, '--')
+#         ax.plot(WS, Qa, '--', label='From CPCTCQ')
+        ax.set_xlabel('Wind speed [m/s]')
+        ax.set_ylabel('CP [-]')
+        ax.legend()
+
+
+        return fig
+
+
+    def plotTimeSeriesEstimation(self, axes=None):
+        df = self.df
+        # --- Plot
+        fig,axes = plt.subplots(3, 1, sharex=False, figsize=(13.4,7.0)) # (6.4,4.8)
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+
+
+        # TODO get those using  max of WS and Q and min max of oper
+#         Ylim1 = [0,20]    # WS
+#         Ylim2 = [0,4.5e6] # Q
+#         Ylim3 = [-11,25] # Oper
+
+
+        # --- Where the data is invalid
+        #bInv = np.logical_or.reduce((df['omega_[rad/s]'] <self.omega[0],   df['omega_[rad/s]']  >self.omega[-1]))
+        #bInv = np.logical_or.reduce((df['Pitch_[deg]']   <self.pitch[0],   df['Pitch_[deg]']    >self.pitch[-1], bInv))
+        #bInv = np.logical_or.reduce((df['WS_ref_[m/s]']   <self.WS[0],     df['WS_ref_[m/s]']   >self.WS[-1]   , bInv))
+        #bInv2 = np.isnan(df['Qaero_est_[N]'])
+        ## #with Timer('ValidValues'):
+        ## #    bInv2 =  ~self.validValues(df['WS_ref_[m/s]'], df['omega_[rad/s]'], df['Pitch_[deg]']  , df['PtfmPitch_[deg]'])
+        ## #import pdb; pdb.set_trace()
+        #bInv3 = np.logical_or(bInv, bInv2)
+        #bInv = bInv3
+        #b    = ~bInv3
+        # 
+        # --- WS plot
+        ax=axes[0]
+
+        # #ax.fill_between(t, Ylim1[0], Ylim1[1], where=bInv2, alpha=0.1, color=python_colors(1))
+        # # ax.fill_between(t, Ylim1[0], Ylim1[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
+        # 
+        # # stats, sStats = comparison_stats(t[b], df['WS_ref_[m/s]'].values[b], t[b], df['WS_est_[m/s]'].values[b])
+        # # ax.text(2,Ylim1[0]+(Ylim1[1]-Ylim1[0])*0.89, sStats, fontsize=11 )
+        # 
+        # # ax.axhline(y = self.WS[0 ], color=python_colors(0), linestyle = '--', lw=0.5)
+        # # ax.axhline(y = self.WS[-1], color=python_colors(0), linestyle = '--', lw=0.5)
+        # # ax.set_ylim(Ylim1)
+
+
+        ax.plot(df['Time_[s]'], df['WS_ref_[m/s]'],     color=fColrs(1), label='OpenFAST')
+        ax.plot(df['Time_[s]'], df['WS_est_[m/s]'], ':',color=fColrs(4), label='Estimated')
+        ax.set_ylabel('Wind speed [m/s]')
+
+        #  --- Qplot
+        ax=axes[1]
+        # #ax.fill_between(t, Ylim2[0], Ylim2[1], where=bInv2, alpha=0.1, color=python_colors(1))
+        # # ax.fill_between(t, Ylim2[0], Ylim2[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
+        # 
+        # stats, sStats = comparison_stats(t[b], df['Qaero_ref_[N]'].values[b], t[b], df['Qaero_est_[N]'].values[b])
+        # ax.text(2,Ylim2[0]+(Ylim2[1]-Ylim2[0])*0.89, sStats, fontsize=11 )
+        # 
+        ax.plot(df['Time_[s]'], df['Qaero_ref_[N]' ]    , color=fColrs(1),   label='OpenFAST')
+        ax.plot(df['Time_[s]'], df['Qaero_est_[N]' ],':', color=fColrs(4),  label='From WS Estimated')
+        # #ax.plot(df['Time_[s]'], df['Qaero_eval_[N]'], '--', label='Evaluated')
+        ax.set_ylabel('Qaero [N]')
+        # ax.set_ylim(Ylim2)
+        ax.legend(loc='center left')
+        # 
+        # --- Oper
+        ax=axes[2]
+        # #ax.fill_between(t, Ylim3[0], Ylim3[1], where=bInv2, alpha=0.1, color=python_colors(1))
+        # # ax.fill_between(t, Ylim3[0], Ylim3[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
+        # 
+        colrs=[python_colors(0), python_colors(1), python_colors(2)]
+        colrs=[fColrs(1), lighten_color(fColrs(1),0.3), lighten_color(fColrs(1),0.6)]
+
+        ax.plot(df['Time_[s]'], df['omega_[rad/s]']*30/np.pi, '-',c=colrs[0], label='omega [rpm]')
+        ax.plot(df['Time_[s]'], df['Pitch_[deg]']           , '--',c=colrs[1], label='Pitch [deg]')
+        # ax.plot(df['Time_[s]'], df['PtfmPitch_[deg]']       , '-.',c=colrs[2], label='PhiY [deg]')
+        # # 
+        # #             ax.axhline(y = wse.omega[0 ]*30/np.pi, color=colrs[0], linestyle = '--', lw=0.5)
+        # #             ax.axhline(y = wse.omega[-1]*30/np.pi, color=colrs[0], linestyle = '--', lw=0.5)
+        # #             ax.axhline(y = wse.pitch[0 ],          color=colrs[1], linestyle = '--', lw=0.5)
+        # #             ax.axhline(y = wse.pitch[-1],          color=colrs[1], linestyle = '--', lw=0.5)
+        # 
+        # # ax.set_ylim(Ylim3)
+        ax.set_xlabel('Time [s]')
+        ax.legend()
+
+        for ax in axes.flatten():
+            #ax.set_xlim([0,600])
+            ax.tick_params(direction='in')
+
+
+
+
+
     def __repr__(self):
         s=''
         s+='<ws_estimator.TabulatedWSEstimator object> \n'
-        s+=' - Lambda : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.Lambda),np.max(self.Lambda),self.Lambda[1]-self.Lambda[0], len(self.Lambda))
-        s+=' - Pitch  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.Pitch) ,np.max(self.Pitch) ,self.Pitch[1]-self.Pitch[0]  , len(self.Pitch))
-        s+=' - CP     : [min={:8.3f}, max={:8.3f}, n={}x{}]  \n'.format(np.min(self.CP),np.max(self.CP),self.CP.shape[0],self.CP.shape[1])
+        if self.Lambda is not None:
+            s+=' - Lambda : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.Lambda),np.max(self.Lambda),self.Lambda[1]-self.Lambda[0], len(self.Lambda))
+        else:
+            s+=' - Lambda : {}\n'.format(self.Lambda)
+        if self.pitch is not None:
+            s+=' - pitch  : [min={:8.3f}, max={:8.3f}, delta={:8.4f}, n={}]  \n'.format(np.min(self.pitch) ,np.max(self.pitch) ,self.pitch[1]-self.pitch[0]  , len(self.pitch))
+        else:
+            s+=' - pitch  : {}\n'.format(self.pitch)
+        if self.CP is not None:
+            s+=' - CP     : [min={:8.3f}, max={:8.3f}, n={}x{}]  \n'.format(np.min(self.CP),np.max(self.CP),self.CP.shape[0],self.CP.shape[1])
+        else:
+            s+=' - CP     : {} \n'.format(self.CP)
         if self.CT is not None:
             s+=' - CT     : [min={:8.3f}, max={:8.3f}, n={}x{}]  \n'.format(np.min(self.CT),np.max(self.CT),self.CT.shape[0],self.CT.shape[1])
         s+=' - R      : {}  \n'.format(self.R)
         s+=' - rho    : {}  \n'.format(self.rho)
-        s+=' - OmegaLow:{}  \n'.format(self.OmegaLow)
+        s+=' - omegaLow:{}  \n'.format(self.omegaLow)
         # files
         s+=' - fstFile:     {}  \n'.format(self.fstFile)
         s+=' - aeroMapFile: {}  \n'.format(self.aeroMapFile)
         s+=' - operFile:    {}  \n'.format(self.operFile)
+        s+=' - OP      :\n  {}  \n'.format(self.OP)
         return s
+
 
 
 if __name__=='__main__':

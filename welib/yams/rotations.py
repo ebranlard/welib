@@ -18,19 +18,20 @@ def Matrix(m):
 # --------------------------------------------------------------------------------{
 def rotMat(p, rot="smallRot_OF"):
     """ NOTE: this is a body to parent, not DCM """
-    if  rot == 'smallRot_OF':
+    rot = rot.lower()
+    if  rot == 'smallrot_of':
         R_b2p = smallRot_OF(p[0], p[1], p[2]).T 
 
-    elif rot =='bodyXYZ':
+    elif rot =='bodyxyz':
         R_b2p = BodyXYZ_A(p[0], p[1], p[2])
 
-    elif rot =='bodyZXZ':
+    elif rot =='bodyzxz':
         R_b2p = BodyZXZ_A(p[0], p[1], p[2]) #def BodyZXZ_A(phi, theta, psi):
 
-    elif rot =='bodyZYX':
+    elif rot =='bodyzyx':
         R_b2p = BodyZYX_A(p[0], p[1], p[2]) #def BodyZYX_A(phi_x, phi_y, phi_z)
 
-    elif rot =='EulerP':
+    elif rot =='eulerp':
         R_b2p = EulerP_A(p[0], p[1], p[2], p[3])
     else:
         raise NotImplementedError('Rotation type {}'.format(rot))

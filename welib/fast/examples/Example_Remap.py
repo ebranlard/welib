@@ -8,8 +8,6 @@ import os
 # Local 
 import welib.weio as io
 import welib.fast.postpro as postpro
-#import pyFAST.input_output as io 
-#import pyFAST.input_output.postpro as postpro
 
 
 if __name__ == '__main__':

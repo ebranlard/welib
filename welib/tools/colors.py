@@ -77,6 +77,7 @@ def adjust_color_lightness(rgb, factor):
     hls[ hls[...,1]<0, 1] = 0
     hls[ hls[...,1]>1, 1] = 1
     rgb = hls_to_rgb(hls)
+    rgb[rgb>1] = 1
     return rgb
 
 
@@ -87,8 +88,11 @@ def lighten_color(rgb, factor=0.1):
     return adjust_color_lightness(rgb, 1 + factor)
 
 def darken_color(rgb, factor=0.1):
-    rgb = standardize(rgb)
+    rgb = standardize(rgb[:3])
     return adjust_color_lightness(rgb, 1 - factor)
+
+def darken_colors(rgbs, factor=0.1):
+    return [darken_color(rgb[:3]) for rgb in rgbs]
 
 # --------------------------------------------------------------------------------}
 # --- COLOR MAPS 
@@ -324,21 +328,6 @@ def manual_colorbar(fig, cmap, norm=None, **kwargs):
     sm.set_array([])
     return fig.colorbar(sm, **kwargs)
         
-# 
-def test_colrs():
-    from matplotlib import pyplot as plt
-
-    x=np.linspace(0,2*np.pi,100);
-    plt.figure()
-    plt.title('fig_python')
-    plt.grid()
-    for i in range(30):
-        plt.plot(x,np.sin(x)+i,'-',color=fColrs(i))
-    plt.xlabel('x coordinate [m]')
-    plt.ylabel('Velocity  U_i [m/s]')
-    plt.xlim([0,2*pi])
-
-    plt.show()
 
 
 def rgb_to_hls(rgb):
@@ -395,7 +384,7 @@ def rgb_to_hls(rgb):
     hls[..., 0] = (hls[..., 0] / 6.0) % 1.0 
 
     if in_ndim == 1:
-        hls.shape = (3,)
+        hls=hls.flatten()
     return hls
 
 
@@ -475,7 +464,7 @@ def hls_to_rgb(hls):
     rgb = np.stack([r, g, b], axis=-1)
 
     if in_ndim == 1:
-        rgb.shape = (3,)
+        rgb = rgb.flatten()
 
     return rgb
 
@@ -562,6 +551,20 @@ class TestColors(unittest.TestCase):
         rgb_out = standardize(rgb_in)
         np.testing.assert_almost_equal(rgb_out, [1,0,0], 5)
 
+# 
+    def test_fColrs(self):
+        from matplotlib import pyplot as plt
+        x=np.linspace(0,2*np.pi,100);
+        plt.figure()
+        plt.title('fig_python')
+        plt.grid()
+        for i in range(30):
+            plt.plot(x,np.sin(x)+i,'-',color=fColrs(i))
+        plt.xlabel('x coordinate [m]')
+        plt.ylabel('Velocity  U_i [m/s]')
+        plt.xlim([0,2*np.pi])
+        plt.close('all')
+        #plt.show()
 
 
 if __name__ == "__main__":

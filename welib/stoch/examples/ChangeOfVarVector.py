@@ -56,7 +56,12 @@ def main(nDiscr=100):
 
     # --- Find a and B so that the vector becomes independent normal stochastic variables
     a, B, g, gradg, ginv = vec.standardize_transform()
-    vec2 = vec.new_from_bijection(ginv=ginv, gradg=gradg, name='Output - Y', nDiscr=nDiscr, xmin=-10, xmax=10)
+    vec2=None
+    import warnings
+    from numpy.exceptions import ComplexWarning
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", category=ComplexWarning)
+        vec2 = vec.new_from_bijection(ginv=ginv, gradg=gradg, name='Output - Y', nDiscr=nDiscr, xmin=-10, xmax=10)
     vec2.plot_pdfs(ax=ax, sty=['k--', 'k.'])
     #x=np.linspace(-10,10,100)
     #ax.plot(x, gaussian_pdf(x, mu=0, sig=1), 'k--', label='N(0,1)')
@@ -104,8 +109,11 @@ def main2(nDiscr=100):
 
 
 if __name__ == '__main__':
+
+    #vec, vec2 = main(nDiscr=100)
+    #vec, vec2 = main2(nDiscr=100)
     vec, vec2 = main(nDiscr=20)
-    #vec, vec2 = main2(nDiscr=21)
+    vec, vec2 = main2(nDiscr=21)
     print(vec)
     print(vec2)
     plt.show()

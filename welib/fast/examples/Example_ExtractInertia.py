@@ -45,7 +45,7 @@ if __name__ == '__main__':
         # --- Alternative Method using python YAMS library (work in progress)
         from welib.yams.windturbine import FASTWindTurbine
         print('------------------ FULL WIND TURBINE ------------------')
-        WT = FASTWindTurbine(fstFile, algo='OpenFAST')
+        WT = FASTWindTurbine(fstFile, algo='OpenFAST').WT
         body = WT.WT_rigid
         # print(body)
         print('Mass:                   ',                         body.mass) 

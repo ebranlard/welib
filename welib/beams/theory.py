@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.optimize as sciopt
+from numpy.polynomial import legendre as npleg
 
 try:
     from numpy import trapezoid
@@ -95,6 +96,142 @@ def UniformBeamDeflection(bc_type, loading_type, z, params):
     return u, theta, kappa, S, M, p
 
 
+def _shifted_legendre_and_derivatives(order, x0):
+    """Return shifted Legendre basis P(order, 2*x0-1) and its first/second derivatives wrt x0."""
+    coeff = np.zeros(order + 1)
+    coeff[-1] = 1.0
+    xi = 2.0 * x0 - 1.0
+
+    P = npleg.legval(xi, coeff)
+
+    dcoeff = npleg.legder(coeff)
+    if len(dcoeff) == 0:
+        dP_dxi = np.zeros_like(x0)
+    else:
+        dP_dxi = npleg.legval(xi, dcoeff)
+
+    ddcoeff = npleg.legder(dcoeff)
+    if len(ddcoeff) == 0:
+        ddP_dxi2 = np.zeros_like(x0)
+    else:
+        ddP_dxi2 = npleg.legval(xi, ddcoeff)
+
+    # chain rule from xi to x0, with xi=2*x0-1
+    dP_dx0 = 2.0 * dP_dxi
+    ddP_dx02 = 4.0 * ddP_dxi2
+    return P, dP_dx0, ddP_dx02
+
+
+# def UniformBeamBendingModes(Type, EI, rho, A, L, w=None,x=None,Mtop=0,norm='tip',nModes=4):
+def UniformBeamRitzShapeFunctions(bc_type, L, x=None, nModes=4, norm='tip'):
+    """Return admissible Ritz shape functions for a uniform beam.
+
+    This helper is intended for sub-beam modeling where enforcing natural
+    conditions at internal interfaces can be too restrictive.
+
+        Supported bc_type values:
+      - clamped-interface (alias: clamped-open): u(0)=u'(0)=0 only
+            - clamped-hinged: u(0)=u'(0)=u(1)=0
+      - clamped-clamped: u(0)=u'(0)=u(1)=u'(1)=0
+      - hinged-hinged: u(0)=u(1)=0
+
+    Output arrays follow the same conventions as UniformBeamBendingModes.
+    Frequencies are returned as NaN because this is an admissible basis,
+    not an eigen-solution for a specific boundary-value problem.
+    """
+    if x is None or len(x) == 0:
+        x = np.linspace(0, L, 101)
+    if np.amax(x) != L:
+        raise Exception('Max of x should be equal to L')
+
+    bc = bc_type.lower().replace('fixed', 'clamped')
+    x0 = x / L
+    nX = len(x0)
+
+    ModesU = np.zeros((nModes, nX))
+    ModesV = np.zeros((nModes, nX))
+    ModesK = np.zeros((nModes, nX))
+
+    for j in np.arange(nModes):
+        P, dP, ddP = _shifted_legendre_and_derivatives(j, x0)
+
+        if bc in ['clamped-interface', 'clamped-open']:
+            g = x0**2
+            dg = 2.0 * x0
+            ddg = 2.0 * np.ones_like(x0)
+        elif bc == 'clamped-hinged':
+            g = x0**2 * (1.0 - x0)
+            dg = 2.0 * x0 - 3.0 * x0**2
+            ddg = 2.0 - 6.0 * x0
+        elif bc == 'clamped-clamped':
+            g = x0**2 * (1.0 - x0)**2
+            dg = 2.0 * x0 - 6.0 * x0**2 + 4.0 * x0**3
+            ddg = 2.0 - 12.0 * x0 + 12.0 * x0**2
+        elif bc == 'hinged-hinged':
+            g = x0 * (1.0 - x0)
+            dg = 1.0 - 2.0 * x0
+            ddg = -2.0 * np.ones_like(x0)
+        else:
+            raise Exception('Unknown Ritz boundary condition: {}'.format(bc_type))
+
+        # Product rule for u=g*P
+        u = g * P
+        du_dx0 = dg * P + g * dP
+        d2u_dx02 = ddg * P + 2.0 * dg * dP + g * ddP
+
+        ModesU[j, :] = u
+        ModesV[j, :] = du_dx0
+        ModesK[j, :] = d2u_dx02
+
+    # Convert from derivatives wrt x0 to derivatives wrt x
+    ModesV = ModesV / L
+    ModesK = ModesK / (L**2)
+
+    freq = np.full(nModes, np.nan)
+
+    #--- Normalize modes
+    ModesU, ModesV, ModesK = normalizeModes(ModesU, ModesV, ModesK, norm=norm)
+
+    return freq, x, ModesU, ModesV, ModesK
+
+
+def normalizeModes(ModesU, ModesV, ModesK, norm='tip'):
+    nModes = ModesU.shape[0]
+
+    if norm == 'tip':
+        for i in np.arange(nModes):
+            tipVal = ModesU[i, -1]
+            if np.abs(tipVal) < 1e-10:
+                maxVal = np.max(np.abs(ModesU[i, :]))
+                if maxVal < 1e-14:
+                    raise Exception('Mode {} is numerically zero'.format(i))
+                tipVal = maxVal
+            fact = 1.0 / tipVal
+            ModesU[i, :] = ModesU[i, :] * fact
+            ModesV[i, :] = ModesV[i, :] * fact
+            ModesK[i, :] = ModesK[i, :] * fact
+    elif norm == 'max':
+        for i in np.arange(nModes):
+            maxVal = np.max(np.abs(ModesU[i, :]))
+            iMaxVal = np.argmax(np.abs(ModesU[i, :]))
+            fact = 1.0 / ModesU[i, iMaxVal]
+            ModesU[i, :] = ModesU[i, :] * fact
+            ModesV[i, :] = ModesV[i, :] * fact
+            ModesK[i, :] = ModesK[i, :] * fact
+    else:
+        raise Exception('Norm not implemented or incorrect: `%s`' % norm)
+
+    for i in np.arange(nModes):
+        if np.isnan(ModesU[i,:]).any():
+            raise Exception(f'Mode {i} has NaN in U after normalization')
+        if np.isnan(ModesV[i,:]).any():
+            raise Exception(f'Mode {i} has NaN in V after normalization')
+        if np.isnan(ModesK[i,:]).any():
+            raise Exception(f'Mode {i} has NaN in K after normalization')
+
+    return ModesU, ModesV, ModesK
+
+
 # --------------------------------------------------------------------------------}
 # --- Modes 
 # --------------------------------------------------------------------------------{
@@ -178,6 +315,27 @@ def UniformBeamBendingModes(Type, EI, rho, A, L, w=None,x=None,Mtop=0,norm='tip'
             modesU        = lambda x0, l: F(l) * J  (l*x0) - G(l) * H  (l*x0)
             modesV        = lambda x0, l: F(l) * Jp (l*x0) - G(l) * Hp (l*x0)
             modesK        = lambda x0, l: F(l) * Jpp(l*x0) - G(l) * Hpp(l*x0)
+        elif 'unloaded-topmass-free-free' == Type:
+            # TODO VERIFY THIS
+            # Intermediate segment with a top mass attached to a free-free beam
+            if Mtop is None:
+                raise Exception('Please specify value for Mtop for %s', Type)
+            M = rho * A * L
+            freq_function = lambda x: (1 - np.cosh(x)*np.cos(x)) - (x * Mtop / M) * (np.sin(x)*np.cosh(x) - np.cos(x)*np.sinh(x))
+            freq_guess    = lambda i: (2*(i+1) + 1) * np.pi / 2
+            modesU        = lambda x0, l: H(l) * G(l*x0) - J(l) * F(l*x0)
+            modesV        = lambda x0, l: H(l) * Gp(l*x0) - J(l) * Fp(l*x0)
+            modesK        = lambda x0, l: H(l) * Gpp(l*x0) - J(l) * Fpp(l*x0)
+        elif 'unloaded-topmass-hinged-free' == Type:
+            # TODO verify this
+            if Mtop is None:
+                raise Exception('Please specify value for Mtop for %s', Type)
+            M = rho * A * L
+            freq_function = lambda x: np.tan(x) - np.tanh(x) + (2 * x * Mtop / M) * np.tan(x) * np.tanh(x)
+            freq_guess    = lambda i: (i + 0.25) * np.pi if i > 0 else 3.9266
+            modesU        = lambda x0, l: np.sin(l*x0) / np.sin(l) + np.sinh(l*x0) / np.sinh(l)
+            modesV        = lambda x0, l: np.cos(l*x0) / np.sin(l) + np.cosh(l*x0) / np.sinh(l)
+            modesK        = lambda x0, l: -np.sin(l*x0) / np.sin(l) + np.sinh(l*x0) / np.sinh(l)
         elif 'unloaded-hinged-hinged' == Type: # simply-supported
             freq_function = lambda x: np.sin(x) 
             freq_guess    = lambda i: (i+1)*np.pi # NOTE: exact..
@@ -232,6 +390,12 @@ def UniformBeamBendingModes(Type, EI, rho, A, L, w=None,x=None,Mtop=0,norm='tip'
             ModesU[i,:] = modesU(x0,l)
             ModesV[i,:] = modesV(x0,l) * l
             ModesK[i,:] = modesK(x0,l) * l**2
+            if np.isnan(ModesU[i,:]).any():
+                raise Exception(f'Mode {i} has NaN in U, consider using less modes')
+            if np.isnan(ModesV[i,:]).any():
+                raise Exception(f'Mode {i} has NaN in V, consider using less modes')
+            if np.isnan(ModesK[i,:]).any():
+                raise Exception(f'Mode {i} has NaN in K, consider using less modes')
 
     elif s[0] == 'loaded':
         if 'loaded-clamped-free' == Type:
@@ -249,24 +413,9 @@ def UniformBeamBendingModes(Type, EI, rho, A, L, w=None,x=None,Mtop=0,norm='tip'
     x = x0 * L
     ModesV = ModesV/L
     ModesK = ModesK/L**2
-    ## Normalization of modes
-    if norm=='tip':
-        for i in np.arange(nModes):
-            tipVal = ModesU[i,-1]
-            fact = 1 / tipVal
-            ModesU[i,:] = ModesU[i,:] * fact
-            ModesV[i,:] = ModesV[i,:] * fact
-            ModesK[i,:] = ModesK[i,:] * fact
-    elif norm=='max':
-        for i in np.arange(nModes):
-            maxVal = np.max(np.abs(ModesU[i,:]))
-            iMaxVal = np.argmax(np.abs(ModesU[i,:]))
-            fact = 1 / ModesU[i, iMaxVal]
-            ModesU[i,:] = ModesU[i,:] * fact
-            ModesV[i,:] = ModesV[i,:] * fact
-            ModesK[i,:] = ModesK[i,:] * fact
-    else:
-        raise Exception('Norm not implemented or incorrect: `%s`'%norm)
+
+    #--- Normalize modes
+    ModesU, ModesV, ModesK = normalizeModes(ModesU, ModesV, ModesK, norm=norm)
 
     return freq,x,ModesU,ModesV,ModesK
 

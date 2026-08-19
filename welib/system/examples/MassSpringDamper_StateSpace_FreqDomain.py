@@ -6,8 +6,9 @@ given two forcing inputs
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from itertools import cycle, islice
 # Welib
-from welib.system.statespacelinear import *
+from welib.system.statespacelinear import LinearStateSpace
 import sympy as sp
 
 
@@ -34,7 +35,9 @@ sU =[r'$u_1=F_1$'  , r'$u_2=F_2$']
 
 # --- Derived parameters
 nU, nY = B.shape[1], C.shape[0] 
-Colrs = np.array(plt.rcParams['axes.prop_cycle'].by_key()['color'])[:nY*nU].reshape(nY,nU) # colors
+#Colrs = np.array([c for c, _ in zip(cycle(plt.rcParams['axes.prop_cycle'].by_key()['color']), range(nY*nU))], dtype=object).reshape(nY, nU)
+colors = list(islice(cycle(plt.rcParams['axes.prop_cycle'].by_key()['color']), nY*nU))
+Colrs = [colors[i*nU:(i+1)*nU] for i in range(nY)]
 LS =['-','--'] # line style, per inputs
 MK =['o','.']  # markeres, per inputs
 
@@ -59,11 +62,11 @@ ax = axes[0]
 for iu in range(nU): # loop on inputs
     for iy in range(nY): # loop on outputs
         # Amplitudes
-        axes[0].plot(freq_num, G_num[iy,iu,:]  ,    MK[iu], color=Colrs[iy,iu]  )
-        axes[0].plot(freq    , G    [iy,iu,:]  , ls=LS[iu], color=Colrs[iy,iu], label='{} -> {}'.format(sU[iu], sY[iy]))
+        axes[0].plot(freq_num, G_num[iy,iu,:]  ,    MK[iu], color=Colrs[iy][iu]  )
+        axes[0].plot(freq    , G    [iy,iu,:]  , ls=LS[iu], color=Colrs[iy][iu], label='{} -> {}'.format(sU[iu], sY[iy]))
         # Phases
-        axes[1].plot(freq_num, phi_num[iy,iu,:],    MK[iu], color=Colrs[iy,iu])
-        axes[1].plot(freq    , phi    [iy,iu,:], ls=LS[iu], color=Colrs[iy,iu])
+        axes[1].plot(freq_num, phi_num[iy,iu,:],    MK[iu], color=Colrs[iy][iu])
+        axes[1].plot(freq    , phi    [iy,iu,:], ls=LS[iu], color=Colrs[iy][iu])
 axes[0].set_ylabel('Amplitude ratio [-]')
 axes[1].set_ylabel('Phase [deg]')    
 axes[0].set_yscale('log')

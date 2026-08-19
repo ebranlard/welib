@@ -275,7 +275,8 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
         if not oneSimPerDir:
             # we can only detele template files that were used by ALL simulations
             TemplateFiles=[t for nc,t in zip(nCounts, TemplateFiles) if nc==len(PARAMS)]
-        for tf in TemplateFiles:
+        TemplateFilesInOutputDir = [ f for f in TemplateFiles if os.path.dirname(os.path.relpath(f, outputDir)) in ('', '.') ]
+        for tf in TemplateFilesInOutputDir:
             try:
                 os.remove(tf)
             except:
@@ -283,7 +284,6 @@ def templateReplaceGeneral(PARAMS, templateDir=None, outputDir=None, main_file=N
                 pass
     return files
 
-# def templateReplace(PARAMS, *args, **kwargs):
 def templateReplace(PARAMS, templateDir, outputDir=None, main_file=None, removeAllowed=False, removeRefSubFiles=False, oneSimPerDir=False, dryRun=False):
     """ 
     see templateReplaceGeneral
@@ -334,10 +334,15 @@ def removeFASTOuputs(workDir):
 # --------------------------------------------------------------------------------{
 def paramsSteadyAero(p=None):
     p = dict() if p is None else p
-    p['AeroFile|AFAeroMod']=1 # remove dynamic effects dynamic
-    p['AeroFile|WakeMod']=1 # remove dynamic inflow dynamic
-    p['AeroFile|TwrPotent']=0 # remove tower shadow
-    p['AeroFile|TwrAero']=False # remove tower shadow
+    # p['AeroFile|AFAeroMod']=1 # remove dynamic effects dynamic
+    # p['AeroFile|WakeMod']=1 # remove dynamic inflow dynamic
+    # p['AeroFile|TwrPotent']=0 # remove tower shadow
+    # p['AeroFile|TwrAero']=False # remove tower shadow
+    p['AeroFile|UA_Mod']=0 # 
+    p['AeroFile|DBEMT_Mod']=0 # remove dynamic inflow dynamic
+    p['AeroFile|TwrPotent']=0 # remove tower potential plot
+    p['AeroFile|TwrShadow']=0 # remove tower shadow
+    p['AeroFile|TwrAero']=False # remove tower aero
     return p
 
 def paramsNoGen(p=None):
@@ -352,9 +357,10 @@ def paramsGen(p=None):
 
 def paramsNoController(p=None):
     p = dict() if p is None else p
-    p['ServoFile|PCMode']   = 0;
-    p['ServoFile|VSContrl'] = 0;
-    p['ServoFile|YCMode']   = 0;
+    p['CompServo'] = 0
+#     p['ServoFile|PCMode']   = 0;
+#     p['ServoFile|VSContrl'] = 0;
+#     p['ServoFile|YCMode']   = 0;
     return p
 
 def paramsControllerDLL(p=None):
@@ -392,8 +398,12 @@ def paramsWS_RPM_Pitch(WS, RPM, Pitch, baseDict=None, flatInputs=False, tMax_One
     chaing the inputs in ElastoDyn, InflowWind for different wind speed, RPM and Pitch
     """
     # --- Ensuring everythin is an iterator
+
     def iterify(x):
-        if not isinstance(x, collections.Iterable): x = [x]
+        try: # New Python
+            if not isinstance(x, collections.abc.Iterable): x=[x]
+        except:
+            if not isinstance(x, collections.Iterable): x = [x]
         return x
     WS    = iterify(WS)
     RPM   = iterify(RPM)
@@ -529,10 +539,10 @@ def createStepWind(filename,WSstep=1,WSmin=3,WSmax=25,tstep=100,dt=0.5,tmin=0,tm
 # --- Tools for typical wind turbine study 
 # --------------------------------------------------------------------------------{
 def CPCT_LambdaPitch(refdir, main_fastfile, Lambda=None, Pitch=np.linspace(-10,40,5), WS=None, Omega=None, # operating conditions
-          TMax=20, bStiff=True, bNoGen=True, bSteadyAero=True, # simulation options
+                     baseDict=None, TMax=20, bStiff=True, bNoGen=True, bSteadyAero=True, # simulation options
           reRun=True, skipWrite = False, # Set options to False to speed up execution when reruning this function
           workDir=None,
-          exportBase=None, exportFmt='rosco', plot=False,  # IO
+          exportBase=None, exportFmt='rosco', plot=False, verbose=False,# IO
           fastExe=None, showOutputs=True, nCores=4): # execution options
     """ Computes CP and CT as function of tip speed ratio (lambda) and pitch.
     There are two main ways to define the inputs:
@@ -582,7 +592,9 @@ def CPCT_LambdaPitch(refdir, main_fastfile, Lambda=None, Pitch=np.linspace(-10,4
             RPM_flat.append(rpm)
             Pitch_flat.append(pitch)
     # --- Setting up default options
-    baseDict={'TMax': TMax, 'DT': 0.01, 'DT_Out': 0.1, 'OutFileFmt':2} # NOTE: Tmax should be at least 2pi/Omega
+    if baseDict is None:
+        baseDict={'DT_Out': 0.1, 'OutFileFmt':2} 
+    baseDict['TMax'] = TMax       # NOTE: Tmax should be at least 2pi/Omega
     baseDict['AeroFile|OutList'] = ['', '"RtAeroCp"', '"RtAeroCt"','"RtVAvgxh"']
     baseDict['EDFile|OutList']   = ['', '"Azimuth"' ,'"RotSpeed"', '"BldPitch1"']
     baseDict['InflowFile|PLexp'] = 0   
@@ -596,6 +608,7 @@ def CPCT_LambdaPitch(refdir, main_fastfile, Lambda=None, Pitch=np.linspace(-10,4
     baseDict = paramsNoController(baseDict)
     if bStiff:
         baseDict = paramsStiff(baseDict)
+        baseDict['DT'] = 0.01
     if bNoGen:
         baseDict = paramsNoGen(baseDict)
     if bSteadyAero:
@@ -609,7 +622,7 @@ def CPCT_LambdaPitch(refdir, main_fastfile, Lambda=None, Pitch=np.linspace(-10,4
         workDir = refdir.strip('/').strip('\\')+'_CPLambdaPitch'
     print('>>> Generating {} inputs files in {}'.format(len(PARAMS), workDir))
     RemoveAllowed=reRun # If the user want to rerun, we can remove, otherwise we keep existing simulations
-    fastFiles=templateReplace(PARAMS, refdir, outputDir=workDir,removeRefSubFiles=True,removeAllowed=RemoveAllowed,main_file=main_fastfile, dryRun=skipWrite)
+    fastFiles=templateReplace(PARAMS, refdir, outputDir=workDir,removeRefSubFiles=False,removeAllowed=RemoveAllowed,main_file=main_fastfile, dryRun=skipWrite)
 
     # --- Creating a batch script just in case
     batchFile = os.path.join(workDir,'_RUN_ALL.bat')
@@ -650,8 +663,10 @@ def CPCT_LambdaPitch(refdir, main_fastfile, Lambda=None, Pitch=np.linspace(-10,4
     if exportBase is not None:
         if exportFmt.lower()=='rosco':
             # Write a ROSCO performance file
-            aeroMapFile = exportBase+'_CPCTCQ.txt'
+            aeroMapFile = exportBase+'_CPCTCQ.rpf'
             rs.write(aeroMapFile)
+            if verbose:
+                print('Exporting to ROSCO format: '+aeroMapFile)
         elif exportFmt.lower()=='csv':
             # Write individual CSV files
             np.savetxt(exportBase+'_Lambda.csv',Lambda,delimiter = ',')

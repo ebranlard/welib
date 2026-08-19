@@ -57,7 +57,7 @@ def main(model, simFile=None, extraSubs=None, smallAngles=None, op_point=None,
         MyDir=os.path.dirname(__file__)
         fstFilename = os.path.join(MyDir, simFile)
         from welib.yams.windturbine import FASTWindTurbine
-        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)
+        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50).WT
         p = WT.yams_parameters()
 
         # --- Perform time integration

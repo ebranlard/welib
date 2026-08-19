@@ -147,6 +147,8 @@ class FEMIsotropic2NodesElement(FEM2NodesElement):
     def E(self): return self.data['E']
     @property
     def G(self): return self.data['G']
+    @property
+    def Jt(self): return self.data['Izz'] # TODO TODO TODO
 
 # --------------------------------------------------------------------------------}
 # --- 2D Beam-like elements 
@@ -334,6 +336,14 @@ class CylinderBeam3dElement(FEMIsotropic2NodesElement):
     @property
     def kappa(self): raise NotImplementedError()
 
+    @property
+    def kappa_x(self): 
+        return self.kappa
+
+    @property
+    def kappa_y(self): 
+        return self.kappa
+
     def Fe_g(e, g, main_axis='z', local=False):
         """ Element force due to gravity """
         from .timoshenko import timoshenko_Fe_g
@@ -390,6 +400,7 @@ class CylinderTimoshenko3dElement(CylinderBeam3dElement):
         kappa =   ( 6 * (1 + nu) **2 * (1 + ratioSq)**2 )/( ( 1 + ratioSq )**2 * ( 7 + 14*nu + 8*nu**2 ) + 4 * ratioSq * ( 5 + 10*nu + 4 *nu**2 ) )
         return kappa
 
+
 class SubDynBeam3dElement(FEMElement):
     def __init__(self, ID, nodeIDs, nodes=None, propset=None, propIDs=None, properties=None, **kwargs):
         super(SubDynBeam3dElement,self).__init__(ID, nodeIDs, nodes, propset, propIDs, properties, **kwargs)
@@ -442,6 +453,8 @@ class SubDynBeam3dElement(FEMElement):
         Iyy = Ixx
         Jzz = 2.0*Ixx
         return Ixx, Iyy, Jzz
+    @property
+    def Jt(self): return self.inertias[2]
 
     @property
     def D(self): return 2*self.r1
@@ -468,6 +481,8 @@ class SubDynBeam3dElement(FEMElement):
         """ Element force due to other sources (e.g. pretension cable) """
         return np.zeros(12)
 
+
+
 # --------------------------------------------------------------------------------}
 # --- Frame3D
 # --------------------------------------------------------------------------------{
@@ -480,6 +495,11 @@ class SubDynFrame3dElement(SubDynBeam3dElement):
 
     @property
     def kappa(self): return 0  # shear coefficients are zero for Euler-Bernoulli
+    @property
+    def kappa_x(self): return self.kappa
+    @property
+    def kappa_y(self): return self.kappa
+
 
     def Ke(e, main_axis='z', local=False):
         from .frame3d import frame3d_KeMe # TODO TODO
@@ -520,6 +540,14 @@ class SubDynTimoshenko3dElement(SubDynBeam3dElement):
         ratioSq = ( D_inner / D_outer)**2
         kappa =   ( 6 * (1 + nu) **2 * (1 + ratioSq)**2 )/( ( 1 + ratioSq )**2 * ( 7 + 14*nu + 8*nu**2 ) + 4 * ratioSq * ( 5 + 10*nu + 4 *nu**2 ) )
         return kappa
+
+    @property
+    def kappa_x(self): 
+        return self.kappa # TODO?
+
+    @property
+    def kappa_y(self): 
+        return self.kappa # TODO?
 
     def Ke(e, main_axis='z', local=False):
         from .timoshenko import timoshenko_Ke

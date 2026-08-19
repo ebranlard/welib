@@ -14,6 +14,7 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
           0   CompInflow      - Compute inflow wind velocities (switch) {0=still air; 1=InflowWind; 2=external from OpenFOAM}
           0   CompAero        - Compute aerodynamic loads (switch) {0=None; 1=AeroDyn v14; 2=AeroDyn v15}
           0   CompServo       - Compute control and electrical-drive dynamics (switch) {0=None; 1=ServoDyn}
+          1   CompSeaSt       - Compute sea state information (switch) {0=None; 1=SeaState}
           1   CompHydro       - Compute hydrodynamic loads (switch) {0=None; 1=HydroDyn}
           1   CompSub         - Compute sub-structural dynamics (switch) {0=None; 1=SubDyn; 2=External Platform MCKF}
           0   CompMooring     - Compute mooring system (switch) {0=None; 1=MAP++; 2=FEAMooring; 3=MoorDyn; 4=OrcaFlex}
@@ -37,6 +38,7 @@ False         Echo            - Echo input data to <RootName>.ech (flag)
 "unused"                                                 InflowFile      - Name of file containing inflow wind input parameters (quoted string)
 "unused"                                                 AeroFile        - Name of file containing aerodynamic input parameters (quoted string)
 "unused"                                                 ServoFile       - Name of file containing control and electrical-drive input parameters (quoted string)
+"Spar_SS.dat"           SeaStFile       - Name of file containing sea state input parameters (quoted string)
 "Spar_HD.dat"                                       HydroFile       - Name of file containing hydrodynamic input parameters (quoted string)
 "Spar_SD.dat"                                            SubFile         - Name of file containing sub-structural input parameters (quoted string)
 "unused"                                                 MooringFile     - Name of file containing mooring system input parameters (quoted string)

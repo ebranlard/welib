@@ -29,6 +29,12 @@ from welib.FEM.fem_core import insertFixedBCinModes
 from welib.system.eva import eig
 
 # --------------------------------------------------------------------------------}
+# --- Main FEM model 
+# --------------------------------------------------------------------------------{
+# see FEMModel.from_cbeam(FEM, CB)
+
+
+# --------------------------------------------------------------------------------}
 # --- Main wrapper functions 
 # --------------------------------------------------------------------------------{
 def cbeam(xNodes, m, EIx=None, EIy=None, EIz=None, EA=None, A=None, Kt=None, E=None, G=None, phi=None, 

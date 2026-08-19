@@ -158,16 +158,14 @@ def main(test=False):
 
 
     # ---
-    if not test:
-        plt.show()
-    else:
-        plt.close('all')
 
 class Test(unittest.TestCase):
     def test_Article_Induction_NonYaw(self):
         main(test=True)
+        plt.close('all')
 
 if __name__ == "__main__":
     main(test=False)
+    plt.show()
 
 

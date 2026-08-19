@@ -23,7 +23,7 @@ from welib.FEM.fem_model import FEMModel
 
 import welib.weio as weio
 
-MyDir=os.path.dirname(__file__)
+scriptDir=os.path.dirname(__file__)
 
 
 def MonopileFEM(TopMass=False, verbose=False):
@@ -44,7 +44,7 @@ def MonopileFEM(TopMass=False, verbose=False):
     if UseSubDynModel:
         # --- Option 1 - Read data from SubDyn
         # Read SubDyn file
-        sdFilename=os.path.join(MyDir,'../../../data/Monopile/MT100_Baseline/SD.dat')
+        sdFilename=os.path.join(scriptDir,'../../../data/Monopile/MT100_Baseline/SD.dat')
         sd = weio.read(sdFilename)
         # Convert to "welib.fem.Graph" class to easily handle the model (overkill for a monopile)
         graph = sd.toGraph(propToNodes=True)
@@ -86,13 +86,13 @@ def MonopileFEM(TopMass=False, verbose=False):
 
     # --- Perform Craig-Bampton reduction, fixing the top node of the beam
     Q_G,_Q_CB, df_G, df_CB, Modes_G, Modes_CB, CB = CB_topNode(FEM, nCB=8, element=element, main_axis='x')
-    df_CB.to_csv('_CB.csv',index=False)
-    df_G.to_csv('_Guyan.csv',index=False)
+    df_CB.to_csv(os.path.join(scriptDir, '_CB.csv'   ),index=False)
+    df_G.to_csv (os.path.join(scriptDir, '_Guyan.csv'),index=False)
 
 
     # --- Convert to higher-level "FEM-Model" class
     model = FEMModel.from_cbeam(FEM, CB)
-    model.toJSON('_CBEAM.json') # <<<
+    model.toJSON(os.path.join(scriptDir, '_CBEAM.json')) # <<<
 
 
     # --- Plot mode components for first few modes
@@ -127,12 +127,12 @@ if __name__=='__test__':
     FEM, CB = MonopileFEM() 
     np.testing.assert_array_almost_equal(FEM['freq'][:3], [0.83419, 0.83419, 5.227776],3 )
     np.testing.assert_array_almost_equal(CB['f_CB'][:3], [5.30816, 5.30816, 11.2390], 3 )
-    import os
-    try:
-        os.remove('_CBEM.json')
-        os.remove('_CB.csv')
-        os.remove('_Guyan.csv')
-    except:
-        pass
+#     import os
+#     try:
+    os.remove(os.path.join(scriptDir, '_CBEAM.json'))
+    os.remove(os.path.join(scriptDir, '_CB.csv'))
+    os.remove(os.path.join(scriptDir, '_Guyan.csv'))
+#     except:
+#         pass
 
 

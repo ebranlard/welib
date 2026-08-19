@@ -15,11 +15,16 @@ from welib.wiz.Solver import Ct_const_cutoff, WakeVorticityFromCt, WakeVorticity
 def RotMat_AxisAngle(u,theta):
     """ Returns the rotation matrix for a rotation around an axis u, with an angle theta """
     R=np.zeros((3,3))
+    u = np.asarray(u).flatten()
     ux,uy,uz=u
     c,s=np.cos(theta),np.sin(theta)
-    R[0,0]=ux**2*(1-c)+c    ; R[0,1]=ux*uy*(1-c)-uz*s; R[0,2]=ux*uz*(1-c)+uy*s;
-    R[1,0]=uy*ux*(1-c)+uz*s ; R[1,1]=uy**2*(1-c)+c   ; R[1,2]=uy*uz*(1-c)-ux*s
-    R[2,0]=uz*ux*(1-c)-uy*s ; R[2,1]=uz*uy*(1-c)+ux*s; R[2,2]=uz**2*(1-c)+c;
+    try:
+        R[0,0]=ux**2*(1-c)+c    ; R[0,1]=ux*uy*(1-c)-uz*s; R[0,2]=ux*uz*(1-c)+uy*s;
+        R[1,0]=uy*ux*(1-c)+uz*s ; R[1,1]=uy**2*(1-c)+c   ; R[1,2]=uy*uz*(1-c)-ux*s
+        R[2,0]=uz*ux*(1-c)-uy*s ; R[2,1]=uz*uy*(1-c)+ux*s; R[2,2]=uz**2*(1-c)+c;
+    except:
+        import pdb; pdb.set_trace()
+
     return R
 
 def orth_vect(u):

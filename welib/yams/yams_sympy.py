@@ -10,6 +10,7 @@ Reference:
 """
 import numpy as np
 import sympy
+import sympy as sp
 from sympy import Symbol, symbols
 from sympy import Matrix, Function, diff
 from sympy.printing import lambdarepr
@@ -20,16 +21,19 @@ from sympy import trigsimp
 from sympy import cos,sin
 from sympy import zeros, transpose
 
-from sympy.physics.mechanics import Body as SympyBody
+# from sympy.physics.mechanics import Body as SympyBody
 from sympy.physics.mechanics import RigidBody as SympyRigidBody
 from sympy.physics.mechanics import Point, ReferenceFrame, inertia, dynamicsymbols
-from sympy.physics.mechanics.functions import msubs
+from sympy.physics.mechanics.functions import msubs, find_dynamicsymbols
 
 from sympy.physics.vector import init_vprinting, vlatex
 
 # Local
-from welib.yams.yams_sympy_tools import exprHasFunction, skew, colvec, cross #,ete
 from collections import OrderedDict 
+from welib.yams.yams_sympy_tools import exprHasFunction, skew, colvec #,ete
+from welib.yams.utils import translateInertiaMatrixFromCOG, buildRigidBodyMassMatrix
+
+
 
 #init_vprinting(use_latex='mathjax', pretty_print=False)
 #
@@ -37,8 +41,36 @@ from collections import OrderedDict
 
 
 __all__ = ['YAMSBody','YAMSInertialBody','YAMSRigidBody','YAMSFlexibleBody'] # New general implementation
-__all__+= ['Body','RigidBody','GroundBody'] # Old "recursive" implementation. TODO merge the two
 __all__+= ['skew', 'rotToDCM', 'DCMtoOmega']
+
+
+# --------------------------------------------------------------------------------}
+# --- Sympy harmony 
+# --------------------------------------------------------------------------------{
+def R_x(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[1,0,0], [0,sp.cos(t),-sp.sin(t)], [0,sp.sin(t),sp.cos(t)]])
+    else:
+        return np.array( [[1,0,0], [0,np.cos(t),-np.sin(t)], [0,np.sin(t),np.cos(t)]])
+
+def R_y(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[sp.cos(t),0,sp.sin(t)], [0,1,0], [-sp.sin(t),0,sp.cos(t)] ])
+    else:
+        return np.array( [[np.cos(t),0,np.sin(t)], [0,1,0], [-np.sin(t),0,np.cos(t)] ])
+
+def R_z(t):
+    if isinstance(t, sp.Basic):
+        return Matrix( [[sp.cos(t),-sp.sin(t),0], [sp.sin(t),sp.cos(t),0], [0,0,1]])
+    else:
+        return np.array( [[np.cos(t),-np.sin(t),0], [np.sin(t),np.cos(t),0], [0,0,1]])
+
+def cross(u, v):
+    if hasattr(u, "cross"):
+        return u.cross(v)
+    else:
+        return np.cross(u, v)
+        
 
 # --------------------------------------------------------------------------------}
 # --- Helper functions 
@@ -71,8 +103,8 @@ def rotToDCM(rot_type, rot_amounts, rot_order=None):
               'SmallRot': small angle rotations (ADDED in YAMS)
               'Axis': simple rotations about a single common axis
               'DCM': for setting the direction cosine matrix directly
-              'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
-              'Space': three successive rotations about the parent frames’ unit vectors
+              'Body': three successive rotations about new intermediate axes, also called "Euler and Tait-Bryan angles"
+              'Space': three successive rotations about the parent frames' unit vectors
               'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
      - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
                 The input types are:
@@ -130,6 +162,32 @@ def DCMtoOmega(DCM, ref_frame=None):
 # --------------------------------------------------------------------------------}
 # ---  
 # --------------------------------------------------------------------------------{
+def   SmpMat(bodyname, varname, nr, nc, nq, rname=None, cname=None, noZeroExp=False, singleDOFNumbering=True):
+        if rname is None:
+            if singleDOFNumbering or nr>1:
+                rname=list(np.arange(nr)+1)
+            else:
+                rname=['']
+        if cname is None:
+            if singleDOFNumbering or nc>1:
+                cname=list(np.arange(nc)+1)
+            else:
+                cname=['']
+        if len(cname)!=nc:
+            raise Exception('cname length should match nc for Taylor {} {}'.format(bodyname, varname))
+        if len(rname)!=nr:
+            raise Exception('rname length should match nr for Taylor {} {}'.format(bodyname, varname))
+            
+        M0=Matrix(np.zeros((nr,nc)).astype(int))
+        for i in np.arange(nr):
+            for j in np.arange(nc):
+                if noZeroExp:
+                    M0[i,j] = symbols('{}_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+                else:
+                    M0[i,j] = symbols('{}^0_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+        return M0
+
+
 class Taylor(object):
     r""" 
     A Taylor object contains a Taylor expansion of a variable as function of q
@@ -137,11 +195,17 @@ class Taylor(object):
     where M, M^0, M^1_j are matrices of dimension nr x nc
     See Wallrapp 1993/1994
     """
-    def __init__(self, bodyname, varname, nr, nc, nq, rname=None, cname=None, q=None, order=2):
+    def __init__(self, bodyname, varname, nr, nc, nq, rname=None, cname=None, q=None, order=2, noZeroExp=False, singleDOFNumbering=True):
         if rname is None:
-            rname=list(np.arange(nr)+1)
+            if singleDOFNumbering or nr>1:
+                rname=list(np.arange(nr)+1)
+            else:
+                rname=['']
         if cname is None:
-            cname=list(np.arange(nr)+1)
+            if singleDOFNumbering or nc>1:
+                cname=list(np.arange(nc)+1)
+            else:
+                cname=['']
         if len(cname)!=nc:
             raise Exception('cname length should match nc for Taylor {} {}'.format(bodyname, varname))
         if len(rname)!=nr:
@@ -154,15 +218,20 @@ class Taylor(object):
         self.M0=Matrix(np.zeros((nr,nc)).astype(int))
         for i in np.arange(nr):
             for j in np.arange(nc):
-                self.M0[i,j] = symbols('{}^0_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+                if noZeroExp:
+                    self.M0[i,j] = symbols('{}_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
+                else:
+                    self.M0[i,j] = symbols('{}^0_{}_{}{}'.format(varname,bodyname,rname[i],cname[j])) 
                 
         if order==2: 
             self.M1=[]
-            for k in np.arange(nq):
+            for k in np.arange(nq): # DOF number
                 self.M1.append(Matrix(np.zeros((nr,nc)).astype(int)))
                 for i in np.arange(nr):
                     for j in np.arange(nc):
                         self.M1[k][i,j] = symbols('{}^1_{}_{}_{}{}'.format(varname,k+1,bodyname,rname[i],cname[j])) 
+        if order>2:
+            raise NotImplementedError('Order 3 not implemented')
     def eval(self, q=None, order=None):
         """ evaluate the taylor series """
         if q is None:
@@ -204,58 +273,6 @@ class Taylor(object):
 #Me.eval([x,y])
 #Md = Taylor('T','M_d', 3, 1, nq=2, rname='xyz', cname=[''])
 #skew(Md.M0)
-# --------------------------------------------------------------------------------}
-# --- Connections 
-# --------------------------------------------------------------------------------{
-class Connection():
-    def __init__(self, Type, RelPoint=None, RelOrientation=None, JointRotations=None):
-        if RelOrientation is None:
-            RelOrientation=eye(3)
-        if RelPoint is None:
-            RelPoint=colvec([0,0,0])
-
-        self.Type=Type
-        
-        self.s_C_0_inB = RelPoint
-        self.s_C_inB   = self.s_C_0_inB
-        self.R_ci_0    = RelOrientation
-        self.R_ci      = self.R_ci_0     
-
-        if self.Type=='Rigid':
-            self.nj=0
-        elif self.Type=='SphericalJoint':
-            self.JointRotations=JointRotations;
-            self.nj=len(self.JointRotations);
-        else:
-            raise NotImplementedError()
-
-    def updateKinematics(j,q):
-        j.B_ci=Matrix(np.zeros((6,j.nj)))
-        if j.Type=='Rigid':
-            j.R_ci=j.R_ci_0
-        elif j.Type=='SphericalJoint':
-            R=eye(3)
-            myq    = q   [j.I_DOF,0];
-            #myqdot = qdot[j.I_DOF];
-
-            for ir,rot in enumerate(j.JointRotations):
-                if rot=='x':
-                    I=np.array([1,0,0])
-                    Rj=R_x( myq[ir] )
-                elif rot=='y':
-                    I=np.array([0,1,0])
-                    Rj=R_y( myq[ir] )
-                elif rot=='z':
-                    I=np.array([0,0,1])
-                    Rj=R_z( myq[ir] )
-                else:
-                    raise Exception()
-                # Setting Bhat column by column
-                j.B_ci[3:,ir] = np.dot(R,I) # NOTE: needs to be done before R updates
-                # Updating rotation matrix
-                R      = np.dot(R , Rj )
-                j.R_ci = Matrix(np.dot(R, j.R_ci_0 ))
-
 
 
 # --------------------------------------------------------------------------------}
@@ -346,6 +363,180 @@ class YAMSBody(object):
 
     def __str__(self):
         return self.__repr__()
+
+    def _iter_bodies(self):
+        """Yield this body and descendants in tree order."""
+        yield self
+        for c in self.children:
+            for cc in c._iter_bodies():
+                yield cc
+
+    def kinematics_export(self, speed_symbols=None):
+        """Return a canonical kinematics payload for cross-flavor comparisons.
+
+        The schema mirrors the recursive flavor. Values not available from the
+        sympy-mechanics path yet are set to None.
+        """
+        def _safe_call(callable_obj, default=None):
+            try:
+                return callable_obj()
+            except Exception:
+                return default
+
+        def _safe_get(attr, default=None):
+            return getattr(self, attr) if hasattr(self, attr) else default
+
+        B = None
+        B_inB = None
+        BB_inB = None
+        inferred_speeds = None
+        Bhat_x_bc = None
+        Bhat_t_bc = None
+        R_bc = None
+        try:
+            if self.inertial_frame is not None:
+                v = self.origin.vel(self.inertial_frame).to_matrix(self.inertial_frame)
+                om = self.frame.ang_vel_in(self.inertial_frame).to_matrix(self.inertial_frame)
+                kin_vec = Matrix.vstack(v, om)
+
+                if speed_symbols is None:
+                    # Keep only first-order time derivatives as speed-like symbols.
+                    ds = list(find_dynamicsymbols(kin_vec))
+                    inferred_speeds = [d for d in ds if hasattr(d, 'derivative_count') and d.derivative_count == 1]
+                    inferred_speeds = sorted(inferred_speeds, key=lambda s: str(s))
+                else:
+                    inferred_speeds = list(speed_symbols)
+
+                if len(inferred_speeds) > 0:
+                    B = kin_vec.jacobian(inferred_speeds)
+
+                    # B in body coordinates, mirroring yams_rec.fB_inB.
+                    R = self.R_b2g
+                    B_inB = Matrix.vstack(R.T * B[:3, :], R.T * B[3:, :])
+
+                    # Augmented BB matrix, mirroring yams_rec.fB_aug semantics for a single body export.
+                    nf = int(len(self.q)) if hasattr(self, 'q') else 0
+                    if nf > 0:
+                        Z6 = Matrix.zeros(6, nf)
+                        Zf = Matrix.zeros(nf, B_inB.shape[1])
+                        If = Matrix.eye(nf)
+                        BB_inB = Matrix.vstack(Matrix.hstack(B_inB, Z6), Matrix.hstack(Zf, If))
+                    else:
+                        BB_inB = B_inB
+
+                # Flexible-body connection-level kinematics in body coordinates.
+                if hasattr(self, '_connection_kinematics_bc'):
+                    R_bc, Bhat_x_bc, Bhat_t_bc = self._connection_kinematics_bc()
+        except Exception:
+            B = None
+            B_inB = None
+            BB_inB = None
+            inferred_speeds = None
+            R_bc = None
+            Bhat_x_bc = None
+            Bhat_t_bc = None
+
+        return {
+            'name': self.name,
+            'flavor': 'yams_sympy',
+            'sympy': True,
+            'nf': int(len(self.q)) if hasattr(self, 'q') else 0,
+            'I_DOF': _safe_get('I_DOF', None),
+            'pos_global': _safe_call(lambda: self.pos_global, None),
+            'R_b2g': _safe_call(lambda: self.R_b2g, None),
+            'R_g2b': _safe_call(lambda: self.R_g2b, None),
+            'R_bc': R_bc if R_bc is not None else _safe_get('R_bc', None),
+            'Bhat_x_bc': Bhat_x_bc if Bhat_x_bc is not None else _safe_get('Bhat_x_bc', None),
+            'Bhat_t_bc': Bhat_t_bc if Bhat_t_bc is not None else _safe_get('Bhat_t_bc', None),
+            'B': B if B is not None else _safe_get('B', None),
+            'B_inB': B_inB if B_inB is not None else _safe_get('B_inB', None),
+            'BB_inB': BB_inB if BB_inB is not None else _safe_get('BB_inB', None),
+            'speed_symbols': inferred_speeds,
+        }
+
+    def kinematics_export_tree(self):
+        """Return canonical kinematics payload for this body and descendants."""
+        return [b.kinematics_export() for b in self._iter_bodies()]
+
+    def B_matrix(self, in_body=False, speed_symbols=None):
+        """Return kinematic B matrix at the body origin.
+
+        Parameters
+        ----------
+        in_body : bool
+            If True, return body-coordinate matrix (B_inB), otherwise global (B).
+        speed_symbols : list or None
+            Optional speed symbols to force Jacobian column ordering.
+        """
+        payload = self.kinematics_export(speed_symbols=speed_symbols)
+        return payload['B_inB'] if in_body else payload['B']
+
+    def BB_matrix(self, speed_symbols=None):
+        """Return augmented body-coordinate BB matrix."""
+        payload = self.kinematics_export(speed_symbols=speed_symbols)
+        return payload['BB_inB']
+
+    def generalized_mass_matrix(self, speed_symbols=None, form='regular'):
+        """Return generalized mass contribution of this body.
+
+        Computes $B'^T M' B'$ using ``B_inB`` for rigid bodies and ``BB_inB``
+        for flexible bodies where ``M'`` has size ``(6+nf) x (6+nf)``.
+        """
+        if not hasattr(self, 'bodyMassMatrix'):
+            raise Exception('Body has no bodyMassMatrix method: {}'.format(self.name))
+        payload = self.kinematics_export(speed_symbols=speed_symbols)
+        Mloc = self.bodyMassMatrix(form=form)
+        if Mloc.shape[0] == 6:
+            J = payload['B_inB']
+        else:
+            J = payload['BB_inB']
+        if J is None:
+            raise Exception('Kinematic matrix unavailable for body {}'.format(self.name))
+        Mgen = J.T * Mloc * J
+        Mgen.simplify()
+        return Mgen
+
+    def system_mass_matrix(self, speed_symbols=None, form='regular', include_self=False):
+        """Return full generalized mass matrix assembled from this subtree.
+
+        For inertial roots this mirrors recursive assembly by summing all body
+        contributions from descendants.
+        """
+        bodies = list(self._iter_bodies())
+        if not include_self and len(bodies) > 0:
+            bodies = bodies[1:]
+
+        if speed_symbols is None:
+            all_speeds = []
+            for b in bodies:
+                p = b.kinematics_export()
+                ds = p.get('speed_symbols', None)
+                if ds is not None:
+                    all_speeds += list(ds)
+            uniq = {str(s): s for s in all_speeds}
+            speed_symbols = [uniq[k] for k in sorted(uniq.keys())]
+
+        n = len(speed_symbols)
+        Msys = Matrix.zeros(n, n)
+        for b in bodies:
+            if hasattr(b, 'bodyMassMatrix'):
+                Msys += b.generalized_mass_matrix(speed_symbols=speed_symbols, form=form)
+        return Msys
+
+    def Bhat_matrix(self, kind='x'):
+        """Return connection-point Bhat matrix for flexible coupling.
+
+        Parameters
+        ----------
+        kind : {'x','t'}
+            'x' for translational part, 't' for rotational part.
+        """
+        payload = self.kinematics_export()
+        if kind == 'x':
+            return payload['Bhat_x_bc']
+        if kind == 't':
+            return payload['Bhat_t_bc']
+        raise ValueError("kind should be 'x' or 't'")
 
     # --------------------------------------------------------------------------------}
     # --- Useful getters
@@ -469,8 +660,8 @@ class YAMSBody(object):
                   'SmallRot': small angle rotations (ADDED in YAMS)
                   'Axis': simple rotations about a single common axis
                   'DCM': for setting the direction cosine matrix directly
-                  'Body': three successive rotations about new intermediate axes, also called “Euler and Tait-Bryan angles”
-                  'Space': three successive rotations about the parent frames’ unit vectors
+                  'Body': three successive rotations about new intermediate axes, also called "Euler and Tait-Bryan angles"
+                  'Space': three successive rotations about the parent frames' unit vectors
                   'Quaternion': rotations defined by four parameters which result in a singularity free direction cosine matrix
          - rot_amounts : expressions defining the rotation angles or direction cosine matrix. These must match the rot_type. 
                     The input types are:
@@ -778,133 +969,6 @@ class YAMSBody(object):
             else:
                 raise NotImplementedError()
             
-class Body(object):
-    def __init__(B,Name=''):
-        B.Children    = []
-        B.Connections = []
-        B.Name        = Name
-        B.MM     = None
-        B.B           = [] # Velocity transformation matrix
-        B.updatePosOrientation(colvec([0,0,0]), eye(3))
-
-    def updatePosOrientation(o,x_0,R_0b):
-        o.r_O = x_0      # position of body origin in global coordinates
-        o.R_0b=R_0b      # transformation matrix from body to global
-
-    def connectTo(self, Child, Point=None, Type=None, RelOrientation=None, JointRotations=None):
-        if Type =='Rigid':
-            c=Connection(Type, RelPoint=Point, RelOrientation = RelOrientation)
-        else: # TODO first node, last node
-            c=Connection(Type, RelPoint=Point, RelOrientation=RelOrientation, JointRotations=JointRotations)
-        self.Children.append(Child)
-        self.Connections.append(c)
-
-    def setupDOFIndex(o,n):
-        nForMe=o.nf
-        # Setting my dof index
-        o.I_DOF=n+ np.arange(nForMe) 
-        # Update
-        n=n+nForMe
-        for child,conn in zip(o.Children,o.Connections):
-            # Connection first
-            nForConn=conn.nj;
-            conn.I_DOF=n+np.arange(nForConn)
-            # Update
-            n=n+nForConn;
-            # Then Children
-            n=child.setupDOFIndex(n)
-        return n
-
-    def __repr__(B):
-        s=''
-        return s
-
-    @property
-    def R_bc(self):
-        return eye(3);
-    @property
-    def Bhat_x_bc(self):
-        return Matrix(np.zeros((3,0)))
-    @property
-    def Bhat_t_bc(self):
-        return Matrix(np.zeros((3,0)))
-
-    def updateChildrenKinematicsNonRecursive(p,q):
-        # At this stage all the kinematics of the body p are known
-        # Useful variables
-        R_0p =  p.R_0b
-        B_p  =  p.B
-        r_0p  = p.r_O
-
-        nf_all_children=sum([child.nf for child in p.Children])
-
-        for ic,(body_i,conn_pi) in enumerate(zip(p.Children,p.Connections)):
-            # Flexible influence to connection point
-            R_pc  = p.R_bc
-            Bx_pc = p.Bhat_x_bc
-            Bt_pc = p.Bhat_t_bc
-            # Joint influence to next body (R_ci, B_ci)
-            conn_pi.updateKinematics(q) # TODO
-
-            # Full connection p and j
-            R_pi   = R_pc*conn_pi.R_ci  
-            if conn_pi.B_ci.shape[1]>0:
-                Bx_pi  = Matrix(np.column_stack((Bx_pc, np.dot(R_pc,conn_pi.B_ci[:3,:]))))
-                Bt_pi  = Matrix(np.column_stack((Bt_pc, np.dot(R_pc,conn_pi.B_ci[3:,:]))))
-            else:
-                Bx_pi  = Bx_pc
-                Bt_pi  = Bt_pc
-              
-            # Rotation of body i is rotation due to p and j
-            R_0i = R_0p * R_pi
-
-            # Position of connection point in P and 0 system
-            r_pi_inP= conn_pi.s_C_inB
-            r_pi    = R_0p * r_pi_inP
-            B_i      = fBMatRecursion(B_p, Bx_pi, Bt_pi, R_0p, r_pi)
-            B_i_inI  = fB_inB(R_0i, B_i)
-            BB_i_inI = fB_aug(B_i_inI, body_i.nf)
-
-            body_i.B      = B_i    
-            body_i.B_inB  = B_i_inI
-            body_i.BB_inB = BB_i_inI
-
-            # --- Updating Position and orientation of child body 
-            r_0i = r_0p + r_pi  # % in 0 system
-            body_i.R_pb = R_pi 
-            body_i.updatePosOrientation(r_0i,R_0i)
-
-            # TODO flexible dofs and velocities/acceleration
-            body_i.gzf  = q[body_i.I_DOF,0] # TODO use updateKinematics
-
-    def getFullM(o,M):
-        if not isinstance(o,GroundBody):
-            MqB      = fBMB(o.BB_inB,o.MM)
-            n        = MqB.shape[0]
-            M[:n,:n] = M[:n,:n]+MqB     
-        for c in o.Children:
-            M=c.getFullM(M)
-        return M
-        
-    def getFullK(o,K):
-        if not isinstance(o,GroundBody):
-            KqB      = fBMB(o.BB_inB,o.KK)
-            n        = KqB.shape[0]
-            K[:n,:n] = K[:n,:n]+KqB     
-        for c in o.Children:
-            K=c.getFullK(K)
-        return K
-        
-    def getFullD(o,D):
-        if not isinstance(o,GroundBody):
-            DqB      = fBMB(o.BB_inB,o.DD)
-            n        = DqB.shape[0]
-            D[:n,:n] = D[:n,:n]+DqB     
-        for c in o.Children:
-            D=c.getFullD(D)
-        return D
-
-
 # --------------------------------------------------------------------------------}
 # --- Ground/inertial Body 
 # --------------------------------------------------------------------------------{
@@ -915,12 +979,6 @@ class YAMSInertialBody(YAMSBody):
     def __init__(self, name='E'): # "Earth"
         YAMSBody.__init__(self,name)
     
-
-class GroundBody(Body):
-    def __init__(B):
-        super(GroundBody,B).__init__('Grd')
-        B.nf   = 0
-
 # --------------------------------------------------------------------------------}
 # --- Rigid Body 
 # --------------------------------------------------------------------------------{
@@ -954,6 +1012,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         
         if name_for_var is None:
             name_for_var = name
+            self.name_for_var = name_for_var
 
         # --- Mass
         if mass is None:
@@ -1023,7 +1082,6 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
         self.M[0,0] = self.mass
         self.M[1,1] = self.mass
         self.M[2,2] = self.mass
-        print('>>> bodyMassMatrix for rigid bodies is in Beta')
 
         if form=='TaylorExpanded':
             """ Return the term of the mass matrix at a given order.
@@ -1032,9 +1090,9 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
             self.M[0,0] = 0
             self.M[1,1] = 0
             self.M[2,2] = 0
-            # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
-            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            # Mxr, Mrx
+            self.M[0:3,3:6] = - skew(self.mdCM.get(dof, order)) # =-skew(mdCM)  NOTE:2026 Changed sign
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()       # = skew(mdCM)
             # Mrr
             self.M[3:6,3:6] = self.J.get(dof,order)
 
@@ -1062,6 +1120,7 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
                 for j in np.arange(3,6):
                     self.M[i,j]=Symbol('J_{}{}{}'.format(self.name_for_var,char[i-3],char[j-3]))
             # Symmetry
+            nq=0 # Rigid body
             for i in np.arange(0,6+nq):
                 for j in np.arange(0,6+nq):
                     self.M[j,i]=self.M[i,j]
@@ -1119,6 +1178,10 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     def masscenter_acc_inertial(self):
         """ return acceleration velocity of body COG in inertial frame """
         return self.masscenter.acc(self.inertial_frame)
+
+    @property
+    def kinetic_energy_inertial(self):
+        return self.kinetic_energy(self.inertial_frame)
     
     def __repr__(self):
         # rigid body
@@ -1146,8 +1209,12 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
 
         s+='Useful getters: origin_inertia, inertia_matrix, origin_inertia_matrix\n'
         s+='                masscenter_inertia\n'
+        s+='                kinetic_energy_inertial\n'
         s+='Useful setters: noMass, noInertia, setGcoord\n'
         s+='Useful functions:\n'
+        s+='  - kinetic_energy(frame)\n'
+        s+='  - linear_momentum(point, frame)\n'
+        s+='  - angular_momentum(point, frame)\n'
         s+='  - bodyMassMatrix(q=None, form="TaylorExpanded", order=None, dof=None)\n'
         return s
 
@@ -1164,24 +1231,25 @@ class YAMSRigidBody(YAMSBody,SympyRigidBody):
     #def zeroOrigin(self):
     #    """ set origin to zero"""
     #    self.origin.set_pos=(0,0,0)
+    def kinetic_energy(self, frame):
+        """ Taken from sympy.physics.mechanics.rigidbody.RigidBody.kinetic_energy"""
+        from sympy.physics.vector  import dot
+        from sympy import S
+        rotational_KE = S.Half * dot(
+            self.frame.ang_vel_in(frame),
+            dot(self.central_inertia, self.frame.ang_vel_in(frame)))
+        translational_KE = S.Half * self.mass * dot(self.masscenter.vel(frame), self.masscenter.vel(frame))
+        return rotational_KE + translational_KE
+
 
         
-class RigidBody(Body):
-    def __init__(B, Name, Mass, J_G, rho_G):
-        """
-        Creates a rigid body 
-        """
-        super(RigidBody,B).__init__(Name)
-        B.nf  = 0
-        B.s_G_inB = rho_G
-        B.J_G_inB = J_G  
-        B.Mass    = Mass 
 
 # --------------------------------------------------------------------------------}
 # --- Flexible body/Beam Body 
 # --------------------------------------------------------------------------------{
 class YAMSFlexibleBody(YAMSBody):
-    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True):
+    def __init__(self, name, nq, directions=None, orderMM=2, orderH=2, predefined_kind=None, name_for_var=None, name_for_DOF=None, tip_unit_deflect=False, tip_rotate=True, 
+                 noZeroExp=False, singleDOFNumbering=True):
         """ 
         name:  name used for object name, origin
         name_for_var: name/string used for inertial variable names
@@ -1197,36 +1265,46 @@ class YAMSFlexibleBody(YAMSBody):
         self.name=name
         self.name_for_var = name_for_var
         self.name_for_DOF = name_for_DOF
+        self.singleDOFNumbering = singleDOFNumbering
         self.L     = symbols('L_'+name_for_var)
         self.q     = []                         # DOF
         self.qd    = []                         # DOF velocity as "anonymous" variables
         self.qdot  = []                         # DOF velocities
         self.qddot = []                         # DOF accelerations
         t=dynamicsymbols._t
+        if nq==1 and not singleDOFNumbering:
+            for i in np.arange(nq):
+                self.q.append   (dynamicsymbols('q_{}'. format(name_for_DOF)))
+                self.qd.append  (dynamicsymbols('qd_{}'.format(name_for_DOF)))
+        else:
+            for i in np.arange(nq):
+                self.q.append   (dynamicsymbols('q_{}{}'. format(name_for_DOF,i+1)))
+                self.qd.append  (dynamicsymbols('qd_{}{}'.format(name_for_DOF,i+1)))
         for i in np.arange(nq):
-            self.q.append   (dynamicsymbols('q_{}{}'. format(name_for_DOF,i+1)))
-            self.qd.append  (dynamicsymbols('qd_{}{}'.format(name_for_DOF,i+1)))
             self.qdot.append(diff(self.q[i],t))
             self.qddot.append(diff(self.qdot[i],t))
         # --- Mass matrix related
         self.mass=symbols('M_{}'.format(name_for_var))
-        self.J   = Taylor(name_for_var,'J'  , 3 , 3 , nq=nq, rname='xyz', cname='xyz', order=orderMM)
-        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM)
-        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM)
-        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM)
-        self.mdCM= Taylor(name_for_var,'M_d', 3,  1 , nq=nq, rname='xyz', cname=[''], order=orderMM)
+        self.J   = Taylor(name_for_var,'J'  , 3 , 3 , nq=nq, rname='xyz', cname='xyz', order=orderMM, noZeroExp=noZeroExp)
+        self.Ct  = Taylor(name_for_var,'C_t', nq, 3 , nq=nq, rname=None , cname='xyz', order=orderMM, noZeroExp=noZeroExp        , singleDOFNumbering=singleDOFNumbering ) # TODO no expansion
+        self.Cr  = Taylor(name_for_var,'C_r', nq, 3 , nq=nq, rname=None , cname=['x','y','z'], order=orderMM, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+        self.Me  = Taylor(name_for_var,'M_e', nq, nq, nq=nq, rname=None , cname=None, order=orderMM, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+        self.mdCM= Taylor(name_for_var,'M_d', 3,  1 , nq=nq, rname='xyz', cname=[''], order=orderMM, noZeroExp=noZeroExp)
         # --- h-omega related terms
         self.Gr=[0]*nq
         self.Ge=[0]*nq
         for i in np.arange(nq):
-            self.Gr[i] = Taylor(name_for_var, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH)
-            self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH)
-        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH)
+            self.Gr[i] = Taylor(name_for_var, 'G_r_{}'.format(i+1), 3,  3,  nq=nq, rname='xyz', cname='xyz', order=orderH, noZeroExp=noZeroExp)
+            self.Ge[i] = SmpMat(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+#           self.Ge[i] = Taylor(name_for_var, 'G_e_{}'.format(i+1), nq, 3,  nq=nq, rname=None, cname='xyz', order=orderH, noZeroExp=noZeroExp    , singleDOFNumbering=singleDOFNumbering)
+        self.Oe = Taylor(name_for_var, 'O_e', nq, 6,  nq=nq, rname=None, cname=['xx','yy','zz','xy','yz','xz'], order=orderH, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
         # --- Stiffness and damping
-        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
-        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1)
+        self.Ke  = Taylor(name_for_var,'K_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
+        self.De  = Taylor(name_for_var,'D_e', nq, nq, nq=nq, rname=None , cname=None, order=1, noZeroExp=noZeroExp, singleDOFNumbering=singleDOFNumbering)
         
-        self.directions=directions
+        if len(directions)<nq:
+            raise Exception(f'Number of directions should be at least {nq}. Directions provided are {directions}')
+        self.directions=directions[:nq]
         self.defineExtremity(directions, unit_deflect=tip_unit_deflect, rotate=tip_rotate)
         
         self.origin = Point('O_'+self.name)
@@ -1257,7 +1335,7 @@ class YAMSFlexibleBody(YAMSBody):
         s+=' - alpha :       {}\n'.format(self.alpha)
         s+=' - directions:   {}\n'.format(self.directions)
         s+='Useful functions:\n'
-        s+='  - bodyMassMatrix(form="regular", point="origin")\n'
+        s+='  - bodyMassMatrix(form="symbolic", point="origin")\n'
         return s
 
 
@@ -1315,6 +1393,33 @@ class YAMSFlexibleBody(YAMSBody):
         self.ucList =uList # "PhiU" values at connection point for each mode
         self.vcList =vList # "PhiV" values at connection point for each mode
 
+    def _connection_kinematics_bc(self):
+        """Return (R_bc, Bhat_x_bc, Bhat_t_bc) at the body connection point.
+
+        This mirrors the connection-point quantities used by yams_rec for
+        recursive kinematics assembly, using current symbolic extremity
+        substitutions from this flexible body.
+        """
+        nq = len(self.q)
+        if nq == 0:
+            return Matrix.eye(3), Matrix.zeros(3, 0), Matrix.zeros(3, 0)
+
+        # Substituted elastic tip displacement/rotation at connection point.
+        ux = sp.sympify(self.uc[0]).subs(self.ucSubs)
+        uy = sp.sympify(self.uc[1]).subs(self.ucSubs)
+        uz = sp.Integer(0)
+        ax = sp.sympify(self.alpha[0]).subs(self.alphaSubs)
+        ay = sp.sympify(self.alpha[1]).subs(self.alphaSubs)
+        az = sp.sympify(self.alpha[2]).subs(self.alphaSubs)
+
+        u_expr = Matrix([ux, uy, uz])
+        a_expr = Matrix([ax, ay, az])
+
+        Bhat_x_bc = u_expr.jacobian(self.q)
+        Bhat_t_bc = a_expr.jacobian(self.q)
+        R_bc = rotToDCM('SmallRot', (a_expr[0], a_expr[1], a_expr[2]))
+        return R_bc, Bhat_x_bc, Bhat_t_bc
+
     def bodyMassMatrix(self, q=None, form='TaylorExpanded', order=None, dof=None):
         """ Body mass matrix in body coordinates M'(q)
         form is ['symbolic' , 'TaylorExpanded']
@@ -1338,8 +1443,8 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[1,1] = 0
             self.M[2,2] = 0
             # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.get(dof, order)) 
-            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            self.M[0:3,3:6] = - skew(self.mdCM.get(dof, order)) # = -skew(mdCM)
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()       # =  skew(mdCM)
             # Mrr
             self.M[3:6,3:6] = self.J.get(dof,order)
             # Mgx, Mxg
@@ -1381,8 +1486,8 @@ class YAMSFlexibleBody(YAMSBody):
         elif form=='TaylorExpanded':
             # We evaluate
             # Mrx, Mxr
-            self.M[0:3,3:6] = skew(self.mdCM.eval(q)) # NOTE: sign convention is opposite wallrapp, change convention
-            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()
+            self.M[0:3,3:6] = - skew(self.mdCM.eval(q))    # = - skew(mdCM)
+            self.M[3:6,0:3] = self.M[0:3,3:6].transpose()  # =   skew(mdCM)
             # Mrr
             self.M[3:6,3:6] = self.J.eval(q)
             # Mgx, Mxg
@@ -1395,7 +1500,7 @@ class YAMSFlexibleBody(YAMSBody):
             self.M[6:6+nq,6:6+nq] = self.Me.eval(q)
 
         else:
-            raise Exception('Unknown mass matrix form option `{}`'.format(form))
+            raise Exception('Unknown mass matrix form option `{}`. Allowed are: `TaylorExpanded` or `symbolic`'.format(form))
 
         if self.predefined_kind is not None:
             if self.predefined_kind=='twr-z':
@@ -1493,8 +1598,72 @@ class YAMSFlexibleBody(YAMSBody):
                 raise NotImplementedError()
         
         return self.M
+
+
+    def bodyMassMatrixNonLin(self, form='TaylorExpanded'):
+        nq = len(self.q)
+        MNL = zeros(6+nq,6+nq)
+
+        MMloc = self.bodyMassMatrix(form=form) # TODO need symbolic form with Wallrapp notation
+
+        # --- NEW CORRECTION
+        M_theta_theta_1, M_theta_theta_2 = self.M_theta_theta_expansion()
+
+        for j, q_j in enumerate(self.q):
+            # --- First order terms
+            # --- M x_theta_1
+            C_tj = MMloc[0:3, 6 + j] # Vector
+            MNL[0:3,3:6] += - skew(C_tj) * q_j
+            # --- M_theta_theta_1
+            MNL[3:6,3:6] += M_theta_theta_1[j] * q_j
+            # --- M_theta_e_1
+            MNL[3:6,6:] += sp.S.Half * self.Ge[j].T * q_j 
+            # --- Second order terms
+            # --- M_theta_theta_2
+            for k, q_k in enumerate(self.q):
+                if j==k:
+                    # TODO TODO
+                    MNL[3:6,3:6] += M_theta_theta_2[j][k] * q_j * q_k
+        # --- Make it symmetric
+        MNL[3:6, 0:3] = MNL[0:3,3:6].T
+        MNL[6: , 3:6] = MNL[3:6, 6:].T
+        return MNL
+
+    def M_theta_theta_expansion(self, Mform='TaylorExpanded'):
+        """ Return nonlinear terms of M theta theta 
+        Note: computed analytically on 20/7/2026 as part of 673 extract notes, to be placed elsewhere.
+        """
+        MMloc = self.bodyMassMatrix(form=Mform)
+
+        M_theta_theta_1 = [zeros(3,3)] * len(self.q)
+        M_theta_theta_2 = [[zeros(3,3)] * len(self.q)] * len(self.q)
+        # Loop on body DOFs
+        for j, q_j in enumerate(self.q):
+            # --- M_theta_theta_1
+            C_rj = MMloc[3:6, 6 + j] # Cr row j, a vector of length 3
+            M_theta_theta_1[j]= - skew(C_rj)
+
+            # --- M_theta_theta_2
+            for k, q_k in enumerate(self.q):
+                M_ejk = MMloc[6 + j, 6 + k] # Modal mass
+                if 'z' in np.array(self.directions).flatten():
+                    raise NotImplementedError('M_theta_theta correction only implemented for z-beam')
+                M_theta_theta_2[j][k][2, 2] = M_ejk # Good as long as beam along z
+                if len(np.unique(np.array(self.directions).flatten()))!=len(self.q):
+                    raise NotImplementedError('Shape function directions needs to be unique for M_theta_tehta correction for now..')
+                # NOTE: simplifications for now, assume all modes are in different directions
+                if k==j:
+                    if self.directions[j]=='x':
+                        M_theta_theta_2[j][k][1, 1] = M_ejk
+                    elif self.directions[j]=='y':
+                        M_theta_theta_2[j][k][0, 0] = M_ejk
+                    else:
+                        raise NotImplementedError('Only pure x and y directions supported for M_theta_theta correction')
+        return M_theta_theta_1, M_theta_theta_2
+
+
     
-    def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded'):
+    def bodyQuadraticForce(self, omega, q, qd, form='TaylorExpanded', nonLinCorr=False):
         r""" Body quadratic force  k_\omega (or h_omega)  (centrifugal and gyroscopic)
         inputs:
            omega: angular velocity of the body wrt to the inertial frame, expressed in body coordinates
@@ -1514,22 +1683,61 @@ class YAMSFlexibleBody(YAMSBody):
         ox,oy,oz=omega[0,0],omega[1,0],omega[2,0]
         omega_q = Matrix([ox**2, oy**2,oz**2, ox*oy, oy*oz, ox*oz]).reshape(6,1)
         
-        if form=='TaylorExpanded':
-            # k_omega_t
-            k_omega[0:3,0] = 2 *om_til * transpose(self.Ct.eval(q)) * qd # TODO does star work? or dot!
-            k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: mdCM sign convention is opposite Wallrap
-            # k_omega_r
-            k_omega[3:6,0] = om_til * self.J.eval(q) * omega
-            for k in np.arange(nq):
-                k_omega[3:6,0] += self.Gr[k].eval(q) * qd[k] * omega
-            # k_omega_e
-            k_omega[6:6+nq,0] = self.Oe.eval(q) * omega_q
-            for k in np.arange(nq):
-                k_omega[6:6+nq,0] += self.Ge[k].eval(q) * qd[k] * omega
+        if not nonLinCorr:
+            if form=='TaylorExpanded':
+                # --- k_omega_t
+                k_omega[0:3,0] =  2 *om_til * transpose(self.Ct.eval(q)) * qd # NOTE we use star instead of dot because Ct and qd are sympy Matrix
+                # k_omega[0:3,0] += om_til * skew(self.mdCM.eval(q)) * omega # NOTE: Wrong sign convention mdCM sign convention is opposite Wallrap
+                k_omega[0:3,0] += om_til * (om_til * self.mdCM.eval(q))  # True expression 
+                #k_omega[0:3,0] += - om_til * skew(self.mdCM.eval(q)) * omega # Alternative from true expression by reverting the cross product
+
+                # --- k_omega_r 
+                k_omega[3:6,0] = om_til * self.J.eval(q) * omega
+                for k in np.arange(nq):
+                    k_omega[3:6,0] += self.Gr[k].eval(q) * qd[k] * omega
+
+                # --- k_omega_e
+                k_omega[6:6+nq,0] = self.Oe.eval(q) * omega_q
+                for k in np.arange(nq):
+                    #k_omega[6:6+nq,0] += self.Ge[k].eval(q) * qd[k] * omega
+                    k_omega[6:6+nq,0] += self.Ge[k] * qd[k] * omega
+            else:
+                raise NotImplementedError()
         else:
-            raise NotImplementedError()
+            M_theta_theta_1, M_theta_theta_2 = self.M_theta_theta_expansion()
+
+            # --- NOTE: only the nonlinCorr here
+            # --- k_omega_t
+            #k_omega[0:3,0] =  2 *om_til * transpose(self.Ct.eval(q)) * qd # No expansion of Ct
+            for j, q_j in enumerate(q):
+                mdCM_1_j = self.Ct.M0[j,:].T * q_j
+                k_omega[0:3,0] += om_til * (om_til *  mdCM_1_j )  # True expression 
+
+            # --- k_omega_r - Term 1
+            M_theta_theta_ = zeros(3, 3)
+            for j, q_j in enumerate(q):
+                M_theta_theta_ += M_theta_theta_1[j] * q_j
+                for k, q_k in enumerate(q):
+                    M_theta_theta_ += M_theta_theta_2[j][k] * q_j * q_k
+            k_omega[3:6,0] += om_til * ( M_theta_theta_ ) * omega
+
+            # --- k_omega_r - Term 2
+            for j in np.arange(nq):
+                Gr_ = zeros(3, 3)
+                for k, q_k in enumerate(q):
+                    Gr_ += 2* M_theta_theta_2[k][j] * q_k
+                k_omega[3:6,0] += Gr_ * qd[j] * omega
+
+            # --- k_omega_e
+            for j in np.arange(nq):
+                Oe_1 = zeros(3,3)
+                for k, q_k in enumerate(q):
+                    Oe_1 += - M_theta_theta_2[k][j] * q_k
+                k_omega[6+j,0] +=  (omega.T * Oe_1 * omega)[0,0]
 
         return k_omega
+
+
     
     def bodyElasticForce(self, q, qd):
         # --- Safety
@@ -1544,7 +1752,9 @@ class YAMSFlexibleBody(YAMSBody):
         return ke
 
     def bodyGravitationalForce(self, g_vect, q, form='TaylorExpanded'):
-        """ Body gravity force  h_g  
+        r""" Body gravity force  h_g, acts as an external force on the right hand side
+            M a + k_{\omega} + k_e = f_{ext,other} + h_g
+
         inputs:
            g_vect: gravity vector, expressed in body coordinates
            q: generalized coordinates for this body
@@ -1565,11 +1775,11 @@ class YAMSFlexibleBody(YAMSBody):
         h_g = Matrix(np.zeros((6+nq,1)).astype(int)) 
         if form=='TaylorExpanded':
             # h_g,t
-            h_g[0:3,0] = M33.dot(g_vect)
+            h_g[0:3,0] = M33.dot(g_vect)                      # f_g    = \int m g_vect
             # h_g,t
-            h_g[3:6,0] =  skew(self.mdCM.eval(q)).dot(g_vect)
+            h_g[3:6,0] =  skew(self.mdCM.eval(q)).dot(g_vect) # \tau_g = \int r_{CG} \times (m g_vect) = \int (m r_{CG}) \times g_vect
             # h_g_e
-            h_g[6:6+nq,0] =  (self.Ct.eval(q)).dot(g_vect)
+            h_g[6:6+nq,0] =  (self.Ct.eval(q)).dot(g_vect)    #f_{g,e} = \int   m(z) \Phi(z)^T g_vect dz = C_t \, g_vect
         else:
             raise NotImplementedError()
 
@@ -1604,6 +1814,8 @@ class YAMSFlexibleBody(YAMSBody):
           - by default doSubs is True
               alpha_y - > nu y*q 
         """
+        # Ensure scalar entries are SymPy objects so `.subs` works for numeric literals.
+        rel_pos = [sp.sympify(r) for r in rel_pos]
         rel_pos = [r + u for r,u in zip(rel_pos, parent.uc)]
         # Computing DCM due to elastic motion
         M_B2e = rotToDCM(rot_type_elastic, rot_amounts = parent.alpha, rot_order=rot_order_elastic) # from parent to deformed parent 
@@ -1635,11 +1847,11 @@ class YAMSFlexibleBody(YAMSBody):
                     if xyz=='y' or xyz=='x':
                         # Ge
                         for jq in np.arange(nq):
-                            self.Ge[iq].M0[jq,0]=0
-                            self.Ge[iq].M0[jq,1]=0
+                            self.Ge[iq][jq,0]=0
+                            self.Ge[iq][jq,1]=0
                             xyz2 = self.directions[jq]
                             if xyz==xyz2:
-                                self.Ge[iq].M0[jq,2]=0
+                                self.Ge[iq][jq,2]=0
                             if xyz!=xyz2:
                                 self.Me.M0[iq,jq]=0
                                 self.De.M0[iq,jq]=0
@@ -1717,9 +1929,9 @@ class YAMSFlexibleBody(YAMSBody):
                         rd[s] = ('Gr_{}'.format(self.name_for_var), [iq,i,j])
 
         for iq in np.arange(len(self.Ge)):
-            for i in np.arange(self.Ge[iq].M0.shape[0]):
-                for j in np.arange(self.Ge[iq].M0.shape[1]):
-                    s=repr(self.Ge[iq].M0[i,j])
+            for i in np.arange(self.Ge[iq].shape[0]):
+                for j in np.arange(self.Ge[iq].shape[1]):
+                    s=repr(self.Ge[iq][i,j])
                     if len(s)>1:
                         rd[s] = ('Ge_{}'.format(self.name_for_var), [iq,i,j])
 
@@ -1743,173 +1955,360 @@ class YAMSFlexibleBody(YAMSBody):
         return rd
     
 
-# --------------------------------------------------------------------------------}
-# --- Beam Body 
-# --------------------------------------------------------------------------------{
-class BeamBody(Body):
-    def __init__(B,Name,nf,main_axis='z',nD=2):
-        super(BeamBody,B).__init__(Name)
-        B.nf  = nf
-        B.nD  = nD
-        B.main_axis = main_axis
     @property
-    def alpha_couplings(self):
-        return  np.dot(self.Bhat_t_bc , self.gzf)
+    def curvilinear_coord(self):
+        s=Symbol('s') # TODO, could use name for var
+        return s
 
-    @property
-    def R_bc(self):
-        if self.main_axis=='x':
-            alpha_y= symbols('alpha_y') #-p.V(3,iNode);
-            alpha_z= symbols('alpha_z') # p.V(2,iNode);
-            return R_y(alpha_y)*R_z(alpha_z)
-
-        elif self.main_axis=='z':
-            alpha_x= symbols('alpha_x') #-p.V(2,iNode);
-            alpha_y= symbols('alpha_y') # p.V(1,iNode);
-            return R_x(alpha_x)*R_y(alpha_y)
+    def Phi(self, form='function', var=None, full=False):
+        """ Return matrix of shape function displacement field"""
+        if var is None:
+            var = self.curvilinear_coord
+        if full:
+            directions=['xyz']*len(self.q)
         else:
-            raise NotImplementedError()
+            directions = self.directions
 
-    @property
-    def Bhat_x_bc(self):
-        #      Bx_pc(:,j)=p.PhiU{j}(:,iNode);
-        Bhat_x_bc = Matrix(np.zeros((3,self.nf)).astype(int))
-        if self.main_axis=='z':
-            for j in np.arange(self.nf):
-                if j<self.nf/2 or self.nD==1:
-                    Bhat_x_bc[0,j]=symbols('ux{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along x
-                else:
-                    Bhat_x_bc[1,j]=symbols('uy{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along y
-        elif self.main_axis=='x':
-            for j in np.arange(self.nf):
-                if j<self.nf/2 or self.nD==1:
-                    Bhat_x_bc[2,j]=symbols('uz{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along z
-                else:
-                    Bhat_x_bc[1,j]=symbols('uy{:d}c'.format(j+1)) # p.PhiU{j}(:,iNode);  along y
-        return Bhat_x_bc
-
-    @property
-    def Bhat_t_bc(self):
-        #      Bt_pc(:,j)=[0; -p.PhiV{j}(3,iNode); p.PhiV{j}(2,iNode)];
-        Bhat_t_bc = Matrix(np.zeros((3,self.nf)).astype(int))
-        if self.main_axis=='z':
-            for j in np.arange(self.nf):
-                if j<self.nf/2  or self.nD==1:
-                    Bhat_t_bc[1,j]=symbols('vy{:d}c'.format(j+1))
-                else:
-                    Bhat_t_bc[0,j]=-symbols('vx{:d}c'.format(j+1))
-        elif self.main_axis=='x':
-            for j in np.arange(self.nf):
-                if j<self.nf/2 or self.nD==1:
-                    Bhat_t_bc[1,j]=-symbols('vz{:d}c'.format(j+1))
-                else:
-                    Bhat_t_bc[2,j]=symbols('vy{:d}c'.format(j+1))
-        return Bhat_t_bc
-
-
-
-
-# --------------------------------------------------------------------------------}
-# --- Rotation 
-# --------------------------------------------------------------------------------{
-def R_x(t):
-    return Matrix( [[1,0,0], [0,cos(t),-sin(t)], [0,sin(t),cos(t)]])
-def R_y(t):
-    return Matrix( [[cos(t),0,sin(t)], [0,1,0], [-sin(t),0,cos(t)] ])
-def R_z(t): 
-    return Matrix( [[cos(t),-sin(t),0], [sin(t),cos(t),0], [0,0,1]])
-# --------------------------------------------------------------------------------}
-# --- B Matrices 
-# --------------------------------------------------------------------------------{
-def fB_inB(R_EI, B_I):
-    """ Transfer a global B_I matrix (body I at point I) into a matrix in it's own coordinate.
-    Simply multiply the top part and bottom part of the B matrix by the 3x3 rotation matrix R_EI
-    e.g.
-         B_N_inN = [R_EN' * B_N(1:3,:);  R_EN' * B_N(4:6,:)];
-    """ 
-    if len(B_I)==0:
-        B_I_inI = Matrix(np.array([]))
-    else:
-        B_I_inI = Matrix(np.vstack(( R_EI.T* B_I[:3,:],  R_EI.T * B_I[3:,:])))
-    return B_I_inI
-
-def fB_aug(B_I_inI, nf_I, nf_Curr=None, nf_Prev=None):
-    """
-    Augments the B_I_inI matrix, to include nf_I flexible degrees of freedom.
-    This returns the full B matrix on the left side of Eq.(11) from [1], 
-    based on the Bx and Bt matrices on the right side of this equation
-    """
-    if len(B_I_inI)==0:
-        if nf_I>0:
-            BB_I_inI = Matrix(np.vstack( (np.zeros((6,nf_I)).astype(int), np.eye(nf_I).astype(int))) )
+        Phis = zeros( 3, len(self.q) )
+        if form =='function':
+            for iq, axes in enumerate(directions):
+                if 'x' in axes:
+                    Phis[iq, 0] = Function('Phi_'+self.name_for_var+str(iq+1)+'_x')(var)
+                if 'y' in axes:
+                    Phis[iq, 1] = Function('Phi_'+self.name_for_var+str(iq+1)+'_y')(var)
         else:
-            BB_I_inI= Matrix(np.zeros((6,0)).astype(int))
-    else:
-        if nf_Curr is not None:
-            # Case of several flexible bodies connected to one point (i.e. blades)
-            nf_After=nf_I-nf_Prev-nf_Curr
-            I = np.block( [np.zeros((nf_Curr,nf_Prev)), np.eye(nf_Curr), np.zeros((nf_Curr,nf_After))] )
+            for iq, axes in enumerate(self.directions):
+                if 'x' in axes:
+                    Phis[iq, 0] = Symbol('Phi_'+self.name_for_var+str(iq+1)+'_x') 
+                if 'y' in axes:
+                    Phis[iq, 1] = Symbol('Phi_'+self.name_for_var+str(iq+1)+'_y') 
+        return Phis
+
+    def uP(self, form='function', var=None):
+        """ Return displacement field at point P"""
+        uP = zeros(3,1)
+        Phis = self.Phi(form=form, var=var)
+        for j, qj in enumerate(self.q):
+            uP += qj*Phis[:, j]
+        return uP
+
+    def udotP(self, form='function', var=None):
+        # udot = sum qdot_j * Phi_j
+        Phis = self.Phi(form = form, var=var)
+        udotP = sp.zeros(3, 1)
+        for j, qdotj in enumerate(self.qdot):
+            udotP += qdotj * Phis[:, j]
+        return udotP
+
+
+    def r0(self):
+        """ 
+        r_0 = (x0, y0, z0)_B is the undeformed position vector, with coords in body frame
+        """
+        x0,y0,z0 = sp.symbols('x_0, y_0 z_0')
+        if self.predefined_kind == 'twr-z':
+            x0=0
+            y0=0
+#         else:
+#             raise NotImplementedError('predefined kind {self.predefined_kind}')
+        r0 = sp.Matrix([x0, y0, z0])
+        return r0
+
+    def rP(self, form='function', var=None):
+        """ 
+         r_P = r_0 + u = r_0 + sum q_j Phi_j
+        """
+        r0 = self.r0()
+        if self.predefined_kind == 'twr-z':
+            var = r0[2,0] # z0
+        rP = r0 + self.uP(form=form, var=var)
+        return rP
+            
+
+    def KE_origin_vel(self):
+        # NOTE: those better be unique symbols across the framework and bodies
+        vOx, vOy, vOz = sp.symbols('v_Ox, v_Oy, v_Oz') # Body Origin Velocity in body frame
+        omx, omy, omz = sp.symbols('omega_x, omega_y, omega_z') # Body angular velocity in body frame
+        vO_symb = sp.Matrix([vOx, vOy, vOz])
+        om_symb = sp.Matrix([omx, omy, omz])
+        if self.inertial_frame is None:
+            subs_dict = None
         else:
-            nf_Curr=nf_I
-            I=np.eye(nf_I)
+            vO_coord = self.vel_inertial.to_matrix(self.frame).simplify()
+            om_coord = self.omega_inertial.to_matrix(self.frame).simplify()
+            subs_dict = {
+                vOx: vO_coord[0], vOy: vO_coord[1], vOz: vO_coord[2],
+                omx: om_coord[0], omy: om_coord[1], omz: om_coord[2]
+            }
+        #print('>>> Origin velocity')
+        #print(vO_symb)
+        #print(om_symb)
+        return vO_symb, om_symb, subs_dict
 
-        BB_I_inI = np.block([ [B_I_inI, np.zeros((6,nf_I))], [np.zeros((nf_Curr,B_I_inI.shape[1])), I]]);
+    def kinetic_energy(self, frame=None, subs=False, method='analytical_atoms'):
 
-    return Matrix(BB_I_inI)
+        # ---  Define arbitrary velocity of body using symbols
+        vO_symb, om_symb, origin_vel_subs = self.KE_origin_vel()
 
+        # --- Kinematics of point P
+        rP = self.rP()
+        r0 = self.r0()
+        if self.predefined_kind == 'twr-z':
+            var = r0[2, 0] 
+        else:
+            var= None
+        Phis  = self.Phi(var=var)
+        udotP = self.udotP(var=var)
+        #print(Phis)
+        #print(udotP)
+        
+        # --- Compute individual atoms
+        if method =='analytical_atoms':
+            T1 = self._KE_atom1_translation(vO_symb)
+            T2 = self._KE_atom2_trans_rot(vO_symb, om_symb, rP)
+            T3 = self._KE_atom3_trans_elastic(vO_symb, udotP)
+            T4 = self._KE_atom4_rotation(om_symb, rP)
+            T5 = self._KE_atom5_rot_elastic(om_symb, rP, udotP)
+            T6 = self._KE_atom6_pure_elastic(udotP)
+            T_symb = T1 + T2 + T3 + T4 + T5 +  T6
+        elif method == 'direct':
+            T_symb = self._KE_direct_identification(vO_symb, om_symb)
 
-def fBMatRecursion(Bp, Bhat_x, Bhat_t, R0p, r_pi):
-    """ Recursive formulae for B' and Bhat 
-    See discussion after Eq.(12) and (15) from [1]
-    """
-    # --- Safety checks
-    if len(Bp)==0:
-        n_p = 0
-    elif len(Bp.shape)==2:
-        n_p = Bp.shape[1]
-    else:
-        raise Exception('Bp needs to be empty or a 2d array')
-    if len(Bhat_x)==0:
-        ni = 0
-    elif len(Bhat_x.shape)==2:
-        ni = Bhat_x.shape[1]
-    else:
-        raise Exception('Bi needs to be empty or a 2d array')
-
-    r_pi=colvec(r_pi)
-
-    # TODO use Translate here
-    Bi = Matrix(np.zeros((6,ni+n_p)))
-    for j in range(n_p):
-        Bi[:3,j] = Bp[:3,j]+cross(Bp[3:,j],r_pi) # Recursive formula for Bt mentioned after Eq.(15)
-        Bi[3:,j] = Bp[3:,j] # Recursive formula for Bx mentioned after Eq.(12)
-    if ni>0:
-        Bi[:3,n_p:] = R0p*Bhat_x[:,:] # Recursive formula for Bx mentioned after Eq.(15)
-        Bi[3:,n_p:] = R0p*Bhat_t[:,:] # Recursive formula for Bt mentioned after Eq.(12)
-    return Bi
-
-def fBMatTranslate(Bp,r_pi):
-    """
-    Rigid translation of a B matrix to another point, i.e. transfer the velocities from a point to another: 
-      - translational velocity:  v@J = v@I + om@I x r@IJ
-      - rotational velocity   : om@J = om@I
-    """
-    Bi=np.zeros(Bp.shape)
-    if Bp.ndim==1:
-        raise NotImplementedError
-
-    for j in range(Bp.shape[1]):
-        Bi[0:3,j] = Bp[0:3,j]+np.cross(Bp[3:6,j],r_pi.ravel());
-        Bi[3:6,j] = Bp[3:6,j]
-    return Bi
+        # --- Final step: replace placeholders with true body-frame kinematics
+        if self.inertial_frame is None:
+            print('>>>>> KE: inertial_frame is None, keeping things symbolic')
+            return T_symb
+        else:
+            print('subs_dict', origin_vel_subs)
+            if subs:
+                return T_symb.subs(origin_vel_subs).simplify()
+            else:
+                return T_symb
 
 
-def fBMB(BB_I_inI,MM):
-    """ Computes the body generalized matrix: B'^t M' B 
-    See Eq.(8) of [1] 
-    """
-    MM_I = np.dot(np.transpose(BB_I_inI), MM).dot(BB_I_inI)
-    return MM_I
+    def _KE_atom1_translation(self, vO):
+        """Atom 1: 0.5 * m * (vO . vO)"""
+        return sp.Rational(1, 2) * self.mass * vO.dot(vO)
+
+    def _KE_atom2_trans_rot(self, vO, om, rP):
+        """Atom 2: vO . (om x integral(rP dm))"""
+        # integral(rP dm) = S + sum(q_j * Ct_j)
+        S_total = self.mdCM.M0
+        
+        # Add elastic contribution to center of mass moment if Ct exists
+        for j, qj in enumerate(self.q):
+            S_total += qj * self.Ct.M0[j, :].T
+                
+        return vO.dot(om.cross(S_total))
+
+    def _KE_atom3_trans_elastic(self, vO, udotP):
+        """Atom 3: vO . integral(udotP dm) = vO . sum(qdot_j * Ct_j)"""
+        udot_integrated = sp.zeros(3, 1)
+        for j, qdotj in enumerate(self.qdot):
+            udot_integrated += qdotj * self.Ct.M0[j, :].T
+        return vO.dot(udot_integrated)
+
+    def _KE_atom4_rotation(self, om, rP):
+        """Atom 4: 0.5 * om^T * J(q) * om"""
+        # Retrieve or assemble J(q) = J0 + sum(q_j * Je_j) + ...
+        J_q = self.J.M0
+        # TODO
+        #for j, qj in enumerate(self.q):
+        #    J_q += qj * self.Je[j]
+        # 1st-order extension: J_q += sum_j (q_j * Je_j)
+        #for j, qj in enumerate(self.q):
+        #    J_q += qj * self.Je[j]
+                
+        # 2nd-order extension: J_q += sum_{j,k} (q_j * q_k * Je_jk)
+        #for j, qj in enumerate(self.q):
+        #    for k, qk in enumerate(self.q):
+        #        J_q += qj * qk * self.Je_jk[j][k]
+                
+        return sp.Rational(1, 2) * (om.T * J_q * om)[0]
+
+    def _KE_atom5_rot_elastic(self, om, rP, udotP):
+        """Atom 5: om . integral(rP x udotP dm)"""
+        # Evaluates to om . (sum(qdot_k * Cr_k) + sum(q_j * qdot_k * Cr_jk))
+        rot_elastic_term = sp.zeros(3, 1)
+        
+        for k, qdotk in enumerate(self.qdot):
+            rot_elastic_term += qdotk * self.Cr.M0[k, :].T
+                
+        # TODO
+        #for j, qj in enumerate(self.q):
+        #    for k, qdotk in enumerate(self.qdot):
+        #        rot_elastic_term += qj * qdotk * self.Cr_jk[j][k]
+                    
+        return om.dot(rot_elastic_term)
+
+    def _KE_atom6_pure_elastic(self, udotP):
+        """Atom 6: 0.5 * qdot^T * Me * qdot"""
+        qdot_vec = sp.Matrix(self.qdot)
+        return sp.Rational(1, 2) * (qdot_vec.T * self.Me.M0 * qdot_vec)[0]
+
+
+    def bodyMassMatrixFromKE(self, T=None, method='analytical_atoms'):
+        """
+        Computes the generic body mass matrix M(q) from the kinetic energy T(q, v_O, om, qdot)
+        by differentiating with respect to the body velocity vector:
+            nu = [v_Ox, v_Oy, v_Oz, omega_x, omega_y, omega_z, qdot_1, ..., qdot_N]^T
+        
+        Returns:
+            sp.Matrix of shape (6 + n_modes, 6 + n_modes)
+        """
+        # 1. Compute kinetic energy with symbolic placeholders if not supplied
+        if T is None:
+            T = self.kinetic_energy(subs=False, method=method)
+            
+        # 2. Re-create the exact symbolic placeholders used in kinetic_energy
+        vOx, vOy, vOz = sp.symbols('v_Ox, v_Oy, v_Oz')
+        omx, omy, omz = sp.symbols('omega_x, omega_y, omega_z')
+        
+        # 3. Assemble the full velocity vector nu
+        nu = sp.Matrix([vOx, vOy, vOz, omx, omy, omz] + list(self.qdot))
+        n_dof = len(nu)
+        
+        # 4. Compute M_ij = d^2(T) / (d nu_i d nu_j)
+        M = sp.zeros(n_dof, n_dof)
+        for i in range(n_dof):
+            # First gradient element dT / d(nu_i)
+            dT_dnu_i = sp.diff(T, nu[i])
+            
+            # Second derivative for lower triangle + diagonal
+            for j in range(i, n_dof):
+                val = sp.diff(dT_dnu_i, nu[j])
+                M[i, j] = val
+                if i != j:
+                    M[j, i] = val # Enforce symmetry
+                    
+        return M
+
+
+    def _KE_direct_identification(self, vO_symb, om_symb):
+            """
+            Computes 1/2 * v_P . v_P symbolically, expands spatial terms, 
+            and matches spatial integrands against shape integral definitions.
+            """
+            # 1. Point P kinematics
+            r0 = self.r0()
+            if self.predefined_kind == 'twr-z':
+                var = r0[2, 0] 
+            else:
+                var = None
+            rP = self.rP(var=var) # 3x1 Matrix depending on spatial var (e.g. z_0)
+            udotP = self.udotP(var=var) # 3x1 Matrix depending on qdot and Phis
+            
+            # 2. Local point velocity vector v_P
+            vP = vO_symb + om_symb.cross(rP) + udotP
+            
+            # 3. Scalar kinetic energy density = 1/2 * vP . vP
+            # Expanding scalar dot product ensures additive terms
+            T_density = sp.Rational(1, 2) * vP.dot(vP)
+            T_expanded = sp.expand(T_density)
+            
+            # Identify spatial variable (e.g. z_0)
+            z0 = self.r0()[2, 0] if self.predefined_kind == 'twr-z' else sp.Symbol('z_0')
+            
+            # Identify all time-dependent variables to hold constant
+            time_symbols = set(vO_symb) | set(om_symb) | set(self.q) | set(self.qdot)
+            
+            # Split into additive scalar terms
+            terms = sp.Add.make_args(T_expanded)
+            
+            T_integrated = 0
+            for term in terms:
+                # Separate time-dependent factors from spatial factors
+                spatial_part, time_part = term.as_independent(*time_symbols, as_coeff_prod=True)
+                # Pull out pure numerical coefficients (e.g., 1/2, 2, -1) from spatial_part
+                num_coeff, pure_spatial = spatial_part.as_coeff_Mul()
+                
+                # Identify shape integral symbol for the pure spatial integrand
+                shape_integral_symb = self._identify_shape_integral(pure_spatial, z0)
+
+                T_integrated += num_coeff * time_part * shape_integral_symb
+                
+            return T_integrated
+
+    def _identify_shape_integral(self, spatial_expr, s_var):
+        """
+        Pattern matches spatial expressions inside integral( rho * spatial_expr dz )
+        to generate symbolic shape integrals.
+        """
+        # 1. Constant term (int(1 dz) -> M_T)
+        # Pure constant spatial factor
+        if spatial_expr == 1:
+             return self.mass
+
+        # 2. First mass moment (int(z dz) -> S_z)
+        if spatial_expr == s_var:
+            return self.mdCM.M0[2]
+            #return sp.Symbol('M_dTz')
+
+        # 3. Second mass moment / Inertia terms (int(z^2 dz) -> J_z2)
+        if spatial_expr == s_var**2:
+            return sp.Symbol('J_z2')
+
+        # 4. Shape function terms
+        Phis = self.Phi(var=s_var)
+        for j, qj in enumerate(self.q):
+            phi_j = Phis[:, j]
+
+            # Linear translation coupling: int(Phi_j_dim dz) -> C_t_j_dim
+            for dim_idx, dim_name in enumerate(['x', 'y', 'z']):
+                if spatial_expr == phi_j[dim_idx]:
+                    return self.Ct.M0[j, dim_idx]
+                #return sp.Symbol(f'C_t_{j+1}_{dim_name}')
+                if spatial_expr == s_var * phi_j[dim_idx]:
+                    if dim_name == 'y':
+                        return -self.Cr.M0[j, 0] # Crx
+                    elif dim_name == 'x':
+                        return self.Cr.M0[j, 1] # Cry
+                    else:
+#                         if dim_name == 'x':
+#                     print('>>>>>>>>>>>> TODO TODO C_t_z')
+                        return sp.Symbol(f'C_t_z_{j+1}_{dim_name}')
+
+            # Modal mass coupling: int(Phi_j . Phi_k dz) -> M_e_j_k
+            for k, qk in enumerate(self.q):
+                phi_k = Phis[:, k]
+
+                # Check vector dot product match
+                if spatial_expr == phi_j.dot(phi_k):
+                    return self.Me.M0[j,k]
+                #return sp.Symbol(f'M_e_{j+1}_{k+1}')
+
+                # Check component-wise products (e.g., Phi_j_x * Phi_k_x)
+                for dim_idx in range(3):
+                    if spatial_expr == phi_j[dim_idx] * phi_k[dim_idx]:
+                        #return sp.Symbol(f'M_e_{j+1}_{k+1}')
+                        return self.Me.M0[j,k]
+                #return sp.Symbol(f'M_e_{j+1}_{k+1}')
+
+        print(f"Unrecognized spatial integrand structure: {spatial_expr}")
+        rho = sp.symbols(r'\rho')
+        L   = sp.symbols(r'L')
+        return sp.Integral(rho * spatial_expr, (s_var, 0, L))
 
 
 
+
+
+
+
+if __name__ == "__main__":
+    x, y, z = dynamicsymbols('x, y, z')
+    phi_x, phi_y, phi_z = dynamicsymbols('phi_x, phi_y, phi_z')
+    ref = YAMSInertialBody('E')
+
+    rot = YAMSRigidBody('R')
+    twr = YAMSFlexibleBody('T', 1, directions=['x'], predefined_kind='twr-z')
+#     twr = YAMSFlexibleBody('T', nDOF_twr, directions=opts['twrDOFDir'][:nDOF_twr], orderMM=opts['orderMM'], orderH=opts['orderH'], 
+#                            predefined_kind='twr-z', tip_unit_deflect=opts['twr_tip_unit_deflect'], tip_rotate=opts['twr_tip_rotate'],
+#                            noZeroExp=not opts['singleExpNumbering'], singleDOFNumbering=opts['singleDOFNumbering'])
+
+#     ref.connectTo(twr, type='Free' , rel_pos=[x,y,z], rot_type='Body', rot_amounts=[phi_x,phi_y,phi_z], rot_order='XYZ')
+
+
+    ref.connectTo(rot, type='Free', rel_pos=[x,y,z], rot_type='Body', rot_amounts=[phi_x,phi_y,phi_z], rot_order='XYZ')
+
+    print(rot.kinetic_energy(ref.frame))

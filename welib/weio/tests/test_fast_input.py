@@ -121,6 +121,7 @@ class Test(unittest.TestCase):
 
         F = ADPolarFile(numTabs=2)
         F.write('_DUMMY')
+        os.remove('_DUMMY')
 
     def test_FASTEDBld(self):
         F=FASTInputFile(os.path.join(MyDir,'FASTIn_ED_bld.dat'))
@@ -159,6 +160,26 @@ class Test(unittest.TestCase):
         graph = F.toGraph()
 #         self.assertEqual(len(graph.Nodes), 2)
 #         self.assertEqual(len(graph.Elements), 1)
+
+
+    def test_FASTInSubDyn(self):
+        F = FASTInputFile(os.path.join(MyDir,'FASTIn_SD_v50.dat'))
+        Mb = F['Members']
+
+        self.assertEqual(Mb.shape, (9,7))
+        self.assertEqual(Mb[0,0], 1)
+        self.assertEqual(Mb[0,5], '1c')
+
+        dfs = F.toDataFrame()
+        Mb = dfs['Members']
+        self.assertEqual(Mb['MemberID_[-]'][0], 1)
+        self.assertEqual(Mb['MType_[-]'][0], '1c')
+        self.assertIn(Mb['MemberID_[-]'].dtype.kind, ['i'])
+        self.assertIn(Mb['MType_[-]'].dtype.kind, ['O', 'S'])
+
+
+
+
     def test_FASTInMoorDyn(self):
         # MoorDyn version 1
         F=FASTInputFile(os.path.join(MyDir,'FASTIn_MD-v1.dat'))
@@ -176,7 +197,7 @@ class Test(unittest.TestCase):
         self.assertEqual(F['Points'].shape  , (6,9))
         self.assertEqual(len(F['Outlist'])  , 6)
         self.assertEqual(F['Outlist'][0]  , 'FairTen1')
-        self.assertEqual(F['LineProp'][0,0] , '1')
+        self.assertEqual(F['LineProp'][0,0] , 1)
         self.assertEqual(F['LineProp'][0,1] , 'main')
         self.assertEqual(F['LineProp'][0,6] , '-')
 

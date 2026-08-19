@@ -79,6 +79,7 @@ class Polar(object):
         # Read polar according to fileformat, if filename provided
         if filename is not None:
             df, Re = loadPolarFile(filename, fformat=fformat, to_radians=radians, verbose=verbose)
+            self._df_ori = df
             alpha = df['Alpha'].values
             cl    = df['Cl'].values
             cd    = df['Cd'].values
@@ -773,7 +774,14 @@ class Polar(object):
         # --- cn slope
         # Different method may be used. The max method ensures the the curve is always below its tangent
         # Leastsquare fit in the region alpha0cn+window_offset
-        cnSlope_poly, a0cn_poly = _find_slope(alpha, cn, window=alpha0cn + dwin, method="leastsquare", x0=alpha0cn)
+        bNaN = ~np.isnan(cn)
+        alpha_ = alpha[bNaN]
+        cn_    = cn[bNaN]
+        if len(alpha_)==0:
+            raise Exception('All values for Cn are NaN')
+        cnSlope_poly, a0cn_poly = _find_slope(alpha_, cn_, window=alpha0cn + dwin, method="leastsquare", x0=alpha0cn)
+        if np.isnan(cnSlope_poly):
+            raise Exception('Cn slope is NaN')
         #cnSlope_poly, a0cn_poly = _find_slope(alpha, cn, window=alpha0cn + dwin, method="leastsquare")
         # Max (KEEP ME)
         # cnSlope_max,a0cn_max = _find_slope(alpha, cn, window=[alpha0cn,a_StallUpp], method='max', xi=alpha0cn)
@@ -1928,6 +1936,8 @@ def _intersections(x1, y1, x2, y2, plot=False, minDist=1e-6, verbose=False):
 
     x = xy0[:, 0]
     y = xy0[:, 1]
+    if len(x)==0:
+        raise Exception('Cannot compute intersection, data is empty, maybe NaN are present?')
 
     # --- Remove "duplicates"
     if minDist is not None:

@@ -6,7 +6,6 @@ References:
 # --- General
 import unittest
 import numpy as np
-import numpy.matlib
 # --- Local
 try:
     from .elliptic import ellipticPiCarlson, ellipe, ellipk

@@ -5,7 +5,7 @@ try:
 except:
     from numpy import trapz as trapezoid
 
-from welib.hydro.wavekin import kinematics2d
+from welib.hydro.wavekin import kinematics2d, elevation2d
 
 
 def inline_load(u_rel, a_wav, a_rel, D, rho, Cd, Cp=None, Ca=None, CM=None):
@@ -81,6 +81,8 @@ def monopileHydroLoads1D(t, ai, fi, ki, epsi, h, z, x, D, rho, Cd, Cp, Ca, u_str
     u_struct = u_struct[bWet].flatten()
     a_struct = a_struct[bWet].flatten()
     
+    # Wave elevation (for outputs only)
+    eta = elevation2d(ai, fi, ki, epsi, t, x=x)
     # Wave kinematics
     u_wave, a_wave = kinematics2d(ai, fi, ki, epsi, h, t, zWet, x=x, Wheeler=False)
     # Relative motion
@@ -106,6 +108,7 @@ def monopileHydroLoads1D(t, ai, fi, ki, epsi, h, z, x, D, rho, Cd, Cp, Ca, u_str
     M_sb_hydro = trapezoid(p * (zWet-z_ref), zWet) # Sea bed moment [Nm]
 
     outH=dict()
+    outH['eta']   = eta
     outH['u_wav'] = u_wave
     outH['a_wav'] = a_wave
     outH['bWet'] = bWet

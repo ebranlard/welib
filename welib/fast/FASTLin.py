@@ -8,7 +8,10 @@ import pickle
 import glob
 import os
 import re
-from welib.weio.fast_linearization_file import FASTLinearizationFile
+from welib.weio.fast_linearization_file import FASTLinearizationFile, LinHasNAError
+from welib.fast.tools.lin import subMat
+from welib.tools.clean_exceptions import *
+from welib.tools.strings import FAIL, INFO, WARN
 import pandas as pd
 
 
@@ -20,7 +23,7 @@ class FASTLinPeriodicOP(object):
        ws05mps.36.lin
 
     """
-    def __init__(self, prefix=None, nLin=None, linFiles=None):
+    def __init__(self, prefix=None, nLin=None, linFiles=None, verbose=False):
 
         # --- Init data
         self.linFiles  = []
@@ -30,6 +33,10 @@ class FASTLinPeriodicOP(object):
         self.vWS       = []
         self.vPitch    = []
         self.vRotSpeed = []
+        self.x       = None
+        self.y       = None
+        self.u       = None
+        self.EDdescr = None
 
         # --- Figure out linFiles
         def glob_re(pattern_glob, pattern_re):
@@ -56,30 +63,28 @@ class FASTLinPeriodicOP(object):
 
         self.linFiles  = linFiles
         self.prefix    = prefix
-        self.Data      = []     # List of linFile as returned by weio
-        self.vAzim     = []
-        self.vWS       = []
-        self.vPitch    = []
-        self.vRotSpeed = []
+        df = None
         for i, linFilename in enumerate(linFiles):
-            print(linFilename)
             if not os.path.exists(linFilename):
-                print('Linearization file missing: ',linFilename)
-            linfile = FASTLinearizationFile(linFilename)
-            df      = linfile.toDataFrame()
+                FAIL('Linearization file missing: ',linFilename)
+                continue
+            try:
+                linfile = FASTLinearizationFile(linFilename)
+            except LinHasNAError:
+                FAIL('Linearization file has NaN: ',linFilename)
+                continue
+                
+            print(linFilename, f'nx:{linfile.nx} ny:{linfile.ny} nu:{linfile.nu}')
+            df = linfile.toDataFrame()
             self.Data.append(linfile)
-            #self.A=lin['A']
-            #B=linfile['B']
-            #u=linfile['u']
-            #self.C=lin['C']
-            #self.D=lin['D']
+
             if linfile['WindSpeed'] is not None:
                 self.vWS.append(linfile['WindSpeed'])
             else:
                 try:
                     self.vWS.append(df['u']['WS_[m/s]'][0])
                 except:
-                    print('Wind speed not found in input, assuming 0m/s')
+                    FAIL('Wind speed not found in input, assuming 0m/s')
                     self.vWS.append(0)
             self.vRotSpeed.append(linfile['RotSpeed'])
             self.vAzim.append(linfile['Azimuth'])
@@ -92,18 +97,18 @@ class FASTLinPeriodicOP(object):
         self.Pitch    = np.mean(self.vPitch)
         self.RotSpeed = np.mean(self.vRotSpeed)
 
-        self.x = df['x']
-        self.y = None
-        self.u = None
-        if 'y' in df.keys():
-            self.y = df['y']
-        if 'u' in df.keys():
-            self.u = df['u']
-        try:
-            self.EDdescr = linfile['EDDOF']
-        except:
-            self.EDdescr = None
-
+        if df is None:
+            FAIL('All lin files for this OP are problematic')
+        else:
+            self.x = df['x']
+            if 'y' in df.keys():
+                self.y = df['y']
+            if 'u' in df.keys():
+                self.u = df['u']
+            try:
+                self.EDdescr = linfile['EDDOF']
+            except:
+                pass
 
     def __repr__(self):
         s ='<FASTLinPeriodicOP object>\n'
@@ -112,27 +117,59 @@ class FASTLinPeriodicOP(object):
         s+=' - WS       : {}\n'.format(self.WS)
         s+=' - Pitch    : {}\n'.format(self.Pitch)
         s+=' - RotSpeed : {}\n'.format(self.RotSpeed)
+        s+=' * nx       : {}\n'.format(self.nx)
+        s+=' * ny       : {}\n'.format(self.ny)
+        s+=' * nu       : {}\n'.format(self.nu)
+        s+=' - x        : DataFrame, len: {}\n'.format(len(self.x))
+        s+=' - y        : DataFrame, len: {}\n'.format(len(self.y))
+        s+=' - u        : DataFrame, len: {}\n'.format(len(self.u))
         s+=' - vAzim    : {}\n'.format(self.vAzim)
         s+=' - vWS      : {}\n'.format(self.vWS)
         s+=' - vPitch   : {}\n'.format(self.vPitch)
         s+=' - vRotSpeed: {}\n'.format(self.vRotSpeed)
         s+=' - linFiles : {}\n'.format(self.linFiles)
-        s+=' - Data     : list of lin files, size {}\n'.format(len(self.Data))
+        s+=' - Data     : list of weio lin files, size {}\n'.format(len(self.Data))
         return s
+
+
+    @property
+    def nx(self):
+        return len(self.x.values.flatten()) if self.x is not None else 0
+
+    @property
+    def nu(self):
+        return len(self.u.values.flatten()) if self.u is not None else 0
+
+    @property
+    def ny(self):
+        return len(self.y.values.flatten()) if self.y is not None else 0
+
+
 
 class FASTLin(object):
     """ Class to handle linearization data at different operating points 
         Typically Campbell, or average over many conditions.
         Can be used for one lin file as well.
     """
-    def __init__(self, linfiles=None, folder='./', prefix='', nLin=None):
+    def __init__(self, linfiles=None, folder='./', prefix='', nLin=None, verbose=False):
         """ 
         Init with a list of linfiles, or a folder and prefix
         """
+        # Data init
+        self.OP_Data = []
+        self.simPrefixes = []
+        # Stats Data
+        self.A_mean, self.A_mean_perWS, self.A_stdAzim, self.A_stdWS = None, None, None, None
+        self.B_mean, self.B_mean_perWS, self.B_stdBzim, self.B_stdWS = None, None, None, None
+        self.C_mean, self.C_mean_perWS, self.C_stdCzim, self.C_stdWS = None, None, None, None
+        self.D_mean, self.D_mean_perWS, self.D_stdDzim, self.D_stdWS = None, None, None, None
+        self.M_mean, self.M_mean_perWS, self.M_stdMzim, self.M_stdWS = None, None, None, None
+        # 
         linfiles = [] if linfiles is None else linfiles
 
         if not isinstance(linfiles, list):
             linfiles=[linfiles]
+
         if len(linfiles)>0:
             exts =[os.path.splitext(f)[1] for f in linfiles]
             extsOK =[e.lower()=='.lin' for e in exts]
@@ -142,24 +179,35 @@ class FASTLin(object):
             linfiles= list(glob.glob(folder + prefix + '*.*.lin')) # TODO we want a more rigorous regexp
             linfiles.sort()
 
-        simPrefix=np.unique(['.'.join(f.split('.')[:-2]) for f in linfiles])
-        nSim      = len(simPrefix)
-        self.simPrefix = simPrefix
+        _simPrefixes = np.unique(['.'.join(f.split('.')[:-2]) for f in linfiles])
+        nSim         = len(_simPrefixes)
+        if verbose:
+            print(f'nFiles: {nSim}, prefixes: {_simPrefixes[0]}.., nLin={nLin}')
         # --- Read period operating points
         print('Reading linearizations for {} operating points'.format(nSim))
-        self.OP_Data=[FASTLinPeriodicOP(pref, nLin=nLin) for pref in simPrefix]
+        for iOP, _prefix in enumerate(_simPrefixes):
+            pOP = FASTLinPeriodicOP(_prefix, nLin=nLin)
+            if len(pOP.Data)==0:
+                FAIL(f'FASTLin: No Data present, skipping: {_prefix}')
+                continue
+            if iOP>0:
+                if self.nx!=pOP.nx:
+                    FAIL(f'FASTLin: Different number of states {self.nx} (first) /= {pOP.nx} (current: {_prefix})')
+                    continue
+            self.OP_Data.append(pOP)
+            self.simPrefixes.append(_prefix)
 
         # --- Sort by wind speed
         Isort = np.argsort(self.WS)
         self.OP_Data  = [self.OP_Data[i] for i in Isort]
 
         if self.MaxNLinTimes>1:
-            IBad = [i for i in np.arange(nSim) if self.nLinTimes[i]<self.MaxNLinTimes and self.OP_Data[i].WS>0]
+            IBad = [i for i in np.arange(self.nOP) if self.nLinTimes[i]<self.MaxNLinTimes and self.OP_Data[i].WS>0]
             if len(IBad)>0: 
-                print('>>> The following simulations have insufficient number of data points:')
+                FAIL('>>> The following simulations have insufficient number of data points:')
                 for i in IBad:
                     print(self.OP_Data[i].prefix, self.OP_Data[i].nLinTimes)
-            self.OP_Data = [self.OP_Data[i] for i in np.arange(nSim) if i not in IBad]
+            self.OP_Data = [self.OP_Data[i] for i in np.arange(self.nOP) if i not in IBad]
 
     def __repr__(self):
         s ='<FASTLin object>\n'
@@ -171,32 +219,45 @@ class FASTLin(object):
         s+=' * nLinTimes   : {}\n'.format(self.nLinTimes)
         s+=' * xdescr, udescr, ydescr\n'
         s+=' * xop_mean, uop_mean, yop_mean\n'
-        s+=' - simPrefix   : {}\n'.format(self.simPrefix)
+        s+=' - simPrefixes : {}\n'.format(self.simPrefixes)
+        s+=' - A_mean, B_mean (after calling averate) \n'
         s+='Methods:\n'
         s+=' - stats(matName, WS=None)\n'
-        s+=' - average(WS=None)\n'
+        s+=' - average(WS=None) (and store stats)\n'
         s+=' - exportState(self, stateFile, stateDict)\n'
+        s+=' - save(picklefile)\n'
+        s+=' - from_pickle(picklefile)\n'
         return s
 
     @property
-    def WS(self):
-        return np.array([sim.WS for sim in self.OP_Data])
+    def WS(self): return np.array([sim.WS for sim in self.OP_Data])
 
     @property
-    def nLinTimes(self):
-        return np.array([sim.nLinTimes for sim in self.OP_Data])
+    def nLinTimes(self): return np.array([sim.nLinTimes for sim in self.OP_Data])
 
     @property
-    def MaxNLinTimes(self):
-        return np.max(self.nLinTimes)
+    def MaxNLinTimes(self): return np.max(self.nLinTimes)
 
     @property
-    def nOP(self):
-        return len(self.OP_Data)
+    def nOP(self): return len(self.OP_Data)
+
 
     @property
-    def xdescr(self):
-        return self.OP_Data[0].x.columns.values
+    def nx(self):
+        return len(self.xdescr) if self.nOP>0 else 0
+
+    @property
+    def ny(self):
+        return len(self.ydescr) if self.nOP>0 else 0
+
+    @property
+    def nu(self):
+        return len(self.udescr) if self.nOP>0 else 0
+
+
+    @property
+    def xdescr(self): return self.OP_Data[0].x.columns.values
+
     @property
     def ydescr(self):
         if self.hasY:
@@ -206,6 +267,7 @@ class FASTLin(object):
     @property
     def EDdescr(self):
         return self.OP_Data[0].EDdescr
+
     @property
     def udescr(self):
         if self.hasU:
@@ -231,15 +293,18 @@ class FASTLin(object):
 
     @property
     def hasU(self): return 'u' in self.OP_Data[0].Data[0].keys()
+
     @property
     def hasY(self): return 'y' in self.OP_Data[0].Data[0].keys()
+
     @property
     def hasB(self): return 'B' in self.OP_Data[0].Data[0].keys()
+
     @property
     def hasC(self): return 'C' in self.OP_Data[0].Data[0].keys()
+
     @property
     def hasD(self): return 'D' in self.OP_Data[0].Data[0].keys()
-
 
     def stats(self, matName, WS=None):
         """ 
@@ -251,8 +316,13 @@ class FASTLin(object):
             nOP=self.nOP
         else:
             nOP=len(WS)
+            for ws in WS:
+                if ws not in self.WS:
+                    raise Exception(f'FASTLin: Cannot compute stats for WS={WS}, it is not in the list of operating point WS: {self.WS}')
         M_mean=[]
 
+        if matName not in self.OP_Data[0].Data[0]:
+            raise KeyError(f'Column {matName} nor present in dataframe')
         shape = self.OP_Data[0].Data[0][matName].shape
 
         M_all       = np.zeros( (nOP, self.MaxNLinTimes, shape[0],shape[1]))
@@ -280,6 +350,75 @@ class FASTLin(object):
 
         return M_mean, M_mean_perWS, M_stdAzim, M_stdWS, M_all
 
+    def average(self, WS=None, return_dataframes=True):
+        if len(self.OP_Data)==0:
+            raise Exception('FASTLin: No Operating point data, cannot compute stats')
+        if len(self.OP_Data[0].Data)==0:
+            raise Exception('FASTLin: No Operating point data, cannot compute stats')
+        if 'A' in self.OP_Data[0].Data[0]:
+            self.A_mean, self.A_mean_perWS, self.A_stdAzim, self.A_stdWS, _ = self.stats('A', WS=WS)
+        if 'B' in self.OP_Data[0].Data[0]:
+            self.B_mean, self.B_mean_perWS, self.B_stdBzim, self.B_stdWS, _ = self.stats('B', WS=WS)
+        if 'C' in self.OP_Data[0].Data[0]:
+            self.C_mean, self.C_mean_perWS, self.C_stdCzim, self.C_stdWS, _ = self.stats('C', WS=WS)
+        if 'D' in self.OP_Data[0].Data[0]:
+            self.D_mean, self.D_mean_perWS, self.D_stdDzim, self.D_stdWS, _ = self.stats('D', WS=WS)
+        if 'M' in self.OP_Data[0].Data[0]:
+            self.M_mean, self.M_mean_perWS, self.M_stdMzim, self.M_stdWS, _ = self.stats('M', WS=WS)
+
+        if return_dataframes:
+            self.A_mean = pd.DataFrame(data = self.A_mean, index=self.xdescr, columns=self.xdescr)
+            self.B_mean = pd.DataFrame(data = self.B_mean, index=self.xdescr, columns=self.udescr)
+            self.C_mean = pd.DataFrame(data = self.C_mean, index=self.ydescr, columns=self.xdescr)
+            self.D_mean = pd.DataFrame(data = self.D_mean, index=self.ydescr, columns=self.udescr)
+            if 'M' in self.OP_Data[0].Data[0]:
+                self.M_mean = pd.DataFrame(data = self.M_mean, index=self.EDdescr, columns=self.EDdescr)
+
+        return self.A_mean, self.B_mean, self.C_mean, self.D_mean
+
+
+    def average_subset(self, sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, WS=None, exportFile=None, baseDict=None):
+        """ 
+        Average state spaces based on WS, then extract a subset based on sensor names
+        """
+        sX, sU, sY, sED = self.xdescr, self.udescr, self.ydescr, self.EDdescr
+
+        if sX_sel is None:
+            sX_sel=sX
+        if sU_sel is None:
+            sU_sel=sU
+        if sY_sel is None:
+            sY_sel=sY
+        if sE_sel is None:
+            sE_sel=sED
+
+        # Average
+        A,B,C,D = self.average(WS=WS, return_dataframes=True)
+
+        Ar = subMat(A, rows=sX_sel, cols=sX_sel, check=True, name='A', removeDuplicates=True)
+        Br = subMat(B, rows=sX_sel, cols=sU_sel, check=True, name='B', removeDuplicates=True)
+        Cr = subMat(C, rows=sY_sel, cols=sX_sel, check=True, name='C', removeDuplicates=True)
+        Dr = subMat(D, rows=sY_sel, cols=sU_sel, check=True, name='D', removeDuplicates=True)
+        if self.M_mean is not None:
+            Mr = subMat(self.M_mean, rows=sE_sel, cols=sE_sel, check=True, name='M', removeDuplicates=True)
+        else:
+            Mr = None
+
+        if baseDict is None:
+            outDict={}
+        else:
+            outDict=baseDict.copy()
+        outDict['A'] = Ar
+        outDict['B'] = Br
+        outDict['C'] = Cr
+        outDict['D'] = Dr
+
+        if exportFile is not None:
+            self.exportState(exportFile, outDict)
+
+        return Ar, Br, Cr, Dr, Mr
+
+
 
     def averageOP(self, WS=None):
         """ return average operating point values for a given wind speed vector"""
@@ -306,90 +445,35 @@ class FASTLin(object):
             yop=None
         return xop, uop, yop
 
-    def average(self, WS=None):
-        A_mean = self.stats('A',WS=WS)[0]
 
-        B_mean = None
-        C_mean = None
-        D_mean = None
-        if self.hasB:
-            B_mean = self.stats('B',WS=WS)[0]
-        if self.hasC:
-            C_mean = self.stats('C',WS=WS)[0]
-        if self.hasD:
-            D_mean = self.stats('D',WS=WS)[0]
-        #self.M_mean = self.stats('M',WS=WS)[0]
-        return A_mean, B_mean, C_mean, D_mean
-
-    def average_subset(self, sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, WS=None, exportFile=None, baseDict=None):
-        """ 
-        Average state spaces based on WS, then extract a subset based on sensor names
-        """
-        sX, sU, sY, sED = self.xdescr, self.udescr, self.ydescr, self.EDdescr
-
-        if sX_sel is None:
-            sX_sel=sX
-        if sU_sel is None:
-            sU_sel=sU
-        if sY_sel is None:
-            sY_sel=sY
-
-        # Average
-        A,B,C,D = self.average(WS=WS)
-
-        # Indices
-        try:
-            IDOFX = np.array([list(sX).index(s) for s in sX_sel])
-        except:
-            print(sX)
-            raise
-        IDOFU = np.array([list(sU).index(s) for s in sU_sel])
-        IDOFY = np.array([list(sY).index(s) for s in sY_sel])
-        if sE_sel is not None:
-            IDOFE = np.array([list(sE).index(s) for s in sE_sel])
-
-        # Subset. TODO use DataFrame directly and subMat in linmodel
-        Ar = A[np.ix_(IDOFX,IDOFX)]
-        Br = B[np.ix_(IDOFX,IDOFU)]
-        Cr = C[np.ix_(IDOFY,IDOFX)]
-        Dr = D[np.ix_(IDOFY,IDOFU)]
-
-        # Outputs
-        Ar = pd.DataFrame(data = Ar, index=sX_sel, columns=sX_sel)
-        Br = pd.DataFrame(data = Br, index=sX_sel, columns=sU_sel)
-        Cr = pd.DataFrame(data = Cr, index=sY_sel, columns=sX_sel)
-        Dr = pd.DataFrame(data = Dr, index=sY_sel, columns=sU_sel)
-        if baseDict is None:
-            outDict={}
-        else:
-            outDict=baseDict.copy()
-        outDict['A']=Ar
-        outDict['B']=Br
-        outDict['C']=Cr
-        outDict['D']=Dr
-        if sE_sel is not None:
-            Mr = M[np.ix_(IDOFE,IDOFE)]
-            Mr = pd.DataFrame(data = Mr, index=sED_sel, columns=sED_sel)
-            outDict['M']=Mr
-
-        if exportFile is not None:
-            self.exportState(exportFile, outDict)
-
-        if sE_sel is not None:
-            return Ar, Br, Cr, Dr, Mr
-        else:
-            return Ar, Br, Cr, Dr
 
     def exportState(self, stateFile, stateDict):
-        #if any(['A','B','C','D'])
+        dirname = os.path.dirname(stateFile)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+            
+        with open(stateFile, 'wb') as f:
+            pickle.dump(stateDict, f)
+        INFO(f'Written StateFile : {stateFile}')
 
-        import pickle
-        with open(stateFile,'wb') as f:
-            pickle.dump(stateDict,f)
+    def save(self, filename, verbose=True):
+        dirname = os.path.dirname(filename)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+            
+        if verbose:
+            INFO(f'Writting FASTLin Dump: {filename}')
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
 
-    def save(self,filename):
-        with open(filename,'wb') as f:
-            pickle.dump(self,f)
-
+    @classmethod
+    def from_pickle(cls, filename, verbose=False):
+        if verbose:
+            INFO(f'Loading FASTLin Dump: {filename}')
+        with open(filename, "rb") as f:
+            obj = pickle.load(f)
+        if not isinstance(obj, cls):
+            raise TypeError(f"Expected instance of {cls.__name__}, got {type(obj).__name__}")
+        return obj
 
 

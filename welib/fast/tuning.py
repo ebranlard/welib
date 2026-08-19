@@ -40,7 +40,7 @@ def tuneTowerDamping(fstFile, zeta_target=None, modes=None, logdec_target=None, 
 
 
     # --- Read wind turbine
-    WT = FASTWindTurbine(fstFile, algo='OpenFAST') #, bldStartAtRotorCenter=False )
+    WT = FASTWindTurbine(fstFile, algo='OpenFAST').WT #, bldStartAtRotorCenter=False )
 
     # --- Compute target tower damping 
     zeta_tower = {}

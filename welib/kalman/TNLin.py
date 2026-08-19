@@ -3,7 +3,7 @@ from .kalman import *
 from .kalmanfilter import KalmanFilter
 from .filters import moving_average
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
-from welib.yams.TNSB_FAST import FASTmodel2TNSB
+from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
 from welib.fast.linmodel import FASTLinModel, FASTLinModelTNSB
 
 # --- External dependencies!
@@ -39,7 +39,7 @@ class KalmanFilterTNLin(KalmanFilter):
         iU = KF.iU
 
         # --- Mechanical system and turbine data
-        WT2= FASTmodel2TNSB(FstFile , nShapes_twr=1,nShapes_bld=0, DEBUG=False, bStiffening=True, main_axis='z')    
+        WT2= FASTmodel2TNSB(FstFile , nShapes_twr=1,nShapes_bld=0, DEBUG=False, bStiffening=True, main_axis='z').WT
         #WT2.DD      = WT2.DD*3.5 # increased damping to account for aero damping
         KF.WT2=WT2
 

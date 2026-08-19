@@ -686,6 +686,15 @@ class LinearStateSpace(StateSpace):
         if D is not None:
             self.D  = D.values
 
+        q0_default = np.zeros(self.nStates)
+        if self.q0_ is None or len(self.q0_)!=self.nStates:
+            self.q0_ = q0_default
+        if self.qop_ is None or len(self.qop_)!=self.nStates:
+            self.qop_ = q0_default
+        if self.uop_ is None or len(self.uop_)!=self.nInputs:
+            self.uop_ = np.zeros(self.nInputs)
+        if self.yop_ is None or len(self.yop_)!=self.nOutputs:
+            self.yop_ = np.zeros(self.nOutputs)
 
     def toDataFrames(self):
         """ return dataframes for system matrices using labels"""
@@ -757,6 +766,7 @@ class LinearStateSpace(StateSpace):
             self.uop_ = np.zeros(self.nInputs)
             self.yop_ = np.zeros(self.nOutputs)
             #raise Exception('The pickle file is an old pickle file, please regenerate it: {}'.format(pickleFile))
+
         return d
 
     def save(self, pickleFile, extraDict=None):

@@ -1,7 +1,9 @@
 import unittest
 import numpy as np
+import os
 
-from welib.yams.TNSB_FAST import *
+from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
+from welib.tools.strings import printMat
 
 MyDir=os.path.dirname(__file__)
 
@@ -9,27 +11,27 @@ class TestTNSB(unittest.TestCase):
     def test_TNSB_FAST(self):
 
         bStiffening=True
-        nShapes_twr=2
-        nShapes_bld=0
-        nDOF = 1 + nShapes_twr + nShapes_bld * 3
+        shapes_twr=[0,1]
+        shapes_bld=[]
+        nDOF = 1 + len(shapes_twr) + len(shapes_bld) * 3
         q = np.zeros((nDOF,1)) # TODO, full account of q not done
         q[[0]]=1
         q[[1]]=0.1
         q[[2]]=0*np.pi/4.
 
         np.set_printoptions(linewidth=500)
-        EDFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/NREL5MW_ED_Offshore_Legacy.dat')
+        FSTFile = os.path.join(MyDir, '../../../data/NREL5MW/offshore/Main_Offshore.fst')
 
         # --- Auto assembly with z axis
         main_axis='z'
         assembly='auto'
 
-        StructA= FASTmodel2TNSB(EDFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065)
+        StructA= FASTmodel2TNSB(FSTFile, shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065).WT
 
         # --- Manual assembly with x axis
         assembly='auto'
         main_axis='x'
-        StructM= FASTmodel2TNSB(EDFile, nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065)
+        StructM= FASTmodel2TNSB(FSTFile, shapes_twr=shapes_twr,shapes_bld=shapes_bld, DEBUG=False, assembly=assembly , q=q, main_axis=main_axis, bStiffening=bStiffening, gravity=9.8065).WT
 
 
         # --------------------------------------------------------------------------------}
@@ -54,18 +56,18 @@ class TestTNSB(unittest.TestCase):
                              [-0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -0.00000000e+00, -0.00000000e+00,  0.00000000e+00 , 0.00000000e+00,  0.00000000e+00],
                              [ 8.43721581e+04,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  4.70023180e+06,  0.00000000e+00 , 4.78239541e+04, -7.83818828e+05],
                              [-2.21926938e+06,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -9.57847002e+07,  0.00000000e+00 ,-7.83818828e+05,  2.41136381e+07]])
-        np.testing.assert_almost_equal(StructA.Twr.r_O.ravel(), (0,0,10))
-        np.testing.assert_almost_equal(StructA.Twr.MM[:6,:6]/1e5, Twr_MMref[:6,:6]/1e5, 5)
-        np.testing.assert_almost_equal(StructA.Twr.MM[6:,:]/1e10, Twr_MMref[6:,:]/1e10, 5)
+        np.testing.assert_almost_equal(StructA.twr.pos_global, (0,0,10))
+        np.testing.assert_almost_equal(StructA.twr.MM[:6,:6]/1e5, Twr_MMref[:6,:6]/1e5, 5)
+        np.testing.assert_almost_equal(StructA.twr.MM[6:,:]/1e10, Twr_MMref[6:,:]/1e10, 5)
         np.testing.assert_almost_equal(StructA.alpha.ravel(), (0,0.1193935,0))
         # print('Twr: B_T:')
         # print(StructA.Twr.B_inB)
         # print(StructM.Twr.B_inB)
-        # print(StructA.Twr.r_O)
-        # print(StructM.Twr.r_O)
+        # print(StructA.Twr.pos_global)
+        # print(StructM.Twr.pos_global)
         # print(StructA.Twr.Mass)
         # print(StructA.Twr.MM)
-        # print(StructA.Twr.r_O)
+        # print(StructA.Twr.pos_global)
         # print('Twr.alpha_y:')
         # print(StructA.alpha)
         # print(StructM.alpha)
@@ -85,20 +87,20 @@ class TestTNSB(unittest.TestCase):
                              [      0.,  240000.,       0. ,-420000.,       0.,  456000.],
                              [      0.,       0.,  240000. ,      0., -456000.,       0.],
                              [      0., -420000.,       0. ,      0.,       0.,       0.],
-                             [ 420000.,       0., -456000. ,      0.,       0.,       0.],
-                             [     -0.,  456000.,       0. ,      0.,       0., 2607890.]])
-        np.testing.assert_almost_equal(StructA.Nac.mass, 240000)
-        np.testing.assert_almost_equal(StructA.Nac.r_O.ravel(),(0,0,87.6))
-        np.testing.assert_almost_equal(StructA.Nac.MM,Nac_MMref)
+                             [ 420000.,       0., -456000. ,      0.,    2607890. ,       0.],
+                             [     -0.,  456000.,       0. ,      0.,       0.     , 0.]])
+        np.testing.assert_almost_equal(StructA.nac.mass, 240000)
+        np.testing.assert_almost_equal(StructA.nac.pos_global,(1.1,0,87.6))
+        np.testing.assert_almost_equal(StructA.nac.MM,Nac_MMref)
         # print(StructA.Nac.Mass)
         # print(StructA.Nac.MM)
-        # print(StructA.Nac.r_O)
+        # print(StructA.Nac.pos_global)
         # print('Nac: B_N:')
         # print(StructM.Nac.B_inB)
         # print(np.dot(RR, StructA.Nac.B_inB))
         # print('Nac R_B:')
-        # print(StructA.Nac.R_0b)
-        # print(StructM.Nac.R_0b)
+        # print(StructA.Nac.R_b2g)
+        # print(StructM.Nac.R_b2g)
         
         # --- Shaft
         Sft_MMref=np.array([[  56780.    ,         0.      ,       0.    ,         0.    ,         0.       ,     -0.       ],
@@ -108,19 +110,19 @@ class TestTNSB(unittest.TestCase):
                             [      0.    ,         0.      ,  284984.498 ,         0.    ,   1430365.6939118,      0.       ],
                             [     -0.    ,   -284984.498   ,       0.    ,         0.    ,         0.       ,1430365.6939118]])
     
-        np.testing.assert_almost_equal(StructA.Sft.mass,56780)
-        np.testing.assert_almost_equal(StructA.Sft.r_O.ravel(),(0.2337605,0,89.5485887))
-        np.testing.assert_almost_equal(StructA.Sft.MM,Sft_MMref)
+        np.testing.assert_almost_equal(StructA.hubgen.mass,56780)
+        np.testing.assert_almost_equal(StructA.hubgen.pos_global,(1.3337605,0,89.5485887)) # TODO rotation
+        np.testing.assert_almost_equal(StructA.hubgen.MM,Sft_MMref)
         #print('Sft: R_S:')
-        #print(StructA.Sft.R_0b)
-        #print(StructM.Sft.R_0b)
+        #print(StructA.Sft.R_b2g)
+        #print(StructM.Sft.R_b2g)
         #print('Sft: B_S:')
         #print(StructA.Sft.B_inB)
         #print(np.dot(RR,StructM.Sft.B_inB))
         #print(np.dot(RR,StructM.Sft.BB_inB)-StructA.Sft.BB_inB)
         #print(StructA.Sft.Mass)
         #print(StructA.Sft.MM)
-        #print(StructA.Sft.r_O)
+        #print(StructA.Sft.pos_global)
 
         # ---  Blade 1
         #Bld_MMref = np.array(
@@ -138,20 +140,20 @@ class TestTNSB(unittest.TestCase):
                          [  387727.67680019,       0.          ,    -0.        ,      -0.        ,12819694.4476355    ,   -0.        ],
                          [      -0.        ,       0.          ,     0.        ,      -0.        ,      -0.           ,    0.        ]])
 
-        np.testing.assert_almost_equal(StructA.Blds[0].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.Blds[0].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
-        np.testing.assert_almost_equal(StructA.Blds[0].MM,Bld_MMref)
+        np.testing.assert_almost_equal(StructA.bld[0].mass,Bld_MMref[0,0])
+        np.testing.assert_almost_equal(StructA.bld[0].pos_global,(-3.5785417,0,90.5784681), 3) # TODO rotation x-z coords
+        np.testing.assert_almost_equal(StructA.bld[0].MM,Bld_MMref)
 
-        np.testing.assert_almost_equal(StructA.Blds[2].mass,Bld_MMref[0,0])
-        np.testing.assert_almost_equal(StructA.Blds[2].r_O.ravel(),(-4.6785417,0,90.5784681), 3)
-        np.testing.assert_almost_equal(StructA.Blds[2].MM,Bld_MMref)
+        np.testing.assert_almost_equal(StructA.bld[2].mass,Bld_MMref[0,0])
+        np.testing.assert_almost_equal(StructA.bld[2].pos_global,(-3.5785417,0,90.5784681), 3) # TODO rotation x-z coords
+        np.testing.assert_almost_equal(StructA.bld[2].MM,Bld_MMref)
 
         #   print(StructA.Blds[0].Mass)
         #   print(StructA.Blds[0].MM)
-        #   print(StructA.Blds[0].r_O)
+        #   print(StructA.Blds[0].pos_global)
         #     print('Bld1 R_B:')
-        #     print(StructA.Blds[0].R_0b)
-        #     print(StructM.Blds[0].R_0b)
+        #     print(StructA.Blds[0].R_b2g)
+        #     print(StructM.Blds[0].R_b2g)
         #     print('Bld1: B_S:')
         #     print(StructA.Blds[0].B_inB)
         #     print(np.dot(RR,StructM.Blds[0].B_inB))
@@ -214,10 +216,15 @@ class TestTNSB(unittest.TestCase):
         #MMref=np.array([[ 4.36621608e+05,  7.46151067e+05,  0.00000000e+00],
         #                [ 7.46151067e+05,  4.83252038e+07, -1.16415322e-09],
         #                [ 0.00000000e+00,  0.00000000e+00,  4.33678529e+07]])
-        MMref=np.array( [[  436621.49402492,   746008.31028306,        0.        ],
-                         [  746008.31028306, 48279102.40225491,        0.        ],
-                         [       0.        ,        0.        , 43367852.87936865]])
+        #MMref=np.array( [[  436621.49402492,   746008.31028306,        0.        ],
+        #                 [  746008.31028306, 48279102.40225491,        0.        ],
+        #                 [       0.        ,        0.        , 43367852.87936865]])
+        MMref=np.array( [[  437761.43326031,   799706.67819122,        0.        ],
+                         [  799706.67819122, 50808636.10587204,        0.        ],
+                         [       0.        ,        0.        , 43367852.87936863]])
 
+        #printMat(StructA.MM, digits=6)
+        #printMat(StructM.MM, digits=6)
         np.testing.assert_almost_equal(StructA.MM/1e5,     MMref/1e5 , 5)
         np.testing.assert_almost_equal(StructM.MM/1e5,StructA.MM/1e5 , 5)
         # print('Mass matrix:')
@@ -228,7 +235,7 @@ class TestTNSB(unittest.TestCase):
 #         print(StructA.RNA)
 #         print(StructM)
 
-    #     print('Origin E :',StructM.Grd.r_O.T)
+    #     print('Origin E :',StructM.Grd.pos_global.T)
 
 if __name__=='__main__':
     unittest.main()

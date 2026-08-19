@@ -125,7 +125,7 @@ DEFAULT_COL_MAP_OF ={
   'Q_TSS1_[m]'      : 'q_FA1',
   'Q_TFA2_[m]'      : 'q_FA2',
   'Q_TSS2_[m]'      : 'q_SS2',
-  'Q_Yaw_[m]'       : 'yaw',
+  'Q_Yaw_[rad]'     : 'yaw',
   'NacYaw_[rad]'    : 'yaw',
   'Azimuth_[rad]'   : 'psi'      ,
   'Q_DrTr_[rad]'    : 'nu'   ,
@@ -246,7 +246,7 @@ class FASTLinModel(LinearStateSpace):
             self.fstFilename = fstFilename
             if os.path.exists(self.defaultPickleFile):
                 self.load()
-                return
+                return #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< NOTE: return
 
         if pickleFile is not None:
             # Load pickle File
@@ -273,13 +273,12 @@ class FASTLinModel(LinearStateSpace):
 
         if fstFilename is not None:
             print('FASTLinModel: loading WT :',fstFilename)
-            self.WT = FASTWindTurbine(fstFilename, algo='OpenFAST')
+            self.WT = FASTWindTurbine(fstFilename, algo='OpenFAST').WT
             self.fstFilename     = fstFilename
 
         # Set A, B, C, D to SI units
         # will scale the matrices
         self.toSI(verbose=False)
-
 
         if usePickle:
             if self.pickleFile is None:
@@ -320,7 +319,7 @@ class FASTLinModel(LinearStateSpace):
         # --- Load turbine config
         if fstFilename is not None:
             print('FASTLinModel: loading WT :',fstFilename)
-            self.WT_sim = FASTWindTurbine(fstFilename, algo='OpenFAST')
+            self.WT_sim = FASTWindTurbine(fstFilename, algo='OpenFAST').WT
             self.fstFilename_sim = fstFilename 
         else:
             self.WT_sim = self.WT
@@ -426,11 +425,11 @@ class FASTLinModel(LinearStateSpace):
             for iu, su in enumerate(self.sU):
                 if su not in ['fhx','fhy','fhz','mhx','mhy','mhz']: # NOTE: for hydro, we would double count the stiffness
                     print('>>> Getting input from OpenFAST: ',su)
-                    vu = df[su].values
+                    vu = df[su].values.copy()
                     bNaN = np.isnan(vu)
                     if sum(bNaN)>0:
                         print('[WARN] INPUT {} has {} NaN values, replaced by 0'.format(su, sum(bNaN)))
-                    vu[bNaN] = 0
+                        vu[bNaN] = 0
                     u[iu,:] = vu
         else:
             raise NotImplementedError('uMethod ',uMethod)

@@ -100,9 +100,7 @@ def main(verbose=False, Large=False):
 if __name__ == '__main__':
     main()
 if __name__ == '__test__':
+    import os
     main(verbose=False, Large=False)
-    try:
-        os.delete('_Rods.json')
-        os.delete('_Dummy.json')
-    except:
-        pass
+#     try:
+    os.remove('_Rods.json')

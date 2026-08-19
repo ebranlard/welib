@@ -332,7 +332,7 @@ class KalmanFilter(object):
     
 
     def initFromClean(self):
-        x = self.X_clean.iloc[0,:].values
+        x = self.X_clean.iloc[0,:].values.copy()
         # x = np.zeros(nX)
         self.X_hat.iloc[0,:] = x
         self.Y_hat.iloc[0,:] = self.Y_clean.iloc[0,:]

@@ -39,3 +39,6 @@ ms.toJSON3D(pm, '_MeshMotion.json')
 
 if __name__ == '__main__':
     pass
+if __name__ == '__test__':
+    import os
+    os.remove('_MeshMotion.json')

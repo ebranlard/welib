@@ -14,11 +14,12 @@ References:
 import numpy as np
 
 
-def naca_shape(digits, chord=1, n=151, thickTEZero=False, pitch=0, xrot=0.25):
+def naca_shape(digits, chord=1, n=151, sharp=False, pitch=0, xrot=0.25):
     """ 
     INPUTS:
      - digits: 4 digits string, e.g. '0012'
-     - thickTEZero: if true, forces the values at x=1 to be y=0
+     - n     : number of points on the 
+     - sharp: if true, forces the values at x=1 to be y=0
                  The original NACA equations gives a non zero thickness at the trailing edge
      - pitch: pitch angle, positive nose up (angle of attack) [rad]
      - xrot: center of rotation for pitch (in chord coordinates) [-]
@@ -31,34 +32,52 @@ def naca_shape(digits, chord=1, n=151, thickTEZero=False, pitch=0, xrot=0.25):
     d_LE_maxCamb = int(digits[1])*10
     t            = int(digits[2:4])/100  # Maximum thickness
 
-    if maxCamb!=0:
-        raise NotImplementedError()
-    if d_LE_maxCamb!=0:
-        raise NotImplementedError()
+    m = maxCamb/100.0
+    p = d_LE_maxCamb/100.0
 
-    # --- Symmetric airfoils
     x = np.linspace(0, 1, n)
-    if not thickTEZero:
-        # Original NACA equation - the TE is not sharp
-        y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1015 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
-        # NOTE: the TE point will be repeated
-        xa = np.concatenate((x, np.flip( x     ,0)))
-        ya = np.concatenate((y, np.flip(-y     ,0)))
-    else:
-        # Small modifications to ensure the thickness is zero at the TE
-        y = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1036 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
-        # NOTE: for a sharp trailing edge, we avoid repetition of the TE point
-        xa = np.concatenate((x, np.flip( x[:-1],0)))
-        ya = np.concatenate((y, np.flip(-y[:-1],0)))
 
+    if not sharp:
+        # Original NACA equation - the TE is not blunt
+        y_t = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1015 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
+    else:
+        # Small modification to ensure the trailing edge is sharp
+        y_t = 5 * t * (0.2969*np.sqrt(x) + ((((- 0.1036 )*x + 0.2843 )*x - 0.3516)*x - 0.1260)*x)
+
+    if m == 0 or p == 0:
+        yc = np.zeros_like(x)
+        dyc = np.zeros_like(x)
+    else:
+        yc = np.zeros_like(x)
+        dyc = np.zeros_like(x)
+        idx = x <= p
+        yc[idx] = (m/p**2)*(2*p*x[idx] - x[idx]**2)
+        dyc[idx] = (2*m/p**2)*(p - x[idx])
+        idx = ~idx
+        yc[idx] = (m/(1-p)**2)*((1-2*p) + 2*p*x[idx] - x[idx]**2)
+        dyc[idx] = (2*m/(1-p)**2)*(p - x[idx])
+
+    theta = np.arctan(dyc)
+
+    xu = x - y_t*np.sin(theta)
+    yu = yc + y_t*np.cos(theta)
+    xl = x + y_t*np.sin(theta)
+    yl = yc - y_t*np.cos(theta)
+
+    if not sharp:
+        xa = np.concatenate((xu, np.flip(xl, 0)))
+        ya = np.concatenate((yu, np.flip(yl, 0)))
+    else:
+        xa = np.concatenate((xu, np.flip(xl[:-1], 0)))
+        ya = np.concatenate((yu, np.flip(yl[:-1], 0)))
 
     # --- Rotate
     x = (xa-xrot)*np.cos(pitch) +        ya*np.sin(pitch) + xrot
     y =        ya*np.cos(pitch) - (xa-xrot)*np.sin(pitch)
 
     # --- Scale
-    x*=chord
-    y*=chord
+    x *= chord
+    y *= chord
 
     return x, y
 

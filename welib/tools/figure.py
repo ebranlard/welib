@@ -339,7 +339,8 @@ class FigureExporter:
     def print1figure(figName,titleLatexSafe,script_name,script_run_dir,script_run_date):
             print('in \\autoref{fig:%s}'%figName);
             print('% ---------------------------------- FIGURE --------------------------------------')
-            print('%% From script: %s, folder: %s, %s'%(script_name,script_run_dir,script_run_date));
+            #print('%% From script: %s, folder: %s, %s'%(script_name,script_run_dir,script_run_date));
+            print('%% From: %s/%s %s'%(script_run_dir,script_name,script_run_date));
             print('\\noindent\\begin{figure}[!htb]\\centering%');
             print('  \\includegraphics[width=0.49\\textwidth]{%s}'%figName);
             print('  \\caption{%s}\\label{fig:%s}%%'%(titleLatexSafe,figName));
@@ -351,7 +352,7 @@ class FigureExporter:
     def print2figures(figName,figNameLast,titleLatexSafe,script_name,script_run_dir,script_run_date):
             print('in \\autoref{fig:%s}'%figNameLast);
             print('% ---------------------------------- FIGURES -------------------------------------')
-            print('%% From script: %s, folder: %s, %s'%(script_name,script_run_dir,script_run_date));
+            print('%% From: %s/%s %s'%(script_run_dir,script_name,script_run_date));
             print('\\noindent\\begin{figure}[!htb]\\centering%%');
 #             print('  \\begin{subfigure}[b]{0.49\\textwidth}\\centering \\includegraphics[width=\\textwidth]{%s}\\caption{}\\label{fig:%s}\\end{subfigure}%%'%(figNameLast,figNameLast));
 #             print('  \\begin{subfigure}[b]{0.49\\textwidth}\\centering \\includegraphics[width=\\textwidth]{%s}\\caption{}\\label{fig:%s}\\end{subfigure}%%'%(figName,figName));
@@ -634,7 +635,7 @@ def _move_fig(fig, w, h, x, y):
 # --------------------------------------------------------------------------------
 # --- Example/tests
 # --------------------------------------------------------------------------------
-def test_fig_move():
+def mytest_fig_move():
     import numpy as np
     import matplotlib.pyplot as plt
     # --- Test fig_move
@@ -680,20 +681,20 @@ def test_fig_move():
 #         a = np.random.rand(n,n); ainv = inv(a)
 #     plt.pause(3)    
 
-def test_export():
+def mytest_export(): # DO NOT RUN PYTEST
     #from ebra.export import *
     from numpy import linspace,sin,pi
     from matplotlib import pyplot as plt
     setFigurePath('./')
 
+    raise Exception()
     x=linspace(0,2*pi,100);
-    plt.figure()
-    plt.title('First Example Figure')
-    plt.grid()
-    plt.plot(x,sin(x),'-')
-    plt.xlabel('x coordinate [m]')
-    plt.ylabel('Velocity  U_i [m/s]')
-    plt.xlim([0,2*pi])
+    fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+    ax.set_title('First Example Figure')
+    ax.plot(x,sin(x),'-')
+    ax.set_xlabel('x coordinate [m]')
+    ax.set_ylabel('Velocity  U_i [m/s]')
+    ax.set_xlim([0,2*pi])
 
     #plt.figure()
     #plt.title('Second Example Figure')
@@ -704,6 +705,7 @@ def test_export():
     #plt.xlim([0,2*pi])
 
     export2pdf()
+    plt.close('all')
 
 if __name__ == "__main__":
     test_fig_move()

@@ -18,7 +18,7 @@ def main():
 
     # --- Turbine parameters
     OutFile = InFile.replace('.fst','.outb')
-    WT = FASTWindTurbine(InFile)
+    WT = FASTWindTurbine(InFile).WT
     nGear  = WT.ED['GBRatio']
     K_DT   = WT.ED['DTTorSpr']
     D_DT   = WT.ED['DTTorDmp']

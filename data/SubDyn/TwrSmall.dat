@@ -5,11 +5,9 @@ False            Echo        - Echo input data to "<rootname>.SD.ech" (flag)
 "DEFAULT"        SDdeltaT    - Local Integration Step. If "default", the glue-code integration step will be used.
              3   IntMethod   - Integration Method [1/2/3/4 = RK4/AB4/ABM4/AM2].
 True             SttcSolve   - Solve dynamics about static equilibrium point
-True             GuyanLoadCorrection - Include extra moment from lever arm at interface and rotate FEM for floating.
 -------------------- FEA and CRAIG-BAMPTON PARAMETERS---------------------------
              3   FEMMod      - FEM switch: element model in the FEM. [1= Euler-Bernoulli(E-B);  2=Tapered E-B (unavailable);  3= 2-node Timoshenko;  4= 2-node tapered Timoshenko (unavailable)]
              4   NDiv        - Number of sub-elements per member
-True             CBMod       - [T/F] If True perform C-B reduction, else full FEM dofs will be retained. If True, select Nmodes to retain in C-B reduced system.
              8   Nmodes      - Number of internal modes to retain (ignored if CBMod=False). If Nmodes=0 --> Guyan Reduction.
              1   JDampings   - Damping Ratios for each retained mode (% of critical) If Nmodes>0, list Nmodes structural damping ratios for each retained mode (% of critical), or a single damping ratio to be applied to all retained modes. (last entered value will be used for all remaining modes).
              0   GuyanDampMod - Guyan damping {0=none, 1=Rayleigh Damping, 2=user specified 6x6 matrix}
@@ -40,20 +38,24 @@ IJointID   ItfTDXss    ItfTDYss    ItfTDZss    ItfRDXss    ItfRDYss    ItfRDZss 
   61           1           1           1           1           1           1   ! Tower top
 ----------------------------------- MEMBERS --------------------------------------
           2   NMembers    - Number of frame members
-MemberID   MJointID1   MJointID2   MPropSetID1   MPropSetID2  MType   COSMID
-  (-)         (-)         (-)          (-)           (-)        (-)      (-)
-  101         61          52           11            11          1     
-  102         52          43           19            19          1      
------------------- MEMBER X-SECTION PROPERTY data 1/2 [isotropic material for now: use this table for circular-tubular elements] ------------------------
+MemberID   MJointID1   MJointID2   MPropSetID1   MPropSetID2  MType   MSpin/COSMID
+  (-)         (-)         (-)          (-)           (-)        (-)      (deg/-)
+  101         61          52           11            11          1c       0
+  102         52          43           19            19          1c       0
+------------------ CIRCULAR BEAM CROSS-SECTION PROPERTIES -----------------------------
             2   NPropSets   - Number of structurally unique x-sections (i.e. how many groups of X-sectional properties are utilized throughout all of the members)
-PropSetID     YoungE          ShearG          MatDens          XsecD           XsecT
+PropSetID     YoungE          ShearG1          MatDens          XsecD           XsecT
   (-)         (N/m2)          (N/m2)          (kg/m3)           (m)             (m)
   11        2.00000e+11     8.07690e+10       8000.00         4.09400        0.03800    ! tower
   19        2.00000e+11     8.07690e+10       8000.00         5.85500        0.02400    ! tower
------------------- MEMBER X-SECTION PROPERTY data 2/2 [isotropic material for now: use this table if any section other than circular, however provide COSM(i,j) below] ------------------------
+----------------- RECTANGULAR BEAM CROSS-SECTION PROPERTIES ---------------------------
+             0   NPropSets   - Number of structurally unique cross-sections (if 0 the following table is ignored)
+PropSetID     YoungE          ShearG          MatDens          XsecA          XsecB           XsecT
+  (-)         (N/m2)          (N/m2)          (kg/m3)           (m)            (m)             (m)
+----------------- ARBITRARY BEAM CROSS-SECTION PROPERTIES -----------------------------
              0   NXPropSets  - Number of structurally unique non-circular x-sections (if 0 the following table is ignored)
-PropSetID     YoungE          ShearG          MatDens          XsecA          XsecAsx       XsecAsy       XsecJxx       XsecJyy        XsecJ0
-  (-)         (N/m2)          (N/m2)          (kg/m3)          (m2)            (m2)          (m2)          (m4)          (m4)          (m4)
+PropSetID     YoungE          ShearG          MatDens          XsecA          XsecAsx       XsecAsy       XsecJxx       XsecJyy       XsecJ0        XsecJt
+  (-)         (N/m2)          (N/m2)          (kg/m3)          (m2)            (m2)          (m2)          (m4)          (m4)          (m4)          (m4)
 -------------------------- CABLE PROPERTIES  -------------------------------------
              0   NCablePropSets   - Number of cable cable properties
 PropSetID     EA          MatDens        T0 
@@ -62,7 +64,11 @@ PropSetID     EA          MatDens        T0
              0   NRigidPropSets - Number of rigid link properties
 PropSetID   MatDens   
   (-)       (kg/m)    
----------------------- MEMBER COSINE MATRICES COSM(i,j) ------------------------
+----------------------- SPRING ELEMENT PROPERTIES -------------------------------------
+             0   NSpringPropSets - Number of spring properties
+PropSetID   k11     k12     k13     k14     k15     k16     k22     k23     k24     k25     k26     k33     k34     k35     k36     k44      k45      k46      k55      k56      k66    
+  (-)      (N/m)   (N/m)   (N/m)  (N/rad) (N/rad) (N/rad)  (N/m)   (N/m)  (N/rad) (N/rad) (N/rad)  (N/m)  (N/rad) (N/rad) (N/rad) (Nm/rad) (Nm/rad) (Nm/rad) (Nm/rad) (Nm/rad) (Nm/rad)
+---------------------- MEMBER COSINE MATRICES COSM(i,j) -------------------------------
              0   NCOSMs      - Number of unique cosine matrices (i.e., of unique member alignments including principal axis rotations); ignored if NXPropSets=0   or 9999 in any element below
 COSMID    COSM11    COSM12    COSM13    COSM21    COSM22    COSM23    COSM31    COSM32    COSM33
  (-)       (-)       (-)       (-)       (-)       (-)       (-)       (-)       (-)       (-)
@@ -84,7 +90,7 @@ True             TabDelim    - Generate a tab-delimited output in the <rootname>
 "A11"            OutSFmt     - Output format for header strings in the <rootname>.SD.out file
 ------------------------- MEMBER OUTPUT LIST ------------------------------------------
              0   NMOutputs   - Number of members whose forces/displacements/velocities/accelerations will be output (-) [Must be <= 9].
-MemberID   NOutCnt    NodeCnt [NOutCnt=how many nodes to get output for [< 10]; NodeCnt are local ordinal numbers from the start of the member, and must be >=1 and <= NDiv+1] If NMOutputs=0 leave blank as well.
+MemberID   NOutCnt    NodeCnt ! [NOutCnt=how many nodes to get output for [< 10]; NodeCnt are local ordinal numbers from the start of the member, and must be >=1 and <= NDiv+1] If NMOutputs=0 leave blank as well.
   (-)        (-)        (-)
 ------------------------- SDOutList: The next line(s) contains a list of output parameters that will be output in <rootname>.SD.out or <rootname>.out. ------
 "M1N1FKZe, M2N1FKZe"                                                     - Axial force in leg 2 at K1L2 and in leg 4 at K1L4

@@ -9,7 +9,13 @@ Typically releases are done for each new version of OpenFAST
 2. Make sure the input file in the `data` directory are compatible with the new OpenFAST version
 3. Change the file VERSION  (and/or setup.py)
 4. Merge pull request to main
-5. Tag the commit using `git tag -a vX.X.X` 
+5. Annotate the main branch with proper tag: 
+```bash
+git checkout main
+git pull origin main
+git tag -a vX.X.X -m "Release vX.X.X"
+git push origin 
+```
 6. Upload to pypi and conda (see below)
 
 

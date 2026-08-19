@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 # Local
 import welib.weio as weio
 from welib.weio.fast_output_file import writeDataFrame
-from welib.yams.windturbine import FASTWindTurbine
 from welib.yams.models.packman import loadPackage
 
 
@@ -123,7 +122,7 @@ class SimulatorFromOF():
             self.WT = WT
             self.fstFilename = WT.FST.filename
         else:
-            self.WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)  # TODO
+            self.WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50).WT  # TODO
             self.fstFilename = fstFilename
 
         # --- Import the python module that was generated

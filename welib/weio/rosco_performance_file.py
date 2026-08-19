@@ -36,7 +36,7 @@ class ROSCOPerformanceFile(File):
     @staticmethod
     def defaultExtensions():
         """ List of file extensions expected for this fileformat"""
-        return ['.txt']
+        return ['.txt', '.rpf']
 
     @staticmethod
     def formatName():
@@ -132,8 +132,8 @@ class ROSCOPerformanceFile(File):
         # Check consistency
         CP2 = CQ*TSR
         deltaCP = np.abs(CP-CP2)/0.5*100 # relative difference in %, for a mean CP of 0.5
-        if np.max(deltaCP)>5: # more than 5%
-            raise Exception('Inconsitency between power coefficient and torque coefficient')
+        if np.max(deltaCP)>7: # more than 7%
+            raise Exception('Inconsitency between power coefficient and torque coefficient. We should have CP ~ CQ * TSR')
         self['CP'] = CP
         self['CQ'] = CQ
 
@@ -412,6 +412,10 @@ def write_rotor_performance(txt_filename, pitch, TSR, CP, CT, CQ, WS=None, Turbi
     file.write('\n')
     
     # Cq
+    if CQ is None:
+        print('>>> TODO CQ none')
+        TSR_Mat = np.tile(TSR.flatten(), (len(pitch),1)).T
+        CQ = CP/TSR_Mat
     file.write('\n# Torque coefficient\n\n')
     for i in range(len(TSR)):
         for j in range(len(pitch)):

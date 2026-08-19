@@ -174,11 +174,11 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         # Needs Weights to be computed
         # ---  Compute interpolated values at Operating points to be consistent
         WS    = self.OP['WS_[m/s]'].values[:]
-        Omega = self.OP['RotSpeed_[rpm]'].values[:] *np.pi/30
+        omega = self.OP['RotSpeed_[rpm]'].values[:] *np.pi/30
         pitch = self.OP['Pitch_[deg]'].values[:]
         phiy  = self.OP['PhiY_[deg]'].values[:]
-        self.OP['Paero_i_[W]'] = self.Power(WS, Omega, pitch, phiy) # Interpolated power
-        self.OP['Qaero_i_[Nm]'] = self.OP['Paero_i_[W]']/Omega
+        self.OP['Paero_i_[W]'] = self.Power(WS, omega, pitch, phiy) # Interpolated power
+        self.OP['Qaero_i_[Nm]'] = self.OP['Paero_i_[W]']/omega
 #         Q2                     = self.Torque(WS, Omega, pitch, phiy) # Interpolated torque
 #         Q1                      = self.OP['Paero_i_[W]']/Omega
 #         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8)) # (6.4,4.8)
@@ -204,6 +204,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
 
     def Power(self, WS, omega, pitch, phiy):
         """
+        Return power from fCP
          - WS: wind speed [m/s]
          - omega: rotational speed [rad/s]
          - pitch: pitch angle [deg]
@@ -213,6 +214,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
 
     def Thrust(self, WS, omega, pitch, phiy):
         """
+        Return Thrust from fCP
          - WS: wind speed [m/s]
          - omega: rotational speed [rad/s]
          - pitch: pitch angle [deg]
@@ -222,6 +224,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
 
     def Torque(self, WS, omega, pitch, phiy):
         """
+        Return Torque from fCP
          - WS: wind speed [m/s]
          - omega: rotational speed [rad/s]
          - pitch: pitch angle [deg]
@@ -297,11 +300,14 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
     def estimate(self, Qa, omega, pitch,  phiy , WS0, relaxation=0, method='crossing', deltaWSMax=1, verbose=False, debug=False, t=0, WSref=np.nan): 
         """
         INPUTS:
-         - Qa: aerodynamic power [W]
+         - Qa: aerodynamic torque [Nm]
          - omega: rotational speed [rad/s]
          - pitch: pitch angle [deg]
          - WS0:  wind speed guess/previous estimate [m/s]
-         - method: method
+         - method: method in 
+              'min'     : use minimize_scalar optimization
+              'oper'    : use operating conditions only
+              'crossing': use crossings with Cp curve
          # TODO compute rolling average on the fly
 
         NOTE: 
@@ -330,7 +336,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
             QaeroOP = self.OP['Qaero_i_[Nm]'].values 
             PitchOP = self.OP['Pitch_[deg]'].values #[deg]
             PhiYOP  = self.OP['PhiY_[deg]'].values #[deg]
-            # np.interp(Qa, self.OP['RtFldMxh_[N-m]'], self.OP['WS_[m/s]'])
+            # np.interp(Qa, self.OP['RtAeroMxh_[N-m]'], self.OP['WS_[m/s]'])
             WScrossOP, _, _ = zero_crossings(QaeroOP-Qa, x=WSOP) #, bouncingZero=True)
             if len(WScrossOP)==0:
                 # Can happen if torque below minimum or above maximum torque
@@ -488,7 +494,6 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         """ 
         Perform wind speed estimation given a time series of aerodynamic torque, pitch and rotational speed
         """
-        from welib.tools.tictoc import Timer
         WS_est = np.zeros(omega.shape)
         if WS_prev is None:
             WS_prev = 1

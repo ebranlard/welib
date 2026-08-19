@@ -7,9 +7,9 @@ Test that builds the 5 DOF model presented in the article:
 import numpy as np
 import copy
 import unittest
-from welib.yams.bodies import FlexibleBody
-from welib.yams.yams import *
-from welib.yams.TNSB import manual_assembly
+from welib.yams.yams_rec import *
+from welib.yams.utils import translateInertiaMatrix, translateInertiaMatrixToCOG
+from welib.yams.models.TNSB import TNSBStructure
 
 def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
 
@@ -43,19 +43,19 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     GKt_bld = 7*10**11
     jxx_bld = 10*5
 
-    r_ET_inE    = np.array([[0]    ,[0],[0]]  )
+    r_ET_inE    = np.array([ 0     , 0 , 0 ]  )
     if main_axis=='x':
-        r_TN_inT    = np.array([[L_twr],[0],[0]]  )
-        r_NGnac_inN = np.array([[0]    ,[0],[2.0]])
-        r_NS_inN    = np.array([[0]    ,[0],[-10]])
+        r_TN_inT    = np.array([ L_twr , 0 , 0 ]  )
+        r_NGnac_inN = np.array([ 0     , 0 , 2.0 ])
+        r_NS_inN    = np.array([ 0     , 0 , -10 ])
     elif main_axis=='z':
-        r_TN_inT    = np.array([[0],[0],[L_twr]] )
-        r_NGnac_inN = np.array([[1.0],[0],[0]])
-        r_NS_inN    = np.array([[-10],[0],[0]])
+        r_TN_inT    = np.array([0  ,0,L_twr ] )
+        r_NGnac_inN = np.array([1.0,0,0])
+        r_NS_inN    = np.array([-10,0,0])
 
-    r_SGhub_inS = np.array([[0]    ,[0],[0]]  )
-    r_SR_inS    = np.array([[0]    ,[0],[0]]  )
-    r_RGhub_inS = np.array([[0]    ,[0],[0]]  )
+    r_SGhub_inS = np.array([0,0,0]  )
+    r_SR_inS    = np.array([0,0,0]  )
+    r_RGhub_inS = np.array([0,0,0]  )
 
     M_hub=10**5
     IR_hub = np.zeros((3,3))
@@ -78,13 +78,15 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # --------------------------------------------------------------------------------}
     ## --- Creating bodies
     # --------------------------------------------------------------------------------{
-    Yaw=RigidBody('YawBearing',0,(0,0,0),(0,0,0));
+    Yaw=YAMSRecRigidBody('YawBearing',0,(0,0,0),(0,0,0));
     # Bld
     # TODO
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
     #Bld=UniformBeamBody('Blade', nShapes_bld, nSpan_bld, L_bld, EI_bld , m_bld, Mtop=0, jxxG=jxx_bld, GKt=GKt_bld, bCompatibility=bCompat)
     Blds=[]
-    Blds.append(Body('B1'))
+    PhiU = np.zeros(nShapes_bld)
+    Blds.append(YAMSRecBody('B1'))
+#     Blds.append(YAMSRecBeamBody('B1', PhiU=PhiU))
     #Blds[0].MM = np.array([
     # [  3.0000E+04,   0.0000E+00,   0.0000E+00,   0.0000E+00,   5.2444E+03,   0.0000E+00,  -2.4905E+02,  -1.1333E+03],
     # [  0.0000E+00,   3.0000E+04,   0.0000E+00,  -5.2401E+03,   0.0000E+00,   9.0000E+05,   0.0000E+00,   0.0000E+00],
@@ -116,18 +118,18 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
         Blds.append(copy.deepcopy(Blds[0]))
 
     # Generator only
-    Gen=RigidBody('Gen', 0, IG_hub, r_SGhub_inS)
+    Gen=YAMSRecRigidBody('Gen', 0, IG_hub, r_SGhub_inS)
     # ShaftHub Body 
-    Sft=RigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS);
+    Sft=YAMSRecRigidBody('ShaftHubGen',M_hub,IG_hub,r_SGhub_inS);
     Sft.MM*=bSftMass
     # Nacelle Body
-    Nac=RigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
+    Nac=YAMSRecRigidBody('Nacelle',M_nac,IG_nac,r_NGnac_inN);
     Nac.MM*=bNacMass
     # Tower Body
     # TODO
     # TODO - THIS HAS SOME INITIAL CONDITION IN IT
     Mtop=sum([B.mass for B in Blds]) + Sft.mass + Nac.mass;
-    Twr=UniformBeamBody('Tower', nShapes_twr, nSpan_twr, L_twr, EI_twr , m_twr, Mtop=Mtop, bAxialCorr=False, bStiffening=False, main_axis=main_axis, gravity=0)
+    Twr=YAMSRecUniformBeamBody('Tower', nShapes_twr, nSpan_twr, L_twr, EI_twr , m_twr, Mtop=Mtop, bAxialCorr=False, bStiffening=False, main_axis=main_axis, gravity=0)
     #  Temporary
     x_0=np.array([[0],[0],[0]])
     R_0b=np.eye(3)
@@ -140,15 +142,30 @@ def main(DEBUG=False,main_axis='x',nShapes_twr=1,bInit=1):
     # --------------------------------------------------------------------------------}
     # --- Manual assembly 
     # --------------------------------------------------------------------------------{
-    Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,DEBUG=DEBUG)
-    return Struct
+    WT = TNSBStructure(main_axis=main_axis, bTiltBeforeNac=False)
+    WT.twr    = Twr
+    WT.yawBr  = Yaw
+    WT.nac    = Nac
+    WT.gen    = Gen
+    WT.hubgen = Sft
+    WT.bld    = Blds
+    WT.r_ET_inE = r_ET_inE
+    WT.r_TN_inT = r_TN_inT
+    WT.r_NS_inN = r_NS_inN
+    WT.r_SR_inS = r_SR_inS
+    WT.shaft_tilt = 0
+    WT.blade_cone = 0
+    WT.manual_assembly(q=q)
+#     WT.auto_assembly(q=q) # NOTE: fails, probably because of lack of coherence in data structure
+    #Struct = manual_assembly(Twr,Yaw,Nac,Gen,Sft,Blds,q,r_ET_inE,r_TN_inT,r_NS_inN,r_SR_inS,main_axis=main_axis,DEBUG=DEBUG)
+    return WT
 
 
 class TestTNSB(unittest.TestCase):
     def test_TNSB_article(self):
-        Struct=main()
-        MM=Struct.MM
-        KK=Struct.KK
+        Struct = main()
+        MM     = Struct.MM
+        KK     = Struct.KK
         np.testing.assert_allclose(MM[0,0],7.86e5 ,rtol  = 1e-3)
         np.testing.assert_allclose(MM[1,1],7.23e7 ,rtol  = 1e-3)
         np.testing.assert_allclose(MM[2,2],7.50e3 ,rtol  = 1e-3)
@@ -160,7 +177,7 @@ class TestTNSB(unittest.TestCase):
         np.testing.assert_allclose(KK[2,2],2.86e5 ,rtol  = 1e-3)
         np.testing.assert_allclose(KK[2,2],2.86e5 ,rtol  = 1e-3)
 
-        Twr=Struct.Twr
+        Twr=Struct.twr
         Twr.gravity=9.81
         Twr.bStiffening=True
         Twr.computeStiffnessMatrix()

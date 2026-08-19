@@ -31,24 +31,61 @@ class BrokenPolarFormatError(Exception): pass
 DEFAULT_COLUMNS={'alpha':'Alpha', 'cl':'Cl', 'cd':'Cd', 'cm':'Cm'}
 DEFAULT_COLUMNS_EXT={
         'clinv':'Cl_inv', 'clfs':'Cl_fs', 'fs':'fs',
-        'cn':'Cn', 'cnpot':'Cn_pot', 'cnz12':'Cn_012', 'cnf':'Cn_f', 'cncd0off':'Cn_Cd0off'
+        'cn':'Cn', 'cnpot':'Cn_pot', 'cnz12':'Cn_012', 'cnf':'Cn_f', 'cncd0off':'Cn_Cd0off',
+        'cdw':'Cd_w', 'cdp':'Cd_p',
+        'c0':'Alpha', 'c1':'Cl', 'c2':'Cd', 'c3':'Cm'
         }
 
 
 # --------------------------------------------------------------------------------
 # --- Small Helper functions
 # --------------------------------------------------------------------------------
-def _load_txt(filename, commentChars, skiprows=0, **kwargs):
+def _load_txt(filename, commentChars, skiprows=0, delimiter=None, **kwargs):
     """ 
     Similar to np.loadtxt but also works if comments are present anywhere in the file (e.g. end of file)
     """
+    header_lines = []
+    lines        = []
     with open(filename) as f:
-        lines = (line for iline, line in enumerate(f) if not line.startswith(commentChars) and iline>=skiprows)
-        Lines = list(lines) 
-    if len(Lines)==0:
+        for iline, line in enumerate(f):
+            if iline<skiprows:
+                header_lines.append(line.strip())
+            elif line.startswith(commentChars):
+                header_lines.append(line.strip())
+            else:
+                lines.append(line.strip().lower())
+    if len(lines)==0:
         raise Exception('Zero lines')
     else:
-        return np.loadtxt(Lines, **kwargs)
+        if ',' in lines[0] and delimiter is None:
+            delimiter=','
+        #data = np.loadtxt(lines, skiprows=skiprows, delimiter=delimiter, **kwargs)
+        #data = np.loadtxt(lines, delimiter=delimiter, **kwargs)
+        data = np.genfromtxt(lines, delimiter=delimiter, skip_header=skiprows, missing_values=['na','nan'], filling_values=np.nan, **kwargs)
+        return data, header_lines
+
+def _sanitizeColNames(columns):
+    def no_unit(s):
+        s=s.replace('(',' [').replace(')',']')
+        s=s.replace('_[',' [')
+        iu=s.rfind('[')
+        if iu>0:
+            return s[:iu].strip()
+        else:
+            return s
+    columns = list(columns)
+    # --- Sanitize column names
+    for ic, c in enumerate(columns):
+        c = c.strip().lower()
+        c = no_unit(c)
+        c = c.replace('_','')
+        c = c.replace('aoa','alpha')
+        c = c.replace('fst','fs')
+        c = c.replace('012','z12')
+        c = c.replace('cllin','clinv')
+        c = c.replace('clpot','clinv')
+        columns[ic] = c # rename column
+    return columns
 
 
 # --------------------------------------------------------------------------------}
@@ -58,16 +95,25 @@ class BasePolarFile(dict):
     def __init__(self, filename=None):
         super().__init__()
         self.COMMENT_CHARS=('#','!','%')
-        self['header'] = ''
+        self['headers'] = ''
         self['columns'] = []
         self['data']    = np.array([[]])
         self['nPolars']  = 0
         if filename is not None:
             self.read(filename)
 
+    def read(self, *args, **kwargs):
+        raise Exception('Should be implemented by child class')
+
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
-        s+='- header: {}\n'.format(self['header'])
+        s+='- headers: '
+        if len(self['headers'])==0:
+            s+=' (empty)\n'
+        elif isinstance(self['headers'], list):
+            s+='\n  '.join(self['headers'])+'\n'
+        else:
+            s+=self['headers'] + '\n'
         s+='- columns: {}\n'.format(self['columns'])
         s+='- nPolars:{}\n'.format(self['nPolars'])
         s+='- data: shape {}\n'.format(self['data'].shape)
@@ -85,10 +131,11 @@ class BasePolarFile(dict):
             raise NotImplementedError()
 
 class PolarFile_OneLineHeader(BasePolarFile):
-    """ Polar file with exatcly one line of header. 
+    """ Polar file with EXACTLY ONE line of header which should contain the column names. 
     Column names in header can be separated by spaces or commas.
     Header may start with the following comment characters: ['#','!','%']
     Data may be space or column separated
+    The column names are not sanitized!
     """
     @staticmethod
     def formatName(): return 'Polar file one header line'
@@ -98,15 +145,17 @@ class PolarFile_OneLineHeader(BasePolarFile):
         with open(filename) as f:
             header = f.readline().strip()
             second = f.readline()
-        self['header'] = header
+        self['headers'] = header
         for c in self.COMMENT_CHARS:
             header = header.lstrip(c)
-        sep=',' 
-        try:
-            self['data'] = np.loadtxt(filename, delimiter=sep, skiprows=1)
-        except:
-            sep=None
-            self['data'] = np.loadtxt(filename, delimiter=sep, skiprows=1)
+        if ',' in second:
+            sep = ',' 
+            #self['data'] = np.loadtxt(filename, delimiter=sep, skiprows=1)
+            self['data'] = np.genfromtxt(filename, delimiter=sep, skip_header=1, missing_values=['na','nan'], filling_values=np.nan, invalid_raise=True)
+        else:
+            sep = None
+            self['data'] = np.genfromtxt(filename, delimiter=sep, skip_header=1, missing_values=['na','nan'], filling_values=np.nan)
+            #self['data'] = np.loadtxt(filename, delimiter=sep, skiprows=1)
         self['nPolars']=1
 
         # --- Detect columns
@@ -132,23 +181,50 @@ class PolarFile_OneLineHeader(BasePolarFile):
 
 class PolarFile_NoHeader(BasePolarFile):
     """ 
-    Polar file with no header, or some "meaningless" comments that starts with ['#','!','%']
-    Data may be space or column separated
+    Polar file with no header, or has header line with comments that starts with ['#','!','%']
+    The comments are not used to infer column names.
+    Column names are inferred from number of columns!
+    Data may be space or comma separated
+
+    Column inferrence:
+        2: {Alpha, Cl}, 3: {Alpha, Cl, Cd}, 4: {Alpha, Cl, Cd, Cm}
     """
     @staticmethod
     def formatName(): return 'Polar file no header'
 
     def read(self, filename):
-        self['data']    = _load_txt(filename, self.COMMENT_CHARS)
+        self['data'], self['headers'] = _load_txt(filename, self.COMMENT_CHARS)
         self['nPolars'] = 1
         # --- Detect columns
         nCols = self['data'].shape[1]
         d = [DEFAULT_COLUMNS['alpha'], DEFAULT_COLUMNS['cl'], DEFAULT_COLUMNS['cd'], DEFAULT_COLUMNS['cm']]
-        n2col = {2:d[0:2], 3:d[0:3], 4:d[0:4] }
+        n2col = {2:d[0:2], 3:d[0:3], 4:d[0:4] } 
         if nCols in n2col.keys():
             self['columns'] = n2col[nCols]
         else:
             raise BrokenPolarFormatError('The number of columns in the data ({}) is not amongst the supported ones ({}).'.format(nCols, n2col.keys()))
+
+
+class PolarFile_MultiHeaders(BasePolarFile):
+    """ 
+    Column inference:
+        2: {Alpha, Cl}, 3: {Alpha, Cl, Cd}, 4: {Alpha, Cl, Cd, Cm}
+    """
+    @staticmethod
+    def formatName(): return 'Polar file multiple header lines'
+
+    def read(self, filename):
+        self['data'], self['headers'] = _load_txt(filename, self.COMMENT_CHARS)
+        self['nPolars'] = 1
+        # --- Detect columns
+        nCols = self['data'].shape[1]
+        d = [DEFAULT_COLUMNS['alpha'], DEFAULT_COLUMNS['cl'], DEFAULT_COLUMNS['cd'], DEFAULT_COLUMNS['cm']]
+        n2col = {2:d[0:2], 3:d[0:3], 4:d[0:4] } 
+        if nCols in n2col.keys():
+            self['columns'] = n2col[nCols]
+        else:
+            raise BrokenPolarFormatError('The number of columns in the data ({}) is not amongst the supported ones ({}).'.format(nCols, n2col.keys()))
+
 
 class PolarFile_AD_Basic(BasePolarFile):
     """ 
@@ -158,13 +234,22 @@ class PolarFile_AD_Basic(BasePolarFile):
     def formatName(): return 'Polar AeroDyn file basic'
 
     def read(self, filename):
-        self['data']    = _load_txt(filename, self.COMMENT_CHARS, skiprows = 53)
+        skiprows=-1 # typically should be 53
+        with open(filename) as f:
+            for iline, line in enumerate(f):
+                if line.find('NumAlf')>0:
+                    skiprows=iline+1
+                    break
+        if skiprows==-1:
+            raise WrongPolarFormatError('NumAlf not found')
+
+        self['data'], self['headers'] = _load_txt(filename, self.COMMENT_CHARS, skiprows = skiprows)
         self['nPolars'] = 1
         # import pandas as pd
         # df=pd.read_csv(filename, skiprows = 53, header=None, delim_whitespace=True, names=['Alpha','Cl','Cd','Cm']).values
         # --- Detect columns
         nCols = self['data'].shape[1]
-        n2col = {2:['Alpha','Cl'], 3:['Alpha','Cl', 'Cm'], 4:['Alpha','Cl', 'Cm', 'Cd'] }
+        n2col = {2:['Alpha','Cl'], 3:['Alpha','Cl', 'Cd'], 4:['Alpha','Cl', 'Cd', 'Cm'] }
         if nCols in n2col.keys():
             self['columns'] = n2col[nCols]
         else:
@@ -177,16 +262,18 @@ class PolarFile(BasePolarFile):
     def formatName(): return 'Polar file'
 
 
-def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=True, verbose=False):
+def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=True, reorder=True, verbose=False):
     """ 
-    Loads a PolarFile, return a dataFrame
+    Loads a PolarFile, return a dataFrame and the reynolds if present
     """
     if not os.path.exists(filename):
         raise Exception('File not found:',filename)
         print('[WARN] Not all file formats supported ')
+    if verbose:
+        print('PolarFile: ',filename)
 
     allReaders   = [ADPolarFile, PolarFile_OneLineHeader, PolarFile_NoHeader, PolarFile_AD_Basic, CSVFile]
-    delimReaders = [PolarFile_OneLineHeader, PolarFile_AD_Basic, CSVFile]
+    delimReaders = [PolarFile_OneLineHeader, PolarFile_MultiHeaders, PolarFile_AD_Basic, CSVFile]
 
     def tryReading(f, reader):
         if f is not None:
@@ -195,12 +282,11 @@ def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=Tr
             return None
         try:
             if verbose:
-                print('')
-                print('PolarFile: trying to read with format: {}'.format(reader.formatName()))
+                print('PolarFile: trying format: {}'.format(reader.formatName()))
             return reader(filename)
         except:
             if verbose:
-                print('>>> PolarFile: Failed to read with format: {}'.format(reader.formatName()))
+                print('           [FAIL] format: {}'.format(reader.formatName()))
             pass
     f = None
     Re = np.nan # TODO
@@ -231,37 +317,45 @@ def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=Tr
     # --- Store in DataFrame
     df = f.toDataFrame()
     if verbose:
-        print('PolarFile: Columns before: ',df.columns.values)
+        print('PolarFile: Col1: ',list(df.columns))
+
+    # --- Sanitize column names
+    df.columns = _sanitizeColNames(df.columns)
+    if verbose:
+        print('PolarFile: Col2: ',list(df.columns))
 
     # --- Rename columns - Standardize column names
     if standardizeCols:
         COLS_TODO= {**DEFAULT_COLUMNS,**DEFAULT_COLUMNS_EXT}
-        for ic, col in enumerate(df.columns):
-            c = col.strip().lower().replace('_','')
-            c = c.replace('aoa','alpha')
-            c = c.replace('fst','fs')
-            c = c.replace('012','z12')
-            c = c.replace('cllin','clinv')
-            c = c.replace('clpot','clinv')
+        for ic, c in enumerate(df.columns):
             known_keys = reversed(sorted(list(COLS_TODO.keys())))
             found=False
             for kk in known_keys:
-                if c.startswith(kk):
+                if c == kk:
                     cnew = COLS_TODO.pop(kk)
                     #print('changing {} to {}'.format(c, cnew))
                     df.columns.values[ic] = cnew # rename column
                     found=True
+                    if c in ['c0', 'c1', 'c2', 'c3'] and verbose:
+                        print(f'[WARN] PolarFile: Mapping {c} to {cnew}')
                     break
             if not found:
                 if verbose:
-                    print('[WARN] PolarFile: The following column was not understood: {}'.format(col))
+                    print(f'[WARN] PolarFile: The following column was not understood: {c}')
 
-        # --- Standardize data
+        # --- Make sure Alpha, Cl, Cd, Cm are in the dataframe
         for k,v in DEFAULT_COLUMNS.items():
             if v not in df.columns:
                  df[v] = np.nan
+    # --- Make sure we start exactly with Alpha, Cl, Cd, Cm
+    if reorder:
+        if standardizeCols is False:
+            raise Exception('Reordering only allowed after standardization. Set `standardizeCols` to True.')
+        cols_first = [DEFAULT_COLUMNS['alpha'], DEFAULT_COLUMNS['cl'], DEFAULT_COLUMNS['cd'], DEFAULT_COLUMNS['cm']]
+        df = df[cols_first + [c for c in df.columns if c not in cols_first]]
+
     if verbose:
-        print('PolarFile: Columns after: ',df.columns.values)
+        print('PolarFile: Col3: ',list(df.columns))
 
     if standardizeCols:
         cAlpha = DEFAULT_COLUMNS['alpha']
@@ -278,6 +372,7 @@ def loadPolarFile(filename, fformat='auto', to_radians=False, standardizeCols=Tr
         df[cAlpha]*=np.pi/180
 
     Re  = np.nan
+#     print('>>> df', df)
     return df, Re 
 
 if __name__ == "__main__":
@@ -285,7 +380,8 @@ if __name__ == "__main__":
 #     PolarFile_OneLineHeader('data/63-235.csv')
     #f = PolarFile_NoHeader('data/63-235.csv')
 #     f = loadPolarFile('data/63-235.csv')
-    f = loadPolarFile('data/FFA-W3-241-Re12M.dat', verbose=True)
+#     f = loadPolarFile('data/FFA-W3-241-Re12M.dat', verbose=True)
+    f = loadPolarFile('data/DU21_A17.csv', verbose=True, fformat='delimited')
     #f = loadPolarFile('data/Cylinder.dat')
     #f = loadPolarFile('../../data/NREL5MW/5MW_Baseline/Airfoils/DU21_A17.dat')
     print(f)

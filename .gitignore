@@ -3,6 +3,7 @@
 *.sum
 *.out
 *.outb
+*.bts
 *.mat
 *.png
 *.zip
@@ -25,6 +26,8 @@ _*
 tags
 dist
 
-
+.vscode
 
 README_OUTPUT.md
+
+pytest.ini

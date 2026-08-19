@@ -254,8 +254,10 @@ def eigMCK(M, C, K, method='full_matrix', sort=True, normQ=None):
     elif method.lower()=='full_matrix':
         ## Method 2 - Damping based on K, M and full D matrix
         Q,v = polyeig(K,C,M, sort=sort, normQ=normQ)
-        #omega0 = np.abs(e)
-        zeta = - np.real(v) / np.abs(v)
+        omega0 = np.abs(v)
+        b=omega0>0
+        zeta = np.zeros_like(omega0)
+        zeta[b] = - np.real(v[b]) / omega0[b]
         freq_d = np.imag(v) / (2*np.pi)
         # Keeping only positive frequencies
         bValid = freq_d > 1e-08

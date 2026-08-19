@@ -14,7 +14,7 @@ MyDir=os.path.dirname(__file__)
 
 def FAST2StructureInputs(FST_file, model_name=None):
     #WT = FASTWindTurbine(FST_file, twrShapes=[0,2], nSpanTwr=4, algo='ElastoDyn')
-    WT = FASTWindTurbine(FST_file, twrShapes=[0,2], nSpanTwr=50)
+    WT = FASTWindTurbine(FST_file, twrShapes=[0,2], nSpanTwr=50).WT
     p = WT.yams_parameters()
     return p,WT
 

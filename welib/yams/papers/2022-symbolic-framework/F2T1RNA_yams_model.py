@@ -20,6 +20,8 @@ import importlib
 from welib.yams.models.FTNSB_sympy import *
 from welib.yams.models.FTNSB_sympy_symbols import *
 
+scriptDir = os.path.dirname(__file__)
+
 def main(runSim=True, runFAST=False):
 
     model = get_model('F2T1RNA', mergeFndTwr=False, linRot=False,
@@ -27,13 +29,13 @@ def main(runSim=True, runFAST=False):
                       rot_elastic_type='SmallRot', #rot_elastic_type='Body', 'Body' or 'SmallRot'
                       orderMM=1,
                       orderH=1,
-                      twrDOFDir=['x','y','x','y'], # Order in which the flexible DOF of the tower are set
+                      twrDOFDir=['x'], # Order in which the flexible DOF of the tower are set 
                      )
     extraSubs=model.shapeNormSubs # shape functions normalized to unity
     smallAngles  = [(model.twr.vcList, 2)]
     smallAngles += [([theta_tilt, phi_y]    , 1)]
     replaceDict={'theta_tilt':('tilt',None)}
-    model.exportPackage(path='_F2T1RNA', extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex='_F2T1RNA')
+    model.exportPackage(path=os.path.join(scriptDir,'_F2T1RNA'), extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex=os.path.join(scriptDir,'_F2T1RNA'))
 
     # --- Run non linear and linear simulation using a FAST model as input
     if runSim:
@@ -42,14 +44,15 @@ def main(runSim=True, runFAST=False):
         #time, dfFS, p = sim.setupSim(tMax=tMax)
 
         # --- Import the python module that was generated
-        model_pkg = importlib.import_module('_F2T1RNA')
+        #model_pkg = importlib.import_module('_F2T1RNA')
+        model_pkg = importlib.import_module('welib.yams.papers.2022-symbolic-framework._F2T1RNA')
 
         # --- Load the wind turbine model, and extract relevant parameters "p"
         MyDir=os.path.dirname(__file__)
         #fstFilename = os.path.join(MyDir, '../../../data/NREL5MW/Main_Onshore.fst')
         fstFilename = os.path.join(MyDir, 'F2T1RNA_SmallAngle/Main_Spar_ED.fst')
         from welib.yams.windturbine import FASTWindTurbine
-        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)
+        WT = FASTWindTurbine(fstFilename, twrShapes=[0], nSpanTwr=50, fixedShaft=True, nSpanBld=49).WT
         p = WT.yams_parameters()
 
         # --- Perform time integration
@@ -57,6 +60,7 @@ def main(runSim=True, runFAST=False):
             import welib.weio as weio
             dfFS = weio.read(fstFilename.replace('.fst','.outb')).toDataFrame()
             time =dfFS['Time_[s]'].values
+            dfFS = WT._insertOFDOFsInDF(dfFS)
         else:
             time = np.linspace(0,50,1000)
             dfFS = None
@@ -94,16 +98,16 @@ if __name__=="__test__":
     from welib.tools.stats import mean_rel_err
     vb = False
     method='minmax'
-    eps1= mean_rel_err(y1=dfNL['PtfmSurge_[m]'],   y2=dfFS['PtfmSurge_[m]']  , method=method, verbose=vb)
-    eps2= mean_rel_err(y1=dfNL['PtfmPitch_[deg]'], y2=dfFS['PtfmPitch_[deg]'], method=method, verbose=vb)
-    eps3= mean_rel_err(y1=dfNL['Q_TFA1_[m]'],      y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
+    eps1= mean_rel_err(y1=dfNL['Q_Sg_[m]']            , y2=dfFS['Q_Sg_[m]']            , method=method , verbose=vb)
+    eps2= mean_rel_err(y1=dfNL['Q_P_[rad]']*180/np.pi , y2=dfFS['Q_P_[rad]']*180/np.pi , method=method , verbose=vb)
+    eps3= mean_rel_err(y1=dfNL['Q_TFA1_[m]']          , y2=dfFS['Q_TFA1_[m]']          , method=method , verbose=vb)
     np.testing.assert_array_less(eps1, 0.58)
     np.testing.assert_array_less(eps2, 0.59)
     np.testing.assert_array_less(eps3, 0.60)
 
-    eps1= mean_rel_err(y1=dfLI['PtfmSurge_[m]'],   y2=dfFS['PtfmSurge_[m]']  , method=method, verbose=vb)
-    eps2= mean_rel_err(y1=dfLI['PtfmPitch_[deg]'], y2=dfFS['PtfmPitch_[deg]'], method=method, verbose=vb)
-    eps3= mean_rel_err(y1=dfLI['Q_TFA1_[m]'],      y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
+    eps1= mean_rel_err(y1=dfLI['Q_Sg_[m]']            , y2=dfFS['Q_Sg_[m]']            , method=method , verbose=vb)
+    eps2= mean_rel_err(y1=dfLI['Q_P_[rad]']*180/np.pi , y2=dfFS['Q_P_[rad]']*180/np.pi , method=method , verbose=vb)
+    eps3= mean_rel_err(y1=dfLI['Q_TFA1_[m]']          , y2=dfFS['Q_TFA1_[m]']          , method=method , verbose=vb)
     np.testing.assert_array_less(eps1, 1.03)
     np.testing.assert_array_less(eps2, 1.02)
     np.testing.assert_array_less(eps3, 0.73)

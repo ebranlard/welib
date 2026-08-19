@@ -279,6 +279,18 @@ class FEMModel(GraphModel):
         self.resetExternalLoads()
         return self
 
+    @property
+    def concentrated_masses(self):
+        from welib.yams.utils import identifyRigidBodyMM
+        CM = []
+        for n in self.Nodes:
+            if 'addedMassMatrix' in n.data:
+                MM = n.data['addedMassMatrix']
+                mass, J_G, ref2COG = identifyRigidBodyMM(n.data['addedMassMatrix'])
+                CM.append( {'nodeID':n.ID, 'mass':mass, 'J_G':J_G, 'rho_G':ref2COG, 'MM':MM} )
+        return CM
+
+
     def rayleighDamping(self, alpha, beta):
         # TODO DD_BC?
         if self.CC is None:
@@ -596,12 +608,12 @@ class FEMModel(GraphModel):
     # --------------------------------------------------------------------------------}
     # --- IO 
     # --------------------------------------------------------------------------------{
-    def nodesDisp(self, UDOF_c, IDOF=None, scale=True, maxAmplitude=None, sortDim=None,):
+    def nodesDisp(self, UDOF_c, IDOF=None, scale=True, maxAmplitude=None, sortDim=None, outputRot=False):
         """ 
         Returns nNodes x 3 x nShapes array of nodal displacements 
 
         INPUTS:
-          - UDOF: nDOF_c x nModes: array of DOF "displacements" for each mode
+          - UDOF ("Q"): nDOF_c x nModes: array of DOF "displacements" for each mode
                   in the system where internal constraints have been eliminated
           - IDOF: Optional array of subset/reordered DOF. 1:nDOF_c if not provided
           - scale: if True, modes are shapes according based on `maxAmplitude`
@@ -626,6 +638,7 @@ class FEMModel(GraphModel):
         INodes = list(np.sort(np.unique(DOF2Nodes[IDOF,1]))) # Sort nodes
         nShapes = UDOF.shape[1]
         disp = np.empty((len(INodes),3,nShapes)); disp.fill(np.nan)
+        rot  = np.empty((len(INodes),3,nShapes)); rot.fill(np.nan)
         pos  = np.empty((len(INodes),3))         ; pos.fill(np.nan)
 
         # --- METHOD 1 - Loop through DOFs KEEP ME
@@ -643,7 +656,7 @@ class FEMModel(GraphModel):
         #        for iShape in np.arange(nShapes):
         #            disp[iiNode, nodeDOF-1, iShape] = UDOF[i, iShape]
         # --- METHOD 2 - Loop through Nodes
-        Ix=[]; Iy=[]; Iz=[]
+        Ix=[]; Iy=[]; Iz=[]; IRx=[]; IRy=[]; IRz=[]
         for i,n in enumerate(self.Nodes):
             pos[i, 0]= n.x
             pos[i, 1]= n.y
@@ -651,27 +664,49 @@ class FEMModel(GraphModel):
             Ix.append(n.data['DOFs'][0])
             Iy.append(n.data['DOFs'][1])
             Iz.append(n.data['DOFs'][2])
+            IRx.append(n.data['DOFs'][3])
+            IRy.append(n.data['DOFs'][4])
+            IRz.append(n.data['DOFs'][5])
         for iShape in np.arange(nShapes):
             disp[:, 0, iShape] = UDOF[Ix, iShape]
             disp[:, 1, iShape] = UDOF[Iy, iShape]
             disp[:, 2, iShape] = UDOF[Iz, iShape]
+            rot [:, 0, iShape] = UDOF[IRx, iShape]
+            rot [:, 1, iShape] = UDOF[IRy, iShape]
+            rot [:, 2, iShape] = UDOF[IRz, iShape]
 
         # Scaling 
         if scale:
             for iShape in np.arange(nShapes):
-                maxDisp=np.nanmax(np.abs(disp[:, :, iShape]))
-                if maxDisp>1e-5:
-                    disp[:, :, iShape] *= maxAmplitude/maxDisp
+                #maxDisp=np.nanmax(np.abs(disp[:, :, iShape]))
+                #if maxDisp>1e-5:
+                #    disp[:, :, iShape] *= maxAmplitude/maxDisp
+                #    rot [:, :, iShape] *= maxAmplitude/maxDisp
+                shape_disp = disp[:, :, iShape]
+                abs_disp = np.abs(shape_disp)
+                max_idx = np.unravel_index(np.nanargmax(abs_disp), abs_disp.shape)
+                peak_val = shape_disp[max_idx]
+                maxDisp = np.abs(peak_val)
+                if maxDisp > 1e-5:
+                    scale_factor = (maxAmplitude / maxDisp) * np.sign(peak_val)
+                    disp[:, :, iShape] *= scale_factor
+                    rot[:, :, iShape] *= scale_factor
+
+
         # Sorting according to a dimension
         if sortDim is not None: 
             I=np.argsort(pos[:,sortDim])
             INodes = np.array(INodes)[I]
             disp   = disp[I,:,:]
             pos    = pos[I,:]
-        return disp, pos, INodes
+            rot    = rot[I,:]
+        if outputRot:
+            return disp, rot, pos, INodes
+        else:
+            return disp, pos, INodes
 
 
-    def getModes(self, scale=True, maxAmplitude=None, sortDim=None):
+    def getModes(self, scale=True, maxAmplitude=None, sortDim=None, outputRot=False):
         """ return Guyan and CB modes
 
           - maxAmplitude: if provided, scale used for the mode scaling. If not provided,
@@ -686,7 +721,7 @@ class FEMModel(GraphModel):
         PhiM     = self.Phi_CB
         PhiM_aug = np.zeros((self.nDOFc, PhiM.shape[1]))
         PhiM_aug[self.DOFc_Follower, : ] = PhiM
-        dispCB, posCB, INodesCB = self.nodesDisp(PhiM_aug, scale=scale, maxAmplitude=maxAmplitude, sortDim=sortDim)
+        dispCB, rotCB, posCB, INodesCB = self.nodesDisp(PhiM_aug, scale=scale, maxAmplitude=maxAmplitude, sortDim=sortDim, outputRot=True)
 
         # Guyan modes
         PhiR     = self.Phi_G
@@ -695,12 +730,20 @@ class FEMModel(GraphModel):
             PhiR_aug[self.DOFc_Leader[i] , i] = 1
         PhiR_aug[self.DOFc_Follower, : ] = PhiR
         PhiR_Intf = PhiR_aug.dot(self.T_refPoint) # nDOF x 6 (since TI is nGY x 6)
-        dispGy, posGy, INodesGy = self.nodesDisp(PhiR_Intf, scale=scale, maxAmplitude=maxAmplitude, sortDim=sortDim)
+        dispGy, rotGy, posGy, INodesGy = self.nodesDisp(PhiR_Intf, scale=scale, maxAmplitude=maxAmplitude, sortDim=sortDim, outputRot=True)
 
-        return dispGy, posGy, INodesGy, dispCB, posCB, INodesCB
+        if outputRot:
+            return dispGy, rotGy, posGy, INodesGy, dispCB, rotCB, posCB, INodesCB
+        else:
+            return dispGy, posGy, INodesGy, dispCB, posCB, INodesCB
 
 
     def setModes(self, nModesFEM=30, nModesCB=None):
+        """ 
+        Call addMode on parentClass GraphModel to store the FEM, CB, and Guyan Modes
+            modes are stored in the list self.Modes
+            Each is a dictionary
+        """
 
         # FEM Modes
         if self.Q is not None:
@@ -714,9 +757,11 @@ class FEMModel(GraphModel):
                 nModesCB = len(self.f_CB)
 
             if self.Q_G is not None and self.Q_CB is not None:
+                # If initialized with a from_cbeam for instance
                 dispGy, posGy, INodesGy = self.nodesDisp(self.Q_G)
                 dispCB, posCB, INodesCB = self.nodesDisp(self.Q_CB)
             else:
+                # The more general method
                 dispGy, posGy, InodesGy, dispCB, posCB, InodesCB = self.getModes(sortDim=None) 
             for iMode in range(dispGy.shape[2]):
                 self.addMode(displ=dispGy[:,:,iMode], name='GY{:d}'.format(iMode+1), freq=self.f_G[iMode], group='GY')

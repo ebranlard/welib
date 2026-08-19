@@ -1,7 +1,7 @@
 import unittest
 
 import numpy as np
-from welib.yams.yams import *
+from welib.yams.yams_rec import *
 
 # --------------------------------------------------------------------------------}
 # --- TESTS
@@ -19,17 +19,17 @@ class TestYAMS(unittest.TestCase):
           [ 0.000000000000000e+00 , -1.466276815184685e-02],
           [-1.466329361065083e-02 ,  0.000000000000000e+00],
           [ 0.000000000000000e+00 ,  9.998924958364900e-01 ]])
-        r_NS_ref=np.array([1.466276815184686e-01, 0.000000000000000e+00, -9.998924958364899e+00]).reshape((3,1))
+        r_NS_ref=np.array([1.466276815184686e-01, 0.000000000000000e+00, -9.998924958364899e+00])
 
         R_TN     = R_y(alpha_y)        ;
         q_psi    = 1
         z_NS     = - 10
-        r_NS_inN = np.array([0, 0, z_NS]).reshape((3,1))
+        r_NS_inN = np.array([0, 0, z_NS])
         # link E-T
         R_ET     = np.eye(3)
         # ---------------------------------------------
         # Link T-N
-        r_TN     = np.zeros((3,1))
+        r_TN     = np.zeros(3)
         r_TN[0]  = 1.0000E+02
         Bx_TN    = np.zeros((3,1))
         Bt_TN    = np.zeros((3,1))

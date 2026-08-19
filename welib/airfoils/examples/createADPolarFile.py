@@ -95,11 +95,11 @@ def main_WriteADPolarLowLevel():
 
 
 
-ADpol,polar = main_ReWriteADFile()
-ADpol,polar = main_WriteADPolar()
-ADpol,polar = main_WriteADPolarLowLevel()
 
 if __name__ == '__main__':
+    #ADpol,polar = main_ReWriteADFile()
+    ADpol,polar = main_WriteADPolar()
+    #ADpol,polar = main_WriteADPolarLowLevel()
     print(polar)
     import matplotlib.pyplot as plt
     plt.plot(polar.alpha   ,polar.cl     , '-' , label= 'cl')
@@ -110,7 +110,6 @@ if __name__ == '__main__':
 
 if __name__ == '__test__':
     ADpol,polar = main_ReWriteADFile()
-    ADpol,polar = main_WriteADPolar()
     ADpol,polar = main_WriteADPolar()
     try:
         os.remove('_Polar_out.dat.ignore')

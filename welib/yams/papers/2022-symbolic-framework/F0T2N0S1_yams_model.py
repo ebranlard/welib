@@ -20,6 +20,8 @@ import importlib
 from welib.yams.models.FTNSB_sympy import get_model
 from welib.yams.models.FTNSB_sympy_symbols import *
 
+scriptDir = os.path.dirname(__file__)
+
 def main(runSim=True, runFAST=False, create=True):
 
     if create:
@@ -28,27 +30,29 @@ def main(runSim=True, runFAST=False, create=True):
                           rot_elastic_type='SmallRot', #rot_elastic_type='Body', 'Body' or 'SmallRot'
                           orderMM=1,
                           orderH=1,
-                          twrDOFDir=['x','y','x','y'], # Order in which the flexible DOF of the tower are set
+                          twrDOFDir=['x','y'], # Order in which the flexible DOF of the tower are set
                          )
         extraSubs=model.shapeNormSubs # shape functions normalized to unity
         smallAngles  = [(model.twr.vcList, 2)]
         smallAngles += [([theta_tilt]    , 1)]
         replaceDict={'theta_tilt':('tilt',None)}
-        model.exportPackage(path='_F0T2N0S1', extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex='_F0T2N0S1')
+        model.exportPackage(path=os.path.join(scriptDir, '_F0T2N0S1'), extraSubs=extraSubs, smallAngles=smallAngles, replaceDict=replaceDict, pathtex=os.path.join(scriptDir,'_F0T2N0S1'))
 
 
 
     # --- Run non linear and linear simulation using a FAST model as input
     if runSim:
         # --- Import the python module that was generated
-        model_pkg = importlib.import_module('_F0T2N0S1')
+        #model_pkg = importlib.import_module('_F0T2N0S1')
+        #model_pkg = importlib.import_module('._F0T2N0S1', package=__package__)
+        model_pkg = importlib.import_module('welib.yams.papers.2022-symbolic-framework._F0T2N0S1')
 
         # --- Load the wind turbine model, and extract relevant parameters "p"
         MyDir=os.path.dirname(__file__)
         #fstFilename = os.path.join(MyDir, '../../../data/NREL5MW/Main_Onshore.fst')
         fstFilename = os.path.join(MyDir, 'F0T2N0S1/Main_Spar_ED.fst')
         from welib.yams.windturbine import FASTWindTurbine
-        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50)
+        WT = FASTWindTurbine(fstFilename, twrShapes=[0,2], nSpanTwr=50, nSpanBld=49).WT
         p = WT.yams_parameters()
 
         # --- Perform time integration
@@ -56,6 +60,7 @@ def main(runSim=True, runFAST=False, create=True):
             import welib.weio as weio
             dfFS = weio.read(fstFilename.replace('.fst','.outb')).toDataFrame()
             time =dfFS['Time_[s]'].values
+            dfFS = WT._insertOFDOFsInDF(dfFS)
         else:
             time = np.linspace(0,50,1000)
             dfFS = None
@@ -91,17 +96,17 @@ if __name__=="__test__":
     from welib.tools.stats import mean_rel_err
     vb = False
     method='minmax'
-    eps1= mean_rel_err(y1=dfNL['Azimuth_[deg]'],   y2=dfFS['Azimuth_[deg]']  , method=method, verbose=vb)
-    eps2= mean_rel_err(y1=dfNL['Q_TFA1_[m]'],      y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
-    eps3= mean_rel_err(y1=dfNL['Q_TSS1_[m]'],      y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
+    eps1= mean_rel_err(y1=dfNL['Q_GeAz_[rad]'],   y2=dfFS['Q_GeAz_[rad]']   , method=method, verbose=vb)
+    eps2= mean_rel_err(y1=dfNL['Q_TFA1_[m]'],     y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
+    eps3= mean_rel_err(y1=dfNL['Q_TSS1_[m]'],     y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
     np.testing.assert_array_less(eps1, 0.57)
     np.testing.assert_array_less(eps2, 0.58)
     np.testing.assert_array_less(eps3, 0.59)
 
 
-    eps1= mean_rel_err(y1=dfLI['Azimuth_[deg]'],   y2=dfFS['Azimuth_[deg]']  , method=method, verbose=vb)
-    eps2= mean_rel_err(y1=dfLI['Q_TFA1_[m]'],      y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
-    eps3= mean_rel_err(y1=dfLI['Q_TSS1_[m]'],      y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
+    eps1= mean_rel_err(y1=dfLI['Q_GeAz_[rad]'],   y2=dfFS['Q_GeAz_[rad]']  , method=method, verbose=vb)
+    eps2= mean_rel_err(y1=dfLI['Q_TFA1_[m]'],     y2=dfFS['Q_TFA1_[m]']     , method=method, verbose=vb)
+    eps3= mean_rel_err(y1=dfLI['Q_TSS1_[m]'],     y2=dfFS['Q_TSS1_[m]']     , method=method, verbose=vb)
     np.testing.assert_array_less(eps1, 0.57)
     np.testing.assert_array_less(eps2, 0.58)
     np.testing.assert_array_less(eps3, 0.59)

@@ -12,21 +12,29 @@ from sympy import lambdify
 from sympy import cos,sin, expand_trig
 from sympy import trigsimp
 from sympy import simplify
+from sympy.parsing.sympy_parser import parse_expr
 
 from welib.yams.yams_sympy import colvec, R_x, R_y, R_z, cross
-from welib.yams.yams_sympy import GroundBody
-from welib.yams.yams_sympy import BeamBody
-from welib.yams.yams_sympy import RigidBody
+from welib.yams.yams_rec import YAMSRecGroundBody
+from welib.yams.yams_rec import YAMSRecBeamBody
+from welib.yams.yams_rec import YAMSRecRigidBody
+from welib.essentials import *
 
 
-def main():
+def main(test=False):
     init_printing(use_unicode=False, wrap_line=False, no_global=True)
     #init_printing(wrap_line=False)
     # init_printing(use_latex='mathjax')
-    display=lambda x: sympy.pprint(x, use_unicode=False,wrap_line=False)
-    disp=lambda x: print(lambdarepr.lambdarepr(x))
-    sep=lambda : print('--------')
-
+    def myprint(x):
+        if test:
+            pass
+        else:
+            print(x)
+    def display(x):
+        if test:
+            pass
+        else:
+            sympy.pprint(x, use_unicode=False,wrap_line=False)
 
     # ---
     L  = symbols('L')
@@ -80,11 +88,11 @@ def main():
     r_NR_inN  = colvec([rNR_x,0,rNR_z])
     rho_N_inN = colvec([rhoN_x,0,rhoN_z])
 
-
+    directions=[['x']]*nShapes_twr
     # --- Independent bodies
-    Grd = GroundBody()
-    Twr = BeamBody ('Twr',nShapes_twr, main_axis=main_axis, nD=nD)
-    Nac = RigidBody('Nac'      ,0,0,0)
+    Grd = YAMSRecGroundBody(sympy=True)
+    Twr = YAMSRecBeamBody (name='Twr', main_axis=main_axis, directions=directions, sympy=True)
+    Nac = YAMSRecRigidBody(name='Nac' ,mass=0, J=(0,0,0), rho_G=(0,0,0), sympy=True)
 
     # --- Connect bodies together
     if bTiltBeforeNac:
@@ -97,215 +105,225 @@ def main():
 
     Grd.connectTo(Twr, Point=r_ET_inE, Type='Rigid')
     Twr.connectTo(Nac, Point=r_TN_inT, Type='Rigid', RelOrientation = R_cn0 )
-    nq=Grd.setupDOFIndex(0);
+    nq=Grd.setupDOFIndex();
 
-    print('Number of DOFs: ')
+    myprint('Number of DOFs: ')
     if nq!=len(q):
-       print('>>> ',nq,len(q))
+       myprint('>>> '+str(nq)+' '+str(len(q)))
        raise Exception('Wrong number of dof')
 
 
 
-    print('------------------ p=GROUND   i=TOWER --------------------------------------')
+    myprint('------------------ p=GROUND   i=TOWER --------------------------------------')
     Grd.updateChildrenKinematicsNonRecursive(q)
-    print('------------------ p=TOWER   i=NACELLE --------------------------------------')
+    myprint('------------------ p=TOWER   i=NACELLE --------------------------------------')
     Twr.updateChildrenKinematicsNonRecursive(q)
 
 
-    print('------------------ TOWER --------------------------------------')
-    print('B_T')
+    myprint('------------------ TOWER --------------------------------------')
+    myprint('B_T')
     display(Twr.B)
-    print(np.array(Twr.B.subs(subs)))
-    print('B_T_in_T')
+    myprint(np.array(Twr.B)) # .subs(subs)))
+    myprint('B_T_in_T')
     display(Twr.B_inB)
-    print(np.array(Twr.B_inB.subs(subs)))
-    print('BB_T_in_T')
+    myprint(np.array(Twr.B_inB)) #.subs(subs)))
+    myprint('BB_T_in_T')
     display(Twr.BB_inB)
-    print(np.array(Twr.BB_inB.subs(subs)))
+    myprint(np.array(Twr.BB_inB)) #.subs(subs)))
 
-    print('------------------ NACELLE --------------------------------------')
-    print('B_N')
+    myprint('------------------ NACELLE --------------------------------------')
+    myprint('B_N')
     display(Nac.B)
-    print(np.array(Nac.B.subs(subs)))
-    print('B_N_in_N')
+    myprint(np.array(Nac.B.subs(subs)))
+    myprint('B_N_in_N')
     display(Nac.B_inB)
-    print(np.array(Nac.B_inB.subs(subs)))
-    print('BB_N_in_N')
+    myprint(np.array(Nac.B_inB.subs(subs)))
+    myprint('BB_N_in_N')
     display(Nac.BB_inB)
-    print(np.array(Nac.BB_inB.subs(subs)))
+    myprint(np.array(Nac.BB_inB.subs(subs)))
 
 
-    print('------------------ TOWER TOP FORCES IN EARTH--------------------------------------')
-    print('Thrust in E')
-    T_inE = Nac.R_0b*T_inN
+    myprint('------------------ TOWER TOP FORCES IN EARTH--------------------------------------')
+    myprint('Thrust in E')
+    T_inE = Nac.R_b2g*T_inN
     display(T_inE)
-    print(np.array(T_inE.subs(subs)))
+    myprint(np.array(T_inE.subs(subs)))
 
-    print('Moment from thrust in E')
-    r_NR_inE = Nac.R_0b*r_NR_inN
+    myprint('Moment from thrust in E')
+    r_NR_inE = Nac.R_b2g*r_NR_inN
     MT_inE = Matrix(cross(r_NR_inE, T_inE))
     display(MT_inE)
-    print(np.array(MT_inE.subs(subs)))
+    myprint(np.array(MT_inE.subs(subs)))
 
 
     W_inE= M_RNA*g_inE
 
-    rho_N_inE = Nac.R_0b*rho_N_inN
+    rho_N_inE = Nac.R_b2g*rho_N_inN
     MW_inE = M_RNA*Matrix(cross(rho_N_inE , g_inE))
 
-    print('Moment from weight in E')
+    myprint('Moment from weight in E')
     display(MW_inE)
-    print(np.array(MW_inE.subs(subs)))
+    myprint(np.array(MW_inE.subs(subs)))
 
 
-    print('FullForce in E')
+    myprint('FullForce in E')
     F_inE = W_inE + T_inE
     display(F_inE)
-    print(np.array(F_inE.subs(subs)))
-    print('Fullmoment in E at N')
+    myprint(np.array(F_inE.subs(subs)))
+    myprint('Fullmoment in E at N')
     M_inE = MW_inE + MT_inE
-    print(np.array(M_inE.subs(subs)))
+    myprint(np.array(M_inE.subs(subs)))
 
 
-    print('FullLoad in E at N')
+    myprint('FullLoad in E at N')
     f_inE = Matrix(np.vstack((F_inE,M_inE)))
-    print(np.array(f_inE.subs(subs)))
+    myprint(np.array(f_inE.subs(subs)))
 
 
-    print('')
-    print('Fx in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
-    print(np.array(simplify(F_inE[0].subs(subs))))
-    print('')
-    print('My in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
-    print(np.array(simplify(M_inE[1].subs(subs))))
-    print('')
-    print('Fz in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
-    print(np.array(simplify(F_inE[2].subs(subs))))
-    print('')
+    myprint('')
+    myprint('Fx in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
+    myprint(np.array(simplify(F_inE[0].subs(subs))))
+    myprint('')
+    myprint('My in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
+    myprint(np.array(simplify(M_inE[1].subs(subs))))
+    myprint('')
+    myprint('Fz in E<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ')
+    myprint(np.array(simplify(F_inE[2].subs(subs))))
+    myprint('')
 
 
-    print('Generalized force in E at N')
+    myprint('Generalized force in E at N')
     GF_N_fromE = Nac.B.T * f_inE
-    print(np.array(GF_N_fromE.subs(subs)))
+    myprint(np.array(GF_N_fromE.subs(subs)))
 
 
 
-    print('------------------ TOWER TOP FORCES IN NAC--------------------------------------')
-    print('Thrust in N')
+    myprint('------------------ TOWER TOP FORCES IN NAC--------------------------------------')
+    myprint('Thrust in N')
     display(T_inN)
-    print(np.array(T_inN.subs(subs)))
+    myprint(np.array(T_inN.subs(subs)))
 
-    print('Moment from thrust in N')
+    myprint('Moment from thrust in N')
     MT_inN = Matrix(cross(r_NR_inN, T_inN))
     display(MT_inN)
-    print(np.array(MT_inN.subs(subs)))
+    myprint(np.array(MT_inN.subs(subs)))
 
-    g_inN = Nac.R_0b.T * g_inE
+    g_inN = Nac.R_b2g.T * g_inE
     W_inN= M_RNA* g_inN
 
     MW_inN = M_RNA*Matrix(cross(rho_N_inN , g_inN))
     # 
-    print('Moment from weight in N')
+    myprint('Moment from weight in N')
     display(MW_inN)
-    print(np.array(MW_inN.subs(subs)))
+    myprint(np.array(MW_inN.subs(subs)))
 
 
-    print('FullForce in N')
+    myprint('FullForce in N')
     F_inN = W_inN + T_inN
     display(F_inN)
-    print(np.array(F_inN.subs(subs)))
+    myprint(np.array(F_inN.subs(subs)))
 
 
 
 
-    print('Fullmoment in N at N')
+    myprint('Fullmoment in N at N')
     M_inN = MW_inN + MT_inN
-    print(np.array(M_inN.subs(subs)))
+    myprint(np.array(M_inN.subs(subs)))
 
 
-    print('FullLoad in E at N')
+    myprint('FullLoad in E at N')
     f_inN = Matrix(np.vstack((F_inN,M_inN)))
-    print(np.array(f_inE.subs(subs)))
+    myprint(np.array(f_inE.subs(subs)))
 
-    print('Generalized force in N at N')
+    myprint('Generalized force in N at N')
     GF_N = Nac.B_inB.T * f_inN
-    print(np.array(GF_N.subs(subs)))
+    myprint(np.array(GF_N.subs(subs)))
 
-    print('Generalized force in E at N')
-    print(np.array(GF_N_fromE.subs(subs)))
+    myprint('Generalized force in E at N')
+    myprint(np.array(GF_N_fromE.subs(subs)))
 
-    print('')
-    print('Generalized force simplified')
+    myprint('')
+    myprint('Generalized force simplified')
     display(simplify(GF_N))
-    print('')
-    print('---------------------------')
+    myprint('')
+    myprint('---------------------------')
     display(simplify(GF_N-GF_N_fromE))
 
-    print('----------Fx in E----------')
+    myprint('----------Fx in E----------')
     display(simplify(F_inE[0]).subs(subs))
-    print('----------Fz in E----------')
+    myprint('----------Fz in E----------')
     display(simplify(F_inE[2]).subs(subs))
-    print('----------My in E----------')
+    myprint('----------My in E----------')
     display(simplify(M_inE[1]).subs(subs))
 
 
 
+    myprint('----------Grd--------------')
+    myprint(Grd)
+    #myprint('MM' + Grd.MM)
+
+    myprint('----------Twr--------------')
+    myprint(Twr)
+    #myprint('MM' + Twr.MM)
+
+    myprint('----------Nac--------------')
+    myprint(Nac)
+    #myprint('MM' + Nac.MM)
+
+    myprint('----------MM --------------')
+    #display(simplify(Grd.M()).subs(subs))
 
 
 
 
 
+#     print('---------------------------------Twr')
+#     print(Twr1)
+#     print(Twr2)
+#     print('---------------------------------B R_b2c')
+#     print(Twr1.R_bc)
+#     print(Twr2.R_bc)
+#     print('---------------------------------B x')
+#     print(Twr1.Bhat_x_bc)
+#     print(Twr2.Bhat_x_bc)
+#     print('---------------------------------B t')
+#     print(Twr1.Bhat_t_bc)
+#     print(Twr2.Bhat_t_bc)
+#     print('---------------------------------Couplings')
+#     print(Twr1.alpha_couplings)
+#     print(Twr2.alpha_couplings)
+#     print('---------------------------------gzf')
+#     print(Twr1.gzf)
+#     print(Twr2.gzf)
+
+    dB = Nac.B - parse_expr('Matrix([[ux1c], [0], [0], [0], [vy1c], [0]])')
+    np.testing.assert_equal(dB, Matrix([[0],[0],[0],[0],[0],[0]]))
+
+    dB = Nac.BB_inB - parse_expr('Matrix([[ux1c*cos(alpha_y)], [0], [ux1c*sin(alpha_y)], [vy1c*sin(alpha_x)*sin(alpha_y)], [vy1c*cos(alpha_x)], [-vy1c*sin(alpha_x)*cos(alpha_y)]])')
+    np.testing.assert_equal(dB, Matrix([[0],[0],[0],[0],[0],[0]]))
+
+    T_inE = Nac.R_b2g*T_inN
+    dT = T_inE - parse_expr('Matrix([[-T*sin(alpha_y)*sin(theta_tilt) + T*cos(alpha_y)*cos(theta_tilt)], [T*sin(alpha_x)*sin(alpha_y)*cos(theta_tilt) + T*sin(alpha_x)*sin(theta_tilt)*cos(alpha_y)], [-T*sin(alpha_y)*cos(alpha_x)*cos(theta_tilt) - T*sin(theta_tilt)*cos(alpha_x)*cos(alpha_y)]])')
+    np.testing.assert_equal(dT, Matrix([[0],[0],[0]]))
 
 
-    # display(Grd.R_bc)
-    # sep()
-    # display(Grd.Bhat_x_bc)
-    # sep()
-    # display(Grd.Bhat_t_bc)
-    # sep()
-    # 
-    # display(Twr.R_bc)
-    # sep()
-    # display(Twr.Bhat_x_bc)
-    # sep()
-    # display(Twr.Bhat_t_bc)
+    return Grd, Nac, Twr, T_inE
 
-
-
-    # M=Matrix([[],[],[]])
-    # Matrix()
-    # print(len(M))
-    # print(M.shape)
-    # display(M*r_T_inE)
-
-
-    # r_T     = r_E+ r_TN_inE
-    # 
     # # Grd.s_C_inB = r_T_inE              # NOTE: only one connection supported
     # # r_pi          = Grd.R_0p * Grd.s_C_inB
-    # # 
-    # # 
     # # Grd.Baug_B_inB=eye(4)
-    # 
-    # # --- Tower
-    # 
     # # --- Tower nacelle connection
     # r_N
-    # 
     # R_tc  = R_x(alpha_x) * R_y(alpha_y)  * R_z(alpha_z)  # R_pc
     # R_cn =  R_z (theta_yaw) * R_y(theta_tilt)            # R_ci0
     # R_TN = R_tc*R_cn
     # R_EN = R_ET * R_TN
-    # 
     # display(R_TN)
     # display(R_EN)
-    # 
     # Grd.connectTo(Twr,'Point',[0;0;0],'Type','Rigid');
     # Grd.connectTo(Twr,'Point',[0;0;0],'Type','Rigid');
     # Twr.connectTo(Nac,'Point','LastPoint','Type','Rigid');
     # Nac.connectTo(Sft,'Point',r_NS_inN,'Type','SphericalJoint','JointRotations',{'z'},'Orientation',fRotz(pi));
-
-
     # q        : [u_xf   , u_zf     , phi_y   , u_yf   , phi_z   , phi_x      , u_zt   , phi_yt   , u_yt    , phi_zt   , theta_yaw   , theta_tilt  ] $
     # JH_T : addcol(C0, C0, ey, C0,  R_y(phi_y) . ez , R_y(phi_y) . R_z(phi_z) . ex )$  /** 
     # JH_K : addcol(Ckob*ey, ey, -Ckob * R_y(alpha_y). ez ,  R_y(alpha_y) . ez , R_y(alpha_y) . R_z(alpha_z) . ex,  R_y(alpha_y) . R_z(alpha_z). R_x(theta_yaw). ey )
@@ -322,10 +340,5 @@ def main():
 
 if __name__=="__main__":
     main()
-    plt.show()
 if __name__=="__test__":
-    pass
-if __name__=="__export__":
-    pass
-    #from welib.tools.repo import export_figs_callback
-    #export_figs_callback(__file__)
+    Grd, Twr, Nac, T_inE = main(test=True)

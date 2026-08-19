@@ -18,6 +18,7 @@ if __name__ == '__main__':
     np.set_printoptions(precision=5, linewidth=400)
 
     filename=os.path.join(MyDir,'../../../data/NREL5MW/5MW_Baseline/NRELOffshrBsline5MW_OC4Jacket_SubDyn.dat'); TP=(0,0,20.15); gravity=9.81
+#     filename=os.path.join(MyDir,'../../../data/SubDyn/TwrSmall.dat'); TP=(0,0,100); gravity=9.81;
     #filename=os.path.join(MyDir,'../../../data/SubDyn/Twr.dat'); TP=(0,0,102.7930); gravity=9.81;
 #     filename=os.path.join(MyDir,'../../../data/SubDyn/Jacket.dat');    TP=(0,0,22); gravity=9.81;
 #     filename=os.path.join(MyDir,'../../../data/SubDyn/JacketTwr.dat'); TP=(0,0, 102.7930); gravity=9.81;
@@ -49,11 +50,8 @@ if __name__ == '__test__':
     outbase  = os.path.join(MyDir, '_' + filebase )
     sd.toYAML (outbase+'.python.yaml')
     model.toJSON(outbase+'.python.json')
-    try:
-        os.delete(outbase+'.yaml')
-        os.delete(outbase+'.json')
-    except:
-        pass
+    os.remove(outbase+'.python.yaml')
+    os.remove(outbase+'.python.json')
     # Test data
     np.testing.assert_almost_equal(model.M_O [0,0]/1e5, 3.85591, 4)
     np.testing.assert_almost_equal(model.M_O [3,3]/1e9, 1.29432, 4)

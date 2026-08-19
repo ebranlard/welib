@@ -32,8 +32,10 @@ import sys
 from ctypes import *
 import os
 
-
-from distutils.sysconfig import get_config_var
+try:
+    from sysconfig import get_config_var
+except:
+    from distutils.sysconfig import get_config_var
 
 from sys import platform
 
@@ -363,7 +365,7 @@ class pyMAP(object):
         if filename is not None:
             ext = os.path.splitext(filename)[1].lower()
             if ext=='.fst':
-                from welib.weio import FASTInputFile
+                from welib.weio.fast_input_file import FASTInputFile
                 fst = FASTInputFile(filename)
                 if WtrDepth is None:
                     WtrDepth=fst['WtrDpth'] # m
