@@ -1,7 +1,7 @@
 import os
 from setuptools import setup, find_packages
 
-VERSION='4.2.0'
+VERSION='4.2.1'
 
 
 EXTRAS = {
