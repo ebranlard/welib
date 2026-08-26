@@ -1396,8 +1396,51 @@ class WindTurbineStructure():
                 # --- Force at N without YawBr Mass (such are "YawBr" sensors..) in global coordinates
                 F_N = -R_N
                 M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
-                # Aero force
-                # TODO gen?
+
+                # --- Correction for rotor spin
+                # The term above (tau_N) assumes the RNA is a rigid body rotating at om_n.
+                # We add the effect of the rotor spinning relative to the nacelle.
+                # Delta H_dot = J_spin * omd_rel + om_n x (J_spin * om_rel)
+                # (Assuming rotor is symmetric so its inertia tensor J_rot is constant in the shaft frame)
+                if 'Psi' in qd:
+                    # Shaft axis x_s in global coordinates:
+                    # Shaft axis in global
+                    R_g2s = dd['R_g2s']
+                    x_s_g = R_g2s[0, :] # First row of R_g2s is the shaft axis in global
+                    #x_s_g2 = R_g2n.T.dot(WT.R_NS.dot(np.array([1.0, 0.0, 0.0])))
+                    
+                    # Spinning inertia about shaft (reflected to LSS, include rotor + gen)
+                    Jspin_x = WT.rotgen.inertia[0,0]
+                    #J_gen_LSS = WT.gen.inertia[0,0]
+                    
+                    # Relative angular velocity and acceleration in global
+                    om_rel_g  = qd['Psi']  * x_s_g
+                    omd_rel_g = qdd['Psi'] * x_s_g
+                    
+                    # Correction terms for dot{H} (Rate of change of angular momentum)
+                    # Using principal axis property: J_rot * x_s_g = Jspin_x * x_s_g
+                    dH_spin_g = Jspin_x * omd_rel_g + np.cross(om_n, Jspin_x * om_rel_g)
+                   
+                    M_N -= dH_spin_g
+
+#                 # ---  Extract Generator Torque from DataFrame (Convert kN-m to N-m)
+#                 # Note: gentq_[kN-m] is positive in the shaft rotation direction
+# #                 if 'GenTq_[kN-m]' in rowDF_in.index:
+#                     M_gen = rowDF_in['GenTq_[kN-m]'] * 1000.0 * WT.ED['GBRatio']
+# #                 else:
+# #                     M_gen = 0.0
+#                 # Drivetrain / Generator inertia torque reaction
+#                 # J_gen_LSS = GenIner * GBRatio^2
+#                 # qdd['Psi'] is the shaft angular acceleration [rad/s^2]
+#                 psi_dd = qdd['Psi'] if 'Psi' in qdd.index else 0.0
+#                     T_gen_inertia = J_gen_LSS * psi_dd
+# 
+#                 # --- Shaft & Generator Torque Addition ---
+#                 # Torque applied along the shaft axis to account for generator reaction and inertia
+#                     M_N -= (M_gen        ) * x_s_g
+#                     M_N -= (T_gen_inertia) * x_s_g
+
+                # --- Aero force
                 if 'Fadd_R_xs' in df.keys():
                     R_g2s = dd['R_g2s']
                     Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],rowDF_in['Fadd_R_ys'],rowDF_in['Fadd_R_zs']))

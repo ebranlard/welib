@@ -83,7 +83,10 @@ class YAMSSectionLoadCalculator():
         return dfOut, sections
 
 
-    def plot_tower_section_loads(self, IsecTwr=None, component='MLyt', figFilename=None):
+    # --------------------------------------------------------------------------------}
+    # --- Plots 
+    # --------------------------------------------------------------------------------{
+    def plot_tower_section_loads(self, IsecTwr=None, component='MLyt', figFilename=None, printStats=False):
         dfRef = self.dfRef
         dfOut = self.dfOut
 
@@ -100,6 +103,8 @@ class YAMSSectionLoadCalculator():
             y2 = dfOut[sT].values
             ax.plot(t1, y1, 'k-'                        , label='OpenFAST' if iiED==0 else None)
             ax.plot(t2, y2,  '--' , color=fColrs(iiED)  , label='Sim Ht{}'.format(iED+1))
+            stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); 
+            addStats(ax, sT, sStats, printStats=printStats, factY=0.8)
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('')
         ax.legend()
@@ -107,7 +112,7 @@ class YAMSSectionLoadCalculator():
             fig.savefig(figFilename)
         return fig
 
-    def plot_tower_accelerations(self, IsecTwr=None, component='x', figFilename=None):
+    def plot_tower_accelerations(self, IsecTwr=None, component='x', figFilename=None, printStats=False):
         dfRef = self.dfRef
         dfOut = self.dfOut
 
@@ -126,11 +131,13 @@ class YAMSSectionLoadCalculator():
             j=j+1;sig = 'NcIMUTAxs_[m/s^2]'; t1, y1, t2, y2 = dfRef['Time_[s]'].values ,dfRef[sig].values ,dfOut['Time_[s]'].values ,dfOut[sig].values; 
             axes[j].plot(t1, y1, 'k-'); axes[j].plot(t1, y2, '--'); axes[j].set_ylabel(sig); 
             stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); 
+            addStats(ax, sig, sStats, printStats=printStats, factY=0.8)
             #print(sig, stats) # TODO
         for iiED,iED in enumerate(IsecTwr):
             j=j+1; sig = f'TwHt{iED+1}AL{component}t_[m/s^2]'; t1, y1, t2, y2 = dfRef['Time_[s]'].values ,dfRef[sig].values ,dfOut['Time_[s]'].values ,dfOut[sig].values; 
             axes[j].plot(t1, y1, 'k-'); axes[j].plot(t1, y2, '--'); axes[j].set_ylabel(sig); 
             stats, sStats =  comparison_stats(t1,y1,t2,y2, stats='sigRatio,eps,R2', method='meanabs'); 
+            addStats(ax, sig, sStats, printStats=printStats, factY=0.8)
             #print(sig, stats)
         if figFilename is not None:
             fig.savefig(figFilename)
@@ -149,7 +156,7 @@ class YAMSSectionLoadCalculator():
             fig.savefig(figFilename)
 
     
-    def plot_monopile_section_loads(self, IZ=None, component=0, figFilename=None, tRange=None):
+    def plot_monopile_section_loads(self, IZ=None, component=0, figFilename=None, tRange=None, printStats=False):
         """ 
          - component: 0 Fx, 4:My
         """
@@ -165,6 +172,7 @@ class YAMSSectionLoadCalculator():
         for ii, iz in enumerate(IZ):
             time_plot (vTime, F_secRef[0, iz, :]/1e6,  F_sec[0, iz, :]/1e6, f'z={zDepth[iz]:.0f}m', tRange=tRange, ax=axes[ii], fig=fig)
             stats, sStats =  comparison_stats(vTime, F_secRef[0,iz,:]/1e6, vTime, F_sec[0,iz,:]/1e6, stats='sigRatio,eps,R2', method='meanabs')
+            addStats(ax, 'Fsec'+str(component), sStats, printStats=printStats, factY=0.8)
             #print(f'z {zDepth[iz]:5.0f}: ', stats)
         axes[-1].set_xlabel('Time [s]')
         fig.suptitle('FxSec [MN]')
@@ -180,11 +188,8 @@ class YAMSSectionLoadCalculator():
         vTime = self.dfRef['Time_[s]']
         fig, ax = time_plot (vTime, self.dfRef[sig]/scale, self.dfOut[sig]/scale, ylabel, tRange=tRange, ax=ax)
         stats, sStats =  comparison_stats(vTime, self.dfRef[sig]/scale, vTime, self.dfOut[sig]/scale, stats='sigRatio,eps,R2', method='1-2')
-        Ylim = ax.get_ylim()
-        Xlim = ax.get_xlim()
-        ax.text(Xlim[0]+(Xlim[1]-Xlim[0])/1000 ,Ylim[0]+(Ylim[1]-Ylim[0])*factY, sStats, fontsize=10)
-        if printStats:
-            print(f"{sig:10s} "+latexStrip(sStats))
+        addStats(ax, sig, sStats, printStats=printStats, factY=0.8)
+
         if figFilename is not None:
             fig.savefig(figFilename)
         return fig, stats
@@ -218,6 +223,15 @@ colRef=COLRS[0]
 colSim=COLRS[1]
 LWRef=2.4
 LWSim=1.5
+
+
+
+def addStats(ax, sig, sStats, printStats=False, factY=0.8):
+    Ylim = ax.get_ylim(); Xlim = ax.get_xlim()
+    ax.text(Xlim[0]+(Xlim[1]-Xlim[0])/1000 ,Ylim[0]+(Ylim[1]-Ylim[0])*factY, sStats, fontsize=10)
+    if printStats:
+        print(f"{sig:10s} "+latexStrip(sStats))
+
 
 def meanabs(x, **kwargs):
     return np.mean(np.abs(x), **kwargs)
