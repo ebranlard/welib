@@ -15,7 +15,10 @@ def main(test=False):
     # --- Override BEM options (see unsteadyBEM.setDefaultOptions, or print(BEM))
     #BEM.bSwirl = True  # swirl flow model enabled / disabled
     #BEM.bTipLoss = True # enable / disable tip loss model
-    time=np.arange(0,10,0.1)
+    if test:
+        time=np.arange(0,0.3,0.1)
+    else:
+        time=np.arange(0,10,0.1)
     RPM=10
     df = BEM.simulationConstantRPM(time, RPM, windSpeed=10, tilt=0, cone=0, firstCallEquilibrium=True)
     if not test:

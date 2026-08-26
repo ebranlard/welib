@@ -28,7 +28,10 @@ def main(test=False):
     # --- Time simulation
     dt       = 0.1
     dtRadOut = 1.0
-    tmax     = 70
+    if test:
+        tmax     = 0.5
+    else:
+        tmax     = 70
     BEM.timeStepInit(0,tmax,dt) # Allocate memory for time storage
     xdBEM = BEM.getInitStates() # Initial discrete states 
     for it,t in enumerate(BEM.time):

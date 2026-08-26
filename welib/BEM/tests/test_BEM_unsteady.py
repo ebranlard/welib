@@ -222,5 +222,5 @@ class Test(unittest.TestCase):
 
 if __name__ == '__main__':
     #Test().test_curvilinearPolarCoord()
-    Test().test_cantCalc()
-#     unittest.main()
+#     Test().test_cantCalc()
+    unittest.main()
