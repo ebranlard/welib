@@ -10,7 +10,7 @@
 # remap_df will go from Val (OLD) to Key (NEW)
 #{  Key/NEW            :    Val/OLD       }
 COLMAP_OFout_TO_QOF={
-    'Q_GeAz_[rad]'        : '{Azimuth_[deg]}    * np.pi/180', # SI [deg] -> [rad]
+    'Q_GeAz_[rad]'        : '{Azimuth_[deg]}    * np.pi/180', # SI [deg] -> [rad] # TODO WATCH OUT GeAz is 90 deg behind azimuth in OpenFAST
     'QD_GeAz_[rad/s]'     : '{RotSpeed_[rpm]}   * 2*np.pi/60', # SI [rpm] -> [rad/s]
 #   'Q_Yaw_[rad]'           : '{NacYaw_[deg]}   * np.pi/180', # SI [deg] -> [rad] # TODO
     'Q_Sg_[m]'            : 'PtfmSurge_[m]',

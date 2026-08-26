@@ -6,6 +6,7 @@ from welib.essentials import *
 from welib.yams.windturbine import FASTWindTurbine
 from welib.tools.stats import comparison_stats
 from welib.weio.dataframe import WEIODataFrame
+from welib.tools.strings import latexStrip
 
 
 
@@ -173,11 +174,28 @@ class YAMSSectionLoadCalculator():
         return fig
 
 
-    def plot_comp(self, sig, ylabel, figFilename=None, tRange=None, scale=1):
+    def plot_comp(self, sig, ylabel=None, figFilename=None, tRange=None, scale=1, ax=None, factY=0.8, printStats=True):
+        if ylabel is None:
+            ylabel=sig
         vTime = self.dfRef['Time_[s]']
-        fig, ax = time_plot (vTime, self.dfRef[sig]/scale, self.dfOut[sig]/scale, ylabel, tRange=tRange)
-        stats, sStats =  comparison_stats(vTime, self.dfRef[sig]/scale, vTime, self.dfOut[sig]/scale, stats='sigRatio,eps,R2', method='meanabs')
-        #print('Eta     :', stats) # TODO
+        fig, ax = time_plot (vTime, self.dfRef[sig]/scale, self.dfOut[sig]/scale, ylabel, tRange=tRange, ax=ax)
+        stats, sStats =  comparison_stats(vTime, self.dfRef[sig]/scale, vTime, self.dfOut[sig]/scale, stats='sigRatio,eps,R2', method='1-2')
+        Ylim = ax.get_ylim()
+        Xlim = ax.get_xlim()
+        ax.text(Xlim[0]+(Xlim[1]-Xlim[0])/1000 ,Ylim[0]+(Ylim[1]-Ylim[0])*factY, sStats, fontsize=10)
+        if printStats:
+            print(f"{sig:10s} "+latexStrip(sStats))
+        if figFilename is not None:
+            fig.savefig(figFilename)
+        return fig, stats
+
+    def plot_section_loads_stats(self, IZ=None, component=0, figFilename=None, tRange=None, stat='meanabs'):
+        F_sec    = self.sec['combined']['F_sec']
+        F_secRef = self.sec['combined']['F_secRef']
+        zDepth   = self.sec['combined']['z']
+        zRef     = self.sec['combined']['zRef']
+        vTime    = self.dfRef['Time_[s]']
+        fig = sec_plotFM(vTime, zDepth, F_sec, F_secRef, zRef=zRef, stat=stat, tRange=tRange)
         if figFilename is not None:
             fig.savefig(figFilename)
         return fig
@@ -205,12 +223,14 @@ def meanabs(x, **kwargs):
     return np.mean(np.abs(x), **kwargs)
 
 
-def time_plot(t, ref=None, sim=None, label='', other=None, fig=None, ax=None, tRange=None, refLab='OpenFAST', otherLab='Other'):
-    figNotProvided = fig is None
-    if fig is None:
+def time_plot(t, ref=None, sim=None, label='', other=None, ax=None, tRange=None, refLab='OpenFAST', otherLab='Other'):
+    figNotProvided = ax is None
+    if ax is None:
         fig=plt.figure()
         fig.subplots_adjust(left=0.18, right=0.94, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         ax = fig.add_subplot(111)
+    else:
+        fig = ax.figure
     if ref is not None:
         ax.plot(t, ref,'-'  , c=colRef, lw=LWRef, label=refLab)
     if sim is not None:
@@ -228,20 +248,29 @@ def time_plot(t, ref=None, sim=None, label='', other=None, fig=None, ax=None, tR
     return fig, ax
 
 
-def sec_plotFM(vTime, zDepth, F_sec, F_secRef=None, stat='mean', tRange=None, label='Section Force', other=None, otherLab='Other'):
+def sec_plotFM(vTime, zDepth, F_sec, F_secRef=None, zRef=None, stat='mean', tRange=None, label='Section Force', other=None, otherLab='Other'):
     if tRange is None:
         IT = np.arange(0,F_sec.shape[1])
     else:
         IT = np.logical_and(vTime>tRange[0], vTime<tRange[1])
         if len(IT)==0:
             IT = np.arange(0, sec.shape[1])
+    if zRef is None:
+        zRef = zDepth
+
     fstat = {'mean':np.mean, 'max':np.max, 'std':np.std, 'meanabs':meanabs}[stat]
     if F_sec is not None:
         Fx_sec0 = fstat(F_sec   [0,:,IT],axis=0) # 3, nSpan nT
         My_sec0 = fstat(F_sec   [4,:,IT],axis=0)
+
     if F_secRef is not None:
         Fx_sec1 = fstat(F_secRef[0,:,IT],axis=0) # 3, nSpan nT
         My_sec1 = fstat(F_secRef[4,:,IT],axis=0)
+        bNaN = np.isnan(Fx_sec1) # if sections are missing
+        Fx_sec1 = Fx_sec1[~bNaN] 
+        My_sec1 = My_sec1[~bNaN] 
+        zRef    = zRef[~bNaN] 
+        
     if other is not None:
         Fx_sec2 = fstat(other[0,:,IT],axis=0) # 3, nSpan nT
         My_sec2 = fstat(other[4,:,IT],axis=0)
@@ -250,7 +279,7 @@ def sec_plotFM(vTime, zDepth, F_sec, F_secRef=None, stat='mean', tRange=None, la
     fig.subplots_adjust(left=0.14, right=0.95, top=0.95, bottom=0.12, hspace=0.20, wspace=0.20)
     ax=axes[0]
     if F_secRef is not None:
-        ax.plot(Fx_sec1/1e6, zDepth,  '-' , c=colRef, lw=LWRef, label='OpenFAST')
+        ax.plot(Fx_sec1/1e6, zRef,    '-' , c=colRef, lw=LWRef, label='OpenFAST')
     if F_sec is not None:
         ax.plot(Fx_sec0/1e6, zDepth,  '--', c=colSim, lw=LWSim, label='YAMS')
     if other is not None:
@@ -263,7 +292,7 @@ def sec_plotFM(vTime, zDepth, F_sec, F_secRef=None, stat='mean', tRange=None, la
 
     ax=axes[1]
     if F_secRef is not None:
-        ax.plot(My_sec1/1e6, zDepth, '-',  c=colRef, lw=LWRef, label='OpenFAST')
+        ax.plot(My_sec1/1e6, zRef , '-',  c=colRef, lw=LWRef, label='OpenFAST')
     if F_sec is not None:
         ax.plot(My_sec0/1e6, zDepth, '--', c=colSim, lw=LWSim, label='YAMS')
     if other is not None:

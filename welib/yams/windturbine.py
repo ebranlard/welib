@@ -1168,6 +1168,11 @@ class WindTurbineStructure():
         """
         from welib.tools.tictoc import Timer
         from welib.fast.postpro import ED_TwrGag, ED_TwrStations
+        from welib.fast.elastodyn import ElastoDyn
+
+        ed = ElastoDyn(WT.ED)
+
+
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
 
@@ -1175,12 +1180,21 @@ class WindTurbineStructure():
         df = df.reset_index(drop=True)
 
         # --- States
-        sq   = [ "Q_Sg_[m]"       , "Q_Sw_[m]"       , "Q_Hv_[m]"       , "Q_R_[rad]"       , "Q_P_[rad]"       , "Q_Y_[rad]"       , "Q_TFA1_[m]"      , "Q_TFA2_[m]"       , "Q_TSS1_[m]"       , "Q_TSS2_[m]"       , "Q_Yaw_[rad]"       , ]
-        sqd  = [ "QD_Sg_[m/s]"    , "QD_Sw_[m/s]"    , "QD_Hv_[m/s]"    , "QD_R_[rad/s]"    , "QD_P_[rad/s]"    , "QD_Y_[rad/s]"    , "QD_TFA1_[m/s]"   , "QD_TFA2_[m/s]"    , "QD_TSS1_[m/s]"    , "QD_TSS2_[m/s]"    , "QD_Yaw_[rad/s]"    , ]
-        sqdd = [ "QD2_Sg_[m/s^2]" , "QD2_Sw_[m/s^2]" , "QD2_Hv_[m/s^2]" , "QD2_R_[rad/s^2]" , "QD2_P_[rad/s^2]" , "QD2_Y_[rad/s^2]" , "QD2_TFA1_[m/s^2]", "QD2_TFA2_[m/s^2]" , "QD2_TSS1_[m/s^2]" , "QD2_TSS2_[m/s^2]" , "QD2_Yaw_[rad/s^2]" , ]
+        sq   = [ "Q_Sg_[m]"       , "Q_Sw_[m]"       , "Q_Hv_[m]"       , "Q_R_[rad]"       , "Q_P_[rad]"       , "Q_Y_[rad]"       , "Q_TFA1_[m]"      , "Q_TFA2_[m]"       , "Q_TSS1_[m]"       , "Q_TSS2_[m]"       , "Q_Yaw_[rad]"       , "Q_GeAz_[rad]"]
+        sqd  = [ "QD_Sg_[m/s]"    , "QD_Sw_[m/s]"    , "QD_Hv_[m/s]"    , "QD_R_[rad/s]"    , "QD_P_[rad/s]"    , "QD_Y_[rad/s]"    , "QD_TFA1_[m/s]"   , "QD_TFA2_[m/s]"    , "QD_TSS1_[m/s]"    , "QD_TSS2_[m/s]"    , "QD_Yaw_[rad/s]"    , "QD_GeAz_[rad/s]"]
+        sqdd = [ "QD2_Sg_[m/s^2]" , "QD2_Sw_[m/s^2]" , "QD2_Hv_[m/s^2]" , "QD2_R_[rad/s^2]" , "QD2_P_[rad/s^2]" , "QD2_Y_[rad/s^2]" , "QD2_TFA1_[m/s^2]", "QD2_TFA2_[m/s^2]" , "QD2_TSS1_[m/s^2]" , "QD2_TSS2_[m/s^2]" , "QD2_Yaw_[rad/s^2]" , "QD2_GeAz_[rad/s^2]"]
         missing_dofs = set(sq+sqd+sqdd) - set(df.columns)
         if len(missing_dofs)>0:
             raise Exception(f'Some DOFS are missing from dataframe, implementation error {missing_dofs}')
+
+        if 'Fadd_R_xs' in df.keys():
+            NOTE('Using additional forces (in nonrotating shaft system) to compute tower top loads')
+            useTopLoadsFromDF =False
+        elif 'Fadd_R_xh' in df.keys():
+            NOTE('Using additional forces (in rotating hub system) to compute tower top loads')
+            useTopLoadsFromDF =False
+        elif useTopLoadsFromDF: 
+            NOTE('Using prescribed input forces for tower top loads')
 
         # --- DOFs
         Q   = df[sq]
@@ -1190,7 +1204,7 @@ class WindTurbineStructure():
         Q['Q_TSS1_[m]']      *= -1
         QD['QD_TSS1_[m/s]']  *= -1
         QDD['QD2_TSS1_[m/s^2]'] *= -1
-        DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw']
+        DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw','Psi']
         Q.columns   = DOFNames_Short
         QD.columns  = DOFNames_Short
         QDD.columns = DOFNames_Short
@@ -1219,20 +1233,8 @@ class WindTurbineStructure():
 
 
         # --- ED Tower section outputs
-        # NOTE: YAMS starts at 0 and finish at L, so indices end up the same
-        h_EDt_Gags, I_Gag_file = ED_TwrGag(WT.ED, addBase=False)
-        _, s_EDt_Nods          = ED_TwrStations(WT.ED, addBase=False)
-        twr_Out_I  = [np.argmin(np.abs(hSL-WT.twr.s_span)) for hSL in h_EDt_Gags] 
-        twr_Out_df = pd.DataFrame()
-        twr_Out_h  = WT.twr.s_span[np.asarray(twr_Out_I)] if len(twr_Out_I)>0 else []
-        twr_Out_df['ED_i+1']= I_Gag_file
-        twr_Out_df['ED_h']  = h_EDt_Gags
-        twr_Out_df['ED_h2']  = s_EDt_Nods[np.asarray(I_Gag_file)-1] if len(twr_Out_I)>0 else []
-        twr_Out_df['YAMS_h'] = twr_Out_h
-        twr_Out_df['YAMS_i'] = twr_Out_I
-        twr_Out_df['Lbl']    = [f'TwHt{i+1}' for i in range(len(twr_Out_I))]
-        twr_Out_df['h_abs']  = twr_Out_h + WT.ED['TowerBsHt'] if len(twr_Out_I)>0 else []
-        if ((twr_Out_df['ED_h']-twr_Out_df['YAMS_h'])>1e-8).any():
+        twr_Out_df = ed.twrSecOutputsInfo(h_in = WT.twr.s_span, lbl_in='YAMS')
+        if ((twr_Out_df['h']-twr_Out_df['YAMS_h'])>1e-8).any():
             raise Exception('Tower stations do not match betwen YAMS and ED')
 
         for sT, _ in zip(twr_Out_df['Lbl'], twr_Out_df['YAMS_i']):
@@ -1270,8 +1272,6 @@ class WindTurbineStructure():
         if WT.pSS is not None:
             NOTE(f"Setting Compute Eta t0={df['Time_[s]'].iloc[0]}, tend={df['Time_[s]'].iloc[-1]}, n={len(df['Time_[s]'])}")
             WT.SS_computeEta(df['Time_[s]'])
-
-
 
         # --- Initialize section loads
         sections  = dict()
@@ -1381,7 +1381,7 @@ class WindTurbineStructure():
                 # --------------------------------------------------------------------------------}
                 # --- Loads
                 # --------------------------------------------------------------------------------{
-                rowDF_in = df.iloc[it] # Prescribed loads from input for Hacking only
+                rowDF_in = df.iloc[it] # Prescribed loads from input 
                 Mrna        = WT.RNA_noYawBr.mass
                 JGrna       = WT.RNA_noYawBr.masscenter_inertia
                 JGrna_g     = (R_g2n.T).dot(JGrna).dot(R_g2n)
@@ -1398,15 +1398,26 @@ class WindTurbineStructure():
                 M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
                 # Aero force
                 # TODO gen?
-                R_g2s = dd['R_g2s']
                 if 'Fadd_R_xs' in df.keys():
-                    Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],0 ,0))
-                    Madd_R_in_g = R_g2s.T.dot((rowDF_in['Madd_R_xs'],0 ,0))
+                    R_g2s = dd['R_g2s']
+                    Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],rowDF_in['Fadd_R_ys'],rowDF_in['Fadd_R_zs']))
+                    Madd_R_in_g = R_g2s.T.dot((rowDF_in['Madd_R_xs'],rowDF_in['Madd_R_ys'],rowDF_in['Madd_R_zs']))
                     r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
                     r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
                     Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
                     Fadd_N = Fadd_R_in_g
-                    Madd_N = Madd_R_in_g + Madd_R_N*0 # TODO experiment
+                    Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
+                    F_N += Fadd_N
+                    M_N += Madd_N
+                elif 'Fadd_R_xh' in df.keys():
+                    R_g2h = dd['R_g2h']
+                    Fadd_R_in_g = R_g2h.T.dot((rowDF_in['Fadd_R_xh'],rowDF_in['Fadd_R_yh'],rowDF_in['Fadd_R_zh']))
+                    Madd_R_in_g = R_g2h.T.dot((rowDF_in['Madd_R_xh'],rowDF_in['Madd_R_yh'],rowDF_in['Madd_R_zh']))
+                    r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+                    r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
+                    Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+                    Fadd_N = Fadd_R_in_g
+                    Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
                     F_N += Fadd_N
                     M_N += Madd_N
                 F_N_p = R_g2p.dot(F_N)
@@ -1505,25 +1516,32 @@ class WindTurbineStructure():
         # --- Combine Section loads into a dicitonary
         spans = []
         loads = []
+        spansRef = []
+        loadsRef = []
         sections['time']     = dfOut['Time_[s]']
         sections['monopile'] = None
-        sections['tower'] = None
-        zOff = 0
+        sections['tower']    = None
         if hasMonopile:
-            sections['monopile'] = {'z': WT.fnd.s_span, 'F_sec': mnp_F_sec}
+            sections['monopile'] = {'z': WT.fnd.s_span+WT.fnd.SD.zBot, 'F_sec': mnp_F_sec}
             spans.append(sections['monopile']['z'])
             loads.append(sections['monopile']['F_sec'])
-            zOff = WT.fnd.s_span[-1] # TODO TODO
 
             zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(df, verbose=False)
             sections['monopile'].update({'zRef': zBeamRef, 'F_secRef':F_secRef})
+            spansRef.append(sections['monopile']['zRef'])
+            loadsRef.append(sections['monopile']['F_secRef'])
 
 
         if isinstance(WT.twr, BeamBody):
-            sections['tower'] = {'z': WT.twr.s_span, 'F_sec': twr_F_sec}
-            spans.append(sections['tower']['z'])
+            sections['tower'] = {'z': WT.twr.s_span+WT.ED['TowerBsHt'], 'F_sec': twr_F_sec}
+            spans.append(sections['tower']['z']    )
             loads.append(sections['tower']['F_sec'])
-        sections['combined'] = {'z': np.concatenate(spans), 'F_sec': np.concatenate(loads, axis=1)}
+            zRef, F_secRef, r_secRef =  ed.twrSecOutputs(df, verbose=False)
+            sections['tower'].update({'zRef': zRef, 'F_secRef':F_secRef})
+            spansRef.append(sections['tower']['zRef'])
+            loadsRef.append(sections['tower']['F_secRef'])
+
+        sections['combined'] = {'z': np.concatenate(spans), 'F_sec': np.concatenate(loads, axis=1),'zRef': np.concatenate(spansRef), 'F_secRef': np.concatenate(loadsRef, axis=1)}
 
 
         nan_cols = dfOut.columns[dfOut.isna().any()].tolist()
@@ -2543,6 +2561,9 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, fnd=
     qYaw   = qDict['Yaw']
     qdYaw  = qdDict['Yaw']
     qddYaw = qddDict['Yaw']
+    qPsi, qdPsi, qddPsi = 0, 0, 0
+    if 'Psi' in qDict:
+        qPsi, qdPsi, qddPsi = qDict['Psi'], qdDict['Psi'], qddDict['Psi']
 
     d = dict() # Outputs
 
@@ -2705,9 +2726,13 @@ def kinematics(qDict, qdDict, qddDict=None, r_F0=None, r_T0=None, twr=None, fnd=
     d.update(dGn)
 
     # --- Shaft
-    R_s2n = R_y(tilt)  # Rotation fromShaft to Nacelle
+    R_s2n = R_y(tilt)  # Rotation from (nonrotating) Shaft to Nacelle
     R_g2s = (R_s2n.T).dot(R_g2n)
     d['R_g2s'] = R_g2s
+
+    R_h2s = R_x(qPsi)  # Rotation from hub to (nonrotating) shaft
+    R_g2h = (R_h2s.T).dot(R_g2s)
+    d['R_g2h'] = R_g2h  # 
 
     # -- RNA (without Yaw Br) COG
     #s_NGrna0_in_N = self.RNA_noYawBr.masscenter

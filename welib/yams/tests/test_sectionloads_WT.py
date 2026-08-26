@@ -59,15 +59,14 @@ def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, t
     dfOut.export(outBase + '.YAMS.outb')
 
 
-    # --- Plot Tower sections
     if plot:
+        # --- Plot Tower sections
         if 'TwHt1HtMLyt_[kN-m]'  in YSL.dfRef:
             YSL.plot_tower_section_loads(IsecTwr=[0,4,8], component='MLyt', figFilename=outFile + '_SL_TWR_SL.png')
             YSL.plot_tower_accelerations(IsecTwr=[0,4,8], component='x', figFilename=outFile+'_SL_TWR_Acc.png')
 
-    # --- Plot Monpile
-    if WT.pHD is not None:
-        if plot:
+        # --- Plot Monpile
+        if WT.pHD is not None:
             zDepth = YSL.sec['monopile']['z']
             IZ = [int(3*len(zDepth)/6)-5, int(2*len(zDepth)/6), int(1*len(zDepth)/6), 0]
             YSL.plot_monopile_section_loads_stats(IZ=IZ, component=0, figFilename=outFile+'_SL_MNP_SL_STATS.png', tRange=tRange, stat='meanabs')
@@ -80,6 +79,8 @@ def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, t
             fig = YSL.plot_comp(sig='HydroFxi_[N]', ylabel='Hydro Fx [N]', figFilename=outFile+'_SL_MNP_Eta.png', tRange=tRange)
             fig = YSL.plot_comp(sig='M1N1MKye_[N*m]', ylabel='Sea bed moment [MNm]', figFilename=outFile+'_SL_MNP_M_SeaBed.png', tRange=tRange, scale=1e6)
             #fig, ax = time_plot (vTime, F_secRef[4,0,:]/1e6, F_sec[4,0,:]/1e6, label='Sea bed moment [MNm]', tRange=tRange)
+        # -- Combined
+        YSL.plot_section_loads_stats()
 
     return YSL
 
@@ -188,11 +189,11 @@ def test_monopile_tower_IEA(plot=False, test=True):
 
 
 if __name__ == '__main__':
-    #PLOT = True # KEEP ME FOR EASY DEBUG
+    PLOT = True # KEEP ME FOR EASY DEBUG
     PLOT = False # KEEP ME FOR EASY DEBUG
 #     TEST=False
     TEST=True
     test_monopile_tower_IEA(plot=PLOT, test=TEST)  # Was used to develop monopile only 
-    test_monopile_only_MT100(plot=PLOT, test=TEST) # Need updating of main code in windturbine and merging of "debug_*" functions
+#     test_monopile_only_MT100(plot=PLOT, test=TEST) # Need updating of main code in windturbine and merging of "debug_*" functions
     #test_floating_tower_TS(plot=PLOT, test=TEST)   # Was used to develop tower only
-    #plt.show()
+    plt.show()

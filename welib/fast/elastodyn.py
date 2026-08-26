@@ -45,12 +45,13 @@ POINTS:
 
 
 """
-
+import pandas as pd        
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 from welib.weio.fast_input_file import FASTInputFile
 from welib.system.eva import eigMCK
+from welib.fast.postpro import ED_TwrStations, ED_TwrGag
 
 # --------------------------------------------------------------------------------}
 # --- GLOBAL CONSTANTS 
@@ -2057,6 +2058,159 @@ def ED_CalcOutputs(x, p, noAxRed=False):
     dat, IEC = ED_AngPosVelPAcc(qDict=qDict, qdDict=qdDict, CoordSys=CS, p=p, dat=dat, IEC=IEC)
     dat, IEC = ED_LinVelPAcc   (qDict=qDict, qdDict=qdDict, CoordSys=CS, p=p, dat=dat, IEC=IEC)
     return CS, dat, IEC
+
+
+
+
+
+
+
+class ElastoDyn:
+
+    def __init__(self, edFilename_or_data=None, TP=None):
+        """ 
+        Initialize a ElastoDyn object either with:
+          - edFilename: an elastoDyn input file name
+          - edData: an instance of FASTInputFile
+        """
+
+        # --- Data
+        self.File=None
+
+        # Read input file
+        if edFilename_or_data is not None:
+            if hasattr(edFilename_or_data,'startswith'): # if string
+                self.File = FASTInputFile(edFilename_or_data)
+            else:
+                self.File = edFilename_or_data
+
+    def __repr__(self):
+        s='<{} object>:\n'.format(type(self).__name__)
+        s+='|properties:\n'
+        s+='|- File: (input file data)\n'
+#         s+='|- TP  : {} \n'.format(self._TP)
+#         s+='|* graph: (Nodes/Elements/Members)\n'
+#         s+='|* pointsMJ, pointsMN, pointsMNout\n'
+        s+='|methods:\n'
+        return s
+
+
+
+    def twrSecOutputsInfo(self, h_in=None, lbl_in='other'):
+        """ """
+        h_EDt_Gags, I_Gag_file = ED_TwrGag(self.File, addBase=False)
+        _, s_EDt_Nods          = ED_TwrStations(self.File, addBase=False)
+        if I_Gag_file is None:
+            I_Gag_file = []
+        twr_Out_df = pd.DataFrame()
+        twr_Out_df['#']   = [f'{i+1}' for i in range(len(I_Gag_file))]
+        twr_Out_df['i+1'] = I_Gag_file
+        twr_Out_df['h']   = h_EDt_Gags
+        twr_Out_df['z']   = twr_Out_df['h'] + self.File['TowerBsHt'] if len(I_Gag_file)>0 else []
+        twr_Out_df['Lbl'] = [f'TwHt{i+1}' for i in range(len(I_Gag_file))]
+
+        if h_in is not None:
+            twr_Out_I  = [np.argmin(np.abs(hSL-h_in)) for hSL in h_EDt_Gags] 
+            twr_Out_h  = h_in[np.asarray(twr_Out_I)] if len(twr_Out_I)>0 else []
+            twr_Out_df[lbl_in+'_h'] = twr_Out_h
+            twr_Out_df[lbl_in+'_i'] = twr_Out_I
+
+        # Sanity check
+        h2  = s_EDt_Nods[np.asarray(I_Gag_file)-1] if len(I_Gag_file)>0 else []
+        if ((twr_Out_df['h']-h2)>1e-8).any():
+            raise Exception('Error in tower stations do not match')
+
+        return twr_Out_df
+
+
+    def twrSecOutputs(self, df, verbose=False):
+        """ 
+        Given an OpenFAST output dataFrame
+        return arrays of section loads and section motion for each height of a beam
+        INPUTS:
+         - df: OpenFAST output dataframe, e.g. FASTOutputFile('main.outb').toDataFrame()
+        OUTPUTS:
+         - zBeam: z nodes
+         - F_sec: array of shape (6 x nz x nt): Fx, Fy, Fz, Mx, My, Mz
+         - r_sec: array of shape (6 x nz x nt): tx, ty, tz, rx, ry, rz
+        """
+        df_columns_bkp = df.columns.copy()
+        #df.columns = [  v.split('_[')[0].lower() for v in df.columns.values]  # Removing units and lowercase
+        df.columns = [  v.lower() for v in df.columns.values]  # Removing units and lowercase
+
+        out_df = self.twrSecOutputsInfo()
+
+        z = out_df['z'] # Include TwrBs
+
+        if 'twrbsfxt_[kn]' in df:
+            z = np.concatenate( ( [self.File['TowerBsHt']], z) )
+
+        F_sec = np.zeros((6,len(z),len(df)))*np.nan
+        r_sec = np.zeros((6,len(z),len(df)))*np.nan
+
+        iz = 0
+        if 'twrbsfxt_[kn]' in df:
+            if 'twrbsfxt_[kn]'   in df.columns: F_sec[0, iz,:] = df['twrbsfxt_[kn]']  *1000
+            if 'twrbsfyt_[kn]'   in df.columns: F_sec[1, iz,:] = df['twrbsfyt_[kn]']  *1000
+            if 'twrbsfzt_[kn]'   in df.columns: F_sec[2, iz,:] = df['twrbsfzt_[kn]']  *1000
+            if 'twrbsmxt_[kn-m]' in df.columns: F_sec[3, iz,:] = df['twrbsmxt_[kn-m]']*1000
+            if 'twrbsmyt_[kn-m]' in df.columns: F_sec[4, iz,:] = df['twrbsmyt_[kn-m]']*1000
+            if 'twrbsmzt_[kn-m]' in df.columns: F_sec[5, iz,:] = df['twrbsmzt_[kn-m]']*1000
+            iz+=1
+
+        for sT, zz in zip(out_df['Lbl'], out_df['z']):
+            sT=sT.lower()
+            if sT+'flxt_[kn]'   in df.columns: F_sec[0, iz, :] = df[sT+'flxt_[kn]'] * 1000
+            if sT+'flyt_[kn]'   in df.columns: F_sec[1, iz, :] = df[sT+'flyt_[kn]'] * 1000
+            if sT+'flzt_[kn]'   in df.columns: F_sec[2, iz, :] = df[sT+'flzt_[kn]'] * 1000
+            if sT+'mlxt_[kn-m]' in df.columns: F_sec[3, iz, :] = df[sT+'mlxt_[kn-m]'] * 1000
+            if sT+'mlyt_[kn-m]' in df.columns: F_sec[4, iz, :] = df[sT+'mlyt_[kn-m]'] * 1000
+            if sT+'mlzt_[kn-m]' in df.columns: F_sec[5, iz, :] = df[sT+'mlzt_[kn-m]'] * 1000
+            iz+=1
+
+#             if '{}tdxss'.format(ind) in df.columns: r_sec[0, iz, :] = df['{}tdxss'.format(ind)]
+#             if '{}tdyss'.format(ind) in df.columns: r_sec[1, iz, :] = df['{}tdyss'.format(ind)]
+#             if '{}tdzss'.format(ind) in df.columns: r_sec[2, iz, :] = df['{}tdzss'.format(ind)]
+#             if '{}rdxe' .format(ind) in df.columns: r_sec[3, iz, :] = df['{}rdxe' .format(ind)]
+#             if '{}rdye' .format(ind) in df.columns: r_sec[4, iz, :] = df['{}rdye' .format(ind)]
+#             if '{}rdze' .format(ind) in df.columns: r_sec[5, iz, :] = df['{}rdze' .format(ind)]
+# 
+#                     dfOut.loc[it, sT+'TDxt_[m]']   = dd['u_Ts_in_t'][iSL,0]
+#                     dfOut.loc[it, sT+'TDyt_[m]']   = dd['u_Ts_in_t'][iSL,1]
+#                     dfOut.loc[it, sT+'TDzt_[m]']   = dd['u_Ts_in_t'][iSL,2]
+#                     dfOut.loc[it, sT+'RDxt_[deg]'] = dd['theta_TTs_in_t'][iSL,0]*180/np.pi
+#                     dfOut.loc[it, sT+'RDyt_[deg]'] = dd['theta_TTs_in_t'][iSL,1]*180/np.pi
+#                     dfOut.loc[it, sT+'RDzt_[deg]'] = dd['theta_TTs_in_t'][iSL,2]*180/np.pi
+#                     a_Ts = R_g2t.dot(dd['a_Ts'][iSL])
+#                     dfOut.loc[it, sT+'ALxt_[m/s^2]'] = a_Ts[0]
+#                     dfOut.loc[it, sT+'ALyt_[m/s^2]'] = a_Ts[1]
+#                     dfOut.loc[it, sT+'ALzt_[m/s^2]'] = a_Ts[2]
+# 
+#                     dfOut.loc[it, sT+'TPxi_[m]'] = dd['r_Ts'][iSL,0]
+#                     dfOut.loc[it, sT+'TPyi_[m]'] = dd['r_Ts'][iSL,1]
+#                     dfOut.loc[it, sT+'TPzi_[m]'] = dd['r_Ts'][iSL,2]
+# 
+
+        # Restore columns
+        df.columns = df_columns_bkp
+
+        return z, F_sec, r_sec
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == '__main__':
 #     EDfilename='../yams/_Jens/FEMBeam_NewFASTCoeffs/data/NREL5MW_ED_Onshore.dat'
