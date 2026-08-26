@@ -30,9 +30,9 @@ class Test(unittest.TestCase):
         np.testing.assert_equal(list(out.keys()), ['AD', 'ED_bld', 'ED_twr', 'BD', 'SD_MembersOut', 'SD_JointsOut'])
 
         # --- Test AD
-        cols =['r/R_[-]','B1Cl_[-]','B1Fx_[N/m]','B1Fy_[N/m]','B1alpha_[deg]', 'i_[#]','r_[m]']
-        Mf = np.array([0.023810, 0.000000, 108.233875,  -1.211481 , 76.050920,   1,  1.5000])
-        Ml = np.array([0.999998, 0.276654, 126.151657,   4.402287 , 80.380341,  19, 62.9999])
+        cols =['r/R_[-]','B1Cl_[-]','B1Fx_[N/m]','B1Fy_[N/m]','B1alpha_[deg]', 'i/n_[-]', 'i_[#]','r_[m]']
+        Mf = np.array([0.023810, 0.000000, 108.233875,  -1.211481 , 76.050920, 0.0      ,  1,  1.5000])
+        Ml = np.array([0.999998, 0.276654, 126.151657,   4.402287 , 80.380341, 1.0      , 19, 62.9999])
         dfAD2 = pd.DataFrame(data=np.vstack((Mf,Ml)), columns=cols)
 
         dfAD1 = out['AD']
@@ -63,9 +63,9 @@ class Test(unittest.TestCase):
         fstFile = os.path.join(scriptDir,'../../../data/example_files/ad_driver_yaw.dvr')
         out = spanwisePostPro(FST_In=fstFile, avgMethod='periods', avgParam=1, out_ext='.1.outb')
         dfAD1 = out['AD']
-        cols  = ['r/R_[-]','B1Fn_[N/m]','B1Ft_[N/m]','i_[#]','r_[m]']
-        Mf    = np.array([0.032810 ,  59.699168 ,-39.653777 ,    1 ,  3.970000])
-        Ml    = np.array([1.000000 , 963.398364 ,  0.448169 ,   51 ,120.999015])
+        cols  = ['r/R_[-]'         , 'B1Fn_[N/m]' , 'B1Ft_[N/m]' , 'i/n_[-]' , 'i_[#]' , 'r_[m]']
+        Mf    = np.array([0.032810 , 59.699168    , -39.653777   , 0.0       , 1       , 3.970000])
+        Ml    = np.array([1.000000 , 963.398364   , 0.448169     , 1.0       , 51      , 120.999015])
         dfAD2 = pd.DataFrame(data= np.vstack((Mf,Ml)), columns = cols)
         col1 = sorted(dfAD1.columns)
         col2 = sorted(dfAD2.columns)

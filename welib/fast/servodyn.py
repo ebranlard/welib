@@ -85,7 +85,7 @@ class ServoDyn:
 
 
     def VS_DataFrame(self, rpm=None, rpm_start=None, addCornerRPM=True, nRPM=100, fact_start=0.5, fact_max=1.3):
-        """ Return a dataframe with the data from the simple variable speed model
+        """ Return a dataframe with the data from the simple variable speed model from the File
 
         INPUTS:
          - addCornerRPM: when true, SpdGenOn and RtGenSp are added to the rpm vector
@@ -200,10 +200,10 @@ class ServoDyn:
             print(toStringVLD('VS_SlPc  ', coeffs['SlPc']  ))
             print('')
             print('Comparison with File:')
-            print(f'RtGnSp', 'Fit:', coeffs['RtGnSp'], '   File:', self.File['VS_RtGnSp']) # TODO, RelError)
-            print(f'RtTq'  , 'Fit:', coeffs['RtTq']  , '   File:', self.File['VS_RtTq'])
-            print(f'Rgn2K' , 'Fit:', coeffs['Rgn2K'] , '   File:', self.File['VS_Rgn2K'])
-            print(f'SlPc'  , 'Fit:', coeffs['SlPc']  , '   File:', self.File['VS_SlPc'])
+            print("{:22s}{:11s}".format(str(np.around(coeffs['RtGnSp'],6)), "RtGnSp") + "File:" + "{}".format(self.File['VS_RtGnSp'])) # TODO, RelError)
+            print("{:22s}{:11s}".format(str(np.around(coeffs['RtTq'],6)),   "RtTq")   + "File:" + "{}".format(self.File['VS_RtTq']))
+            print("{:22s}{:11s}".format(str(np.around(coeffs['Rgn2K'],6)),  "Rgn2K")  + "File:" + "{}".format(self.File['VS_Rgn2K']))
+            print("{:22s}{:11s}".format(str(np.around(coeffs['SlPc'],6)),   "SlPc")   + "File:" + "{}".format(self.File['VS_SlPc']))
 
 
 

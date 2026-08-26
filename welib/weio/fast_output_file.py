@@ -336,7 +336,7 @@ class FASTOutputFile(File):
         ds_AD2 = None
         # --- Radial coordinate
         def get_rvals(ds, rcoords):
-            n = len(ds['i/n_[-]'].values)
+            n = len(ds['i_[#]'].values)
             if rcoords is not None: # priority to user input
                 runit = 'm'
                 rvals = rcoords
@@ -351,7 +351,7 @@ class FASTOutputFile(File):
             return rvals, runit
         # --- Time wise
         if '(t,r)' in kinds:
-            ds_AD1, ds_ED, ds_BD = fastlib.spanwisePostProRows(df, driverFile, si1='t', sir='r')
+            ds_AD1, ds_ED, ds_BD, ds_Other = fastlib.spanwisePostProRows(df, driverFile, si1='t', sir='r')
             if ds_AD1 is None:
                 return None # No Hope
             rvals, runit = get_rvals(ds_AD1, rcoords)
@@ -369,7 +369,7 @@ class FASTOutputFile(File):
         if '(psi,r)' in kinds:
             psi = np.arange(0, 360+DeltaAzi/10, DeltaAzi)
             dfPsi = fastlib.azimuthal_average_DF(df, psiBin=psi, periodic=True, nPeriods=nPeriods) #, tStart = time[-1]-20)
-            ds_AD2, ds_ED2, ds_BD2 = fastlib.spanwisePostProRows(dfPsi, driverFile, si1='psi', sir='r')
+            ds_AD2, ds_ED2, ds_BD2, ds_Other = fastlib.spanwisePostProRows(dfPsi, driverFile, si1='psi', sir='r')
             rvals, runit = get_rvals(ds_AD2, rcoords)
             ds_AD2.coords['psi'] = ('psi', psi) # TODO hack from bin to bin edges...
             ds_AD2.coords['r'] = ('r', rvals)

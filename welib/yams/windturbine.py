@@ -40,47 +40,6 @@ from welib.yams.section_loads import beamSectionLoads3D, beamSectionLoadsFromSha
 from welib.hydro.morison import monopileHydroLoads1D
 
 
-
-class YAMSSectionLoadCalculator():
-    def __init__(self, fstFile=None, WT=None, HD_compFile=None):
-        self.fstFile = fstFile
-        self.FAST = None
-        if WT is None:
-            self.WT = FASTWindTurbine(fstFile, algo='OpenFAST', HD_compFile=HD_compFile).WT
-        else:
-            self.WT = WT
-
-    def emptyInputDF(self, nt, inputFrame='R_xs'):
-        # TODO use OpenFAST Units
-        DOFNames = ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
-        sq   = ['Q_'+s for s in DOFNames]
-        sqd  = ['QD_'+s for s in DOFNames]
-        sqdd = ['QD2_'+s for s in DOFNames]
-        if inputFrame == 'R_xs':
-            # Input at point R in coordinate system xs
-            sLoads = ['Fadd_R_xs', 'Madd_R_xs']
-        else:
-            raise NotImplementedError()
-#             sqdd = ['FN', 'Madd_R_xs']
-        cols = ['Time']+sq+sqd+sqdd +sLoads
-        data = np.zeros( (nt, len(cols)))
-        #df   = pd.DataFrame(columns=cols, data=data)
-        df   = pd.DataFrame()
-        return df
-
-    def fromDF(self, df, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False):
-        """Compute OpenFAST-like section-load outputs in a single call.
-
-        Typical usage:
-            YSL = YAMSSectionLoadCalculator(fstFile=fstFile)
-            dfOut = YSL.calc(dfIn)
-
-        For monopile/foundation section outputs:
-            dfOut, sections = YSL.fromSD(dfIn)
-        """
-        out = self.WT.calcOutputsFromDF(df, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, noAcc=noAcc)
-        return out
-
 # --------------------------------------------------------------------------------}
 # --- Monopile forces
 # --------------------------------------------------------------------------------{
@@ -1308,6 +1267,12 @@ class WindTurbineStructure():
         #dfOut = pd.DataFrame(index=df.index, columns=colOut, dtype=float)
         dfOut = WEIODataFrame(index=df.index, columns=colOut, dtype=float)
 
+        if WT.pSS is not None:
+            NOTE(f"Setting Compute Eta t0={df['Time_[s]'].iloc[0]}, tend={df['Time_[s]'].iloc[-1]}, n={len(df['Time_[s]'])}")
+            WT.SS_computeEta(df['Time_[s]'])
+
+
+
         # --- Initialize section loads
         sections  = dict()
         twr_F_sec = np.zeros((6, len(WT.twr.s_span), len(df))) 
@@ -1540,6 +1505,7 @@ class WindTurbineStructure():
         # --- Combine Section loads into a dicitonary
         spans = []
         loads = []
+        sections['time']     = dfOut['Time_[s]']
         sections['monopile'] = None
         sections['tower'] = None
         zOff = 0
@@ -1548,6 +1514,11 @@ class WindTurbineStructure():
             spans.append(sections['monopile']['z'])
             loads.append(sections['monopile']['F_sec'])
             zOff = WT.fnd.s_span[-1] # TODO TODO
+
+            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(df, verbose=False)
+            sections['monopile'].update({'zRef': zBeamRef, 'F_secRef':F_secRef})
+
+
         if isinstance(WT.twr, BeamBody):
             sections['tower'] = {'z': WT.twr.s_span, 'F_sec': twr_F_sec}
             spans.append(sections['tower']['z'])

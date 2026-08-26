@@ -25,6 +25,7 @@ Detailled steps are provided further below.
 ### Summary 
 Remember to change VERSION file and/or setup.py 
 ```bash
+pip install setuptools
 python setup.py sdist
 twine upload dist/*     # upload to pypi
 ```

@@ -4,7 +4,9 @@ from .converters import writeDataFrameToFormat, writeDataFrameAutoFormat
 
 class WEIODataFrame(pd.DataFrame):
     """
-    Custom DataFrame subclass providing format export capabilities
+    Custom DataFrame subclass providing:
+     - format export capabilities
+     - case insensitive columns
     and flexible initialization from a DataFrame or raw data/columns.
     """
 
@@ -27,6 +29,31 @@ class WEIODataFrame(pd.DataFrame):
     def _constructor(self):
         """Ensures pandas operations return a WEIODataFrame instance."""
         return WEIODataFrame
+
+    def _get_case_insensitive_key(self, key):
+        """Helper to resolve a string key case-insensitively against columns."""
+        if isinstance(key, str) and key not in self.columns:
+            key_lower = key.lower()
+            mapping = {
+                col.lower(): col for col in self.columns if isinstance(col, str)
+            }
+            if key_lower in mapping:
+                return mapping[key_lower]
+        return key
+
+    def __getitem__(self, key):
+        """Override bracket indexing to support case-insensitive column lookups."""
+        if isinstance(key, str):
+            resolved_key = self._get_case_insensitive_key(key)
+            return super().__getitem__(resolved_key)
+        elif isinstance(key, list):
+            resolved_keys = [
+                self._get_case_insensitive_key(k) if isinstance(k, str) else k
+                for k in key
+            ]
+            return super().__getitem__(resolved_keys)
+        return super().__getitem__(key)
+
 
     def to_format(self, filename, fformat):
         """Write DataFrame to disk using specified format."""

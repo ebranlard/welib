@@ -346,12 +346,13 @@ def compute_spanwise_columns(df, vr=None, R=None, IR=None, sspan='r', sspan_bar=
         return None
     nrMax = len(df)
     ids   = np.arange(nrMax)
+    i_bar = ids/(nrMax-1)
 
     Columns={}
     if vr is None or R is None:
         # Radial position unknown
-        vr_bar = ids/(nrMax-1)
-        Columns['i/n_[-]'] = vr_bar
+        vr_bar = i_bar
+        Columns['i/n_[-]'] = i_bar
     else:
         vr_bar=vr/R
         if (nrMax)<=len(vr_bar):
@@ -359,6 +360,7 @@ def compute_spanwise_columns(df, vr=None, R=None, IR=None, sspan='r', sspan_bar=
         elif (nrMax)>len(vr_bar):
             raise Exception('Inconsistent length between radial stations ({:d}) and max index present in output chanels ({:d})'.format(len(vr_bar),nrMax))
         Columns[sspan_bar+'_[-]'] = vr_bar
+        Columns['i/n_[-]'] = i_bar
 
     if IR is not None:
         Columns['Node_[#]']=IR[:nrMax]
@@ -1265,7 +1267,7 @@ def spanwisePostProRows(df, FST_In=None, si1='i1', sir='ir'):
     R  = d['R'] if d['R'] is not None else 1
     # --- Getting Column info
     Cols=df.columns.values
-    ColsInfoAD, nrMaxAD, Cols_new = spanwiseColAD(Cols)
+    ColsInfoAD, nrMaxAD, Cols_new = spanwiseColAD_auto_name(Cols)
     ColsInfoED, nrMaxED, Cols_new = spanwiseColED(Cols)
     ColsInfoBD, nrMaxBD, Cols_new = spanwiseColBD(Cols)
 
