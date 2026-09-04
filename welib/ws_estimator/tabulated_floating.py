@@ -297,7 +297,8 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         return omega_, pitch_, phiy_, clipped
 
 
-    def estimate(self, Qa, omega, pitch,  phiy , WS0, relaxation=0, method='crossing', deltaWSMax=1, verbose=False, debug=False, t=0, WSref=np.nan): 
+    def estimate(self, Qa, Dummy=None, Dummy2=None, Dummy3=None, pitch=None, omega=None,  phiy=None , WS0, relaxation=0, method='crossing', deltaWSMax=1, verbose=False, debug=False, t=0, WSref=np.nan): 
+        # NOTE: Dummy were introduced to force user to use omega=omega pitch=pitch because order of arguments have been changed
         """
         INPUTS:
          - Qa: aerodynamic torque [Nm]
@@ -314,6 +315,8 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
           - 'min'/ fCP : uses cubic interpolation
           - 'crossing': uses linear interpolation (but at higher res thanks)
         """
+        if Dummy is not None:
+            raise Exception('Explictely mention omega=omega, pitch=pitch, phiy = phiy')
         info=None
 
         def saveState(info=None):

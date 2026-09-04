@@ -4,25 +4,30 @@ import matplotlib.pyplot as plt
 
 import welib.fast.case_gen as case_gen
 import welib.fast.postpro as postpro
-#import pyFAST.case_geneneration.case_gen as case_gen
-#import pyFAST.input_output.postpro as postpro
 
 # Get current directory so this script can be called from any location
-MyDir=os.path.dirname(__file__)
+scriptDir = os.path.dirname(__file__)
 
-def CPLambdaExample():
+def CPLambdaExample(test=False):
     """ Example to determine the CP-CT Lambda Pitch matrices of a turbine.
     This script uses the function CPCT_LambdaPitch which basically does the same as Parametric Examples given in this folder
     """
     FAST_EXE  = os.path.join(MyDir, '../../../data/openfast.exe') # Location of a FAST exe (and dll)
     ref_dir   = os.path.join(MyDir, '../../../data/NREL5MW/')     # Folder where the fast input files are located (will be copied)
+    exportBase = os.path.join(MyDir, '../../../data/NREL5MW/_NREL5MW')   # Will generate  NREL5MW_CpCtCq.rpf for ROSCO
     main_file = 'Main_Onshore.fst'  # Main file in ref_dir, used as a template
 
     # --- Computing CP and CT matrices for range of lambda and pitches
-    Lambda = np.linspace(0.1,10,3)
-    Pitch  = np.linspace(-10,10,4)
+    if test:
+        Lambda = np.linspace(0.1, 10, 6)
+        Pitch  = np.linspace(-5 , 40, 8)
+    else:
+        Lambda = np.linspace(0.1, 22, 60)
+        Pitch  = np.linspace(-5 , 40, 80)
 
-    CP,CT,Lambda,Pitch,MaxVal,result = case_gen.CPCT_LambdaPitch(ref_dir,main_file,Lambda,Pitch,fastExe=FAST_EXE,showOutputs=False,nCores=4,TMax=10)
+    CP, CT, Lambda, Pitch, MaxVal, result = case_gen.CPCT_LambdaPitch(ref_dir, main_file, Lambda, Pitch, fastExe=FAST_EXE, 
+                                                                      showOutputs=False, nCores=4, TMax=30,
+                                                                        exportBase=None, exportFmt='rosco')
 
     print('CP max',MaxVal)
 
@@ -41,9 +46,8 @@ def CPLambdaExample():
     fig.colorbar(surf, shrink=0.5, aspect=5)
 
 
-
 if __name__=='__main__':
-    CPLambdaExample()
+    CPLambdaExample(test=True)
     plt.show()
 if __name__=='__test__':
     # Need openfast.exe, doing nothing

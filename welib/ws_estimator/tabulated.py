@@ -721,10 +721,15 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         time       = df['Time_[s]'].values
         WS_ref     = df['RtVAvgxh_[m/s]'].values # Rotor avg
         pitch      = df['BldPitch1_[deg]'].values
-        try:
+        if 'RtAeroMxh_[N-m]' in df:
             Qaero_ref  = df['RtAeroMxh_[N-m]'].values
-        except:
+        elif 'RtFldMxh_[N-m]' in df:
             Qaero_ref  = df['RtFldMxh_[N-m]'].values
+        elif 'RtAeroPwr_[W]' in df and 'RtSpeed_[rpm]' in df:
+            Qaero_ref  = df['RtAeroPwr_[W]'].values / (df['RtSpeed_[rpm]']*np.pi/30)
+        else:
+            raise Exception('Cannot estimate without a reference torque or power&rot speed')
+
         omega      = df['RotSpeed_[rpm]'].values*2*np.pi/60 # rad/s
         lambda_ref = omega*self.R/WS_ref
         # Estimating wind speed on time series
@@ -804,6 +809,8 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         ax.set_ylabel('Torque [N]')
         ax.legend()
 
+        return fig
+
     def operPlot(self):
         if self.OP is None:
             raise Exception()
@@ -868,12 +875,13 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         return fig
 
 
-    def plotTimeSeriesEstimation(self, axes=None):
+    def plotTimeSeriesEstimation(self, axes=None, Ylim1=None, Ylim2=None, Ylim3=None):
         df = self.df
+        STATS = {}
+
         # --- Plot
         fig,axes = plt.subplots(3, 1, sharex=False, figsize=(13.4,7.0)) # (6.4,4.8)
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
-
 
         # TODO get those using  max of WS and Q and min max of oper
 #         Ylim1 = [0,20]    # WS
@@ -893,65 +901,68 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
         #bInv = bInv3
         #b    = ~bInv3
         # 
+        time = df['Time_[s]']
+
         # --- WS plot
         ax=axes[0]
+        ax.plot(time, df['WS_ref_[m/s]'],     color=fColrs(1), label='OpenFAST')
+        ax.plot(time, df['WS_est_[m/s]'], ':',color=fColrs(4), label='Estimated')
+        ax.set_ylabel('Wind speed [m/s]')
+        Xlim = ax.get_xlim()
+        Ylim1 = Ylim1 if Ylim1 is not None else ax.get_ylim()
 
         # #ax.fill_between(t, Ylim1[0], Ylim1[1], where=bInv2, alpha=0.1, color=python_colors(1))
         # # ax.fill_between(t, Ylim1[0], Ylim1[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
         # 
         # # stats, sStats = comparison_stats(t[b], df['WS_ref_[m/s]'].values[b], t[b], df['WS_est_[m/s]'].values[b])
-        # # ax.text(2,Ylim1[0]+(Ylim1[1]-Ylim1[0])*0.89, sStats, fontsize=11 )
+        STATS['WS'], sStats = comparison_stats(time, df['WS_ref_[m/s]'], time, df['WS_est_[m/s]'], stats='sigRatio,eps,R2', method='1-2', latex=True)
+        ax.text(Xlim[0]+(Xlim[1]-Xlim[0])*0.01, Ylim1[0]+(Ylim1[1]-Ylim1[0])*0.89, sStats, fontsize=11 )
         # 
-        # # ax.axhline(y = self.WS[0 ], color=python_colors(0), linestyle = '--', lw=0.5)
-        # # ax.axhline(y = self.WS[-1], color=python_colors(0), linestyle = '--', lw=0.5)
-        # # ax.set_ylim(Ylim1)
+        #ax.axhline(y = self.WS[0 ], color=python_colors(0), linestyle = '--', lw=0.5)
+        #ax.axhline(y = self.WS[-1], color=python_colors(0), linestyle = '--', lw=0.5)
+        ax.set_ylim(Ylim1)
 
-
-        ax.plot(df['Time_[s]'], df['WS_ref_[m/s]'],     color=fColrs(1), label='OpenFAST')
-        ax.plot(df['Time_[s]'], df['WS_est_[m/s]'], ':',color=fColrs(4), label='Estimated')
-        ax.set_ylabel('Wind speed [m/s]')
-
-        #  --- Qplot
+        # --- Qplot plot
         ax=axes[1]
+        ax.plot(time, df['Qaero_ref_[N]' ]    , color=fColrs(1),   label='OpenFAST')
+        ax.plot(time, df['Qaero_est_[N]' ],':', color=fColrs(4),  label='From WS Estimated')
+        # #ax.plot(df['Time_[s]'], df['Qaero_eval_[N]'], '--', label='Evaluated')
+        ax.set_ylabel('Qaero [N]')
+        ax.legend(loc='center left')
+        Xlim = ax.get_xlim()
+        Ylim2 = Ylim2 if Ylim2 is not None else ax.get_ylim()
+
         # #ax.fill_between(t, Ylim2[0], Ylim2[1], where=bInv2, alpha=0.1, color=python_colors(1))
         # # ax.fill_between(t, Ylim2[0], Ylim2[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
         # 
         # stats, sStats = comparison_stats(t[b], df['Qaero_ref_[N]'].values[b], t[b], df['Qaero_est_[N]'].values[b])
-        # ax.text(2,Ylim2[0]+(Ylim2[1]-Ylim2[0])*0.89, sStats, fontsize=11 )
-        # 
-        ax.plot(df['Time_[s]'], df['Qaero_ref_[N]' ]    , color=fColrs(1),   label='OpenFAST')
-        ax.plot(df['Time_[s]'], df['Qaero_est_[N]' ],':', color=fColrs(4),  label='From WS Estimated')
-        # #ax.plot(df['Time_[s]'], df['Qaero_eval_[N]'], '--', label='Evaluated')
-        ax.set_ylabel('Qaero [N]')
-        # ax.set_ylim(Ylim2)
-        ax.legend(loc='center left')
-        # 
-        # --- Oper
-        ax=axes[2]
-        # #ax.fill_between(t, Ylim3[0], Ylim3[1], where=bInv2, alpha=0.1, color=python_colors(1))
-        # # ax.fill_between(t, Ylim3[0], Ylim3[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
-        # 
+        STATS['Qaero'], sStats = comparison_stats(time, df['Qaero_ref_[N]'], time, df['Qaero_est_[N]'], stats='sigRatio,eps,R2', method='1-2', latex=True)
+        ax.text(Xlim[0]+(Xlim[1]-Xlim[0])*0.01, Ylim2[0]+(Ylim2[1]-Ylim2[0])*0.89, sStats, fontsize=11 )
+        ax.set_ylim(Ylim2)
+        
+        # --- Oper Plot
         colrs=[python_colors(0), python_colors(1), python_colors(2)]
         colrs=[fColrs(1), lighten_color(fColrs(1),0.3), lighten_color(fColrs(1),0.6)]
-
+        ax=axes[2]
         ax.plot(df['Time_[s]'], df['omega_[rad/s]']*30/np.pi, '-',c=colrs[0], label='omega [rpm]')
         ax.plot(df['Time_[s]'], df['Pitch_[deg]']           , '--',c=colrs[1], label='Pitch [deg]')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Operating conditions')
+        ax.legend()
+
+        # #ax.fill_between(t, Ylim3[0], Ylim3[1], where=bInv2, alpha=0.1, color=python_colors(1))
+        # # ax.fill_between(t, Ylim3[0], Ylim3[1], where=bInv, alpha=0.1, color=(0.5,0.5,0.5))
         # ax.plot(df['Time_[s]'], df['PtfmPitch_[deg]']       , '-.',c=colrs[2], label='PhiY [deg]')
-        # # 
         # #             ax.axhline(y = wse.omega[0 ]*30/np.pi, color=colrs[0], linestyle = '--', lw=0.5)
         # #             ax.axhline(y = wse.omega[-1]*30/np.pi, color=colrs[0], linestyle = '--', lw=0.5)
         # #             ax.axhline(y = wse.pitch[0 ],          color=colrs[1], linestyle = '--', lw=0.5)
         # #             ax.axhline(y = wse.pitch[-1],          color=colrs[1], linestyle = '--', lw=0.5)
-        # 
         # # ax.set_ylim(Ylim3)
-        ax.set_xlabel('Time [s]')
-        ax.legend()
 
         for ax in axes.flatten():
             #ax.set_xlim([0,600])
             ax.tick_params(direction='in')
-
-
+        return fig, STATS
 
 
 

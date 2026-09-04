@@ -14,15 +14,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from welib.essentials import *
-from welib.kalman.TN    import KalmanFilterTNSim 
-from welib.kalman.TNLin import KalmanFilterTNLinSim, KalmanModelTNLin
+from welib.kalman.KF_TN    import KalmanFilterTNSim 
+from welib.kalman.KF_TNLin import KalmanFilterTNLinSim, KalmanModelTNLin
 from welib.fast.FASTLin import FASTLin
 
 import pytest
 
 scriptDir = os.path.dirname(__file__)
-
-
 
 def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     # Options for 7 states
