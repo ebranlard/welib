@@ -23,31 +23,12 @@ def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
 
 
 class KalmanFilter(object):
-    def __init__(self, sX0, sXa, sU, sY, sS=None, sXd=None):
-        sS = [] if sS is None else sS
-        self.sX0 = sX0
-        self.sXa = sXa
-        self.sU  = sU
-        self.sY  = sY
-        self.sS  = sS # Storage, "Misc" values
-
-
-        #  State vector is States and Augmented states
-        self.sX = np.concatenate((self.sX0, self.sXa))
-
-        if sXd is None:
-            sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
-        self.sXd = sXd
-
-
-        # --- Defining index map for convenience
-        self.iX = {lab: i   for i,lab in enumerate(self.sX)}
-        self.iY = {lab: i   for i,lab in enumerate(self.sY)}
-        self.iU = {lab: i   for i,lab in enumerate(self.sU)}
-        self.iS = {lab: i   for i,lab in enumerate(self.sS)}
+    def __init__(self, sX0=None, sXa=None, sU=None, sY=None, sS=None, sXd=None, KM=None):
+        # State names 
+        self.sX0, self.sXa, self.sU, self.sY, self.sS, self.sXd = None, None, None, None, None, None
 
         # State matrices
-        self.Xx, self.Xu, self.Yx, self.Yu= None, None, None, None
+        self.Xx, self.Xu, self.Yx, self.Yu = None, None, None, None
 
         # Standard deviations and covariance matrix
         self.sigX_c = None
@@ -78,35 +59,61 @@ class KalmanFilter(object):
         self.Pt       = None # np.zeros((self.nt, self.nX, self.nY))  # P is nx * nx
         self.Kt       = None # np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
 
+        # --- Actually initialization
+        if KM is not None:
+            self.sX0 = KM.sQ
+            self.sXa = KM.sQa
+            self.sU  = KM.sU
+            self.sY  = KM.sY
+            self.sS  = KM.sS
+            self.sXd = KM.sQd
+        
+        else:
+            self.sX0 = sX0
+            self.sXa = sXa
+            self.sU  = sU
+            self.sY  = sY
+            self.sS  = sS # Storage, "Misc" values
+            self.sXd = sXd # Storage, "Misc" values
+
+        #  State vector is States and Augmented states
+        self.sX = np.concatenate((self.sX0, self.sXa))
+
+        if self.sS is None :
+            self.sS = []
+        if self.sXd is None:
+            sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
+
+        # --- Defining index map for convenience
+        self.iX = {lab: i   for i,lab in enumerate(self.sX)}
+        self.iY = {lab: i   for i,lab in enumerate(self.sY)}
+        self.iU = {lab: i   for i,lab in enumerate(self.sU)}
+        self.iS = {lab: i   for i,lab in enumerate(self.sS)}
 
     @property
-    def nX(self):
-        return len(self.sX)
-
+    def nX(self): return len(self.sX)
     @property
-    def nY(self):
-        return len(self.sY)
-
+    def nY(self): return len(self.sY)
     @property
-    def nU(self):
-        return len(self.sU)
-
+    def nU(self): return len(self.sU)
     @property
-    def nP(self):
-        return len(self.sXa)
-
+    def nP(self): return len(self.sXa)
     @property
-    def nX0(self):
-        return len(self.sX0)
-
+    def nX0(self): return len(self.sX0)
     @property
-    def nS(self):
-        return len(self.sS)
+    def nS(self): return len(self.sS)
+    @property
+    def A(self): return self.Xx
+    @property
+    def B(self): return self.Xu
+    @property
+    def C(self): return self.Yx
+    @property
+    def D(self): return self.Yu
 
     def __repr__(self):
-
         s=''
-        s+='<kalman.KalmanFilter object> \n'
+        s='<{} object> with attributes:\n'.format(type(self).__name__)
         s+='  sX  : {} \n'.format(self.sX)
         s+='  sX0 : {} \n'.format(self.sX0)
         s+='  sX1 : {} \n'.format(self.sXa)
@@ -138,21 +145,6 @@ class KalmanFilter(object):
 
         return s
 
-    @property
-    def A(self):
-        return self.Xx
-
-    @property
-    def B(self):
-        return self.Xu
-
-    @property
-    def C(self):
-        return self.Yx
-
-    @property
-    def D(self):
-        return self.Yu
 
 
     def setMat(self, Xx, Xu, Yx, Yu):
