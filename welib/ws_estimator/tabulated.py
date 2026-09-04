@@ -376,6 +376,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
 
     def loadFromBasename(self, basename=None, suffix=''):
         """  """
+        from welib.weio.rosco_performance_file import ROSCOPerformanceFile
         aeroMapFile = basename+'_CPCTCQ'+suffix+'.txt'
         operFile      = basename+'_Oper'+suffix+'.csv'
 
@@ -383,6 +384,7 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             self.loadAeroMap(aeroMapFile)
         else:
             # Old format
+            WARN('tabulated: Loading from base is legacy and will be removed.')
             LambdaFile  = basename + '_Lambda'+suffix+'.csv'
             PitchFile   = basename + '_Pitch'+suffix+'.csv'
             CPFile      = basename + '_CP'+suffix+'.csv'
@@ -390,9 +392,15 @@ class TabulatedWSEstimator(TabulatedWSEstimatorBase):
             self.pitch  = pd.read_csv(PitchFile ,header = None).values.ravel()
             self.Lambda = pd.read_csv(LambdaFile,header = None).values.ravel()
             self.CP     = pd.read_csv(CPFile,header     = None).values
-            self.CP[self.CP<=0]=0
             self.CT     = pd.read_csv(CTFile,header     = None).values
-            self.CT[self.CT<=0]=0
+            # 
+            INFO('tabulated: Writting ROSCO file '+aeroMapFile)
+            rs = ROSCOPerformanceFile()
+            rs['pitch'] = self.pitch
+            rs['TSR'] = self.Lambda
+            rs['CP'] = self.CP
+            rs['CT'] = self.CT
+            rs.write(aeroMapFile)
             # Trigger
             self.computeWeights()
 

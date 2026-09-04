@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from welib.essentials import *
 from welib.kalman.TN    import KalmanFilterTNSim 
 from welib.kalman.TNLin import KalmanFilterTNLinSim
+from welib.fast.FASTLin import FASTLin
 
 import pytest
 
@@ -119,10 +120,18 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     if bFilterAcc:
         sPref+='_FilterAcc'+str(nFilt)
 
-    OutDir    = os.path.join(scriptDir, './_data_onshore_TNS/')
-    FstFile   = os.path.join(scriptDir, './_data_onshore_TNS/Hat.fst')
-    StateFile = os.path.join(scriptDir, './_data_onshore_TNS/NREL5MW_2DOF_ABCD_mean_NEW.dat')
-    base      = os.path.join(scriptDir, './_data_onshore_TNS/NREL5MW')
+    FstFile      = os.path.join(scriptDir, '_data_onshore_TNS_OF50/Hat.fst')
+    linFile      = os.path.join(scriptDir, '_data_onshore_TNS_OF50/ws_5_lin.1.lin')
+    linStateFile = os.path.join(scriptDir, '_data_onshore_TNS_OF50/NREL5MW_FASTLin_2DOF_WS5.pkl') # Will be generated from linFile if not existing
+    base         = os.path.join(scriptDir, '_data_onshore_TNS_OF50/NREL5MW')
+
+    OutDir       = os.path.join(scriptDir, './../../data/NREL5MW/onshore/_kalman/')
+    FstFile      = os.path.join(scriptDir, '../../../data/NREL5MW/onshore/Hat.fst')
+    linFile      = os.path.join(scriptDir, '../../../data/NREL5MW/onshore/ws_5_lin.1.lin')
+    linStateFile = os.path.join(scriptDir, '../../../data/NREL5MW/onshore/ws_5_lin_FASTLin_2DOF.pkl') # Will be generated from linFile if not existing
+    base         = os.path.join(scriptDir, '../../../data/NREL5MW/NREL5MW')
+
+
     MeasFile   = FstFile.replace('.fst','.outb')
     Case       = os.path.basename(FstFile.replace('.fst',''))
     if bYAMS:
@@ -160,9 +169,23 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
             bThrustInStates=True
             KF= KalmanFilterTNSim(FstFile, MeasFile, OutputFile, base, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, bExport)
         else:
+
+            if not os.path.exists(linStateFile):
+                # We create the state file
+                # sX_sel  = ['qt1FA_[m]', 'psi_rot_[rad]', 'd_qt1FA_[m/s]', 'd_psi_rot_[rad/s]']
+                sED_DOF = ['7_TwFADOF1' ,'13_GeAz']
+                sU_DOF  = ['HubFxN1_[N]','Qgen_[Nm]','PitchColl_[rad]']
+                sY_DOF  = ['NcIMUTAxs_[m/s^2]', 'RotSpeed_[rpm]','SvDGenTq_[kNm]', 'BPitch1_[deg]']
+                FL = FASTLin(linfiles=[linFile])# sX, sU, sY, sED = FL.xdescr, FL.udescr, FL.ydescr, FL.EDdescr
+                Ar, Br, Cr, Dr, Mr = FL.average_subset(sU_sel=sU_DOF, sY_sel=sY_DOF, sE_sel=sED_DOF, exportFile=linStateFile, baseDict={'model':'TNSB'})
+                print('A:\n',Ar)
+                print('D:\n',Dr)
+                print('M:\n',Mr)
+
+
             KM = KalmanModel(StateModel=StateModel, Qgen_LSS=Qgen_LSS)
             KM.ThrustHack=True
-            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, base, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, bExport)
+            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, base, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, bExport)
     # --------------------------------------------------------------------------------}
     # --- PostPro  
     # --------------------------------------------------------------------------------{
@@ -182,22 +205,22 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     return stats
 
 def test_onshore_TNS_YAMS(test=True):
-    return
     stats = main(bYAMS=False, StateModel='nt1_nx5', test=test)
-    np.testing.assert_array_less(stats['Qaero']['eps'] , 3.61)
-    np.testing.assert_array_less(stats['WS']['eps']    , 3.61)
-    np.testing.assert_array_less(stats['Thrust']['eps'], 3.01)
-    np.testing.assert_array_less(stats['M2']['eps']    , 3.01)
-    np.testing.assert_array_less(stats['M7']['eps']    , 8.21)
+    np.testing.assert_array_less(stats['Qaero']['eps'] , 3.85)
+    np.testing.assert_array_less(stats['WS']['eps']    , 3.65)
+    np.testing.assert_array_less(stats['Thrust']['eps'], 3.15)
+    np.testing.assert_array_less(stats['M1']['eps']    , 5.05)
+    np.testing.assert_array_less(stats['M6']['eps']    , 2.75)
+    np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
 
 def test_onshore_TNS_OFLin(test=True):
-    return
     stats = main(bYAMS=True, StateModel='nt1_nx5' , test=test)
-    np.testing.assert_array_less(stats['Qaero']['eps'] , 3.61)
-    np.testing.assert_array_less(stats['WS']['eps']    , 3.61)
-    np.testing.assert_array_less(stats['Thrust']['eps'], 3.01)
-    np.testing.assert_array_less(stats['M2']['eps']    , 3.01)
-    np.testing.assert_array_less(stats['M7']['eps']    , 8.21)
+    np.testing.assert_array_less(stats['Qaero']['eps'] , 3.85)
+    np.testing.assert_array_less(stats['WS']['eps']    , 3.65)
+    np.testing.assert_array_less(stats['Thrust']['eps'], 3.15)
+    np.testing.assert_array_less(stats['M1']['eps']    , 4.85)
+    np.testing.assert_array_less(stats['M6']['eps']    , 2.65)
+    np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
 
 if __name__ == '__main__':
     test_onshore_TNS_YAMS (test=True)

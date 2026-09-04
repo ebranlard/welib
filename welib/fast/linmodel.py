@@ -867,7 +867,7 @@ class FASTLinModelTNSB():
         return s
 
 
-def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, ):
+def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=False, nameMap={'SvDGenTq_[kNm]':'Qgen_[kNm]'}, verbose=False):
     """ 
 
 
@@ -899,7 +899,7 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
         B=dat['B']
         C=dat['C']
         D=dat['D']
-        M=None
+        M=dat['M']
         model =dat['model']
     else:
         model='TNSB'
@@ -924,7 +924,7 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
     if ScaleUnits:
         # Changing rows
         for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
-            Mat = matToSIunits(Mat, name=S, verbose=True)
+            Mat = matToSIunits(Mat, name=S, verbose=verbose)
     # --- ColMap
     if nameMap is not None:
         for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):

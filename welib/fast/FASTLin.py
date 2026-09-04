@@ -412,6 +412,7 @@ class FASTLin(object):
         outDict['B'] = Br
         outDict['C'] = Cr
         outDict['D'] = Dr
+        outDict['M'] = Mr
 
         if exportFile is not None:
             self.exportState(exportFile, outDict)

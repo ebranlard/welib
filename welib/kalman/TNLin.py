@@ -240,8 +240,9 @@ class KalmanFilterTNLin(KalmanFilter):
         EI     = np.interp(z_test, WT.twr.s_span, WT.twr.EI[0,:])
         kappa  = np.interp(z_test, WT.twr.s_span, WT.twr.PhiK[0][0,:])
         qx    = KF.X_hat['ut1']
-        KF.M_sim = [qx*EI[i]*kappa[i]/1000 for i in range(len(z_test))]                 # in [kNm]
-        KF.M_ref=[]
+        KF.M_sim   = [qx*EI[i]*kappa[i]/1000 for i in range(len(z_test))] # in [kNm]
+        KF.M_ref   = []
+        KF.M_valid = [True]*len(z_test)
         for i in range(len(z_test)):
             try:
                 val=KF.df['TwHt{:d}MLyt_[kN-m]'.format(i+1)].values
@@ -249,7 +250,8 @@ class KalmanFilterTNLin(KalmanFilter):
                 try:
                     val=KF.df['TwHt{:d}MLyt'.format(i+1)].values
                 except:
-                   val=KF.time*0
+                    KF.M_valid[i] = False
+                    val=KF.time*np.nan
             KF.M_ref.append(val)
         return KF.M_sim, KF.M_ref
 
@@ -327,27 +329,31 @@ class KalmanFilterTNLin(KalmanFilter):
         time = KF.time
 
         ##
-        fig, axes = plt.subplots(7, 2, sharey=False, figsize=(13.8,8.8))
+        fig, axes = plt.subplots(8, 2, sharey=False, figsize=(13.8,8.8))
         #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
         j=-1;
-        time_plot(axes[j,0], time, X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000, label='Qaero [kNm]'); j+=1; 
-        spec_plot(axes[j,1], time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
+        j+=1; time_plot(axes[j,0], time, X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000, label='Qaero [kNm]'); 
+        spec_plot(      axes[j,1], time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
 
-        time_plot(axes[j,0], time, XS_clean['WS'], XS_hat['WS'], label='WS [m/s]'); j+=1
-        spec_plot(axes[j,1], time, XS_clean['WS'], XS_hat['WS'])
-        time_plot(axes[j,0], time, X_clean['omega'], X_hat['omega'], label='omega [rad/s]'); j+=1
-        spec_plot(axes[j,1], time, X_clean['omega'], X_hat['omega'])
-        time_plot(axes[j,0], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000, label='Thrust [kN]'); j+=1
-        spec_plot(axes[j,1], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000)
-        time_plot(axes[j,0], time, XS_clean['ut1'], XS_hat['ut1'], label='ut1 [m]'); j+=1
-        spec_plot(axes[j,1], time, XS_clean['ut1'], XS_hat['ut1'])
-        try:
-            time_plot(axes[j,0], time, KF.M_ref[2], KF.M_sim[2], label='M2 [kNm]'); j+=1
-            spec_plot(axes[j,1], time, KF.M_ref[2], KF.M_sim[2])
-            time_plot(axes[j,0], time, KF.M_ref[7], KF.M_sim[7], label='M7 [kNm]'); j+=1
-            spec_plot(axes[j,1], time, KF.M_ref[7], KF.M_sim[7])
-        except:
-            pas
+        j+=1; time_plot(axes[j,0], time, XS_clean['WS'], XS_hat['WS'], label='WS [m/s]'); 
+        spec_plot(      axes[j,1], time, XS_clean['WS'], XS_hat['WS'])
+        j+=1; time_plot(axes[j,0], time, X_clean['omega'], X_hat['omega'], label='omega [rad/s]');
+        spec_plot(      axes[j,1], time, X_clean['omega'], X_hat['omega'])
+        j+=1; time_plot(axes[j,0], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000, label='Thrust [kN]'); 
+        spec_plot(      axes[j,1], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000)
+        j+=1; time_plot(axes[j,0], time, XS_clean['ut1'], XS_hat['ut1'], label='ut1 [m]'); 
+        spec_plot(      axes[j,1], time, XS_clean['ut1'], XS_hat['ut1'])
+#         try:
+        for i in range(len(KF.M_sim)):
+            if KF.M_valid[i]:
+                j+=1; time_plot(axes[j,0], time, KF.M_ref[i], KF.M_sim[i], label=f'M{i+1} [kNm]'); 
+                spec_plot(      axes[j,1], time, KF.M_ref[i], KF.M_sim[i])
+            if j>6:
+                break
+
+
+#         except:
+#             pas
         return fig, STATS
         #                                         
     def plot_moments(KF,fig=None,scaleByMean=False):
