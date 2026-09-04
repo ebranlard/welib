@@ -72,7 +72,7 @@ class TNSBStructure(WindTurbineStructure):
             # --- Rigid Blades (with origin R, using N as "global" ref)
             blds_rigid = rigidBlades(s.bld, r_O = [0,0,0]) # TODO blade origins might be wrong in TNSB
             blds_rigid.pos_global = s.r_NR_inN.ravel()
-            R_NS = R_y(s.theta_tilt)  # Rotation fromShaft to Nacelle
+            R_NS = R_y(s.shaft_tilt)  # Rotation fromShaft to Nacelle
             blds_rigid.R_b2g      = R_NS
 
 
@@ -151,10 +151,10 @@ class TNSBStructure(WindTurbineStructure):
         vy1c   = s.twr.Bhat_t_bc[1,0]  # Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
         ky1c   = s.twr.PhiK[0][0,-1]
 
-        Fz_inE =-T*sin(alpha_y + s.theta_tilt) - s.M_RNA*g # TODO potential softening correction
+        Fz_inE =-T*np.sin(alpha_y + s.shaft_tilt) - s.M_RNA*g # TODO potential softening correction
 
-        Fx_inE = T*cos(alpha_y + s.theta_tilt)
-#         Fx_inE = T*cos(s.theta_tilt)
+        Fx_inE = T*np.cos(alpha_y + s.shaft_tilt)
+#         Fx_inE = T*cos(s.shaft_tilt)
 
 
         # --- Softening is already in K
@@ -166,8 +166,8 @@ class TNSBStructure(WindTurbineStructure):
         #         GF_soft+=          -vL*Fz_inE*ux1c
 
         My_inE = 0
-        My_inE += s.M_RNA*g*( rhoN_x*cos(alpha_y) + rhoN_z*sin(alpha_y))
-        My_inE +=T*(rNR_x*sin(s.theta_tilt) + rNR_z*cos(s.theta_tilt) )
+        My_inE += s.M_RNA*g*( rhoN_x*np.cos(alpha_y) + rhoN_z*sin(alpha_y))
+        My_inE +=T*(rNR_x*sin(s.shaft_tilt) + rNR_z*np.cos(s.shaft_tilt) )
 
 
         GF =0
@@ -195,11 +195,11 @@ class TNSBStructure(WindTurbineStructure):
         ux1c   = s.twr.Bhat_x_bc[1,0]
         vy1c   = s.twr.Bhat_t_bc[1,0]  # Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
 
-        GF  =   T*cos(s.theta_tilt) 
+        GF  =   T*np.cos(s.shaft_tilt) 
         if bFull:
-            GF += - T* vy1c * sin(s.theta_tilt) * x[0]
+            GF += - T* vy1c * np.sin(s.shaft_tilt) * x[0]
             GF += (vy1c**2 * s.M_RNA*g * rhoN_z) * x[0]
-            GF +=  T*vy1c*(rNR_x*sin(s.theta_tilt) + rNR_z*cos(s.theta_tilt) ) 
+            GF +=  T*vy1c*(rNR_x*np.sin(s.shaft_tilt) + rNR_z*np.cos(s.shaft_tilt) ) 
             GF += vy1c * s.M_RNA*g * rhoN_x
         return GF
 

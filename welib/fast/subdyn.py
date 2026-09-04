@@ -142,10 +142,10 @@ class SubDyn:
         FEM.KBB = FEM.KK_CB[np.ix_(FEM.DOF_Leader_CB  , FEM.DOF_Leader_CB)]
         FEM.MBM = FEM.MM_CB[np.ix_(FEM.DOF_Leader_CB  , FEM.DOF_Follower_CB)]
         FEM.KMM = FEM.KK_CB[np.ix_(FEM.DOF_Follower_CB, FEM.DOF_Follower_CB)]
-        zeta =self.File['JDampings']/100
-        if not hasattr(zeta,'__len__'):
-            zeta = [zeta]*FEM.nModesCB
-            FEM.CMM = 2*np.array(zeta) * FEM.f_CB * 2 * np.pi
+        zeta = np.asarray(self.File['JDampings'], dtype=float) / 100
+        if zeta.ndim == 0:
+            zeta = np.full(FEM.nModesCB, zeta)
+        FEM.CMM = 2 * zeta * FEM.f_CB * 2 * np.pi
 
         # --- Matrices wrt TP point
         TI=FEM.T_refPoint

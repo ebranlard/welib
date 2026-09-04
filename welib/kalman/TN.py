@@ -7,10 +7,10 @@ import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter
 from .filters import moving_average
+
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
 from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
-
-
+from welib.tools.stats import comparison_stats
 import welib.fast.fastlib as fastlib
 import welib.weio as weio
 
@@ -21,14 +21,14 @@ DEFAULT_COL_MAP={
   ' omega  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
   ' Thrust ' : ' RtAeroFxh_[N]                 ' ,
   ' Qaero  ' : ' RtAeroMxh_[N-m]               ' ,
-  ' Qgen   ' : ' {GenTq_[kN-m]}  *1000 * nGear ' , # [kNm] -> [Nm] LSS
+  ' Qgen   ' : ' 97*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm] # <<<<<<<<<<<<<<< NOTE nGear Hard coded
   ' WS     ' : ' RtVAvgxh_[m/s]                ' ,
-  ' pitch  ' : ' BldPitch1_[deg]'                , # [deg]->[rad]
+  ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 ' , # [deg]->[rad]
   ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
 }
 
 class KalmanFilterTN(KalmanFilter):
-    def __init__(KF, FstFile, base,  bThrustInStates=True, nShapes_twr=1):
+    def __init__(KF, FstFile, base,  bThrustInStates=True, nShapes_twr=1, debug=False):
         """
 
         """
@@ -68,17 +68,20 @@ class KalmanFilterTN(KalmanFilter):
 
 
         # --- Mechanical system and turbine data
-        WT = FASTmodel2TNSB(FstFile , nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, bStiffening=True, main_axis='z').WT
+        #WT = FASTmodel2TNSB(FstFile , nShapes_twr=nShapes_twr,nShapes_bld=nShapes_bld, DEBUG=False, bStiffening=True, main_axis='z').WT
+        WT = FASTmodel2TNSB(FstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
         if nShapes_twr==1:
             # TODO aerodamping
             WT.DD      = WT.DD*3.5 # increased damping to account for aero damping
-        print(WT)
+        if debug:
+            print(WT)
         KF.WT=WT
 
         # --- Creating a wind speed estimator (reads tabulated aerodynamic data)
         KF.wse = TabulatedWSEstimator(fstFile=FstFile)
         KF.wse.loadFromBasename(basename=base,suffix='')
-        print(KF.wse)
+        if debug:
+            print(KF.wse)
         # --- Building continuous and discrete state matrices
         M,C,K = WT.MM, WT.DD, WT.KK
         Xx,Xu,Yx,Yu = BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=Fp,Pp=Pp,Yp=Yp,Yu=Yu,Method='augmented_first_order')
@@ -86,37 +89,23 @@ class KalmanFilterTN(KalmanFilter):
 
 
 
-    def loadMeasurements(KF, MeasFile, nUnderSamp=1, tRange=None):
+    def loadMeasurements(KF, MeasFile, nUnderSamp=1, tRange=None, ColMap=DEFAULT_COL_MAP):
         # --- Loading "Measurements"
-        ColMap = {'ut1':'TTDspFA', 'psi':'Azimuth','ut1dot':'NcIMUTVxs','omega':'RotSpeed',
-                 'Thrust':'RtAeroFxh','Qaero':'RtAeroMxh','Qgen':'GenTq',
-                 'WS':'RtVAvgxh', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}
-        #          'WS':'Wind1VelX', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}
-        #          'Thrust':'RotThrust','Qaero':'RtAeroMxh','Qgen':'GenTq',
-        # NOTE: RotThrust contain gravity and inertia
-
-        # TODO 
         nGear  = KF.WT.ED['GBRatio']
         df=weio.read(MeasFile).toDataFrame()
-        df.columns = [  v.split('_[')[0] for v in df.columns.values] 
-        if tRange is not None:
-            df=df[(df['Time']>= tRange[0]) & (df['Time']<= tRange[1])] # reducing time range
         df=df.iloc[::nUnderSamp,:]                      # reducing sampling
-        time = df['Time'].values
+        if tRange is not None:
+            df=df[(df['Time_[s]']>= tRange[0]) & (df['Time_[s]']<= tRange[1])] # reducing time range
+        time = df['Time_[s]'].values
         dt   = (time[-1] - time[0])/(len(time)-1)
-
-        df['GenSpeed'] *= 2*np.pi/60 # converted to rad/s
-        df['RotSpeed'] *= 2*np.pi/60 # converted to rad/s
-        df['GenTq']    *= 1000*nGear # Convert to rot torque
-        df['Azimuth']  *= np.pi/180  # rad
-        df['RotTorq']  *= 1000 # [kNm]->[Nm]
-        df['RotThrust']*= 1000 # [kN]->[N]
+        df = fastlib.remap_df(df, ColMap, bColKeepNewOnly=False)
+        df.columns = [  v.split('_[')[0] for v in df.columns.values]  # TODO 
         KF.df=df
 
         # --- 
         KF.discretize(dt, method='exponential')
         KF.setTimeVec(time)
-        KF.setCleanValues(df,ColMap)
+        KF.setCleanValues(KF.df)
 
         # --- Estimate sigmas from measurements
         sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
@@ -149,6 +138,7 @@ class KalmanFilterTN(KalmanFilter):
             WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch, omega, WS0, relaxation = 0)
             Qaero_hat = np.max(Qaero_hat,0)
             Thrust = KF.wse.Thrust(WS_hat, pitch, omega)
+            #GF = Thrust
             GF = KF.WT.GF_lin(Thrust,x,bFull=True)
 
             x[KF.iX['Thrust']] = GF
@@ -167,9 +157,9 @@ class KalmanFilterTN(KalmanFilter):
 
     def moments(KF):
         WT=KF.WT
-        z_test = fastlib.ED_TwrGag(WT.ED) - WT.ED['TowerBsHt']
-        EI     = np.interp(z_test, WT.Twr.s_span, WT.Twr.EI[0,:])
-        kappa  = np.interp(z_test, WT.Twr.s_span, WT.Twr.PhiK[0][0,:])
+        z_test = fastlib.ED_TwrGag(WT.ED)[0] - WT.ED['TowerBsHt']
+        EI     = np.interp(z_test, WT.twr.s_span, WT.twr.EI[0,:])
+        kappa  = np.interp(z_test, WT.twr.s_span, WT.twr.PhiK[0][0,:])
         qx    = KF.X_hat['ut1']
         KF.M_sim = [qx*EI[i]*kappa[i]/1000 for i in range(len(z_test))]                 # in [kNm]
         KF.M_ref = [KF.df['TwHt{:d}MLyt'.format(i+1)].values for i in range(len(z_test)) ] # in [kNm]
@@ -201,14 +191,13 @@ class KalmanFilterTN(KalmanFilter):
         import matplotlib
         import matplotlib.pyplot as plt
         from welib.tools.colors import cmap_colors
+        from welib.tools.spectral import fft_wrap
 
         COLRS = cmap_colors(4, 'viridis')
 
+        STATS={}
+
         def spec_plot(ax,t,ref,sim):
-            try:
-                from pybra.spectral import fft_wrap
-            except:
-                return
             f1,S1,Info = fft_wrap(t,ref,output_type = 'PSD',averaging = 'Welch', nExp=10, detrend=True)
             f2,S2,Info = fft_wrap(t,sim,output_type = 'PSD',averaging = 'Welch', nExp=10, detrend=True)
             ax.plot(f1,S1,'-' , color=COLRS[0],label='Reference')
@@ -217,115 +206,75 @@ class KalmanFilterTN(KalmanFilter):
             ax.set_xlabel('Frequency [Hz]')
             ax.set_yscale('log')
 
-        def mean_rel_err(t1,y1,t2,y2):
-            if len(y1)!=len(y2):
-                y2=np.interp(t1,t2,y2)
-            # Method 1 relative to mean
-            ref_val = np.mean(y1)
-            meanrelerr0=np.mean(np.abs(y1-y2)/ref_val)*100 
-            print('Mean rel error {:7.2f} %'.format( meanrelerr0))
-            # Method 2 scaling signals
-            Min=min(np.min(y1), np.min(y2))
-            Max=max(np.max(y1), np.max(y2))
-            y1=(y1-Min)/(Max-Min)+0.001
-            y2=(y2-Min)/(Max-Min)+0.001
-            meanrelerr=np.mean(np.abs(y1-y2)/np.abs(y1))*100 
-            print('Mean rel error {:7.2f} %'.format( meanrelerr))
-            return meanrelerr,meanrelerr0
-
-        def time_plot(ax,t,ref,sim):
+        def time_plot(ax,t,ref,sim, label=''):
             t=t[1:]
             ref=ref[0:-1]
             sim=sim[1:]
 
-            eps=mean_rel_err(t,ref,t,sim)[1]
-            sig_ref=np.std(ref)
-            sig_sim=np.std(sim)
             ax.plot(t,ref,'-' , color=COLRS[0])
             ax.plot(t,sim,'--', color=COLRS[1])
+            ax.set_ylabel(label)
+
+            # Stats
+            stats, sStatsL = comparison_stats(t, ref, t, sim, stats='sigRatio,eps,R2', method='1-2', latex=True)
+            stats, sStats = comparison_stats (t, ref, t, sim, stats='sigRatio,eps,R2', method='1-2', latex=False)
+            label = label.split('[')[0].strip()
+            sStats = f'{label:10s} {sStats}'
+            print(sStats)
+            STATS[label] = stats
+
             Ylim=ax.get_ylim()
             Xlim=ax.get_xlim()
-            ax.text(Xlim[0],Ylim[0]+(Ylim[1]-Ylim[0])*0.8,r'$\epsilon=$'+r'{:.1f}%'.format(eps)+r' - $\sigma_\mathrm{est}/\sigma_\mathrm{ref} = $'+r'{:.3f}'.format(sig_sim/sig_ref), fontsize=11 )
+            ax.text(Xlim[0],Ylim[0]+(Ylim[1]-Ylim[0])*0.8, sStatsL, fontsize=11 )
+            return stats, sStats
 
         # Aliases to shorten notations
         iX, iY, iS = KF.iX, KF.iY, KF.iS
         X_clean, X_hat = KF.X_clean, KF.X_hat
         S_clean, S_hat = KF.S_clean, KF.S_hat
+        XS_clean = pd.concat([X_clean, S_clean], axis=1)
+        XS_clean = XS_clean.loc[:, ~XS_clean.columns.duplicated()]
+        XS_hat = pd.concat([X_hat, S_hat], axis=1)
+        XS_hat = XS_hat.loc[:, ~XS_hat.columns.duplicated()]
+
         time = KF.time
 
         ##
-        fig=plt.figure()
-        # fig.set_size_inches(13.8,4.8,forward=True) # default is (6.4,4.8)
-        fig.set_size_inches(13.8,8.8,forward=True) # default is (6.4,4.8)
-        ax=fig.add_subplot(6,2,1)
-        time_plot(ax,time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
-        ax.set_ylabel('Aerodynamic Torque [kNm]')
+        fig, axes = plt.subplots(7, 2, sharey=False, figsize=(13.8,8.8))
+        #fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        j=-1;
+        time_plot(axes[j,0], time, X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000, label='Qaero [kNm]'); j+=1; 
+        spec_plot(axes[j,1], time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
 
-        ax=fig.add_subplot(6,2,2)
-        spec_plot(ax,time,X_clean['Qaero']/ 1000, X_hat['Qaero']/ 1000)
-        # ax.set_ylabel('Power Spectral Density (Welch Avg.)') 
-
-
-        ax=fig.add_subplot(6,2,3)
+        time_plot(axes[j,0], time, XS_clean['WS'], XS_hat['WS'], label='WS [m/s]'); j+=1
+        spec_plot(axes[j,1], time, XS_clean['WS'], XS_hat['WS'])
+        time_plot(axes[j,0], time, X_clean['omega'], X_hat['omega'], label='omega [rad/s]'); j+=1
+        spec_plot(axes[j,1], time, X_clean['omega'], X_hat['omega'])
+        time_plot(axes[j,0], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000, label='Thrust [kN]'); j+=1
+        spec_plot(axes[j,1], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000)
+        time_plot(axes[j,0], time, XS_clean['ut1'], XS_hat['ut1'], label='ut1 [m]'); j+=1
+        spec_plot(axes[j,1], time, XS_clean['ut1'], XS_hat['ut1'])
         try:
-            time_plot(ax,time,X_clean['WS'], X_hat['WS'])
+            time_plot(axes[j,0], time, KF.M_ref[2], KF.M_sim[2], label='M2 [kNm]'); j+=1
+            spec_plot(axes[j,1], time, KF.M_ref[2], KF.M_sim[2])
+            time_plot(axes[j,0], time, KF.M_ref[7], KF.M_sim[7], label='M7 [kNm]'); j+=1
+            spec_plot(axes[j,1], time, KF.M_ref[7], KF.M_sim[7])
         except:
-            time_plot(ax,time,S_clean['WS'], S_hat['WS'])
-        ax.set_ylabel('WS [m/s]')
-
-        ax=fig.add_subplot(6,2,4)
-        try:
-            spec_plot(ax,time,X_clean['WS'], X_hat['WS'])
-        except:
-            spec_plot(ax,time,S_clean['WS'], S_hat['WS'])
-
-        ax=fig.add_subplot(6,2,5)
-        time_plot(ax,time,X_clean['omega'], X_hat['omega'])
-        ax.set_ylabel('Omega [RPM]')
-
-        ax=fig.add_subplot(6,2,6)
-        spec_plot(ax,time,X_clean['omega'], X_hat['omega'])
-
-        ax=fig.add_subplot(6,2,7)
-        try:
-            time_plot(ax,time,X_clean['Thrust']/1000, X_hat['Thrust']/1000)
-        except:
-            time_plot(ax,time,S_clean['Thrust']/1000, S_hat['Thrust']/1000)
-        ax.set_ylabel('Thrust [kN]')
-
-        ax=fig.add_subplot(6,2,8)
-        try:
-            spec_plot(ax,time,X_clean['Thrust']/1000, X_hat['Thrust']/1000)
-        except:
-            spec_plot(ax,time,S_clean['Thrust']/1000, S_hat['Thrust']/1000)
-
-        ax=fig.add_subplot(6,2,9)
-        time_plot(ax,time,X_clean['ut1'], X_hat['ut1'])
-        ax.set_ylabel('TT position [m]')
-        ax=fig.add_subplot(6,2,10)
-        spec_plot(ax,time,X_clean['ut1'], X_hat['ut1'])
-
-        #                
-        try:
-            ax=fig.add_subplot(6,2,11)
-            time_plot(ax,time,KF.M_ref[2], KF.M_sim[2])
-            ax.set_ylabel('My [kNm]')
-            ax=fig.add_subplot(6,2,12)
-            spec_plot(ax,time,KF.M_ref[2], KF.M_sim[2])
-        except:
-            pass
+            pas
+        return fig, STATS
         #                                         
     def plot_moments(KF,fig=None,scaleByMean=False):
         import matplotlib
         import matplotlib.pyplot as plt
         from welib.tools.colors import cmap_colors
 
-        z_test = list(fastlib.ED_TwrGag(KF.WT.ED) - KF.WT.ED['TowerBsHt'])
+        z_test = list(fastlib.ED_TwrGag(KF.WT.ED)[0] - KF.WT.ED['TowerBsHt'])
         print('z test:',z_test)
         n=len(z_test)
 #         z_test.reverse()
         # --- Compare measurements
         COLRS = cmap_colors(n+1, 'viridis')
+
         if fig is None:
             fig=plt.figure()
         fig.set_size_inches(6.4,15.0,forward=True) # default is (6.4,4.8)
@@ -335,7 +284,7 @@ class KalmanFilterTN(KalmanFilter):
             if scaleByMean:
                 M_sim+=-np.mean(KF.M_sim[i])+np.mean(KF.M_ref[i])
             
-            ax.plot (KF.time, KF.M_ref[i], 'k-', color='k',       label='Reference' , lw=1)
+            ax.plot (KF.time, KF.M_ref[i], '-' , color='k',       label='Reference' , lw=1)
             ax.plot (KF.time,    M_sim   , '--', color=COLRS[i],label='Estimation', lw=0.8)
             ax.set_ylabel('My z={:.1f}'.format(z))
             ax.tick_params(direction='in')
@@ -350,10 +299,11 @@ class KalmanFilterTN(KalmanFilter):
 
 
 
-def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, base, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, bExport=False):
+def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, base, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, bExport=False, debug=False):
     # ---
     KF=KalmanFilterTN(FstFile, base,  bThrustInStates=bThrustInStates, nShapes_twr=1)
-    print(KF)
+    if debug:
+        print(KF)
     # --- Loading "Measurements"
     # Defining "clean" values 
     # Estimate sigmas from measurements
@@ -368,6 +318,8 @@ def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, base, bThrustInStates, nUnd
     KF.prepareMeasurements(NoiseRFactor=NoiseRFactor, bFilterAcc=bFilterAcc, nFilt=nFilt)
 
     # --- Time loop
+    if debug:
+        print(OutputFile)
     KF.timeLoop()
     KF.moments()
 

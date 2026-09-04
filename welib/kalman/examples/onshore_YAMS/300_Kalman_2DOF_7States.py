@@ -11,12 +11,12 @@ import matplotlib.pyplot as plt
 import os
 import welib.weio # https://github.com/ebranlard/weio
 
-from wtDigiTwin.kalman.TN import KalmanFilterTN, KalmanFilterTNSim
-from wtDigiTwin.tools.colors import *
-from wtDigiTwin.tools.figure import *
-from wtDigiTwin.tools.tictoc import Timer
-from wtDigiTwin.tools.clean_exceptions import *
-from wtDigiTwin.tools.fatigue import eq_load
+from welib.kalman.TN import KalmanFilterTN, KalmanFilterTNSim
+from welib.tools.colors import *
+from welib.tools.figure import *
+from welib.tools.tictoc import Timer
+from welib.tools.clean_exceptions import *
+from welib.tools.fatigue import eq_load
 
 # --- General Parameters and State specific parameters
 bThrustInStates=True

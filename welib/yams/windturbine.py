@@ -539,7 +539,7 @@ class WindTurbineStructure():
         self.r_NR_inN = None
         self.r_SR_inS = None
 
-        self.shaft_tilt = None # [rad] # TODO introduce nac_titl
+        self.shaft_tilt = None # [rad] # TODO introduce nac_titl, used to be called theta_tilt
         self.blade_cone = None # [rad]
         self.nac_yaw    = None # TODO decide what this means (offset, DOF)
 
@@ -1101,8 +1101,8 @@ class WindTurbineStructure():
         pHD['phi']  = dfH['phi_[Ns/m^2]'].values # Used to be called k_h_z
         pHD['phit'] = dfH['phit_[-]'].values
         bWet = pHD['zDepth']<=0
-        k_h = np.zeros(len(self.WT.fnd.PhiU))
-        for i, phi in enumerate(self.WT.fnd.PhiU):
+        k_h = np.zeros(len(self.fnd.PhiU))
+        for i, phi in enumerate(self.fnd.PhiU):
             phi_x = phi[0,:]
             k_h[i] = np.trapezoid(pHD['phi'][bWet] * phi_x[bWet], pHD['zDepth'][bWet])
         print('k_h     : ', k_h)

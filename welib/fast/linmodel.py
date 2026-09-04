@@ -911,11 +911,12 @@ def loadLinStateMatModel(StateFile, ScaleUnits=True, Adapt=True, ExtraZeros=Fals
 
     # --- Renaming
     for S,Mat in zip(['A','B','C','D'],[A,B,C,D]):
-        for irow,row in enumerate(Mat.index.values):
-            # Changing names
-            if row=='SvDGenTq_[kNm]':
-                Mat.index.values[irow]='Qgen_[kNm]'
-                row='Qgen_[kNm]'
+        Mat.rename(index={'SvDGenTq_[kNm]': 'Qgen_[kNm]'}, inplace=True)
+        #for irow,row in enumerate(Mat.index.values):
+        #    # Changing names
+        #    if row=='SvDGenTq_[kNm]':
+        #        Mat.index.values[irow]='Qgen_[kNm]'
+        #        row='Qgen_[kNm]'
 
 
 

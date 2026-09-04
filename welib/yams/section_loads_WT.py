@@ -170,9 +170,9 @@ class YAMSSectionLoadCalculator():
         fig, axes = plt.subplots(len(IZ), 1, sharey=True, sharex=True, figsize=(8.4,7.5))
         fig.subplots_adjust(left=0.12, right=0.96, top=0.95, bottom=0.05, hspace=0.07, wspace=0.20)
         for ii, iz in enumerate(IZ):
-            time_plot (vTime, F_secRef[0, iz, :]/1e6,  F_sec[0, iz, :]/1e6, f'z={zDepth[iz]:.0f}m', tRange=tRange, ax=axes[ii], fig=fig)
+            time_plot (vTime, F_secRef[0, iz, :]/1e6,  F_sec[0, iz, :]/1e6, f'z={zDepth[iz]:.0f}m', tRange=tRange, ax=axes[ii])
             stats, sStats =  comparison_stats(vTime, F_secRef[0,iz,:]/1e6, vTime, F_sec[0,iz,:]/1e6, stats='sigRatio,eps,R2', method='meanabs')
-            addStats(ax, 'Fsec'+str(component), sStats, printStats=printStats, factY=0.8)
+            addStats(axes[ii], 'Fsec'+str(component), sStats, printStats=printStats, factY=0.8)
             #print(f'z {zDepth[iz]:5.0f}: ', stats)
         axes[-1].set_xlabel('Time [s]')
         fig.suptitle('FxSec [MN]')

@@ -356,13 +356,16 @@ class KalmanFilter(object):
         import welib.weio as weio
 
         # --- Loading "Measurements"
-        if '.outb' in measFile:
+        if isinstance(measFile, pd.DataFrame):
+            df = measFile
+        else:
+            if '.outb' in measFile:
+                if not os.path.exists(measFile):
+                    measFile = measFile.replace('.outb', '.out')
             if not os.path.exists(measFile):
-                measFile = measFile.replace('.outb', '.out')
-        if not os.path.exists(measFile):
-            if '.out' in measFile:
-                measFile = measFile.replace('.out', '.outb')
-        df=weio.read(measFile).toDataFrame()
+                if '.out' in measFile:
+                    measFile = measFile.replace('.out', '.outb')
+            df=weio.read(measFile).toDataFrame()
         df=df.iloc[::nUnderSamp,:]                      # reducing sampling
         if tRange is not None:
             df=df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
