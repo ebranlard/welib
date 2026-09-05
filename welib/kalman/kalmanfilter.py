@@ -712,10 +712,14 @@ class KalmanFilter(object):
         return dat
 
 
-def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), stats='sigRatio,eps,R2', tRangeStats=None, printStats=False, STY=None, refLast=False):
+def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None, channels=None, nPlotCols=1, figSize=(6.4,4.8), 
+          stats='sigRatio,eps,R2', tRangeStats=None, printStats=False, statsDict=None,
+          STY=None, refLast=False):
     from welib.tools.stats import comparison_stats
     from welib.tools.strings import latexStrip
     from welib.tools.colors import cmap_colors
+    if statsDict is None:
+        statsDict={}
     # --- Misc inits
     if COLRS is None:
         COLRS = cmap_colors(4, 'viridis')
@@ -746,6 +750,7 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
     if tRangeStats is None:
         IT = np.arange(0, len(time))
     else:
+        tRangeStats[1] = min( max(time), tRangeStats[1])
         IT = np.logical_and(time>tRangeStats[0], time<tRangeStats[1])
         if len(IT)==0:
             IT = np.arange(0, len(time))
@@ -783,10 +788,10 @@ def _plot(time, X_clean, X_hat, sX, title='', X_noisy=None, fig=None, COLRS=None
 
         if stats:
             if X_clean is not None:
-                _, sStats = comparison_stats(time[IT], X_clean[s][IT], time[IT], X_hat[s][IT], stats=stats, method='1-2')
+                statsDict[s], sStats = comparison_stats(time[IT], X_clean[s][IT], time[IT], X_hat[s][IT], stats=stats, method='1-2')
                 Ylim = ax.get_ylim()
                 Xlim = ax.get_xlim()
-                ax.text(Xlim[0]*1.01 ,Ylim[0]+(Ylim[1]-Ylim[0])*0.82, sStats, fontsize=10)
+                ax.text(Xlim[0]+(Xlim[1]-Xlim[0])*0.01 ,Ylim[0]+(Ylim[1]-Ylim[0])*0.82, sStats, fontsize=10)
                 if printStats:
                     print(f"{s:10s} "+latexStrip(sStats))
 

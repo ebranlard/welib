@@ -1,5 +1,5 @@
 ------- OpenFAST INPUT FILE ---------------------------------------------------
-MonopileOnly from -50m to 50m
+MonopileOnly from -50m to 50m - UserDef Wave Hs=9.1 Tp=12.7
 ---------------------- SIMULATION CONTROL --------------------------------------
 False                  Echo        - Echo input data to <RootName>.ech (flag)
 "FATAL"                AbortLevel  - Error level when simulation should abort (string) {"WARNING", "SEVERE", "FATAL"}
@@ -10,7 +10,7 @@ False                  Echo        - Echo input data to <RootName>.ech (flag)
 1                      NumCrctn        - Number of correction iterations (-) {0=explicit calculation, i.e., no corrections}
         1.0            RhoInf          - Numerical damping parameter for tight coupling generalized-alpha integrator (-) [0.0 to 1.0]
        1e-4            ConvTol         - Convergence iteration error tolerance for tight coupling generalized alpha integrator (-)
-         12            MaxConvIter     - Maximum number of convergence iterations for tight coupling generalized alpha integrator (-)
+         32            MaxConvIter     - Maximum number of convergence iterations for tight coupling generalized alpha integrator (-)
 1                      DT_UJac         - Time between calls to get Jacobians (s)
 1E+06                  UJacSclFact     - Scaling factor used in Jacobians (-)
 ---------------------- FEATURE SWITCHES AND FLAGS ------------------------------
