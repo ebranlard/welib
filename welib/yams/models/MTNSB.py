@@ -283,7 +283,7 @@ class FASTmodel2MTNSB(FASTWindTurbine):
 
         if self.ED['PtfmMass']>0:
             WARN('MTNSB: Need to introduce a rigid body Ptfm ')
-            raise Exception('MTNSB TODO, introduce Ptfm Element rigidly connected.')
+            #raise Exception('MTNSB TODO, introduce Ptfm Element rigidly connected.')
 
         #import pdb; pdb.set_trace()
         Mtop = self.WT.RNA.mass
