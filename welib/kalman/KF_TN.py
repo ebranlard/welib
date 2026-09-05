@@ -3,6 +3,7 @@ Kalman filter model for "Tower Nacelle Shaft" (based on yams TNSB)"
 
 """
 
+import os
 import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter
@@ -98,8 +99,8 @@ class KalmanFilterTN(KalmanFilter):
         """
 
         """
+        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
         KalmanFilter.__init__(KF, KM=KM)
-        KF.setMat(KM.A, KM.B, KM.C, KM.D)
         KF.WT = KM.WT
         KF.ColMap = KM.ColMap
 
@@ -109,7 +110,11 @@ class KalmanFilterTN(KalmanFilter):
     # loadMeasurements, prepareMeasurements    
     def loadMeasurements(KF, MeasFile, nUnderSamp=1, tRange=None, ColMap=None):
         # --- Loading "Measurements"
-        nGear  = KF.WT.ED['GBRatio']
+        ext = os.path.splitext(MeasFile)[1]
+        if not os.path.exists(MeasFile):
+            WARN('Measurement file not found, trying with .out: {}'.format(MeasFile))
+            MeasFile = MeasFile.replace(ext,'.out')
+
         df=weio.read(MeasFile).toDataFrame()
         df=df.iloc[::nUnderSamp,:]                      # reducing sampling
         if tRange is not None:
@@ -118,6 +123,7 @@ class KalmanFilterTN(KalmanFilter):
         dt   = (time[-1] - time[0])/(len(time)-1)
         if ColMap is None:
             ColMap = KF.ColMap
+        # Remapping/scaling columns to shortname variables
         KF.df = fastlib.remap_df(df, ColMap, bColKeepNewOnly=False)
         # --- 
         KF.discretize(dt, method='exponential')

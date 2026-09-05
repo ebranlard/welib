@@ -64,6 +64,7 @@ class KalmanFilter(object):
             self.sY  = KM.sY
             self.sS  = KM.sS
             self.sXd = KM.sQd
+            self.KM = KM
         
         else:
             self.sX0 = sX0
@@ -72,6 +73,7 @@ class KalmanFilter(object):
             self.sY  = sY
             self.sS  = sS # Storage, "Misc" values
             self.sXd = sXd # Storage, "Misc" values
+            self.KM = None
 
         #  State vector is States and Augmented states
         self.sX = np.concatenate((self.sX0, self.sXa))
@@ -86,6 +88,10 @@ class KalmanFilter(object):
         self.iY = {lab: i   for i,lab in enumerate(self.sY)}
         self.iU = {lab: i   for i,lab in enumerate(self.sU)}
         self.iS = {lab: i   for i,lab in enumerate(self.sS)}
+
+        if KM is not None:
+            self.setMat(KM.A, KM.B, KM.C, KM.D)
+
 
     @property
     def nX(self): return len(self.sX)

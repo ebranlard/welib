@@ -285,7 +285,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     print('Rdiag  : ', np.diag(KF.R))
     print('Cmat   : ', KF.C.values)
     print(f'Tuning: zeta={zeta}, qdhScale={qdhScale}')
-    # KF.print_sigmas()
+
     statsDict = {}
     fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
     fig = KF.plot_Y()

@@ -213,6 +213,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
         """
 
         """
+        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
         KalmanFilterTN.__init__(KF, KM, WSE=WSE)
         KF.WT2 = KM.WT2
         KF.WT  = KM.WT2
@@ -301,7 +302,6 @@ def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFi
     # ---
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)    
     wse = TabulatedWSEstimator(fstFile=FstFile, aeroMapFile=aeroMapFile)
-    # ---
     KF = KalmanFilterTNLin(KM, WSE=wse)
     if debug:
         print(KF.wse)

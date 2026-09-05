@@ -158,18 +158,33 @@ def main(sWT='FTNS',test=False):
     resOut = fstSim.replace('.fst','_KF_{}_tmax{}.outb'.format(labelLin+sLabel, str(tRange[1])))
     dfAll = KF.saveOutputs(resOut)
 
-    # --- Simple plots
+    print('-------------------------------------------------------')
+    print('fstFile: ', fstSim)
+    print('Qdiag  : ', np.diag(KF.Q))
+    print('Rdiag  : ', np.diag(KF.R))
+    print('Cmat   : ', KF.C.values)
+
+    # --- Simple plots and stats
+    statsDict = {}
+    figNames=[]
+    tRangeStats=None
     labelSim = os.path.dirname(fstSim)
-    fig = KF.plot_X(nPlotCols=2, figSize=(12.8,8.2), title='States - LinFile:{} Sim:{}{}'.format(labelLin,labelSim,sLabel.replace('_',' ')), COLRS=COLRS)
+    figX = KF.plot_X(nPlotCols=2, figSize=(12.8,8.2), 
+                     printStats=True, tRangeStats=tRangeStats, statsDict=statsDict,
+                     title='States - LinFile:{} Sim:{}{}'.format(labelLin,labelSim,sLabel.replace('_',' ')), COLRS=COLRS)
     # fig.subplots_adjust(left=0.12, right=0.98, top=0.955, bottom=0.12, hspace=0.20, wspace=0.20)
     figName = fstSim.replace('.fst','_KF_{}.png'.format(labelLin+sLabel))
-    print('>>> FIG', figName)
-    fig.savefig(figName)
+    figX.savefig(figName)
+    figNames.append(figName)
 
 
-    figY = KF.plot_Y()
-    figS = KF.plot_S()
-    figU = KF.plot_U()
+    #figY = KF.plot_Y()
+    #figU = KF.plot_U()
+    figS = KF.plot_S(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
+    # KF.plot_P()
+    # KF.plot_K()
+    # KF.plot_innovation()
+
 
     if figS is not None:
         wse=KF.wse
@@ -205,10 +220,11 @@ def main(sWT='FTNS',test=False):
 
         figName = fstSim.replace('.fst','_KF_{}_WS.png'.format(labelLin+sLabel))
         figS.savefig(figName)
+        figNames.append(figName)
 
 
-    statsMoments=[]
     if KF.dfExtra is not None:
+        from welib.tools.strings import latexStrip
         df = KF.df 
         dfSL = KF.dfExtra
         # --------------------------------------------------------------------------------}
@@ -222,8 +238,10 @@ def main(sWT='FTNS',test=False):
             y1 = df[sT].values
             t2 = dfSL['Time_[s]'].values
             y2 = dfSL[sT].values
-            stats2, sStats2 =  comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', latex=False)
-            print(sT, sStats2)
+            stats, sStats =  comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='1-2', latex=True)
+            sT = sT.split('_')[0]
+            statsDict[sT] = stats
+            print(f"{sT:10s} "+latexStrip(sStats))
             ax.plot(t1, y1, 'k-'                        , label='OpenFAST' if iiED==0 else None)
             ax.plot(t2, y2,  '--' , color=fColrs(iiED)  , label='Sim Ht{}'.format(iED+1))
         ax.set_xlabel('')
@@ -232,17 +250,31 @@ def main(sWT='FTNS',test=False):
 
         figName = fstSim.replace('.fst','_KF_{}_Moments.png'.format(labelLin+sLabel))
         fig.savefig(figName)
-#     import pdb; pdb.set_trace()
+        figNames.append(figName)
+    print('-------------------------------------------------------')
+    for figName in figNames:
+        print('>>> FIG', figName);
 
-    return statsMoments
+    return statsDict
 
 def test_offshore_FTNS():
-    NOTE('test Offshore FTNS not ready yet')
-    return
-    statsMoments = main(sWT='FTNS', test=False)
+    if os.getenv('GITHUB_ACTIONS') == 'true':
+        NOTE('test Offshore FTNS not ready yet')
+        pytest.skip("Skipping local-only test on GitHub Actions")
+
+    stats = main(sWT='FTNS', test=False)
+    np.testing.assert_array_less(stats['x']['eps'],     2.2)
+    np.testing.assert_array_less(stats['y']['eps'],     4.1)
+    np.testing.assert_array_less(stats['phi_y']['eps'], 6.1)
+    np.testing.assert_array_less(stats['Qaero']['eps'], 4.5)
+    np.testing.assert_array_less(stats['WS']['eps'],    5.0)
+    np.testing.assert_array_less(stats['TwHt1MLyt_[kN-m]']['eps'],    5.2)
+    np.testing.assert_array_less(stats['TwHt5MLyt_[kN-m]']['eps'],    5.0)
+    np.testing.assert_array_less(stats['TwHt8MLyt_[kN-m]']['eps'],    6.1)
 
 if __name__ == '__main__':
-    statsMoments = main(sWT='FTNS', test=False)
+    test_offshore_FTNS()
+    #statsMoments = main(sWT='FTNS', test=False)
     #statsMoments = main(sWT='Spar', test=False)
 
     plt.show()
