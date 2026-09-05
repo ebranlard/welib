@@ -1,13 +1,17 @@
 """ Documentation
- This scripts uses:
+OpenFAST Lin uses:
   - 2 mechanical DOF:    'u' (tower bending)   'psi' (shaft rotation)
   - 4 measurements:               'TT acc',  'omega_rotor' ,    'Mgen' , 'Pitch' 
   - 5 states:             'u',  'azimuth', 'udot', 'omega_rotor', 'Qaero'
   - 3 inputs:             'T',  'Qgen', 'pitch'
  The estimated states are compared to the simulation at the end
-
-
- Used to be called 301_Kalman_2DOF_5States
+ 
+YAMS uses:
+  - 2 mechanical DOF:    'u' (tower bending)   'psi' (shaft rotation)
+  - 3 measurements:      'TT acc',  'omega_rotor' ,    'Mgen'
+  - 7 states:            'u',  'azimuth', 'udot', 'omega_rotor', 'T','Qaero' 'Qgen'
+ Used to be called onshore_YAMS/300_Kalman_2DOF_7States
+ Used to be called onshore_FASTlin/301_Kalman_2DOF_5States
 """
 import os
 import numpy as np
@@ -17,6 +21,8 @@ from welib.essentials import *
 from welib.kalman.KF_TN    import KalmanFilterTNSim 
 from welib.kalman.KF_TNLin import KalmanFilterTNLinSim, KalmanModelTNLin
 from welib.fast.FASTLin import FASTLin
+
+from welib.tools.fatigue import eq_load
 
 import pytest
 
@@ -81,6 +87,7 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
         sigX['Qaero']  = 8*10**6*1.0
         sigX['Qgen']   = 1.0*10**6
         sigX['WS']     = 1.0
+        sigQ=sigX.copy()
         # Measurements - more or less half the std
         sigY=dict()
         sigY['TTacc'] = 0.08  # m/s^2
@@ -94,7 +101,7 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     with Timer('Simulation Loop'):
         if bYAMS:
             bThrustInStates=True
-            KF= KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, bExport)
+            KF= KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, sigQ=sigQ, bExport=bExport)
         else:
 
             if not os.path.exists(linStateFile):
@@ -111,10 +118,20 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
 
 
             KM = KalmanModelTNLin(FstFile, linStateFile, StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True)
-            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, bExport)
+            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, sigQ=sigQ, bExport=bExport)
     # --------------------------------------------------------------------------------}
     # --- PostPro  
     # --------------------------------------------------------------------------------{
+    def Leq(t,y,m=5):
+        return eq_load(y, m=m, neq=t[-1]-t[0])[0][0]
+    def SNR(y):
+        return np.mean(y**2)/np.std(y)**2
+    # --- Leq
+    for j in [2,5]:
+        print('Leq  ref: {:.2f} - est: {:.2f}'.format(Leq(KF.time,KF.M_ref[j]),Leq(KF.time,KF.M_sim[j])))
+    # --- Signal-to-noise ratio
+#     for j,s in enumerate(KF.sY):
+#         print('SNR {:s} - clean: {:.2f} - meas {:.2f} - est {:.2f}'.format(s, SNR(KF.Y_clean[j,:]), SNR(KF.Y[j,:]), SNR(KF.Y_hat[j,:])))
     if not test:
         # --- Compare Measurements
         KF.plot_Y()
@@ -152,4 +169,4 @@ if __name__ == '__main__':
     test_onshore_TNS_YAMS (test=True)
     test_onshore_TNS_OFLin(test=True)
 
-#     plt.show()
+    plt.show()

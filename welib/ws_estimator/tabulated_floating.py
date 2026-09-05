@@ -56,6 +56,15 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         self._setOP(OP)
         self._interpOP() # (Needs weights to be computed first)
 
+        # 
+        #keys_to_keep = ['WS', 'Pitch', 'RPM', 'PhiY', 'CP', 'CT', 'OP', 'OPi']
+        #dict_out = {}
+        #for k in keys_to_keep:
+        #    dict_out[k] = pkl[k]
+        #pkl_out = PickleFile(data=dict_out)
+        #pkl_out.write(pickleFile+'_reGen.pkl')
+        #
+
 
     def setDB(self, WS, pitch, rpm, phiy, CP, CT):
         self.WS     = np.asarray(WS)
@@ -103,6 +112,31 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
 
     def setFromTimeSeries(self, df, nWS=6, nRPM=6, nPitch=5, nPhi=4):
         """ """
+        if 'RtAeroMxh_[N-m]' in df:
+            df['Qaero'] = df['RtAeroMxh_[N-m]']
+        elif 'RtFldMxh_[N-m]' in df:
+            df['Qaero'] = df['RtFldMxh_[N-m]']
+        if 'RtVAvgxh_[m/s]' in df:
+            df['WS'] = df['RtVAvgxh_[m/s]']
+        elif 'Wind1VelX_[m/s]' in df:
+            df['WS'] = df['Wind1VelX_[m/s]']
+        if 'RtSpeed_[rpm]' in df:
+            df['dpsi'] = df['RtSpeed_[rpm]']*np.pi/30
+        if 'BldPitch1_[deg]' in df:
+            df['pitch'] = df['BldPitch1_[deg]']*np.pi/180 
+        if 'PtfmPitch_[deg]' in df:
+            df['phi_y'] = df['PtfmPitch_[deg]']*np.pi/180
+        if 'RtAeroPwr_[W]' in df:
+            df['power'] = df['RtAeroPwr_[W]']
+        elif 'RtFldPwr_[W]' in df:
+            df['power'] = df['RtFldPwr_[W]']
+        if 'RtAeroFxh_[N]' in df:
+            df['Thrust'] = df['RtAeroFxh_[N]']
+        elif 'RtFldFxh_[N]' in df:
+            df['Thrust'] = df['RtFldFxh_[N]']
+        elif 'RotThrust_[kN]' in df:
+            df['Thrust'] = df['RotThrust_[kN]']*1000
+
         # --- Time series
         Q     = df['Qaero'].values
         WS    = df['WS'].values
@@ -116,6 +150,7 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         rho = self.rho
         CP = P / (1/2 * rho * np.pi * R**2 * WS**3)
         CT = T / (1/2 * rho * np.pi * R**2 * WS**2)
+        CP = np.clip(CP, 0, 2)
 
         # ---- Bins
         WSb    = np.linspace(np.min(WS)  , np.max(WS), nWS)
@@ -297,7 +332,8 @@ class TabulatedWSEstimatorFloating(TabulatedWSEstimatorBase):
         return omega_, pitch_, phiy_, clipped
 
 
-    def estimate(self, Qa, Dummy=None, Dummy2=None, Dummy3=None, pitch=None, omega=None,  phiy=None , WS0, relaxation=0, method='crossing', deltaWSMax=1, verbose=False, debug=False, t=0, WSref=np.nan): 
+    def estimate(self, Qa, Dummy=None, Dummy2=None, Dummy3=None, 
+                 pitch=None, omega=None, phiy=None, WS0=0, relaxation=0, method='crossing', deltaWSMax=1, verbose=False, debug=False, t=0, WSref=np.nan): 
         # NOTE: Dummy were introduced to force user to use omega=omega pitch=pitch because order of arguments have been changed
         """
         INPUTS:

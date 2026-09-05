@@ -74,16 +74,20 @@ def main(tMax=100, test=False):
     KF.initFromSimulation(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap, timeCol='Time_[s]')
 
     # --- Process and measurement uncertainties (standard deviation sigma)
+    KF.sigmasFromClean(dt=KF.dt)
     # Important parameters defnining uncertainties on the signals
     KF.sigX['qh']    = 40.2  # 2.1
-    KF.sigX['q']     = 0.021*2  # 0.021
+    KF.sigX['q']     = 0.021*2*10  # 0.021
     KF.sigX['qdot']  = 0.064*2 # 0.064
     KF.sigY['TTacc'] = 0.440*2  # 0.440
+    KF.sigQ=KF.sigX # <<<
+    KF.print_sigmas()
+    KF.setupCovariances(useDt=False, Pidentity=True)
     # 
-    # --- Storage for plot, convert sigmas to covariance matrices (KF.R and KF.Q)
+    # --- Storage for plot
     KF.prepareTimeStepping()
     # --- Prepare measurements - Create noisy measurements
-    KF.setYFromClean(R=KF.R, NoiseRFactor=NoiseRFactor)
+    KF.setYFromClean(R=KF.R_c, NoiseRFactor=NoiseRFactor)
 
     # --- Initial conditions
     x = KF.initFromClean()

@@ -123,11 +123,12 @@ class KalmanFilterFTNSLin(KalmanFilter):
         KF.setCleanValues(KF.df)
 
         # --- Estimate sigmas from measurements
-        sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
+        #KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1, dt=dt)
+        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, bFilterOm=False, nFilt=15, bFilterPhi=False):
         # --- Creating noise measuremnts
-        KF.setYFromClean(R=KF.R, NoiseRFactor=NoiseRFactor)
+        KF.setYFromClean(R=KF.R_c, NoiseRFactor=NoiseRFactor)
         if bFilterAcc:
             if 'NcIMUAx' in KF.Y:
                 KF.Y['NcIMUAx'] = moving_average(KF.Y['NcIMUAx'],n=nFilt) 
@@ -152,8 +153,8 @@ class KalmanFilterFTNSLin(KalmanFilter):
 
         # --- WSE
         if KF.wse:
-            WS_last     = KF.S_clean['WS'][0]
-            KF.S_hat['WS'][0]= WS_last
+            WS_last     = KF.S_clean['WS'].values[0].copy()
+            KF.S_hat.loc[0, 'WS'] = WS_last
             WSavg      = np.zeros((50,1))
             WSavg[:]=WS_last
 
@@ -196,7 +197,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
                     raise Exception('Cannot run WSE if Qaero not in X or U')
 
                 #def estimate(self, Qa, omega, pitch,  phiy , WS0, relaxation=0, method='crossing', deltaWSMax=1, verbose=False, debug=False, t=0, WSref=np.nan): 
-                WS_hat, _ = KF.wse.estimate(Qaero_hat, omega=omega, pitch=pitch, phiy=phiy, WS0=WS_last, relaxation=0, method='oper-crossing', t=t)
+                WS_hat, _ = KF.wse.estimate(Qaero_hat, omega=omega, pitch=pitch, phiy=phiy, WS0=WS_last, relaxation=0.5, method='oper-crossing', t=t)
                 Qaero_hat = np.max(Qaero_hat,0)
                 Thrust = KF.wse.Thrust(WS_hat, omega=omega, pitch=pitch, phiy=phiy)
                 GF = Thrust

@@ -4,25 +4,19 @@ import os
 import numpy as np    
 import matplotlib.pyplot as plt
 import importlib
-# import dill as pickle
-import dill as pickle
 
 import welib.weio as weio
 # WELIB
+from welib.essentials import *
 from welib.kalman.kalman import EmptyStateMat, EmptyStateDF
 from welib.ws_estimator.tabulated_floating import TabulatedWSEstimatorFloating
-from welib.tools.clean_exceptions import *
-from welib.tools.tictoc import Timer
 from welib.yams.windturbine import FASTWindTurbine
 from welib.yams.models.simulator import SimulatorFromOF , hydroMatToSysMat
-from welib.yams.models.generator_oneRigidBody import generateOneRigidBodyModel
-from welib.yams.models.generator import generateModel
 from welib.fast.hydrodyn import HydroDyn
-from welib.FEM.utils import rigidTransformationTwoPoints, rigidTransformationTwoPoints_Loads
 
 # For YAMS
 from welib.yams.models.packman import IMUjacobian
-from welib.fast.extract import extractIMUAccFromLinFile, mainLinInputs
+from welib.fast.extract import mainLinInputs
 
 # Open OpenFAST lin
 from welib.fast.linmodel import DEFAULT_COL_MAP_LIN
@@ -31,11 +25,9 @@ from welib.fast.linmodel import FASTLinModelFTNSB
 # For both
 from welib.fast.tools.lin import subMat, matSimpleStateLabels, matToSIunits, renameList
 
-
-
 # Local
 from welib.kalman.FTNS_SectionLoadsCalc import YAMSSectionLoadCalculatorOptimized
-from welib.kalman.FTNS_KalmanFilter import KalmanFilterFTNSLin
+from welib.kalman.KF_FTNS import KalmanFilterFTNSLin
 
 
 class DigitalTwin():
@@ -62,8 +54,10 @@ class DigitalTwin():
         else:
             self.AE = TabulatedWSEstimatorFloating(fstFile=fstFile, pickleFile=pickleFile)
             if df is not None:
+                if isinstance(df, str):
+                    df = weio.read(df).toDataFrame()
                 # Instead of using the pklFile data for P,T, we'll use the dataframe
-                print('[WARN] DigitTwin: Aero estimator using time series!')
+                NOTE('DigitTwin: Aero estimator using time series!')
                 self.AE.setFromTimeSeries(df)
 
     def setupStateEstimator(self, **opts):
@@ -78,7 +72,7 @@ class DigitalTwin():
         else:
             raise NotImplementedError()
 
-    def setupMeasurementData(self, MeasFile, tRange=None, nUnderSamp=1, bFilterPhi=False ,bFilterAcc=False, bFilterOm=False, nFilt=15, NoiseRFactor=0, tuning=None, colMap=None, sigXDict=None):
+    def setupMeasurementData(self, MeasFile, tRange=None, nUnderSamp=1, bFilterPhi=False ,bFilterAcc=False, bFilterOm=False, nFilt=15, NoiseRFactor=0, colMap=None):
         # TODO TODO We need to rething the KF and split the 
         #  - loadMeasurements
         #  - init time stepping
@@ -86,15 +80,41 @@ class DigitalTwin():
         #  - introducing of noise
         #  differently. We should be able to add noise to the measurements in this setup step
         print('------------------- DIGITAL TWIN SETUP MEASUREMENT TIME SERIES ---------------------')
+        INFO('FTNS_DigitalTwin: setupMeasurementData')
 
         KF = self.SE
         # --- Loading "Measurements" (Defining "clean" values, estimate sigmas from measurements)
         if colMap is None:
             colMap = self.KM.ColMap
         KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=colMap)
-        # --- Default arguments
+
+        # --- Storage for plot
+        KF.prepareTimeStepping()  
+
+        # --- Set Initial conditions
+        x = KF.initFromClean()
+
+        # --- Creating noise measuremnts
+        KF.prepareMeasurements(NoiseRFactor=NoiseRFactor, bFilterAcc=bFilterAcc, nFilt=nFilt, bFilterPhi=bFilterPhi, bFilterOm=bFilterOm)
+
+
+    def setupCovariances(self, tuning=None, sigXDict=None, sigQDict=None, useDt=False, Pidentity=True, 
+                         dt_for_sigQ=1,
+                         verbose=True):
+        # TODO Move this to KalmanFilter Exclusively
+
+        print('------------------- DIGITAL TWIN SETUP COVARIANCES ---------------------------------')
+        KF = self.SE
+
+        dt = None
+        if useDt:
+            dt = KF.dt
+        KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1, dt=dt)
+
         if tuning is None:
-            tuning['kSigQaero'] = 1
+            tuning ={}
+
+        # --- Default arguments
         # --- Tuning of Sigmas
         # KF.sigY['z']/=10000
         # KF.sigY['NcIMUAz']*=100
@@ -109,21 +129,35 @@ class DigitalTwin():
                 if k in KF.sigX:
                     print('[INFO] DigiTwin: Overiding Sigma x',k,v)
                     KF.sigX[k] = v
+        if sigQDict is not None:
+            for k,v in sigQDict.items():
+                if k in KF.sigQ:
+                    print('[INFO] DigiTwin: Overiding Sigma q',k,v)
+                    KF.sigQ[k] = v * KF.dt/dt_for_sigQ
 
-        if 'Qaero' in KF.sigX:
-            KF.sigX['Qaero']*=tuning['kSigQaero']
+        # Tuning physical state tracking vs disturbance rate externally
+        if 'Qaero' in KF.sigQ and 'kSigQaero' in tuning:
+            print('[INFO] DigiTwin: Tuning Qaero',tuning['kSigQaero'])
+            KF.sigQ['Qaero'] *= tuning['kSigQaero']
+        if 'psi' in KF.sigQ and 'kSigPsi' in tuning:
+            print('[INFO] DigiTwin: Tuning psi  ',tuning['kSigPsi'])
+            KF.sigQ['psi']  *= tuning['kSigPsi']    # Boost psi process noise to fix phase lag
+
+
+        KF.setupCovariances(useDt=useDt, Pidentity=Pidentity)
+
         # if 'x' in KF.sigX:
         #     KF.sigX['x']*=0.0000001
-        #KF.print_sigmas()
+        if verbose:
+            KF.print_sigmas()
 
-        # --- Storage for plot and setting up covariances from sigmas
-        KF.prepareTimeStepping()  
+        print('>>>> KF.sigX[Qaero]', KF.sigX['Qaero'])
+        print('>>>> KF.sigQ[Qaero]', KF.sigQ['Qaero'])
+        print('>>>> KF.dt          ', KF.dt)
+        print('>>>> KF.Q[16,16]    ', KF.Q[16,16])
 
-        # --- Creating noise measuremnts
-        KF.prepareMeasurements(NoiseRFactor=NoiseRFactor, bFilterAcc=bFilterAcc, nFilt=nFilt, bFilterPhi=bFilterPhi, bFilterOm=bFilterOm)
 
-        # --- Set Initial conditions
-        x = KF.initFromClean()
+
 
     def timeLoop(self, virtualSensing=True):
         print('----------------------------- DIGITAL TWIN TIME LOOP -------------------------------')
@@ -242,7 +276,8 @@ class KalmanModel():
         KM.Yx = Yx
         KM.Yu = Yu
     """
-    def __init__(KM, modelName=None, fstLin=None, usePickle=True, sQ='', sY='', sU='', sQa='', sS='', qop=None, qdop=None, 
+    def __init__(KM, modelName=None, fstLin=None, usePickle=True, fstFilename=None,
+                 sQ='', sY='', sU='', sQa='', sS='', qop=None, qdop=None, 
             sFramework='OpenFAST',
             tuning=None,
             nGear=1, # TODO get this from WT
@@ -580,6 +615,7 @@ def get_physical_model(WT, modelName, fstFilename, qop=None, qdop=None, usePickl
     Less and less use
     """
     #
+    import dill as pickle
     pickleFilename = os.path.splitext(fstFilename)[0]+'_linModelYAMS.pkl'
 
     if usePickle:

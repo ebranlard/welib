@@ -125,11 +125,15 @@ class KalmanFilterTN(KalmanFilter):
         KF.setCleanValues(KF.df)
 
         # --- Estimate sigmas from measurements
-        sigX_c,sigY_c = KF.sigmasFromClean(factor=1)
+        #KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1)
+        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
+
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, nFilt=15):
+        if KF.R_c is None:
+            raise Exception('Cannot prepare measurements with noise with R_c if not set.')
         # --- Creating noise measuremnts
-        KF.setYFromClean(R=KF.R, NoiseRFactor=NoiseRFactor)
+        KF.setYFromClean(R=KF.R_c, NoiseRFactor=NoiseRFactor)
         if bFilterAcc:
             KF.set_vY('TTacc',  moving_average(KF.get_vY('TTacc'),n=nFilt) )
 
@@ -337,7 +341,7 @@ class KalmanFilterTN(KalmanFilter):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, bExport=False, ColMap=None, debug=False):
+def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, sigQ=None, bExport=False, ColMap=None, debug=False):
     # ---
     KM = KalmanModelTN(FstFile, bThrustInStates=bThrustInStates)
 
@@ -355,8 +359,12 @@ def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInState
     KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=ColMap)
     KF.sigX=sigX
     KF.sigY=sigY
+    KF.sigQ=sigQ
+    if debug:
+        KF.print_sigmas()
 
     # --- Process and measurement covariances
+    KF.setupCovariances(useDt=False, Pidentity=True)
     # --- Storage for plot
     KF.prepareTimeStepping()
     # --- Creating noise measuremnts

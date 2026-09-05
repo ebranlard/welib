@@ -5,12 +5,8 @@ import os
 import numpy as np
 import pandas as pd
 # Local
+from welib.tools.strings import OK, INFO, WARN, FAIL, NOTE
 from .kalman import *
-try:
-    from welib.tools.strings import OK, FAIL, WARN, INFO___
-except:
-    def FAIL(*args, **kwargs): print('[FaiL]',*args, **kwargs) 
-    def OK  (*args, **kwargs): print('[ OK ]',*args, **kwargs) 
 
 
 def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
@@ -38,6 +34,7 @@ class KalmanFilter(object):
         self.P = None
         self.Q = None
         self.R = None
+        self.R_c = None # From Measurements
 
         # Time
         self.time = None
@@ -82,7 +79,7 @@ class KalmanFilter(object):
         if self.sS is None :
             self.sS = []
         if self.sXd is None:
-            sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
+            self.sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
 
         # --- Defining index map for convenience
         self.iX = {lab: i   for i,lab in enumerate(self.sX)}
@@ -227,26 +224,6 @@ class KalmanFilter(object):
 
         return x_new, P_new, Kk
 
-    def covariancesFromSig(self):
-        if not hasattr(self,'sigX'):
-            raise Exception('Set `sigX` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
-        if not hasattr(self,'sigY'):
-            raise Exception('Set `sigY` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
-
-        for lab in self.sX:
-            if self.sigX[lab]==0:
-                print('[WARN] Sigma for x[{}] is zero, replaced by 1e-4'.format(lab))
-                self.sigX[lab]=1e-4
-        for lab in self.sY:
-            if self.sigY[lab]==0:
-                print('[WARN] Sigma for y[{}] is zero, replaced by 1e-4'.format(lab))
-                self.sigY[lab]=1e-4
-
-        P = np.eye(self.nX)
-        Q = np.diag([self.sigX[lab]**2 for lab in self.sX])
-        R = np.diag([self.sigY[lab]**2 for lab in self.sY])
-        return P,Q,R
-
 
 
     # --------------------------------------------------------------------------------}
@@ -324,6 +301,7 @@ class KalmanFilter(object):
     
 
     def initFromClean(self):
+        """ Set initial conditions based on clean data"""
         x = self.X_clean.iloc[0,:].values.copy()
         # x = np.zeros(nX)
         self.X_hat.iloc[0,:] = x
@@ -371,11 +349,130 @@ class KalmanFilter(object):
         KF.setCleanValues(KF.df, verbose=verbose)
 
         # --- Estimate sigmas from measurements
-        KF.sigX_c,KF.sigY_c = KF.sigmasFromClean(factor=1)
+        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
+
+
+    def sigmasYFromClean(self, factor=1):
+        sigY   = dict()
+        for iY,lab in enumerate(self.sY):
+            y_data = np.asarray(self.Y_clean[lab])
+            std = np.std(y_data)
+            if std==0:
+                res=1
+            else:
+                res=10**(np.floor(np.log10(std))-1)
+            sigY[lab] = np.floor( std / res ) *res * factor
+        # Setup clean noise
+        self.R_c = np.diag([sigY[lab]**2 for lab in self.sY])
+        return sigY, self.R_c
+
+    def sigmasFromClean(self, factor=1, dt=None):
+        if dt is None:
+            WARN('sigmasFromClean should preferably use delta t')
+        else:
+            NOTE('Using dt for sigmas from Clean')
+        sigX = dict()
+        sigQ = dict()
+        for lab in self.sX:
+            x_data = np.asarray(self.X_clean[lab])
+            # Handle sawtooth wrapping for angle states if present
+            if lab == 'psi':
+                x_data_unwrapped = np.unwrap(x_data)
+                std_val = np.std(x_data)
+            else:
+                x_data_unwrapped = x_data
+                std_val = np.std(x_data)
+            
+            res = 1 if std_val == 0 else 10**(np.floor(np.log10(std_val)) - 1)
+            sigX[lab] = np.floor(std_val / res) * res * factor
+            sigQ[lab] = sigX[lab]
+            if dt is not None and len(x_data) > 1:
+                # Calculate rate using unwrapped data for angle states
+                dx_dt = np.diff(x_data_unwrapped) / dt
+                std_rate = np.std(dx_dt)
+                
+                # Kinematic positions shouldn't have large process random walk
+                if lab in ['x', 'y', 'z', 'phi_x', 'phi_y', 'phi_z', 'psi', 'q_FA1']:
+                    pass
+                    # Force process noise for kinematic position to be tiny/negligible
+                    #sigQ[lab] = 1e-4
+                    #sigQ[lab] = sigX[lab]
+                else:
+                    res_rate = 1 if std_rate == 0 else 10**(np.floor(np.log10(std_rate)) - 1)
+                    sigQ[lab] = np.floor(std_rate / res_rate) * res_rate * factor
+                sigQ[lab] = sigQ[lab] * dt # NOTE: we multiply by dt so that Q which is sigQ^2 is sigma^2 dt^2
+
+        sigY   = dict()
+        for iY,lab in enumerate(self.sY):
+            y_data = np.asarray(self.Y_clean[lab])
+            std = np.std(y_data)
+            if std==0:
+                res=1
+            else:
+                res=10**(np.floor(np.log10(std))-1)
+            sigY[lab] = np.floor( std / res ) *res * factor
+        # We store the clean
+        self.sigX_c = sigX.copy()
+        self.sigY_c = sigY.copy()
+        self.sigQ_c = sigQ.copy()
+        # And we store a ictionary for the user
+        self.sigX   = sigX.copy()
+        self.sigY   = sigY.copy()
+        self.sigQ   = sigQ.copy()
+        
+        return sigX, sigY, sigQ
+
+
+    def setupCovariances(KF, useDt=False, Pidentity=True):
+        # TODO add tuning here
+        dt = None
+        if useDt:
+            dt = KF.dt
+        # --- Process and measurement covariances
+        KF.P, KF.Q, KF.R = KF.covariancesFromSig(Pidentity=Pidentity, dt=dt)
+
+    def covariancesFromSig(self, dt=None, Pidentity=True):
+        if not hasattr(self,'sigX'):
+            raise Exception('Set `sigX` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
+        if not hasattr(self,'sigY'):
+            raise Exception('Set `sigY` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
+
+        for lab in self.sX:
+            if self.sigX[lab]==0:
+                print('[WARN] Sigma for x[{}] is zero, replaced by 1e-4'.format(lab))
+                self.sigX[lab]=1e-4
+        for lab in self.sY:
+            if self.sigY[lab]==0:
+                print('[WARN] Sigma for y[{}] is zero, replaced by 1e-4'.format(lab))
+                self.sigY[lab]=1e-4
+
+        # Initial State Error Covariance P0
+        if Pidentity:
+            WARN('covarianceFromSig: P is set to identity')
+            P = np.eye(self.nX)
+        else:
+            NOTE('covarianceFromSig: P is set using sigX')
+            P = np.diag([self.sigX[lab]**2 for lab in self.sX])
+
+
+        # Measurement Noise Covariance R
+        R = np.diag([self.sigY[lab]**2 for lab in self.sY])
+
+        # Process Noise Covariance Q
+        Q = np.diag([self.sigQ[lab]**2 for lab in self.sX])
+        # Consistent quadratic scaling: Var = (rate * dt)^2
+        #Q = np.diag([self.sigQ[lab]**2 for lab in self.sX])
+#         if dt is None:
+#         else:
+#             NOTE('covarianceFromSig: dt is used Q')
+#             # sigQ represents rate std dev (units/s) -> step variance is (sigQ * dt)^2
+#             Q = np.diag([(self.sigQ[lab] * dt)**2 for lab in self.sX])
+
+        return P, Q, R
+
+
 
     def prepareTimeStepping(KF):
-        # --- Process and measurement covariances
-        KF.P, KF.Q, KF.R = KF.covariancesFromSig()
         # --- Storage for plot
         KF.initTimeStorage()
 
@@ -406,54 +503,46 @@ class KalmanFilter(object):
         for it in range(0,self.nt):    
             self.Y.iloc[it,:] = self.Y_clean.iloc[it,:] + np.dot(Ey,np.random.randn(self.nY,1)).ravel() + y_bias
 
-    def sigmasFromClean(self,factor=1):
-        sigX   = dict()
-        for iX,lab in enumerate(self.sX):
-            std = np.std(self.X_clean[lab])
-            if std==0:
-                res=1
-            else:
-                res=10**(np.floor(np.log10(std))-1)
-            sigX[lab]=np.floor(std/res)*res  * factor
-        sigY   = dict()
-        for iY,lab in enumerate(self.sY):
-            std = np.std(self.Y_clean[lab])
-            if std==0:
-                res=1
-            else:
-                res=10**(np.floor(np.log10(std))-1)
-            sigY[lab]=np.floor(std/res)*res * factor
-        self.sigX=sigX.copy()
-        self.sigY=sigY.copy()
-        return sigX,sigY
 
     def print_sigmas(self):
-        sigX_c = self.sigX_c
-        sigY_c = self.sigY_c
-        if sigX_c is not None:
-            print('Sigma X            to be used     from inputs')
-            for k,v in self.sigX.items():
-                print('Sigma {:10s}: {:12.3f}  {:12.3f}'.format(k,v,sigX_c[k]))
-        else:
-            print('Sigma X            to be used')
-            for k,v in self.sigX.items():
-                print('Sigma {:10s}: {:12.3f}'.format(k,v))
+        sigX_c = getattr(self, 'sigX_c', None)
+        sigY_c = getattr(self, 'sigY_c', None)
+        sigQ_c = getattr(self, 'sigQ_c', None)
+        sigQ   = getattr(self, 'sigQ', None)
 
-        if sigY_c is not None:
-            print('Sigma Y            to be used     from inputs')
-            for k,v in self.sigY.items():
-                print('Sigma {:10s}: {:12.3f}  {:12.3f}'.format(k,v,sigY_c[k]))
-        else:
-            print('Sigma Y            to be used')
-            for k,v in self.sigY.items():
-                print('Sigma {:10s}: {:12.3f}'.format(k,v))
-        s=''
-        if self.Q is not None:
-            s+=' Q: process noise\n'
-            s+=pretty_PrintMat(self.Q)+'\n'
-        if self.R is not None:
-            s+=' R: measurement matrix\n'
-            s+=pretty_PrintMat(self.R)+'\n'
+        # Print State (X) and Process Noise (Q) Sigmas side by side
+        header_x = 'Sigma X             from clean    to be used'
+        header_q = ' |  Sigma Q             from clean    to be used'
+        print(header_x + header_q)
+
+        for k in self.sX:
+            vx = self.sigX.get(k, np.nan)
+            vxc = sigX_c.get(k, np.nan) if sigX_c is not None else np.nan
+            
+            line_x = 'Sigma {:10s}: {:12.3f}  {:12.3f}'.format(k, vxc, vx)
+            
+            vq  = sigQ.get  (k, np.nan) if sigQ is   not None else np.nan
+            vqc = sigQ_c.get(k, np.nan) if sigQ_c is not None else np.nan
+            
+            line_q = ' |  Sigma Q {:8s}: {:12.3f}  {:12.3f}'.format(k, vqc, vq)
+            print(line_x + line_q)
+
+
+        # Print Measurement (Y) Sigmas side by side
+        print('---')
+        print('Sigma Y             from clean    to be used')
+        for k in self.sY:
+            vy = self.sigY.get(k, np.nan)
+            vyc = sigY_c.get(k, np.nan) if sigY_c is not None else np.nan
+            print('Sigma {:10s}: {:12.3f}  {:12.3f}'.format(k, vyc, vy))
+
+        s = ''
+        if getattr(self, 'Q', None) is not None:
+            s += '\n Q: process noise matrix (diag):\n'
+            s += pretty_PrintMat(np.diag(self.Q)) + '\n'
+        if getattr(self, 'R', None) is not None:
+            s += ' R: measurement matrix (diag)\n'
+            s += pretty_PrintMat(np.diag(self.R)) + '\n'
         print(s)
 
 
