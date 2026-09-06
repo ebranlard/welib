@@ -132,7 +132,6 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
 
 
     KF.setMat(A,B,C,D)
-    # import pdb; pdb.set_trace()
 
     # --- Loading "Measurements"
     # - Reference file is opened

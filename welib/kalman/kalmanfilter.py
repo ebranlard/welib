@@ -90,6 +90,8 @@ class KalmanFilter(object):
         self.iY = {lab: i   for i,lab in enumerate(self.sY)}
         self.iU = {lab: i   for i,lab in enumerate(self.sU)}
         self.iS = {lab: i   for i,lab in enumerate(self.sS)}
+        # --- Define empty (nan) sigmas
+        self._set_empty_sigs() 
 
         if KM is not None:
             self.setMat(KM.A, KM.B, KM.C, KM.D)
@@ -152,6 +154,8 @@ class KalmanFilter(object):
 
 
 
+
+
     def setMat(self, Xx, Xu, Yx, Yu):
         # --- 
         self.Xx, self.Xu, self.Yx, self.Yu= EmptyStateDF(self.nX,self.nU,self.nY, self.sX, self.sU, self.sY)
@@ -173,6 +177,16 @@ class KalmanFilter(object):
         if np.any(np.isnan(Xu)): raise Exception('B matrix contains nan')
         if np.any(np.isnan(Yx)): raise Exception('C matrix contains nan')
         if np.any(np.isnan(Yu)): raise Exception('D matrix contains nan')
+
+
+    def _set_empty_sigs(self):
+        self.sigX   = {s: np.nan for s in self.sX}
+        self.sigY   = {s: np.nan for s in self.sY}
+        self.sigQ   = {s: np.nan for s in self.sX}
+        self.sigX_c = {s: np.nan for s in self.sX}
+        self.sigY_c = {s: np.nan for s in self.sY}
+        self.sigQ_c = {s: np.nan for s in self.sX}
+
 
 
     def checkObservability(self):
@@ -467,10 +481,14 @@ class KalmanFilter(object):
         KF.P, KF.Q, KF.R = KF.covariancesFromSig(Pidentity=Pidentity, dt=dt)
 
     def covariancesFromSig(self, dt=None, Pidentity=True):
-        if not hasattr(self,'sigX'):
-            raise Exception('Set `sigX` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
-        if not hasattr(self,'sigY'):
-            raise Exception('Set `sigY` before calling `covariancesFromSig` (e.g. `sigmasFromClean`)')
+        # -- Safety
+        has_nanX = any(np.isnan(v) for v in self.sigX.values())
+        has_nanY = any(np.isnan(v) for v in self.sigY.values())
+        has_nanQ = any(np.isnan(v) for v in self.sigQ.values())
+        if has_nanX or has_nanY or has_nanQ:
+            self.print_sigmas()
+            raise Exception('covarianceFromSig, some sigs have NaN, call sigmasFromClean first for instance.')
+
 
         for lab in self.sX:
             if self.sigX[lab]==0:
