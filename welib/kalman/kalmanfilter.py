@@ -7,6 +7,8 @@ import pandas as pd
 # Local
 from welib.tools.strings import OK, INFO, WARN, FAIL, NOTE
 from .kalman import *
+import welib.fast.fastlib as fastlib 
+import welib.weio as weio
 
 
 def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
@@ -328,8 +330,6 @@ class KalmanFilter(object):
          dataDict: additional data provided for ColMap
         
         """
-        import welib.fast.fastlib as fastlib 
-        import welib.weio as weio
 
         # --- Loading "Measurements"
         if isinstance(measFile, pd.DataFrame):
@@ -353,6 +353,35 @@ class KalmanFilter(object):
         KF.discretize(dt, method='exponential')
         KF.setTimeVec(time)
         KF.setCleanValues(KF.df, verbose=verbose)
+
+        # --- Estimate sigmas from measurements
+        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
+
+    def loadMeasurements(KF, measFile, nUnderSamp=1, tRange=None, ColMap=None):
+        # --- Loading "Measurements"
+        ext = os.path.splitext(measFile)[1]
+        if not os.path.exists(measFile):
+            WARN('Measurement file not found, trying with .out: {}'.format(measFile))
+            measFile = measFile.replace(ext,'.out')
+
+        df=weio.read(measFile).toDataFrame()
+
+        nUnderSamp=max(nUnderSamp,1)
+        df=df.iloc[::nUnderSamp,:]                      # reducing sampling
+        if tRange is not None:
+            df=df[(df['Time_[s]']>= tRange[0]) & (df['Time_[s]']<= tRange[1])] # reducing time range
+        time = df['Time_[s]'].values
+        dt   = (time[-1] - time[0])/(len(time)-1)
+        # Remapping/scaling columns to shortname variables
+        if ColMap is not None:
+            KF.df = fastlib.remap_df(df, ColMap, bColKeepNewOnly=False)
+        else:
+            NOTE('Not performing any column mapping to loaded measurements')
+            raise Exception() # Remove me, for checking for now
+        # --- 
+        KF.discretize(dt, method='exponential')
+        KF.setTimeVec(time)
+        KF.setCleanValues(KF.df)
 
         # --- Estimate sigmas from measurements
         sigY, KF.R_c = KF.sigmasYFromClean(factor=1)

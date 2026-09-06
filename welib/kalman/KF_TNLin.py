@@ -310,6 +310,8 @@ def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFi
     # --- Loading "Measurements"
     # Defining "clean" values 
     # Estimate sigmas from measurements
+    if ColMap is None:
+        ColMap = KM.ColMap
     KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=ColMap)
     KF.sigX=sigX
     KF.sigY=sigY

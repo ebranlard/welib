@@ -105,35 +105,14 @@ class KalmanFilterTN(KalmanFilter):
         KF.ColMap = KM.ColMap
 
         KF.wse = WSE # wind speed estimator 
+
+    # --- Methods From Parent Class
+    # loadMeasurements 
+    # prepareTimeStepping 
+    # setupCovariances
         
     # --- Methods Common between TN and TNLin
-    # loadMeasurements, prepareMeasurements    
-    def loadMeasurements(KF, MeasFile, nUnderSamp=1, tRange=None, ColMap=None):
-        # --- Loading "Measurements"
-        ext = os.path.splitext(MeasFile)[1]
-        if not os.path.exists(MeasFile):
-            WARN('Measurement file not found, trying with .out: {}'.format(MeasFile))
-            MeasFile = MeasFile.replace(ext,'.out')
-
-        df=weio.read(MeasFile).toDataFrame()
-        df=df.iloc[::nUnderSamp,:]                      # reducing sampling
-        if tRange is not None:
-            df=df[(df['Time_[s]']>= tRange[0]) & (df['Time_[s]']<= tRange[1])] # reducing time range
-        time = df['Time_[s]'].values
-        dt   = (time[-1] - time[0])/(len(time)-1)
-        if ColMap is None:
-            ColMap = KF.ColMap
-        # Remapping/scaling columns to shortname variables
-        KF.df = fastlib.remap_df(df, ColMap, bColKeepNewOnly=False)
-        # --- 
-        KF.discretize(dt, method='exponential')
-        KF.setTimeVec(time)
-        KF.setCleanValues(KF.df)
-
-        # --- Estimate sigmas from measurements
-        #KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1)
-        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
-
+    # prepareMeasurements    
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, nFilt=15):
         if KF.R_c is None:
@@ -362,6 +341,8 @@ def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInState
     # --- Loading "Measurements"
     # Defining "clean" values 
     # Estimate sigmas from measurements
+    if ColMap is None:
+        ColMap = KM.ColMap
     KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=ColMap)
     KF.sigX=sigX
     KF.sigY=sigY

@@ -5,6 +5,7 @@ from welib.kalman.kalman import *
 from .kalmanfilter import KalmanFilter
 from .kalman_model import AugmentedLinModel
 
+from welib.essentials import *
 from welib.kalman.filters import moving_average
 
 # --- External dependencies!
@@ -29,66 +30,66 @@ from welib.fast.tools.lin import subMat, matSimpleStateLabels, matToSIunits, ren
 # Local
 from welib.kalman.kalman import EmptyStateMat, EmptyStateDF
 
-
-#          'WS':'Wind1VelX', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}
-#          'Thrust':'RotThrust','Qaero':'RtAeroMxh','Qgen':'GenTq',
-# NOTE: RotThrust contain gravity and inertia
-DEFAULT_COL_MAP={
-#   ' ut1    ' : ' TTDspFA_[m]                   ' ,
-#   ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
-#   ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
-#   ' omega  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
-#   ' Thrust ' : ' RtAeroFxh_[N]                 ' ,
-#   ' Qaero  ' : ' RtAeroMxh_[N-m]               ' ,
-#   ' Thrust ' : ' RtFldFxh_[N]                 ' ,
-#   ' Qaero  ' : ' RtFldMxh_[N-m]               ' ,
-# #   ' Qgen   ' : ' {GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]
-#   ' Qgen   ' : ' 97*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]
-#   ' WS     ' : ' RtVAvgxh_[m/s]                ' ,
-#   ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 ' , # [deg]->[rad]
-#   ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
-  ' x      ' : ' PtfmSurge_[m]                   '              ,
-  ' y      ' : ' PtfmSway_[m]                   '               ,
-  ' z      ' : ' {PtfmHeave_[m]}                '              ,
-  ' phi_x  ' : ' {PtfmRoll_[deg]}   * np.pi/180               ' , # SI [deg] -> [rad]
-  ' phi_y  ' : ' {PtfmPitch_[deg]}  * np.pi/180                ', # SI [deg] -> [rad]
-  ' phi_z  ' : ' {PtfmYaw_[deg]}    * np.pi/180              '  , # SI [deg] -> [rad]
-  #' q_FA1  ' : ' TTDspFA_[m]                   '                ,
-  ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   '                , # SI [deg] -> [rad]
-  ' q_FA1  ' : ' Q_TFA1_[m]                   '                ,
-  ' q_SS1  ' : ' Q_TSS1_[m]                   '                ,
-  ' dpsi  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 '                , # SI [rpm] -> [rad/s]
-  ' dq_FA1 ' : ' QD_TFA1_[m/s]               '                ,
-  ' dq_SS1 ' : ' QD_TSS1_[m/s]               '                ,
-  ' dx     ' : ' QD_Sg_[m/s]               '              ,
-  ' dy     ' : ' QD_Sw_[m/s]                '               ,
-  ' dz     ' : ' QD_Hv_[m/s]               '              ,
-  ' dphi_x ' : ' QD_R_[rad/s]                             ' ,
-  ' dphi_y ' : ' QD_P_[rad/s]                             ',
-  ' dphi_z ' : ' QD_Y_[rad/s]                             '  ,
-  ' ddpsi  ' : 'QD2_GeAz_[rad/s^2]'  ,
-  ' ddq_FA1' : 'QD2_TFA1_[m/s^2]               '                ,
-  ' ddq_SS1' : 'QD2_TSS1_[m/s^2]               '                ,
-  ' ddx    ' : 'QD2_Sg_[m/s^2]               '              ,
-  ' ddy    ' : 'QD2_Sw_[m/s^2]                '               ,
-  ' ddz    ' : 'QD2_Hv_[m/s^2]               '              ,
-  ' ddphi_x' : 'QD2_R_[rad/s^2]                             ' ,
-  ' ddphi_y' : 'QD2_P_[rad/s^2]                             ',
-  ' ddphi_z' : 'QD2_Y_[rad/s^2]                             '  ,
-  ' Thrust ' : ' RtFldFxh_[N]                 '                ,
-  ' Qaero  ' : ' RtFldMxh_[N-m]               '                ,
-#           ' Qgen   ' : ' {GenTq_[kN-m]}  *1000         '             , # [kNm] -> [Nm]
-  ' Qgen   ' : ' {GenTq_[kN-m]}  *1000 '+'*{}'.format(1)             , # [kNm] -> [Nm] # <<<<<<< TODO TODO TODO nGear
-  ' power  ' : ' {GenPwr_[kW]}  *1000 '            , # [kNm] -> [Nm] # <<<<<<< TODO TODO TODO nGear
-  ' WS     ' : ' RtVAvgxh_[m/s]                '                ,
-  ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 '                , # SI [deg]->[rad]
-  ' NcIMUAx ' : ' NcIMUTAxs_[m/s^2]             ',
-  ' NcIMUAy ' : ' NcIMUTAys_[m/s^2]             ',
-  ' NcIMUAz ' : ' NcIMUTAzs_[m/s^2]             ',
-  ' NcIMUVx ' : ' NcIMUTVxs_[m/s]             ',
-  ' NcIMUVy ' : ' NcIMUTVys_[m/s]             ',
-  ' NcIMUVz ' : ' NcIMUTVzs_[m/s]             ',
-}
+# 
+# #          'WS':'Wind1VelX', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}
+# #          'Thrust':'RotThrust','Qaero':'RtAeroMxh','Qgen':'GenTq',
+# # NOTE: RotThrust contain gravity and inertia
+# DEFAULT_COL_MAP={
+# #   ' ut1    ' : ' TTDspFA_[m]                   ' ,
+# #   ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
+# #   ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
+# #   ' omega  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
+# #   ' thrust ' : ' rtaerofxh_[n]                 ' ,
+# #   ' qaero  ' : ' rtaeromxh_[n-m]               ' ,
+# #   ' thrust ' : ' rtfldfxh_[n]                 ' ,
+# #   ' qaero  ' : ' rtfldmxh_[n-m]               ' ,
+# # #   ' qgen   ' : ' {gentq_[kn-m]}  *1000         ' , # [knm] -> [nm]
+# #   ' qgen   ' : ' 97*{gentq_[kn-m]}  *1000         ' , # [knm] -> [nm]
+# #   ' ws     ' : ' rtvavgxh_[m/s]                ' ,
+# #   ' pitch  ' : ' {bldpitch1_[deg]} * np.pi/180 ' , # [deg]->[rad]
+# #   ' ttacc  ' : ' ncimutaxs_[m/s^2]             ' 
+#   ' x      ' : ' ptfmsurge_[m]                   '              ,
+#   ' y      ' : ' ptfmsway_[m]                   '               ,
+#   ' z      ' : ' {ptfmheave_[m]}                '              ,
+#   ' phi_x  ' : ' {ptfmroll_[deg]}   * np.pi/180               ' , # si [deg] -> [rad]
+#   ' phi_y  ' : ' {ptfmpitch_[deg]}  * np.pi/180                ', # si [deg] -> [rad]
+#   ' phi_z  ' : ' {ptfmyaw_[deg]}    * np.pi/180              '  , # si [deg] -> [rad]
+#   #' q_fa1  ' : ' ttdspfa_[m]                   '                ,
+#   ' psi    ' : ' {azimuth_[deg]} * np.pi/180   '                , # si [deg] -> [rad]
+#   ' q_fa1  ' : ' q_tfa1_[m]                   '                ,
+#   ' q_ss1  ' : ' q_tss1_[m]                   '                ,
+#   ' dpsi  ' : ' {rotspeed_[rpm]} * 2*np.pi/60 '                , # si [rpm] -> [rad/s]
+#   ' dq_fa1 ' : ' qd_tfa1_[m/s]               '                ,
+#   ' dq_ss1 ' : ' qd_tss1_[m/s]               '                ,
+#   ' dx     ' : ' qd_sg_[m/s]               '              ,
+#   ' dy     ' : ' qd_sw_[m/s]                '               ,
+#   ' dz     ' : ' qd_hv_[m/s]               '              ,
+#   ' dphi_x ' : ' qd_r_[rad/s]                             ' ,
+#   ' dphi_y ' : ' qd_p_[rad/s]                             ',
+#   ' dphi_z ' : ' qd_y_[rad/s]                             '  ,
+#   ' ddpsi  ' : 'qd2_geaz_[rad/s^2]'  ,
+#   ' ddq_fa1' : 'qd2_tfa1_[m/s^2]               '                ,
+#   ' ddq_ss1' : 'qd2_tss1_[m/s^2]               '                ,
+#   ' ddx    ' : 'qd2_sg_[m/s^2]               '              ,
+#   ' ddy    ' : 'qd2_sw_[m/s^2]                '               ,
+#   ' ddz    ' : 'qd2_hv_[m/s^2]               '              ,
+#   ' ddphi_x' : 'qd2_r_[rad/s^2]                             ' ,
+#   ' ddphi_y' : 'qd2_p_[rad/s^2]                             ',
+#   ' ddphi_z' : 'qd2_y_[rad/s^2]                             '  ,
+#   ' thrust ' : ' rtfldfxh_[n]                 '                ,
+#   ' qaero  ' : ' rtfldmxh_[n-m]               '                ,
+# #           ' qgen   ' : ' {gentq_[kn-m]}  *1000         '             , # [knm] -> [nm]
+#   ' qgen   ' : ' {gentq_[kn-m]}  *1000 '+'*{}'.format(1)             , # [knm] -> [nm] # <<<<<<< todo todo todo ngear
+#   ' power  ' : ' {genpwr_[kw]}  *1000 '            , # [knm] -> [nm] # <<<<<<< todo todo todo ngear
+#   ' ws     ' : ' rtvavgxh_[m/s]                '                ,
+#   ' pitch  ' : ' {bldpitch1_[deg]} * np.pi/180 '                , # si [deg]->[rad]
+#   ' ncimuax ' : ' ncimutaxs_[m/s^2]             ',
+#   ' ncimuay ' : ' ncimutays_[m/s^2]             ',
+#   ' ncimuaz ' : ' ncimutazs_[m/s^2]             ',
+#   ' ncimuvx ' : ' ncimutvxs_[m/s]             ',
+#   ' ncimuvy ' : ' ncimutvys_[m/s]             ',
+#   ' ncimuvz ' : ' ncimutvzs_[m/s]             ',
+# }
 
 # --------------------------------------------------------------------------------}
 # -- Augmented Linear Model 
@@ -594,35 +595,6 @@ class KalmanFilterFTNSLin(KalmanFilter):
                 KF.wse=AE
         else:
             KF.wse = None
-
-
-
-    def loadMeasurements(KF, MeasFile, nUnderSamp=1, tRange=None, ColMap=DEFAULT_COL_MAP):
-        # --- Loading "Measurements"
-        ext = os.path.splitext(MeasFile)[1]
-        if not os.path.exists(MeasFile):
-            WARN('Measurement file not found, trying with .out: {}'.format(MeasFile))
-            MeasFile = MeasFile.replace(ext,'.out')
-
-        df = weio.read(MeasFile).toDataFrame()
-
-        nUnderSamp=max(nUnderSamp,1)
-        df=df.iloc[::nUnderSamp,:]                      # reducing sampling
-        if tRange is not None:
-            df=df[(df['Time_[s]']>= tRange[0]) & (df['Time_[s]']<= tRange[1])] # reducing time range
-        time = df['Time_[s]'].values
-        dt   = (time[-1] - time[0])/(len(time)-1)
-        # Remapping/scaling columns to shortname variables
-        df = fastlib.remap_df(df, ColMap, bColKeepNewOnly=False)
-        KF.df = df
-        # --- 
-        KF.discretize(dt, method='exponential')
-        KF.setTimeVec(time)
-        KF.setCleanValues(KF.df)
-
-        # --- Estimate sigmas from measurements
-        #KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1, dt=dt)
-        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, bFilterOm=False, nFilt=15, bFilterPhi=False):
         # --- Creating noise measuremnts
