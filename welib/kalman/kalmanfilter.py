@@ -5,18 +5,15 @@ import os
 import numpy as np
 import pandas as pd
 # Local
-from welib.tools.strings import OK, INFO, WARN, FAIL, NOTE
 from .kalman import *
 import welib.fast.fastlib as fastlib 
 import welib.weio as weio
+from welib.tools.strings import OK, INFO, WARN, FAIL, NOTE
+from welib.tools.strings import prettyMat
 
 
 def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
-    s=str(M)
-#             s=sindent
-#             for iline,line in enumerate(M):
-#                 s+=''.join([(fmt.format(v) if int(v)!=v else fmt_int.format(int(v))) for v in line ])
-#                 s+='\n'+sindent
+    s = prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True, openChar='[',closeChar=']', sepChar=' ', xmin=1e-16)
     return s
 
 
@@ -119,7 +116,6 @@ class KalmanFilter(object):
     def D(self): return self.Yu
 
     def __repr__(self):
-        s=''
         s='<{} object> with attributes:\n'.format(type(self).__name__)
         s+='  sX  : {} \n'.format(self.sX)
         s+='  sX0 : {} \n'.format(self.sX0)
@@ -148,8 +144,6 @@ class KalmanFilter(object):
         if self.R is not None:
             s+=' R: measurement matrix\n'
             s+=pretty_PrintMat(self.R)+'\n'
-            
-
         return s
 
 
