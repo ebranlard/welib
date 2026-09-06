@@ -37,7 +37,7 @@ class KalmanModelTNLin(AugmentedLinModel):
         nGear = WT2.ED['GBRatio']
 
         if Qgen_LSS:
-            self.ColMap={
+            self.colMap={
               ' ut1    ' : ' TTDspFA_[m]                   ' ,
               ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
               ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
@@ -50,7 +50,7 @@ class KalmanModelTNLin(AugmentedLinModel):
               ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
             }
         else:
-            self.ColMap={
+            self.colMap={
               ' ut1    ' : ' TTDspFA_[m]                   ' ,
               ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
               ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
@@ -297,7 +297,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, sigQ=None, bExport=False, ColMap=None, debug=False):
+def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, sigQ=None, bExport=False, colMap=None, debug=False):
 
     # ---
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)    
@@ -310,9 +310,9 @@ def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFi
     # --- Loading "Measurements"
     # Defining "clean" values 
     # Estimate sigmas from measurements
-    if ColMap is None:
-        ColMap = KM.ColMap
-    KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=ColMap)
+    if colMap is None:
+        colMap = KM.colMap
+    KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
     KF.sigX=sigX
     KF.sigY=sigY
     KF.sigQ=sigQ

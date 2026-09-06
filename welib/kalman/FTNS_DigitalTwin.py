@@ -69,8 +69,8 @@ class DigitalTwin():
         KF = self.SE
         # --- Loading "Measurements" (Defining "clean" values, estimate sigmas from measurements)
         if colMap is None:
-            colMap = self.KM.ColMap
-        KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=colMap)
+            colMap = self.KM.colMap
+        KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
 
         # --- Storage for plot
         KF.prepareTimeStepping()  

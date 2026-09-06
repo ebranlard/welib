@@ -124,7 +124,7 @@ class KalmanModelFTNS(AugmentedLinModel):
         # Col MAP for OpenFAST OutFile "Measurements" used for "clean" values
         sIMU=['NcIMUAx','NcIMUAy','NcIMUAz']
         sIMU2=['NcIMUAx','NcIMUAy','NcIMUAz','NcIMUVx','NcIMUVy','NcIMUVz']
-        KM.ColMap={
+        KM.colMap={
           ' x      ' : ' PtfmSurge_[m]                   '              ,
           ' y      ' : ' PtfmSway_[m]                   '               ,
           ' z      ' : ' {PtfmHeave_[m]}                '              ,
@@ -169,7 +169,7 @@ class KalmanModelFTNS(AugmentedLinModel):
           }
 
 
-        ColMapLinFile = DEFAULT_COL_MAP_LIN
+        colMapLinFile = DEFAULT_COL_MAP_LIN
 
 
         # --------------------------------------------------------------------------------}
@@ -286,7 +286,7 @@ class KalmanModelFTNS(AugmentedLinModel):
         
         # --- Useful channels from lin file
         colAugForce = mainLinInputs(hub=2, nac=1, ptfm=2, gen=1, pitch=1)
-        colAugForce2 = renameList(colAugForce, ColMapLinFile)
+        colAugForce2 = renameList(colAugForce, colMapLinFile)
         colAugForce3 = [c for c in colAugForce2 if c in KM.sQa or c in KM.sU or c in KM.sQ]
 
         # --- Main B matrix

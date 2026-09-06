@@ -40,7 +40,7 @@ class KalmanModelTN(AugmentedLinModel):
 
         nGear = WT.ED['GBRatio']
 
-        self.ColMap={
+        self.colMap={
           ' ut1    ' : ' TTDspFA_[m]                   ' ,
           ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
           ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
@@ -102,7 +102,7 @@ class KalmanFilterTN(KalmanFilter):
         # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
         KalmanFilter.__init__(KF, KM=KM)
         KF.WT = KM.WT
-        KF.ColMap = KM.ColMap
+        KF.colMap = KM.colMap
 
         KF.wse = WSE # wind speed estimator 
 
@@ -326,7 +326,7 @@ class KalmanFilterTN(KalmanFilter):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, sigQ=None, bExport=False, ColMap=None, debug=False):
+def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, sigQ=None, bExport=False, colMap=None, debug=False):
     # ---
     KM = KalmanModelTN(FstFile, bThrustInStates=bThrustInStates)
 
@@ -341,9 +341,9 @@ def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInState
     # --- Loading "Measurements"
     # Defining "clean" values 
     # Estimate sigmas from measurements
-    if ColMap is None:
-        ColMap = KM.ColMap
-    KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, ColMap=ColMap)
+    if colMap is None:
+        colMap = KM.colMap
+    KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
     KF.sigX=sigX
     KF.sigY=sigY
     KF.sigQ=sigQ

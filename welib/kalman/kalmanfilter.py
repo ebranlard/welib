@@ -252,11 +252,11 @@ class KalmanFilter(object):
     def nt(self):
         return len(self.time)
 
-    def setCleanValues(self, df, ColMap=None, verbose=False):
-        if ColMap is None:
-            ColMap=dict()
+    def setCleanValues(self, df, colMap=None, verbose=False):
+        if colMap is None:
+            colMap=dict()
             for k in df.columns.values:
-                ColMap[k]=k
+                colMap[k]=k
 
         # --- Defining "clean" values 
         self.X_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sX)
@@ -266,44 +266,44 @@ class KalmanFilter(object):
         self.XD_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sXd)
         for i,lab in enumerate(self.sX):
             try:
-                self.X_clean[lab]=df[ColMap[lab]].values
+                self.X_clean[lab]=df[colMap[lab]].values
             except:
                 if verbose:
                     print('[WARN] Clean state not available      :', lab)
         for i,lab in enumerate(self.XD_clean.columns):
             try:
-                self.XD_clean[lab]=df[ColMap[lab]].values
+                self.XD_clean[lab]=df[colMap[lab]].values
             except:
                 if verbose:
                     print('[WARN] Clean state not available      :', lab)
 
         for i,lab in enumerate(self.sY):
             try:
-                self.Y_clean[lab]=df[ColMap[lab]].values
+                self.Y_clean[lab]=df[colMap[lab]].values
             except:
                 if verbose:
                     print('[WARN] Clean measurement not available:', lab)
         for i,lab in enumerate(self.sU):
             try:
-                self.U_clean[lab] =df[ColMap[lab]].values
+                self.U_clean[lab] =df[colMap[lab]].values
             except:
                 if verbose:
                     print('[WARN] Clean output not available     :', lab)
         for i,lab in enumerate(self.sS):
             try:
-                self.S_clean[lab] =df[ColMap[lab]].values
+                self.S_clean[lab] =df[colMap[lab]].values
             except:
                 if verbose:
                     print('[WARN] Clean misc var not available   :', lab)
 
-    def setY(self,df,ColMap=None):
-        if ColMap is None:
-            ColMap=dict()
+    def setY(self,df,colMap=None):
+        if colMap is None:
+            colMap=dict()
             for k in df.columns.values:
-                ColMap[k]=k
+                colMap[k]=k
 
         for i,lab in enumerate(self.sY):
-            self.Y[lab]=df[ColMap[lab]]
+            self.Y[lab]=df[colMap[lab]]
 
     def initTimeStorage(self):
         self.X_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sX)
@@ -327,62 +327,35 @@ class KalmanFilter(object):
     def initZero(self):
         return np.zeros(self.nX)
 
-
-    def initFromSimulation(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', dataDict=None, verbose=False, raiseIfAbsent=False):
+    def loadMeasurements(KF, measFile, nUnderSamp=1, tRange=None, colMap=None, timeCol='Time_[s]', raiseIfAbsent=False):
         """" 
          - Open a simulation result file
          - Use dt to discretize the KF
          - Define clean values of measurements and states based on simulation
-         - Define sigmas from the std of the clean signals
-
-         dataDict: additional data provided for ColMap
-        
         """
-
         # --- Loading "Measurements"
         if isinstance(measFile, pd.DataFrame):
             df = measFile
         else:
-            if '.outb' in measFile:
-                if not os.path.exists(measFile):
-                    measFile = measFile.replace('.outb', '.out')
+            ext = os.path.splitext(measFile)[1]
             if not os.path.exists(measFile):
-                if '.out' in measFile:
+                if ext == '.outb':
+                    WARN('Measurement file not found, trying with .out: {}'.format(measFile))
+                    measFile = measFile.replace('.outb', '.out')
+                elif ext == '.out':
+                    WARN('Measurement file not found, trying with .outb: {}'.format(measFile))
                     measFile = measFile.replace('.out', '.outb')
             df=weio.read(measFile).toDataFrame()
+
+        nUnderSamp=max(nUnderSamp,1)
         df=df.iloc[::nUnderSamp,:]                      # reducing sampling
         if tRange is not None:
             df=df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
         time = df[timeCol].values
         dt   = (time[-1] - time[0])/(len(time)-1)
-        KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False, dataDict=dataDict, raiseIfAbsent=raiseIfAbsent)
-
-        # --- 
-        KF.discretize(dt, method='exponential')
-        KF.setTimeVec(time)
-        KF.setCleanValues(KF.df, verbose=verbose)
-
-        # --- Estimate sigmas from measurements
-        sigY, KF.R_c = KF.sigmasYFromClean(factor=1)
-
-    def loadMeasurements(KF, measFile, nUnderSamp=1, tRange=None, ColMap=None):
-        # --- Loading "Measurements"
-        ext = os.path.splitext(measFile)[1]
-        if not os.path.exists(measFile):
-            WARN('Measurement file not found, trying with .out: {}'.format(measFile))
-            measFile = measFile.replace(ext,'.out')
-
-        df=weio.read(measFile).toDataFrame()
-
-        nUnderSamp=max(nUnderSamp,1)
-        df=df.iloc[::nUnderSamp,:]                      # reducing sampling
-        if tRange is not None:
-            df=df[(df['Time_[s]']>= tRange[0]) & (df['Time_[s]']<= tRange[1])] # reducing time range
-        time = df['Time_[s]'].values
-        dt   = (time[-1] - time[0])/(len(time)-1)
         # Remapping/scaling columns to shortname variables
-        if ColMap is not None:
-            KF.df = fastlib.remap_df(df, ColMap, bColKeepNewOnly=False)
+        if colMap is not None:
+            KF.df = fastlib.remap_df(df, colMap, bColKeepNewOnly=False, raiseIfAbsent=raiseIfAbsent)
         else:
             NOTE('Not performing any column mapping to loaded measurements')
             raise Exception() # Remove me, for checking for now

@@ -71,7 +71,7 @@ def main(tMax=100, test=False):
     # - Measurements are extracted from it
     # - Other signals are extracted from the file, for comparison with estimates. These are referred as "clean" values
     # - Estimate sigmas from measurements (overriden in next section)
-    KF.initFromSimulation(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap, timeCol='Time_[s]')
+    KF.loadMeasurements(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap, timeCol='Time_[s]')
 
     # --- Process and measurement uncertainties (standard deviation sigma)
     KF.sigmasFromClean(dt=KF.dt)
