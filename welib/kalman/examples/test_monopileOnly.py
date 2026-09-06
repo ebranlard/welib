@@ -65,19 +65,18 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # Based on influence in $C$.
     # Since $q_p$ is so sensitive, it needs a smaller $Q$ than $q_s$ to prevent it from dominating the filter's attention.
     # --- Process and measurement covariances
-    KF.sigmasFromClean(factor=1, dt=None)
-
-    KF.setupCovariances(useDt=False, Pidentity=True)
     dt_ref = 0.01 # NOTE: Q change with dt
-    KF.R[0,0] =                1e-3   # TTacc
-    KF.Q[0,0] = KF.dt/dt_ref * 1e-6   # q_p
-    KF.Q[1,1] = KF.dt/dt_ref * 1e-6   # q_s
-    KF.Q[2,2] = KF.dt/dt_ref * 1e-3   # qd_p
-    KF.Q[3,3] = KF.dt/dt_ref * 1e-6   # qd_s
-    KF.Q[4,4] = KF.dt/dt_ref * 1e-6   # qh,   eta
-    KF.Q[5,5] = KF.dt/dt_ref * KM.Sw  # qd_h, eta_dot
-
-    KF.print_sigmas()
+    sigs = {'x':{}, 'y':{}, 'Q':{}}
+    sigs['y']['TTacc'] = np.sqrt(1e-3)
+    sigs['Q']['q_s']   = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['q_p']   = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['qd_s']  = np.sqrt(KF.dt/dt_ref * 1e-3)
+    sigs['Q']['qd_p']  = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['q_h']   = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['qd_h']  = np.sqrt(KF.dt/dt_ref * KM.Sw)
+    KF.setupCovariances(
+            sigs=sigs,
+            useDt=False, Pidentity=True, verbose=True)
 
     # --- Prepare measurements - Create noisy measurements
     KF.setYFromClean(R=KF.R, NoiseRFactor=NoiseRFactor)

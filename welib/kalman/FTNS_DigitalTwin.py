@@ -82,65 +82,6 @@ class DigitalTwin():
         KF.prepareMeasurements(NoiseRFactor=NoiseRFactor, bFilterAcc=bFilterAcc, nFilt=nFilt, bFilterPhi=bFilterPhi, bFilterOm=bFilterOm)
 
 
-    def setupCovariances(self, tuning=None, sigXDict=None, sigQDict=None, useDt=False, Pidentity=True, 
-                         dt_for_sigQ=1,
-                         verbose=True):
-        # TODO Move this to KalmanFilter Exclusively
-
-        print('------------------- DIGITAL TWIN SETUP COVARIANCES ---------------------------------')
-        KF = self.SE
-
-        dt = None
-        if useDt:
-            dt = KF.dt
-        KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1, dt=dt)
-
-        if tuning is None:
-            tuning ={}
-
-        # --- Default arguments
-        # --- Tuning of Sigmas
-        # KF.sigY['z']/=10000
-        # KF.sigY['NcIMUAz']*=100
-        # KF.sigX['z']=1
-        # KF.sigY=sigY
-        # for k,v in KF.sigX.items():
-        #     KF.sigX[k]=v/10
-        # for k,v in KF.sigY.items():
-        #     KF.sigY[k]=v/10
-        if sigXDict is not None:
-            for k,v in sigXDict.items():
-                if k in KF.sigX:
-                    print('[INFO] DigiTwin: Overiding Sigma x',k,v)
-                    KF.sigX[k] = v
-        if sigQDict is not None:
-            for k,v in sigQDict.items():
-                if k in KF.sigQ:
-                    print('[INFO] DigiTwin: Overiding Sigma q',k,v)
-                    KF.sigQ[k] = v * KF.dt/dt_for_sigQ
-
-        # Tuning physical state tracking vs disturbance rate externally
-        if 'Qaero' in KF.sigQ and 'kSigQaero' in tuning:
-            print('[INFO] DigiTwin: Tuning Qaero',tuning['kSigQaero'])
-            KF.sigQ['Qaero'] *= tuning['kSigQaero']
-        if 'psi' in KF.sigQ and 'kSigPsi' in tuning:
-            print('[INFO] DigiTwin: Tuning psi  ',tuning['kSigPsi'])
-            KF.sigQ['psi']  *= tuning['kSigPsi']    # Boost psi process noise to fix phase lag
-
-
-        KF.setupCovariances(useDt=useDt, Pidentity=Pidentity)
-
-        # if 'x' in KF.sigX:
-        #     KF.sigX['x']*=0.0000001
-        if verbose:
-            KF.print_sigmas()
-
-        print('>>>> KF.sigX[Qaero]', KF.sigX['Qaero'])
-        print('>>>> KF.sigQ[Qaero]', KF.sigQ['Qaero'])
-        print('>>>> KF.dt          ', KF.dt)
-        print('>>>> KF.Q[16,16]    ', KF.Q[16,16])
-
-
 
 
     def timeLoop(self, virtualSensing=True):

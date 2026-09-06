@@ -232,6 +232,8 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
       - fixed number of characters by setting nchar
 
     """
+    if nchar is None and digits is  None:
+        raise exception('pretty_num requires `digits` or `nchar` to be provided. Use prettyNum for default options.')
     if nchar is not None and digits is not None:
         method='fixed_number_of_char_and_digits'
 
@@ -265,37 +267,37 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
             s = f"{x:d}"
             #raise NotImplementedError()
         elif digits==6:
-            if abs(x)<1000000 and abs(x)>1e-7:
+            if abs(x)<1000000 and abs(x)>1e-6:
                 s= "{:.6f}".format(x)
             else:
                s= "{:.6e}".format(x)
         elif digits==5:
-            if abs(x)<100000 and abs(x)>1e-6:
+            if abs(x)<100000 and abs(x)>1e-5:
                 s= "{:.5f}".format(x)
             else:
                s= "{:.5e}".format(x)
         elif digits==4:
-            if abs(x)<10000 and abs(x)>1e-5:
+            if abs(x)<10000 and abs(x)>1e-4:
                 s= "{:.4f}".format(x)
             else:
                s= "{:.4e}".format(x)
         elif digits==3:
-            if abs(x)<10000 and abs(x)>1e-4:
+            if abs(x)<10000 and abs(x)>1e-3:
                 s= "{:.3f}".format(x)
             else:
                s= "{:.3e}".format(x)
         elif digits==2:
-            if abs(x)<100000 and abs(x)>1e-3:
+            if abs(x)<100000 and abs(x)>1e-2:
                 s= "{:.2f}".format(x)
             else:
                s= "{:.2e}".format(x)
         elif digits==1:
-            if abs(x)<100000 and abs(x)>1e-2:
+            if abs(x)<100000 and abs(x)>1e-1:
                 s= "{:.1f}".format(x)
             else:
                s= "{:.1e}".format(x)
         elif digits==0:
-            if abs(x)<1000000 and abs(x)>1e-1:
+            if abs(x)<1000000 and abs(x)>1e-0:
                 s= "{:.0f}".format(x)
             else:
                s= "{:.0e}".format(x)
@@ -337,6 +339,10 @@ def pretty_num(x, digits=None, nchar=None, align='right', xmin=1e-16, center0=Tr
         return s.rjust(nchar)
     else:
         return s.ljust(nchar)
+
+def prettyNum(x, digits=2, nchar=None, align='right', xmin=1e-16):
+    # Uses same default options as prettyMat for consistency
+    return pretty_num(x, digits=digits, nchar=nchar, align=align, xmin=1e-16)
 
 def prettyMat(M, var=None, digits=2, nchar=None, sindent='   ', align='right', center0=True, newline=True, openChar='[',closeChar=']', sepChar=' ', xmin=1e-16):
     """ 

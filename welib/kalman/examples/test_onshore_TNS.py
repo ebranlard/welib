@@ -78,22 +78,21 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     useStdFromMeas = False  # if True, the sigma are estimated based on the std from meas
     if not useStdFromMeas:
         # States
-        sigX=dict()
-        sigX['ut1']    = 1.0
-        sigX['psi']    = 0.1
-        sigX['ut1dot'] = 0.1
-        sigX['omega']  = 0.1
-        sigX['Thrust'] = 1000000
-        sigX['Qaero']  = 8*10**6*1.0
-        sigX['Qgen']   = 1.0*10**6
-        sigX['WS']     = 1.0
-        sigQ=sigX.copy()
+        sigs = {'x':{}, 'y':{}, 'Q':{}}
+        sigs['x']['ut1']    = 1.0
+        sigs['x']['psi']    = 0.1
+        sigs['x']['ut1dot'] = 0.1
+        sigs['x']['omega']  = 0.1
+        sigs['x']['Thrust'] = 1000000
+        sigs['x']['Qaero']  = 8*10**6*1.0
+        sigs['x']['Qgen']   = 1.0*10**6
+        sigs['x']['WS']     = 1.0
+        sigs['Q'] = sigs['x'].copy()
         # Measurements - more or less half the std
-        sigY=dict()
-        sigY['TTacc'] = 0.08  # m/s^2
-        sigY['omega'] = 0.05 # rad/s
-        sigY['Qgen']  = 1*10**6
-        sigY['pitch'] = 2.00
+        sigs['y']['TTacc'] = 0.08  # m/s^2
+        sigs['y']['omega'] = 0.05 # rad/s
+        sigs['y']['Qgen']  = 1*10**6
+        sigs['y']['pitch'] = 2.00
 
     # --------------------------------------------------------------------------------}
     # --- Kalman filter estimation 
@@ -101,7 +100,7 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     with Timer('Simulation Loop'):
         if bYAMS:
             bThrustInStates=True
-            KF= KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, sigQ=sigQ, bExport=bExport)
+            KF= KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport)
         else:
 
             if not os.path.exists(linStateFile):
@@ -118,7 +117,7 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
 
 
             KM = KalmanModelTNLin(FstFile, linStateFile, StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True)
-            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX, sigY, sigQ=sigQ, bExport=bExport)
+            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport)
     # --------------------------------------------------------------------------------}
     # --- PostPro  
     # --------------------------------------------------------------------------------{

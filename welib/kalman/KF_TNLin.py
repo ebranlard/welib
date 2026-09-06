@@ -297,7 +297,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigX=None, sigY=None, sigQ=None, bExport=False, colMap=None, debug=False):
+def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False):
 
     # ---
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)    
@@ -313,14 +313,8 @@ def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFi
     if colMap is None:
         colMap = KM.colMap
     KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
-    KF.sigX=sigX
-    KF.sigY=sigY
-    KF.sigQ=sigQ
-    if debug:
-        KF.print_sigmas()
-
     # --- Process and measurement covariances
-    KF.setupCovariances(useDt=False, Pidentity=True)
+    KF.setupCovariances(useDt=False, Pidentity=True, sigs=sigs, verbose=debug)
     # --- Storage for plot
     KF.prepareTimeStepping()
     # --- Creating noise measuremnts

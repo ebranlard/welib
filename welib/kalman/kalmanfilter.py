@@ -9,7 +9,7 @@ from .kalman import *
 import welib.fast.fastlib as fastlib 
 import welib.weio as weio
 from welib.tools.strings import OK, INFO, WARN, FAIL, NOTE
-from welib.tools.strings import prettyMat
+from welib.tools.strings import prettyMat, prettyNum
 
 
 def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
@@ -439,15 +439,76 @@ class KalmanFilter(object):
         return sigX, sigY, sigQ
 
 
-    def setupCovariances(KF, useDt=False, Pidentity=True):
-        # TODO add tuning here
-        dt = None
+    def setupCovariances(KF, 
+                         sigs=None,    # Overrides
+                         tuning=None,  # Tuning
+                         useDt=False, # Options for sigmas
+                         Pidentity=True, # Options for Q
+                         verbose=False,
+                         dt_for_sigQ=None
+                         ):
+        # --- Default arguments
+        dt_for_sig = None
         if useDt:
-            dt = KF.dt
-        # --- Process and measurement covariances
-        KF.P, KF.Q, KF.R = KF.covariancesFromSig(Pidentity=Pidentity, dt=dt)
+            dt_for_sig = KF.dt
+        if dt_for_sigQ is None:
+            dt_for_sigQ = KF.dt
+        if tuning is None:
+            tuning ={}
+        if sigs is None:
+            sigs = {}
 
-    def covariancesFromSig(self, dt=None, Pidentity=True):
+        KF.sigX_c, KF.sigY_c, KF.sigQ_c = KF.sigmasFromClean(factor=1, dt=dt_for_sig)
+
+        # --- Replacing sigmas
+        sigX = sigs.get('x', None)
+        if sigX is not None:
+            for k,v in sigX.items():
+                if k in KF.sigX:
+                    print(f'[INFO] Sig[x][{k:10s}]: {prettyNum(KF.sigX[k])} > {prettyNum(v)}')
+                    KF.sigX[k] = v
+                else:
+                    WARN(f'sigX key {k} is not in sX: ({KF.sX})')
+        sigY = sigs.get('y', None)
+        if sigY is not None:
+            for k,v in sigY.items():
+                if k in KF.sigY:
+                    print(f'[INFO] Sig[y][{k:10s}]: {prettyNum(KF.sigY[k])} > {prettyNum(v)}')
+                    KF.sigY[k] = v
+                else:
+                    WARN(f'sigY key {k} is not in sY: ({KF.sY})')
+        sigQ = sigs.get('Q', None)
+        if sigQ is not None:
+            for k,v in sigQ.items():
+                if k in KF.sigQ:
+                    new_Val = v * KF.dt/dt_for_sigQ
+                    print(f'[INFO] Sig[Q][{k:10s}]: {prettyNum(new_Val)} > {prettyNum(v)}')
+                    KF.sigQ[k] = new_Val
+                else:
+                    WARN(f'sigQ key {k} is not in sX: ({KF.sX})')
+
+        # --- Tuning sigmas
+#         # Tuning physical state tracking vs disturbance rate externally
+#         if 'Qaero' in KF.sigQ and 'kSigQaero' in tuning:
+#             print('[INFO] DigiTwin: Tuning Qaero',tuning['kSigQaero'])
+#             KF.sigQ['Qaero'] *= tuning['kSigQaero']
+#         if 'psi' in KF.sigQ and 'kSigPsi' in tuning:
+#             print('[INFO] DigiTwin: Tuning psi  ',tuning['kSigPsi'])
+#             KF.sigQ['psi']  *= tuning['kSigPsi']    # Boost psi process noise to fix phase lag
+
+        # --- Process and measurement covariances
+        KF.P, KF.Q, KF.R = KF.covariancesFromSig(Pidentity=Pidentity)
+
+        if verbose:
+            KF.print_sigmas()
+
+#         print('>>>> KF.sigX[Qaero]', KF.sigX['Qaero'])
+#         print('>>>> KF.sigQ[Qaero]', KF.sigQ['Qaero'])
+#         print('>>>> KF.dt          ', KF.dt)
+#         print('>>>> KF.Q[16,16]    ', KF.Q[16,16])
+
+
+    def covariancesFromSig(self, Pidentity=True):
         # -- Safety
         has_nanX = any(np.isnan(v) for v in self.sigX.values())
         has_nanY = any(np.isnan(v) for v in self.sigY.values())
@@ -480,13 +541,10 @@ class KalmanFilter(object):
 
         # Process Noise Covariance Q
         Q = np.diag([self.sigQ[lab]**2 for lab in self.sX])
+        # NOTE: technically, we should included dt^2 here, but to allow for tuning and overriding of the sigmas before teh computation of Q, we assume of sigQ already has dt in it.
         # Consistent quadratic scaling: Var = (rate * dt)^2
-        #Q = np.diag([self.sigQ[lab]**2 for lab in self.sX])
-#         if dt is None:
-#         else:
-#             NOTE('covarianceFromSig: dt is used Q')
-#             # sigQ represents rate std dev (units/s) -> step variance is (sigQ * dt)^2
-#             Q = np.diag([(self.sigQ[lab] * dt)**2 for lab in self.sX])
+#       # sigQ represents rate std dev (units/s) -> step variance is (sigQ * dt)^2
+        # Q = np.diag([(self.sigQ[lab] * dt)**2 for lab in self.sX])
 
         return P, Q, R
 
@@ -531,30 +589,28 @@ class KalmanFilter(object):
         sigQ   = getattr(self, 'sigQ', None)
 
         # Print State (X) and Process Noise (Q) Sigmas side by side
-        header_x = 'Sigma X             from clean    to be used'
-        header_q = ' |  Sigma Q             from clean    to be used'
-        print(header_x + header_q)
+        print('Sigma X            clean      for sim | Q      clean      for sim')
 
         for k in self.sX:
             vx = self.sigX.get(k, np.nan)
             vxc = sigX_c.get(k, np.nan) if sigX_c is not None else np.nan
             
-            line_x = 'Sigma {:10s}: {:12.3f}  {:12.3f}'.format(k, vxc, vx)
+            line_x = '{:10s}: {:12.3f} {:12.3f}'.format(k, vxc, vx)
             
             vq  = sigQ.get  (k, np.nan) if sigQ is   not None else np.nan
             vqc = sigQ_c.get(k, np.nan) if sigQ_c is not None else np.nan
             
-            line_q = ' |  Sigma Q {:8s}: {:12.3f}  {:12.3f}'.format(k, vqc, vq)
+            line_q = ' | {:12.3f} {:12.3f}'.format(vqc, vq)
             print(line_x + line_q)
 
 
         # Print Measurement (Y) Sigmas side by side
         print('---')
-        print('Sigma Y             from clean    to be used')
+        print('Sigma Y            clean      for sim')
         for k in self.sY:
             vy = self.sigY.get(k, np.nan)
             vyc = sigY_c.get(k, np.nan) if sigY_c is not None else np.nan
-            print('Sigma {:10s}: {:12.3f}  {:12.3f}'.format(k, vyc, vy))
+            print('{:10s}: {:12.3f} {:12.3f}'.format(k, vyc, vy))
 
         s = ''
         if getattr(self, 'Q', None) is not None:

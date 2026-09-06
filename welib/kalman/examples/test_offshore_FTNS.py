@@ -101,28 +101,27 @@ def main(sWT='FTNS',test=False):
 #     tuning['kSigPsi']     = 1  # Tuning of covariance for psi
 #     tuning['kSigQaero']   = 10  # Tuning of covariance for aero torque
 
-    sigXDict={}
-    sigQDict={}
+    sigs = {'x':{}, 'y':{}, 'Q':{}}
 #     sigXDict['Qaero'] = 750000.000
     dt_for_sigQ = 0.05
-    sigQDict['Qaero'] = 700000.000
-    sigQDict['x']        =       0.270*10  #       0.270
-    sigQDict['y']       =        0.020*1   #       0.020
-    sigQDict['z']       =        0.065*1   #       0.065
-    sigQDict['phi_x']   =        0.000     #       0.000
-    sigQDict['phi_y']   =        0.002     #       0.002
-    sigQDict['phi_z']   =        0.002     #       0.002
-    sigQDict['q_FA1']   =        0.007*1   #       0.007
-    sigQDict['psi']     =        0.085     #       0.085
-    sigQDict['dx']      =        0.007     #       0.007
-    sigQDict['dy']      =        0.000     #       0.000
-    sigQDict['dz']      =        0.006     #       0.006
-    sigQDict['dphi_x']  =        0.000     #       0.000
-    sigQDict['dphi_y']  =        0.000     #       0.000
-    sigQDict['dphi_z']  =        0.000     #       0.000
-    sigQDict['dq_FA1']  =        0.019     #       0.019
-    sigQDict['dpsi']    =        0.001     #       0.001
-    sigQDict['Qaero']   =   700000.000     #  700000.000
+    sigs['Q']['Qaero'] = 700000.000
+    sigs['Q']['x']        =       0.270*10  #       0.270
+    sigs['Q']['y']       =        0.020*1   #       0.020
+    sigs['Q']['z']       =        0.065*1   #       0.065
+    sigs['Q']['phi_x']   =        0.000     #       0.000
+    sigs['Q']['phi_y']   =        0.002     #       0.002
+    sigs['Q']['phi_z']   =        0.002     #       0.002
+    sigs['Q']['q_FA1']   =        0.007*1   #       0.007
+    sigs['Q']['psi']     =        0.085     #       0.085
+    sigs['Q']['dx']      =        0.007     #       0.007
+    sigs['Q']['dy']      =        0.000     #       0.000
+    sigs['Q']['dz']      =        0.006     #       0.006
+    sigs['Q']['dphi_x']  =        0.000     #       0.000
+    sigs['Q']['dphi_y']  =        0.000     #       0.000
+    sigs['Q']['dphi_z']  =        0.000     #       0.000
+    sigs['Q']['dq_FA1']  =        0.019     #       0.019
+    sigs['Q']['dpsi']    =        0.001     #       0.001
+    sigs['Q']['Qaero']   =   700000.000     #  700000.000
 
 
 
@@ -147,7 +146,7 @@ def main(sWT='FTNS',test=False):
     # --- Load measurement data (given time series)
     DT.setupMeasurementData(MeasFile, tRange=tRange, nUnderSamp=nUnderSamp, bFilterAcc=bFilterAcc, nFilt=nFilt, NoiseRFactor=NoiseRFactor)
 
-    DT.setupCovariances(tuning=tuning, useDt=useDtForCov, Pidentity=Pidentity, sigXDict=sigXDict, sigQDict=sigQDict, dt_for_sigQ=dt_for_sigQ, verbose=True)
+    DT.SE.setupCovariances(useDt=useDtForCov, Pidentity=Pidentity, sigs=sigs, dt_for_sigQ=dt_for_sigQ, verbose=True)
 
 
     # --- Perform digital twin simulation for that measurement timeseries
