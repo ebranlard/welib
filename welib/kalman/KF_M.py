@@ -27,6 +27,8 @@ class KalmanFilterMonopile(KalmanFilter):
         sS  = ['M_sb','F_sb', 'eta', 'Fhx']
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
 
+        #KF.YSL = YSL # YAMS SECTION LOAD ESTIMATOR
+
     def setup_matrices(KF, fstFilename=None, shapes_sub=None, hydroShape=None, Tp=None,
               zeta =0.12, qdhScale=1,#Tuning
               ):
@@ -117,10 +119,25 @@ class KalmanFilterMonopile(KalmanFilter):
                 'qd_p'   : 'QD_P_[rad/s]'
             }
 
+        # --- YAMS section load estimator
+        #if KF.YSL is not None:
+        #    KF.WSL.WT=WT
+        #KF.YSL = YSL 
+
+    
+    #def loadMeasurements(KF, **kwargs):
+    #    KalmanFilter.loadMeasurements(KF, **kwargs) # Call parent function
+    #    if KF.YSL is not None:
+    #        KF.YSL.setupReferenceData(df, tRange=None, dt_resample=None):
+
 
     def timeLoop(KF):
         # --- Aliases to shorten notations
         WT = KF.WT
+
+        # Prepare section output calculation
+        #KF.YSL.prepareTimeStepping(useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False, accMissing='warn')
+        #dInfo = WT.calcOutputsFromDF_init(df, accMissing='warn')
 
         # --- Initial conditions
         x = KF.initFromClean()

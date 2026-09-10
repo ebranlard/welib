@@ -1172,15 +1172,15 @@ class WindTurbineStructure():
         """
 
         # --- Initialize (returns dict with all the data useful for time stepping)
-        dInit = WT.calcOutputsFromDF_init(df, noAcc=noAcc, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, 
+        dInfo = WT.calcOutputsFromDF_init(df, noAcc=noAcc, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, 
                                           accMissing=accMissing)
 
-        return WT.calcOutputsFromDF_loop(df, dInit)
+        return WT.calcOutputsFromDF_loop(df, dInfo)
 
     def calcOutputsFromDF_init(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
         """ 
         Given a dataFrame containing time series of DOF, initialize the
-        computation of outputs. Returns a dict `dInit` with all the data useful
+        computation of outputs. Returns a dict `dInfo` with all the data useful
         for time stepping (see calcOutputsFromDF_step) and for generating the
         final outputs dataframe.
 
@@ -1196,47 +1196,15 @@ class WindTurbineStructure():
 
         ed = ElastoDyn(WT.ED)
 
-
-        if len(df)==0:
-            raise Exception('No Data in dataframe, make sure you selected a proper time range')
-
-        df = WT._insertOFDOFsInDF(df, verbose=False, accMissing=accMissing)
-        df = df.reset_index(drop=True)
-
-        # --- States
+        # --------------------------------------------------------------------------------}
+        # --- Output Columns
+        # --------------------------------------------------------------------------------{
+        # --- Outputs
+        colOut = ['Time_[s]']
+        # States
         sq   = [ "Q_Sg_[m]"       , "Q_Sw_[m]"       , "Q_Hv_[m]"       , "Q_R_[rad]"       , "Q_P_[rad]"       , "Q_Y_[rad]"       , "Q_TFA1_[m]"      , "Q_TFA2_[m]"       , "Q_TSS1_[m]"       , "Q_TSS2_[m]"       , "Q_Yaw_[rad]"       , "Q_GeAz_[rad]"]
         sqd  = [ "QD_Sg_[m/s]"    , "QD_Sw_[m/s]"    , "QD_Hv_[m/s]"    , "QD_R_[rad/s]"    , "QD_P_[rad/s]"    , "QD_Y_[rad/s]"    , "QD_TFA1_[m/s]"   , "QD_TFA2_[m/s]"    , "QD_TSS1_[m/s]"    , "QD_TSS2_[m/s]"    , "QD_Yaw_[rad/s]"    , "QD_GeAz_[rad/s]"]
         sqdd = [ "QD2_Sg_[m/s^2]" , "QD2_Sw_[m/s^2]" , "QD2_Hv_[m/s^2]" , "QD2_R_[rad/s^2]" , "QD2_P_[rad/s^2]" , "QD2_Y_[rad/s^2]" , "QD2_TFA1_[m/s^2]", "QD2_TFA2_[m/s^2]" , "QD2_TSS1_[m/s^2]" , "QD2_TSS2_[m/s^2]" , "QD2_Yaw_[rad/s^2]" , "QD2_GeAz_[rad/s^2]"]
-        missing_dofs = set(sq+sqd+sqdd) - set(df.columns)
-        if len(missing_dofs)>0:
-            raise Exception(f'Some DOFS are missing from dataframe, implementation error {missing_dofs}')
-
-        if 'Fadd_R_xs' in df.keys():
-            NOTE('Using additional forces (in nonrotating shaft system) to compute tower top loads')
-            useTopLoadsFromDF =False
-        elif 'Fadd_R_xh' in df.keys():
-            NOTE('Using additional forces (in rotating hub system) to compute tower top loads')
-            useTopLoadsFromDF =False
-        elif useTopLoadsFromDF: 
-            NOTE('Using prescribed input forces for tower top loads')
-
-        # --- DOFs
-        Q   = df[sq]
-        QD  = df[sqd]
-        QDD = df[sqdd]
-        # TODO TODO Sort out issue of convention in OpenFAST
-        Q['Q_TSS1_[m]']      *= -1
-        QD['QD_TSS1_[m/s]']  *= -1
-        QDD['QD2_TSS1_[m/s^2]'] *= -1
-        DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw','Psi']
-        Q.columns   = DOFNames_Short
-        QD.columns  = DOFNames_Short
-        QDD.columns = DOFNames_Short
-        if noAcc:
-            QDD *=0
-
-        # --- Outputs
-        colOut = ['Time_[s]']
         colOut += sq + sqd + sqdd
         # IMU
         colOut += ['NcIMUTVxs_[m/s]'     , 'NcIMUTVys_[m/s]'     , 'NcIMUTVzs_[m/s]']
@@ -1273,25 +1241,63 @@ class WindTurbineStructure():
 
         # --- Optional monopile section outputs
         hasMonopile = False
-        mnp_labels    = None
-        mnp_zDepthOut = None
-        mnp_IOut      = None
+        mnp_Out_df = None
         if isinstance(WT.fnd, BeamBody):
             hasMonopile = True
             NOTE('This is a monopile simulation')
-            mnp_labels    = list(WT.fnd.SD.pointsMNout.index)
-            mnp_df        = WT.fnd.SD.beamDataFrame()
-            np.testing.assert_allclose(mnp_df['z']-mnp_df['z'][0], WT.fnd.s_span )
-            for label in mnp_labels:
+            mnp_Out_df = WT.fnd.SD.beamSecOutputsInfo(h_in = WT.fnd.s_span, lbl_in='YAMS')
+            for label in mnp_Out_df['Lbl']:
                 colOut += [f'{label}FKxe_[N]', f'{label}FKye_[N]', f'{label}FKze_[N]']
                 colOut += [f'{label}MKxe_[N*m]', f'{label}MKye_[N*m]', f'{label}MKze_[N*m]']
-            mnp_zDepthOut = [WT.fnd.SD.pointsMNout.loc[label, 'z'] for label in mnp_labels]
-            mnp_IOut = [np.argmin(np.abs(mnp_df['z'] - WT.fnd.SD.pointsMNout.loc[label, 'z'])) for label in mnp_labels]
 
         # --- Optional Sea state outputs
         if WT.pSS is not None:
             colOut += ['Wave1Elev_[m]']
             colOut += ['HydroFxi_[N]']
+
+
+
+
+
+
+        # --------------------------------------------------------------------------------}
+        # --- Time stepping things 
+        # --------------------------------------------------------------------------------{
+        if len(df)==0:
+            raise Exception('No Data in dataframe, make sure you selected a proper time range')
+
+        df = WT._insertOFDOFsInDF(df, verbose=False, accMissing=accMissing)
+        df = df.reset_index(drop=True)
+
+        # --- States
+        missing_dofs = set(sq+sqd+sqdd) - set(df.columns)
+        if len(missing_dofs)>0:
+            raise Exception(f'Some DOFS are missing from dataframe, implementation error {missing_dofs}')
+
+        if 'Fadd_R_xs' in df.keys():
+            NOTE('Using additional forces (in nonrotating shaft system) to compute tower top loads')
+            useTopLoadsFromDF =False
+        elif 'Fadd_R_xh' in df.keys():
+            NOTE('Using additional forces (in rotating hub system) to compute tower top loads')
+            useTopLoadsFromDF =False
+        elif useTopLoadsFromDF: 
+            NOTE('Using prescribed input forces for tower top loads')
+
+        # --- DOFs
+        Q   = df[sq]
+        QD  = df[sqd]
+        QDD = df[sqdd]
+        # TODO TODO Sort out issue of convention in OpenFAST
+        Q['Q_TSS1_[m]']      *= -1
+        QD['QD_TSS1_[m/s]']  *= -1
+        QDD['QD2_TSS1_[m/s^2]'] *= -1
+        DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw','Psi']
+        Q.columns   = DOFNames_Short
+        QD.columns  = DOFNames_Short
+        QDD.columns = DOFNames_Short
+        if noAcc:
+            QDD *=0
+
 
         #dfOut = pd.DataFrame(index=df.index, columns=colOut, dtype=float)
         dfOut = WEIODataFrame(index=df.index, columns=colOut, dtype=float)
@@ -1308,47 +1314,44 @@ class WindTurbineStructure():
             mnp_F_sec = np.zeros((6, len(WT.fnd.s_span), len(df))) 
             if useInterfaceLoadsFromDF:
                 WARN('Prescribing interface loads')
-                # try to see if columns are present for  
+                # try to see if columns are present, to warn the user
                 F_top_mnp, M_top_mnp = interfaceLoadsFromDF(df.iloc[0], fallbackF=None, fallbackM=None, raiseError=True, verbose=True)
 
 
-        gravity_vec = np.array([0,0,-WT.gravity])
-
         # --- Store initialization data (returned and stored in WT.calcOut)
-        dInit = OrderedDict()
-        dInit['ed']    = ed
-        dInit['df']    = df
-        dInit['sq']    = sq
-        dInit['sqd']   = sqd
-        dInit['sqdd']  = sqdd
-        dInit['Q']     = Q
-        dInit['QD']    = QD
-        dInit['QDD']   = QDD
-        dInit['colOut']                = colOut
-        dInit['dfOut']                 = dfOut
-        dInit['twr_Out_df']            = twr_Out_df
-        dInit['hasMonopile']           = hasMonopile
-        dInit['mnp_labels']            = mnp_labels
-        dInit['mnp_zDepthOut']         = mnp_zDepthOut
-        dInit['mnp_IOut']              = mnp_IOut
-        dInit['twr_F_sec']             = twr_F_sec
-        dInit['mnp_F_sec']             = mnp_F_sec
-        dInit['gravity_vec']           = gravity_vec
-        dInit['useTopLoadsFromDF']        = useTopLoadsFromDF
-        dInit['useInterfaceLoadsFromDF'] = useInterfaceLoadsFromDF
-        WT.calcOut = dInit # Store in WT for user convenience
+        dInfo = OrderedDict()
+        dInfo['ed']    = ed
+        dInfo['df']    = df
+        dInfo['Q']     = Q
+        dInfo['QD']    = QD
+        dInfo['QDD']   = QDD
+        dInfo['dfOut']                 = dfOut
 
-        return dInit
+        dInfo['sq']    = sq
+        dInfo['sqd']   = sqd
+        dInfo['sqdd']  = sqdd
+        dInfo['colOut']                = colOut
+        dInfo['twr_Out_df']            = twr_Out_df
+        dInfo['mnp_Out_df']            = mnp_Out_df
+        dInfo['hasMonopile']           = hasMonopile
+        dInfo['twr_F_sec']             = twr_F_sec
+        dInfo['mnp_F_sec']             = mnp_F_sec
+        dInfo['gravity_vec']           = np.array([0,0,-WT.gravity])
+        dInfo['useTopLoadsFromDF']        = useTopLoadsFromDF
+        dInfo['useInterfaceLoadsFromDF'] = useInterfaceLoadsFromDF
+        WT.calcOut = dInfo # Store in WT for user convenience
 
-    def calcOutputsFromDF_step(WT, dInit, it, t):
+        return dInfo
+
+    def calcOutputsFromDF_step(WT, q, qd, qdd, dInfo, t, ser_Loads=None):
         """ 
         Compute outputs at a given time step using data pre-initialized by
         calcOutputsFromDF_init.
 
         INPUTS:
-         - dInit: data returned by calcOutputsFromDF_init
-         - it   : time step index
+         - dInfo: data returned by calcOutputsFromDF_init
          - t    : time [s]
+         - ser_Loads: pandas seris of prescribed loads
 
         RETURN:
          - rowOut     : pandas Series with all the outputs for this time step
@@ -1356,29 +1359,18 @@ class WindTurbineStructure():
          - mnp_F_sec  : (6, nSpan) monopile section loads, Forces then Moments, or None
         """
         # --- Local aliases
-        Q     = dInit['Q']
-        QD    = dInit['QD']
-        QDD   = dInit['QDD']
-        df    = dInit['df']
-        sq    = dInit['sq']
-        sqd   = dInit['sqd']
-        sqdd  = dInit['sqdd']
-        colOut         = dInit['colOut']
-        twr_Out_df     = dInit['twr_Out_df']
-        hasMonopile    = dInit['hasMonopile']
-        mnp_labels     = dInit['mnp_labels']
-        mnp_IOut       = dInit['mnp_IOut']
-        mnp_zDepthOut  = dInit['mnp_zDepthOut']
-        gravity_vec    = dInit['gravity_vec']
-        useTopLoadsFromDF       = dInit['useTopLoadsFromDF']
-        useInterfaceLoadsFromDF = dInit['useInterfaceLoadsFromDF']
+        df             = dInfo['df']
+        sq             = dInfo['sq']
+        sqd            = dInfo['sqd']
+        sqdd           = dInfo['sqdd']
+        twr_Out_df     = dInfo['twr_Out_df']
+        mnp_Out_df     = dInfo['mnp_Out_df']
+        hasMonopile    = dInfo['hasMonopile']
+        gravity_vec    = dInfo['gravity_vec']
 
-        rowOut = pd.Series(index=colOut, dtype=float)
+        rowOut = pd.Series(index=dInfo['colOut'], dtype=float)
 
         # --- Main DOFs
-        q   = Q.iloc[it,:].copy() # TODO TODO TODO TODOTO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        qd  = QD.iloc[it,:].copy()
-        qdd = QDD.iloc[it,:].copy()
         rowOut['Time_[s]'] = t
         rowOut[sq]   = q.values
         rowOut[sqd]  = qd.values
@@ -1459,7 +1451,6 @@ class WindTurbineStructure():
         # --------------------------------------------------------------------------------}
         # --- Loads
         # --------------------------------------------------------------------------------{
-        rowDF_in = df.iloc[it] # Prescribed loads from input 
         Mrna        = WT.RNA_noYawBr.mass
         JGrna       = WT.RNA_noYawBr.masscenter_inertia
         JGrna_g     = (R_g2n.T).dot(JGrna).dot(R_g2n)
@@ -1503,8 +1494,8 @@ class WindTurbineStructure():
 
 #                 # ---  Extract Generator Torque from DataFrame (Convert kN-m to N-m)
 #                 # Note: gentq_[kN-m] is positive in the shaft rotation direction
-# #                 if 'GenTq_[kN-m]' in rowDF_in.index:
-#                     M_gen = rowDF_in['GenTq_[kN-m]'] * 1000.0 * WT.ED['GBRatio']
+# #                 if 'GenTq_[kN-m]' in ser_Loads.index:
+#                     M_gen = ser_Loads['GenTq_[kN-m]'] * 1000.0 * WT.ED['GBRatio']
 # #                 else:
 # #                     M_gen = 0.0
 #                 # Drivetrain / Generator inertia torque reaction
@@ -1519,28 +1510,29 @@ class WindTurbineStructure():
 #                     M_N -= (T_gen_inertia) * x_s_g
 
         # --- Aero force
-        if 'Fadd_R_xs' in df.keys():
-            R_g2s = dd['R_g2s']
-            Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],rowDF_in['Fadd_R_ys'],rowDF_in['Fadd_R_zs']))
-            Madd_R_in_g = R_g2s.T.dot((rowDF_in['Madd_R_xs'],rowDF_in['Madd_R_ys'],rowDF_in['Madd_R_zs']))
-            #r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
-            r_NR_in_g = R_g2n.T.dot(WT.rot.pos_global) # actually not pos_global but from N
-            Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
-            Fadd_N = Fadd_R_in_g
-            Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
-            F_N += Fadd_N
-            M_N += Madd_N
-        elif 'Fadd_R_xh' in df.keys():
-            R_g2h = dd['R_g2h']
-            Fadd_R_in_g = R_g2h.T.dot((rowDF_in['Fadd_R_xh'],rowDF_in['Fadd_R_yh'],rowDF_in['Fadd_R_zh']))
-            Madd_R_in_g = R_g2h.T.dot((rowDF_in['Madd_R_xh'],rowDF_in['Madd_R_yh'],rowDF_in['Madd_R_zh']))
-            r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
-            r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
-            Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
-            Fadd_N = Fadd_R_in_g
-            Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
-            F_N += Fadd_N
-            M_N += Madd_N
+        if ser_Loads is not None:
+            if 'Fadd_R_xs' in ser_Loads.keys():
+                R_g2s = dd['R_g2s']
+                Fadd_R_in_g = R_g2s.T.dot((ser_Loads['Fadd_R_xs'],ser_Loads['Fadd_R_ys'],ser_Loads['Fadd_R_zs']))
+                Madd_R_in_g = R_g2s.T.dot((ser_Loads['Madd_R_xs'],ser_Loads['Madd_R_ys'],ser_Loads['Madd_R_zs']))
+                #r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+                r_NR_in_g = R_g2n.T.dot(WT.rot.pos_global) # actually not pos_global but from N
+                Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+                Fadd_N = Fadd_R_in_g
+                Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
+                F_N += Fadd_N
+                M_N += Madd_N
+            elif 'Fadd_R_xh' in df.keys():
+                R_g2h = dd['R_g2h']
+                Fadd_R_in_g = R_g2h.T.dot((ser_Loads['Fadd_R_xh'],ser_Loads['Fadd_R_yh'],ser_Loads['Fadd_R_zh']))
+                Madd_R_in_g = R_g2h.T.dot((ser_Loads['Madd_R_xh'],ser_Loads['Madd_R_yh'],ser_Loads['Madd_R_zh']))
+                r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+                r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
+                Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+                Fadd_N = Fadd_R_in_g
+                Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
+                F_N += Fadd_N
+                M_N += Madd_N
         F_N_p = R_g2p.dot(F_N)
         M_N_p = R_g2p.dot(M_N)
 
@@ -1552,8 +1544,8 @@ class WindTurbineStructure():
         rowOut['YawBrMzp_[kN-m]'] = M_N_p[2]/1000
 
         # --- Override F_N and M_N from DataFrame for debug only
-        if useTopLoadsFromDF:
-            F_N_p2, M_N_p2 = yawBrakeLoadsFromRow(rowDF_in, fallbackF=F_N_p, fallbackM=M_N_p)
+        if dInfo['useTopLoadsFromDF']:
+            F_N_p2, M_N_p2 = yawBrakeLoadsFromRow(ser_Loads, fallbackF=F_N_p, fallbackM=M_N_p)
             F_N = (R_g2p.T).dot(F_N_p2)
             M_N = (R_g2p.T).dot(M_N_p2)
         
@@ -1611,8 +1603,8 @@ class WindTurbineStructure():
         mnp_F_sec_it = None
         if hasMonopile:
             # --- Override Interface loads DataFrame for debug only
-            if useInterfaceLoadsFromDF:
-                F_top_mnp, M_top_mnp = interfaceLoadsFromDF(rowDF_in, fallbackF=F_sec[:, 0].copy(), fallbackM=M_sec[:, 0].copy())
+            if dInfo['useInterfaceLoadsFromDF']:
+                F_top_mnp, M_top_mnp = interfaceLoadsFromDF(ser_Loads, fallbackF=F_sec[:, 0].copy(), fallbackM=M_sec[:, 0].copy())
             else:
                 F_top_mnp, M_top_mnp = F_sec[:, 0].copy(), M_sec[:, 0].copy()
 
@@ -1623,7 +1615,7 @@ class WindTurbineStructure():
                                                          F_top=F_top_mnp, M_top=M_top_mnp, reconHydro=False)
             if F_mnp is not None:
                 mnp_F_sec_it = F_mnp
-                for label, iz, zOut in zip(mnp_labels, mnp_IOut, mnp_zDepthOut):
+                for label, iz, z in zip(mnp_Out_df['Lbl'], mnp_Out_df['i'], mnp_Out_df['z']):
                     rowOut[f'{label}FKxe_[N]']   = F_mnp[0, iz]
                     rowOut[f'{label}FKye_[N]']   = F_mnp[1, iz]
                     rowOut[f'{label}FKze_[N]']   = F_mnp[2, iz]
@@ -1638,7 +1630,7 @@ class WindTurbineStructure():
         return rowOut, twr_F_sec_it, mnp_F_sec_it
 
 
-    def calcOutputsFromDF_loop(WT, df, dInit):
+    def calcOutputsFromDF_loop(WT, df, dInfo):
         """ 
         Given a dataFrame containing time series of DOF
         Compute outputs using OpenFAST Naming Convention, by initializing
@@ -1660,12 +1652,12 @@ class WindTurbineStructure():
         from welib.tools.tictoc import Timer
 
         # --- Aliases
-        dfOut       = dInit['dfOut']
-        twr_F_sec  = dInit['twr_F_sec']
-        mnp_F_sec  = dInit['mnp_F_sec']
-        hasMonopile = dInit['hasMonopile']
+        dfOut       = dInfo['dfOut']
+        twr_F_sec  = dInfo['twr_F_sec']
+        mnp_F_sec  = dInfo['mnp_F_sec']
+        hasMonopile = dInfo['hasMonopile']
 
-        df = dInit['df']
+        df_ref = dInfo['df']
         sTime = 'Time_[s]' 
         if sTime not in df:
             sTime ='Time'
@@ -1674,12 +1666,18 @@ class WindTurbineStructure():
 
 
         # --- Calc Output per time step
-        with Timer('Time Loop'):
-            for it,t in enumerate(df[sTime]):
+        with Timer('Time Loop calc Outputs'):
+            for it,t in enumerate(df_ref[sTime]):
                 if np.mod(it,1000)==0:
-                    print(f'Time Loop {it}/{len(dInit["df"])}')
+                    print(f'Time Loop {it}/{len(df_ref)}')
 
-                rowOut, twr_it, mnp_it = WT.calcOutputsFromDF_step(dInit, it, t)
+                q   = dInfo['Q'].iloc[it,:].copy() 
+                qd  = dInfo['QD'].iloc[it,:].copy()
+                qdd = dInfo['QDD'].iloc[it,:].copy()
+
+                rowIn = df_ref.loc[it]
+
+                rowOut, twr_it, mnp_it = WT.calcOutputsFromDF_step(q, qd, qdd, dInfo, t=t, ser_Loads = rowIn)
                 dfOut.loc[it] = rowOut
                 twr_F_sec[:, :, it] = twr_it
                 if hasMonopile and mnp_it is not None:
@@ -1701,7 +1699,7 @@ class WindTurbineStructure():
             spans.append(sections['monopile']['z'])
             loads.append(sections['monopile']['F_sec'])
 
-            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(dInit['df'], verbose=False)
+            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(dInfo['df'], verbose=False)
             sections['monopile'].update({'zRef': zBeamRef, 'F_secRef':F_secRef})
             spansRef.append(sections['monopile']['zRef'])
             loadsRef.append(sections['monopile']['F_secRef'])
@@ -1711,7 +1709,7 @@ class WindTurbineStructure():
             sections['tower'] = {'z': WT.twr.s_span+WT.ED['TowerBsHt'], 'F_sec': twr_F_sec}
             spans.append(sections['tower']['z']    )
             loads.append(sections['tower']['F_sec'])
-            zRef, F_secRef, r_secRef =  dInit['ed'].twrSecOutputs(dInit['df'], verbose=False)
+            zRef, F_secRef, r_secRef =  dInfo['ed'].twrSecOutputs(dInfo['df'], verbose=False)
             sections['tower'].update({'zRef': zRef, 'F_secRef':F_secRef})
             spansRef.append(sections['tower']['zRef'])
             loadsRef.append(sections['tower']['F_secRef'])

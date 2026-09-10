@@ -38,7 +38,6 @@ class YAMSSectionLoadCalculator():
             sLoads = ['Fadd_R_xs', 'Madd_R_xs']
             cols = ['Time_[s]']+q_qd_qd2_of +sLoads
         else:
-            # TODO use OpenFAST Units
             DOFNames = ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
             sq   = ['Q_'+s for s in DOFNames]
             sqd  = ['QD_'+s for s in DOFNames]
@@ -54,18 +53,8 @@ class YAMSSectionLoadCalculator():
         df   = pd.DataFrame(columns=cols, data=data)
         return df
 
-    def fromDF(self, df, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False, dt_resample=None, tRange=None, accMissing='raise'):
-        """Compute OpenFAST-like section-load outputs in a single call.
-
-        Typical usage:
-            YSL = YAMSSectionLoadCalculator(fstFile=fstFile)
-            dfOut = YSL.calc(dfIn)
-
-        For monopile/foundation section outputs:
-            dfOut, sections = YSL.fromSD(dfIn)
-        """
+    def setupReferenceData(self, df, tRange=None, dt_resample=None):
         from scipy.interpolate import interp1d
-
 
         if tRange is not None:
             df=df[df['Time_[s]']>=tRange[0]]
@@ -79,11 +68,28 @@ class YAMSSectionLoadCalculator():
             df = pd.DataFrame(f(t_new), columns=df.columns.drop('Time_[s]'))
             df.insert(0, 'Time_[s]', t_new)
 
-        df = WEIODataFrame(df) # Case incensitive
-        self.dfRef = df
+        dfRef = WEIODataFrame(df) # Case incensitive
+        self.dfRef = dfRef
+        return df
+
+    def prepareTimeStepping(self, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False, accMissing='raise'):
+        self.dInfo = self.WT.calcOutputsFromDF_init(self.dfRef, noAcc=noAcc, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, 
+                                          accMissing=accMissing)
+
+    def fromDF(self, df, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False, dt_resample=None, tRange=None, accMissing='raise'):
+        """Compute OpenFAST-like section-load outputs in a single call.
+
+        Typical usage:
+            YSL = YAMSSectionLoadCalculator(fstFile=fstFile)
+            dfOut = YSL.calc(dfIn)
+
+        For monopile/foundation section outputs:
+            dfOut, sections = YSL.fromSD(dfIn)
+        """
+        dfRef = self.setupReferenceData(df, dt_resample=dt_resample, tRange=tRange)
 
 
-        dfOut, sections = self.WT.calcOutputsFromDF(df, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, noAcc=noAcc,
+        dfOut, sections = self.WT.calcOutputsFromDF(dfRef, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, noAcc=noAcc,
                                                     accMissing=accMissing)
 
         self.dfOut = dfOut

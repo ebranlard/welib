@@ -276,7 +276,7 @@ if __name__ == '__main__':
     #statsMoments = main(sWT='FTNS', test=False)
     #statsMoments = main(sWT='Spar', test=False)
 
-    plt.show()
+#     plt.show()
 
 
 # x          σ_est/σ_ref = 1.013 - ε=2.0% - R²=0.992
