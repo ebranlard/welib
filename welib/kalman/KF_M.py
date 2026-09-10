@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 from welib.essentials import *
 from welib.kalman.kalman import BuildSystem_Linear_MechOnly 
 from welib.kalman.kalmanfilter import KalmanFilter
-from welib.kalman.kalman_model import AugmentedLinModel
 
 from welib.weio.fast_linearization_file import FASTLinearizationFile
 from welib.yams.section_loads import beamSectionLoadsFromShapeFunctions
@@ -14,32 +13,21 @@ from welib.yams.models.MTNSB import FASTmodel2MTNSB
 from welib.yams.windturbine import monopileSetupFromOpenFAST
 
 # --------------------------------------------------------------------------------}
-# -- Augmented Linear Model 
+# -- Kalman Filter 
 # --------------------------------------------------------------------------------{
-class KalmanModelMonopile(AugmentedLinModel):
+# The parts that change from model to model are the time loop, potentially the measurement preps and postprocessing
 
-    def __init__(KM, *args, **kwargs):
-        """ 
-        See AugmentedLinModel for main data (e.g. sX, A)
-        Additional data specific to this model:
-          - WT
-          - zDepth
-          - pHD
-          - zeta, qdhScale
-        """
-        AugmentedLinModel.__init__(KM)
+class KalmanFilterMonopile(KalmanFilter):
 
-        # --- Define names of physical states, augmented states, measurements, and inputs
-        KM.sQ  = ['q_s','q_p','qd_s', 'qd_p']
-        KM.sQa = ['q_h', 'qd_h']
-        KM.sY  = ['TTacc']
-        KM.sY += ['q_p']
-        KM.sU  = ['w'] # White noise
-        KM.sS  = ['M_sb','F_sb', 'eta', 'Fhx']
+    def __init__(KF, debug=False):
+        sQ  = ['q_s','q_p','qd_s', 'qd_p']
+        sQa = ['q_h', 'qd_h']
+        sY  = ['TTacc', 'q_p']
+        sU  = ['w'] # White noise
+        sS  = ['M_sb','F_sb', 'eta', 'Fhx']
+        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
 
-        KM.setup(*args, **kwargs)
-
-    def setup(KM, fstFilename=None, shapes_sub=None, hydroShape=None, Tp=None,
+    def setup_matrices(KF, fstFilename=None, shapes_sub=None, hydroShape=None, Tp=None,
               zeta =0.12, qdhScale=1,#Tuning
               ):
         # --- Default arguments
@@ -66,16 +54,16 @@ class KalmanModelMonopile(AugmentedLinModel):
         # pST, pSS, pHD, Sys, WT, ref = monopileSetupFromOpenFAST(fstFilename, shapes_sub=shapes_sub, TMIN=tRange[0], TMAX=tRange[1], nSubSample=nUnderSamp, hydroShape=hydroShape, reconHydro=True)
         # WT.fnd = WT.twr
 
-        KM.WT = WT
-        KM.pHD = pHD
+        KF.WT = WT
+        KF.pHD = pHD
 
         # --- Parameters that are a function of the structure and ocean conditions
-        KM.zDepth = WT.fnd.s_span - WT.WtrDpth
+        KF.zDepth = WT.fnd.s_span - WT.WtrDpth
 
         # --- Setup state matrices, problem specific!
         # State matrix A from MCK
         # Empty inputs/outputs B,C,D
-        A,B,C,D = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK, nP=len(KM.sQa), nU=len(KM.sU), nY=len(KM.sY), Fp=None)
+        A,B,C,D = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK, nP=len(KF.sXa), nU=len(KF.sU), nY=len(KF.sY), Fp=None)
 
         # print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> USING A LIN')
         # linFile = '../simulations/MT100/00_EVA/OF_NoHydro.2.lin'
@@ -87,36 +75,36 @@ class KalmanModelMonopile(AugmentedLinModel):
         # AlinH = dfAH.loc[SX,SX]
         # A[:4,:4] = Alin.values[:4,:4]
         # A[:4,:4] = AlinH.values[:4,:4]
-        KM.qdhScale = qdhScale
+        KF.qdhScale = qdhScale
 
         Minv = np.linalg.inv(WT.MM)
-        IQD   =[KM.iX['qd_s'], KM.iX['qd_p']]
-        A[IQD, KM.iX['qd_h']]  = Minv @ (pHD['k_h'][0], pHD['k_h'][1])*KM.qdhScale  # qd_h influence in mech DOF
+        IQD   =[KF.iX['qd_s'], KF.iX['qd_p']]
+        A[IQD, KF.iX['qd_h']]  = Minv @ (pHD['k_h'][0], pHD['k_h'][1])*KF.qdhScale  # qd_h influence in mech DOF
 
-        B[KM.iX['qd_h'], KM.iU['w']] = 1 # White noise
+        B[KF.iX['qd_h'], KF.iU['w']] = 1 # White noise
 
-        C[KM.iY['TTacc'], :] = A[KM.iX['qd_s'],:] # TTacc is assumed to be qdd_s
-        D[KM.iY['TTacc'], :] = B[KM.iX['qd_s'],:] # TTacc is assumed to be qdd_s
-        C[KM.iY['q_p'], KM.iX['q_p']] = 1
+        C[KF.iY['TTacc'], :] = A[KF.iX['qd_s'],:] # TTacc is assumed to be qdd_s
+        D[KF.iY['TTacc'], :] = B[KF.iX['qd_s'],:] # TTacc is assumed to be qdd_s
+        C[KF.iY['q_p'], KF.iX['q_p']] = 1
 
 
         # --- HYDRO STATE EQ - See Script 180
         if Tp==12.7:
-            KM.Sw= 2.3835e-01
+            KF.Sw= 2.3835e-01
         elif Tp==10.0:
-            KM.Sw= 2.3835e-01/2
+            KF.Sw= 2.3835e-01/2
         else:
             raise NotImplementedError()
-        KM.omega_p = 2*np.pi/Tp
-        KM.zeta = zeta
-        print('omega_p^2', KM.omega_p**2, '2 zeta omega_p', 2*KM.zeta*KM.omega_p)
-        A[KM.iX['q_h'], KM.iX['qd_h']]  = 1
-        A[KM.iX['qd_h'], KM.iX['q_h']]  = -KM.omega_p**2
-        A[KM.iX['qd_h'], KM.iX['qd_h']]  = -2*KM.zeta*KM.omega_p
+        KF.omega_p = 2*np.pi/Tp
+        KF.zeta = zeta
+        print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
+        A[KF.iX['q_h'], KF.iX['qd_h']]  = 1
+        A[KF.iX['qd_h'], KF.iX['q_h']]  = -KF.omega_p**2
+        A[KF.iX['qd_h'], KF.iX['qd_h']]  = -2*KF.zeta*KF.omega_p
 
-        KM.A, KM.B, KM.C, KM.D = A, B, C, D
+        KF.setMat(A, B, C, D)
 
-        KM.colMap={
+        KF.colMap={
                 'q_s'    : 'Q_Sg_[m]' ,
                 'qd_s'   : 'QD_Sg_[m/s]' ,
                 'TTacc ' : 'NcIMUTAxs_[m/s^2]' ,
@@ -130,27 +118,9 @@ class KalmanModelMonopile(AugmentedLinModel):
             }
 
 
-# --------------------------------------------------------------------------------}
-# -- Kalman Filter 
-# --------------------------------------------------------------------------------{
-# The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
-
-class KalmanFilterMonopile(KalmanFilter):
-
-    def __init__(KF, KM=None, debug=False):
-        """
-
-        """
-        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
-        KalmanFilter.__init__(KF, KM=KM)
-        KF.WT = KM.WT
-        KF.ColMap = KM.colMap
-
-
     def timeLoop(KF):
         # --- Aliases to shorten notations
-        KM = KF.KM
-        WT = KM.WT
+        WT = KF.WT
 
         # --- Initial conditions
         x = KF.initFromClean()
@@ -172,11 +142,11 @@ class KalmanFilterMonopile(KalmanFilter):
             qd_h    = x[KF.iX['qd_h']] # eta_dot
             eta     = q_h
             eta_dot = qd_h
-            p_hydro = KM.pHD['phi'] * eta_dot # p_h = k_h(z) q_h(t)
-            p_hydro[KM.zDepth>0] = 0 # safety, shoudn't be necessray
+            p_hydro = KF.pHD['phi'] * eta_dot # p_h = k_h(z) q_h(t)
+            p_hydro[KF.zDepth>0] = 0 # safety, shoudn't be necessray
 
             x_dot = np.dot(KF.A, x) + np.dot(KF.B, u)
-            p_ext      = np.zeros((3,len(KM.zDepth)))
+            p_ext      = np.zeros((3,len(KF.zDepth)))
             p_ext[0,:] = p_hydro
 
             x_q   = np.array([x[0],x[1]])
@@ -202,4 +172,3 @@ class KalmanFilterMonopile(KalmanFilter):
             # --- Propagation to next time step
             if np.mod(it,500) == 0:
                 print('Time step %8.0f t=%10.3f ' % (it,KF.time[it]))
-

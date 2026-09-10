@@ -7,7 +7,6 @@ import os
 import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter
-from .kalman_model import AugmentedLinModel
 from .filters import moving_average
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
 from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
@@ -16,31 +15,34 @@ import welib.fast.fastlib as fastlib
 import welib.weio as weio
 
 # --------------------------------------------------------------------------------}
-# -- Augmented Linear Model 
+# -- Kalman Filter 
 # --------------------------------------------------------------------------------{
-# This is the complicated step, setting up the state matrices based on various inputs 
-class KalmanModelTN(AugmentedLinModel):
-    def __init__(self, FstFile, bThrustInStates, debug=False):
-        AugmentedLinModel.__init__(self)
+# The parts that change from model to model are the time loop, potentially the measurement preps and postprocessing
 
+class KalmanFilterTN(KalmanFilter):
 
-
-        WT = FASTmodel2TNSB(FstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
-
+    def __init__(KF, bThrustInStates=True, WSE=None, debug=False):
+        KF.bThrustInStates = bThrustInStates
         if bThrustInStates:
-            self.sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
-            self.sQa = np.array(['Thrust' ,'Qaero'  ,'Qgen','WS'] )
-            self.sY  = np.array(['TTacc','omega','Qgen','pitch'])
-            self.sU  = np.array(['pitch'])
+            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQa = np.array(['Thrust' ,'Qaero'  ,'Qgen','WS'] )
+            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sU  = np.array(['pitch'])
         else:
-            self.sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega','Qaero','Qgen'] )
-            self.sQa = np.array(['Qaero','Qgen','WS'] )
-            self.sY  = np.array(['TTacc','omega','Qgen','pitch'])
-            self.sU  = np.array(['Thrust','pitch'])
+            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega','Qaero','Qgen'] )
+            sQa = np.array(['Qaero','Qgen','WS'] )
+            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sU  = np.array(['Thrust','pitch'])
+        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY)
+        KF.wse = WSE # wind speed estimator
+        KF.debug = debug
+
+    def setup_matrices(KF, FstFile):
+        WT = FASTmodel2TNSB(FstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
 
         nGear = WT.ED['GBRatio']
 
-        self.colMap={
+        KF.colMap={
           ' ut1    ' : ' TTDspFA_[m]                   ' ,
           ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
           ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
@@ -54,11 +56,11 @@ class KalmanModelTN(AugmentedLinModel):
         }
 
 
-        M,C,K,Ya,Yv,Yq,Yp,Yu,Fp,Fu,Pp,Pq,Pv = EmptySystemMat (len(self.sQ)//2, len(self.sY), len(self.sQa), len(self.sU))
+        M,C,K,Ya,Yv,Yq,Yp,Yu,Fp,Fu,Pp,Pq,Pv = EmptySystemMat (len(KF.sX0)//2, len(KF.sY), len(KF.sXa), len(KF.sU))
 
         # This below is problem specific
         nShapes_twr   = 1 # Hard coded for TN
-        if nShapes_twr==1 and bThrustInStates:
+        if nShapes_twr==1 and KF.bThrustInStates:
             Ya[0,0] = 1    # uddot                     = qddot[0]
             Yv[1,1] = 1    # psidot                    = qdot[1]
             Yp[2,2] = 1    # Direct feed-through of Mg
@@ -73,38 +75,16 @@ class KalmanModelTN(AugmentedLinModel):
         if nShapes_twr==1:
             # TODO aerodamping
             WT.DD  = WT.DD*3.5 # increased damping to account for aero damping
-        if debug:
+        if KF.debug:
             print(WT)
 
-        self.WT=WT
+        KF.WT=WT
 
         # --- Building continuous and discrete state matrices
         M,C,K = WT.MM, WT.DD, WT.KK
         A,B,C,D = BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=Fp,Pp=Pp,Yp=Yp,Yu=Yu,Method='augmented_first_order')
 
-        self.A = A
-        self.B = B
-        self.C = C
-        self.D = D
-
-
-# --------------------------------------------------------------------------------}
-# -- Kalman Filter 
-# --------------------------------------------------------------------------------{
-# The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
-
-class KalmanFilterTN(KalmanFilter):
-
-    def __init__(KF, KM=None, WSE=None, debug=False):
-        """
-
-        """
-        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
-        KalmanFilter.__init__(KF, KM=KM)
-        KF.WT = KM.WT
-        KF.colMap = KM.colMap
-
-        KF.wse = WSE # wind speed estimator 
+        KF.setMat(A, B, C, D)
 
     # --- Methods From Parent Class
     # loadMeasurements 
@@ -327,14 +307,11 @@ class KalmanFilterTN(KalmanFilter):
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
 def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False):
-    # ---
-    KM = KalmanModelTN(FstFile, bThrustInStates=bThrustInStates)
-
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)
     wse = TabulatedWSEstimator(fstFile=FstFile, aeroMapFile=aeroMapFile)
 
-    # ---
-    KF = KalmanFilterTN(KM, WSE=wse)
+    KF = KalmanFilterTN(bThrustInStates=bThrustInStates, WSE=wse, debug=debug)
+    KF.setup_matrices(FstFile)
     if debug:
         print(KF.wse)    
         print(KF)
@@ -342,7 +319,7 @@ def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInState
     # Defining "clean" values 
     # Estimate sigmas from measurements
     if colMap is None:
-        colMap = KM.colMap
+        colMap = KF.colMap
     KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
 
     # --- Process and measurement covariances

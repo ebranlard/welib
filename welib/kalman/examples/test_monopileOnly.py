@@ -18,7 +18,7 @@ import os
 import matplotlib.pyplot as plt
 # Welib
 from welib.essentials import *
-from welib.kalman.KF_M import KalmanModelMonopile, KalmanFilterMonopile
+from welib.kalman.KF_M import KalmanFilterMonopile
 
 
 import pytest
@@ -43,17 +43,15 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # --- Script derived parameters
     simFile = fstFile.replace('.fst','.outb')              # Measurements
 
-    KM = KalmanModelMonopile(fstFilename = fstFile, hydroShape=hydroShape, Tp=Tp)
-
-    # --- Initialize an empty Kalman Filter 
-    KF = KalmanFilterMonopile(KM=KM)
+    KF = KalmanFilterMonopile()
+    KF.setup_matrices(fstFilename=fstFile, hydroShape=hydroShape, Tp=Tp)
 
     # --- Loading "Measurements"
     # - Reference file is opened
     # - Measurements are extracted from it
     # - Other signals are extracted from the file, for comparison with estimates. These are referred as "clean" values
     # - Estimate sigmas from measurements (overriden in next section)
-    KF.loadMeasurements(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=KM.colMap, timeCol='Time_[s]', raiseIfAbsent=True)
+    KF.loadMeasurements(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=KF.colMap, timeCol='Time_[s]', raiseIfAbsent=True)
     KF.X_clean['qd_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
 
     # --- Process and measurement uncertainties (standard deviation sigma)
@@ -73,7 +71,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     sigs['Q']['qd_s']  = np.sqrt(KF.dt/dt_ref * 1e-3)
     sigs['Q']['qd_p']  = np.sqrt(KF.dt/dt_ref * 1e-6)
     sigs['Q']['q_h']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['qd_h']  = np.sqrt(KF.dt/dt_ref * KM.Sw)
+    sigs['Q']['qd_h']  = np.sqrt(KF.dt/dt_ref * KF.Sw)
     KF.setupCovariances(
             sigs=sigs,
             useDt=False, Pidentity=True, verbose=True)
@@ -95,7 +93,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     print('Qdiag  : ', np.diag(KF.Q))
     print('Rdiag  : ', np.diag(KF.R))
     print('Cmat   : ', KF.C.values)
-    print(f'Tuning: zeta={KM.zeta}, qdhScale={KM.qdhScale}')
+    print(f'Tuning: zeta={KF.zeta}, qdhScale={KF.qdhScale}')
 
     statsDict = {}
     fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)

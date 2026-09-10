@@ -18,9 +18,12 @@ def pretty_PrintMat(M,fmt='{:11.3e}',fmt_int='    {:4d}   ',sindent='   '):
 
 
 class KalmanFilter(object):
-    def __init__(self, sX0=None, sXa=None, sU=None, sY=None, sS=None, sXd=None, KM=None):
+    def __init__(self, sX0=None, sXa=None, sU=None, sY=None, sS=None, sXd=None):
         # State names 
         self.sX0, self.sXa, self.sU, self.sY, self.sS, self.sXd = None, None, None, None, None, None
+        self.sX = None
+        self.iX, self.iY, self.iU, self.iS = {}, {}, {}, {}
+        self.colMap = None
 
         # State matrices
         self.Xx, self.Xu, self.Yx, self.Yu = None, None, None, None
@@ -55,30 +58,21 @@ class KalmanFilter(object):
         self.Pt       = None # np.zeros((self.nt, self.nX, self.nY))  # P is nx * nx
         self.Kt       = None # np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
 
-        # --- Actually initialization
-        if KM is not None:
-            self.sX0 = KM.sQ
-            self.sXa = KM.sQa
-            self.sU  = KM.sU
-            self.sY  = KM.sY
-            self.sS  = KM.sS
-            self.sXd = KM.sQd
-            self.KM = KM
-        
-        else:
-            self.sX0 = sX0
-            self.sXa = sXa
-            self.sU  = sU
-            self.sY  = sY
-            self.sS  = sS # Storage, "Misc" values
-            self.sXd = sXd # Storage, "Misc" values
-            self.KM = None
+        if sX0 is not None:
+            self.setup_dimensions(sX0=sX0, sXa=sXa, sU=sU, sY=sY, sS=sS, sXd=sXd)
 
-        #  State vector is States and Augmented states
+    def setup_dimensions(self, sX0, sXa, sU, sY, sS=None, sXd=None):
+        """Set state/input/output names and allocate empty labeled A,B,C,D."""
+        self.sX0 = np.asarray(sX0, dtype=object)
+        self.sXa = np.asarray(sXa if sXa is not None else [], dtype=object)
+        self.sU  = np.asarray(sU  if sU  is not None else [], dtype=object)
+        self.sY  = np.asarray(sY  if sY  is not None else [], dtype=object)
+        self.sS  = list(sS) if sS is not None else []
+        self.sXd = sXd
+
+        # State vector is States and Augmented states
         self.sX = np.concatenate((self.sX0, self.sXa))
 
-        if self.sS is None :
-            self.sS = []
         if self.sXd is None:
             self.sXd = ['d' + c for c in self.sX] # NOTE: might have duplication...
 
@@ -88,10 +82,13 @@ class KalmanFilter(object):
         self.iU = {lab: i   for i,lab in enumerate(self.sU)}
         self.iS = {lab: i   for i,lab in enumerate(self.sS)}
         # --- Define empty (nan) sigmas
-        self._set_empty_sigs() 
+        self._set_empty_sigs()
+        # Empty labeled state-space (filled later by setup_matrices / setMat)
+        self.Xx, self.Xu, self.Yx, self.Yu = EmptyStateDF(self.nX, self.nU, self.nY, self.sX, self.sU, self.sY)
 
-        if KM is not None:
-            self.setMat(KM.A, KM.B, KM.C, KM.D)
+    def setup_matrices(self, Xx, Xu, Yx, Yu):
+        """Fill A,B,C,D. Children typically override this with physics-specific construction."""
+        self.setMat(Xx, Xu, Yx, Yu)
 
 
     @property

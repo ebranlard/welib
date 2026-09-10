@@ -9,7 +9,6 @@ import welib.weio as weio
 # WELIB
 from welib.essentials import *
 from welib.ws_estimator.tabulated_floating import TabulatedWSEstimatorFloating
-from welib.kalman.KF_FTNS import KalmanModelFTNS
 from welib.kalman.KF_FTNS import KalmanFilterFTNSLin
 from welib.kalman.FTNS_SectionLoadsCalc import YAMSSectionLoadCalculatorOptimized
 
@@ -47,8 +46,7 @@ class DigitalTwin():
     def setupStateEstimator(self, **opts):
         """ Prepare a Kalman filter based on the model"""
         print('---------------------------DIGITAL TWIN SETUP STATE EST ----------------------------')
-        self.KM = KalmanModelFTNS(**opts)
-        self.SE = KalmanFilterFTNSLin(KM=self.KM, AE=self.AE)
+        self.SE = KalmanFilterFTNSLin(AE=self.AE, **opts)
 
     def setupVirtualSensing(self, vsType='SL_YAMS', **opts):
         if vsType=='SL_YAMS':
@@ -69,7 +67,7 @@ class DigitalTwin():
         KF = self.SE
         # --- Loading "Measurements" (Defining "clean" values, estimate sigmas from measurements)
         if colMap is None:
-            colMap = self.KM.colMap
+            colMap = self.SE.colMap
         KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
 
         # --- Storage for plot

@@ -8,7 +8,6 @@ Uses Lin file from OpenFAST
 import numpy as np
 from .kalman import *
 from .kalmanfilter import KalmanFilter
-from .kalman_model import AugmentedLinModel
 from .KF_TN import KalmanFilterTN
 from .filters import moving_average
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
@@ -19,25 +18,65 @@ import welib.fast.fastlib as fastlib
 import welib.weio as weio
 
 # --------------------------------------------------------------------------------}
-# -- Augmented Linear Model 
+# -- Kalman Filter 
 # --------------------------------------------------------------------------------{
-# This is the complicated step, setting up the state matrices based on various inputs 
-class KalmanModelTNLin(AugmentedLinModel):
-    def __init__(self, FstFile, StateFile, StateModel='nt1_nx7', Qgen_LSS=True, ThrustHack=False):
-        AugmentedLinModel.__init__(self)
+# The parts that change from model to model are the time loop, potentially the measurement preps and postprocessing
 
-        self.StateModel=StateModel
-        self.Qgen_LSS=Qgen_LSS
-        self.ThrustHack=ThrustHack
+class KalmanFilterTNLin(KalmanFilterTN):
+    def __init__(KF, StateModel='nt1_nx7', WSE=None, debug=False):
+        KF.StateModel = StateModel
+        if StateModel=='nt1_nx8':
+            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQa = np.array(['Thrust','Qaero','Qgen','WS'])
+            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sU  = np.array(['pitch'])
+            sS  = np.array(['WS'])
+            KF.bWSInStates     = True
+            KF.bThrustInStates = True
+        elif StateModel=='nt1_nx7':
+            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQa = np.array(['Thrust','Qaero','Qgen'])
+            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sU  = np.array(['pitch'])
+            sS  = np.array(['WS'])
+            KF.bWSInStates     = False
+            KF.bThrustInStates = True
+        elif StateModel=='nt1_nx6':
+            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQa = np.array(['Thrust','Qaero'])
+            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sU  = np.array(['Qgen','pitch'])
+            sS  = np.array(['WS'])
+            KF.bWSInStates     = False
+            KF.bThrustInStates = True
+        elif StateModel=='nt1_nx5':
+            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQa = np.array(['Qaero'])
+            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sU  = np.array(['Thrust','Qgen','pitch'])
+            sS  = np.array(['Thrust','WS'])
+            KF.bWSInStates     = False
+            KF.bThrustInStates = False
+        else:
+            raise ValueError('Unknown StateModel: {}'.format(StateModel))
+
+        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
+        KF.wse = WSE
+        KF.debug = debug
+
+    def setup_matrices(KF, FstFile, StateFile, Qgen_LSS=True, ThrustHack=False):
+        KF.Qgen_LSS = Qgen_LSS
+        KF.ThrustHack = ThrustHack
 
         WT2= FASTmodel2TNSB(FstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
         #WT2.DD      = WT2.DD*3.5 # increased damping to account for aero damping
-        self.WT2 = WT2
+        KF.WT2 = WT2
+        KF.WT  = WT2
         
         nGear = WT2.ED['GBRatio']
 
         if Qgen_LSS:
-            self.colMap={
+            KF.colMap={
               ' ut1    ' : ' TTDspFA_[m]                   ' ,
               ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
               ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
@@ -50,7 +89,7 @@ class KalmanModelTNLin(AugmentedLinModel):
               ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
             }
         else:
-            self.colMap={
+            KF.colMap={
               ' ut1    ' : ' TTDspFA_[m]                   ' ,
               ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
               ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
@@ -63,59 +102,20 @@ class KalmanModelTNLin(AugmentedLinModel):
               ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
             }
 
-
-
-        if self.StateModel=='nt1_nx8':
-            self.sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
-            self.sQa = np.array(['Thrust','Qaero','Qgen','WS'])
-            self.sY  = np.array(['TTacc','omega','Qgen','pitch'])
-            self.sU  = np.array(['pitch'])
-            self.sS  = np.array(['WS'])
-            self.bWSInStates     = True
-            self.bThrustInStates = True
-        elif self.StateModel=='nt1_nx7':
-            self.sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
-            self.sQa = np.array(['Thrust','Qaero','Qgen'])
-            self.sY  = np.array(['TTacc','omega','Qgen','pitch'])
-            self.sU  = np.array(['pitch'])
-            self.sS  = np.array(['WS'])
-            self.bWSInStates     = False
-            self.bThrustInStates = True
-        elif self.StateModel=='nt1_nx6':
-            self.sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
-            self.sQa = np.array(['Thrust','Qaero'])
-            self.sY  = np.array(['TTacc','omega','Qgen','pitch'])
-            self.sU  = np.array(['Qgen','pitch'])
-            self.sS  = np.array(['WS'])
-            self.bWSInStates     = False
-            self.bThrustInStates = True
-        elif self.StateModel=='nt1_nx5':
-            self.sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
-            self.sQa = np.array(['Qaero'])
-            self.sY  = np.array(['TTacc','omega','Qgen','pitch'])
-            self.sU  = np.array(['Thrust','Qgen','pitch'])
-            self.sS  = np.array(['Thrust','WS'])
-            self.bWSInStates     = False
-            self.bThrustInStates = False
-
-
-        
-        iX = self.iX
-        iY = self.iY
-        iU = self.iU
+        iX = KF.iX
+        iY = KF.iY
+        iU = KF.iU
 
         # --- Mechanical system and turbine data
-  
-
         WT  = FASTLinModelTNSB(FstFile, StateFile=StateFile, DEBUG=False)
-        self.WT=WT
+        KF.linWT = WT
         A,B,C,D,M = WT.A, WT.B, WT.C, WT.D, WT.M # To Shorten notations
 
         # --- Build linear system
-        nX = len(self.sQ)+len(self.sQa)
-        nU = len(self.sU   )
-        nY = len(self.sY  )
-        nq = len(self.sQ)
+        nX = KF.nX
+        nU = KF.nU
+        nY = KF.nY
+        nq = KF.nX0
         #
         nGear = WT.nGear
         Mqt      =  1/B.iloc[2,0]
@@ -126,7 +126,7 @@ class KalmanModelTNLin(AugmentedLinModel):
         
         Xx, Xu, Yx, Yu = EmptyStateMat(nX, nU, nY)
         # --- Filling extended state matrices
-        if self.StateModel=='nt1_nx8' or self.StateModel=='nt1_nx7': # sQa =  ['Thrust','Qaero','Qgen','WS']
+        if KF.StateModel=='nt1_nx8' or KF.StateModel=='nt1_nx7': # sQa =  ['Thrust','Qaero','Qgen','WS']
             Xx[:nq,:nq ] = A.values
             Yx[:  ,:nq ] = C.values
             #----
@@ -138,21 +138,17 @@ class KalmanModelTNLin(AugmentedLinModel):
             Yx[:,  iX['Thrust']]  = D.values[:,0]
             Yx[iY['Qgen'],iX['Qgen']] = 1
             # --- Value Hack
-            if self.ThrustHack:
+            if KF.ThrustHack:
                 Xx[iX['ut1dot'], iX['Thrust']] =  2.285e-06  # Thrust
-#             Xx[iX['omega'],  iX['Qaero']]  =  2.345e-08  # Qa
-#             Xx[2,0:4] =[ -6.132e+00,      0,   -5.730e-02,      0]
-#             Xx[3,4  ] =  0
-#             Xu[3,0  ] =  0
             # --- Consistency
-            if self.Qgen_LSS:
+            if KF.Qgen_LSS:
                 Xx[iX['omega'],  iX['Qgen']]   =-Xx[iX['omega'],iX['Qaero']]
             else:
                 Xx[iX['omega'],  iX['Qgen']]   =-Xx[iX['omega'],iX['Qaero']]*nGear
             Yx[0,0:] =Xx[2,0:]  # <<<< Important
 
 
-        elif self.StateModel=='nt1_nx6': # sQa = ['Qaero','Thrust']
+        elif KF.StateModel=='nt1_nx6': # sQa = ['Qaero','Thrust']
             Xx[:nq,:nq ] = A.values
             Yx[:  ,:nq ] = C.values
             #----
@@ -162,22 +158,16 @@ class KalmanModelTNLin(AugmentedLinModel):
             Xx[iX['omega'],  iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
             Xx[:nq,iX['Thrust']] = B.values[:,0]
             Yx[:,  iX['Thrust']] = D.values[:,0]
-            #  Value Hack
-#             Xx[2,0:4] =[ -6.132e+00,      0,   -5.730e-02,      0]
-            if self.ThrustHack:
+            if KF.ThrustHack:
                 Xx[2,iX['Thrust']] =  2.285e-06  # Thrust
-#             Xx[3,iX['Qaero' ]] =  2.345e-08  # Torque
-#             Xx[3,4  ] =  0
-#             Xu[2,0  ] =  0
-#             Yu[0,0  ] =  0
             # Consistency
-            if self.Qgen_LSS:
+            if KF.Qgen_LSS:
                 Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]
             else:
                 Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]*nGear
             Yx[0,0:6] =Xx[2,0:6]  # <<<< Important
 
-        elif self.StateModel=='nt1_nx5':  # sQa = ['Qaero']
+        elif KF.StateModel=='nt1_nx5':  # sQa = ['Qaero']
             Xx[:nq,:nq ] = A.values
             Yx[:  ,:nq ] = C.values
             #----
@@ -185,38 +175,17 @@ class KalmanModelTNLin(AugmentedLinModel):
             Yu[:  ,:   ] = D.values
             #----
             Xx[iX['omega'],  iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
-            #  Value Hack
-#             Xx[2,0:4] =[ -6.132e+00,      0,   -5.730e-02,      0]
-            if self.ThrustHack:
+            if KF.ThrustHack:
                 Xu[2,0  ] =  2.285e-06  # Thrust
-#             Xx[3,4]   =  2.345e-08  # Torque
             # Consistency
-            if self.Qgen_LSS:
+            if KF.Qgen_LSS:
                 Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]
             else:
                 Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]*nGear
             Yx[0,0:4] = Xx[2,0:4]
             Yu[0,0]   = Xu[2,0]
 
-        self.A = Xx
-        self.B = Xu
-        self.C = Yx
-        self.D = Yu
-        
-# --------------------------------------------------------------------------------}
-# -- Kalman Filter 
-# --------------------------------------------------------------------------------{
-# The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
-
-class KalmanFilterTNLin(KalmanFilterTN):
-    def __init__(KF, KM, WSE=None, debug=False):
-        """
-
-        """
-        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
-        KalmanFilterTN.__init__(KF, KM, WSE=WSE)
-        KF.WT2 = KM.WT2
-        KF.WT  = KM.WT2
+        KF.setMat(Xx, Xu, Yx, Yu)
 
 
 
@@ -297,12 +266,12 @@ class KalmanFilterTNLin(KalmanFilterTN):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False):
+def KalmanFilterTNLinSim(FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False, StateModel='nt1_nx7', Qgen_LSS=True, ThrustHack=False):
 
-    # ---
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)    
     wse = TabulatedWSEstimator(fstFile=FstFile, aeroMapFile=aeroMapFile)
-    KF = KalmanFilterTNLin(KM, WSE=wse)
+    KF = KalmanFilterTNLin(StateModel=StateModel, WSE=wse, debug=debug)
+    KF.setup_matrices(FstFile, StateFile, Qgen_LSS=Qgen_LSS, ThrustHack=ThrustHack)
     if debug:
         print(KF.wse)
         print(KF.WT)
@@ -311,7 +280,7 @@ def KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, StateFi
     # Defining "clean" values 
     # Estimate sigmas from measurements
     if colMap is None:
-        colMap = KM.colMap
+        colMap = KF.colMap
     KF.loadMeasurements(MeasFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=colMap)
     # --- Process and measurement covariances
     KF.setupCovariances(useDt=False, Pidentity=True, sigs=sigs, verbose=debug)

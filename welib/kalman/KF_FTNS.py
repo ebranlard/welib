@@ -3,7 +3,6 @@ import numpy as np
 
 from welib.kalman.kalman import *
 from .kalmanfilter import KalmanFilter
-from .kalman_model import AugmentedLinModel
 
 from welib.essentials import *
 from welib.kalman.filters import moving_average
@@ -29,6 +28,14 @@ from welib.fast.tools.lin import subMat, matSimpleStateLabels, matToSIunits, ren
 
 # Local
 from welib.kalman.kalman import EmptyStateMat, EmptyStateDF
+
+def _parse_name_list(s):
+    """Accept a comma-separated string or a sequence of names."""
+    if s is None:
+        return []
+    if isinstance(s, str):
+        return [x.strip() for x in s.split(',') if len(x.strip())>0]
+    return [str(x).strip() for x in list(s)]
 
 # 
 # #          'WS':'Wind1VelX', 'pitch':'BldPitch1','TTacc':'NcIMUTAxs'}
@@ -92,20 +99,18 @@ from welib.kalman.kalman import EmptyStateMat, EmptyStateDF
 # }
 
 # --------------------------------------------------------------------------------}
-# -- Augmented Linear Model 
+# -- Fill FTNS state-space matrices (called by KalmanFilterFTNSLin.setup_matrices)
 # --------------------------------------------------------------------------------{
-class KalmanModelFTNS(AugmentedLinModel):
-
-    def __init__(KM, modelName=None, fstLin=None, usePickle=True, fstFilename=None,
-                 sQ='', sY='', sU='', sQa='', sS='', qop=None, qdop=None, 
+def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFilename=None,
+                 qop=None, qdop=None, 
             sFramework='OpenFAST',
             tuning=None,
             nGear=1, # TODO get this from WT
             ):
-        AugmentedLinModel.__init__(KM)
 
 
-        KM.StateModel=''
+        KF.StateModel=''
+
 
         # --- Default arguments
         if tuning is None:
@@ -124,7 +129,7 @@ class KalmanModelFTNS(AugmentedLinModel):
         # Col MAP for OpenFAST OutFile "Measurements" used for "clean" values
         sIMU=['NcIMUAx','NcIMUAy','NcIMUAz']
         sIMU2=['NcIMUAx','NcIMUAy','NcIMUAz','NcIMUVx','NcIMUVy','NcIMUVz']
-        KM.colMap={
+        KF.colMap={
           ' x      ' : ' PtfmSurge_[m]                   '              ,
           ' y      ' : ' PtfmSway_[m]                   '               ,
           ' z      ' : ' {PtfmHeave_[m]}                '              ,
@@ -225,39 +230,18 @@ class KalmanModelFTNS(AugmentedLinModel):
         D[abs(D)<tuning['zero_threshold']]=0
 
 
-        # --------------------------------------------------------------------------------}
-        # ---  Kalman model (Augmented/modified physical model)
-        # --------------------------------------------------------------------------------{
-        KM.sQ   = [s.strip() for s in sQ.split(',') if len(s)>0] # Assumed to include derivatives
-        KM.sU   = [s.strip() for s in sU.split(',') if len(s)>0]   if len(sU)>0 else  []
-        KM.sY   = [s.strip() for s in sY.split(',') if len(s)>0]   if len(sY)>0 else  []
-        KM.sS   = [s.strip() for s in sS.split(',') if len(s)>0]   if len(sS)>0 else  []
-        KM.sQa  = [s.strip() for s in sQa.split(',') if len(s)>0]  if len(sQa)>0 else []
-        KM.sQD  = ['d'+s for s in KM.sQ] # All states derivatives
-
-        # --- Build linear system
-        nX = len(KM.sQ)+len(KM.sQa)
-        nU = len(KM.sU   )
-        nY = len(KM.sY  )
-        nq = len(KM.sQ)
-        sX0= list(KM.sQ)
-        sX = list(KM.sQ)+list(KM.sQa)
-        sQd = KM.sQD
-        sU = KM.sU
-        sY = KM.sY
-
-        Xx, Xu, Yx, Yu = EmptyStateDF(nX,nU,nY,sX,sU,sY)
+        Xx, Xu, Yx, Yu = KF.Xx, KF.Xu, KF.Yx, KF.Yu
 
         # --------------------------------------------------------------------------------}
         # --- Filling state matrix Xx
         # --------------------------------------------------------------------------------{
 
         # basic A matrix
-        sXd = ['d'+s for s in sX]
+        sQd = ['d' + s for s in KF.sX0]
         for sqd in sQd:
             if sqd not in A.index:
                 raise Exception('{} not present in Xx ({})'.format(sqd, A.index))
-            for sq in KM.sQ:
+            for sq in KF.sX0:
                 Xx.loc[sqd,sq] = A.loc[sqd,sq]
 
         # --- Hard Coding
@@ -274,7 +258,7 @@ class KalmanModelFTNS(AugmentedLinModel):
 
         # --- Who influences omega
         if not fullColumns:
-            for s in KM.sQ:
+            for s in KF.sX0:
                 if 'dpsi' in Xx.columns:
                     setter(Xx, 'Xx', 'dpsi' , s, 0) 
                 if 'ddpsi' in Xx.columns:
@@ -287,7 +271,7 @@ class KalmanModelFTNS(AugmentedLinModel):
         # --- Useful channels from lin file
         colAugForce = mainLinInputs(hub=2, nac=1, ptfm=2, gen=1, pitch=1)
         colAugForce2 = renameList(colAugForce, colMapLinFile)
-        colAugForce3 = [c for c in colAugForce2 if c in KM.sQa or c in KM.sU or c in KM.sQ]
+        colAugForce3 = [c for c in colAugForce2 if c in KF.sXa or c in KF.sU or c in KF.sX0]
 
         # --- Main B matrix
         # Thrust fay faz Qaero may maz
@@ -301,32 +285,32 @@ class KalmanModelFTNS(AugmentedLinModel):
             J_LSS = J_LSS_OF_Qgen # Selection
             print('[INFO] KalmanModel: Rotor Inertia seleted: {}'.format(J_LSS))
 
-            if 'Qaero' in KM.sQa:
+            if 'Qaero' in KF.sXa:
                 if fullColumns:
                     Xx.loc[sQd, 'Qaero'] = B.loc[sQd, 'Qaero'] # <<<<<
                 setter(Xx, 'Xx', 'ddpsi', 'Qaero', 1/J_LSS)
 
-            if 'Qgen' in KM.sQa:
+            if 'Qgen' in KF.sXa:
                 if fullColumns:
                     Xx.loc[sQd, 'Qgen'] = B.loc[sQd, 'Qgen'] # <<<<<
                 setter(Xx, 'Xx', 'ddpsi', 'Qgen' , -1/J_LSS)
-            if 'Qgen' in KM.sU:
+            if 'Qgen' in KF.sU:
                 if fullColumns:
                     Xu.loc[sQd, 'Qgen'] = B.loc[sQd, 'Qgen'] # <<<<<
                 setter(Xu, 'Xu', 'ddpsi', 'Qgen' ,-1/J_LSS)
 
         # --- Thrust
         sThrust = tuning['sThrust']
-        if 'Thrust' in KM.sQa or 'Thrust' in KM.sU:
+        if 'Thrust' in KF.sXa or 'Thrust' in KF.sU:
             BFHx = B.loc[sQd, 'Thrust'] # Hub x force
             BFNx = B.loc[sQd, 'NacFxN1_[N]'] # Nacelle x force
             BFx_selected = B.loc[sQd, sThrust]*tuning['kThrustA']
             print('[INFO] KalmanModel: Thrust ddq relation: {}'.format(BFx_selected.loc['ddq_FA1']))
-            if 'Thrust' in KM.sQa:
+            if 'Thrust' in KF.sXa:
                 if fullColumns:
                     Xx.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
                 Xx.loc['ddq_FA1','Thrust'] = BFx_selected.loc['ddq_FA1']
-            if 'Thrust' in KM.sU:
+            if 'Thrust' in KF.sU:
                 if fullColumns:
                     Xu.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
                 Xu.loc['ddq_FA1','Thrust'] = BFx_selected.loc['ddq_FA1']
@@ -335,17 +319,17 @@ class KalmanModelFTNS(AugmentedLinModel):
         # --- Filling output matrix Yx
         # --------------------------------------------------------------------------------{
         # States directly measured (States that are in Y directly)
-        sYX = [sx for sx in sX if sx in sY] # States that are in Y
+        sYX = [sx for sx in KF.sX0 if sx in KF.sY] # States that are in Y
         for sxy in sYX:
             sy=sxy
             Yx.loc[sy,sxy] = 1
         # IMU
-        _,_,CIMU, DIMU = linmodel.extract(sX=KM.sQ, sU=colAugForce3, sY=sIMU2, verbose=False, check=False, inPlace=False)
-        sYIMU = [sy for sy in sIMU2 if sy in sY]
+        _,_,CIMU, DIMU = linmodel.extract(sX=KF.sX0, sU=colAugForce3, sY=sIMU2, verbose=False, check=False, inPlace=False)
+        sYIMU = [sy for sy in sIMU2 if sy in KF.sY]
         for sy in sYIMU:
-            for sx in KM.sQ:
+            for sx in KF.sX0:
                 Yx.loc[sy,sx] = CIMU.loc[sy,sx]
-            for sx in KM.sQa:
+            for sx in KF.sXa:
                 if sx in Yx.columns: # Augmented states
                     Yx.loc[sy,sx] = DIMU.loc[sy,sx]
         if 'Thrust' in Yx.columns:
@@ -360,8 +344,8 @@ class KalmanModelFTNS(AugmentedLinModel):
         # ---  Yu matrix
         # --------------------------------------------------------------------------------{
         # --- Inputs directly measured (Inputs that are in Y directly)
-        sUY = [su for su in sU if su in sY] # Inputs that are in Y
-        for su in sUY:
+        sU_in_Y = [su for su in KF.sU if su in KF.sY] # Inputs that are in Y
+        for su in sU_in_Y:
             Yu.loc[su,su] = 1
         # --- IMU
         for sy in sYIMU:
@@ -389,10 +373,13 @@ class KalmanModelFTNS(AugmentedLinModel):
         #print('D --------------------------------------------------------\n',Yu)
         #print('   --------------------------------------------------------\n')
 
-        KM.A = Xx
-        KM.B = Xu
-        KM.C = Yx
-        KM.D = Yu
+#         KF.Xx = Xx
+#         KF.Xu = Xu
+#         KF.Yx = Yx
+#         KF.Yu = Yu
+        KF.setMat(Xx, Xu, Yx, Yu) # Shouldn't be necessary
+
+        A, B, C, D = KF.A, KF.B, KF.C, KF.D
 
         hasControl=True
         try:
@@ -573,12 +560,22 @@ def get_physical_model(WT, modelName, fstFilename, qop=None, qdop=None, usePickl
 # --------------------------------------------------------------------------------{
 # The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
 class KalmanFilterFTNSLin(KalmanFilter):
-    def __init__(KF, KM=None, AE=None, debug=False):
+    def __init__(KF, sQ=None, sY=None, sU=None, sQa=None, sS=None, AE=None, debug=False, **opts):
         """
 
         """
         # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
-        KalmanFilter.__init__(KF, KM=KM)
+        sQ   = _parse_name_list(sQ) # Assumed to include derivatives
+        sU   = _parse_name_list(sU) 
+        sY   = _parse_name_list(sY) 
+        sS   = _parse_name_list(sS) 
+        sQa  = _parse_name_list(sQa)
+        sQd  = ['d'+s for s in sQ + sQa] # All states derivatives
+
+        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS, sXd=sQd)
+
+        KF.setup_matrices(**opts)
+
 
         # --- Creating a wind speed estimator (reads tabulated aerodynamic data)
         if AE:
@@ -595,6 +592,15 @@ class KalmanFilterFTNSLin(KalmanFilter):
                 KF.wse=AE
         else:
             KF.wse = None
+
+    def setup_matrices(self, **opts):
+#         _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFilename=None,
+#                          qop=None, qdop=None, 
+#                     sFramework='OpenFAST',
+#                     tuning=None,
+#                     nGear=1, # TODO get this from WT
+#                     ):
+        _ftns_fill_matrices(self, **opts)
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, bFilterOm=False, nFilt=15, bFilterPhi=False):
         # --- Creating noise measuremnts

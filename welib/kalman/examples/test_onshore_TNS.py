@@ -19,7 +19,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from welib.essentials import *
 from welib.kalman.KF_TN    import KalmanFilterTNSim 
-from welib.kalman.KF_TNLin import KalmanFilterTNLinSim, KalmanModelTNLin
+from welib.kalman.KF_TNLin import KalmanFilterTNLinSim
 from welib.fast.FASTLin import FASTLin
 
 from welib.tools.fatigue import eq_load
@@ -116,8 +116,7 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
                 print('M:\n',Mr)
 
 
-            KM = KalmanModelTNLin(FstFile, linStateFile, StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True)
-            KF= KalmanFilterTNLinSim(KM, FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport)
+            KF= KalmanFilterTNLinSim(FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport, StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True)
     # --------------------------------------------------------------------------------}
     # --- PostPro  
     # --------------------------------------------------------------------------------{
