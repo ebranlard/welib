@@ -32,3 +32,10 @@ dist
 README_OUTPUT.md
 
 pytest.ini
+
+
+# AI
+.copilot*
+copilot*
+.cline*
+.continue*

@@ -1116,7 +1116,7 @@ class WindTurbineStructure():
             If a DOF is turned off, we insert zero
             Otherwise, we warn the user
         """ 
-        from welib.fast.dofs import COLMAP_OFout_TO_QOF, QOF
+        from welib.fast.dofs import COLMAP_OFout_TO_QOF, Q_OF, QD_OF, QD2_OF
 
         #return np.array([dof['q_channel'] for dof in self.DOF if dof['active']])
         _sq   = self.q_channels
@@ -1145,7 +1145,7 @@ class WindTurbineStructure():
         active_OF_DOF = set(self.q_channels + self.qd_channels + self.qdd_channels)
         df_columns = set(df.columns)
         #missing_dofs = set(QOF) - set(df.columns)
-        for OF_dof in QOF:
+        for OF_dof in (Q_OF + QD_OF + QD2_OF):
             if OF_dof not in df_columns:
                 if OF_dof in active_OF_DOF:
                     FAIL(f"DOF '{OF_dof}' is missing from DataFrame but it is Active. Filling it with {fill_value}.")
@@ -1154,11 +1154,36 @@ class WindTurbineStructure():
         return df
 
 
-    def calcOutputsFromDF(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False):
+    def calcOutputsFromDF(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
         """ 
         Given a dataFrame containing time series of DOF
         Compute outputs using OpenFAST Naming Convention
         
+        INPUTS: 
+         - df: dataframe with time series of degrees of freedom
+               For instance df= weio.read('main.outb').toDataFrame()
+               Columns Names: 'Time_[s]'
+               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+         - noAcc: set accelerations to zero
+        
+        RETURNS:
+         - dfOut  : (WEIODataFrame) outputs dataframe
+         - sections: dict with section loads (tower, monopile, combined)
+        """
+
+        # --- Initialize (returns dict with all the data useful for time stepping)
+        dInit = WT.calcOutputsFromDF_init(df, noAcc=noAcc, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, 
+                                          accMissing=accMissing)
+
+        return WT.calcOutputsFromDF_loop(df, dInit)
+
+    def calcOutputsFromDF_init(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
+        """ 
+        Given a dataFrame containing time series of DOF, initialize the
+        computation of outputs. Returns a dict `dInit` with all the data useful
+        for time stepping (see calcOutputsFromDF_step) and for generating the
+        final outputs dataframe.
+
         INPUTS: 
          - df: dataframe with time series of degrees of fredom
                For instance df= weio.read('main.outb').toDataFrame()
@@ -1166,9 +1191,8 @@ class WindTurbineStructure():
                Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
          - noAcc: set accelerations to zero
         """
-        from welib.tools.tictoc import Timer
-        from welib.fast.postpro import ED_TwrGag, ED_TwrStations
         from welib.fast.elastodyn import ElastoDyn
+        from welib.fast.postpro import ED_TwrGag, ED_TwrStations
 
         ed = ElastoDyn(WT.ED)
 
@@ -1176,7 +1200,7 @@ class WindTurbineStructure():
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
 
-        df = WT._insertOFDOFsInDF(df, verbose=False, accMissing='raise')
+        df = WT._insertOFDOFsInDF(df, verbose=False, accMissing=accMissing)
         df = df.reset_index(drop=True)
 
         # --- States
@@ -1249,6 +1273,9 @@ class WindTurbineStructure():
 
         # --- Optional monopile section outputs
         hasMonopile = False
+        mnp_labels    = None
+        mnp_zDepthOut = None
+        mnp_IOut      = None
         if isinstance(WT.fnd, BeamBody):
             hasMonopile = True
             NOTE('This is a monopile simulation')
@@ -1274,7 +1301,6 @@ class WindTurbineStructure():
             WT.SS_computeEta(df['Time_[s]'])
 
         # --- Initialize section loads
-        sections  = dict()
         twr_F_sec = np.zeros((6, len(WT.twr.s_span), len(df))) 
 
         mnp_F_sec = None
@@ -1288,140 +1314,192 @@ class WindTurbineStructure():
 
         gravity_vec = np.array([0,0,-WT.gravity])
 
-        # --- Calc Output per time step
+        # --- Store initialization data (returned and stored in WT.calcOut)
+        dInit = OrderedDict()
+        dInit['ed']    = ed
+        dInit['df']    = df
+        dInit['sq']    = sq
+        dInit['sqd']   = sqd
+        dInit['sqdd']  = sqdd
+        dInit['Q']     = Q
+        dInit['QD']    = QD
+        dInit['QDD']   = QDD
+        dInit['colOut']                = colOut
+        dInit['dfOut']                 = dfOut
+        dInit['twr_Out_df']            = twr_Out_df
+        dInit['hasMonopile']           = hasMonopile
+        dInit['mnp_labels']            = mnp_labels
+        dInit['mnp_zDepthOut']         = mnp_zDepthOut
+        dInit['mnp_IOut']              = mnp_IOut
+        dInit['twr_F_sec']             = twr_F_sec
+        dInit['mnp_F_sec']             = mnp_F_sec
+        dInit['gravity_vec']           = gravity_vec
+        dInit['useTopLoadsFromDF']        = useTopLoadsFromDF
+        dInit['useInterfaceLoadsFromDF'] = useInterfaceLoadsFromDF
+        WT.calcOut = dInit # Store in WT for user convenience
 
-        with Timer('Time Loop'):
-            for it,t in enumerate(df['Time_[s]']):
-                if np.mod(it,1000)==0:
-                    print(f'Time Loop {it}/{len(df)}')
+        return dInit
 
-                # --- Main DOFs
-                q   = Q.iloc[it,:].copy()
-                qd  = QD.iloc[it,:].copy()
-                qdd = QDD.iloc[it,:].copy()
-                dfOut.loc[it, sq]   = q.values
-                dfOut.loc[it, sqd]  = qd.values
-                dfOut.loc[it, sqdd] = qdd.values
+    def calcOutputsFromDF_step(WT, dInit, it, t):
+        """ 
+        Compute outputs at a given time step using data pre-initialized by
+        calcOutputsFromDF_init.
 
-                # --------------------------------------------------------------------------------}
-                # --- Kinematics 
-                # --------------------------------------------------------------------------------{
-                # --- Kinematics
-                dd = WT.kinematics(q, qd, qdd, t=t)
-                dfOut.loc[it, 'Time_[s]'] = t
-                # TDi includes all platform motions
-                dfOut.loc[it, 'TwrTpTDxi'] = dd['u_N_tot'][0] 
-                dfOut.loc[it, 'TwrTpTDyi'] = dd['u_N_tot'][1]
-                dfOut.loc[it, 'TwrTpTDzi'] = dd['u_N_tot'][2]
+        INPUTS:
+         - dInit: data returned by calcOutputsFromDF_init
+         - it   : time step index
+         - t    : time [s]
 
-                # Alias
-                u_N     = dd['u_N']
-                v_N     = dd['v_N']
-                a_N     = dd['a_N']
-                om_N    = dd['omega_n']
-                omd_N   = dd['omegad_n']
-                u_N_p   = dd['R_g2p'].dot(u_N)
-                u_N_t   = dd['R_g2t'].dot(u_N)
-                v_N_p   = dd['R_g2p'].dot(v_N)
-                a_N_p   = dd['R_g2p'].dot(a_N)
-                om_N_p  = dd['R_g2p'].dot(om_N)
-                omd_N_p = dd['R_g2p'].dot(omd_N)
+        RETURN:
+         - rowOut     : pandas Series with all the outputs for this time step
+         - twr_F_sec  : (6, nSpan) tower section loads, Forces then Moments
+         - mnp_F_sec  : (6, nSpan) monopile section loads, Forces then Moments, or None
+        """
+        # --- Local aliases
+        Q     = dInit['Q']
+        QD    = dInit['QD']
+        QDD   = dInit['QDD']
+        df    = dInit['df']
+        sq    = dInit['sq']
+        sqd   = dInit['sqd']
+        sqdd  = dInit['sqdd']
+        colOut         = dInit['colOut']
+        twr_Out_df     = dInit['twr_Out_df']
+        hasMonopile    = dInit['hasMonopile']
+        mnp_labels     = dInit['mnp_labels']
+        mnp_IOut       = dInit['mnp_IOut']
+        mnp_zDepthOut  = dInit['mnp_zDepthOut']
+        gravity_vec    = dInit['gravity_vec']
+        useTopLoadsFromDF       = dInit['useTopLoadsFromDF']
+        useInterfaceLoadsFromDF = dInit['useInterfaceLoadsFromDF']
 
-                dfOut.loc[it, 'YawBrTDxt'] = u_N_t[0]
-                dfOut.loc[it, 'YawBrTDyt'] = u_N_t[1]
-                dfOut.loc[it, 'YawBrTDzt'] = u_N_t[2]
-                dfOut.loc[it, 'YawBrTDxp'] = u_N_p[0]
-                dfOut.loc[it, 'YawBrTDyp'] = u_N_p[1]
-                dfOut.loc[it, 'YawBrTDzp'] = u_N_p[2]
+        rowOut = pd.Series(index=colOut, dtype=float)
 
-                dfOut.loc[it, 'YawBrTVxp'] = v_N_p[0]
-                dfOut.loc[it, 'YawBrTVyp'] = v_N_p[1]
-                dfOut.loc[it, 'YawBrTVzp'] = v_N_p[2]
-                dfOut.loc[it, 'YawBrTAxp'] = a_N_p[0]
-                dfOut.loc[it, 'YawBrTAyp'] = a_N_p[1]
-                dfOut.loc[it, 'YawBrTAzp'] = a_N_p[2]
-                dfOut.loc[it, 'YawBrRVxp'] = om_N_p[0] * 180/np.pi
-                dfOut.loc[it, 'YawBrRVyp'] = om_N_p[1] * 180/np.pi
-                dfOut.loc[it, 'YawBrRVzp'] = om_N_p[2] * 180/np.pi
-                dfOut.loc[it, 'YawBrRAxp'] = omd_N_p[0] * 180/np.pi
-                dfOut.loc[it, 'YawBrRAyp'] = omd_N_p[1] * 180/np.pi
-                dfOut.loc[it, 'YawBrRAzp'] = omd_N_p[2] * 180/np.pi
+        # --- Main DOFs
+        q   = Q.iloc[it,:].copy() # TODO TODO TODO TODOTO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        qd  = QD.iloc[it,:].copy()
+        qdd = QDD.iloc[it,:].copy()
+        rowOut['Time_[s]'] = t
+        rowOut[sq]   = q.values
+        rowOut[sqd]  = qd.values
+        rowOut[sqdd] = qdd.values
 
-                # Alias
-                a_IMU     = dd['a_IMU']
-                v_IMU     = dd['v_IMU']
-                om_IMU    = dd['omega_n']
-                omd_IMU   = dd['omegad_n']
-                a_IMU_s   = dd['R_g2s'].dot(a_IMU)
-                v_IMU_s   = dd['R_g2s'].dot(v_IMU)
-                om_IMU_s  = dd['R_g2s'].dot(om_IMU)
-                omd_IMU_s = dd['R_g2s'].dot(omd_IMU)
+        # --------------------------------------------------------------------------------}
+        # --- Kinematics 
+        # --------------------------------------------------------------------------------{
+        dd = WT.kinematics(q, qd, qdd, t=t)
+        # TDi includes all platform motions
+        rowOut['TwrTpTDxi'] = dd['u_N_tot'][0] 
+        rowOut['TwrTpTDyi'] = dd['u_N_tot'][1]
+        rowOut['TwrTpTDzi'] = dd['u_N_tot'][2]
 
-                dfOut.loc[it, 'NcIMUTVxs_[m/s]'] = v_IMU_s[0]
-                dfOut.loc[it, 'NcIMUTVys_[m/s]'] = v_IMU_s[1]
-                dfOut.loc[it, 'NcIMUTVzs_[m/s]'] = v_IMU_s[2]
-                dfOut.loc[it, 'NcIMUTAxs_[m/s^2]'] = a_IMU_s[0]
-                dfOut.loc[it, 'NcIMUTAys_[m/s^2]'] = a_IMU_s[1]
-                dfOut.loc[it, 'NcIMUTAzs_[m/s^2]'] = a_IMU_s[2]
-                dfOut.loc[it, 'NcIMURVxs_[rad/s]'] = om_IMU_s[0] * 180/np.pi
-                dfOut.loc[it, 'NcIMURVys_[rad/s]'] = om_IMU_s[1] * 180/np.pi
-                dfOut.loc[it, 'NcIMURVzs_[rad/s]'] = om_IMU_s[2] * 180/np.pi
-                dfOut.loc[it, 'NcIMURAxs_[rad/s^2]'] = omd_IMU_s[0] * 180/np.pi
-                dfOut.loc[it, 'NcIMURAys_[rad/s^2]'] = omd_IMU_s[1] * 180/np.pi
-                dfOut.loc[it, 'NcIMURAzs_[rad/s^2]'] = omd_IMU_s[2] * 180/np.pi
+        # Alias
+        u_N     = dd['u_N']
+        v_N     = dd['v_N']
+        a_N     = dd['a_N']
+        om_N    = dd['omega_n']
+        omd_N   = dd['omegad_n']
+        u_N_p   = dd['R_g2p'].dot(u_N)
+        u_N_t   = dd['R_g2t'].dot(u_N)
+        v_N_p   = dd['R_g2p'].dot(v_N)
+        a_N_p   = dd['R_g2p'].dot(a_N)
+        om_N_p  = dd['R_g2p'].dot(om_N)
+        omd_N_p = dd['R_g2p'].dot(omd_N)
 
-                # --- RNA (without Yaw Br) loads
-                omd_n       = dd['omegad_n']
-                om_n        = dd['omega_n']
-                R_g2p       = dd['R_g2p']
-                R_g2n       = dd['R_g2n']
-                r_Grna      = dd['r_Grna']
-                a_Grna      = dd['a_Grna']
+        rowOut['YawBrTDxt'] = u_N_t[0]
+        rowOut['YawBrTDyt'] = u_N_t[1]
+        rowOut['YawBrTDzt'] = u_N_t[2]
+        rowOut['YawBrTDxp'] = u_N_p[0]
+        rowOut['YawBrTDyp'] = u_N_p[1]
+        rowOut['YawBrTDzp'] = u_N_p[2]
 
-                # --------------------------------------------------------------------------------}
-                # --- Loads
-                # --------------------------------------------------------------------------------{
-                rowDF_in = df.iloc[it] # Prescribed loads from input 
-                Mrna        = WT.RNA_noYawBr.mass
-                JGrna       = WT.RNA_noYawBr.masscenter_inertia
-                JGrna_g     = (R_g2n.T).dot(JGrna).dot(R_g2n)
-                F_Grna_grav = Mrna *gravity_vec
-                r_NGrna     = dd['r_NGrna']
+        rowOut['YawBrTVxp'] = v_N_p[0]
+        rowOut['YawBrTVyp'] = v_N_p[1]
+        rowOut['YawBrTVzp'] = v_N_p[2]
+        rowOut['YawBrTAxp'] = a_N_p[0]
+        rowOut['YawBrTAyp'] = a_N_p[1]
+        rowOut['YawBrTAzp'] = a_N_p[2]
+        rowOut['YawBrRVxp'] = om_N_p[0] * 180/np.pi
+        rowOut['YawBrRVyp'] = om_N_p[1] * 180/np.pi
+        rowOut['YawBrRVzp'] = om_N_p[2] * 180/np.pi
+        rowOut['YawBrRAxp'] = omd_N_p[0] * 180/np.pi
+        rowOut['YawBrRAyp'] = omd_N_p[1] * 180/np.pi
+        rowOut['YawBrRAzp'] = omd_N_p[2] * 180/np.pi
 
-                R_N   = Mrna * a_Grna - F_Grna_grav
-                tau_N = np.cross(r_NGrna, R_N)
-                tau_N += JGrna_g.dot(omd_n)
-                tau_N += np.cross(om_n, JGrna_g.dot(om_n))
+        # Alias
+        a_IMU     = dd['a_IMU']
+        v_IMU     = dd['v_IMU']
+        om_IMU    = dd['omega_n']
+        omd_IMU   = dd['omegad_n']
+        a_IMU_s   = dd['R_g2s'].dot(a_IMU)
+        v_IMU_s   = dd['R_g2s'].dot(v_IMU)
+        om_IMU_s  = dd['R_g2s'].dot(om_IMU)
+        omd_IMU_s = dd['R_g2s'].dot(omd_IMU)
 
-                # --- Force at N without YawBr Mass (such are "YawBr" sensors..) in global coordinates
-                F_N = -R_N
-                M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
+        rowOut['NcIMUTVxs_[m/s]'] = v_IMU_s[0]
+        rowOut['NcIMUTVys_[m/s]'] = v_IMU_s[1]
+        rowOut['NcIMUTVzs_[m/s]'] = v_IMU_s[2]
+        rowOut['NcIMUTAxs_[m/s^2]'] = a_IMU_s[0]
+        rowOut['NcIMUTAys_[m/s^2]'] = a_IMU_s[1]
+        rowOut['NcIMUTAzs_[m/s^2]'] = a_IMU_s[2]
+        rowOut['NcIMURVxs_[rad/s]'] = om_IMU_s[0] * 180/np.pi
+        rowOut['NcIMURVys_[rad/s]'] = om_IMU_s[1] * 180/np.pi
+        rowOut['NcIMURVzs_[rad/s]'] = om_IMU_s[2] * 180/np.pi
+        rowOut['NcIMURAxs_[rad/s^2]'] = omd_IMU_s[0] * 180/np.pi
+        rowOut['NcIMURAys_[rad/s^2]'] = omd_IMU_s[1] * 180/np.pi
+        rowOut['NcIMURAzs_[rad/s^2]'] = omd_IMU_s[2] * 180/np.pi
+        # --- RNA (without Yaw Br) loads
+        omd_n       = dd['omegad_n']
+        om_n        = dd['omega_n']
+        R_g2p       = dd['R_g2p']
+        R_g2n       = dd['R_g2n']
+        r_Grna      = dd['r_Grna']
+        a_Grna      = dd['a_Grna']
 
-                # --- Correction for rotor spin
-                # The term above (tau_N) assumes the RNA is a rigid body rotating at om_n.
-                # We add the effect of the rotor spinning relative to the nacelle.
-                # Delta H_dot = J_spin * omd_rel + om_n x (J_spin * om_rel)
-                # (Assuming rotor is symmetric so its inertia tensor J_rot is constant in the shaft frame)
-                if 'Psi' in qd:
-                    # Shaft axis x_s in global coordinates:
-                    # Shaft axis in global
-                    R_g2s = dd['R_g2s']
-                    x_s_g = R_g2s[0, :] # First row of R_g2s is the shaft axis in global
-                    #x_s_g2 = R_g2n.T.dot(WT.R_NS.dot(np.array([1.0, 0.0, 0.0])))
-                    
-                    # Spinning inertia about shaft (reflected to LSS, include rotor + gen)
-                    Jspin_x = WT.rotgen.inertia[0,0]
-                    #J_gen_LSS = WT.gen.inertia[0,0]
-                    
-                    # Relative angular velocity and acceleration in global
-                    om_rel_g  = qd['Psi']  * x_s_g
-                    omd_rel_g = qdd['Psi'] * x_s_g
-                    
-                    # Correction terms for dot{H} (Rate of change of angular momentum)
-                    # Using principal axis property: J_rot * x_s_g = Jspin_x * x_s_g
-                    dH_spin_g = Jspin_x * omd_rel_g + np.cross(om_n, Jspin_x * om_rel_g)
-                   
-                    M_N -= dH_spin_g
+        # --------------------------------------------------------------------------------}
+        # --- Loads
+        # --------------------------------------------------------------------------------{
+        rowDF_in = df.iloc[it] # Prescribed loads from input 
+        Mrna        = WT.RNA_noYawBr.mass
+        JGrna       = WT.RNA_noYawBr.masscenter_inertia
+        JGrna_g     = (R_g2n.T).dot(JGrna).dot(R_g2n)
+        F_Grna_grav = Mrna *gravity_vec
+        r_NGrna     = dd['r_NGrna']
+
+        R_N   = Mrna * a_Grna - F_Grna_grav
+        tau_N = np.cross(r_NGrna, R_N)
+        tau_N += JGrna_g.dot(omd_n)
+        tau_N += np.cross(om_n, JGrna_g.dot(om_n))
+
+        # --- Force at N without YawBr Mass (such are "YawBr" sensors..) in global coordinates
+        F_N = -R_N
+        M_N = -tau_N   #np.cross(r_NGrna, F_Grna_grav)
+
+        # --- Correction for rotor spin
+        # The term above (tau_N) assumes the RNA is a rigid body rotating at om_n.
+        # We add the effect of the rotor spinning relative to the nacelle.
+        # Delta H_dot = J_spin * omd_rel + om_n x (J_spin * om_rel)
+        # (Assuming rotor is symmetric so its inertia tensor J_rot is constant in the shaft frame)
+        if 'Psi' in qd:
+            # Shaft axis x_s in global coordinates:
+            # Shaft axis in global
+            R_g2s = dd['R_g2s']
+            x_s_g = R_g2s[0, :] # First row of R_g2s is the shaft axis in global
+            #x_s_g2 = R_g2n.T.dot(WT.R_NS.dot(np.array([1.0, 0.0, 0.0])))
+            
+            # Spinning inertia about shaft (reflected to LSS, include rotor + gen)
+            Jspin_x = WT.rotgen.inertia[0,0]
+            #J_gen_LSS = WT.gen.inertia[0,0]
+            
+            # Relative angular velocity and acceleration in global
+            om_rel_g  = qd['Psi']  * x_s_g
+            omd_rel_g = qdd['Psi'] * x_s_g
+            
+            # Correction terms for dot{H} (Rate of change of angular momentum)
+            # Using principal axis property: J_rot * x_s_g = Jspin_x * x_s_g
+            dH_spin_g = Jspin_x * omd_rel_g + np.cross(om_n, Jspin_x * om_rel_g)
+           
+            M_N -= dH_spin_g
 
 #                 # ---  Extract Generator Torque from DataFrame (Convert kN-m to N-m)
 #                 # Note: gentq_[kN-m] is positive in the shaft rotation direction
@@ -1440,123 +1518,177 @@ class WindTurbineStructure():
 #                     M_N -= (M_gen        ) * x_s_g
 #                     M_N -= (T_gen_inertia) * x_s_g
 
-                # --- Aero force
-                if 'Fadd_R_xs' in df.keys():
-                    R_g2s = dd['R_g2s']
-                    Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],rowDF_in['Fadd_R_ys'],rowDF_in['Fadd_R_zs']))
-                    Madd_R_in_g = R_g2s.T.dot((rowDF_in['Madd_R_xs'],rowDF_in['Madd_R_ys'],rowDF_in['Madd_R_zs']))
-                    r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
-                    r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
-                    Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
-                    Fadd_N = Fadd_R_in_g
-                    Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
-                    F_N += Fadd_N
-                    M_N += Madd_N
-                elif 'Fadd_R_xh' in df.keys():
-                    R_g2h = dd['R_g2h']
-                    Fadd_R_in_g = R_g2h.T.dot((rowDF_in['Fadd_R_xh'],rowDF_in['Fadd_R_yh'],rowDF_in['Fadd_R_zh']))
-                    Madd_R_in_g = R_g2h.T.dot((rowDF_in['Madd_R_xh'],rowDF_in['Madd_R_yh'],rowDF_in['Madd_R_zh']))
-                    r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
-                    r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
-                    Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
-                    Fadd_N = Fadd_R_in_g
-                    Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
-                    F_N += Fadd_N
-                    M_N += Madd_N
-                F_N_p = R_g2p.dot(F_N)
-                M_N_p = R_g2p.dot(M_N)
+        # --- Aero force
+        if 'Fadd_R_xs' in df.keys():
+            R_g2s = dd['R_g2s']
+            Fadd_R_in_g = R_g2s.T.dot((rowDF_in['Fadd_R_xs'],rowDF_in['Fadd_R_ys'],rowDF_in['Fadd_R_zs']))
+            Madd_R_in_g = R_g2s.T.dot((rowDF_in['Madd_R_xs'],rowDF_in['Madd_R_ys'],rowDF_in['Madd_R_zs']))
+            #r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+            r_NR_in_g = R_g2n.T.dot(WT.rot.pos_global) # actually not pos_global but from N
+            Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+            Fadd_N = Fadd_R_in_g
+            Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
+            F_N += Fadd_N
+            M_N += Madd_N
+        elif 'Fadd_R_xh' in df.keys():
+            R_g2h = dd['R_g2h']
+            Fadd_R_in_g = R_g2h.T.dot((rowDF_in['Fadd_R_xh'],rowDF_in['Fadd_R_yh'],rowDF_in['Fadd_R_zh']))
+            Madd_R_in_g = R_g2h.T.dot((rowDF_in['Madd_R_xh'],rowDF_in['Madd_R_yh'],rowDF_in['Madd_R_zh']))
+            r_NR_in_n = WT.rot.pos_global # actually not pos_global but from N
+            r_NR_in_g = R_g2n.T.dot(r_NR_in_n)
+            Madd_R_N = np.cross(r_NR_in_g, Fadd_R_in_g)
+            Fadd_N = Fadd_R_in_g
+            Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
+            F_N += Fadd_N
+            M_N += Madd_N
+        F_N_p = R_g2p.dot(F_N)
+        M_N_p = R_g2p.dot(M_N)
 
-                dfOut.loc[it, 'YawBrFxp_[kN]']   = F_N_p[0]/1000
-                dfOut.loc[it, 'YawBrFyp_[kN]']   = F_N_p[1]/1000
-                dfOut.loc[it, 'YawBrFzp_[kN]']   = F_N_p[2]/1000
-                dfOut.loc[it, 'YawBrMxp_[kN-m]'] = M_N_p[0]/1000
-                dfOut.loc[it, 'YawBrMyp_[kN-m]'] = M_N_p[1]/1000
-                dfOut.loc[it, 'YawBrMzp_[kN-m]'] = M_N_p[2]/1000
+        rowOut['YawBrFxp_[kN]']   = F_N_p[0]/1000
+        rowOut['YawBrFyp_[kN]']   = F_N_p[1]/1000
+        rowOut['YawBrFzp_[kN]']   = F_N_p[2]/1000
+        rowOut['YawBrMxp_[kN-m]'] = M_N_p[0]/1000
+        rowOut['YawBrMyp_[kN-m]'] = M_N_p[1]/1000
+        rowOut['YawBrMzp_[kN-m]'] = M_N_p[2]/1000
 
-                # --- Override F_N and M_N from DataFrame for debug only
-                if useTopLoadsFromDF:
-                    F_N_p2, M_N_p2 = yawBrakeLoadsFromRow(rowDF_in, fallbackF=F_N_p, fallbackM=M_N_p)
-                    F_N = (R_g2p.T).dot(F_N_p2)
-                    M_N = (R_g2p.T).dot(M_N_p2)
-                
-                # Yaw Brake contribution at N
-                F_N_YawBr = WT.yawBr.mass * gravity_vec
-                F_N += F_N_YawBr
+        # --- Override F_N and M_N from DataFrame for debug only
+        if useTopLoadsFromDF:
+            F_N_p2, M_N_p2 = yawBrakeLoadsFromRow(rowDF_in, fallbackF=F_N_p, fallbackM=M_N_p)
+            F_N = (R_g2p.T).dot(F_N_p2)
+            M_N = (R_g2p.T).dot(M_N_p2)
+        
+        # Yaw Brake contribution at N
+        F_N_YawBr = WT.yawBr.mass * gravity_vec
+        F_N += F_N_YawBr
 
-                # --- Top Loads in tower coordinates
-                R_g2t = dd['R_g2t']
-                F_N_t = R_g2t.dot(F_N)
-                M_N_t = R_g2t.dot(M_N)
-                TopLoad_t = np.concatenate((F_N_t, M_N_t))
+        # --- Top Loads in tower coordinates
+        R_g2t = dd['R_g2t']
+        F_N_t = R_g2t.dot(F_N)
+        M_N_t = R_g2t.dot(M_N)
+        TopLoad_t = np.concatenate((F_N_t, M_N_t))
 
-                # --------------------------------------------------------------------------------}
-                # ---  Tower Section Loads and Kinematics
-                # --------------------------------------------------------------------------------{
-                F_sec, M_sec, _ = towerSectionLoads(WT.twr, F_top_t=F_N_t, M_top_t=M_N_t, kin=dd, gravity=WT.gravity)
-                twr_F_sec[:, :, it] = np.vstack((F_sec, M_sec)) # Store all section loads
+        # --------------------------------------------------------------------------------}
+        # ---  Tower Section Loadsand Kinematics
+        # --------------------------------------------------------------------------------{
+        F_sec, M_sec, _ = towerSectionLoads(WT.twr, F_top_t=F_N_t, M_top_t=M_N_t, kin=dd, gravity=WT.gravity)
+        twr_F_sec_it = np.vstack((F_sec, M_sec)) # Store all section loads
 
-                dfOut.loc[it, 'TwrBsFxt_[kN]']   = F_sec[0, 0] /1000
-                dfOut.loc[it, 'TwrBsFyt_[kN]']   = F_sec[1, 0] /1000
-                dfOut.loc[it, 'TwrBsFzt_[kN]']   = F_sec[2, 0] /1000
-                dfOut.loc[it, 'TwrBsMxt_[kN-m]'] = M_sec[0, 0] /1000
-                dfOut.loc[it, 'TwrBsMyt_[kN-m]'] = M_sec[1, 0] /1000
-                dfOut.loc[it, 'TwrBsMzt_[kN-m]'] = M_sec[2, 0] /1000
+        rowOut['TwrBsFxt_[kN]']   = F_sec[0, 0] /1000
+        rowOut['TwrBsFyt_[kN]']   = F_sec[1, 0] /1000
+        rowOut['TwrBsFzt_[kN]']   = F_sec[2, 0] /1000
+        rowOut['TwrBsMxt_[kN-m]'] = M_sec[0, 0] /1000
+        rowOut['TwrBsMyt_[kN-m]'] = M_sec[1, 0] /1000
+        rowOut['TwrBsMzt_[kN-m]'] = M_sec[2, 0] /1000
 
-                for sT, iSL in zip(twr_Out_df['Lbl'], twr_Out_df['YAMS_i']):
-                    dfOut.loc[it, sT+'FLxt_[kN]']   = F_sec[0, iSL]/1000
-                    dfOut.loc[it, sT+'FLyt_[kN]']   = F_sec[1, iSL]/1000
-                    dfOut.loc[it, sT+'FLzt_[kN]']   = F_sec[2, iSL]/1000
-                    dfOut.loc[it, sT+'MLxt_[kN-m]'] = M_sec[0, iSL]/1000
-                    dfOut.loc[it, sT+'MLyt_[kN-m]'] = M_sec[1, iSL]/1000
-                    dfOut.loc[it, sT+'MLzt_[kN-m]'] = M_sec[2, iSL]/1000
+        for sT, iSL in zip(twr_Out_df['Lbl'], twr_Out_df['YAMS_i']):
+            rowOut[sT+'FLxt_[kN]']   = F_sec[0, iSL]/1000
+            rowOut[sT+'FLyt_[kN]']   = F_sec[1, iSL]/1000
+            rowOut[sT+'FLzt_[kN]']   = F_sec[2, iSL]/1000
+            rowOut[sT+'MLxt_[kN-m]'] = M_sec[0, iSL]/1000
+            rowOut[sT+'MLyt_[kN-m]'] = M_sec[1, iSL]/1000
+            rowOut[sT+'MLzt_[kN-m]'] = M_sec[2, iSL]/1000
 
-                    dfOut.loc[it, sT+'TDxt_[m]']   = dd['u_Ts_in_t'][iSL,0]
-                    dfOut.loc[it, sT+'TDyt_[m]']   = dd['u_Ts_in_t'][iSL,1]
-                    dfOut.loc[it, sT+'TDzt_[m]']   = dd['u_Ts_in_t'][iSL,2]
-                    dfOut.loc[it, sT+'RDxt_[deg]'] = dd['theta_TTs_in_t'][iSL,0]*180/np.pi
-                    dfOut.loc[it, sT+'RDyt_[deg]'] = dd['theta_TTs_in_t'][iSL,1]*180/np.pi
-                    dfOut.loc[it, sT+'RDzt_[deg]'] = dd['theta_TTs_in_t'][iSL,2]*180/np.pi
-                    a_Ts = R_g2t.dot(dd['a_Ts'][iSL])
-                    dfOut.loc[it, sT+'ALxt_[m/s^2]'] = a_Ts[0]
-                    dfOut.loc[it, sT+'ALyt_[m/s^2]'] = a_Ts[1]
-                    dfOut.loc[it, sT+'ALzt_[m/s^2]'] = a_Ts[2]
+            rowOut[sT+'TDxt_[m]']   = dd['u_Ts_in_t'][iSL,0]
+            rowOut[sT+'TDyt_[m]']   = dd['u_Ts_in_t'][iSL,1]
+            rowOut[sT+'TDzt_[m]']   = dd['u_Ts_in_t'][iSL,2]
+            rowOut[sT+'RDxt_[deg]'] = dd['theta_TTs_in_t'][iSL,0]*180/np.pi
+            rowOut[sT+'RDyt_[deg]'] = dd['theta_TTs_in_t'][iSL,1]*180/np.pi
+            rowOut[sT+'RDzt_[deg]'] = dd['theta_TTs_in_t'][iSL,2]*180/np.pi
+            a_Ts = R_g2t.dot(dd['a_Ts'][iSL])
+            rowOut[sT+'ALxt_[m/s^2]'] = a_Ts[0]
+            rowOut[sT+'ALyt_[m/s^2]'] = a_Ts[1]
+            rowOut[sT+'ALzt_[m/s^2]'] = a_Ts[2]
 
-                    dfOut.loc[it, sT+'TPxi_[m]'] = dd['r_Ts'][iSL,0]
-                    dfOut.loc[it, sT+'TPyi_[m]'] = dd['r_Ts'][iSL,1]
-                    dfOut.loc[it, sT+'TPzi_[m]'] = dd['r_Ts'][iSL,2]
+            rowOut[sT+'TPxi_[m]'] = dd['r_Ts'][iSL,0]
+            rowOut[sT+'TPyi_[m]'] = dd['r_Ts'][iSL,1]
+            rowOut[sT+'TPzi_[m]'] = dd['r_Ts'][iSL,2]
 
 
-                # --------------------------------------------------------------------------------}
-                # --- Monopile section Loads
-                # --------------------------------------------------------------------------------{
-                # --- Optional monopile / foundation loads, using tower base loads as interface loads when available
-                if hasMonopile:
-                    # --- Override Interface loads DataFrame for debug only
-                    if useInterfaceLoadsFromDF:
-                        F_top_mnp, M_top_mnp = interfaceLoadsFromDF(rowDF_in, fallbackF=F_sec[:, 0].copy(), fallbackM=M_sec[:, 0].copy())
-                    else:
-                        F_top_mnp, M_top_mnp = F_sec[:, 0].copy(), M_sec[:, 0].copy()
+        # --------------------------------------------------------------------------------}
+        # --- Monopile section Loads
+        # --------------------------------------------------------------------------------{
+        # --- Optional monopile / foundation loads, using tower base loads as interface loads when available
+        mnp_F_sec_it = None
+        if hasMonopile:
+            # --- Override Interface loads DataFrame for debug only
+            if useInterfaceLoadsFromDF:
+                F_top_mnp, M_top_mnp = interfaceLoadsFromDF(rowDF_in, fallbackF=F_sec[:, 0].copy(), fallbackM=M_sec[:, 0].copy())
+            else:
+                F_top_mnp, M_top_mnp = F_sec[:, 0].copy(), M_sec[:, 0].copy()
 
-                    F_mnp, outMnp = monopileSectionLoadsAtTimeStep(t, 
-                                                                 WT.fnd, 
-                                                                 q.values, qd.values, qdd.values, 
-                                                                 WT.pSS, WT.pHD, WT=WT, 
-                                                                 F_top=F_top_mnp, M_top=M_top_mnp, reconHydro=False)
-                    if F_mnp is not None:
-                        mnp_F_sec[:, :, it] = F_mnp
-                        for label, iz, zOut in zip(mnp_labels, mnp_IOut, mnp_zDepthOut):
-                            dfOut.loc[it, f'{label}FKxe_[N]']   = F_mnp[0, iz]
-                            dfOut.loc[it, f'{label}FKye_[N]']   = F_mnp[1, iz]
-                            dfOut.loc[it, f'{label}FKze_[N]']   = F_mnp[2, iz]
-                            dfOut.loc[it, f'{label}MKxe_[N*m]'] = F_mnp[3, iz]
-                            dfOut.loc[it, f'{label}MKye_[N*m]'] = F_mnp[4, iz]
-                            dfOut.loc[it, f'{label}MKze_[N*m]'] = F_mnp[5, iz]
-                    # NOTE: computed with monopile loads..
-                    if WT.pSS is not None:
-                        dfOut.loc[it, f'Wave1Elev_[m]'] = outMnp['eta']
-                        dfOut.loc[it, f'HydroFxi_[N]']  = outMnp['F_hydro']
+            F_mnp, outMnp = monopileSectionLoadsAtTimeStep(t, 
+                                                         WT.fnd, 
+                                                         q.values, qd.values, qdd.values, 
+                                                         WT.pSS, WT.pHD, WT=WT, 
+                                                         F_top=F_top_mnp, M_top=M_top_mnp, reconHydro=False)
+            if F_mnp is not None:
+                mnp_F_sec_it = F_mnp
+                for label, iz, zOut in zip(mnp_labels, mnp_IOut, mnp_zDepthOut):
+                    rowOut[f'{label}FKxe_[N]']   = F_mnp[0, iz]
+                    rowOut[f'{label}FKye_[N]']   = F_mnp[1, iz]
+                    rowOut[f'{label}FKze_[N]']   = F_mnp[2, iz]
+                    rowOut[f'{label}MKxe_[N*m]'] = F_mnp[3, iz]
+                    rowOut[f'{label}MKye_[N*m]'] = F_mnp[4, iz]
+                    rowOut[f'{label}MKze_[N*m]'] = F_mnp[5, iz]
+            # NOTE: computed with monopile loads..
+            if WT.pSS is not None:
+                rowOut['Wave1Elev_[m]'] = outMnp['eta']
+                rowOut['HydroFxi_[N]']  = outMnp['F_hydro']
+
+        return rowOut, twr_F_sec_it, mnp_F_sec_it
+
+
+    def calcOutputsFromDF_loop(WT, df, dInit):
+        """ 
+        Given a dataFrame containing time series of DOF
+        Compute outputs using OpenFAST Naming Convention, by initializing
+        once (calcOutputsFromDF_init) and stepping per time step
+        (calcOutputsFromDF_step).
+        
+        INPUTS: 
+         - df: dataframe with time series of degrees of freedom
+               For instance df= weio.read('main.outb').toDataFrame()
+               Columns Names: 'Time_[s]'
+               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+         - noAcc: set accelerations to zero
+        
+        RETURNS:
+
+         - dfOut  : (WEIODataFrame) outputs dataframe
+         - sections: dict with section loads (tower, monopile, combined)
+        """
+        from welib.tools.tictoc import Timer
+
+        # --- Aliases
+        dfOut       = dInit['dfOut']
+        twr_F_sec  = dInit['twr_F_sec']
+        mnp_F_sec  = dInit['mnp_F_sec']
+        hasMonopile = dInit['hasMonopile']
+
+        df = dInit['df']
+        sTime = 'Time_[s]' 
+        if sTime not in df:
+            sTime ='Time'
+            if sTime not in df:
+                raise Exception('Neither `Time` or `Time_[s]` in df')
+
+
+        # --- Calc Output per time step
+        with Timer('Time Loop'):
+            for it,t in enumerate(df[sTime]):
+                if np.mod(it,1000)==0:
+                    print(f'Time Loop {it}/{len(dInit["df"])}')
+
+                rowOut, twr_it, mnp_it = WT.calcOutputsFromDF_step(dInit, it, t)
+                dfOut.loc[it] = rowOut
+                twr_F_sec[:, :, it] = twr_it
+                if hasMonopile and mnp_it is not None:
+
+                    mnp_F_sec[:, :, it] = mnp_it
+
 
         # --- Combine Section loads into a dicitonary
+        sections  = dict()
         spans = []
         loads = []
         spansRef = []
@@ -1569,7 +1701,7 @@ class WindTurbineStructure():
             spans.append(sections['monopile']['z'])
             loads.append(sections['monopile']['F_sec'])
 
-            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(df, verbose=False)
+            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(dInit['df'], verbose=False)
             sections['monopile'].update({'zRef': zBeamRef, 'F_secRef':F_secRef})
             spansRef.append(sections['monopile']['zRef'])
             loadsRef.append(sections['monopile']['F_secRef'])
@@ -1579,12 +1711,12 @@ class WindTurbineStructure():
             sections['tower'] = {'z': WT.twr.s_span+WT.ED['TowerBsHt'], 'F_sec': twr_F_sec}
             spans.append(sections['tower']['z']    )
             loads.append(sections['tower']['F_sec'])
-            zRef, F_secRef, r_secRef =  ed.twrSecOutputs(df, verbose=False)
+            zRef, F_secRef, r_secRef =  dInit['ed'].twrSecOutputs(dInit['df'], verbose=False)
             sections['tower'].update({'zRef': zRef, 'F_secRef':F_secRef})
             spansRef.append(sections['tower']['zRef'])
             loadsRef.append(sections['tower']['F_secRef'])
 
-        sections['combined'] = {'z': np.concatenate(spans), 'F_sec': np.concatenate(loads, axis=1),'zRef': np.concatenate(spansRef), 'F_secRef': np.concatenate(loadsRef, axis=1)}
+        sections['combined'] = {'z': np.concatenate(spans), 'F_sec': np.concatenate(loads, axis=1), 'zRef': np.concatenate(spansRef), 'F_secRef': np.concatenate(loadsRef, axis=1)}
 
 
         nan_cols = dfOut.columns[dfOut.isna().any()].tolist()

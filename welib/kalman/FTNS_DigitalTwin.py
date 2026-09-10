@@ -10,7 +10,7 @@ import welib.weio as weio
 from welib.essentials import *
 from welib.ws_estimator.tabulated_floating import TabulatedWSEstimatorFloating
 from welib.kalman.KF_FTNS import KalmanFilterFTNSLin
-from welib.kalman.FTNS_SectionLoadsCalc import YAMSSectionLoadCalculatorOptimized
+from welib.yams.section_loads_WT import YAMSSectionLoadCalculatorOptimized_FTNS, YAMSSectionLoadCalculator
 
 # --- Kalman filter model
 class DigitalTwin():
@@ -50,7 +50,8 @@ class DigitalTwin():
 
     def setupVirtualSensing(self, vsType='SL_YAMS', **opts):
         if vsType=='SL_YAMS':
-            self.VS = YAMSSectionLoadCalculatorOptimized(fstFile=opts['fstFile'])
+            self.VS = YAMSSectionLoadCalculator(fstFile=opts['fstFile'])
+            #self.VS = YAMSSectionLoadCalculatorOptimized_FTNS(fstFile=opts['fstFile'])
         else:
             raise NotImplementedError()
 
@@ -100,6 +101,9 @@ class DigitalTwin():
 
     def virtualSensing(self):
         """ """
+        from welib.fast.dofs import COLMAP_QSHORT_TO_QOF
+        from welib.fast.dofs import COLMAP_QDSHORT_TO_QDOF
+        from welib.fast.dofs import COLMAP_QD2SHORT_TO_QD2OF
         print('--------------------------- DIGITAL TWIN VIRTUAL SENSING ---------------------------')
         #DOFNames = []
         KF = self.SE
@@ -108,52 +112,56 @@ class DigitalTwin():
         X       = KF.X_hat
         XD      = KF.XD_hat
 
-        dfIn = self.VS.emptyInputDF(nt=len(self.SE.time), inputFrame='R_xs')
-        dfIn['Time'] = KF.time
+        dfIn = self.VS.emptyInputDF(nt=len(self.SE.time), inputFrame='R_xs', units='True')
+        dfIn['Time_[s]'] = KF.time
 
-        MAPQ = {'Sg':'x', 'Sw':'y', 'Hv':'z' ,'R':'phi_x', 'P':'phi_y', 'Y':'phi_z', 'TFA1':'q_FA1', 'TSS1':'q_SS1', 'Yaw':'q_yaw'}
-
-        for sDOF,sShort in MAPQ.items():
+#         MAPQ = {'Sg':'x', 'Sw':'y', 'Hv':'z' ,'R':'phi_x', 'P':'phi_y', 'Y':'phi_z', 'TFA1':'q_FA1', 'TSS1':'q_SS1', 'Yaw':'q_yaw'}
+# 
+        for sDOF,sShort in COLMAP_QSHORT_TO_QOF.items():
             sq   = sShort
             if sq in X.keys():
                 if sq in ['phi_z']:
-                    #print('[ OK ] Using zero for', sq)
-                    dfIn['Q_'+sDOF]   = 0
-                    dfIn['QD_'+sDOF]  = 0
-                    dfIn['QD2_'+sDOF] = 0
-#                 elif sq in ['y','phi_x']:
-#                     print('[ OK ] Using vel/acc from signal for', sq)
-#                     x_smooth = moving_average(df[sq].values, n=15)
-#                     vel = ddt(x_smooth, df['Time'].values)
-#                     acc = ddt(vel, df['Time'].values)
-#                     dfIn['Q_'+sDOF]   = df[sq]
-#                     dfIn['QD_'+sDOF]  = vel
-#                     dfIn['QD2_'+sDOF] = 0
+                    dfIn[sDOF]=0
                 else:
-                    #print('[ OK ] Using Hat for', sq)
-                    dfIn['Q_'+sDOF]   = X[sq]
-                    dfIn['QD_'+sDOF]  = X['d'+sq]
-                    dfIn['QD2_'+sDOF] = XD['dd'+sq]  - np.mean(XD['dd'+sq])
-# #                 dfIn['Q_'+sDOF]   = X[sq]
-# #                 dfIn['QD_'+sDOF]  = X['d'+sq]
-#                 dfIn['Q_'+sDOF]   = X_clean[sq]
-#                 dfIn['QD_'+sDOF]  = X_clean['d'+sq]
-#                 dfIn['QD2_'+sDOF] = XD['dd'+sq]
-            else:
-                print('[INFO] DigiTwin: Virtual sensing: state no present  ', sShort)
+                    dfIn[sDOF]  = X[sq]
+
+        for sDOF,sShort in COLMAP_QDSHORT_TO_QDOF.items():
+            sq = sShort[1:] # Remove the d
+            if sq in X.keys():
+                if sq in ['phi_z']:
+                    dfIn[sDOF]=0
+                else:
+                    dfIn[sDOF]  = X[sShort]
+
+        for sDOF,sShort in COLMAP_QD2SHORT_TO_QD2OF.items():
+            sq = sShort[2:] # Remove the dd
+            if sq in X.keys():
+                if sq in ['phi_z']:
+                    dfIn[sDOF]=0
+                else:
+                    dfIn[sDOF]  = XD['dd'+sq] - np.mean(XD['dd'+sq])
+
         if 'Qaero' in X.keys():
             dfIn['Madd_R_xs'] = X['Qaero']
+            dfIn['Madd_R_ys'] = 0
+            dfIn['Madd_R_zs'] = 0
         if 'Thrust' in X.keys():
             print('[INFO] DigiTwin: Virtual Sensing: using Thrust from X')
             dfIn['Fadd_R_xs'] = X['Thrust']
+            dfIn['Fadd_R_ys'] = 0
+            dfIn['Fadd_R_zs'] = 0
         elif 'Thrust' in KF.U_hat.keys():
             print('[INFO] DigiTwin: Virtual Sensing: using Thrust from U_hat')
             dfIn['Fadd_R_xs'] = KF.U_hat['Thrust']
+            dfIn['Fadd_R_ys'] = 0
+            dfIn['Fadd_R_zs'] = 0
         elif 'Thrust' in KF.S_hat.keys():
             print('[INFO] DigiTwin: Virtual Sensing: using Thrust from S_hat')
             dfIn['Fadd_R_xs'] = KF.S_hat['Thrust']
+            dfIn['Fadd_R_ys'] = 0
+            dfIn['Fadd_R_zs'] = 0
 
-        dfSL = self.VS.fromDF(dfIn, useTopLoadsFromDF=False)
+        dfSL, _ = self.VS.fromDF(dfIn, useTopLoadsFromDF=False, accMissing='raise')
 
         # Store in KF
         for s in KF.sS:

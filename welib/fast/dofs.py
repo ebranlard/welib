@@ -50,7 +50,9 @@ COLMAP_QSHORT_TO_QOF={
     'Q_R_[rad]'           : 'phi_x',
     'Q_P_[rad]'           : 'phi_y',
     'Q_Y_[rad]'           : 'phi_z',
+    }
     # Velocities (QD)
+COLMAP_QDSHORT_TO_QDOF={
     'QD_B1E1_[m/s]'       : 'dq_B1E1',
     'QD_B2E1_[m/s]'       : 'dq_B2E1',
     'QD_B3E1_[m/s]'       : 'dq_B3E1',
@@ -76,7 +78,9 @@ COLMAP_QSHORT_TO_QOF={
     'QD_R_[rad/s]'        : 'dphi_x',
     'QD_P_[rad/s]'        : 'dphi_y',
     'QD_Y_[rad/s]'        : 'dphi_z',
+    }
     # Accelerations (QD2)
+COLMAP_QD2SHORT_TO_QD2OF={
     'QD2_B1E1_[m/s^2]'    : 'ddq_B1E1',
     'QD2_B2E1_[m/s^2]'    : 'ddq_B2E1',
     'QD2_B3E1_[m/s^2]'    : 'ddq_B3E1',
@@ -103,11 +107,13 @@ COLMAP_QSHORT_TO_QOF={
     'QD2_P_[rad/s^2]'     : 'ddphi_y',
     'QD2_Y_[rad/s^2]'     : 'ddphi_z',
 }
-QOF = COLMAP_QSHORT_TO_QOF.keys()
+Q_OF   = list(COLMAP_QSHORT_TO_QOF.keys())
+QD_OF  = list(COLMAP_QDSHORT_TO_QDOF.keys())
+QD2_OF = list(COLMAP_QD2SHORT_TO_QD2OF.keys())
 
 
 # COLMAP_QOF_TO_QSHORT = inverse_colmap(COLMAP_QSHORT_TO_QOF)  # Or simply
-COLMAP_QOF_TO_QSHORT = {v: k for k, v in COLMAP_QSHORT_TO_QOF.items()}
+# COLMAP_QOF_TO_QSHORT = {v: k for k, v in COLMAP_QSHORT_TO_QOF.items()}
 
 # COLMAP_OFQ_TO_SHORT={
 #   'x'       : 'Q_Sg_[m]'           , 

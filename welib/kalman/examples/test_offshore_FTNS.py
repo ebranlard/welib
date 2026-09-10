@@ -277,3 +277,30 @@ if __name__ == '__main__':
     #statsMoments = main(sWT='Spar', test=False)
 
     plt.show()
+
+
+# x          σ_est/σ_ref = 1.013 - ε=2.0% - R²=0.992
+# y          σ_est/σ_ref = 1.048 - ε=3.9% - R²=0.952
+# z          σ_est/σ_ref = 0.907 - ε=9.1% - R²=0.109
+# phi_x      σ_est/σ_ref = 0.940 - ε=9.6% - R²=0.544
+# phi_y      σ_est/σ_ref = 0.910 - ε=5.9% - R²=0.873
+# phi_z      σ_est/σ_ref = 0.471 - ε=14.8% - R²=0.000
+# q_FA1      σ_est/σ_ref = 0.860 - ε=7.9% - R²=0.665
+# psi        σ_est/σ_ref = 1.001 - ε=3.0% - R²=0.719
+# dx         σ_est/σ_ref = 3.870 - ε=29.0% - R²=0.000
+# dy         σ_est/σ_ref = 1.378 - ε=20.5% - R²=0.000
+# dz         σ_est/σ_ref = 0.534 - ε=13.0% - R²=0.000
+# dphi_x     σ_est/σ_ref = 1.698 - ε=1.2% - R²=0.000
+# dphi_y     σ_est/σ_ref = 1.268 - ε=4.1% - R²=0.590
+# dphi_z     σ_est/σ_ref = 2.408 - ε=1.5% - R²=0.039
+# dq_FA1     σ_est/σ_ref = 1.885 - ε=20.8% - R²=0.000
+# dpsi       σ_est/σ_ref = 1.005 - ε=0.3% - R²=1.000
+# Qaero      σ_est/σ_ref = 0.936 - ε=4.2% - R²=0.829
+# WS         σ_est/σ_ref = 1.102 - ε=4.8% - R²=0.792
+# TwHt1MLyt_[kN-m] σ_est/σ_ref = 0.812 - ε=4.8% - R²=0.843
+# TwHt5MLyt_[kN-m] σ_est/σ_ref = 0.825 - ε=4.6% - R²=0.837
+# TwHt8MLyt_[kN-m] σ_est/σ_ref = 0.854 - ε=5.2% - R²=0.754
+# >> nInvalid: 397
+# TwHt1MLyt  σ_est/σ_ref = 0.812 - ε=4.8% - R²=0.843
+# TwHt5MLyt  σ_est/σ_ref = 0.825 - ε=4.6% - R²=0.837
+# TwHt8MLyt  σ_est/σ_ref = 0.854 - ε=5.2% - R²=0.754
