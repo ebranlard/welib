@@ -43,7 +43,7 @@ from welib.hydro.morison import monopileHydroLoads1D
 # --------------------------------------------------------------------------------}
 # --- Monopile forces
 # --------------------------------------------------------------------------------{
-def monopileGF(t, q, qd, fnd, pSS, pHD, qdd=None, reconHydro=False, nOut=[0], eta=None, eta_dot=None):
+def monopileGF(t, q, qd, fnd, pSS, pHD, qdd=None, reconHydro=False, nOut=[0], eta=None, eta_dot=None, p_ext=None):
     # TODO 
     # TODO:         Potentially we can split the calculation of the gneralized force and hydro force
     # TODO:         Please keep the reconstructed hydrodynamic force, I'll use this later.
@@ -88,44 +88,56 @@ def monopileGF(t, q, qd, fnd, pSS, pHD, qdd=None, reconHydro=False, nOut=[0], et
     if pSS is None:
         outH=None
     else:
-        # NOTE: We assume that Hydro and structural nodes are the same. 
-        #       Otherwise, we should interpolate a_struct and v_struct to the hydrodynamic nodes
-
-        if eta_dot is None:
-            eta     = np.interp(t, pSS['eta_time'], pSS['eta'])
-            eta_dot = np.interp(t, pSS['eta_time'], pSS['eta_dot'])
-
-        if reconHydro:
-            # --- Reconstruc hydro force using shape function
-            outH=dict()
-            nOut[0]+=1
-            if nOut[0]<10:
-                print('recon', t)
-            p_hydro = pHD['phi'] * eta_dot
-
-            # Limit calculations to below water and above sea bed
-            z = pHD['zDepth']
-            h = -np.min(z) # approx 
-            bWet = np.logical_and(z<=0, z>=-h)  # TODO eta
-            zWet = z[bWet].flatten()
-            z_ref=np.min(zWet) 
-
-            outH['p_hydro_no_struct_acc']  = p_hydro.copy()
-            if qdd is not None:
-                A = (np.pi * pHD['D']**2 / 4).ravel()
-                p_AM_str  = -pSS['rho'] * pHD['Ca'].ravel() * A * a_struct[0,:].ravel()  # Added-mass (relative acceleration)
-                p_AM_str[~bWet]  = 0 # Important
-                p_hydro += p_AM_str
-
-            outH['p_hydro']  = p_hydro
-            outH['dM_hydro'] = p_hydro * (z-z_ref)
-            outH['F_hydro']    = trapezoid(p_hydro[bWet]               , zWet) # [N]
-            outH['M_sb_hydro'] = trapezoid(p_hydro[bWet] * (zWet-z_ref), zWet) # Sea bed moment [Nm]
-
+        z = pHD['zDepth']
+        h = -np.min(z) # approx 
+        bWet = np.logical_and(z<=0, z>=-h)  # TODO eta
+        zWet = z[bWet].flatten()
+        if p_ext is not None:
+            # Someone provided us withthe hydro force
+            outH = dict()
+            outH['p_hydro'] = p_ext
+            outH['F_hydro'] = np.trapezoid(p_ext[0,:][bWet], zWet) # [N]
+            eta     = np.nan
+            eta_dot = np.nan
         else:
-            # -- Compute hydro using Morison equation
-            #Return dict with keys: 'eta', 'u_wav', 'a_wav', 'bWet', 'u_rel', 'a_rel', 'p_hydro', 'p_drag', 'p_AM', 'p_FK', 'p_AM_str', 'p_AM_wav', 'dM_hydro', 'F_hydro', 'M_sb_hydro'
-            outH = monopileHydroLoads1D(t, pSS['ap'], pSS['fp'], pSS['kp'], pSS['epsp'], pSS['WaterDepth'], pHD['zDepth'], xdist, D=pHD['D'], Cd=pHD['Cd'], Cp=pHD['Cp'], Ca=pHD['Ca'] , rho = pSS['rho'], u_struct=v_struct[0,:], a_struct=a_struct[0,:])
+            # NOTE: We assume that Hydro and structural nodes are the same. 
+            #       Otherwise, we should interpolate a_struct and v_struct to the hydrodynamic nodes
+
+            if eta_dot is None:
+                eta     = np.interp(t, pSS['eta_time'], pSS['eta'])
+                eta_dot = np.interp(t, pSS['eta_time'], pSS['eta_dot'])
+
+            if reconHydro:
+                # --- Reconstruc hydro force using shape function
+                outH=dict()
+                nOut[0]+=1
+                if nOut[0]<10:
+                    print('recon', t)
+                p_hydro1D = pHD['phi'] * eta_dot
+
+                # Limit calculations to below water and above sea bed
+                z_ref=np.min(zWet) 
+
+                outH['p_hydro_no_struct_acc']  = p_hydro1D.copy()
+                if qdd is not None:
+                    A = (np.pi * pHD['D']**2 / 4).ravel()
+                    p_AM_str  = -pSS['rho'] * pHD['Ca'].ravel() * A * a_struct[0,:].ravel()  # Added-mass (relative acceleration)
+                    p_AM_str[~bWet]  = 0 # Important
+                    p_hydro1D += p_AM_str
+
+                outH['p_hydro']      = np.zeros((3, len(p_hydro1D)))
+                outH['p_hydro'][0,:] = p_hydro1D
+                outH['dM_hydro']     = p_hydro1D * (z-z_ref)
+                outH['F_hydro']      = np.trapezoid(p_hydro1D[bWet]               , zWet) # [N]
+                outH['M_sb_hydro']   = np.trapezoid(p_hydro1D[bWet] * (zWet-z_ref), zWet) # Sea bed moment [Nm]
+
+            else:
+                # -- Compute hydro using Morison equation
+                #Return dict with keys: 'eta', 'u_wav', 'a_wav', 'bWet', 'u_rel', 'a_rel', 'p_hydro', 'p_drag', 'p_AM', 'p_FK', 'p_AM_str', 'p_AM_wav', 'dM_hydro', 'F_hydro', 'M_sb_hydro'
+                outH = monopileHydroLoads1D(t, pSS['ap'], pSS['fp'], pSS['kp'], pSS['epsp'], pSS['WaterDepth'], pHD['zDepth'], xdist, D=pHD['D'], Cd=pHD['Cd'], Cp=pHD['Cp'], Ca=pHD['Ca'] , rho = pSS['rho'], u_struct=v_struct[0,:], a_struct=a_struct[0,:])
+                p_hydro1D = outH['p_hydro']
+                outH['p_hydro']      = np.zeros((3, len(p_hydro1D)))
+                outH['p_hydro'][0,:] = p_hydro1D
 
         outH['eta']     = eta
         outH['eta_dot'] = eta_dot
@@ -133,8 +145,8 @@ def monopileGF(t, q, qd, fnd, pSS, pHD, qdd=None, reconHydro=False, nOut=[0], et
         # NOTE: We assume that Hydro and Structural nodes are the same. 
         #       Otherwise we should interpolate the hydro loads to the structural nodes
         np.testing.assert_allclose(pHD['zDepth']-pHD['zDepth'][0], fnd.s_span)
-        GF_s = np.trapezoid(outH['p_hydro']*PhiU[0][0,:], pHD['zDepth']) # Generalized force in surge
-        GF_p = np.trapezoid(outH['p_hydro']*PhiU[1][0,:], pHD['zDepth']) # Generalized force in pitch
+        GF_s = np.trapezoid(outH['p_hydro'][0,:]*PhiU[0][0,:], pHD['zDepth']) # Generalized force in surge
+        GF_p = np.trapezoid(outH['p_hydro'][0,:]*PhiU[1][0,:], pHD['zDepth']) # Generalized force in pitch
         GF[0]+=GF_s
         GF[1]+=GF_p
 
@@ -150,7 +162,7 @@ def monopileGF(t, q, qd, fnd, pSS, pHD, qdd=None, reconHydro=False, nOut=[0], et
 # --- Calc outputs 
 # --------------------------------------------------------------------------------{
 
-def monopileSectionLoadsAtTimeStep(t, fnd, q, qd, qdd, pSS, pHD, WT=None, F_top=None, M_top=None, reconHydro=False):
+def monopileSectionLoadsAtTimeStep(t, fnd, q, qd, qdd, pSS, pHD, WT=None, F_top=None, M_top=None, reconHydro=False, p_ext=None):
     """Compute monopile section loads 
 
     Inputs are the full system state DOF which we slicing the fnd DOFs.
@@ -159,16 +171,29 @@ def monopileSectionLoadsAtTimeStep(t, fnd, q, qd, qdd, pSS, pHD, WT=None, F_top=
     to work with a coupled turbine state vector.
     """
     # fnd.I_DOF only set by ground.setupDOFIndex
-    I_DOF = np.arange(fnd.nf).astype(int)
-    q     = np.asarray(q)
-    qd    = np.asarray(qd)
-    qdd   = np.asarray(qdd)
-    x     = np.concatenate((q[I_DOF], qd[I_DOF]))
-    xd    = np.concatenate((qd[I_DOF],qdd[I_DOF]))
-    return monopileOutputs(t, x, fnd, pSS=pSS, pHD=pHD, WT=WT, xd=xd, reconHydro=reconHydro, F_top=F_top, M_top=M_top)
+    # TODO TODO TODO THIS IS TEMPORARY AS THE INTERFACE NEED RETHINKING
+    q_flat     = np.asarray(q).copy()
+    qd_flat    = np.asarray(qd).copy()
+    qdd_flat   = np.asarray(qdd).copy()
+
+    if len(q_flat) ==12:
+        if fnd.nf==2:
+#             I_DOF = [0,1] # LEGACY (Bug)
+            I_DOF = [0,4]
+        else:
+            raise NotImplementedError()
+    else:
+        print('>>>> TODO TODO TODO windturbine len(q)', len(q))
+        I_DOF = np.arange(fnd.nf).astype(int)
+
+    x     = np.concatenate((q_flat[I_DOF], qd_flat[I_DOF]))
+    xd    = np.concatenate((qd_flat[I_DOF],qdd_flat[I_DOF]))
+    #print('>>>', q_flat[I_DOF])
+
+    return monopileOutputs(t, x, fnd, pSS=pSS, pHD=pHD, WT=WT, xd=xd, reconHydro=reconHydro, F_top=F_top, M_top=M_top, p_ext=p_ext)
 
 
-def monopileOutputs(t, x, fnd, pSS, pHD, WT, it=None, xd=None, Sys=None, reconHydro=False, F_top=None, M_top=None):
+def monopileOutputs(t, x, fnd, pSS, pHD, WT, it=None, xd=None, Sys=None, reconHydro=False, F_top=None, M_top=None, p_ext=None):
     # TODO:  No need for sys, we can give the responsibility to the caller to provide the acceleration
     # TODO:  We might want to split the calcualtion of the hydro force and the generalized force, but maybe that's overkill. For the section loads we do not need the generalized force
     # TODO:  This function should be called by calcOutputsFromDF at various time steps
@@ -190,7 +215,7 @@ def monopileOutputs(t, x, fnd, pSS, pHD, WT, it=None, xd=None, Sys=None, reconHy
     """
     # --- Local variables, allocs
     nDOF = len(x)//2
-    x = x.reshape(-1,1) # column vector of states
+    x = x.reshape(-1,1) # column vector of states WHY I feel like it would work fine without it. TODO remove it
     q = x[:nDOF]
     qd = x[nDOF:]
 
@@ -206,7 +231,8 @@ def monopileOutputs(t, x, fnd, pSS, pHD, WT, it=None, xd=None, Sys=None, reconHy
     #  - If you provide qdd, then the added mass from the structural acceleration will be in p_hydro
     #    In that case, we should not provide m_hydro to the section loads (to avoid double counting)
     # outf: dict with keys: 'eta', 'u_wav', 'a_wav', 'bWet', 'u_rel', 'a_rel', 'p_hydro', 'p_drag', 'p_AM', 'p_FK', 'p_AM_str', 'p_AM_wav', 'dM_hydro', 'F_hydro', 'M_sb_hydro'
-    GF, outF = monopileGF(t, q, qd, fnd=WT.fnd, pSS=pSS, pHD=pHD, qdd=qdd, reconHydro=reconHydro)
+    p_ext_provided = p_ext is not None
+    GF, outF = monopileGF(t, q, qd, fnd=WT.fnd, pSS=pSS, pHD=pHD, qdd=qdd, reconHydro=reconHydro, p_ext=p_ext)
 
 
     # Main Inputs for section loads
@@ -241,9 +267,13 @@ def monopileOutputs(t, x, fnd, pSS, pHD, WT, it=None, xd=None, Sys=None, reconHy
     outD.update(outF)
 
     if not reconHydro:
-        #outD['p_hydro_no_struct_acc'] = outF_no_Acc['p_hydro']
-        p_no_acc = outF['p_FK']+ outF['p_AM_wav']+ outF['p_drag']
-        outD['p_hydro_no_struct_acc'] = p_no_acc
+        if p_ext_provided:
+            # do nothing
+            pass
+        else:
+            #outD['p_hydro_no_struct_acc'] = outF_no_Acc['p_hydro']
+            p_no_acc = outF['p_FK']+ outF['p_AM_wav']+ outF['p_drag']
+            outD['p_hydro_no_struct_acc'] = p_no_acc
     else:
         pass # p_hydro_no_struct_acc already returned in that case in 
     return F_sec, outD
@@ -283,7 +313,7 @@ def interfaceLoadsFromDF(row, fallbackF=None, fallbackM=None, verbose=False, rai
     ]
     for prefix, suffixes, scale  in candidates:
         cols = [f'{prefix}{s}' for s in suffixes]
-        if all(c in row.index for c in cols):
+        if all(c in row.index for c in cols): # TODO  use any
             FM_top = np.array([row[c] for c in cols], dtype=float) * scale
             return FM_top[:3], FM_top[3:]
         else:
@@ -1153,47 +1183,12 @@ class WindTurbineStructure():
 
         return df
 
-
-    def calcOutputsFromDF(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
+    def calcOutputs_init(WT, time=None):
         """ 
-        Given a dataFrame containing time series of DOF
-        Compute outputs using OpenFAST Naming Convention
-        
-        INPUTS: 
-         - df: dataframe with time series of degrees of freedom
-               For instance df= weio.read('main.outb').toDataFrame()
-               Columns Names: 'Time_[s]'
-               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
-         - noAcc: set accelerations to zero
-        
-        RETURNS:
-         - dfOut  : (WEIODataFrame) outputs dataframe
-         - sections: dict with section loads (tower, monopile, combined)
-        """
-
-        # --- Initialize (returns dict with all the data useful for time stepping)
-        dInfo = WT.calcOutputsFromDF_init(df, noAcc=noAcc, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, 
-                                          accMissing=accMissing)
-
-        return WT.calcOutputsFromDF_loop(df, dInfo)
-
-    def calcOutputsFromDF_init(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
-        """ 
-        Given a dataFrame containing time series of DOF, initialize the
-        computation of outputs. Returns a dict `dInfo` with all the data useful
-        for time stepping (see calcOutputsFromDF_step) and for generating the
-        final outputs dataframe.
-
-        INPUTS: 
-         - df: dataframe with time series of degrees of fredom
-               For instance df= weio.read('main.outb').toDataFrame()
-               Columns Names: 'Time_[s]'
-               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
-         - noAcc: set accelerations to zero
+        Initialize output storage for a time simulation
         """
         from welib.fast.elastodyn import ElastoDyn
         from welib.fast.postpro import ED_TwrGag, ED_TwrStations
-
         ed = ElastoDyn(WT.ED)
 
         # --------------------------------------------------------------------------------}
@@ -1202,9 +1197,10 @@ class WindTurbineStructure():
         # --- Outputs
         colOut = ['Time_[s]']
         # States
-        sq   = [ "Q_Sg_[m]"       , "Q_Sw_[m]"       , "Q_Hv_[m]"       , "Q_R_[rad]"       , "Q_P_[rad]"       , "Q_Y_[rad]"       , "Q_TFA1_[m]"      , "Q_TFA2_[m]"       , "Q_TSS1_[m]"       , "Q_TSS2_[m]"       , "Q_Yaw_[rad]"       , "Q_GeAz_[rad]"]
-        sqd  = [ "QD_Sg_[m/s]"    , "QD_Sw_[m/s]"    , "QD_Hv_[m/s]"    , "QD_R_[rad/s]"    , "QD_P_[rad/s]"    , "QD_Y_[rad/s]"    , "QD_TFA1_[m/s]"   , "QD_TFA2_[m/s]"    , "QD_TSS1_[m/s]"    , "QD_TSS2_[m/s]"    , "QD_Yaw_[rad/s]"    , "QD_GeAz_[rad/s]"]
-        sqdd = [ "QD2_Sg_[m/s^2]" , "QD2_Sw_[m/s^2]" , "QD2_Hv_[m/s^2]" , "QD2_R_[rad/s^2]" , "QD2_P_[rad/s^2]" , "QD2_Y_[rad/s^2]" , "QD2_TFA1_[m/s^2]", "QD2_TFA2_[m/s^2]" , "QD2_TSS1_[m/s^2]" , "QD2_TSS2_[m/s^2]" , "QD2_Yaw_[rad/s^2]" , "QD2_GeAz_[rad/s^2]"]
+        sq       = [ "Q_Sg_[m]"       , "Q_Sw_[m]"       , "Q_Hv_[m]"       , "Q_R_[rad]"       , "Q_P_[rad]"       , "Q_Y_[rad]"       , "Q_TFA1_[m]"       , "Q_TFA2_[m]"       , "Q_TSS1_[m]"       , "Q_TSS2_[m]"       , "Q_Yaw_[rad]"       , "Q_GeAz_[rad]"]
+        sqd      = [ "QD_Sg_[m/s]"    , "QD_Sw_[m/s]"    , "QD_Hv_[m/s]"    , "QD_R_[rad/s]"    , "QD_P_[rad/s]"    , "QD_Y_[rad/s]"    , "QD_TFA1_[m/s]"    , "QD_TFA2_[m/s]"    , "QD_TSS1_[m/s]"    , "QD_TSS2_[m/s]"    , "QD_Yaw_[rad/s]"    , "QD_GeAz_[rad/s]"]
+        sqdd     = [ "QD2_Sg_[m/s^2]" , "QD2_Sw_[m/s^2]" , "QD2_Hv_[m/s^2]" , "QD2_R_[rad/s^2]" , "QD2_P_[rad/s^2]" , "QD2_Y_[rad/s^2]" , "QD2_TFA1_[m/s^2]" , "QD2_TFA2_[m/s^2]" , "QD2_TSS1_[m/s^2]" , "QD2_TSS2_[m/s^2]" , "QD2_Yaw_[rad/s^2]" , "QD2_GeAz_[rad/s^2]"]
+        sq_short = ['Sg'              , 'Sw'             , 'Hv'             , 'R'               , 'P'               , 'Y'               , 'TFA1'             , 'TFA2'             , 'TSS1'             , 'TSS2'             , 'Yaw'               , 'Psi']                   # TODO
         colOut += sq + sqd + sqdd
         # IMU
         colOut += ['NcIMUTVxs_[m/s]'     , 'NcIMUTVys_[m/s]'     , 'NcIMUTVzs_[m/s]']
@@ -1256,21 +1252,105 @@ class WindTurbineStructure():
             colOut += ['HydroFxi_[N]']
 
 
+        # --- Time storage
+        dfOut     = None
+        mnp_F_sec = None
+        mnp_F_sec = None
+        if time is not None:
+            nt = len(time)
+            index = np.arange(nt)
+            if isinstance(time, pd.Series):
+                index = time.index
+                time = time.values
+
+            dfOut = WEIODataFrame(index=index, columns=colOut, dtype=float)
+
+            # --- Initialize section loads
+            twr_F_sec = np.zeros((6, len(WT.twr.s_span), nt)) 
+            if hasMonopile:
+                mnp_F_sec = np.zeros((6, len(WT.fnd.s_span), nt)) 
+
+            # --- Compute wave elevation from component file if provided
+            if WT.pSS is not None:
+                if 'ap' in WT.pSS:
+                    NOTE(f"Computing Eta t0={time[0]}, tend={time[-1]}, n={nt}")
+                    WT.SS_computeEta(time)
+
+        # --- Store relevant info
+        dInfo = OrderedDict()
+        dInfo['sQ_OF']       = sq
+        dInfo['sQd_OF']      = sqd
+        dInfo['sQdd_OF']     = sqdd
+        dInfo['sq_short']    = sq_short
+        dInfo['q_default']     = pd.Series(dict.fromkeys(sq_short, 0.0))
+
+        dInfo['colOut']      = colOut
+        dInfo['twr_Out_df']  = twr_Out_df
+        dInfo['mnp_Out_df']  = mnp_Out_df
+        dInfo['hasMonopile'] = hasMonopile
+        dInfo['ed']          = ed # TODO do this way earlier
+        # Time storage
+        dInfo['dfOut']     = dfOut
+        dInfo['twr_F_sec'] = twr_F_sec
+        dInfo['mnp_F_sec'] = mnp_F_sec
+
+        return dInfo 
 
 
+    # --------------------------------------------------------------------------------}
+    # --- Precscribing motion and loads from a dataframe (for debug) 
+    # --------------------------------------------------------------------------------{
+    def calcOutputsFromDF(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
+        """ 
+        Given a dataFrame containing time series of DOF
+        Compute outputs using OpenFAST Naming Convention
+        
+        INPUTS: 
+         - df: dataframe with time series of degrees of freedom
+               For instance df= weio.read('main.outb').toDataFrame()
+               Columns Names: 'Time_[s]'
+               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+         - noAcc: set accelerations to zero
+        
+        RETURNS:
+         - dfOut  : (WEIODataFrame) outputs dataframe
+         - sections: dict with section loads (tower, monopile, combined)
+        """
 
+        # --- Initialize (returns dict with all the data useful for time stepping)
+        dInfo = WT.calcOutputsFromDF_init(df, noAcc=noAcc, useTopLoadsFromDF=useTopLoadsFromDF, useInterfaceLoadsFromDF=useInterfaceLoadsFromDF, 
+                                          accMissing=accMissing)
 
-        # --------------------------------------------------------------------------------}
-        # --- Time stepping things 
-        # --------------------------------------------------------------------------------{
+        return WT.calcOutputsFromDF_loop(df, dInfo)
+
+    def calcOutputsFromDF_init(WT, df, noAcc=False, useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, accMissing='raise'):
+        """ 
+        Given a dataFrame containing time series of DOF, initialize the
+        computation of outputs. Returns a dict `dInfo` with all the data useful
+        for time stepping (see calcOutputsFromDF_step) and for generating the
+        final outputs dataframe.
+
+        INPUTS: 
+         - df: dataframe with time series of degrees of fredom
+               For instance df= weio.read('main.outb').toDataFrame()
+               Columns Names: 'Time_[s]'
+               Q_, QD_, QDD_ ['Sg', 'Sw', 'Hv' ,'R', 'P', 'Y', 'TFA1', 'TSS1', 'Yaw']
+         - noAcc: set accelerations to zero
+        """
+
+        # --- Sanitization of input dataframe
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
-
         df = WT._insertOFDOFsInDF(df, verbose=False, accMissing=accMissing)
         df = df.reset_index(drop=True)
 
+        # --- Get column info and time storage, matching input df
+        time = df['Time_[s]']
+        dInfo = WT.calcOutputs_init(time=time)
+        sQ, sQd, sQdd = dInfo['sQ_OF'], dInfo['sQd_OF'], dInfo['sQdd_OF']
+
         # --- States
-        missing_dofs = set(sq+sqd+sqdd) - set(df.columns)
+        missing_dofs = set(sQ+sQd+sQdd) - set(df.columns)
         if len(missing_dofs)>0:
             raise Exception(f'Some DOFS are missing from dataframe, implementation error {missing_dofs}')
 
@@ -1284,71 +1364,44 @@ class WindTurbineStructure():
             NOTE('Using prescribed input forces for tower top loads')
 
         # --- DOFs
-        Q   = df[sq]
-        QD  = df[sqd]
-        QDD = df[sqdd]
+        Q   = df[sQ]
+        QD  = df[sQd]
+        QDD = df[sQdd]
         # TODO TODO Sort out issue of convention in OpenFAST
         Q['Q_TSS1_[m]']      *= -1
         QD['QD_TSS1_[m/s]']  *= -1
         QDD['QD2_TSS1_[m/s^2]'] *= -1
-        DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw','Psi']
+        DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw','Psi'] # TODO
         Q.columns   = DOFNames_Short
         QD.columns  = DOFNames_Short
         QDD.columns = DOFNames_Short
         if noAcc:
             QDD *=0
 
-
-        #dfOut = pd.DataFrame(index=df.index, columns=colOut, dtype=float)
-        dfOut = WEIODataFrame(index=df.index, columns=colOut, dtype=float)
-
-        if WT.pSS is not None:
-            NOTE(f"Setting Compute Eta t0={df['Time_[s]'].iloc[0]}, tend={df['Time_[s]'].iloc[-1]}, n={len(df['Time_[s]'])}")
-            WT.SS_computeEta(df['Time_[s]'])
-
-        # --- Initialize section loads
-        twr_F_sec = np.zeros((6, len(WT.twr.s_span), len(df))) 
-
-        mnp_F_sec = None
-        if hasMonopile:
-            mnp_F_sec = np.zeros((6, len(WT.fnd.s_span), len(df))) 
+        if dInfo['hasMonopile']:
             if useInterfaceLoadsFromDF:
                 WARN('Prescribing interface loads')
                 # try to see if columns are present, to warn the user
                 F_top_mnp, M_top_mnp = interfaceLoadsFromDF(df.iloc[0], fallbackF=None, fallbackM=None, raiseError=True, verbose=True)
 
-
         # --- Store initialization data (returned and stored in WT.calcOut)
-        dInfo = OrderedDict()
-        dInfo['ed']    = ed
-        dInfo['df']    = df
-        dInfo['Q']     = Q
-        dInfo['QD']    = QD
-        dInfo['QDD']   = QDD
-        dInfo['dfOut']                 = dfOut
-
-        dInfo['sq']    = sq
-        dInfo['sqd']   = sqd
-        dInfo['sqdd']  = sqdd
-        dInfo['colOut']                = colOut
-        dInfo['twr_Out_df']            = twr_Out_df
-        dInfo['mnp_Out_df']            = mnp_Out_df
-        dInfo['hasMonopile']           = hasMonopile
-        dInfo['twr_F_sec']             = twr_F_sec
-        dInfo['mnp_F_sec']             = mnp_F_sec
-        dInfo['gravity_vec']           = np.array([0,0,-WT.gravity])
-        dInfo['useTopLoadsFromDF']        = useTopLoadsFromDF
+        dInfo['df_ref']                  = df
+        dInfo['Q']                       = Q
+        dInfo['QD']                      = QD
+        dInfo['QDD']                     = QDD
+        dInfo['useTopLoadsFromDF']       = useTopLoadsFromDF
         dInfo['useInterfaceLoadsFromDF'] = useInterfaceLoadsFromDF
-        WT.calcOut = dInfo # Store in WT for user convenience
 
         return dInfo
 
-    def calcOutputsFromDF_step(WT, q, qd, qdd, dInfo, t, ser_Loads=None):
+    def calcOutputs_step(WT, q_DictFull, qd_DictFull, qdd_DictFull, dInfo, t, ser_Loads=None, mnp_p_ext=None):
         """ 
         Compute outputs at a given time step using data pre-initialized by
         calcOutputsFromDF_init.
 
         INPUTS:
+         - q, qd, qdd are Full dictionaries or series with keys:   # TODO Change this
+               DOFNames_Short = ['Sg','Sw','Hv','R','P','Y','TFA1','TFA2','TSS1','TSS2','Yaw','Psi']
          - dInfo: data returned by calcOutputsFromDF_init
          - t    : time [s]
          - ser_Loads: pandas seris of prescribed loads
@@ -1359,27 +1412,27 @@ class WindTurbineStructure():
          - mnp_F_sec  : (6, nSpan) monopile section loads, Forces then Moments, or None
         """
         # --- Local aliases
-        df             = dInfo['df']
-        sq             = dInfo['sq']
-        sqd            = dInfo['sqd']
-        sqdd           = dInfo['sqdd']
+        sQ             = dInfo['sQ_OF']
+        sQd            = dInfo['sQd_OF']
+        sQdd           = dInfo['sQdd_OF']
+        sq_short       = dInfo['sQ_OF']
         twr_Out_df     = dInfo['twr_Out_df']
         mnp_Out_df     = dInfo['mnp_Out_df']
         hasMonopile    = dInfo['hasMonopile']
-        gravity_vec    = dInfo['gravity_vec']
+        gravity_vec    = np.array([0,0,-WT.gravity])
 
         rowOut = pd.Series(index=dInfo['colOut'], dtype=float)
 
         # --- Main DOFs
         rowOut['Time_[s]'] = t
-        rowOut[sq]   = q.values
-        rowOut[sqd]  = qd.values
-        rowOut[sqdd] = qdd.values
+        rowOut[sQ]   = q_DictFull.values     # TODO use a mapping and not full maybe (but see monopileLoads)
+        rowOut[sQd]  = qd_DictFull.values
+        rowOut[sQdd] = qdd_DictFull.values
 
         # --------------------------------------------------------------------------------}
         # --- Kinematics 
         # --------------------------------------------------------------------------------{
-        dd = WT.kinematics(q, qd, qdd, t=t)
+        dd = WT.kinematics(q_DictFull, qd_DictFull, qdd_DictFull, t=t)
         # TDi includes all platform motions
         rowOut['TwrTpTDxi'] = dd['u_N_tot'][0] 
         rowOut['TwrTpTDyi'] = dd['u_N_tot'][1]
@@ -1471,7 +1524,7 @@ class WindTurbineStructure():
         # We add the effect of the rotor spinning relative to the nacelle.
         # Delta H_dot = J_spin * omd_rel + om_n x (J_spin * om_rel)
         # (Assuming rotor is symmetric so its inertia tensor J_rot is constant in the shaft frame)
-        if 'Psi' in qd:
+        if 'Psi' in qd_DictFull:
             # Shaft axis x_s in global coordinates:
             # Shaft axis in global
             R_g2s = dd['R_g2s']
@@ -1483,8 +1536,8 @@ class WindTurbineStructure():
             #J_gen_LSS = WT.gen.inertia[0,0]
             
             # Relative angular velocity and acceleration in global
-            om_rel_g  = qd['Psi']  * x_s_g
-            omd_rel_g = qdd['Psi'] * x_s_g
+            om_rel_g  = qd_DictFull['Psi']  * x_s_g
+            omd_rel_g = qdd_DictFull['Psi'] * x_s_g
             
             # Correction terms for dot{H} (Rate of change of angular momentum)
             # Using principal axis property: J_rot * x_s_g = Jspin_x * x_s_g
@@ -1522,7 +1575,7 @@ class WindTurbineStructure():
                 Madd_N = Madd_R_in_g + Madd_R_N # TODO experiment
                 F_N += Fadd_N
                 M_N += Madd_N
-            elif 'Fadd_R_xh' in df.keys():
+            elif 'Fadd_R_xh' in ser_Loads.keys():
                 R_g2h = dd['R_g2h']
                 Fadd_R_in_g = R_g2h.T.dot((ser_Loads['Fadd_R_xh'],ser_Loads['Fadd_R_yh'],ser_Loads['Fadd_R_zh']))
                 Madd_R_in_g = R_g2h.T.dot((ser_Loads['Madd_R_xh'],ser_Loads['Madd_R_yh'],ser_Loads['Madd_R_zh']))
@@ -1544,7 +1597,7 @@ class WindTurbineStructure():
         rowOut['YawBrMzp_[kN-m]'] = M_N_p[2]/1000
 
         # --- Override F_N and M_N from DataFrame for debug only
-        if dInfo['useTopLoadsFromDF']:
+        if dInfo.get('useTopLoadsFromDF', False):
             F_N_p2, M_N_p2 = yawBrakeLoadsFromRow(ser_Loads, fallbackF=F_N_p, fallbackM=M_N_p)
             F_N = (R_g2p.T).dot(F_N_p2)
             M_N = (R_g2p.T).dot(M_N_p2)
@@ -1603,16 +1656,17 @@ class WindTurbineStructure():
         mnp_F_sec_it = None
         if hasMonopile:
             # --- Override Interface loads DataFrame for debug only
-            if dInfo['useInterfaceLoadsFromDF']:
+            useInterfaceLoadsFromDF = dInfo.get('useInterfaceLoadsFromDF', False)
+            if useInterfaceLoadsFromDF:
                 F_top_mnp, M_top_mnp = interfaceLoadsFromDF(ser_Loads, fallbackF=F_sec[:, 0].copy(), fallbackM=M_sec[:, 0].copy())
             else:
                 F_top_mnp, M_top_mnp = F_sec[:, 0].copy(), M_sec[:, 0].copy()
 
             F_mnp, outMnp = monopileSectionLoadsAtTimeStep(t, 
                                                          WT.fnd, 
-                                                         q.values, qd.values, qdd.values, 
+                                                         q_DictFull.values, qd_DictFull.values, qdd_DictFull.values, 
                                                          WT.pSS, WT.pHD, WT=WT, 
-                                                         F_top=F_top_mnp, M_top=M_top_mnp, reconHydro=False)
+                                                         F_top=F_top_mnp, M_top=M_top_mnp, reconHydro=False, p_ext=mnp_p_ext)
             if F_mnp is not None:
                 mnp_F_sec_it = F_mnp
                 for label, iz, z in zip(mnp_Out_df['Lbl'], mnp_Out_df['i'], mnp_Out_df['z']):
@@ -1652,12 +1706,12 @@ class WindTurbineStructure():
         from welib.tools.tictoc import Timer
 
         # --- Aliases
-        dfOut       = dInfo['dfOut']
+        dfOut      = dInfo['dfOut']
         twr_F_sec  = dInfo['twr_F_sec']
         mnp_F_sec  = dInfo['mnp_F_sec']
         hasMonopile = dInfo['hasMonopile']
 
-        df_ref = dInfo['df']
+        df_ref = dInfo['df_ref']
         sTime = 'Time_[s]' 
         if sTime not in df:
             sTime ='Time'
@@ -1677,11 +1731,10 @@ class WindTurbineStructure():
 
                 rowIn = df_ref.loc[it]
 
-                rowOut, twr_it, mnp_it = WT.calcOutputsFromDF_step(q, qd, qdd, dInfo, t=t, ser_Loads = rowIn)
+                rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=t, ser_Loads = rowIn)
                 dfOut.loc[it] = rowOut
                 twr_F_sec[:, :, it] = twr_it
                 if hasMonopile and mnp_it is not None:
-
                     mnp_F_sec[:, :, it] = mnp_it
 
 
@@ -1699,7 +1752,7 @@ class WindTurbineStructure():
             spans.append(sections['monopile']['z'])
             loads.append(sections['monopile']['F_sec'])
 
-            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(dInfo['df'], verbose=False)
+            zBeamRef, F_secRef, r_secRef =  WT.fnd.SD.beamSecOutputs(dInfo['df_ref'], verbose=False)
             sections['monopile'].update({'zRef': zBeamRef, 'F_secRef':F_secRef})
             spansRef.append(sections['monopile']['zRef'])
             loadsRef.append(sections['monopile']['F_secRef'])
@@ -1709,7 +1762,7 @@ class WindTurbineStructure():
             sections['tower'] = {'z': WT.twr.s_span+WT.ED['TowerBsHt'], 'F_sec': twr_F_sec}
             spans.append(sections['tower']['z']    )
             loads.append(sections['tower']['F_sec'])
-            zRef, F_secRef, r_secRef =  dInfo['ed'].twrSecOutputs(dInfo['df'], verbose=False)
+            zRef, F_secRef, r_secRef =  dInfo['ed'].twrSecOutputs(dInfo['df_ref'], verbose=False)
             sections['tower'].update({'zRef': zRef, 'F_secRef':F_secRef})
             spansRef.append(sections['tower']['zRef'])
             loadsRef.append(sections['tower']['F_secRef'])

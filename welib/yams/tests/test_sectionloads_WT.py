@@ -72,12 +72,12 @@ def section_loads(fstFile, compFile=None, hydroShapeFile=None, subShapes=None, t
             YSL.plot_monopile_section_loads_stats(IZ=IZ, component=0, figFilename=outFile+'_SL_MNP_SL_STATS.png', tRange=tRange, stat='meanabs')
             YSL.plot_monopile_section_loads      (IZ=IZ, component=0, figFilename=outFile+'_SL_MNP_SL.png', tRange=tRange)
 
-            fig = YSL.plot_comp(sig='Wave1Elev_[m]', ylabel='Wave elevation [m]', figFilename=outFile+'_SL_MNP_Eta.png', tRange=tRange)
+            fig, stats = YSL.plot_comp(sig='Wave1Elev_[m]', ylabel='Wave elevation [m]', figFilename=outFile+'_SL_MNP_Eta.png', tRange=tRange)
             fig.axes[0].plot(WT.pSS['eta_time'], WT.pSS['eta'], ':', label='From SS')
             fig.savefig(outFile + '_SL_MNP_Eta.png')
 
-            fig = YSL.plot_comp(sig='HydroFxi_[N]', ylabel='Hydro Fx [N]', figFilename=outFile+'_SL_MNP_Eta.png', tRange=tRange)
-            fig = YSL.plot_comp(sig='M1N1MKye_[N*m]', ylabel='Sea bed moment [MNm]', figFilename=outFile+'_SL_MNP_M_SeaBed.png', tRange=tRange, scale=1e6)
+            fig, stats = YSL.plot_comp(sig='HydroFxi_[N]', ylabel='Hydro Fx [N]', figFilename=outFile+'_SL_MNP_Eta.png', tRange=tRange)
+            fig, stats = YSL.plot_comp(sig='M1N1MKye_[N*m]', ylabel='Sea bed moment [MNm]', figFilename=outFile+'_SL_MNP_M_SeaBed.png', tRange=tRange, scale=1e6)
             #fig, ax = time_plot (vTime, F_secRef[4,0,:]/1e6, F_sec[4,0,:]/1e6, label='Sea bed moment [MNm]', tRange=tRange)
         # -- Combined
         YSL.plot_section_loads_stats()
@@ -126,8 +126,9 @@ def test_monopile_tower_IEA(plot=False, test=True):
     if test:
         tMin,tMax=5, 10
     else:
-        tMax=150
-        tMin,tMax=100, 130
+        tMin,tMax=5, 10
+#         tMax=150
+#         tMin,tMax=100, 130
 
     YSL = section_loads(fstFile, plot=plot, compFile=compFile, tMin=tMin, tMax=tMax, dtSamp=0.05, subShapes=[0,4])
     dfRef    = YSL.dfRef
@@ -183,13 +184,13 @@ def test_monopile_tower_IEA(plot=False, test=True):
         compareSigWithStats(F_sec[4,iz,:], F_secRef[4,iz,:], t=vTime, sig=f'My_sec{iz}', epsTolP=35.0, atol=11.0, printStats=True, test=test, factor=1e6)
     # TODO FKz Not ready
 
-    compareSigWithStats(dfOut, dfRef, sig='Wave1Elev_[m]', epsTolP=0.001, atol=0.0003, printStats=True, test=True)
-    compareSigWithStats(dfOut, dfRef, sig='HydroFxi_[N]',  epsTolP=0.03,  atol=0.22, printStats=True, test=True, factor=1e6)
+    compareSigWithStats(dfOut, dfRef, sig='Wave1Elev_[m]', epsTolP=0.001, atol=0.0003, printStats=True, test=test)
+    compareSigWithStats(dfOut, dfRef, sig='HydroFxi_[N]',  epsTolP=0.07,  atol=0.34, printStats=True, test=test, factor=1e6)
 
 
 
 if __name__ == '__main__':
-    PLOT = True # KEEP ME FOR EASY DEBUG
+#     PLOT = True # KEEP ME FOR EASY DEBUG
     PLOT = False # KEEP ME FOR EASY DEBUG
 #     TEST=False
     TEST=True

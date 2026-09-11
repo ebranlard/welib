@@ -120,6 +120,37 @@ def test_monopile():
     np.testing.assert_array_less(stats['eta']['eps'],  2.4)
     np.testing.assert_array_less(stats['Fhx']['eps'],  5.5)
 
+    np.testing.assert_array_less(1-stats['q_s']['R2'],  0.03)
+    np.testing.assert_array_less(1-stats['M_sb']['R2'], 0.22)
+    np.testing.assert_array_less(1-stats['F_sb']['R2'], 0.20)
+    np.testing.assert_array_less(1-stats['eta']['R2'],  0.3)
+    np.testing.assert_array_less(1-stats['Fhx']['R2'],  0.18)
+
+# --- With beamSectionLoads
+# Tuning: zeta=0.12, qdhScale=1
+# q_s        σ_est/σ_ref = 0.992 - ε=1.7% - R²=0.978
+# q_p        σ_est/σ_ref = 1.017 - ε=1.7% - R²=0.976
+# qd_s       σ_est/σ_ref = 1.261 - ε=1.3% - R²=0.814
+# qd_p       σ_est/σ_ref = 2.740 - ε=4.3% - R²=0.499
+# q_h        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# qd_h       σ_est/σ_ref = 0.981 - ε=4.8% - R²=0.873
+# M_sb       σ_est/σ_ref = 1.100 - ε=5.0% - R²=0.796
+# F_sb       σ_est/σ_ref = 1.143 - ε=5.2% - R²=0.813
+# eta        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# Fhx        σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
+# -------------------------------------------------------
+# # --- With WT.calcOutput_step, 0 inerface loads (like above)
+# q_s        σ_est/σ_ref = 0.992 - ε=1.7% - R²=0.978
+# q_p        σ_est/σ_ref = 1.017 - ε=1.7% - R²=0.976
+# qd_s       σ_est/σ_ref = 1.261 - ε=1.3% - R²=0.814
+# qd_p       σ_est/σ_ref = 2.740 - ε=4.3% - R²=0.499
+# q_h        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# qd_h       σ_est/σ_ref = 0.981 - ε=4.8% - R²=0.873
+# M_sb       σ_est/σ_ref = 1.100 - ε=5.0% - R²=0.796
+# F_sb       σ_est/σ_ref = 1.143 - ε=5.2% - R²=0.813
+# eta        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# Fhx        σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
+# -------------------------------------------------------
 
 if __name__ == '__main__':
 
@@ -155,3 +186,6 @@ if __name__ == '__main__':
 
 
     plt.show()
+
+
+

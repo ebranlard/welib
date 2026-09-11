@@ -27,8 +27,6 @@ class KalmanFilterMonopile(KalmanFilter):
         sS  = ['M_sb','F_sb', 'eta', 'Fhx']
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
 
-        #KF.YSL = YSL # YAMS SECTION LOAD ESTIMATOR
-
     def setup_matrices(KF, fstFilename=None, shapes_sub=None, hydroShape=None, Tp=None,
               zeta =0.12, qdhScale=1,#Tuning
               ):
@@ -119,30 +117,18 @@ class KalmanFilterMonopile(KalmanFilter):
                 'qd_p'   : 'QD_P_[rad/s]'
             }
 
-        # --- YAMS section load estimator
-        #if KF.YSL is not None:
-        #    KF.WSL.WT=WT
-        #KF.YSL = YSL 
-
     
-    #def loadMeasurements(KF, **kwargs):
-    #    KalmanFilter.loadMeasurements(KF, **kwargs) # Call parent function
-    #    if KF.YSL is not None:
-    #        KF.YSL.setupReferenceData(df, tRange=None, dt_resample=None):
-
-
     def timeLoop(KF):
         # --- Aliases to shorten notations
         WT = KF.WT
 
         # Prepare section output calculation
         #KF.YSL.prepareTimeStepping(useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False, accMissing='warn')
-        #dInfo = WT.calcOutputsFromDF_init(df, accMissing='warn')
+        dInfo = WT.calcOutputs_init(time=KF.time)
 
         # --- Initial conditions
         x = KF.initFromClean()
         KF.X_hat.iloc[0,:] = x
-
 
         # --- Time loop
         for it in range(0,KF.nt-1):    
@@ -170,21 +156,49 @@ class KalmanFilterMonopile(KalmanFilter):
             xd_q  = np.array([x_dot[0], x_dot[1]])
             xdd_q = np.array([x_dot[2], x_dot[3]])
 
-            ## Top loads
+            # --- DOFs in the way expected by calcOutputs_step
+            q   = dInfo['q_default'].copy()
+            qd  = dInfo['q_default'].copy()
+            qdd = dInfo['q_default'].copy()
+            q  ['Sg']  = x_q[0]
+            q  ['P']   = x_q[1]
+            qd ['Sg']  = xd_q[0]
+            qd ['P']   = xd_q[1]
+            qdd['Sg']  = xdd_q[0]
+            qdd['P']   = xdd_q[1]
+
+            # ---  Top loads
             F_top = np.array((0.,0.,0.))
             M_top = np.array((0.,0.,0.))
             a_ext = np.array((0.,0.,-WT.gravity)) # external acceleration (gravity/earthquake)
-            F_sec, M_sec, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext=a_ext, corrections=0, PhiK=WT.fnd.PhiK)
 
+            Thrust = 0
+            ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':0, 'Madd_R_ys':0, 'Madd_R_zs':0})
+            # TEMPORARY for backward compatibility
+#             ser_Loads['TwrBsFxt_[kN]'] = 0
+#             ser_Loads['TwrBsFyt_[kN]'] = 0
+#             ser_Loads['TwrBsFzt_[kN]'] = 0
+#             ser_Loads['TwrBsMxt_[kN-m]'] = 0
+#             ser_Loads['TwrBsMyt_[kN-m]'] = 0
+#             ser_Loads['TwrBsMzt_[kN-m]'] = 0
+#             dInfo['useInterfaceLoadsFromDF'] = True
+
+            rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=KF.time[it], ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+            F_sec = mnp_it[0:3,:]
+            M_sec = mnp_it[3:6,:]
+
+            #F_sec, M_sec, outD = beamSectionLoadsFromShapeFunctions    (x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext=a_ext, corrections=0, PhiK=WT.fnd.PhiK)
+
+            # No acceleration # TODO get it from calcOutputs 
             xdd_q *=0
             F_sec_h, M_sec_h, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext = a_ext, PhiK=WT.fnd.PhiK)
 
             
             # --- Store extra info
-            KF.S_hat.at[it+1, 'M_sb']   = M_sec[1,0]
-            KF.S_hat.at[it+1, 'F_sb']   = F_sec[0,0]
-            KF.S_hat.at[it+1, 'eta' ]   = eta
-            KF.S_hat.at[it+1, 'Fhx']    = F_sec_h[0,0]
+            KF.S_hat.at[it+1, 'M_sb'] = M_sec[1,0]
+            KF.S_hat.at[it+1, 'F_sb'] = F_sec[0,0]
+            KF.S_hat.at[it+1, 'eta' ] = eta
+            KF.S_hat.at[it+1, 'Fhx' ] = F_sec_h[0,0]
             
             # --- Propagation to next time step
             if np.mod(it,500) == 0:

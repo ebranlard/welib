@@ -1,6 +1,7 @@
 import numpy as np
 
 from welib.tools.stats import comparison_stats, allclose_errors
+from welib.tools.strings import FAIL
 
 def compareSigWithStats(y1, y2, t=None, sig=None, epsTolP=0.01, rtol=1e-3, atol=None, atolP=0.01, printStats=False, test=True, factor=1):
     """ 
@@ -35,9 +36,14 @@ def compareSigWithStats(y1, y2, t=None, sig=None, epsTolP=0.01, rtol=1e-3, atol=
     if printStats:
         print(f'{sig:20s}: atol:{atol_e:.4f} - rtol:{rtol_e:.4f} - {sStats}')
 
-    if test:
+    try:
         # np.testing.assert_array_less(1-np.abs(stats['sigRatio']), 0.08)
         np.testing.assert_array_less(np.abs(stats['eps']), epsTolP*100)
+    except:
+        if test:
+            raise
+        else:
+            FAIL(f'{sig:20s}: atol:{atol_e:.4f} - rtol:{rtol_e:.4f} - {sStats}')
         # np.testing.assert_array_less(1-np.abs(stats['R2']), 0.08)
 
         if atol is not None:
