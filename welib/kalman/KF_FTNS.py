@@ -1,8 +1,11 @@
+"""
+Kalman filter model for "Floater Tower Nacelle Shaft"
+
+"""
 import os
 import numpy as np
-
 from welib.kalman.kalman import *
-from .kalmanfilter import KalmanFilter
+from welib.kalman.kalmanfilter import KalmanFilter
 
 from welib.essentials import *
 from welib.kalman.filters import moving_average
@@ -98,10 +101,196 @@ def _parse_name_list(s):
 #   ' ncimuvz ' : ' ncimutvzs_[m/s]             ',
 # }
 
+def get_physical_model(WT, modelName, fstFilename, qop=None, qdop=None, usePickle=True, qopFst=False, noBlin=True, MCKh=None):
+    """ 
+    Return YAMS physical model.
+    Less and less use
+    """
+    #
+    import dill as pickle
+    pickleFilename = os.path.splitext(fstFilename)[0]+'_linModelYAMS.pkl'
+
+    if usePickle:
+        # If a pickle exist, we load it, and then return
+        if os.path.exists(pickleFilename):
+            sysLI, sim = pickle.load(open(pickleFilename,'rb'))
+            sim.reloadPackage()
+            return sysLI, sim
+        else:
+            print('[FAIL] Pickle file not found:',pickleFilename)
+    tMax=0
+    # --- Setup Sim
+    print('----------------------- SETUP SIMULATION -----------------------------------------')
+    sim = SimulatorFromOF(WT, modelName=modelName, packageDir='py')
+    if modelName[0]=='B':
+        time, dfFS, p = sim.setupSim(tMax=tMax, flavor='onebody', J_at_Origin=True)
+        zRef = -sim.p['z_B0']
+    else:
+        time, dfFS, p = sim.setupSim(tMax=tMax, J_at_Origin=True)
+        zRef =  sim.p['z_OT']
+    su = sim.pkg.info()['su']
+    sq = sim.WT.DOFname
+    sqd = sim.WT.dDOFname
+
+    # --- uop
+    print('----------------------- OPERATING POINT ------------------------------------------')
+    # --- Q0
+    qop_ = pd.Series(data=np.zeros(len(sq)), index=sq)
+    if qop is not None:
+        for i,s in enumerate(sq): 
+            if s in qop_.index:
+                qop_.loc[s] =qop[i]
+            else:
+                print('[WARN] {} not found in qop'.format(s))
+        print('[INFO] Setting qop to:', dict(qop_))
+    else:
+        if qopFst:
+            q0=WT.q0
+            for s in sq:
+                if s not in q0:
+                    raise Exception('DOF {} is not found in fst simulation (available:{})'.format(s,dict(q0)))
+                else:
+                    qop_[s] = q0[s]
+            # sanity check
+            for s in q0.keys():
+                if s not in qop_.index:
+                    print('[WARN] DOF {} present in fst simulation but not used: '.format(s))
+            print('[INFO] Using q0 from FST:', dict(qop_))
+        else:
+            print('[INFO] Using q0 is zero:', dict(qop_))
+    # --- QD0
+    qdop_ = pd.Series(data=np.zeros(len(sqd)), index=sqd)
+    if qdop is not None:
+        for i,s in enumerate(sqd): 
+            if s in qdop_.index:
+                qdop_.loc[s] =qdop[i]
+            else:
+                print('[WARN] {} not found in qdop'.format(s))
+        print('[INFO] Setting qdop to:', dict(qdop_))
+    else:
+        if qopFst:
+            qd0=WT.qd0
+            for s in sqd:
+                if s not in qd0:
+                    raise Exception('DOF {} is not found in fst simulation (available:{})'.format(s,dict(qd0)))
+                else:
+                    qdop_[s] = qd0[s]
+            # sanity check
+            for s in qd0.keys():
+                if s not in qdop_.index:
+                    print('[WARN] DOF {} present in fst simulation but not used: '.format(s))
+            print('[INFO] Using qd0 from FST:', dict(qdop_))
+        else:
+            print('[INFO] Using qd0 is zero:', dict(qdop_))
+
+    uop = sim.uop
+    sim.qop  = qop_.values.flatten()
+    sim.qdop = qdop_.values.flatten()
+
+
+    # --- Linear Hydro
+    print('----------------------- LINEAR HYDRO  --------------------------------------------')
+    q0h_ = pd.Series(data=np.zeros(6), index=['x','y','z','phi_x','phi_y','phi_z'])
+    for s in enumerate(q0h_.index): 
+        if s in qop_.index:
+            q0h_.loc[s] = qop_[s]
+        #
+    q0h = q0h_.values.flatten()
+    hd = HydroDyn(fstFilename)
+    if MCKh == 0:
+        Mh=np.zeros((6,6))
+        Ch=np.zeros((6,6))
+        Kh=np.zeros((6,6))
+    if MCKh is None:
+        if 'hydroO' in modelName:
+            MCKFh = hd.linearize_RigidMotion2Loads(q0h, RefPointMotion=(0,0,zRef), RefPointMapping=(0,0,zRef) ) # <<< Good if hydroO model
+        else:
+            MCKFh = hd.linearize_RigidMotion2Loads(q0h, RefPointMotion=(0,0,zRef), RefPointMapping=(0,0,0) ) # <<< Good if hydro0 model
+    #       MCKFh = hd.linearize_RigidMotion2Loads(q0, RefPointMotion=(0,0,0), RefPointMapping=(0,0,0) ) # OLD and BAD
+        Mh,Ch,Kh,Fh0=MCKFh
+    #print('Ch\n',Ch)
+
+    Mh_=hydroMatToSysMat(Mh, su, sq)
+    Ch_=hydroMatToSysMat(Ch, su, sq)
+    Kh_=hydroMatToSysMat(Kh, su, sq)
+    Fh_=hydroMatToSysMat(Fh0, su)
+    #print('>>> Ch_\n',Ch_)
+    #print('>>> Mh_\n',Mh_)
+    #print('>>> Kh_\n',Kh_)
+    #print('>>> Fh_\n',Fh_)
+    MCKu = Mh_, Ch_, Kh_
+
+    if WT.MAP is not None:
+        print('----------------------- LINEAR MOOR ----------------------------------------------')
+        print("Mooring stiffness matrix (0,0,zRef={})".format(sim.p['z_OT']))
+        print(WT.MAP._K_lin) # TODO might depend on qop
+
+    # --- Simulation
+    sysLI = sim.linmodel(MCKextra=None, MCKu=MCKu, noBlin=noBlin)
+    print(sysLI)
+
+    #dfNL = sysNL.toDataFrame(self.channels, self.FASTDOFScales, acc=acc, forcing=forcing, sAcc=self.acc_channels)
+
+    if usePickle:
+        WT.MAP=None # Can't output C
+        sim.unloadPackage() # Can't store imported module
+        pickle.dump((sysLI, sim), open(pickleFilename,'wb'))
+        print('>>> Pickle file written:',pickleFilename)
+        sysLI, sim = pickle.load(open(pickleFilename,'rb'))
+        sim.reloadPackage()
+
+    return sysLI, sim
+
+
+
+
+
+
+
+
 # --------------------------------------------------------------------------------}
-# -- Fill FTNS state-space matrices (called by KalmanFilterFTNSLin.setup_matrices)
+# --- Kalman Filter 
 # --------------------------------------------------------------------------------{
-def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFilename=None,
+# The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
+class KalmanFilterFTNSLin(KalmanFilter):
+
+    def __init__(KF, sQ=None, sY=None, sU=None, sQa=None, sS=None, AE=None, debug=False, **opts):
+        """
+
+        """
+        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
+        sQ   = _parse_name_list(sQ) # Assumed to include derivatives
+        sU   = _parse_name_list(sU) 
+        sY   = _parse_name_list(sY) 
+        sS   = _parse_name_list(sS) 
+        sQa  = _parse_name_list(sQa)
+        sQd  = ['d'+s for s in sQ + sQa] # All states derivatives
+        
+        # --- Parent init
+        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS, sXd=sQd)
+
+        KF.setup_matrices(**opts)
+
+
+        # --- Storing wind speed estimator (based on tabulated aerodynamic data)
+        if AE:
+            # --- Wind Speed estimator
+            if 'phi_y' not in KF.iX:
+                print('[WARN] WSE: phi_y not in X, will assume phi_y=0')
+            if 'pitch' not in KF.iU:
+                print('[WARN] WSE: pitch not in U, will assume pitch=0')
+            if not ('Qaero' in KF.iX or 'Qaero' in KF.iU):
+                print('[WARN] WSE: not running WSE becasue Qaero is not in X or U')
+                pickleFile=None
+                KF.wse=None
+            else:
+                KF.wse=AE
+        else:
+            KF.wse = None
+        KF.debug = debug
+
+    def setup_matrices(KF, 
+             modelName=None, fstLin=None, usePickle=True, fstFilename=None,
                  qop=None, qdop=None, 
             sFramework='OpenFAST',
             tuning=None,
@@ -110,7 +299,6 @@ def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFile
 
 
         KF.StateModel=''
-
 
         # --- Default arguments
         if tuning is None:
@@ -126,9 +314,12 @@ def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFile
 
 
 
+        # --- Windturbine model
+        WT = FASTWindTurbine(fstFilename, twrShapes=[0], algo='OpenFAST').WT
+        KF.WT = WT
+
+		# --- ColMap
         # Col MAP for OpenFAST OutFile "Measurements" used for "clean" values
-        sIMU=['NcIMUAx','NcIMUAy','NcIMUAz']
-        sIMU2=['NcIMUAx','NcIMUAy','NcIMUAz','NcIMUVx','NcIMUVy','NcIMUVz']
         KF.colMap={
           ' x      ' : ' PtfmSurge_[m]                   '              ,
           ' y      ' : ' PtfmSway_[m]                   '               ,
@@ -171,7 +362,9 @@ def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFile
           ' NcIMUVy ' : ' NcIMUTVys_[m/s]             ',
           ' NcIMUVz ' : ' NcIMUTVzs_[m/s]             ',
           # Extrapolations
-          }
+        }
+        sIMU=['NcIMUAx','NcIMUAy','NcIMUAz']
+        sIMU2=['NcIMUAx','NcIMUAy','NcIMUAz','NcIMUVx','NcIMUVy','NcIMUVz']
 
 
         colMapLinFile = DEFAULT_COL_MAP_LIN
@@ -184,7 +377,6 @@ def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFile
         frameworks = [s.strip() for s in sFramework.split(',')]
         if 'YAMS' in frameworks:
             # --- YAMS
-            WT = FASTWindTurbine(fstFilename, twrShapes=[0], algo='OpenFAST')
             sysLI, sim = get_physical_model(WT, modelName, fstLin, qop=qop, qdop=qdop, usePickle=usePickle, noBlin=True)
             sX0= list(sim.WT.DOFname)
             sX = sX0 + ['d'+sx for sx in sX0]
@@ -404,203 +596,13 @@ def _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFile
             except:
                 pass
 
-
-
-
-
-def get_physical_model(WT, modelName, fstFilename, qop=None, qdop=None, usePickle=True, qopFst=False, noBlin=True, MCKh=None):
-    """ 
-    Return YAMS physical model.
-    Less and less use
-    """
-    #
-    import dill as pickle
-    pickleFilename = os.path.splitext(fstFilename)[0]+'_linModelYAMS.pkl'
-
-    if usePickle:
-        # If a pickle exist, we load it, and then return
-        if os.path.exists(pickleFilename):
-            sysLI, sim = pickle.load(open(pickleFilename,'rb'))
-            sim.reloadPackage()
-            return sysLI, sim
-        else:
-            print('[FAIL] Pickle file not found:',pickleFilename)
-    tMax=0
-    # --- Setup Sim
-    print('----------------------- SETUP SIMULATION -----------------------------------------')
-    sim = SimulatorFromOF(WT, modelName=modelName, packageDir='py')
-    if modelName[0]=='B':
-        time, dfFS, p = sim.setupSim(tMax=tMax, flavor='onebody', J_at_Origin=True)
-        zRef = -sim.p['z_B0']
-    else:
-        time, dfFS, p = sim.setupSim(tMax=tMax, J_at_Origin=True)
-        zRef =  sim.p['z_OT']
-    su = sim.pkg.info()['su']
-    sq = sim.WT.DOFname
-    sqd = sim.WT.dDOFname
-
-    # --- uop
-    print('----------------------- OPERATING POINT ------------------------------------------')
-    # --- Q0
-    qop_ = pd.Series(data=np.zeros(len(sq)), index=sq)
-    if qop is not None:
-        for i,s in enumerate(sq): 
-            if s in qop_.index:
-                qop_.loc[s] =qop[i]
-            else:
-                print('[WARN] {} not found in qop'.format(s))
-        print('[INFO] Setting qop to:', dict(qop_))
-    else:
-        if qopFst:
-            q0=WT.q0
-            for s in sq:
-                if s not in q0:
-                    raise Exception('DOF {} is not found in fst simulation (available:{})'.format(s,dict(q0)))
-                else:
-                    qop_[s] = q0[s]
-            # sanity check
-            for s in q0.keys():
-                if s not in qop_.index:
-                    print('[WARN] DOF {} present in fst simulation but not used: '.format(s))
-            print('[INFO] Using q0 from FST:', dict(qop_))
-        else:
-            print('[INFO] Using q0 is zero:', dict(qop_))
-    # --- QD0
-    qdop_ = pd.Series(data=np.zeros(len(sqd)), index=sqd)
-    if qdop is not None:
-        for i,s in enumerate(sqd): 
-            if s in qdop_.index:
-                qdop_.loc[s] =qdop[i]
-            else:
-                print('[WARN] {} not found in qdop'.format(s))
-        print('[INFO] Setting qdop to:', dict(qdop_))
-    else:
-        if qopFst:
-            qd0=WT.qd0
-            for s in sqd:
-                if s not in qd0:
-                    raise Exception('DOF {} is not found in fst simulation (available:{})'.format(s,dict(qd0)))
-                else:
-                    qdop_[s] = qd0[s]
-            # sanity check
-            for s in qd0.keys():
-                if s not in qdop_.index:
-                    print('[WARN] DOF {} present in fst simulation but not used: '.format(s))
-            print('[INFO] Using qd0 from FST:', dict(qdop_))
-        else:
-            print('[INFO] Using qd0 is zero:', dict(qdop_))
-
-    uop = sim.uop
-    sim.qop  = qop_.values.flatten()
-    sim.qdop = qdop_.values.flatten()
-
-
-    # --- Linear Hydro
-    print('----------------------- LINEAR HYDRO  --------------------------------------------')
-    q0h_ = pd.Series(data=np.zeros(6), index=['x','y','z','phi_x','phi_y','phi_z'])
-    for s in enumerate(q0h_.index): 
-        if s in qop_.index:
-            q0h_.loc[s] = qop_[s]
-        #
-    q0h = q0h_.values.flatten()
-    hd = HydroDyn(fstFilename)
-    if MCKh == 0:
-        Mh=np.zeros((6,6))
-        Ch=np.zeros((6,6))
-        Kh=np.zeros((6,6))
-    if MCKh is None:
-        if 'hydroO' in modelName:
-            MCKFh = hd.linearize_RigidMotion2Loads(q0h, RefPointMotion=(0,0,zRef), RefPointMapping=(0,0,zRef) ) # <<< Good if hydroO model
-        else:
-            MCKFh = hd.linearize_RigidMotion2Loads(q0h, RefPointMotion=(0,0,zRef), RefPointMapping=(0,0,0) ) # <<< Good if hydro0 model
-    #       MCKFh = hd.linearize_RigidMotion2Loads(q0, RefPointMotion=(0,0,0), RefPointMapping=(0,0,0) ) # OLD and BAD
-        Mh,Ch,Kh,Fh0=MCKFh
-    #print('Ch\n',Ch)
-
-    Mh_=hydroMatToSysMat(Mh, su, sq)
-    Ch_=hydroMatToSysMat(Ch, su, sq)
-    Kh_=hydroMatToSysMat(Kh, su, sq)
-    Fh_=hydroMatToSysMat(Fh0, su)
-    #print('>>> Ch_\n',Ch_)
-    #print('>>> Mh_\n',Mh_)
-    #print('>>> Kh_\n',Kh_)
-    #print('>>> Fh_\n',Fh_)
-    MCKu = Mh_, Ch_, Kh_
-
-    if WT.MAP is not None:
-        print('----------------------- LINEAR MOOR ----------------------------------------------')
-        print("Mooring stiffness matrix (0,0,zRef={})".format(sim.p['z_OT']))
-        print(WT.MAP._K_lin) # TODO might depend on qop
-
-    # --- Simulation
-    sysLI = sim.linmodel(MCKextra=None, MCKu=MCKu, noBlin=noBlin)
-    print(sysLI)
-
-    #dfNL = sysNL.toDataFrame(self.channels, self.FASTDOFScales, acc=acc, forcing=forcing, sAcc=self.acc_channels)
-
-    if usePickle:
-        WT.MAP=None # Can't output C
-        sim.unloadPackage() # Can't store imported module
-        pickle.dump((sysLI, sim), open(pickleFilename,'wb'))
-        print('>>> Pickle file written:',pickleFilename)
-        sysLI, sim = pickle.load(open(pickleFilename,'rb'))
-        sim.reloadPackage()
-
-    return sysLI, sim
-
-
-
-
-
-
-
-
-# --------------------------------------------------------------------------------}
-# -- Kalman Filter 
-# --------------------------------------------------------------------------------{
-# The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
-class KalmanFilterFTNSLin(KalmanFilter):
-    def __init__(KF, sQ=None, sY=None, sU=None, sQa=None, sS=None, AE=None, debug=False, **opts):
-        """
-
-        """
-        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
-        sQ   = _parse_name_list(sQ) # Assumed to include derivatives
-        sU   = _parse_name_list(sU) 
-        sY   = _parse_name_list(sY) 
-        sS   = _parse_name_list(sS) 
-        sQa  = _parse_name_list(sQa)
-        sQd  = ['d'+s for s in sQ + sQa] # All states derivatives
-
-        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS, sXd=sQd)
-
-        KF.setup_matrices(**opts)
-
-
-        # --- Creating a wind speed estimator (reads tabulated aerodynamic data)
-        if AE:
-            # --- Wind Speed estimator
-            if 'phi_y' not in KF.iX:
-                print('[WARN] WSE: phi_y not in X, will assume phi_y=0')
-            if 'pitch' not in KF.iU:
-                print('[WARN] WSE: pitch not in U, will assume pitch=0')
-            if not ('Qaero' in KF.iX or 'Qaero' in KF.iU):
-                print('[WARN] WSE: not running WSE becasue Qaero is not in X or U')
-                pickleFile=None
-                KF.wse=None
-            else:
-                KF.wse=AE
-        else:
-            KF.wse = None
-
-    def setup_matrices(self, **opts):
-#         _ftns_fill_matrices(KF, modelName=None, fstLin=None, usePickle=True, fstFilename=None,
-#                          qop=None, qdop=None, 
-#                     sFramework='OpenFAST',
-#                     tuning=None,
-#                     nGear=1, # TODO get this from WT
-#                     ):
-        _ftns_fill_matrices(self, **opts)
+    # --- Methods From Parent Class
+    # loadMeasurements 
+    # prepareTimeStepping 
+    # setupCovariances
+        
+    # --- Methods Common between TN and TNLin
+    # prepareMeasurements   
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, bFilterOm=False, nFilt=15, bFilterPhi=False):
         # --- Creating noise measuremnts
@@ -622,10 +624,14 @@ class KalmanFilterFTNSLin(KalmanFilter):
                 KF.Y['dpsi'] = moving_average(KF.Y['dpsi'],n=nFilt) 
 
     def timeLoop(KF):
+        # --- Aliases to shorten notations
+        WT = KF.WT
+
+        # Prepare section output calculation
+        dInfo = WT.calcOutputs_init(time=KF.time)
+        
         # --- Initial conditions
-        x = KF.initFromClean()
-        P = KF.P
-        KF.U_hat.iloc[0,:] = KF.U_clean.iloc[0,:]
+        x = KF.initFromClean(var='x,y,u')
 
         # --- WSE
         if KF.wse:
@@ -639,17 +645,18 @@ class KalmanFilterFTNSLin(KalmanFilter):
             Thrust_last = KF.U_clean['Thrust'][0]
             iThrust = list(KF.sU).index('Thrust')
 
+        # --- Time loop
         for it in range(0,KF.nt-1):    
             t = it*KF.dt
             # --- "Measurements"
             y  = KF.Y.iloc[it,:].values
-
-            # --- KF predictions
+            # --- Inputs
             u=KF.U_clean.iloc[it,:].values.copy()
             if 'Thrust' in KF.sU:
-                # We use previous estimated thrust as input.
-                u[iThrust] = Thrust_last  
-            x,P,_ = KF.estimateTimeStep(u,y,x,P,KF.Q,KF.R)
+                u[iThrust] = Thrust_last # We use previous estimated thrust as input.
+                
+            # --- KF predictions
+            x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P, KF.Q, KF.R)
 
             # --- Estimate thrust and WS - Non generic code
             if KF.wse:
@@ -728,7 +735,6 @@ class KalmanFilterFTNSLin(KalmanFilter):
 # 
             if np.mod(it,500) == 0:
                 print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it,KF.time[it],WS_hat,Thrust))
-        KF.P = P
 
     # --------------------------------------------------------------------------------}
     # --- Extrapolation (calculation of moments  

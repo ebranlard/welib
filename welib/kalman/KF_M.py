@@ -1,7 +1,10 @@
+"""
+Kalman filter model for "Monopile"
+
+"""
 import numpy as np
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 # Welib
 from welib.essentials import *
 from welib.kalman.kalman import BuildSystem_Linear_MechOnly 
@@ -13,7 +16,7 @@ from welib.yams.models.MTNSB import FASTmodel2MTNSB
 from welib.yams.windturbine import monopileSetupFromOpenFAST
 
 # --------------------------------------------------------------------------------}
-# -- Kalman Filter 
+# --- Kalman Filter 
 # --------------------------------------------------------------------------------{
 # The parts that change from model to model are the time loop, potentially the measurement preps and postprocessing
 
@@ -34,8 +37,27 @@ class KalmanFilterMonopile(KalmanFilter):
         if shapes_sub is None:
             shapes_sub =[0,4]
         
-        # --- Method 1: using MTNSB
-        WT = FASTmodel2MTNSB(fstFilename, shapes_sub=shapes_sub, shapes_twr=[], shapes_bld=[], bStiffening=True, main_axis='z', fixedShaft=True, algo='OpenFAST').WT
+        # --- Windturbine model
+        WT = FASTmodel2MTNSB(fstFilename, shapes_sub=shapes_sub, shapes_twr=[], shapes_bld=[], 
+                      bStiffening=True, main_axis='z', fixedShaft=True, algo='OpenFAST').WT
+
+
+		# --- ColMap
+        KF.colMap={
+                'q_s'    : 'Q_Sg_[m]' ,
+                'qd_s'   : 'QD_Sg_[m/s]' ,
+                'TTacc ' : 'NcIMUTAxs_[m/s^2]' ,
+                'eta'    : 'Wave1Elev_[m]', 
+                'q_h'    : '{Wave1Elev_[m]}',  # Hack to avoid deletion
+                'Fhx'    : 'HydroFxi_[N]',
+                'F_sb'   : '-ReactFXss_[N]',
+                'M_sb'   : '-ReactMYss_[N*m]',
+                'q_p'    : 'Q_P_[rad]' ,
+                'qd_p'   : 'QD_P_[rad/s]'
+            }
+
+
+
         if WT.pSS is not None:
             #NOTE('Setting Components', compFile)
             #WT.SS_setComponents(compFile)
@@ -81,14 +103,14 @@ class KalmanFilterMonopile(KalmanFilter):
         IQD   =[KF.iX['qd_s'], KF.iX['qd_p']]
         A[IQD, KF.iX['qd_h']]  = Minv @ (pHD['k_h'][0], pHD['k_h'][1])*KF.qdhScale  # qd_h influence in mech DOF
 
-        B[KF.iX['qd_h'], KF.iU['w']] = 1 # White noise
+
 
         C[KF.iY['TTacc'], :] = A[KF.iX['qd_s'],:] # TTacc is assumed to be qdd_s
         D[KF.iY['TTacc'], :] = B[KF.iX['qd_s'],:] # TTacc is assumed to be qdd_s
         C[KF.iY['q_p'], KF.iX['q_p']] = 1
 
 
-        # --- HYDRO STATE EQ - See Script 180
+        # --- Shaping filter, Hydro state equation
         if Tp==12.7:
             KF.Sw= 2.3835e-01
         elif Tp==10.0:
@@ -100,22 +122,11 @@ class KalmanFilterMonopile(KalmanFilter):
         print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
         A[KF.iX['q_h'], KF.iX['qd_h']]  = 1
         A[KF.iX['qd_h'], KF.iX['q_h']]  = -KF.omega_p**2
-        A[KF.iX['qd_h'], KF.iX['qd_h']]  = -2*KF.zeta*KF.omega_p
+        A[KF.iX['qd_h'], KF.iX['qd_h']] = -2 * KF.zeta * KF.omega_p
+        B[KF.iX['qd_h'], KF.iU['w']] = 1 # White noise
 
         KF.setMat(A, B, C, D)
 
-        KF.colMap={
-                'q_s'    : 'Q_Sg_[m]' ,
-                'qd_s'   : 'QD_Sg_[m/s]' ,
-                'TTacc ' : 'NcIMUTAxs_[m/s^2]' ,
-                'eta'    : 'Wave1Elev_[m]', 
-                'q_h'    : '{Wave1Elev_[m]}',  # Hack to avoid deletion
-                'Fhx'    : 'HydroFxi_[N]',
-                'F_sb'   : '-ReactFXss_[N]',
-                'M_sb'   : '-ReactMYss_[N*m]',
-                'q_p'    : 'Q_P_[rad]' ,
-                'qd_p'   : 'QD_P_[rad/s]'
-            }
 
     
     def timeLoop(KF):
@@ -123,7 +134,6 @@ class KalmanFilterMonopile(KalmanFilter):
         WT = KF.WT
 
         # Prepare section output calculation
-        #KF.YSL.prepareTimeStepping(useTopLoadsFromDF=False, useInterfaceLoadsFromDF=False, noAcc=False, accMissing='warn')
         dInfo = WT.calcOutputs_init(time=KF.time)
 
         # --- Initial conditions
@@ -135,7 +145,7 @@ class KalmanFilterMonopile(KalmanFilter):
             # --- "Measurements"
             y  = KF.Y.iloc[it,:].values
             # --- Inputs
-            u = KF.U_clean.iloc[it,:].values
+            u = KF.U_clean.iloc[it,:].values.copy()
 
             # --- Predictions of next time step based on current time step
             x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P)

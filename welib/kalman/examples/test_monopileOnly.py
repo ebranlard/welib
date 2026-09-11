@@ -12,9 +12,9 @@ Reduce damping zeta:
     will allow for more resonance, larger oscillation of qh for the same amount of push from the nmeasurements
 
 """
+import os
 import numpy as np
 import pandas as pd
-import os
 import matplotlib.pyplot as plt
 # Welib
 from welib.essentials import *
@@ -43,6 +43,9 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # --- Script derived parameters
     simFile = fstFile.replace('.fst','.outb')              # Measurements
 
+    # --------------------------------------------------------------------------------}
+    # --- Kalman filter estimation 
+    # --------------------------------------------------------------------------------{
     KF = KalmanFilterMonopile()
     KF.setup_matrices(fstFilename=fstFile, hydroShape=hydroShape, Tp=Tp)
 
@@ -54,10 +57,9 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     KF.loadMeasurements(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=KF.colMap, timeCol='Time_[s]', raiseIfAbsent=True)
     KF.X_clean['qd_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
 
-    # --- Process and measurement uncertainties (standard deviation sigma)
-    # Important parameters defnining uncertainties on the signals
-    # --- Storage for plot, convert sigmas to covariance matrices (KF.R and KF.Q)
-    KF.prepareTimeStepping() 
+
+    # --- Storage for plot
+    KF.prepareTimeStepping()
 
     # KF.Xx.iloc[0,0] = -0.001 # Centering force
     # Based on influence in $C$.
@@ -85,6 +87,9 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     print('>>> dt', KF.dt)
     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
+    # --------------------------------------------------------------------------------}
+    # --- Time Loop 
+    # --------------------------------------------------------------------------------{
     KF.timeLoop()
 
     # --- 
@@ -94,6 +99,9 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     print('Rdiag  : ', np.diag(KF.R))
     print('Cmat   : ', KF.C.values)
     print(f'Tuning: zeta={KF.zeta}, qdhScale={KF.qdhScale}')
+    # --------------------------------------------------------------------------------}
+    # --- Export and plot
+    # --------------------------------------------------------------------------------{
 
     statsDict = {}
     fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
