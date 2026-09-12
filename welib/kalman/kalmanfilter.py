@@ -256,10 +256,10 @@ class KalmanFilter(object):
                 colMap[k]=k
 
         # --- Defining "clean" values 
-        self.X_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sX)
-        self.Y_clean = pd.DataFrame(data=np.zeros((self.nt,self.nY)), columns=self.sY)
-        self.U_clean = pd.DataFrame(data=np.zeros((self.nt,self.nU)), columns=self.sU)
-        self.S_clean = pd.DataFrame(data=np.zeros((self.nt,self.nS)), columns=self.sS)
+        self.X_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sX)
+        self.Y_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nY)), columns=self.sY)
+        self.U_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nU)), columns=self.sU)
+        self.S_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nS)), columns=self.sS)
         self.XD_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sXd)
         for i,lab in enumerate(self.sX):
             try:

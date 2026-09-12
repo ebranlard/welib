@@ -24,14 +24,14 @@ class KalmanFilterTN(KalmanFilter):
     def __init__(KF, bThrustInStates=True, WSE=None, debug=False):
         KF.bThrustInStates = bThrustInStates
         if bThrustInStates:
-            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust' ,'Qaero'  ,'Qgen','WS'] )
-            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
         else:
-            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega','Qaero','Qgen'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi','Qaero','Qgen'] )
             sQa = np.array(['Qaero','Qgen','WS'] )
-            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
             sU  = np.array(['Thrust','pitch'])
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY)
         KF.wse = WSE # wind speed estimator
@@ -43,10 +43,10 @@ class KalmanFilterTN(KalmanFilter):
         nGear = WT.ED['GBRatio']
 
         KF.colMap={
-          ' ut1    ' : ' TTDspFA_[m]                   ' ,
+          ' q_FA1    ' : ' TTDspFA_[m]                   ' ,
           ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
-          ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
-          ' omega  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
+          ' dq_FA1 ' : ' NcIMUTVxs_[m/s]               ' ,
+          ' dpsi  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
           ' Thrust ' : ' RtAeroFxh_[N]                 ' ,
           ' Qaero  ' : ' RtAeroMxh_[N-m]               ' ,
           ' Qgen   ' : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
@@ -121,7 +121,7 @@ class KalmanFilterTN(KalmanFilter):
             WS_last   = x[KF.iX['WS']]
             pitch     = y[KF.iY['pitch']]*180/np.pi # deg
             Qaero_hat = x[KF.iX['Qaero']]
-            omega     = x[KF.iX['omega']]
+            omega     = x[KF.iX['dpsi']]
             WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch, omega, WS_last, relaxation = 0)
             Qaero_hat = np.max(Qaero_hat,0)
             Thrust = KF.wse.Thrust(WS_hat, pitch, omega)
@@ -149,7 +149,7 @@ class KalmanFilterTN(KalmanFilter):
         z_test = fastlib.ED_TwrGag(WT.ED)[0] - WT.ED['TowerBsHt']
         EI     = np.interp(z_test, WT.twr.s_span, WT.twr.EI[0,:])
         kappa  = np.interp(z_test, WT.twr.s_span, WT.twr.PhiK[0][0,:])
-        qx    = KF.X_hat['ut1']
+        qx    = KF.X_hat['q_FA1']
         KF.M_sim = [qx*EI[i]*kappa[i]/1000 for i in range(len(z_test))]                 # in [kNm]
         KF.M_ref   = []
         KF.M_valid = [True]*len(z_test)
@@ -248,12 +248,12 @@ class KalmanFilterTN(KalmanFilter):
 
         j+=1; time_plot(axes[j,0], time, XS_clean['WS'], XS_hat['WS'], label='WS [m/s]'); 
         spec_plot(axes[j,1], time, XS_clean['WS'], XS_hat['WS'])
-        j+=1; time_plot(axes[j,0], time, X_clean['omega'], X_hat['omega'], label='omega [rad/s]');
-        spec_plot(axes[j,1], time, X_clean['omega'], X_hat['omega'])
+        j+=1; time_plot(axes[j,0], time, X_clean['dpsi'], X_hat['dpsi'], label='omega [rad/s]');
+        spec_plot(axes[j,1], time, X_clean['dpsi'], X_hat['dpsi'])
         j+=1; time_plot(axes[j,0], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000, label='Thrust [kN]'); 
         spec_plot(axes[j,1], time, XS_clean['Thrust']/1000, XS_hat['Thrust']/1000)
-        j+=1; time_plot(axes[j,0], time, XS_clean['ut1'], XS_hat['ut1'], label='ut1 [m]'); 
-        spec_plot(axes[j,1], time, XS_clean['ut1'], XS_hat['ut1'])
+        j+=1; time_plot(axes[j,0], time, XS_clean['q_FA1'], XS_hat['q_FA1'], label='q_FA1 [m]'); 
+        spec_plot(axes[j,1], time, XS_clean['q_FA1'], XS_hat['q_FA1'])
 #         try:
         for i in range(len(KF.M_sim)):
             if KF.M_valid[i]:

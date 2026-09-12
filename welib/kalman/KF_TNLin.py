@@ -26,33 +26,33 @@ class KalmanFilterTNLin(KalmanFilterTN):
     def __init__(KF, StateModel='nt1_nx7', WSE=None, debug=False):
         KF.StateModel = StateModel
         if StateModel=='nt1_nx8':
-            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust','Qaero','Qgen','WS'])
-            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
             sS  = np.array(['WS'])
             KF.bWSInStates     = True
             KF.bThrustInStates = True
         elif StateModel=='nt1_nx7':
-            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust','Qaero','Qgen'])
-            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
             sS  = np.array(['WS'])
             KF.bWSInStates     = False
             KF.bThrustInStates = True
         elif StateModel=='nt1_nx6':
-            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust','Qaero'])
-            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
             sU  = np.array(['Qgen','pitch'])
             sS  = np.array(['WS'])
             KF.bWSInStates     = False
             KF.bThrustInStates = True
         elif StateModel=='nt1_nx5':
-            sQ  = np.array(['ut1'  ,'psi'  ,'ut1dot','omega'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Qaero'])
-            sY  = np.array(['TTacc','omega','Qgen','pitch'])
+            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
             sU  = np.array(['Thrust','Qgen','pitch'])
             sS  = np.array(['Thrust','WS'])
             KF.bWSInStates     = False
@@ -77,10 +77,10 @@ class KalmanFilterTNLin(KalmanFilterTN):
 
         if Qgen_LSS:
             KF.colMap={
-              ' ut1    ' : ' TTDspFA_[m]                   ' ,
+              ' q_FA1    ' : ' TTDspFA_[m]                   ' ,
               ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
-              ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
-              ' omega  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
+              ' dq_FA1 ' : ' NcIMUTVxs_[m/s]               ' ,
+              ' dpsi   ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
               ' Thrust ' : ' RtAeroFxh_[N]                 ' ,
               ' Qaero  ' : ' RtAeroMxh_[N-m]               ' ,
               ' Qgen   ' : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]
@@ -90,10 +90,10 @@ class KalmanFilterTNLin(KalmanFilterTN):
             }
         else:
             KF.colMap={
-              ' ut1    ' : ' TTDspFA_[m]                   ' ,
+              ' q_FA1    ' : ' TTDspFA_[m]                   ' ,
               ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
-              ' ut1dot ' : ' NcIMUTVxs_[m/s]               ' ,
-              ' omega  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
+              ' dq_FA1 ' : ' NcIMUTVxs_[m/s]               ' ,
+              ' dpsi   ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
               ' Thrust ' : ' RtAeroFxh_[N]                 ' ,
               ' Qaero  ' : ' RtAeroMxh_[N-m]               ' ,
               ' Qgen   ' : ' {GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]
@@ -133,18 +133,18 @@ class KalmanFilterTNLin(KalmanFilterTN):
             Xu[:nq,:nU ] = B.values[:,2:]
             Yu[:  ,:   ] = D.values[:,2:]
             #----
-            Xx[iX['omega'],iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
+            Xx[iX['dpsi'],iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
             Xx[:nq,iX['Thrust']]  = B.values[:,0]
             Yx[:,  iX['Thrust']]  = D.values[:,0]
             Yx[iY['Qgen'],iX['Qgen']] = 1
             # --- Value Hack
             if KF.ThrustHack:
-                Xx[iX['ut1dot'], iX['Thrust']] =  2.285e-06  # Thrust
+                Xx[iX['dq_FA1'], iX['Thrust']] =  2.285e-06  # Thrust
             # --- Consistency
             if KF.Qgen_LSS:
-                Xx[iX['omega'],  iX['Qgen']]   =-Xx[iX['omega'],iX['Qaero']]
+                Xx[iX['dpsi'],  iX['Qgen']]   =-Xx[iX['dpsi'],iX['Qaero']]
             else:
-                Xx[iX['omega'],  iX['Qgen']]   =-Xx[iX['omega'],iX['Qaero']]*nGear
+                Xx[iX['dpsi'],  iX['Qgen']]   =-Xx[iX['dpsi'],iX['Qaero']]*nGear
             Yx[0,0:] =Xx[2,0:]  # <<<< Important
 
 
@@ -155,16 +155,16 @@ class KalmanFilterTNLin(KalmanFilterTN):
             Xu[:nq,:nU ] = B.values[:,1:]
             Yu[:  ,:   ] = D.values[:,1:]
             #----
-            Xx[iX['omega'],  iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
+            Xx[iX['dpsi'],  iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
             Xx[:nq,iX['Thrust']] = B.values[:,0]
             Yx[:,  iX['Thrust']] = D.values[:,0]
             if KF.ThrustHack:
                 Xx[2,iX['Thrust']] =  2.285e-06  # Thrust
             # Consistency
             if KF.Qgen_LSS:
-                Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]
+                Xu[iX['dpsi'],iU['Qgen']]  =-Xx[iX['dpsi'],iX['Qaero']]
             else:
-                Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]*nGear
+                Xu[iX['dpsi'],iU['Qgen']]  =-Xx[iX['dpsi'],iX['Qaero']]*nGear
             Yx[0,0:6] =Xx[2,0:6]  # <<<< Important
 
         elif KF.StateModel=='nt1_nx5':  # sQa = ['Qaero']
@@ -174,14 +174,14 @@ class KalmanFilterTNLin(KalmanFilterTN):
             Xu[:nq,:nU ] = B.values
             Yu[:  ,:   ] = D.values
             #----
-            Xx[iX['omega'],  iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
+            Xx[iX['dpsi'],  iX['Qaero']] = 1/J_LSS_ED # ddpsi Qa # NOTE: LSS
             if KF.ThrustHack:
                 Xu[2,0  ] =  2.285e-06  # Thrust
             # Consistency
             if KF.Qgen_LSS:
-                Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]
+                Xu[iX['dpsi'],iU['Qgen']]  =-Xx[iX['dpsi'],iX['Qaero']]
             else:
-                Xu[iX['omega'],iU['Qgen']]  =-Xx[iX['omega'],iX['Qaero']]*nGear
+                Xu[iX['dpsi'],iU['Qgen']]  =-Xx[iX['dpsi'],iX['Qaero']]*nGear
             Yx[0,0:4] = Xx[2,0:4]
             Yu[0,0]   = Xu[2,0]
 
@@ -229,7 +229,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
                 WS_last=x[KF.iX['WS']]
             pitch     = y[KF.iY['pitch']]*180/np.pi # deg
             Qaero_hat = x[KF.iX['Qaero']]
-            omega     = x[KF.iX['omega']]
+            omega     = x[KF.iX['dpsi']]
             WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch, omega, WS_last, relaxation = 0, WSavg=np.mean(WSavg))
             Qaero_hat = np.max(Qaero_hat,0)
             Thrust = KF.wse.Thrust(WS_hat, pitch, omega)

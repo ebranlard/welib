@@ -23,9 +23,9 @@ from welib.yams.windturbine import monopileSetupFromOpenFAST
 class KalmanFilterMonopile(KalmanFilter):
 
     def __init__(KF, debug=False):
-        sQ  = ['q_s','q_p','qd_s', 'qd_p']
-        sQa = ['q_h', 'qd_h']
-        sY  = ['TTacc', 'q_p']
+        sQ  = ['x','phi_y','dx', 'dphi_y']
+        sQa = ['q_h', 'dq_h']
+        sY  = ['TTacc', 'phi_y']
         sU  = ['w'] # White noise
         sS  = ['M_sb','F_sb', 'eta', 'Fhx']
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
@@ -44,16 +44,16 @@ class KalmanFilterMonopile(KalmanFilter):
 
 		# --- ColMap
         KF.colMap={
-                'q_s'    : 'Q_Sg_[m]' ,
-                'qd_s'   : 'QD_Sg_[m/s]' ,
+                'x'      : 'Q_Sg_[m]' ,
+                'dx'     : 'QD_Sg_[m/s]' ,
                 'TTacc ' : 'NcIMUTAxs_[m/s^2]' ,
                 'eta'    : 'Wave1Elev_[m]', 
                 'q_h'    : '{Wave1Elev_[m]}',  # Hack to avoid deletion
                 'Fhx'    : 'HydroFxi_[N]',
                 'F_sb'   : '-ReactFXss_[N]',
                 'M_sb'   : '-ReactMYss_[N*m]',
-                'q_p'    : 'Q_P_[rad]' ,
-                'qd_p'   : 'QD_P_[rad/s]'
+                'phi_y'  : 'Q_P_[rad]' ,
+                'dphi_y' : 'QD_P_[rad/s]'
             }
 
 
@@ -100,14 +100,14 @@ class KalmanFilterMonopile(KalmanFilter):
         KF.qdhScale = qdhScale
 
         Minv = np.linalg.inv(WT.MM)
-        IQD   =[KF.iX['qd_s'], KF.iX['qd_p']]
-        A[IQD, KF.iX['qd_h']]  = Minv @ (pHD['k_h'][0], pHD['k_h'][1])*KF.qdhScale  # qd_h influence in mech DOF
+        IQD   =[KF.iX['dx'], KF.iX['dphi_y']]
+        A[IQD, KF.iX['dq_h']]  = Minv @ (pHD['k_h'][0], pHD['k_h'][1])*KF.qdhScale  # qd_h influence in mech DOF
 
 
 
-        C[KF.iY['TTacc'], :] = A[KF.iX['qd_s'],:] # TTacc is assumed to be qdd_s
-        D[KF.iY['TTacc'], :] = B[KF.iX['qd_s'],:] # TTacc is assumed to be qdd_s
-        C[KF.iY['q_p'], KF.iX['q_p']] = 1
+        C[KF.iY['TTacc'], :] = A[KF.iX['dx'],:] # TTacc is assumed to be qdd_s
+        D[KF.iY['TTacc'], :] = B[KF.iX['dx'],:] # TTacc is assumed to be qdd_s
+        C[KF.iY['phi_y'], KF.iX['phi_y']] = 1
 
 
         # --- Shaping filter, Hydro state equation
@@ -120,10 +120,10 @@ class KalmanFilterMonopile(KalmanFilter):
         KF.omega_p = 2*np.pi/Tp
         KF.zeta = zeta
         print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
-        A[KF.iX['q_h'], KF.iX['qd_h']]  = 1
-        A[KF.iX['qd_h'], KF.iX['q_h']]  = -KF.omega_p**2
-        A[KF.iX['qd_h'], KF.iX['qd_h']] = -2 * KF.zeta * KF.omega_p
-        B[KF.iX['qd_h'], KF.iU['w']] = 1 # White noise
+        A[KF.iX['q_h'], KF.iX['dq_h']]  = 1
+        A[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
+        A[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
+        B[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
 
         KF.setMat(A, B, C, D)
 
@@ -152,9 +152,9 @@ class KalmanFilterMonopile(KalmanFilter):
 
             # --- Estimate Generalized hydro force and bending moment (calc output)
             q_h     = x[KF.iX['q_h']]  # eta
-            qd_h    = x[KF.iX['qd_h']] # eta_dot
+            dq_h    = x[KF.iX['dq_h']] # eta_dot
             eta     = q_h
-            eta_dot = qd_h
+            eta_dot = dq_h
             p_hydro = KF.pHD['phi'] * eta_dot # p_h = k_h(z) q_h(t)
             p_hydro[KF.zDepth>0] = 0 # safety, shoudn't be necessray
 

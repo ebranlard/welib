@@ -4,6 +4,7 @@ Kalman filter model for "Monopile Tower Nacelle Shaft" (based on yams MTNSB)
 """
 import os
 import numpy as np
+from welib.essentials import *
 from welib.kalman.kalman import *
 from welib.kalman.kalmanfilter import KalmanFilter
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
@@ -18,12 +19,12 @@ import welib.weio as weio
 
 class KalmanFilterMTNS(KalmanFilter):
 
-    def __init__(KF, WSE=None, debug=False):
+    def __init__(KF, WSE=None, debug=False, hacks=None):
         # 11 States
-        sQ  = ['q_s', 'q_p', 'q_FA1', 'psi', 'qd_s', 'qd_p', 'qd_FA1', 'dpsi'] # Mechanical states
-        sQa = ['q_h', 'qd_h', 'Qaero']                                         # Augmented states
+        sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
+        sQa = ['q_h', 'dq_h', 'Qaero']                                         # Augmented states
         sU  = ['Qgen', 'pitch', 'Thrust', 'Fx_i', 'My_i', 'w']
-        sY  = ['ddq_s', 'q_p', 'dpsi', 'NcIMUAx', 'NcIMUAy', 'NcIMUAz', 'Qgen']
+        sY  = ['ddx', 'phi_y', 'dpsi', 'NcIMUAx', 'NcIMUAy', 'NcIMUAz', 'Qgen']
         sS  = ['M_sb', 'F_sb', 'eta', 'Fx_h', 'WS', 'Thrust']
         # --- Parent init
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
@@ -31,8 +32,22 @@ class KalmanFilterMTNS(KalmanFilter):
         KF.wse = WSE # wind speed estimator
         KF.debug = debug
         # Hacks
-        KF.hacks={'thrust':None, 'WSE':None}
+        hacks_def = {'thrust':None, 'WSE':None, 'useTopLoadsFromDF':False}
+        if hacks is None:
+            KF.hacks = hacks_def
+        else:
+            hacks_def.update(hacks)
+            KF.hacks = hacks_def
+        if KF.hacks['thrust']=='clean':
+            WARN('HACKING, using thrust from measurements for DEBUG ONLY!')
+        if KF.hacks['WSE']=='clean_inputs':
+            WARN('HACKING, using WSE inputs from measurements for DEBUG ONLY!')
 
+
+    def __repr__(self):
+        s = KalmanFilter.__repr__(self)
+        s+=' - hacks  : {} \n'.format(self.hacks)
+        return s
 
     def setup_matrices(KF, 
           fstFilename, comp_file=None, hydro_shape_file=None, dfTime=None,
@@ -50,16 +65,16 @@ class KalmanFilterMTNS(KalmanFilter):
 
 		# --- ColMap
         KF.colMap={
-                'q_s'    : 'Q_Sg_[m]' ,
-                'q_p'    : 'Q_P_[rad]' ,
+                'x'      : 'Q_Sg_[m]' ,
+                'phi_y'  : 'Q_P_[rad]' ,
                 'q_FA1'  : 'Q_TFA1_[m]',
                 'psi'    : '{Azimuth_[deg]} * np.pi/180',
-                'qd_s'   : 'QD_Sg_[m/s]' ,
-                'qd_p'   : 'QD_P_[rad/s]',
-                'qd_FA1' : 'QD_TFA1_[m/s]',
+                'dx'     : 'QD_Sg_[m/s]' ,
+                'dphi_y' : 'QD_P_[rad/s]',
+                'dq_FA1' : 'QD_TFA1_[m/s]',
                 'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60',
                 'q_h'    : '{Wave1Elev_[m]}',  # Hack to avoid deletion
-                'ddq_s'  : 'QD2_Sg_[m/s^2]',
+                'ddx'    : 'QD2_Sg_[m/s^2]',
                 'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
                 'NcIMUAy': 'NcIMUTAys_[m/s^2]',
                 'NcIMUAz': 'NcIMUTAzs_[m/s^2]',
@@ -135,16 +150,16 @@ class KalmanFilterMTNS(KalmanFilter):
             As, _, _, _ = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK)
 
             # --- Structural DOFs
-            names = ['q_s', 'q_p', 'qd_s', 'qd_p']
+            names = ['x', 'phi_y', 'dx', 'dphi_y']
             for row, row_name in enumerate(names):
                 for col, col_name in enumerate(names):
                     A[KF.iX[row_name], KF.iX[col_name]] = As[row, col]
 
             # Tower fore-aft first mode (1DOF oscillator)
             omega_t = 2 * np.pi * 0.32
-            A[KF.iX['q_FA1'], KF.iX['qd_FA1']] = 1
-            A[KF.iX['qd_FA1'], KF.iX['q_FA1']] = -omega_t**2
-            A[KF.iX['qd_FA1'], KF.iX['qd_FA1']] = -2 * 0.03 * omega_t
+            A[KF.iX['q_FA1'],  KF.iX['dq_FA1']] = 1
+            A[KF.iX['dq_FA1'], KF.iX['q_FA1']]  = -omega_t**2
+            A[KF.iX['dq_FA1'], KF.iX['dq_FA1']] = -2 * 0.03 * omega_t
 
         elif method=='OpenFAST':
             if lin_file is None or not os.path.exists(lin_file):
@@ -163,14 +178,14 @@ class KalmanFilterMTNS(KalmanFilter):
         h_hub = r_TN[2] + r_NS[2]
 
         # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
-        B[KF.iX['qd_s'], KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-        B[KF.iX['qd_p'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+        B[KF.iX['dx'], KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+        B[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
 
         # For q_FA1, estimate modal mass: 0.25 * m_twr + m_rna
         m_twr = np.trapezoid(WT.twr.m, WT.twr.s_span) if (hasattr(WT, 'twr') and hasattr(WT.twr, 'm')) else 9.6e5
         m_rna = WT.M_RNA if hasattr(WT, 'M_RNA') else 1.189e6
         M_modal = 0.25 * m_twr + m_rna
-        B[KF.iX['qd_FA1'], KF.iU['Thrust']] = 1 / M_modal
+        B[KF.iX['dq_FA1'], KF.iU['Thrust']] = 1 / M_modal
 
         # --- Shaft equation
         A[KF.iX['psi'], KF.iX['dpsi']] = 1
@@ -180,35 +195,36 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Generalized hydro force 
         if 'k_h' in pHD:
-            A[KF.iX['qd_s'], KF.iX['qd_h']] = M_inv[0, :] @ pHD['k_h']
-            A[KF.iX['qd_p'], KF.iX['qd_h']] = M_inv[1, :] @ pHD['k_h']
+            A[KF.iX['dx'],     KF.iX['dq_h']] = M_inv[0, :] @ pHD['k_h']
+            A[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv[1, :] @ pHD['k_h']
         else:
             FAIL('k_h not present')
 
         # --- Output equation for monopile top acceleration
-        C[KF.iY['ddq_s'], :] = A[KF.iX['qd_s'], :]
-        D[KF.iY['ddq_s'], :] = B[KF.iX['qd_s'], :]
-        C[KF.iY['q_p'],  KF.iX['q_p']] = 1   # We measure inclination
+        C[KF.iY['ddx'], :] = A[KF.iX['dx'], :]
+        D[KF.iY['ddx'], :] = B[KF.iX['dx'], :]
+        C[KF.iY['phi_y'],  KF.iX['phi_y']] = 1   # We measure inclination
         C[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed 
 
         # Nacelle acceleration in x direction (including pitch coupling)
         h_nac = r_TN[2]
         if method == 'YAMS':
-            C[KF.iY['NcIMUAx'], :] = A[KF.iX['qd_s'], :] + h_nac * A[KF.iX['qd_p'], :] + A[KF.iX['qd_FA1'], :]
-            D[KF.iY['NcIMUAx'], :] = B[KF.iX['qd_s'], :] + h_nac * B[KF.iX['qd_p'], :] + B[KF.iX['qd_FA1'], :]
+            C[KF.iY['NcIMUAx'], :] = A[KF.iX['dx'], :] + h_nac * A[KF.iX['dphi_y'], :] + A[KF.iX['dq_FA1'], :]
+            D[KF.iY['NcIMUAx'], :] = B[KF.iX['dx'], :] + h_nac * B[KF.iX['dphi_y'], :] + B[KF.iX['dq_FA1'], :]
 
-        C[KF.iY['NcIMUAz'], KF.iX['q_p']] = -9.81
+        C[KF.iY['NcIMUAz'], KF.iX['phi_y']] = -9.81
         D[KF.iY['Qgen'], KF.iU['Qgen']] = 1
 
         # --- Shaping filter, Hydro state equation
         KF.Sw      = 2.3835e-01
         KF.omega_p = 2 * np.pi / Tp
         KF.zeta    = 0.12
-        A[KF.iX['q_h'], KF.iX['qd_h']]  = 1
-        A[KF.iX['qd_h'], KF.iX['q_h']]  = -KF.omega_p**2
-        A[KF.iX['qd_h'], KF.iX['qd_h']] = -2 * KF.zeta * KF.omega_p
-        B[KF.iX['qd_h'], KF.iU['w']] = 1 # White noise
+        A[KF.iX['q_h'], KF.iX['dq_h']]  = 1
+        A[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
+        A[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
+        B[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
 
+        # --- Finally, we set the matrices
         KF.setMat(A, B, C, D)
 
 
@@ -221,10 +237,10 @@ class KalmanFilterMTNS(KalmanFilter):
         data = FL.OP_Data[0].Data[0]
         state_labels = [str(label) for label in FL.xdescr]
         state_map = {
-            'q_s': 'PtfmSurge_[m]', 'q_p': 'PtfmPitch_[rad]',
+            'x': 'PtfmSurge_[m]', 'phi_y': 'PtfmPitch_[rad]',
             'q_FA1': 'qt1FA_[m]', 'psi': 'psi_rot_[rad]',
-            'qd_s': 'd_PtfmSurge_[m/s]', 'qd_p': 'd_PtfmPitch_[rad/s]',
-            'qd_FA1': 'd_qt1FA_[m/s]', 'dpsi': 'd_psi_rot_[rad/s]'}
+            'dx': 'd_PtfmSurge_[m/s]', 'dphi_y': 'd_PtfmPitch_[rad/s]',
+            'dq_FA1': 'd_qt1FA_[m/s]', 'dpsi': 'd_psi_rot_[rad/s]'}
         indices = {name: state_labels.index(label) for name, label in state_map.items()
                    if label in state_labels}
         for row_name, row in indices.items():
@@ -297,8 +313,8 @@ class KalmanFilterMTNS(KalmanFilter):
 
             # --- Estimate integrated hydro force (Fx_h)
             q_h  = x[KF.iX['q_h']]
-            qd_h = x[KF.iX['qd_h']]
-            p_hydro = KF.pHD['phi'] * qd_h
+            dq_h = x[KF.iX['dq_h']]
+            p_hydro = KF.pHD['phi'] * dq_h
             p_hydro[KF.pST['z'] > 0] = 0.0
             wet_nodes = KF.pST['z'] <= 0
             Fx_h_est = np.trapezoid(p_hydro[wet_nodes], KF.pST['z'][wet_nodes])

@@ -79,10 +79,10 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     if not useStdFromMeas:
         # States
         sigs = {'x':{}, 'y':{}, 'Q':{}}
-        sigs['x']['ut1']    = 1.0
+        sigs['x']['q_FA1']    = 1.0
         sigs['x']['psi']    = 0.1
-        sigs['x']['ut1dot'] = 0.1
-        sigs['x']['omega']  = 0.1
+        sigs['x']['dq_FA1'] = 0.1
+        sigs['x']['dpsi']  = 0.1
         sigs['x']['Thrust'] = 1000000
         sigs['x']['Qaero']  = 8*10**6*1.0
         sigs['x']['Qgen']   = 1.0*10**6
@@ -90,7 +90,7 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
         sigs['Q'] = sigs['x'].copy()
         # Measurements - more or less half the std
         sigs['y']['TTacc'] = 0.08  # m/s^2
-        sigs['y']['omega'] = 0.05 # rad/s
+        sigs['y']['dpsi'] = 0.05 # rad/s
         sigs['y']['Qgen']  = 1*10**6
         sigs['y']['pitch'] = 2.00
 

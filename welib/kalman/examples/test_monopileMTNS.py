@@ -1,6 +1,7 @@
 """Monopile/turbine digital twin using augmented Kalman estimation."""
 
 import argparse
+import sys
 import os
 import numpy as np
 import pandas as pd
@@ -111,16 +112,10 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --- Main parameters
 
     # --- Default arguments:
-    hacks_def = {'thrust':None, 'WSE':None, 'useTopLoadsFromDF':False}
-    if hacks is None:
-        hacks = hacks_def
-    else:
-        hacks_def.update(hacks)
-        hacks=hacks_def
-    comp_file = comp_file               or '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv'
-    aero = aero_map_file                or '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf'
-    oper = oper_file                    or '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv'
-    hydro_shape_file = hydro_shape_file or '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv'
+    comp_file        = comp_file               or os.path.join(scriptDir, '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    aero_map_file    = aero_map_file                or os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+    oper_file        = oper_file                    or os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+    hydro_shape_file = hydro_shape_file or os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv')
 
     if tRangeStats is None:
          tRangeStats = [tmin, tmax]
@@ -143,9 +138,8 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --- Kalman filter estimation 
     # --------------------------------------------------------------------------------{
     # --- Wind speed estimator (reads tabulated aerodynamic data)
-    wse = TabulatedWSEstimator(fstFile=fst_file, operFile=oper, aeroMapFile=aero)
-    KF = KalmanFilterMTNS(WSE=wse)
-    KF.hacks.update(hacks)
+    wse = TabulatedWSEstimator(fstFile=fst_file, operFile=oper_file, aeroMapFile=aero_map_file)
+    KF = KalmanFilterMTNS(WSE=wse, hacks=hacks)
     KF.setup_matrices(fst_file, comp_file=comp_file, hydro_shape_file=hydro_shape_file,
                       dfTime=df_ref['Time_[s]'].values, method=method, lin_file=lin_file)
 
@@ -156,7 +150,7 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # - Estimate sigmas from measurements (overriden in next section)
     KF.loadMeasurements(measFile=df_ref, tRange=[tmin,tmax], colMap=KF.colMap, timeCol='Time_[s]', raiseIfAbsent=True)
 
-    KF.X_clean['qd_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
+    KF.X_clean['dq_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
     # --- Storage for plot
     KF.prepareTimeStepping()
     # --- Process and measurement covariances
@@ -193,25 +187,23 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # Section loads post-processing using the pre-configured WT directly
     ysl = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
     df_in = pd.DataFrame({'Time_[s]': KF.time})
-    units = {'Sg': ('[m]', '[m/s]', '[m/s^2]'),
-             'Sw': ('[m]', '[m/s]', '[m/s^2]'),
-             'Hv': ('[m]', '[m/s]', '[m/s^2]'),
-             'R': ('[rad]', '[rad/s]', '[rad/s^2]'),
-             'P': ('[rad]', '[rad/s]', '[rad/s^2]'),
-             'Y': ('[rad]', '[rad/s]', '[rad/s^2]'),
+    units = {'Sg':   ('[m]', '[m/s]', '[m/s^2]'),
+             'Sw':   ('[m]', '[m/s]', '[m/s^2]'),
+             'Hv':   ('[m]', '[m/s]', '[m/s^2]'),
+             'R':    ('[rad]', '[rad/s]', '[rad/s^2]'),
+             'P':    ('[rad]', '[rad/s]', '[rad/s^2]'),
+             'Y':    ('[rad]', '[rad/s]', '[rad/s^2]'),
              'TFA1': ('[m]', '[m/s]', '[m/s^2]'),
              'TSS1': ('[m]', '[m/s]', '[m/s^2]'),
              'Yaw': ('[rad]', '[rad/s]', '[rad/s^2]')}
-    for dof, suffixes in units.items():
+    for dof_OF, suffixes in units.items():
         for prefix, suffix in zip(['Q_', 'QD_', 'QD2_'], suffixes):
-            df_in[prefix + dof + '_' + suffix] = 0.0
-    for dof, state, acceleration in [('Sg', 'q_s', 'dqd_s'),
-                                     ('P', 'q_p', 'dqd_p'),
-                                     ('TFA1', 'q_FA1', 'dqd_FA1')]:
-        suffixes = units[dof]
-        df_in['Q_' + dof + '_' + suffixes[0]] = KF.X_hat[state]
-        df_in['QD_' + dof + '_' + suffixes[1]] = KF.XD_hat['d' + state]
-        df_in['QD2_' + dof + '_' + suffixes[2]] = KF.XD_hat[acceleration]
+            df_in[prefix + dof_OF + '_' + suffix] = 0.0
+    for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
+        suffixes = units[dof_OF]
+        df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_hat[state]
+        df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_hat['d' + state]
+        df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_hat['dd'+ state]
     df_in['Madd_R_xs'] = KF.X_hat['Qaero']
     df_in['Fadd_R_xs'] = KF.S_hat['Thrust']
     for name in ['Fadd_R_ys', 'Fadd_R_zs', 'Madd_R_ys', 'Madd_R_zs']:
@@ -259,11 +251,40 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     return KF, df_ref, df_sl
 
 
-def test_():
-    NOTE('Test not ready')
-    pass
+def test_monopile_tower(test=True):
+    if os.getenv('GITHUB_ACTIONS') == 'true':
+        NOTE('test Offshore FTNS not ready yet')
+        pytest.skip("Skipping local-only test on GitHub Actions")
+    fst_file         = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    lin_file         = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
+    comp_file        = os.path.join(scriptDir, '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    aero_map_file    = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+    oper_file        = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+    hydro_shape_file = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv')
+
+    hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'useTopLoadsFromDF':True} # Super hack
+    #hacks['WSE'] = 'clean_inputs'
+    #hacks['thrust'] = 'clean'
+    show=True
+    if test:
+        tRange = [150, 200]
+        show=False
+    else:
+        tRange = [150, 170]
+    main(fst_file=fst_file, lin_file=lin_file, 
+         comp_file=comp_file,  hydro_shape_file=hydro_shape_file,
+         aero_map_file=aero_map_file, oper_file=oper_file,
+         hacks=hacks, show=show,
+         tmin=tRange[0], tmax=tRange[1]
+         )
 
 if __name__ == '__main__':
+    if len(sys.argv)==1:
+        test_monopile_tower(test=False)
+        sys.exit(0)
+    else:
+        raise
+
     parser = argparse.ArgumentParser()
     parser.add_argument('fst_file', nargs='?', default='_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
     parser.add_argument('--lin-file', type=str, default='_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')

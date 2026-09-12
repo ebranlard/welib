@@ -55,7 +55,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # - Other signals are extracted from the file, for comparison with estimates. These are referred as "clean" values
     # - Estimate sigmas from measurements (overriden in next section)
     KF.loadMeasurements(simFile, nUnderSamp=nUnderSamp, tRange=tRange, colMap=KF.colMap, timeCol='Time_[s]', raiseIfAbsent=True)
-    KF.X_clean['qd_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
+    KF.X_clean['dq_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
 
 
     # --- Storage for plot
@@ -63,17 +63,17 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
 
     # KF.Xx.iloc[0,0] = -0.001 # Centering force
     # Based on influence in $C$.
-    # Since $q_p$ is so sensitive, it needs a smaller $Q$ than $q_s$ to prevent it from dominating the filter's attention.
+    # Since $phi_y$ is so sensitive, it needs a smaller $Q$ than $x$ to prevent it from dominating the filter's attention.
     # --- Process and measurement covariances
     dt_ref = 0.01 # NOTE: Q change with dt
     sigs = {'x':{}, 'y':{}, 'Q':{}}
     sigs['y']['TTacc'] = np.sqrt(1e-3)
-    sigs['Q']['q_s']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['q_p']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['qd_s']  = np.sqrt(KF.dt/dt_ref * 1e-3)
-    sigs['Q']['qd_p']  = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['x']   = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['phi_y']   = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['dx']  = np.sqrt(KF.dt/dt_ref * 1e-3)
+    sigs['Q']['dphi_y']  = np.sqrt(KF.dt/dt_ref * 1e-6)
     sigs['Q']['q_h']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['qd_h']  = np.sqrt(KF.dt/dt_ref * KF.Sw)
+    sigs['Q']['dq_h']  = np.sqrt(KF.dt/dt_ref * KF.Sw)
     KF.setupCovariances(
             sigs=sigs,
             useDt=False, Pidentity=True, verbose=True)
@@ -122,13 +122,13 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
 def test_monopile():
     # --- Monopile Jonswap Hs=8.1 Tp=12.7, Default
     stats = main()
-    np.testing.assert_array_less(stats['q_s']['eps'],  1.9)
+    np.testing.assert_array_less(stats['x']['eps'],  1.9)
     np.testing.assert_array_less(stats['M_sb']['eps'], 5.9)
     np.testing.assert_array_less(stats['F_sb']['eps'], 5.9)
     np.testing.assert_array_less(stats['eta']['eps'],  2.4)
     np.testing.assert_array_less(stats['Fhx']['eps'],  5.5)
 
-    np.testing.assert_array_less(1-stats['q_s']['R2'],  0.03)
+    np.testing.assert_array_less(1-stats['x']['R2'],  0.03)
     np.testing.assert_array_less(1-stats['M_sb']['R2'], 0.22)
     np.testing.assert_array_less(1-stats['F_sb']['R2'], 0.20)
     np.testing.assert_array_less(1-stats['eta']['R2'],  0.3)
@@ -136,28 +136,28 @@ def test_monopile():
 
 # --- With beamSectionLoads
 # Tuning: zeta=0.12, qdhScale=1
-# q_s        σ_est/σ_ref = 0.992 - ε=1.7% - R²=0.978
-# q_p        σ_est/σ_ref = 1.017 - ε=1.7% - R²=0.976
-# qd_s       σ_est/σ_ref = 1.261 - ε=1.3% - R²=0.814
-# qd_p       σ_est/σ_ref = 2.740 - ε=4.3% - R²=0.499
-# q_h        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
-# qd_h       σ_est/σ_ref = 0.981 - ε=4.8% - R²=0.873
-# M_sb       σ_est/σ_ref = 1.100 - ε=5.0% - R²=0.796
-# F_sb       σ_est/σ_ref = 1.143 - ε=5.2% - R²=0.813
-# eta        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
-# Fhx        σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
+# x        σ_est/σ_ref = 0.992 - ε=1.7% - R²=0.978
+# phi_y    σ_est/σ_ref = 1.017 - ε=1.7% - R²=0.976
+# dx       σ_est/σ_ref = 1.261 - ε=1.3% - R²=0.814
+# dphi_y   σ_est/σ_ref = 2.740 - ε=4.3% - R²=0.499
+# q_h      σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# dq_h     σ_est/σ_ref = 0.981 - ε=4.8% - R²=0.873
+# M_sb     σ_est/σ_ref = 1.100 - ε=5.0% - R²=0.796
+# F_sb     σ_est/σ_ref = 1.143 - ε=5.2% - R²=0.813
+# eta      σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# Fhx      σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
 # -------------------------------------------------------
 # # --- With WT.calcOutput_step, 0 inerface loads (like above)
-# q_s        σ_est/σ_ref = 0.992 - ε=1.7% - R²=0.978
-# q_p        σ_est/σ_ref = 1.017 - ε=1.7% - R²=0.976
-# qd_s       σ_est/σ_ref = 1.261 - ε=1.3% - R²=0.814
-# qd_p       σ_est/σ_ref = 2.740 - ε=4.3% - R²=0.499
-# q_h        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
-# qd_h       σ_est/σ_ref = 0.981 - ε=4.8% - R²=0.873
-# M_sb       σ_est/σ_ref = 1.100 - ε=5.0% - R²=0.796
-# F_sb       σ_est/σ_ref = 1.143 - ε=5.2% - R²=0.813
-# eta        σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
-# Fhx        σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
+# x        σ_est/σ_ref = 0.992 - ε=1.7% - R²=0.978
+# phi_y    σ_est/σ_ref = 1.017 - ε=1.7% - R²=0.976
+# dx       σ_est/σ_ref = 1.261 - ε=1.3% - R²=0.814
+# dphi_y   σ_est/σ_ref = 2.740 - ε=4.3% - R²=0.499
+# q_h      σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# dq_h     σ_est/σ_ref = 0.981 - ε=4.8% - R²=0.873
+# M_sb     σ_est/σ_ref = 1.100 - ε=5.0% - R²=0.796
+# F_sb     σ_est/σ_ref = 1.143 - ε=5.2% - R²=0.813
+# eta      σ_est/σ_ref = 0.959 - ε=2.3% - R²=0.977
+# Fhx      σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
 # -------------------------------------------------------
 
 if __name__ == '__main__':
