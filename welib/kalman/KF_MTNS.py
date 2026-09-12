@@ -9,8 +9,15 @@ from welib.kalman.kalman import *
 from welib.kalman.kalmanfilter import KalmanFilter
 from welib.ws_estimator.tabulated import TabulatedWSEstimator
 from welib.yams.models.MTNSB import FASTmodel2MTNSB
+
+from welib.weio.fast_linearization_file import FASTLinearizationFile
+from welib.yams.section_loads import beamSectionLoadsFromShapeFunctions
+
 import welib.fast.fastlib as fastlib
 import welib.weio as weio
+from welib.kalman.kalman import BuildSystem_Linear_MechOnly
+from welib.fast.FASTLin import FASTLin
+from welib.tools.strings import FAIL
 
 # --------------------------------------------------------------------------------}
 # --- Kalman Filter 
@@ -25,7 +32,7 @@ class KalmanFilterMTNS(KalmanFilter):
         sQa = ['q_h', 'dq_h', 'Qaero']                                         # Augmented states
         sU  = ['Qgen', 'pitch', 'Thrust', 'Fx_i', 'My_i', 'w']
         sY  = ['ddx', 'phi_y', 'dpsi', 'NcIMUAx', 'NcIMUAy', 'NcIMUAz', 'Qgen']
-        sS  = ['M_sb', 'F_sb', 'eta', 'Fx_h', 'WS', 'Thrust']
+        sS  = ['My_sb', 'Fx_sb', 'eta', 'Fx_h', 'WS', 'Thrust']
         # --- Parent init
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
         # --- Storing wind speed estimator (based on tabulated aerodynamic data)
@@ -50,17 +57,18 @@ class KalmanFilterMTNS(KalmanFilter):
         return s
 
     def setup_matrices(KF, 
-          fstFilename, comp_file=None, hydro_shape_file=None, dfTime=None,
-                       Tp=12.7, method='YAMS', lin_file=None):
+                       fstFilename, dfTime=None,
+                       hydro_shape_file=None, comp_file=None, Tp=None, zeta =0.12, qdhScale=1, # Hydro params
+                       method='YAMS', 
+                       lin_file=None, # For method=='OpenFAST
+                       ):
         """ Build WT model (sea state, hydro) and state matrices A,B,C,D """
-        from welib.kalman.kalman import BuildSystem_Linear_MechOnly
-        from welib.fast.FASTLin import FASTLin
-        from welib.tools.strings import FAIL
         # --- Default arguments
-
+        shapes_sub =[0,4] # TODO detemine this based on sQ
+        shapes_twr =[0]   # TODO detemine this based on sQ
         # --- Windturbine model
-        WT = FASTmodel2MTNSB(fstFilename, shapes_sub=[0, 4], shapes_twr=[], shapes_bld=[],
-                             DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=True,
+        WT = FASTmodel2MTNSB(fstFilename, shapes_sub=shapes_sub, shapes_twr=shapes_twr, shapes_bld=[],
+                             DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=False,
                              algo='OpenFAST').WT
 
 		# --- ColMap
@@ -69,7 +77,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 'phi_y'  : 'Q_P_[rad]' ,
                 'q_FA1'  : 'Q_TFA1_[m]',
                 'psi'    : '{Azimuth_[deg]} * np.pi/180',
-                'dx'     : 'QD_Sg_[m/s]' ,
+                'dx'     : 'QD_Sg_[m/s]',
                 'dphi_y' : 'QD_P_[rad/s]',
                 'dq_FA1' : 'QD_TFA1_[m/s]',
                 'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60',
@@ -81,14 +89,24 @@ class KalmanFilterMTNS(KalmanFilter):
                 'Qgen'   : '{GenTq_[kN-m]} * 1000',
                 'pitch'  : '{BldPitch1_[deg]} * np.pi/180',
                 'Thrust' : 'RtAeroFxh_[N]',
-                'Fx_i'   : 'HydroFxi_[N]',     # TODO TODO TODO THIS IS WRONG
-                'My_i'   : 'HydroMyi_[N-m]',   # TODO TODO TODO THIS IS WRONG
                 'WS'     : 'RtVAvgxh_[m/s]',
                 'Fx_h'   : '{HydroFxi_[N]}',   # We use a trick  
-                'F_sb'   : '-ReactFXss_[N]',
-                'M_sb'   : '-ReactMYss_[N*m]',
+                'Fx_sb'  : '-ReactFXss_[N]',
+                'My_sb'  : '-ReactMYss_[N*m]',
 
             }
+        if WT.fnd is not None:
+            KF.colMap.update({
+                'Fx_i'   : 'IntfFXss_[N]',   
+                'My_i'   : 'IntfMYss_[N*m]',
+                }
+            )
+        else:
+            KF.colMap.update({
+                'Fx_i'   : '{TwrBsFxt_[kN]}*1000',   
+                'My_i'   : '{TwrBsMyt_[kN-m]}*1000',
+                }
+            )
 
 
 
@@ -100,43 +118,17 @@ class KalmanFilterMTNS(KalmanFilter):
             WT.SS_computeEta(dfTime)
             if hydro_shape_file is not None:
                 WT.HD_setShapeFunction(hydro_shape_file)
-
-        # --- Structural data used for postprocessing (section loads)
-        pST = {}
-        pST['PhiU'] = WT.fnd.PhiU
-        pST['PhiV'] = WT.fnd.PhiV
-        pST['PhiK'] = WT.fnd.PhiK
-        pST['m'] = WT.fnd.m
-        pST['s_span'] = WT.fnd.s_span
-        pST['gravity'] = WT.gravity
-        if hasattr(WT, 'WtrDpth'):
-            pST['z'] = WT.fnd.s_span - WT.WtrDpth
-        else:
-            pST['z'] = WT.fnd.s_span
-
-        # --- Hydrodynamic parameters (mock values for onshore case)
-        if WT.pSS is None:
-            zDepth = WT.fnd.s_span if hasattr(WT, 'fnd') else WT.twr.s_span
-            pHD_mock = {
-                'zDepth': zDepth,
-                'D': np.zeros_like(zDepth), 'Cd': np.zeros_like(zDepth), 'CM': np.zeros_like(zDepth),
-                'Ca': np.zeros_like(zDepth), 'Cp': np.zeros_like(zDepth), 'm_hydro': np.zeros_like(zDepth),
-                'GM_hydro': np.zeros((2, 2)), 'phi': np.zeros_like(zDepth), 'phit': np.zeros_like(zDepth)
-            }
-            WT.pHD = pHD_mock
-        pHD = WT.pHD
-
         # Ensure WT.MM contains the hydrodynamic mass if not already added
+        pHD = WT.pHD
         if not getattr(WT, '_GM_hydro_added', False) and 'GM_hydro' in pHD:
             for i in range(min(pHD['GM_hydro'].shape[0], WT.MM.shape[0])):
                 WT.MM[i, i] += pHD['GM_hydro'][i, i]
             WT._GM_hydro_added = True
 
-        # --- Parameters that are a function of the structure and ocean conditions
-        KF.WT = WT
+        # --- Store turbine and hydro data in Kalman filter object
+        KF.WT  = WT
         KF.pHD = pHD
-        KF.pST = pST
-        KF.zDepth = pST['z']
+        KF.zDepth = WT.fnd.s_span - WT.WtrDpth
 
         # --- Setup state matrices, problem specific!
         nX, nU, nY = len(KF.sX), len(KF.sU), len(KF.sY)
@@ -144,22 +136,25 @@ class KalmanFilterMTNS(KalmanFilter):
         B = np.zeros((nX, nU))
         C = np.zeros((nY, nX))
         D = np.zeros((nY, nU))
-        M_inv = np.linalg.inv(WT.MM)
+        # Empty inputs/outputs B,C,D
+        MM_sub = WT.MM[:2,:2] # We only keep surge and pitch
+        M_inv     = np.linalg.inv(WT.MM)
+        M_inv_sub = np.linalg.inv(MM_sub)
 
         if method=='YAMS':
             As, _, _, _ = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK)
 
             # --- Structural DOFs
-            names = ['x', 'phi_y', 'dx', 'dphi_y']
+            names = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi']
             for row, row_name in enumerate(names):
                 for col, col_name in enumerate(names):
                     A[KF.iX[row_name], KF.iX[col_name]] = As[row, col]
 
             # Tower fore-aft first mode (1DOF oscillator)
-            omega_t = 2 * np.pi * 0.32
-            A[KF.iX['q_FA1'],  KF.iX['dq_FA1']] = 1
-            A[KF.iX['dq_FA1'], KF.iX['q_FA1']]  = -omega_t**2
-            A[KF.iX['dq_FA1'], KF.iX['dq_FA1']] = -2 * 0.03 * omega_t
+            #omega_t = 2 * np.pi * 0.32
+            #A[KF.iX['q_FA1'],  KF.iX['dq_FA1']] = 1
+            #A[KF.iX['dq_FA1'], KF.iX['q_FA1']]  = -omega_t**2
+            #A[KF.iX['dq_FA1'], KF.iX['dq_FA1']] = -2 * 0.03 * omega_t
 
         elif method=='OpenFAST':
             if lin_file is None or not os.path.exists(lin_file):
@@ -173,12 +168,15 @@ class KalmanFilterMTNS(KalmanFilter):
         # and some additional tweaks
 
         # --- Thrust influence (physical derivation)
-        r_TN = WT.r_TN_inT if hasattr(WT, 'r_TN_inT') else [0,0,198.386]
-        r_NS = WT.r_NS_inN if hasattr(WT, 'r_NS_inN') else [0,0,4.143]
+        try:
+            r_TN = WT.r_TN_inT # if hasattr(WT, 'r_TN_inT') else [0,0,198.386]
+            r_NS = WT.r_NS_inN # if hasattr(WT, 'r_NS_inN') else [0,0,4.143]
+        except:
+            raise NotImplementedError()
         h_hub = r_TN[2] + r_NS[2]
 
         # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
-        B[KF.iX['dx'], KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+        B[KF.iX['dx']    , KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
         B[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
 
         # For q_FA1, estimate modal mass: 0.25 * m_twr + m_rna
@@ -195,8 +193,8 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Generalized hydro force 
         if 'k_h' in pHD:
-            A[KF.iX['dx'],     KF.iX['dq_h']] = M_inv[0, :] @ pHD['k_h']
-            A[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv[1, :] @ pHD['k_h']
+            A[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
+            A[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
         else:
             FAIL('k_h not present')
 
@@ -216,9 +214,15 @@ class KalmanFilterMTNS(KalmanFilter):
         D[KF.iY['Qgen'], KF.iU['Qgen']] = 1
 
         # --- Shaping filter, Hydro state equation
-        KF.Sw      = 2.3835e-01
-        KF.omega_p = 2 * np.pi / Tp
-        KF.zeta    = 0.12
+        if Tp==12.7:
+            KF.Sw= 2.3835e-01
+        elif Tp==10.0:
+            KF.Sw= 2.3835e-01/2
+        else:
+            raise NotImplementedError(f'Tp={Tp}')
+        KF.omega_p = 2*np.pi/Tp
+        KF.zeta = zeta
+        print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
         A[KF.iX['q_h'], KF.iX['dq_h']]  = 1
         A[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
         A[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
@@ -283,15 +287,15 @@ class KalmanFilterMTNS(KalmanFilter):
         ws_last = KF.S_clean['WS'].iloc[0]
 
         # --- Time loop
-        for it in range(0,KF.nt-1):    
-            t = it*KF.dt
+        for it in range(0, KF.nt-1):    
+            t = it * KF.dt
             # --- "Measurements"
             y  = KF.Y.iloc[it,:].values
             # --- Inputs
             u = KF.U_clean.iloc[it,:].values.copy()
             u[KF.iU['Thrust']] = thrust # We use previous estimated thrust as input.
             
-            # --- KF predictions
+            # --- Predictions of next time step based on current time step
             x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P)
 
             # --- WSE hack
@@ -311,19 +315,75 @@ class KalmanFilterMTNS(KalmanFilter):
             else:
                 thrust = float(np.asarray(KF.wse.Thrust(ws_last, pitch=u[KF.iU['pitch']] * 180 / np.pi, omega=dpsi_val)))
 
-            # --- Estimate integrated hydro force (Fx_h)
-            q_h  = x[KF.iX['q_h']]
-            dq_h = x[KF.iX['dq_h']]
-            p_hydro = KF.pHD['phi'] * dq_h
-            p_hydro[KF.pST['z'] > 0] = 0.0
-            wet_nodes = KF.pST['z'] <= 0
-            Fx_h_est = np.trapezoid(p_hydro[wet_nodes], KF.pST['z'][wet_nodes])
+            # --- Estimate Generalized hydro force and bending moment (calc output)
+            q_h     = x[KF.iX['q_h']]  # eta
+            dq_h    = x[KF.iX['dq_h']] # eta_dot
+            eta     = q_h
+            eta_dot = dq_h
+            p_hydro = KF.pHD['phi'] * eta_dot # p_h = k_h(z) q_h(t)
+            p_hydro[KF.zDepth>0] = 0 # safety, shoudn't be necessary
 
+            # --- Acceleration
+            x_dot = np.dot(KF.A, x) + np.dot(KF.B, u)
+            
+            # ---
+            p_ext      = np.zeros((3,len(KF.zDepth)))
+            p_ext[0,:] = p_hydro
+
+            x_q   = np.array([x[0],x[1]])
+            xd_q  = np.array([x_dot[0], x_dot[1]])
+            xdd_q = np.array([x_dot[2], x_dot[3]])
+
+            # --- DOFs in the way expected by calcOutputs_step
+            q   = dInfo['q_default'].copy()
+            qd  = dInfo['q_default'].copy()
+            qdd = dInfo['q_default'].copy()
+            q  ['Sg']  = x_q[0]
+            q  ['P']   = x_q[1]
+            qd ['Sg']  = xd_q[0]
+            qd ['P']   = xd_q[1]
+            qdd['Sg']  = xdd_q[0]
+            qdd['P']   = xdd_q[1]
+
+            # ---  Top loads
+            F_top = np.array((0.,0.,0.))
+            M_top = np.array((0.,0.,0.))
+            a_ext = np.array((0.,0.,-WT.gravity)) # external acceleration (gravity/earthquake)
+
+            Thrust = thrust
+            ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':0, 'Madd_R_ys':0, 'Madd_R_zs':0})
+            # TEMPORARY for backward compatibility
+#             ser_Loads['TwrBsFxt_[kN]'] = 0
+#             ser_Loads['TwrBsFyt_[kN]'] = 0
+#             ser_Loads['TwrBsFzt_[kN]'] = 0
+#             ser_Loads['TwrBsMxt_[kN-m]'] = 0
+#             ser_Loads['TwrBsMyt_[kN-m]'] = 0
+#             ser_Loads['TwrBsMzt_[kN-m]'] = 0
+#             dInfo['useInterfaceLoadsFromDF'] = True
+
+            rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=KF.time[it], ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+            F_sec = mnp_it[0:3,:]
+            M_sec = mnp_it[3:6,:]
+
+            #F_sec, M_sec, outD = beamSectionLoadsFromShapeFunctions    (x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext=a_ext, corrections=0, PhiK=WT.fnd.PhiK)
+
+            # No acceleration # TODO get it from calcOutputs 
+            xdd_q *=0
+            F_sec_h, M_sec_h, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext = a_ext, PhiK=WT.fnd.PhiK)
+
+            wet_nodes = KF.zDepth <= 0
+            Fx_h_est = np.trapezoid(p_hydro[wet_nodes], KF.zDepth[wet_nodes])
+            
+            
             # --- Store extra info
-            KF.S_hat.at[it + 1, 'WS']     = ws_last
-            KF.S_hat.at[it + 1, 'eta']    = q_h
-            KF.S_hat.at[it + 1, 'Fx_h']   = Fx_h_est
-            KF.S_hat.at[it + 1, 'Thrust'] = thrust
+            # Environment            
+            KF.S_hat.at[it+1, 'WS']     = ws_last
+            KF.S_hat.at[it+1, 'eta']    = q_h
+            # Loads            
+            KF.S_hat.at[it+1, 'My_sb']  = M_sec[1,0]
+            KF.S_hat.at[it+1, 'Fx_sb']  = F_sec[0,0]
+            KF.S_hat.at[it+1, 'Fx_h']   = Fx_h_est
+            KF.S_hat.at[it+1, 'Thrust'] = thrust
 
             # --- Propagation to next time step
             if np.mod(it,500) == 0:

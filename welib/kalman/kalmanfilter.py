@@ -8,6 +8,7 @@ import pandas as pd
 from .kalman import *
 import welib.fast.fastlib as fastlib 
 import welib.weio as weio
+from welib.weio.dataframe import WEIODataFrame
 from welib.tools.strings import OK, INFO, WARN, FAIL, NOTE
 from welib.tools.strings import prettyMat, prettyNum
 
@@ -43,7 +44,7 @@ class KalmanFilter(object):
         self.dt   = None
         self.it   = 0
 
-        # Time storage (Dataframes)
+        # Time storage (WEIODataframes (readonly columns)
         self.X_hat    = None # pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sX) # Estimated state
         self.Y_hat    = None # pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY) # Estimate output / measurement
         self.Y        = None # pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY) # Actual measurement, with potential noise
@@ -256,11 +257,11 @@ class KalmanFilter(object):
                 colMap[k]=k
 
         # --- Defining "clean" values 
-        self.X_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sX)
-        self.Y_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nY)), columns=self.sY)
-        self.U_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nU)), columns=self.sU)
-        self.S_clean  = pd.DataFrame(data=np.zeros((self.nt,self.nS)), columns=self.sS)
-        self.XD_clean = pd.DataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sXd)
+        self.X_clean  = WEIODataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sX , cols_readonly=True)
+        self.Y_clean  = WEIODataFrame(data=np.zeros((self.nt,self.nY)), columns=self.sY , cols_readonly=True)
+        self.U_clean  = WEIODataFrame(data=np.zeros((self.nt,self.nU)), columns=self.sU , cols_readonly=True)
+        self.S_clean  = WEIODataFrame(data=np.zeros((self.nt,self.nS)), columns=self.sS , cols_readonly=True)
+        self.XD_clean = WEIODataFrame(data=np.zeros((self.nt,self.nX)), columns=self.sXd, cols_readonly=True)
         for i,lab in enumerate(self.sX):
             try:
                 self.X_clean[lab]=df[colMap[lab]].values
@@ -303,12 +304,12 @@ class KalmanFilter(object):
             self.Y[lab]=df[colMap[lab]]
 
     def initTimeStorage(self):
-        self.X_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sX)
-        self.Y_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY)
-        self.Y      = pd.DataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY)
-        self.S_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nS)), columns = self.sS)
-        self.U_hat  = pd.DataFrame(data = np.zeros((self.nt, self.nU)), columns = self.sU)
-        self.XD_hat = pd.DataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sXd)
+        self.X_hat  = WEIODataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sX , cols_readonly=True)
+        self.Y_hat  = WEIODataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY , cols_readonly=True)
+        self.Y      = WEIODataFrame(data = np.zeros((self.nt, self.nY)), columns = self.sY , cols_readonly=True)
+        self.S_hat  = WEIODataFrame(data = np.zeros((self.nt, self.nS)), columns = self.sS , cols_readonly=True)
+        self.U_hat  = WEIODataFrame(data = np.zeros((self.nt, self.nU)), columns = self.sU , cols_readonly=True)
+        self.XD_hat = WEIODataFrame(data = np.zeros((self.nt, self.nX)), columns = self.sXd, cols_readonly=True)
         self.Pt     = np.zeros((self.nt, self.nX, self.nX))  # P is nx * nx
         self.Kt     = np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
     

@@ -38,7 +38,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
         tRangeStats = [0,12] # Time range for stats [s]
         Tp = 12.7
         fstFile    = os.path.join(scriptDir, '../../../data/Monopile/Main_MT100_JONSWAP_UserDef.fst')
-        hydroShape = os.path.join(scriptDir, '../../../data/Monopile/MT100_HydroShapeFunction_Hs=8.1_Tp=12.7_h=50.csv')
+        hydro_shape_file = os.path.join(scriptDir, '../../../data/Monopile/MT100_HydroShapeFunction_Hs=8.1_Tp=12.7_h=50.csv')
 
     # --- Script derived parameters
     simFile = fstFile.replace('.fst','.outb')              # Measurements
@@ -47,7 +47,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # --- Kalman filter estimation 
     # --------------------------------------------------------------------------------{
     KF = KalmanFilterMonopile()
-    KF.setup_matrices(fstFilename=fstFile, hydroShape=hydroShape, Tp=Tp)
+    KF.setup_matrices(fstFilename=fstFile, hydro_shape_file=hydro_shape_file, Tp=Tp)
 
     # --- Loading "Measurements"
     # - Reference file is opened
@@ -122,17 +122,17 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
 def test_monopile():
     # --- Monopile Jonswap Hs=8.1 Tp=12.7, Default
     stats = main()
-    np.testing.assert_array_less(stats['x']['eps'],  1.9)
-    np.testing.assert_array_less(stats['M_sb']['eps'], 5.9)
-    np.testing.assert_array_less(stats['F_sb']['eps'], 5.9)
-    np.testing.assert_array_less(stats['eta']['eps'],  2.4)
-    np.testing.assert_array_less(stats['Fhx']['eps'],  5.5)
+    np.testing.assert_array_less(stats['x']['eps']   ,  1.9)
+    np.testing.assert_array_less(stats['My_sb']['eps'], 5.9)
+    np.testing.assert_array_less(stats['Fx_sb']['eps'], 5.9)
+    np.testing.assert_array_less(stats['eta']['eps'],   2.4)
+    np.testing.assert_array_less(stats['Fx_h']['eps'],   5.5)
 
-    np.testing.assert_array_less(1-stats['x']['R2'],  0.03)
-    np.testing.assert_array_less(1-stats['M_sb']['R2'], 0.22)
-    np.testing.assert_array_less(1-stats['F_sb']['R2'], 0.20)
-    np.testing.assert_array_less(1-stats['eta']['R2'],  0.3)
-    np.testing.assert_array_less(1-stats['Fhx']['R2'],  0.18)
+    np.testing.assert_array_less(1-stats['x']['R2'],     0.03)
+    np.testing.assert_array_less(1-stats['My_sb']['R2'], 0.22)
+    np.testing.assert_array_less(1-stats['Fx_sb']['R2'], 0.20)
+    np.testing.assert_array_less(1-stats['eta']['R2'],   0.3)
+    np.testing.assert_array_less(1-stats['Fx_h']['R2'],  0.18)
 
 # --- With beamSectionLoads
 # Tuning: zeta=0.12, qdhScale=1

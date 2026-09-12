@@ -1341,7 +1341,7 @@ class WindTurbineStructure():
         # --- Sanitization of input dataframe
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
-        df = WT._insertOFDOFsInDF(df, verbose=False, accMissing=accMissing)
+        df = WT._insertOFDOFsInDF(df, verbose=True, accMissing=accMissing)
         df = df.reset_index(drop=True)
 
         # --- Get column info and time storage, matching input df
@@ -1354,14 +1354,12 @@ class WindTurbineStructure():
         if len(missing_dofs)>0:
             raise Exception(f'Some DOFS are missing from dataframe, implementation error {missing_dofs}')
 
-        if 'Fadd_R_xs' in df.keys():
+        if useTopLoadsFromDF: 
+            NOTE('Using prescribed input forces for tower top loads. Fadd_R will be ignored')
+        elif 'Fadd_R_xs' in df.keys():
             NOTE('Using additional forces (in nonrotating shaft system) to compute tower top loads')
-            useTopLoadsFromDF =False
         elif 'Fadd_R_xh' in df.keys():
             NOTE('Using additional forces (in rotating hub system) to compute tower top loads')
-            useTopLoadsFromDF =False
-        elif useTopLoadsFromDF: 
-            NOTE('Using prescribed input forces for tower top loads')
 
         # --- DOFs
         Q   = df[sQ]
@@ -1597,7 +1595,8 @@ class WindTurbineStructure():
         rowOut['YawBrMzp_[kN-m]'] = M_N_p[2]/1000
 
         # --- Override F_N and M_N from DataFrame for debug only
-        if dInfo.get('useTopLoadsFromDF', False):
+        useTopLoadsFromDF=dInfo.get('useTopLoadsFromDF', False)
+        if useTopLoadsFromDF:
             F_N_p2, M_N_p2 = yawBrakeLoadsFromRow(ser_Loads, fallbackF=F_N_p, fallbackM=M_N_p)
             F_N = (R_g2p.T).dot(F_N_p2)
             M_N = (R_g2p.T).dot(M_N_p2)

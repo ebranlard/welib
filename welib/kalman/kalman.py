@@ -173,7 +173,7 @@ def BuildSystem_Linear_MechOnly(M, C, K, nP=0, nU=0, nY=0, Fp=None):
     Xx = np.block( [ [Z, I ,Znnp] , [mM_K, mM_C, M_Fp], [Znpn, Znpn, Pp] ])
 
     Xu = np.zeros((2*nDOF+nP,nU))# NOTE: to be filled by user
-    Yx = np.zeros((nY,2*nDOF+nP))  # NOTE: to be filled by user
+    Yx = np.zeros((nY,2*nDOF+nP))# NOTE: to be filled by user
     Yu = np.zeros((nY,nU))       # NOTE: to be filled by user
 
     return Xx,Xu,Yx,Yu

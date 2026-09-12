@@ -20,93 +20,10 @@ import pytest
 
 scriptDir = os.path.dirname(__file__)
 
-
-def compute_metrics(KF, df_ref, df_sl):
-    print("\n" + "="*70)
-    print("           DIGITAL TWIN ESTIMATION PERFORMANCE METRICS")
-    print("="*70)
-    
-    metrics = {}
-    
-    # 1. Wind Speed (RtVAvgxh_[m/s] vs WS)
-    if 'RtVAvgxh_[m/s]' in df_ref.columns:
-        metrics['Wind Speed'] = (df_ref['RtVAvgxh_[m/s]'].values, KF.S_hat['WS'].values)
-        
-    # 2. Qaero (RtFldMxh_[N-m] vs Qaero)
-    if 'RtFldMxh_[N-m]' in df_ref.columns:
-        metrics['Qaero'] = (df_ref['RtFldMxh_[N-m]'].values, KF.X_hat['Qaero'].values)
-        
-    # 3. Thrust (RtAeroFxh_[N] vs Thrust)
-    if 'RtAeroFxh_[N]' in df_ref.columns and 'Thrust' in KF.S_hat.columns:
-        metrics['Thrust'] = (df_ref['RtAeroFxh_[N]'].values, KF.S_hat['Thrust'].values)
-        
-    # 4. q_FA1 (Q_TFA1_[m] vs q_FA1)
-    if 'Q_TFA1_[m]' in df_ref.columns:
-        metrics['q_FA1'] = (df_ref['Q_TFA1_[m]'].values, KF.X_hat['q_FA1'].values)
-        
-    # 5. Mid tower bending moment (TwHt5MLyt_[kN-m] vs TwHt5MLyt_[kN-m])
-    if 'TwHt5MLyt_[kN-m]' in df_ref.columns and 'TwHt5MLyt_[kN-m]' in df_sl.columns:
-        metrics['Mid tower bending moment'] = (df_ref['TwHt5MLyt_[kN-m]'].values, df_sl['TwHt5MLyt_[kN-m]'].values)
-        
-    # 6. Interface bending moment (TwHt1MLyt_[kN-m] vs TwHt1MLyt_[kN-m])
-    if 'TwHt1MLyt_[kN-m]' in df_ref.columns and 'TwHt1MLyt_[kN-m]' in df_sl.columns:
-        metrics['Interface bending moment'] = (df_ref['TwHt1MLyt_[kN-m]'].values, df_sl['TwHt1MLyt_[kN-m]'].values)
-        
-    # 7. Interface shear force (TwHt1FLxt_[kN] vs TwHt1FLxt_[kN])
-    if 'TwHt1FLxt_[kN]' in df_ref.columns and 'TwHt1FLxt_[kN]' in df_sl.columns:
-        metrics['Interface shear force'] = (df_ref['TwHt1FLxt_[kN]'].values, df_sl['TwHt1FLxt_[kN]'].values)
-        
-    # 8. Hydro Fx (HydroFxi_[N] vs Fx_h)
-    if 'HydroFxi_[N]' in df_ref.columns and 'Fx_h' in KF.S_hat.columns:
-        metrics['Hydro Fx'] = (df_ref['HydroFxi_[N]'].values, KF.S_hat['Fx_h'].values)
-        
-    # 9. Wave elevation (Wave1Elev_[m] vs eta)
-    if 'Wave1Elev_[m]' in df_ref.columns and 'eta' in KF.S_hat.columns:
-        metrics['Wave elevation'] = (df_ref['Wave1Elev_[m]'].values, KF.S_hat['eta'].values)
-        
-    # 10. Sea bed moment (-ReactMYss_[N*m] vs M1N1MKye_[N*m])
-    if '-ReactMYss_[N*m]' in df_ref.columns and 'M1N1MKye_[N*m]' in df_sl.columns:
-        metrics['Sea bed moment'] = (df_ref['-ReactMYss_[N*m]'].values, df_sl['M1N1MKye_[N*m]'].values)
-        
-    min_baselines = {
-        'Wind Speed': 1.0,
-        'Qaero': 1000.0,
-        'Thrust': 1000.0,
-        'q_FA1': 0.1,
-        'Mid tower bending moment': 1000.0,
-        'Interface bending moment': 1000.0,
-        'Interface shear force': 1000.0,
-        'Hydro Fx': 1000.0,
-        'Wave elevation': 0.1,
-        'Sea bed moment': 1000.0
-    }
-        
-    for name, (ref_v, est_v) in metrics.items():
-        n = min(len(ref_v), len(est_v))
-        ref_v = ref_v[:n]
-        est_v = est_v[:n]
-        
-        # Calculate mean relative error (with a baseline to avoid div by zero)
-        baseline = np.mean(np.abs(ref_v))
-        if baseline < 1e-6:
-            baseline = np.std(ref_v)
-        baseline = max(baseline, min_baselines.get(name, 1.0))
-            
-        mre = np.mean(np.abs(ref_v - est_v)) / baseline * 100
-        
-        # Also compute R-squared
-        ss_res = np.sum((ref_v - est_v)**2)
-        ss_tot = np.sum((ref_v - np.mean(ref_v))**2)
-        r2 = 1 - (ss_res / ss_tot) if ss_tot > 1e-8 else 1.0
-        
-        print(f"{name:30s} | Mean Rel Error: {mre:7.2f} % | R^2: {r2:6.3f}")
-        
-    print("="*70 + "\n")
-
-
 def main(fst_file, tmin=0, tmax=20, show=False,
     comp_file=None, hydro_shape_file=None, aero_map_file=None,
     oper_file=None, lin_file=None, method='YAMS', hacks=None,
+    Tp=None,
     tRangeStats=None):
     
     # --- Main parameters
@@ -120,6 +37,7 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     if tRangeStats is None:
          tRangeStats = [tmin, tmax]
 
+    base = os.path.splitext(fst_file)[0] + '_DigitalTwin'
 
     # --- Read reference output DataFrame 
     out_file = fst_file.replace('.fst', '.outb')
@@ -132,6 +50,7 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     missing_cols = ['Wave1Elev_[m]', 'HydroFxi_[N]', 'HydroMyi_[N-m]', '-ReactMYss_[N*m]', '-ReactFXss_[N]']
     for col in missing_cols:
         if col not in df_ref.columns:
+            WARN('Missing column '+col)
             df_ref[col] = 0.0
 
     # --------------------------------------------------------------------------------}
@@ -140,7 +59,8 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --- Wind speed estimator (reads tabulated aerodynamic data)
     wse = TabulatedWSEstimator(fstFile=fst_file, operFile=oper_file, aeroMapFile=aero_map_file)
     KF = KalmanFilterMTNS(WSE=wse, hacks=hacks)
-    KF.setup_matrices(fst_file, comp_file=comp_file, hydro_shape_file=hydro_shape_file,
+    KF.setup_matrices(fst_file, 
+                      comp_file=comp_file, hydro_shape_file=hydro_shape_file, Tp=Tp,
                       dfTime=df_ref['Time_[s]'].values, method=method, lin_file=lin_file)
 
     # --- Loading "Measurements"
@@ -175,6 +95,14 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     KF.setYFromClean(R=KF.R, NoiseRFactor=0)
 
 
+    # --- Debug Section loads prescribed
+#     YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+#     with Timer('Section Loads ref'):
+#         # NOTE: we cannot use KF.df as the columns have been renamed
+#         # NOTE: this will trigger a calculation of the wave elevation
+#         df_sl_ref, _ = YSL.fromDF(df_ref, useTopLoadsFromDF=KF.hacks['useTopLoadsFromDF'], useInterfaceLoadsFromDF=False, accMissing='warn')
+#     df_sl_ref.to_outb(base + '_SectionLoads_ref.outb')
+#     print('Export:', base + '_SectionLoads_ref.outb')
     # --------------------------------------------------------------------------------}
     # --- Time Loop 
     # --------------------------------------------------------------------------------{
@@ -184,8 +112,12 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --------------------------------------------------------------------------------}
     # --- Calc Outputs
     # --------------------------------------------------------------------------------{
+    clean = True
     # Section loads post-processing using the pre-configured WT directly
-    ysl = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+    YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+
+    df_in2 = YSL.emptyInputDF(len(KF.time), inputFrame='R_xs', units=True)
+
     df_in = pd.DataFrame({'Time_[s]': KF.time})
     units = {'Sg':   ('[m]', '[m/s]', '[m/s^2]'),
              'Sw':   ('[m]', '[m/s]', '[m/s^2]'),
@@ -199,34 +131,44 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     for dof_OF, suffixes in units.items():
         for prefix, suffix in zip(['Q_', 'QD_', 'QD2_'], suffixes):
             df_in[prefix + dof_OF + '_' + suffix] = 0.0
-    for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
-        suffixes = units[dof_OF]
-        df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_hat[state]
-        df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_hat['d' + state]
-        df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_hat['dd'+ state]
-    df_in['Madd_R_xs'] = KF.X_hat['Qaero']
-    df_in['Fadd_R_xs'] = KF.S_hat['Thrust']
     for name in ['Fadd_R_ys', 'Fadd_R_zs', 'Madd_R_ys', 'Madd_R_zs']:
         df_in[name] = 0.0
 
+    if clean:
+        for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
+            suffixes = units[dof_OF]
+            df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_clean[state]
+            df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_clean['d' + state]
+            df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_clean['dd'+ state]
+        df_in['Madd_R_xs'] = KF.X_clean['Qaero']
+        df_in['Fadd_R_xs'] = KF.S_clean['Thrust']
+    else:
+        for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
+            suffixes = units[dof_OF]
+            df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_hat[state]
+            df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_hat['d' + state]
+            df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_hat['dd'+ state]
+        df_in['Madd_R_xs'] = KF.X_hat['Qaero']
+        df_in['Fadd_R_xs'] = KF.S_hat['Thrust']
+    print(df_in)
+
     with Timer('Section Loads'):
-        df_sl, _ = ysl.fromDF(df_in, useTopLoadsFromDF=KF.hacks['useTopLoadsFromDF'], useInterfaceLoadsFromDF=False)
+        df_sl, _ = YSL.fromDF(df_in, useTopLoadsFromDF=KF.hacks['useTopLoadsFromDF'], useInterfaceLoadsFromDF=False)
         
 
 
     # --------------------------------------------------------------------------------}
     # --- Export and plot
     # --------------------------------------------------------------------------------{
-    base = os.path.splitext(fst_file)[0] + '_DigitalTwin'
-    
-    # Save section loads as .csv and .outb
-    from welib.weio.fast_output_file import writeDataFrame
-    pd.DataFrame(df_sl).to_csv(base + '_SectionLoads.csv', index=False)
-    writeDataFrame(pd.DataFrame(df_sl), base + '_SectionLoads.outb')
+
+    df_sl.to_outb(base + '_SectionLoads.outb')
+    print('Export:', base + '_SectionLoads.outb')
+
 
     # Save all estimation results comparison
-    df_kf_all = KF.saveOutputs(base + '.outb', fmt='outb')
-    pd.concat([df_kf_all, pd.DataFrame(df_sl)], axis=1).to_csv(base + '.csv', index=False)
+    df_kf_all = KF.saveOutputs(filename=base + '_KF.outb', fmt='outb')
+    print('Export:', base + '_KF.outb')
+#     pd.concat([df_kf_all, pd.DataFrame(df_sl)], axis=1).to_csv(base + '.csv', index=False)
     
     statsDict = {}    
     # Plot results
@@ -242,9 +184,6 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # KF.plot_P()
     # KF.plot_K()
     # KF.plot_innovation()
-
-    # Compute and display performance metrics
-    compute_metrics(KF, df_ref, df_sl)
     
     if show:
         plt.show()
@@ -272,7 +211,7 @@ def test_monopile_tower(test=True):
     else:
         tRange = [150, 170]
     main(fst_file=fst_file, lin_file=lin_file, 
-         comp_file=comp_file,  hydro_shape_file=hydro_shape_file,
+         comp_file=comp_file,  hydro_shape_file=hydro_shape_file, Tp=12.7,
          aero_map_file=aero_map_file, oper_file=oper_file,
          hacks=hacks, show=show,
          tmin=tRange[0], tmax=tRange[1]
