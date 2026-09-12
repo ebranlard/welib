@@ -58,6 +58,10 @@ class KalmanFilter(object):
         self.XD_clean = None # pd.DataFrame(data = np.zeros((self.nt,self.nX)), columns = self.sXd)
         self.Pt       = None # np.zeros((self.nt, self.nX, self.nY))  # P is nx * nx
         self.Kt       = None # np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
+        
+        #
+        self.df    = None # Measurements, todo
+        self.dfOut = None# CalcOutput, todo
 
         if sX0 is not None:
             self.setup_dimensions(sX0=sX0, sXa=sXa, sU=sU, sY=sY, sS=sS, sXd=sXd)
@@ -352,7 +356,8 @@ class KalmanFilter(object):
         nUnderSamp=max(nUnderSamp,1)
         df=df.iloc[::nUnderSamp,:]                      # reducing sampling
         if tRange is not None:
-            df=df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
+            df = df[(df[timeCol]>= tRange[0]) & (df[timeCol]<= tRange[1])] # reducing time range
+            df = df.reset_index(drop=True)
         time = df[timeCol].values
         dt   = (time[-1] - time[0])/(len(time)-1)
         # Remapping/scaling columns to shortname variables
@@ -720,8 +725,9 @@ class KalmanFilter(object):
         else:
             raise NotImplementedError()
 
-    def saveOutputs(KF, filename, fmt='outb', df=None):
+    def saveOutputs(KF, filename, fmt='outb', df=None, verbose=False):
 
+        # --- KF outputs in KF variable names
         if df is None:
             df = KF.toDataFrame()
 
@@ -732,6 +738,21 @@ class KalmanFilter(object):
             writeDataFrame(df, filename, binary=True)
         else:
             raise NotImplementedError()
+        if verbose:
+            print('Export: ', filename)
+        
+        # --- Additional KF outputs 
+        if KF.dfOut is not None:
+            base = os.path.splitext(filename)[0]
+            filename = base+'_Outputs'+'.outb'
+            #KF.dfOut = KF.dfOut.dropna(how='all')
+            #KF.dfOut = KF.dfOut.fillna(0)
+            print('>>> dfOut to export', KF.dfOut)
+            writeDataFrame(KF.dfOut, filename, binary=True)
+
+            if verbose:
+                print('Export: ', filename)
+
 
         return df
 

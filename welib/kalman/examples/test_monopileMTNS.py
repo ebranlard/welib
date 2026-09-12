@@ -46,6 +46,10 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     df_ref = weio.read(out_file).toDataFrame()
     df_ref = df_ref[(df_ref['Time_[s]'] >= tmin) & (df_ref['Time_[s]'] <= tmax)]
 
+    nUnderSamp=10
+    df_ref=df_ref.iloc[::nUnderSamp,:]                      # reducing sampling
+    df_ref.reset_index(inplace=True)
+
     # Read output file and ensure all mapped columns exist (e.g. for onshore case)
     missing_cols = ['Wave1Elev_[m]', 'HydroFxi_[N]', 'HydroMyi_[N-m]', '-ReactMYss_[N*m]', '-ReactFXss_[N]']
     for col in missing_cols:
@@ -85,7 +89,7 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     #sigs['Q']['qd_h']  = np.sqrt(KF.dt/dt_ref * KF.Sw)
     KF.setupCovariances(
             sigs=sigs,
-            useDt=False, Pidentity=True, verbose=True)
+            useDt=False, Pidentity=True, verbose=False)
     # TODO use sigs above instead
     KF.R[:] = np.diag([1e-3, 2.7e-7, 1e-5, 1e-2, 1e-2, 1e-3, 1e4])
     KF.Q[:] = np.diag([1e-6, 1e-6, 1e-5, 1e-6, 1e-5, 1e-6, 1e-5, 1e-5,
@@ -95,12 +99,15 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     KF.setYFromClean(R=KF.R, NoiseRFactor=0)
 
 
-    # --- Debug Section loads prescribed
+    # --------------------------------------------------------------------------------}
+    # --- Section loads "ideal", everything prescribed
+    # --------------------------------------------------------------------------------{
+#     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS USING DF_REF')
 #     YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
 #     with Timer('Section Loads ref'):
 #         # NOTE: we cannot use KF.df as the columns have been renamed
 #         # NOTE: this will trigger a calculation of the wave elevation
-#         df_sl_ref, _ = YSL.fromDF(df_ref, useTopLoadsFromDF=KF.hacks['useTopLoadsFromDF'], useInterfaceLoadsFromDF=False, accMissing='warn')
+#         df_sl_ref, _ = YSL.fromDF(df_ref, useTopLoadsFromDF=KF.hacks['SL_cleanFtop'], useInterfaceLoadsFromDF=False, accMissing='warn')
 #     df_sl_ref.to_outb(base + '_SectionLoads_ref.outb')
 #     print('Export:', base + '_SectionLoads_ref.outb')
     # --------------------------------------------------------------------------------}
@@ -108,68 +115,79 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --------------------------------------------------------------------------------{
     with Timer('KF time loop'):
         KF.timeLoop()
+    df_sl = KF.dfOut
+    file_sl = base + '_SectionLoads_KF_timeloop.outb'
+    df_sl.to_outb(file_sl)
+    print('Export:', file_sl)
 
     # --------------------------------------------------------------------------------}
-    # --- Calc Outputs
+    # --- Section Loads as Postpro --- Method 1 "Kalman Filter"
     # --------------------------------------------------------------------------------{
-    clean = True
-    # Section loads post-processing using the pre-configured WT directly
-    YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS From KF')
+    df_sl = KF.calc_sectionLoads(clean=True)
+    file_sl = base + '_SectionLoads_KF.outb'
+    df_sl.to_outb(file_sl)
+    print('Export:', file_sl)
 
-    df_in2 = YSL.emptyInputDF(len(KF.time), inputFrame='R_xs', units=True)
-
-    df_in = pd.DataFrame({'Time_[s]': KF.time})
-    units = {'Sg':   ('[m]', '[m/s]', '[m/s^2]'),
-             'Sw':   ('[m]', '[m/s]', '[m/s^2]'),
-             'Hv':   ('[m]', '[m/s]', '[m/s^2]'),
-             'R':    ('[rad]', '[rad/s]', '[rad/s^2]'),
-             'P':    ('[rad]', '[rad/s]', '[rad/s^2]'),
-             'Y':    ('[rad]', '[rad/s]', '[rad/s^2]'),
-             'TFA1': ('[m]', '[m/s]', '[m/s^2]'),
-             'TSS1': ('[m]', '[m/s]', '[m/s^2]'),
-             'Yaw': ('[rad]', '[rad/s]', '[rad/s^2]')}
-    for dof_OF, suffixes in units.items():
-        for prefix, suffix in zip(['Q_', 'QD_', 'QD2_'], suffixes):
-            df_in[prefix + dof_OF + '_' + suffix] = 0.0
-    for name in ['Fadd_R_ys', 'Fadd_R_zs', 'Madd_R_ys', 'Madd_R_zs']:
-        df_in[name] = 0.0
-
-    if clean:
-        for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
-            suffixes = units[dof_OF]
-            df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_clean[state]
-            df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_clean['d' + state]
-            df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_clean['dd'+ state]
-        df_in['Madd_R_xs'] = KF.X_clean['Qaero']
-        df_in['Fadd_R_xs'] = KF.S_clean['Thrust']
-    else:
-        for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
-            suffixes = units[dof_OF]
-            df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_hat[state]
-            df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_hat['d' + state]
-            df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_hat['dd'+ state]
-        df_in['Madd_R_xs'] = KF.X_hat['Qaero']
-        df_in['Fadd_R_xs'] = KF.S_hat['Thrust']
-    print(df_in)
-
-    with Timer('Section Loads'):
-        df_sl, _ = YSL.fromDF(df_in, useTopLoadsFromDF=KF.hacks['useTopLoadsFromDF'], useInterfaceLoadsFromDF=False)
+    # --------------------------------------------------------------------------------}
+    # --- Section Loads as Postpro --- Method 2 "YSL"
+    # --------------------------------------------------------------------------------{
+#     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS USING CLEAN')
+#     clean = True
+#     # Section loads post-processing using the pre-configured WT directly
+#     YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+#     df_in2 = YSL.emptyInputDF(len(KF.time), inputFrame='R_xs', units=True)
+#     df_in = pd.DataFrame({'Time_[s]': KF.time})
+#     units = {'Sg':   ('[m]', '[m/s]', '[m/s^2]'),
+#              'Sw':   ('[m]', '[m/s]', '[m/s^2]'),
+#              'Hv':   ('[m]', '[m/s]', '[m/s^2]'),
+#              'R':    ('[rad]', '[rad/s]', '[rad/s^2]'),
+#              'P':    ('[rad]', '[rad/s]', '[rad/s^2]'),
+#              'Y':    ('[rad]', '[rad/s]', '[rad/s^2]'),
+#              'TFA1': ('[m]', '[m/s]', '[m/s^2]'),
+#              'TSS1': ('[m]', '[m/s]', '[m/s^2]'),
+#              'Yaw': ('[rad]', '[rad/s]', '[rad/s^2]')}
+#     for dof_OF, suffixes in units.items():
+#         for prefix, suffix in zip(['Q_', 'QD_', 'QD2_'], suffixes):
+#             df_in[prefix + dof_OF + '_' + suffix] = 0.0
+#     for name in ['Fadd_R_ys', 'Fadd_R_zs', 'Madd_R_ys', 'Madd_R_zs']:
+#         df_in[name] = 0.0
+# 
+#     if clean:
+#         for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
+#             suffixes = units[dof_OF]
+#             df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_clean[state]
+#             df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_clean['d' + state]
+#             df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_clean['dd'+ state]
+# #         df_in['Madd_R_xs'] = KF.X_clean['Qaero']
+#         df_in['Fadd_R_xs'] = KF.S_clean['Thrust']
+#         df_in['Madd_R_xs'] = 0
+#     else:
+#         for dof_OF, state in [('Sg', 'x'), ('P', 'phi_y'), ('TFA1', 'q_FA1')]:
+#             suffixes = units[dof_OF]
+#             df_in['Q_'   + dof_OF + '_' + suffixes[0]] = KF.X_hat[state]
+#             df_in['QD_'  + dof_OF + '_' + suffixes[1]] = KF.XD_hat['d' + state]
+#             df_in['QD2_' + dof_OF + '_' + suffixes[2]] = KF.XD_hat['dd'+ state]
+#         df_in['Madd_R_xs'] = KF.X_hat['Qaero']
+#         df_in['Fadd_R_xs'] = KF.S_hat['Thrust']
+# 
+#     with Timer('Section Loads'):
+#         df_sl, _ = YSL.fromDF(df_in, useTopLoadsFromDF=KF.hacks['SL_cleanFtop'], useInterfaceLoadsFromDF=False)
+#     if clean:
+#         file_sl = base + '_SectionLoads_clean.outb'
+#     else:
+#         file_sl = base + '_SectionLoads_est.outb'
+#     df_sl.to_outb(file_sl)
+#     print('Export:', file_sl)
         
-
-
     # --------------------------------------------------------------------------------}
-    # --- Export and plot
+    # --- Plot
     # --------------------------------------------------------------------------------{
-
-    df_sl.to_outb(base + '_SectionLoads.outb')
-    print('Export:', base + '_SectionLoads.outb')
-
-
     # Save all estimation results comparison
-    df_kf_all = KF.saveOutputs(filename=base + '_KF.outb', fmt='outb')
-    print('Export:', base + '_KF.outb')
+#     df_kf_all = KF.saveOutputs(filename=base + '_KF.outb', fmt='outb')
+#     print('Export:', base + '_KF.outb')
 #     pd.concat([df_kf_all, pd.DataFrame(df_sl)], axis=1).to_csv(base + '.csv', index=False)
-    
+#     
     statsDict = {}    
     # Plot results
     try:
@@ -201,12 +219,14 @@ def test_monopile_tower(test=True):
     oper_file        = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
     hydro_shape_file = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv')
 
-    hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'useTopLoadsFromDF':True} # Super hack
+    #hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':False} # Super hack
+    hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
+             'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} # Super hack
     #hacks['WSE'] = 'clean_inputs'
     #hacks['thrust'] = 'clean'
     show=True
     if test:
-        tRange = [150, 200]
+        tRange = [150, 170]
         show=False
     else:
         tRange = [150, 170]
@@ -233,7 +253,7 @@ if __name__ == '__main__':
     parser.add_argument('--method', choices=['YAMS', 'OpenFAST'], default='YAMS')
 
 
-    hacks = {'thrust':None, 'WSE':None, 'useTopLoadsFromDF':True}
+    hacks = {'thrust':None, 'WSE':None}
     #hacks['WSE'] = 'clean_inputs'
     #hacks['thrust'] = 'clean'
 

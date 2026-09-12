@@ -39,7 +39,7 @@ class KalmanFilterMTNS(KalmanFilter):
         KF.wse = WSE # wind speed estimator
         KF.debug = debug
         # Hacks
-        hacks_def = {'thrust':None, 'WSE':None, 'useTopLoadsFromDF':False}
+        hacks_def = {'thrust':None, 'WSE':None, 'SL_cleanQ':False, 'SL_cleanFtop':False, 'SL_cleanEtaDot':False, 'SL_cleanP':False}
         if hacks is None:
             KF.hacks = hacks_def
         else:
@@ -49,6 +49,15 @@ class KalmanFilterMTNS(KalmanFilter):
             WARN('HACKING, using thrust from measurements for DEBUG ONLY!')
         if KF.hacks['WSE']=='clean_inputs':
             WARN('HACKING, using WSE inputs from measurements for DEBUG ONLY!')
+        if KF.hacks['SL_cleanQ']:
+            WARN('HACKING, using clean Q for section loads.')
+        if KF.hacks['SL_cleanFtop']:
+            WARN('HACKING, using clean F for section loads.')
+        if KF.hacks['SL_cleanEtaDot']:
+            WARN('HACKING, using clean eta dot for section loads.')
+        if KF.hacks['SL_cleanP']:
+            WARN('HACKING, using clean p hydro dot for section loads.')
+
 
 
     def __repr__(self):
@@ -83,6 +92,9 @@ class KalmanFilterMTNS(KalmanFilter):
                 'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60',
                 'q_h'    : '{Wave1Elev_[m]}',  # Hack to avoid deletion
                 'ddx'    : 'QD2_Sg_[m/s^2]',
+                'ddphi_y': 'QD2_P_[rad/s^2]',
+                'ddq_FA1': 'QD2_TFA1_[m/s^2]',
+                'ddpsi'  : 'QD2_GeAz_[rad/s^2]',
                 'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
                 'NcIMUAy': 'NcIMUTAys_[m/s^2]',
                 'NcIMUAz': 'NcIMUTAzs_[m/s^2]',
@@ -231,9 +243,6 @@ class KalmanFilterMTNS(KalmanFilter):
         # --- Finally, we set the matrices
         KF.setMat(A, B, C, D)
 
-
-
-
     def _set_openfast_submatrix(KF, A, B, C, lin_file):
         """Insert measured OpenFAST state and IMU couplings when available."""
         from welib.fast.FASTLin import FASTLin
@@ -267,17 +276,71 @@ class KalmanFilterMTNS(KalmanFilter):
     # --- Methods From Parent Class
     # loadMeasurements 
     # prepareTimeStepping 
+    def prepareTimeStepping(KF, *args, **kwargs):
+        KalmanFilter.prepareTimeStepping(KF, *args, **kwargs)
+        KF.dInfo = KF.WT.calcOutputs_init(time=KF.time)
+
     # setupCovariances
         
     # --- Methods Common between TN and TNLin
     # prepareMeasurements   
 
+
+    def get_OF_DOFs(KF, x, x_dot=None):
+        q   = KF.dInfo['q_default'].copy()
+        qd  = KF.dInfo['q_default'].copy()
+        qdd = KF.dInfo['q_default'].copy()
+        # Model specific
+        #        0      1         2      3      4      5       6          7
+        #sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
+        fnd_x_q   = np.array([x[0],x[1]])
+        fnd_xd_q  = np.array([x_dot[0], x_dot[1]])
+        fnd_xdd_q = np.array([x_dot[2], x_dot[3]])
+
+        q  ['Sg']   = x[0]
+        q  ['P']    = x[1]
+        q  ['TFA1'] = x[2]
+        q  ['Psi']  = x[3]
+
+        qd ['Sg']   = x[4]
+        qd ['P']    = x[5]
+        qd ['TFA1'] = x[6]
+        qd ['Psi']  = x[7]
+        if x_dot is not None:
+            qdd['Sg']   = x_dot[4]
+            qdd['P']    = x_dot[5]
+            qdd['TFA1'] = x_dot[6]
+            qdd['Psi']  = x_dot[7]
+        return q, qd, qdd, fnd_x_q, fnd_xd_q, fnd_xdd_q
+
+    def get_OF_DOFs_clean(KF, it):
+        #q   = dInfo['Q'].iloc[it,:].copy() 
+        #qd  = dInfo['QD'].iloc[it,:].copy()
+        #qdd = dInfo['QDD'].iloc[it,:].copy()
+        q   = KF.dInfo['q_default'].copy()
+        qd  = KF.dInfo['q_default'].copy()
+        qdd = KF.dInfo['q_default'].copy()
+        q['Sg']     = KF.df['x'].iloc[it]
+        q['P']      = KF.df['phi_y'].iloc[it]
+        q['TFA1']   = KF.df['q_FA1'].iloc[it]
+        q['Psi']    = KF.df['psi'].iloc[it]
+        qd['Sg']    = KF.df['dx'].iloc[it]
+        qd['P']     = KF.df['dphi_y'].iloc[it]
+        qd['TFA1']  = KF.df['dq_FA1'].iloc[it]
+        qd['Psi']   = KF.df['dpsi'].iloc[it]
+        qdd['Sg']   = KF.df['ddx'].iloc[it]
+        qdd['P']    = KF.df['ddphi_y'].iloc[it]
+        qdd['TFA1'] = KF.df['ddq_FA1'].iloc[it]
+        qdd['Psi']  = KF.df['ddpsi'].iloc[it]
+        return q, qd, qdd
+
     def timeLoop(KF):
         # --- Aliases to shorten notations
         WT = KF.WT
+        dInfo = KF.dInfo
 
         # Prepare section output calculation
-        dInfo = WT.calcOutputs_init(time=KF.time)
+        KF.dfOut = dInfo['dfOut']
         
         # --- Initial conditions
         x = KF.initFromClean(var='x,y,u')
@@ -288,7 +351,7 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Time loop
         for it in range(0, KF.nt-1):    
-            t = it * KF.dt
+            t = KF.time[it]
             # --- "Measurements"
             y  = KF.Y.iloc[it,:].values
             # --- Inputs
@@ -296,6 +359,7 @@ class KalmanFilterMTNS(KalmanFilter):
             u[KF.iU['Thrust']] = thrust # We use previous estimated thrust as input.
             
             # --- Predictions of next time step based on current time step
+            t = KF.time[it+1]
             x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P)
 
             # --- WSE hack
@@ -330,28 +394,17 @@ class KalmanFilterMTNS(KalmanFilter):
             p_ext      = np.zeros((3,len(KF.zDepth)))
             p_ext[0,:] = p_hydro
 
-            x_q   = np.array([x[0],x[1]])
-            xd_q  = np.array([x_dot[0], x_dot[1]])
-            xdd_q = np.array([x_dot[2], x_dot[3]])
-
             # --- DOFs in the way expected by calcOutputs_step
-            q   = dInfo['q_default'].copy()
-            qd  = dInfo['q_default'].copy()
-            qdd = dInfo['q_default'].copy()
-            q  ['Sg']  = x_q[0]
-            q  ['P']   = x_q[1]
-            qd ['Sg']  = xd_q[0]
-            qd ['P']   = xd_q[1]
-            qdd['Sg']  = xdd_q[0]
-            qdd['P']   = xdd_q[1]
+            q, qd, qdd, x_q, xd_q, xdd_q = KF.get_OF_DOFs(x, x_dot=x_dot)
 
-            # ---  Top loads
+            # ---  Section Loads
             F_top = np.array((0.,0.,0.))
             M_top = np.array((0.,0.,0.))
             a_ext = np.array((0.,0.,-WT.gravity)) # external acceleration (gravity/earthquake)
 
             Thrust = thrust
-            ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':0, 'Madd_R_ys':0, 'Madd_R_zs':0})
+            Qaero = 0
+            ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':Qaero, 'Madd_R_ys':0, 'Madd_R_zs':0})
             # TEMPORARY for backward compatibility
 #             ser_Loads['TwrBsFxt_[kN]'] = 0
 #             ser_Loads['TwrBsFyt_[kN]'] = 0
@@ -361,7 +414,28 @@ class KalmanFilterMTNS(KalmanFilter):
 #             ser_Loads['TwrBsMzt_[kN-m]'] = 0
 #             dInfo['useInterfaceLoadsFromDF'] = True
 
-            rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=KF.time[it], ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+            if KF.hacks['SL_cleanQ']:
+                q, qd, qdd = KF.get_OF_DOFs_clean(it+1)
+
+            if KF.hacks['SL_cleanFtop']:
+                ser_Loads_Add =ser_Loads
+                ser_Loads = KF.df.loc[it+1] # will pick up the YawBr loads
+                dInfo['useTopLoadsFromDF'] = True
+                # We add the "Fadd" just so that YawBr looks better, even though it's overwritten
+                for key, val in ser_Loads_Add.items():
+                    ser_Loads[key] = val
+
+            if KF.hacks['SL_cleanEtaDot']:
+                eta_dot_true = WT.pSS['eta_dot'][it+1]
+                p_hydro = KF.pHD['phi'] * eta_dot_true # p_h = k_h(z) q_h(t)
+                p_ext[0,:] = p_hydro
+                #p_ext = None 
+            p_ext_for_h = p_ext
+            if KF.hacks['SL_cleanP']:
+                p_ext = None  # if p_ext is None, WT will compute the p_ext based on the sea state, it's cheating
+
+            rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=KF.time[it+1], ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+            KF.dfOut.loc[it+1] = rowOut
             F_sec = mnp_it[0:3,:]
             M_sec = mnp_it[3:6,:]
 
@@ -369,7 +443,7 @@ class KalmanFilterMTNS(KalmanFilter):
 
             # No acceleration # TODO get it from calcOutputs 
             xdd_q *=0
-            F_sec_h, M_sec_h, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext = a_ext, PhiK=WT.fnd.PhiK)
+            F_sec_h, M_sec_h, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext_for_h, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext = a_ext, PhiK=WT.fnd.PhiK)
 
             wet_nodes = KF.zDepth <= 0
             Fx_h_est = np.trapezoid(p_hydro[wet_nodes], KF.zDepth[wet_nodes])
@@ -389,4 +463,44 @@ class KalmanFilterMTNS(KalmanFilter):
             if np.mod(it,500) == 0:
                 print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it,KF.time[it], ws, thrust))
 
+        # TODO evaluate at t=0, for now we just replicate the value
+        index = KF.dfOut.index
+        cols = KF.dfOut.columns.difference(['Time_[s]'])
+        KF.dfOut.loc[0, cols] = KF.dfOut.loc[1, cols]
+        KF.dfOut.loc[index[-1], cols] = KF.dfOut.loc[index[-2], cols]
+
+
+
+    def calc_sectionLoads(KF, clean=True):
+        # --- Aliases to shorten notations
+        WT = KF.WT
+        dInfo = KF.dInfo
+
+        # Prepare section output calculation
+        KF.dfOut = dInfo['dfOut']
+        
+        # --- Time loop
+        for it in range(0, KF.nt):    
+            # --- DOFs in the way expected by calcOutputs_step
+            if not clean:
+                raise Exception()
+                #q, qd, qdd, x_q, xd_q, xdd_q = KF.get_OF_DOFs(x, x_dot=x_dot)
+            else:
+                Thrust = KF.U_clean['Thrust'].iloc[it]
+                Qaero = 0
+                ser_Loads_Add = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':Qaero, 'Madd_R_ys':0, 'Madd_R_zs':0})
+
+                q, qd, qdd = KF.get_OF_DOFs_clean(it)
+                ser_Loads = KF.df.loc[it] # will pick up the YawBr loads
+
+                # We add the "Fadd" just so that YawBr looks better, even though it's overwritten
+                for key, val in ser_Loads_Add.items():
+                    ser_Loads[key] = val
+                dInfo['useTopLoadsFromDF'] = True
+
+            p_ext = None
+
+            rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=KF.time[it], ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+            KF.dfOut.loc[it] = rowOut
+        return KF.dfOut
 

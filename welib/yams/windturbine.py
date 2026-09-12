@@ -1167,7 +1167,7 @@ class WindTurbineStructure():
                pass # we ignore
 
 
-        # --- Remap
+        # --- Remap to get possible DOFs that have missing names
         keys = list(df.keys())
         df = remap_df(df, COLMAP_OFout_TO_QOF, bColKeepNewOnly=False, inPlace=False, verbose=verbose, raiseIfAbsent=False)
         df = remove_duplicated_col_df(df)
@@ -1264,6 +1264,7 @@ class WindTurbineStructure():
                 time = time.values
 
             dfOut = WEIODataFrame(index=index, columns=colOut, dtype=float)
+            dfOut['Time_[s]'] = time # avoid issues with nan or zeros
 
             # --- Initialize section loads
             twr_F_sec = np.zeros((6, len(WT.twr.s_span), nt)) 
@@ -1341,7 +1342,7 @@ class WindTurbineStructure():
         # --- Sanitization of input dataframe
         if len(df)==0:
             raise Exception('No Data in dataframe, make sure you selected a proper time range')
-        df = WT._insertOFDOFsInDF(df, verbose=True, accMissing=accMissing)
+        df = WT._insertOFDOFsInDF(df, verbose=False, accMissing=accMissing)
         df = df.reset_index(drop=True)
 
         # --- Get column info and time storage, matching input df
