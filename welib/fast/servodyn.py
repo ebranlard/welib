@@ -6,10 +6,13 @@ Tools for ServoDyn
 
 
 """
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from welib.tools.strings import WARN
 from welib.weio.fast_input_file import FASTInputFile
+from welib.weio.rosco_discon_file import ROSCODISCONFile
 # from pydatview.tools.curve_fitting import gentorque, GeneratorTorqueFitter, model_fit
 from welib.tools.curve_fitting import gentorque, GeneratorTorqueFitter
 
@@ -18,7 +21,7 @@ RADS2RPM=1/(2*np.pi/60);
 
 class ServoDyn:
 
-    def __init__(self, svdFilename_or_data=None, TP=None):
+    def __init__(self, svdFilename_or_data=None, TP=None, load_discon=True):
         """ 
         Initialize a ServoDyn object either with:
           - svdFilename: a servody input file name
@@ -27,6 +30,7 @@ class ServoDyn:
 
         # --- Data
         self.File=None
+        self.DISCON=None
         self._data_rpm    = None # User Data / measurements
         self._data_torque = None # User Data / measurements
         self._fit_rpm     = None # Fit from user data
@@ -39,48 +43,111 @@ class ServoDyn:
             else:
                 self.File = svdFilename_or_data
 
+            if load_discon:
+                discon_in_file = os.path.normpath(self.File['DLL_InFile'].strip('"'))
+                if not os.path.isabs(discon_in_file):
+                    discon_in_path = os.path.join( os.path.dirname(self.File.filename) , discon_in_file)
+                else:
+                    discon_in_path = discon_in_file
+                if os.path.exists(discon_in_path):
+                    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', discon_in_path)
+                    self.DISCON = ROSCODISCONFile(discon_in_path)
+
 
     def __repr__(self):
         s='<{} object>:\n'.format(type(self).__name__)
         s+='|properties:\n'
+        s+='|* VS_RtGnSp: {} [rpm]\n'.format(self.VS_RtGnSp)
+        s+='|* VS_RtTq:   {} [Nm]\n'.format(self.VS_RtTq)
+        s+='|* VS_Rgn2K:  {} [N-m/rpm^2]\n'.format(self.VS_Rgn2K)
+        s+='|* VS_SlPc:   {} [%]\n'.format(self.VS_SlPc)
         s+='|- File: (input file data)\n'
-#         s+='|- TP  : {} \n'.format(self._TP)
-#         s+='|* graph: (Nodes/Elements/Members)\n'
-#         s+='|* pointsMJ, pointsMN, pointsMNout\n'
+        s+=f'|- DISCON: is None? {self.DISCON is None}\n'
         s+='|methods:\n'
-        s+='|- VS_print\n'
+        s+='|- VS_print()\n'
         s+='|- VS_plot\n'
         s+='|- VS_dataframe\n'
-#         s+='|- setTopMass\n'
-#         s+='|- beamDataFrame, beamFEM, beamModes\n'
-#         s+='|- toYAMSData\n'
         return s
 
+    # --------------------------------------------------------------------------------}
+    # --- VS properties 
+    # --------------------------------------------------------------------------------{
+#         if discon: 
+#             if self.DISCON is None:
+#                 raise Exception('Cannot get DISCON parameters, file was not read')
+#             Rgn2K   /= RADS2RPM**2              # [N-m/rpm^2] 
+#             SlPc=0 
+# # !------- VS TORQUE CONTROL ------------------------------------------------
+# # 94.40000            ! VS_GenEff			- Generator efficiency mechanical power -> electrical power, [should match the efficiency defined in the generator properties!], [%]
+# # 4.30935e+04         ! VS_ArSatTq		- Above rated generator torque PI control saturation, [Nm]
+# # 4.00000e+04         ! VS_MaxRat			- Maximum torque rate (in absolute value) in torque controller, [Nm/s].
+# # 4.74029e+04         ! VS_MaxTq			- Maximum generator torque in Region 3 (HSS side), [Nm].
+# # 0.00000e+00         ! VS_MinTq			- Minimum generator torque (HSS side), [Nm].
+# # 34.64286            ! VS_MinOMSpd		- Minimum generator speed [rad/s]
+# # 5.00000e+06         ! VS_RtPwr			- Wind turbine rated power [W]
+# # 1                   ! VS_n				- Number of generator PI torque controller gains
+# # -6.97771e+02        ! VS_KP				- Proportional gain for generator PI torque controller [-]. (Only used in the transitional 2.5 region if VS_ControlMode =/ 2)
+# # -1.04507e+02        ! VS_KI				- Integral gain for generator PI torque controller [s]. (Only used in the transitional 2.5 region if VS_ControlMode =/ 2)
+# # 7.50000             ! VS_TSRopt		    - Power-maximizing region 2 tip-speed-ratio. Only used in VS_ControlMode = 2.
+# 
+#         else:
+#             GenModel = self.File['GenModel']  # Generator model {1: simple, 2: Thevenin, 3: user-defined from routine UserGen} (switch) [used only when VSContrl=0]
+#             GenEff   = self.File['GenEff']    # Generator efficiency [ignored by the Thevenin and user-defined generator models] (%)
+#             GenTiStr = self.File['GenTiStr']  # Method to start the generator {T: timed using TimGenOn, F: generator speed using SpdGenOn} (flag)
+#             GenTiStp = self.File['GenTiStp']  # Method to stop the generator {T: timed using TimGenOf, F: when generator power = 0} (flag)
+#             SpdGenOn = self.File['SpdGenOn']  # Generator speed to turn on the generator for a startup (HSS speed) (rpm) [used only when GenTiStr=False]
+#             TimGenOn = self.File['TimGenOn']  # Time to turn on the generator for a startup (s) [used only when GenTiStr=True]
+#             TimGenOf = self.File['TimGenOf']  # Time to turn off the generator (s) [used only when GenTiStp=True]
+#             SlPc     = self.File['VS_SlPc']   # Rated generator slip percentage in Region 2 1/2 for simple variable-speed generator control (%) [used only when VSContrl=1]
+    @property
+    def VS_RtGnSp(self):
+        """Rated generator speed [rpm]"""
+        if self.DISCON is not None:
+            return self.DISCON['VS_RefSpd'] * RADS2RPM # NOTE: discon is in rad/s. Rated generator speed [rad/s]
+        return self.File['VS_RtGnSp']                  # [RPM] Rated generator speed for simple variable-speed generator control (HSS side) (rpm) [used only when VSContrl=1]
+
+    @property
+    def VS_RtTq(self):
+        """Rated generator torque [Nm]"""
+        if self.DISCON is not None:
+            return self.DISCON['VS_RtTq'] # Rated torque, [Nm].
+        return self.File['VS_RtTq']       # Rated generator torque/constant generator torque in Region 3 for simple variable-speed generator control (HSS side) (N-m) [used only when VSContrl=1]
+
+    @property
+    def VS_Rgn2K(self):
+        """Generator torque constant in Region 2 [N-m/rpm^2]"""
+        if self.DISCON is not None:
+            return self.DISCON['VS_Rgn2K'] / (RADS2RPM**2) # [N-m/(rad/s)^2] NOTE: different than OpenFAST. Generator torque constant in Region 2 (HSS side). Only used in VS_ControlMode = 1,3,4
+        return self.File['VS_Rgn2K'] # [N-m/rpm^2] Generator torque constant in Region 2 for simple variable-speed generator control (HSS side)  [used only when VSContrl=1]
+
+
+
+    @property
+    def VS_SlPc(self):
+        """Rated generator slip percentage [%]"""
+        if self.DISCON is not None:
+            return 0.1
+        return self.File['VS_SlPc']
 
     def VS_print(self):
-        VSContrl = self.File['VSContrl']  # Variable-speed control mode {0: none, 1: simple VS, 3: user-defined from routine UserVSCont, 4: user-defined from Simulink/Labview, 5: user-defined from Bladed-style DLL} (switch)
-        GenModel = self.File['GenModel']  # Generator model {1: simple, 2: Thevenin, 3: user-defined from routine UserGen} (switch) [used only when VSContrl=0]
-        GenEff   = self.File['GenEff']    # Generator efficiency [ignored by the Thevenin and user-defined generator models] (%)
-        GenTiStr = self.File['GenTiStr']  # Method to start the generator {T: timed using TimGenOn, F: generator speed using SpdGenOn} (flag)
-        GenTiStp = self.File['GenTiStp']  # Method to stop the generator {T: timed using TimGenOf, F: when generator power = 0} (flag)
-        SpdGenOn = self.File['SpdGenOn']  # Generator speed to turn on the generator for a startup (HSS speed) (rpm) [used only when GenTiStr=False]
-        TimGenOn = self.File['TimGenOn']  # Time to turn on the generator for a startup (s) [used only when GenTiStr=True]
-        TimGenOf = self.File['TimGenOf']  # Time to turn off the generator (s) [used only when GenTiStp=True]
-        RtGnSp   = self.File['VS_RtGnSp'] # Rated generator speed for simple variable-speed generator control (HSS side) (rpm) [used only when VSContrl=1]
-        RtTq     = self.File['VS_RtTq']   # Rated generator torque/constant generator torque in Region 3 for simple variable-speed generator control (HSS side) (N-m) [used only when VSContrl=1]
-        Rgn2K    = self.File['VS_Rgn2K']  # Generator torque constant in Region 2 for simple variable-speed generator control (HSS side) (N-m/rpm^2) [used only when VSContrl=1]
-        SlPc     = self.File['VS_SlPc']   # Rated generator slip percentage in Region 2 1/2 for simple variable-speed generator control (%) [used only when VSContrl=1]
-        print('SpdGenOn : {:20.3f} [rpm]'      .format(SpdGenOn))
-        print('VS_RtGnSp: {:20.3f} [rpm]'      .format(RtGnSp),', ',np.around(RtGnSp*RPM2RADS,4),'rad/s')
-        print('VS_RtTq  : {:20.3f} [Nm]'       .format(RtTq))
-        print('VS_Rgn2K : {:20.3f} [N-m/rpm^2]'.format(Rgn2K))
-        print('VS_SlPc  : {:20.3f} [%]'        .format(SlPc))
-        print('')
-        print('VS_Rgn2K : {:20.3f} [N-m/(rad/s)^2]'.format(Rgn2K*RADS2RPM**2))
-        print('')
+        """Print variable speed control parameters"""
+
+        RtGnSp = self.VS_RtGnSp
+        RtTq   = self.VS_RtTq
+        Rgn2K  = self.VS_Rgn2K
+        SlPc   = self.VS_SlPc
+
+        if self.DISCON is None:
+            SpdGenOn = self.File['SpdGenOn']
+            print('SpdGenOn : {:20.3f} [rpm]'.format(SpdGenOn))
+
+        print('VS_RtGnSp: {:20.3f} [rpm],       {:15.3f} [rad/s]'.format(RtGnSp, RtGnSp * RPM2RADS))
+        print('VS_RtTq  : {:20.3f} [Nm]'.format(RtTq))
+        print('VS_Rgn2K : {:20.3f} [N-m/rpm^2], {:15.3f} [N-m/(rad/s)^2]'.format(Rgn2K, Rgn2K * (RADS2RPM**2)))
+        print('VS_SlPc  : {:20.3f} [%]'.format(SlPc))
         RtTqCheck = Rgn2K*RtGnSp**2
-        print('TqCheck  : {:20.3f} [Nm]'.format(RtTqCheck))
         if RtTqCheck>RtTq:
+            print('TqCheck  : {:20.3f} [Nm] <? {:20.3f}'.format(RtTqCheck, RtTq))
             WARN(' Rgn2K*RtGnSp**2 ({})  > RtTq ({})'.format(RtTqCheck, RtTq))
 
 
@@ -92,10 +159,10 @@ class ServoDyn:
 
         """
         SpdGenOn = self.File['SpdGenOn']   # Generator speed to turn on the generator for a startup (HSS speed) (rpm) [used only when GenTiStr=False]
-        RtGnSp   = self.File['VS_RtGnSp']  # Rated generator speed for simple variable-speed generator control (HSS side) (rpm) [used only when VSContrl=1]
-        RtTq     = self.File['VS_RtTq']    # Rated generator torque/constant generator torque in Region 3 for simple variable-speed generator control (HSS side) (N-m) [used only when VSContrl=1]
-        Rgn2K    = self.File['VS_Rgn2K']   # Generator torque constant in Region 2 for simple variable-speed generator control (HSS side) (N-m/rpm^2) [used only when VSContrl=1]
-        SlPc     = self.File['VS_SlPc']    # Rated generator slip percentage in Region 2 1/2 for simple variable-speed generator control (%) [used only when VSContrl=1]
+        RtGnSp   = self.VS_RtGnSp  # Rated generator speed for simple variable-speed generator control (HSS side) (rpm) [used only when VSContrl=1]
+        RtTq     = self.VS_RtTq    # Rated generator torque/constant generator torque in Region 3 for simple variable-speed generator control (HSS side) (N-m) [used only when VSContrl=1]
+        Rgn2K    = self.VS_Rgn2K   # Generator torque constant in Region 2 for simple variable-speed generator control (HSS side) (N-m/rpm^2) [used only when VSContrl=1]
+        SlPc     = self.VS_SlPc    # Rated generator slip percentage in Region 2 1/2 for simple variable-speed generator control (%) [used only when VSContrl=1]
         
         # Default values
         if rpm_start is None:
@@ -131,7 +198,7 @@ class ServoDyn:
             fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
             fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
 
-        ax.plot(df['Generator_Speed_[rpm]'], df['Generator_Torque_[Nm]'], label=label, ls=ls, color=color)
+        ax.plot(df['Generator_Speed_[rpm]'], df['Generator_Torque_[Nm]']/1000, label=label, ls=ls, color=color)
 
 
         if self._data_rpm is not None:

@@ -4,6 +4,7 @@ import re
 import pandas as pd
 
 from .fast_input_file import FASTInputFile
+from .rosco_discon_file import ROSCODISCONFile
 
 __all__  = ['FASTInputDeck']
 # --------------------------------------------------------------------------------}
@@ -297,8 +298,9 @@ class FASTInputDeck(dict):
                     if 'SrvDdll' in self.readlist:
                         self.inputFilesRead['SrvDdll'] = dll_file
                     if 'SrvDini' in self.readlist:
+                        self.fst_vt['DISCON_in'] = ROSCODISCONFile(ini_file)
                         self.inputFilesRead['SrvDini'] = ini_file
-                    # TODO Actually read them...
+                        # ROSCOD
 
             # HydroDyn
             self.readHD()

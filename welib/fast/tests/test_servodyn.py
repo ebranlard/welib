@@ -21,7 +21,7 @@ class TestSvD(unittest.TestCase):
             else:
                 svdFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/IEA-22-280-RWT/IEA-22-280-RWT_ServoDyn.dat')
 
-            svd = ServoDyn(svdFile)
+            svd = ServoDyn(svdFile, load_discon = False)
 
             # Get the VS data
             df = svd.VS_DataFrame(rpm_start=2, nRPM=15, fact_start=0.5, fact_max=1.2)
@@ -56,7 +56,7 @@ class TestSvD(unittest.TestCase):
             else:
                 svdFile = os.path.join(scriptDir, '../../../data/IEA-22-280-RWT/IEA-22-280-RWT/IEA-22-280-RWT_ServoDyn.dat')
 
-            svd = ServoDyn(svdFile)
+            svd = ServoDyn(svdFile, load_discon=False)
 
             # Get the VS data
             df = svd.VS_DataFrame(rpm_start=2, nRPM=10, fact_start=1.0, fact_max=1.0)

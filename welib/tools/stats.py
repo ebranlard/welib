@@ -11,6 +11,8 @@ try:
     from numpy import trapezoid
 except:
     from numpy import trapz as trapezoid
+from scipy.stats import pearsonr
+from scipy.stats import spearmanr
 
 # --------------------------------------------------------------------------------}
 # --- Stats measures 
@@ -76,6 +78,42 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', abs
                 sStats+=[r'$\epsilon L_{eq}=$'+r'{:.1f}%'.format(epsLeq)]
             else:
                 sStats+=[r'eps L_{eq}={:.1f}%'.format(epsLeq)]
+        elif s in ['pearson']:
+            try:
+                r_val = float(pearsonr(y1, y2)[0])
+            except Exception:
+                r_val = np.nan
+            stats['pearsonr'] = r_val # "r"
+            if latex:
+                sStats += [r'$r=$' + r'{:.3f}'.format(r_val)]
+            else:
+                sStats += ['r={:.3f}'.format(r_val)]
+
+        elif s in ['spearman']:
+            try:
+                rho_val = float(spearmanr(y1, y2)[0])
+            except Exception:
+                rho_val = np.nan
+            stats['sparman'] = rho_val # "rho"
+            if latex:
+                sStats += [r'$\rho=$' + r'{:.3f}'.format(rho_val)]
+            else:
+                sStats += ['rho={:.3f}'.format(rho_val)]
+
+        elif s in ['xcorr', 'max_xcorr']:
+            y1_norm = y1 - np.nanmean(y1)
+            y2_norm = y2 - np.nanmean(y2)
+            denom = np.nanstd(y1) * np.nanstd(y2) * len(y1)
+            if denom != 0 and not np.isnan(denom):
+                corr = np.correlate(y1_norm, y2_norm, mode='full') / denom
+                xcorr_max = float(np.nanmax(corr))
+            else:
+                xcorr_max = np.nan
+            stats['xcorr'] = xcorr_max
+            if latex:
+                sStats += [r'$\rho_{\mathrm{max}}=$' + r'{:.3f}'.format(xcorr_max)]
+            else:
+                sStats += ['xcorr={:.3f}'.format(xcorr_max)]
 
         else:
             raise NotImplementedError(s)

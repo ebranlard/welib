@@ -195,28 +195,28 @@ def print_yellow(msg, **kwargs):
     msg = str(msg)
     cprint(msg, color='yellow', attrs=['bold'], **kwargs)
 
-def FAIL(msg, label='[FAIL] ', **kwargs):
-    msg = str(msg)
+def FAIL(msg, *args, label='[FAIL] ', **kwargs):
+    msg = " ".join([str(msg)] + [str(a) for a in args])
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
     cprint(msg, color='red', attrs=['bold'], file=sys.stderr, **kwargs)
 
-def WARN(msg, label='[WARN] ', **kwargs):
-    msg = str(msg)
+def WARN(msg, *args, label='[WARN] ', **kwargs):
+    msg = " ".join([str(msg)] + [str(a) for a in args])
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
     cprint(msg, color='yellow', attrs=['bold'], **kwargs)
 
-def OK(msg, label='[ OK ] ', **kwargs):
-    msg = str(msg)
+def OK(msg, *args, label='[ OK ] ', **kwargs):
+    msg = " ".join([str(msg)] + [str(a) for a in args])
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
     cprint(msg, color='green', attrs=['bold'], **kwargs)
 
-def INFO(msg, label='[INFO] ', **kwargs):
-    msg = str(msg)
+def INFO(msg, *args, label='[INFO] ', **kwargs):
+    msg = " ".join([str(msg)] + [str(a) for a in args])
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
     cprint(msg, **kwargs)
 
-def NOTE(msg, label='[NOTE] ', **kwargs):
-    msg = str(msg)
+def NOTE(msg, *args, label='[NOTE] ', **kwargs):
+    msg = " ".join([str(msg)] + [str(a) for a in args])
     msg = ('\n' + ' ' * len(label)).join((label + msg).split('\n'))
     cprint(msg, color='cyan', attrs=['bold'], **kwargs)
 

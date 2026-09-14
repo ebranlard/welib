@@ -251,7 +251,7 @@ class FASTInputFileBase(File):
         self.setData() # Init data
         if filename:
             self.filename = filename
-            self.read(IComment=IComment, verbose=False)
+            self.read(IComment=IComment, verbose=verbose)
 
     def copy(self):
         import copy
@@ -885,7 +885,6 @@ class FASTInputFileBase(File):
                 try:
                     d['value'], d['tabColumnNames'], d['tabUnits'] = parseFASTNumTable(self.filename,lines[i:i+nTabLines+nHeaders+nOffset],nTabLines,i, nHeaders, tableType=tab_type, nOffset=nOffset, varNumLines=d['tabDimVar'])
                 except:
-                    import pdb; pdb.set_trace()
                     raise Exception('Something is off, developper should fix this case.')
                 d['descr'] = '' #
                 i += nTabLines+1-nOffset
