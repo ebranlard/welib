@@ -488,7 +488,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
         # Thrust fay faz Qaero may maz
         B_base = subMat(B_base, rows=None, cols=colAugForce2, check=True)
 
-        # --- Rotor Inertia
+        # --- Rotor Inertia / Shaft equation
         if 'ddpsi' in A_base.index:
             J_LSS_YAMS = linmodel.WT.rot.inertia[0,0] 
             J_LSS_OF_Qgen   = -1/B_base.loc['ddpsi','Qgen']
@@ -513,7 +513,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
         # --- Thrust
         sThrust = tuning['sThrust']
         if 'Thrust' in KF.sXa or 'Thrust' in KF.sU:
-            BFHx = B_base.loc[sQd, 'Thrust'] # Hub x force
+            BFHx = B_base.loc[sQd, 'Thrust']      # Hub x force, HubFxN1_[N]
             BFNx = B_base.loc[sQd, 'NacFxN1_[N]'] # Nacelle x force
             BFx_selected = B_base.loc[sQd, sThrust]*tuning['kThrustA']
             print('[INFO] KalmanModel: Thrust ddq relation: {}'.format(BFx_selected.loc['ddq_FA1']))

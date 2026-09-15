@@ -2,6 +2,7 @@ import os
 import numpy as np
 import re
 import pandas as pd
+import copy
 try:
     from .file import File, WrongFormatError, BrokenFormatError
 except:
@@ -146,6 +147,79 @@ class FASTLinearizationFile(File):
 
         if removeStatesPattern is not None:
             self.removeStates(pattern=removeStatesPattern)
+
+    def subset(self, sX_sel=None, sU_sel=None, sY_sel=None):
+        """
+        Take only the selected states, inputs, outputs based on short description.
+        Returns a new FASTLinearizationFile instance with the filtered subset.
+        """
+        # Create a deep copy of the current object to return
+        res = copy.deepcopy(self)
+
+        def get_indices(short_desc_list, selected):
+            if selected is None:
+                return list(range(len(short_desc_list)))
+            # If a single string/pattern is provided, make it a list
+            if isinstance(selected, str):
+                selected = [selected]
+            indices = []
+            for sel in selected:
+                # Find all exact or partial/pattern matches in the short description list
+                for idx, desc in enumerate(short_desc_list):
+                    if sel in desc or re.search(sel, desc):
+                        if idx not in indices:
+                            indices.append(idx)
+            return indices
+
+        # 1. Determine index masks for selected components
+        idx_X = get_indices(self._xdescr_short, sX_sel)
+        idx_U = get_indices(self._udescr_short, sU_sel)
+        idx_Y = get_indices(self._ydescr_short, sY_sel)
+
+        # 2. Filter Operating Points and Info dictionaries
+        if 'x' in self.keys() and self['x'] is not None:
+            res['x'] = self['x'][idx_X]
+            for k in res['x_info'].keys():
+                res['x_info'][k] = [self['x_info'][k][i] for i in idx_X]
+
+        if 'xdot' in self.keys() and self['xdot'] is not None:
+            res['xdot'] = self['xdot'][idx_X]
+            for k in res['xdot_info'].keys():
+                res['xdot_info'][k] = [self['xdot_info'][k][i] for i in idx_X] 
+
+        if 'u' in self.keys() and self['u'] is not None:
+            res['u'] = self['u'][idx_U]
+            for k in res['u_info'].keys():
+                res['u_info'][k] = [self['u_info'][k][i] for i in idx_U]
+
+        if 'y' in self.keys() and self['y'] is not None:
+            res['y'] = self['y'][idx_Y]
+            for k in res['y_info'].keys():
+                res['y_info'][k] = [self['y_info'][k][i] for i in idx_Y] 
+
+        # 3. Filter State-Space Matrices using NumPy slicing
+        if 'A' in self.keys() and self['A'] is not None:
+            res['A'] = self['A'][np.ix_(idx_X, idx_X)]
+
+        if 'B' in self.keys() and self['B'] is not None:
+            res['B'] = self['B'][np.ix_(idx_X, idx_U)]
+
+        if 'C' in self.keys() and self['C'] is not None:
+            res['C'] = self['C'][np.ix_(idx_Y, idx_X)]
+
+        if 'D' in self.keys() and self['D'] is not None:
+            res['D'] = self['D'][np.ix_(idx_Y, idx_U)]
+
+        # 4. Filter Input/Output coupling matrices if they exist
+        if 'dUdu' in self.keys() and self['dUdu'] is not None:
+            res['dUdu'] = self['dUdu'][np.ix_(idx_U, idx_U)]
+
+        if 'dUdy' in self.keys() and self['dUdy'] is not None:
+            res['dUdy'] = self['dUdy'][np.ix_(idx_U, idx_Y)]
+
+        return res
+
+
 
     def toString(self):
         s=''
@@ -417,6 +491,8 @@ class FASTLinearizationFile(File):
             self['B'] = self['B'][Ikeep,:]
         if 'C' in self.keys():
             self['C'] = self['C'][:, Ikeep]
+
+
 
 
     def eva(self, normQ=None, sort=True, discardIm=True):

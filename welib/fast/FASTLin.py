@@ -23,7 +23,9 @@ class FASTLinPeriodicOP(object):
        ws05mps.36.lin
 
     """
-    def __init__(self, prefix=None, nLin=None, linFiles=None, verbose=False):
+    def __init__(self, prefix=None, nLin=None, linFiles=None, verbose=False,
+                sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, # Subset
+                 ):
 
         # --- Init data
         self.linFiles  = []
@@ -73,6 +75,11 @@ class FASTLinPeriodicOP(object):
             except LinHasNAError:
                 FAIL('Linearization file has NaN: ',linFilename)
                 continue
+            try:
+                linfile = linfile.subset(sX_sel=sX_sel, sU_sel=sU_sel, sY_sel=sY_sel)
+            except:
+                FAIL('Failed to extract subset: ', linFilename)
+
                 
             print(linFilename, f'nx:{linfile.nx} ny:{linfile.ny} nu:{linfile.nu}')
             df = linfile.toDataFrame()
@@ -151,7 +158,9 @@ class FASTLin(object):
         Typically Campbell, or average over many conditions.
         Can be used for one lin file as well.
     """
-    def __init__(self, linfiles=None, folder='./', prefix='', nLin=None, verbose=False):
+    def __init__(self, linfiles=None, folder='./', prefix='', nLin=None, verbose=False,
+                 sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, # Subset
+                 ):
         """ 
         Init with a list of linfiles, or a folder and prefix
         """
@@ -186,7 +195,7 @@ class FASTLin(object):
         # --- Read period operating points
         print('Reading linearizations for {} operating points'.format(nSim))
         for iOP, _prefix in enumerate(_simPrefixes):
-            pOP = FASTLinPeriodicOP(_prefix, nLin=nLin)
+            pOP = FASTLinPeriodicOP(_prefix, nLin=nLin, sX_sel=sX_sel, sU_sel=sU_sel, sY_sel=sY_sel )
             if len(pOP.Data)==0:
                 FAIL(f'FASTLin: No Data present, skipping: {_prefix}')
                 continue

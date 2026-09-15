@@ -5,6 +5,9 @@ Kalman filter model for "Monopile Tower Nacelle Shaft" (based on yams MTNSB)
 import os
 import numpy as np
 import pandas as pd
+import argparse
+import sys
+import matplotlib.pyplot as plt
 
 # Welib
 from welib.essentials import *
@@ -20,7 +23,6 @@ from welib.kalman.kalmanfilter import KalmanFilter
 # YAMS
 from welib.yams.models.MTNSB import FASTmodel2MTNSB
 from welib.yams.section_loads import beamSectionLoadsFromShapeFunctions
-
 
 
 # --------------------------------------------------------------------------------}
@@ -75,8 +77,9 @@ class KalmanFilterMTNS(KalmanFilter):
     def setup_matrices(KF, 
                        fstFile, dfTime=None,
                        hydroShapeFile=None, compFile=None, Tp=None, zeta =0.12, qdhScale=1, # Hydro params
-                       method='YAMS',
+                       method='OpenFAST',
                        linFile=None, # For method=='OpenFAST
+                       fullColumns=False,
                        ):
         """ Build WT model (sea state, hydro) and state matrices A,B,C,D """
         # --- Default arguments
@@ -158,40 +161,55 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Setup state matrices, problem specific!
         nX, nU, nY = len(KF.sX), len(KF.sU), len(KF.sY)
-        A = np.zeros((nX, nX))
-        B = np.zeros((nX, nU))
-        C = np.zeros((nY, nX))
-        D = np.zeros((nY, nU))
         # Empty inputs/outputs B,C,D
         MM_sub = WT.MM[:2,:2] # We only keep surge and pitch
         M_inv     = np.linalg.inv(WT.MM)
         M_inv_sub = np.linalg.inv(MM_sub)
 
+
+        # --- Matrices from OpenFAST lin file
+        if linFile is None or not os.path.exists(linFile):
+            raise FileNotFoundError('An OpenFAST .lin file is required for now')
+        A_OF = np.zeros((nX, nX))
+        B_OF = np.zeros((nX, nU))
+        C_OF = np.zeros((nY, nX))
+        D_OF = np.zeros((nY, nU))
+        OF_lin = KF._set_openfast_submatrix(A_OF, B_OF, C_OF, linFile)
+
+        # --- Matrices from YAMS (partial
+        A_YS = np.zeros((nX, nX))
+        B_YS = np.zeros((nX, nU))
+        C_YS = np.zeros((nY, nX))
+        D_YS = np.zeros((nY, nU))
+        As, Bs, Cs, Ds = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK)
+        # --- Structural DOFs
+        names = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi']
+        for row, row_name in enumerate(names):
+            for col, col_name in enumerate(names):
+                A_YS[KF.iX[row_name], KF.iX[col_name]] = As[row, col]
+
         if method=='YAMS':
-            As, _, _, _ = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK)
-
-            # --- Structural DOFs
-            names = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi']
-            for row, row_name in enumerate(names):
-                for col, col_name in enumerate(names):
-                    A[KF.iX[row_name], KF.iX[col_name]] = As[row, col]
-
-            # Tower fore-aft first mode (1DOF oscillator)
-            #omega_t = 2 * np.pi * 0.32
-            #A[KF.iX['q_FA1'],  KF.iX['dq_FA1']] = 1
-            #A[KF.iX['dq_FA1'], KF.iX['q_FA1']]  = -omega_t**2
-            #A[KF.iX['dq_FA1'], KF.iX['dq_FA1']] = -2 * 0.03 * omega_t
-
+            A, B, C, D = A_YS, B_YS, C_YS, D_YS
         elif method=='OpenFAST':
-            if linFile is None or not os.path.exists(linFile):
-                raise FileNotFoundError('An OpenFAST .lin file is required for method=OpenFAST')
-            KF._set_openfast_submatrix(A, B, C, linFile)
+            A, B, C, D = A_OF, B_OF, C_OF, D_OF
 
         # --------------------------------------------------------------------------------}
         # ---  Code common to OpenFAST and YAMS
         # --------------------------------------------------------------------------------{
         # After applying the "generic" A, we introduce the augmented states equations
         # and some additional tweaks
+
+        # --- Rotor Inertia / Shaft equation
+        A[KF.iX['psi'], KF.iX['dpsi']] = 1
+        J_LSS_YAMS      = WT.rot.inertia[0,0]
+        J_LSS_OF_Qgen   = -1/OF_lin['B'].loc['d_psi_rot_[rad/s]','Qgen_[Nm]']
+        J_LSS = J_LSS_YAMS
+        print('[INFO] KalmanModel: Rotor Inertia seleted: {:.1f} (YAMS: {:.1f} OF: {:.1f}'.format(J_LSS, J_LSS_YAMS, J_LSS_OF_Qgen))
+        if 'Qaero' in KF.sXa:
+            A[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / J_LSS
+        if 'Qgen' in KF.sU:
+            B[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / J_LSS
+
 
         # --- Thrust influence (physical derivation)
         try:
@@ -201,21 +219,27 @@ class KalmanFilterMTNS(KalmanFilter):
             raise NotImplementedError()
         h_hub = r_TN[2] + r_NS[2]
 
-        # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
-        B[KF.iX['dx']    , KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-        B[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+        sQd_OF = ['d_PtfmSurge_[m/s]', 'd_PtfmHeave_[m/s]', 'd_PtfmPitch_[rad/s]', 'd_qt1FA_[m/s]', 'd_psi_rot_[rad/s]']
+        BFHx = OF_lin['B'].loc[sQd_OF, 'HubFxN1_[N]'] # Hub x force
+        BFNx = OF_lin['B'].loc[sQd_OF, 'NacFxN1_[N]'] # Nacelle x force
+        #BFx_selected = OF_lin['B'].loc[sQd, sThrust]*tuning['kThrustA']
+        #print('[INFO] KalmanModel: Thrust ddq relation: {}'.format(BFx_selected.loc['ddq_FA1']))
+        if 'Thrust' in KF.sU:
+#             if fullColumns:
+#                 B.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
 
-        # For q_FA1, estimate modal mass: 0.25 * m_twr + m_rna
-        m_twr = np.trapezoid(WT.twr.m, WT.twr.s_span) if (hasattr(WT, 'twr') and hasattr(WT.twr, 'm')) else 9.6e5
-        m_rna = WT.M_RNA if hasattr(WT, 'M_RNA') else 1.189e6
-        M_modal = 0.25 * m_twr + m_rna
-        B[KF.iX['dq_FA1'], KF.iU['Thrust']] = 1 / M_modal
+            # For q_FA1
+            m_twr = WT.twr.mass
+            GM_twr = KF.WT.twr.MM[6,6] # Generalized mass of tower
+            m_rna = WT.RNA.mass
+            M_modal = GM_twr + m_rna
+            #M_modal_OF = OF_lin['B'].loc['d_qt1FA_[m/s]', 'NacFxN1_[N]'] # Nacelle x force
+            B[KF.iX['dq_FA1'], KF.iU['Thrust']] = 1 / M_modal
+            #B[KF.iX['dq_FA1'], KF.iU['Thrust']] = BFx_selected.loc['ddq_FA1']
 
-        # --- Shaft equation
-        A[KF.iX['psi'], KF.iX['dpsi']] = 1
-        inertia = float(np.asarray(WT.rot.inertia).ravel()[0])
-        A[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / inertia
-        B[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / inertia
+            # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
+            B[KF.iX['dx']    , KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+            B[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
 
         # --- Generalized hydro force 
         IQD   =[KF.iX['dx'], KF.iX['dphi_y']]
@@ -264,16 +288,105 @@ class KalmanFilterMTNS(KalmanFilter):
     def _set_openfast_submatrix(KF, A, B, C, linFile):
         """Insert measured OpenFAST state and IMU couplings when available."""
         from welib.fast.FASTLin import FASTLin
-        FL = FASTLin(linfiles=[linFile], prefix='', verbose=False)
-        data = FL.OP_Data[0].Data[0]
-        state_labels = [str(label) for label in FL.xdescr]
+        sX_sel  =['PtfmSurge_[m]', 'PtfmHeave_[m]', 'PtfmPitch_[rad]', 'qt1FA_[m]', 'psi_rot_[rad]']
+        sX_sel +=['d_PtfmSurge_[m/s]', 'd_PtfmHeave_[m/s]', 'd_PtfmPitch_[rad/s]', 'd_qt1FA_[m/s]', 'd_psi_rot_[rad/s]']
+
+        sU_sel=[]
+        sU_sel+=['WS_[m/s]', 'alpha_[-]', 'WD_[rad]', 'SEAWaveElevRefPoint_[m]']
+        sU_sel+=['PtfmFxN1_[N]', 'PtfmFyN1_[N]', 'PtfmFzN1_[N]', 'PtfmMxN1_[Nm]', 'PtfmMyN1_[Nm]', 'PtfmMzN1_[Nm]']
+        sU_sel+=['TwrFxN1_[N]']
+        sU_sel+=['TwrMyN1_[N]']
+        sU_sel+=['TwrFxN20_[N]']
+        sU_sel+=['TwrMyN20_[N]']
+        sU_sel+=['HubFxN1_[N]', 'HubFyN1_[N]', 'HubFzN1_[N]', 'HubMxN1_[Nm]', 'HubMyN1_[Nm]', 'HubMzN1_[Nm]'] 
+        sU_sel+=['NacFxN1_[N]', 'NacFyN1_[N]', 'NacFzN1_[N]', 'NacMxN1_[Nm]', 'NacMyN1_[Nm]', 'NacMzN1_[Nm]'] 
+        sU_sel+=['B1pitch_[rad]', 'B2pitch_[rad]', 'B3pitch_[rad]']
+        sU_sel+=['Qgen_[Nm]'] 
+        sU_sel+=['PitchColl_[rad]']
+        sU_sel+=['ADNacTxN1_[m]', 'ADNacTyN1_[m]', 'ADNacTzN1_[m]', 'ADNacRxN1_[rad]', 'ADNacRyN1_[rad]', 'ADNacRzN1_[rad]']
+        sU_sel+=['ADHubTxN1_[m]', 'ADHubTyN1_[m]', 'ADHubTzN1_[m]', 'ADHubRxN1_[rad]', 'ADHubRyN1_[rad]', 'ADHubRzN1_[rad]']
+        sU_sel+=['ADHubRVxN1_[rad/s]', 'ADHubRVyN1_[rad/s]', 'ADHubRVzN1_[rad/s]', 'ADTwrTxN1_[m]']
+        sU_sel+=['ADWS_[m/s]', 'ADalpha_[-]', 'ADWD_[rad]']
+#         sU_sel+=['HDPtfm-RefPtTxN1_[m]'      , 'HDPtfm-RefPtTyN1_[m]'      , 'HDPtfm-RefPtTzN1_[m]'      , 'HDPtfm-RefPtRxN1_[rad]'      , 'HDPtfm-RefPtRyN1_[rad]'      , 'HDPtfm-RefPtRzN1_[rad]']
+#         sU_sel+=['HDPtfm-RefPtTVxN1_[m/s]'   , 'HDPtfm-RefPtTVyN1_[m/s]'   , 'HDPtfm-RefPtTVzN1_[m/s]'   , 'HDPtfm-RefPtRVxN1_[rad/s]'   , 'HDPtfm-RefPtRVyN1_[rad/s]'   , 'HDPtfm-RefPtRVzN1_[rad/s]']
+#         sU_sel+=['HDPtfm-RefPtTAxN1_[m/s^2]' , 'HDPtfm-RefPtTAyN1_[m/s^2]' , 'HDPtfm-RefPtTAzN1_[m/s^2]' , 'HDPtfm-RefPtRAxN1_[rad/s^2]' , 'HDPtfm-RefPtRAyN1_[rad/s^2]' , 'HDPtfm-RefPtRAzN1_[rad/s^2]']
+        sU_sel+=['HDWaveElevRefPoint_[m]', 'HDhorizontalcurrentspeed_[m/s]', 'HDalpha_[-]', 'HDWD_[rad]']
+        sU_sel+=['SDTPMeshTxN1_[m]'      , 'SDTPMeshTyN1_[m]'      , 'SDTPMeshTzN1_[m]'      , 'SDTPMeshRxN1_[rad]'      , 'SDTPMeshRyN1_[rad]'      , 'SDTPMeshRzN1_[rad]']
+        sU_sel+=['SDTPMeshTVxN1_[m/s]'   , 'SDTPMeshTVyN1_[m/s]'   , 'SDTPMeshTVzN1_[m/s]'   , 'SDTPMeshRVxN1_[rad/s]'   , 'SDTPMeshRVyN1_[rad/s]'   , 'SDTPMeshRVzN1_[rad/s]']
+        sU_sel+=['SDTPMeshTAxN1_[m/s^2]' , 'SDTPMeshTAyN1_[m/s^2]' , 'SDTPMeshTAzN1_[m/s^2]' , 'SDTPMeshRAxN1_[rad/s^2]' , 'SDTPMeshRAyN1_[rad/s^2]' , 'SDTPMeshRAzN1_[rad/s^2]']
+        sU_sel+=['SDLMeshFxN1_[N]'  , 'SDLMeshFyN1_[N]'  , 'SDLMeshFzN1_[N]'  , 'SDLMeshMxN1_[Nm]'  , 'SDLMeshMyN1_[Nm]'  , 'SDLMeshMzN1_[Nm]']
+        sU_sel+=['SDLMeshFxN50_[N]' , 'SDLMeshFyN50_[N]' , 'SDLMeshFzN50_[N]' , 'SDLMeshMxN50_[Nm]' , 'SDLMeshMyN50_[Nm]' , 'SDLMeshMzN50_[Nm]']
+        
+        sY_sel=[]
+        sY_sel+=['Extendedoutput:WS_[m/s]', 'Extendedoutput:alpha_[-]', 'Extendedoutput:WD_[rad]']
+        sY_sel+=['Wind1VelX_[m/s]', 'Wind1VelY_[m/s]', 'Wind1VelZ_[m/s]']
+        sY_sel+=['SEAExtendedoutput:WaveElevRefPoint_[m]', 'SEAWave1Elev_[m]']
+        sY_sel+=['PtfmTxN1_[m]'      , 'PtfmTyN1_[m]'      , 'PtfmTzN1_[m]'      , 'PtfmRxN1_[rad]'      , 'PtfmRyN1_[rad]'      , 'PtfmRzN1_[rad]']
+        sY_sel+=['PtfmTVxN1_[m/s]'   , 'PtfmTVyN1_[m/s]'   , 'PtfmTVzN1_[m/s]'   , 'PtfmRVxN1_[rad/s]'   , 'PtfmRVyN1_[rad/s]'   , 'PtfmRVzN1_[rad/s]']
+        sY_sel+=['PtfmTAxN1_[m/s^2]' , 'PtfmTAyN1_[m/s^2]' , 'PtfmTAzN1_[m/s^2]' , 'PtfmRAxN1_[rad/s^2]' , 'PtfmRAyN1_[rad/s^2]' , 'PtfmRAzN1_[rad/s^2]']
+        sY_sel+=['TwrTAxN1_[m/s^2]'  , 'TwrTAyN1_[m/s^2]'  , 'TwrTAzN1_[m/s^2]'  , 'TwrRAyN1_[rad/s^2]'  , 'TwrRAzN1_[rad/s^2]']
+        sY_sel+=['TwrTAxN22_[m/s^2]' , 'TwrTAyN22_[m/s^2]' , 'TwrTAzN22_[m/s^2]' , 'TwrRAyN22_[rad/s^2]' , 'TwrRAzN22_[rad/s^2]']
+        sY_sel+=['HubTxN1_[m]'      , 'HubTyN1_[m]'      , 'HubTzN1_[m]'       , 'HubRxN1_[rad]' , 'HubRyN1_[rad]' , 'HubRzN1_[rad]']
+        sY_sel+=['HubRVxN1_[rad/s]' , 'HubRVyN1_[rad/s]' , 'HubRVzN1_[rad/s]']
+        sY_sel+=['NacTxN1_[m]'      , 'NacTyN1_[m]'      , 'NacTzN1_[m]'      , 'NacRxN1_[rad]'      , 'NacRyN1_[rad]'      , 'NacRzN1_[rad]']
+        sY_sel+=['NacTVxN1_[m/s]'   , 'NacTVyN1_[m/s]'   , 'NacTVzN1_[m/s]'   , 'NacRVxN1_[rad/s]'   , 'NacRVyN1_[rad/s]'   , 'NacRVzN1_[rad/s]']
+        sY_sel+=['NacTAxN1_[m/s^2]' , 'NacTAyN1_[m/s^2]' , 'NacTAzN1_[m/s^2]' , 'NacRAxN1_[rad/s^2]' , 'NacRAyN1_[rad/s^2]' , 'NacRAzN1_[rad/s^2]']
+
+        sY_sel +=['HSSSpd_[rad/s]', 'Azimuth_[deg]', 'BPitch1_[deg]', 'GenSpeed_[rpm]', 'RotSpeed_[rpm]']
+        sY_sel +=['RotThrust_[kN]', 'RotTorq_[kNm]', 'RotPwr_[kW]']
+        sY_sel +=['LSSTipMya_[kNm]', 'LSSTipMza_[kNm]']
+        sY_sel +=['LSSGagMya_[kNm]', 'LSSGagMza_[kNm]']
+        sY_sel +=['NcIMUTAxs_[m/s^2]', 'NcIMUTAys_[m/s^2]', 'NcIMUTAzs_[m/s^2]', 'NcIMUTVxs_[m/s]', 'NcIMUTVys_[m/s]', 'NcIMUTVzs_[m/s]']
+        sY_sel +=['TTDspFA_[m]', 'TTDspSS_[m]'] 
+        sY_sel +=['NacYaw_[deg]']
+        sY_sel +=['YawBrFxp_[kN]', 'YawBrFyp_[kN]', 'YawBrFzp_[kN]', 'YawBrMxp_[kNm]', 'YawBrMyp_[kNm]', 'YawBrMzp_[kNm]']
+        sY_sel +=['YawBrTDxt_[m]', 'YawBrTDyt_[m]'] 
+        sY_sel +=['TwrBsFxt_[kN]', 'TwrBsFyt_[kN]', 'TwrBsFzt_[kN]', 'TwrBsMxt_[kNm]', 'TwrBsMyt_[kNm]', 'TwrBsMzt_[kNm]']
+        sY_sel +=['PtfmSurge_[m]', 'PtfmSway_[m]', 'PtfmHeave_[m]', 'PtfmRoll_[deg]', 'PtfmPitch_[deg]', 'PtfmYaw_[deg]']
+        sY_sel +=['Q_GeAz_[rad]'    , 'Q_TFA1_[m]'    , 'Q_TSS1_[m]'    , 'Q_TFA2_[m]'    , 'Q_TSS2_[m]'    , 'Q_Sg_[m]'    , 'Q_Hv_[m]'    , 'Q_P_[rad]']
+        sY_sel +=['QD_GeAz_[rad/s]' , 'QD_TFA1_[m/s]' , 'QD_TSS1_[m/s]' , 'QD_TFA2_[m/s]' , 'QD_TSS2_[m/s]' , 'QD_Sg_[m/s]' , 'QD_Hv_[m/s]' , 'QD_P_[rad/s]']
+        sY_sel +=['QD2_GeAz_[rad/s^2]', 'QD2_TFA1_[m/s^2]', 'QD2_Sg_[m/s^2]', 'QD2_Hv_[m/s^2]', 'QD2_P_[rad/s^2]']
+        sY_sel +=['TwHt1ALxt_[m/s^2]' , 'TwHt1ALyt_[m/s^2]' , 'TwHt1ALzt_[m/s^2]']
+        sY_sel +=['TwHt1MLxt_[kNm]'   , 'TwHt1MLyt_[kNm]'   , 'TwHt1MLzt_[kNm]']
+        sY_sel +=['TwHt1FLxt_[kN]'    , 'TwHt1FLyt_[kN]'    , 'TwHt1FLzt_[kN]']
+        sY_sel +=['ADNacFxN1_[N]', 'ADNacFyN1_[N]', 'ADNacFzN1_[N]', 'ADNacMxN1_[Nm]', 'ADNacMyN1_[Nm]', 'ADNacMzN1_[Nm]']
+        sY_sel +=['ADHubFxN1_[N]', 'ADHubFyN1_[N]', 'ADHubFzN1_[N]', 'ADHubMxN1_[Nm]', 'ADHubMyN1_[Nm]', 'ADHubMzN1_[Nm]']
+        sY_sel +=['ADRtAeroCp', 'ADRtAeroCq', 'ADRtAeroCt', 'ADRtAeroPwr', 'ADRtArea']
+        sY_sel +=['ADRtSkew_[deg]', 'ADRtSpeed_[rpm]', 'ADRtTSR'] 
+        sY_sel +=['ADRtAeroFxh_[N]', 'ADRtAeroMxh_[Nm]']
+        sY_sel +=['ADRtVAvgxh_[m/s]', 'ADRtVAvgyh_[m/s]', 'ADRtVAvgzh_[m/s]']
+        sY_sel +=['HDMorisonLoadsFxN1_[N]', 'HDMorisonLoadsFyN1_[N]', 'HDMorisonLoadsFzN1_[N]', 'HDMorisonLoadsMxN1_[Nm]', 'HDMorisonLoadsMyN1_[Nm]', 'HDMorisonLoadsMzN1_[Nm]']
+        sY_sel +=['HDMorisonLoadsFxN99_[N]', 'HDMorisonLoadsFyN99_[N]', 'HDMorisonLoadsFzN99_[N]','HDMorisonLoadsMyN99_[Nm]', 'HDMorisonLoadsMzN99_[Nm]']
+        sY_sel +=['HDHydroFxi_[N]', 'HDHydroFyi_[N]', 'HDHydroFzi_[N]', 'HDHydroMxi_[Nm]', 'HDHydroMyi_[Nm]', 'HDHydroMzi_[Nm]']
+        sY_sel +=['SDInterfacedisplacementFxN1_[N]', 'SDInterfacedisplacementFyN1_[N]', 'SDInterfacedisplacementFzN1_[N]', 'SDInterfacedisplacementMxN1_[Nm]', 'SDInterfacedisplacementMyN1_[Nm]', 'SDInterfacedisplacementMzN1_[Nm]'] 
+        #sY_sel +=# 'SDSSQM01', 'SDSSQMD01', 'SDSSQMDD01', 'SDSSQM02', 'SDSSQMD02', 'SDSSQMDD02',
+        sY_sel +=['SDIntfFxss_[N]'   , 'SDIntfFzss_[N]'   , 'SDIntfMyss'       , 'SDIntfTDXss_[m]' ]
+        sY_sel +=['SDIntfTDZss_[m]' , 'SDIntfRDYss_[rad]']
+        sY_sel +=['SDM1N1FKxe_[N]'   , 'SDM1N1FKze_[N]'   , 'SDM1N1MKye'       , 'SDM2N1FKxe_[N]'  , 'SDM2N1FKze_[N]']
+        sY_sel +=['SDM49N1FKxe_[N]'  , 'SDM49N1FKze_[N]'  , 'SDM49N1MKye'      , 'SDM49N2FKxe_[N]' , 'SDM49N2FKze_[N]' , 'SDM49N2MKye']
+        sY_sel +=['SD-ReactFxss_[N]' , 'SD-ReactFyss_[N]' , 'SD-ReactFzss_[N]' , 'SD-ReactMxss'    , 'SD-ReactMyss'    , 'SD-ReactMzss']
+
+        pklFile = linFile.replace('.lin', '.pkl')
+        if os.path.exists(pklFile):
+            INFO('Loading lin file pickle: ', pklFile)
+            FL = FASTLin.from_pickle(pklFile)
+        else:
+            FL = FASTLin(linfiles=[linFile], prefix='', verbose=False, sX_sel=sX_sel, sU_sel=sU_sel, sY_sel=sY_sel)
+            FL.save(pklFile)
+        data = FL.OP_Data[0].Data[0] # Instance of FASTLinearizationFile with keys A, B, C, D, x, u, y, x_info
+        sX = [str(label) for label in FL.xdescr] # State names
+        sY = [str(label) for label in FL.ydescr] # Output names
+        sU = [str(label) for label in FL.udescr] # Input names
         state_map = {
-            'x': 'PtfmSurge_[m]', 'phi_y': 'PtfmPitch_[rad]',
-            'q_FA1': 'qt1FA_[m]', 'psi': 'psi_rot_[rad]',
-            'dx': 'd_PtfmSurge_[m/s]', 'dphi_y': 'd_PtfmPitch_[rad/s]',
-            'dq_FA1': 'd_qt1FA_[m/s]', 'dpsi': 'd_psi_rot_[rad/s]'}
-        indices = {name: state_labels.index(label) for name, label in state_map.items()
-                   if label in state_labels}
+            'x'      : 'PtfmSurge_[m]',
+            'phi_y'  : 'PtfmPitch_[rad]',
+            'q_FA1'  : 'qt1FA_[m]',
+            'psi'    : 'psi_rot_[rad]',
+            'dx'     : 'd_PtfmSurge_[m/s]',
+            'dphi_y' : 'd_PtfmPitch_[rad/s]',
+            'dq_FA1' : 'd_qt1FA_[m/s]',
+            'dpsi'   : 'd_psi_rot_[rad/s]'}
+        indices = {name: sX.index(label) for name, label in state_map.items() if label in sX}
         for row_name, row in indices.items():
             for col_name, col in indices.items():
                 A[KF.iX[row_name], KF.iX[col_name]] = data.A.values[row, col]
@@ -283,15 +396,58 @@ class KalmanFilterMTNS(KalmanFilter):
                 'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
                       }
         for output_name, label in output_map.items():
-            if label in FL.ydescr:
-                row = list(FL.ydescr).index(label)
+            if label in sY:
+                row = sY.index(label)
                 for state_name, col in indices.items():
                     C[KF.iY[output_name], KF.iX[state_name]] = data.C.values[row, col]
-        if 'Qgen_[Nm]' in FL.udescr:
-            col = list(FL.udescr).index('Qgen_[Nm]')
-            for state_name, row in indices.items():
-                B[KF.iX[state_name], KF.iU['Qgen']] = data.B.values[row, col]
-        return FL
+            else:
+                WARN('Label missing from sY in lin model: ', label)
+
+        input_map = {
+                'Qgen': 'Qgen_[Nm]',
+                # 'eta':  'HDWaveElevRefPoint_[m]'
+        }
+        for input_name, label in input_map.items():
+            if label in sU:
+                col = sU.index(label)
+                for state_name, row in indices.items():
+                    B[KF.iX[state_name], KF.iU[input_name]] = data.B.values[row, col]
+            else:
+                WARN('Label missing from sU in lin model: ', label)
+
+        OF_lin = data.toDataFrame() 
+        return OF_lin
+
+        # --- OUTPUTS that we could use
+#               1    0.00000000000E+00                                                 F               0         SEA Wave1Elev, (m)
+#               7    3.57159790039E+02                                                 F               0         ED RotThrust, (kN)
+#               8   -1.33902830157E-07                                                 F               0         ED RotTorq, (kN-m)
+#               9   -1.44830606878E-02                                                 F               0         ED NcIMUTAxs, (m/s^2)
+#              23    1.16558103561E+01                                                 F               0         ED TwrBsFxt, (kN)
+#              25   -2.74127949219E+04                                                 F               0         ED TwrBsFzt, (kN)
+#              27   -1.10646890625E+05                                                 F               0         ED TwrBsMyt, (kN-m)
+#              35    4.71238899231E+00                                                 F               0         ED Q_GeAz, (rad)
+#              36   -4.67881500721E-01                                                 F               0         ED Q_TFA1, (m)
+#              40   -2.05030087382E-02                                                 F               0         ED Q_Sg, (m)
+#              42   -8.86160356458E-04                                                 F               0         ED Q_P, (rad)
+#              51   -5.10188657790E-03                                                 F               0         ED QD2_Sg, (m/s^2)
+#              54    5.57291064453E+03                                                 F               0         HD HydroFxi, (N)
+#              58   -5.41483320312E+04                                                 F               0         HD HydroMyi, (N-m)
+#              66    3.59479296875E+04                                                 F               0         SD IntfFXss, (N)
+#              68   -1.10646888000E+08                                                 F               0         SD IntfMYss, (N*m)
+#              69   -2.05030087382E-02                                                 F               0         SD IntfTDXss, (m)
+#              71   -8.86160589289E-04                                                 F               0         SD IntfRDYss, (rad)
+#              72    4.39176328125E+04                                                 F               0         SD M1N1FKXe, (N)
+#              74   -1.09302344000E+08                                                 F               0         SD M1N1MKYe, (N*m)
+#             219    3.72363359375E+04                                                 F               0         SD M49N1FKXe, (N)
+#             220   -2.84774700000E+07                                                 F               0         SD M49N1FKZe, (N)
+#             221   -1.11201280000E+08                                                 F               0         SD M49N1MKYe, (N*m)
+#             222    3.72363359375E+04                                                 F               0         SD M49N2FKXe, (N)
+#             223   -2.84774700000E+07                                                 F               0         SD M49N2FKZe, (N)
+#             224   -1.11238520000E+08                                                 F               0         SD M49N2MKYe, (N*m)
+#             225    4.39180976562E+04                                                 F               0         SD -ReactFXss, (N)
+#             227   -3.67519840000E+07                                                 F               0         SD -ReactFZss, (N)
+#             229   -1.09302344000E+08                                                 F               0         SD -ReactMYss, (N*m)
 
     # --- Methods From Parent Class
     # loadMeasurements 
@@ -354,6 +510,57 @@ class KalmanFilterMTNS(KalmanFilter):
         qdd['Psi']  = KF.df['ddpsi'].iloc[it]
         return q, qd, qdd
 
+
+    def computeSectionLoads(KF, t, x, x_dot, p_hydro, Thrust, Qaero, it=None):
+        WT = KF.WT
+        dInfo = KF.dInfo
+        # ---
+        p_ext      = np.zeros((3,len(KF.zDepth)))
+        p_ext[0,:] = p_hydro
+
+        # --- DOFs in the way expected by calcOutputs_step
+        q, qd, qdd, x_q, xd_q, xdd_q = KF.get_OF_DOFs(x, x_dot=x_dot)
+
+        # ---  Section Loads
+        F_top = np.array((0.,0.,0.))
+        M_top = np.array((0.,0.,0.))
+        a_ext = np.array((0.,0.,-WT.gravity)) # external acceleration (gravity/earthquake)
+
+        Qaero = 0
+        ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':Qaero, 'Madd_R_ys':0, 'Madd_R_zs':0})
+
+        if KF.hacks['SL_cleanQ']:
+            q, qd, qdd = KF.get_OF_DOFs_clean(it+1)
+
+        if KF.hacks['SL_cleanFtop']:
+            ser_Loads_Add =ser_Loads
+            ser_Loads = KF.df.loc[it+1] # will pick up the YawBr loads
+            dInfo['useTopLoadsFromDF'] = True
+            # We add the "Fadd" just so that YawBr looks better, even though it's overwritten
+            for key, val in ser_Loads_Add.items():
+                ser_Loads[key] = val
+
+        if KF.hacks['SL_cleanEtaDot']:
+            eta_dot_true = WT.pSS['eta_dot'][it+1]
+            p_hydro = KF.pHD['phi'] * eta_dot_true # p_h = k_h(z) q_h(t)
+            p_ext[0,:] = p_hydro
+            #p_ext = None
+
+        p_ext_for_h = p_ext
+        if KF.hacks['SL_cleanP']:
+            p_ext = None  # if p_ext is None, WT will compute the p_ext based on the sea state, it's cheating
+
+        rowOut, twr_sec, mnp_sec = WT.calcOutputs_step(q, qd, qdd, dInfo, t=t, ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+
+        # No acceleration # TODO get it from calcOutputs 
+        xdd_q *=0
+        F_sec_h, M_sec_h, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext_for_h, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext = a_ext, PhiK=WT.fnd.PhiK)
+        Fx_h_est = F_sec_h[0,0]
+        #wet_nodes = KF.zDepth <= 0
+        #Fx_h_est = np.trapezoid(p_hydro[wet_nodes], KF.zDepth[wet_nodes])
+
+        return rowOut, twr_sec, mnp_sec, Fx_h_est
+
     def timeLoop(KF):
         # --- Aliases to shorten notations
         WT = KF.WT
@@ -366,8 +573,18 @@ class KalmanFilterMTNS(KalmanFilter):
         x = KF.initFromClean(var='x,y,u')
         
         Thrust = KF.U_clean['Thrust'].iloc[0]
+        Fx_i   = KF.U_clean['Fx_i'].iloc[0]
+        My_i   = KF.U_clean['My_i'].iloc[0]
         # --- WSE
         WS_last = KF.S_clean['WS'].iloc[0]
+
+        # --- Section loads at t=0
+        #x= x.values
+        #x_dot = x*0
+        #p_hydro = KF.pHD['phi'] * 0
+        #print(x)
+        #print(x_dot)
+        #rowOut, twr_sec, mnp_sec, Fx_h_est = KF.computeSectionLoads(KF.time[0], x, x_dot, p_hydro, Thrust, Qaero=0, it=0)
 
         # --- Time loop
         for it in range(0, KF.nt-1):
@@ -377,6 +594,8 @@ class KalmanFilterMTNS(KalmanFilter):
             # --- Inputs
             u = KF.U_clean.iloc[it,:].values.copy()
             u[KF.iU['Thrust']] = Thrust # We use previous estimated thrust as input.
+            u[KF.iU['Fx_i']] = Fx_i # We use previous estimated interface loads
+            u[KF.iU['My_i']] = My_i # We use previous estimated interface loads
             
             # --- Predictions of next time step based on current time step
             t = KF.time[it+1]
@@ -411,71 +630,28 @@ class KalmanFilterMTNS(KalmanFilter):
             # --- Acceleration
             x_dot = np.dot(KF.A, x) + np.dot(KF.B, u)
             
-            # ---
-            p_ext      = np.zeros((3,len(KF.zDepth)))
-            p_ext[0,:] = p_hydro
-
-            # --- DOFs in the way expected by calcOutputs_step
-            q, qd, qdd, x_q, xd_q, xdd_q = KF.get_OF_DOFs(x, x_dot=x_dot)
-
-            # ---  Section Loads
-            F_top = np.array((0.,0.,0.))
-            M_top = np.array((0.,0.,0.))
-            a_ext = np.array((0.,0.,-WT.gravity)) # external acceleration (gravity/earthquake)
-
-            Qaero = 0
-            ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':Qaero, 'Madd_R_ys':0, 'Madd_R_zs':0})
-            # TEMPORARY for backward compatibility
-#             ser_Loads['TwrBsFxt_[kN]'] = 0
-#             ser_Loads['TwrBsFyt_[kN]'] = 0
-#             ser_Loads['TwrBsFzt_[kN]'] = 0
-#             ser_Loads['TwrBsMxt_[kN-m]'] = 0
-#             ser_Loads['TwrBsMyt_[kN-m]'] = 0
-#             ser_Loads['TwrBsMzt_[kN-m]'] = 0
-#             dInfo['useInterfaceLoadsFromDF'] = True
-
-            if KF.hacks['SL_cleanQ']:
-                q, qd, qdd = KF.get_OF_DOFs_clean(it+1)
-
-            if KF.hacks['SL_cleanFtop']:
-                ser_Loads_Add =ser_Loads
-                ser_Loads = KF.df.loc[it+1] # will pick up the YawBr loads
-                dInfo['useTopLoadsFromDF'] = True
-                # We add the "Fadd" just so that YawBr looks better, even though it's overwritten
-                for key, val in ser_Loads_Add.items():
-                    ser_Loads[key] = val
-
-            if KF.hacks['SL_cleanEtaDot']:
-                eta_dot_true = WT.pSS['eta_dot'][it+1]
-                p_hydro = KF.pHD['phi'] * eta_dot_true # p_h = k_h(z) q_h(t)
-                p_ext[0,:] = p_hydro
-                #p_ext = None
-            p_ext_for_h = p_ext
-            if KF.hacks['SL_cleanP']:
-                p_ext = None  # if p_ext is None, WT will compute the p_ext based on the sea state, it's cheating
-
-            rowOut, twr_it, mnp_it = WT.calcOutputs_step(q, qd, qdd, dInfo, t=KF.time[it+1], ser_Loads=ser_Loads, mnp_p_ext=p_ext)
+            # --- Section Loads
+            rowOut, twr_sec, mnp_sec, Fx_h_est = KF.computeSectionLoads(KF.time[it+1], x, x_dot, p_hydro, Thrust, Qaero_hat, it=it)
             KF.dfOut.loc[it+1] = rowOut
-            F_sec = mnp_it[0:3,:]
-            M_sec = mnp_it[3:6,:]
-
-            #F_sec, M_sec, outD = beamSectionLoadsFromShapeFunctions    (x_q, xd_q, xdd_q, p_ext, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext=a_ext, corrections=0, PhiK=WT.fnd.PhiK)
-
-            # No acceleration # TODO get it from calcOutputs 
-            xdd_q *=0
-            F_sec_h, M_sec_h, outD = beamSectionLoadsFromShapeFunctions(x_q, xd_q, xdd_q, p_ext_for_h, F_top, M_top, WT.fnd.s_span, WT.fnd.PhiU, WT.fnd.PhiV, WT.fnd.m, a_ext = a_ext, PhiK=WT.fnd.PhiK)
-
-            wet_nodes = KF.zDepth <= 0
-            Fx_h_est = np.trapezoid(p_hydro[wet_nodes], KF.zDepth[wet_nodes])
+            # Section loads at interface for next time step
+            Fx_i = twr_sec[0, 0]  # rowOut['TwrBsFxt_[kN]']
+            My_i = twr_sec[4, 0]  # rowOut['TwrBsMyt_[kN-m]']
             
             
+            # --- Sotre "updated"/"hacked" states and inputs
+            if 'psi' in KF.iX:
+                x[KF.iX['psi']] = np.mod(x[KF.iX['psi']], 2*np.pi)
+            KF.U_hat.iloc[it+1,:]   = u
+            KF.X_hat.iloc[it+1,:]   = x
+            KF.XD_hat.iloc[it+1,:]  = x_dot
+
             # --- Store extra info
             # Environment
             KF.S_hat.at[it+1, 'WS']     = WS_hat
             KF.S_hat.at[it+1, 'eta']    = q_h
             # Loads
-            KF.S_hat.at[it+1, 'My_sb']  = M_sec[1,0]
-            KF.S_hat.at[it+1, 'Fx_sb']  = F_sec[0,0]
+            KF.S_hat.at[it+1, 'Fx_sb']  = mnp_sec[0,0]
+            KF.S_hat.at[it+1, 'My_sb']  = mnp_sec[4,0]
             KF.S_hat.at[it+1, 'Fx_h']   = Fx_h_est
             KF.S_hat.at[it+1, 'Thrust'] = Thrust
 
@@ -525,3 +701,168 @@ class KalmanFilterMTNS(KalmanFilter):
             KF.dfOut.loc[it] = rowOut
         return KF.dfOut
 
+
+
+"""Monopile/turbine digital twin using augmented Kalman estimation."""
+
+
+
+scriptDir = os.path.dirname(__file__)
+
+def main(fstFile, tmin=0, tmax=20, show=False,
+         compFile=None, hydroShapeFile=None, 
+         aeroMapFile=None, operFile=None,
+         linFile=None, 
+         method='YAMS', 
+         hacks=None,
+         Tp=None,
+         nUnderSamp=10,
+         tRangeStats=None):
+    if tRangeStats is None:
+         tRangeStats = [tmin, tmax]
+
+    base = os.path.splitext(fstFile)[0] + '_DigitalTwin'
+
+    # --- Read reference output DataFrame 
+    outFile = fstFile.replace('.fst', '.outb')
+    if not os.path.exists(outFile):
+        raise FileNotFoundError(outFile)
+    df_ref = weio.read(outFile).toDataFrame()
+    df_ref = df_ref[(df_ref['Time_[s]'] >= tmin) & (df_ref['Time_[s]'] <= tmax)]
+
+    df_ref=df_ref.iloc[::nUnderSamp,:] # reducing sampling
+    df_ref.reset_index(inplace=True)
+
+    # Read output file and ensure all mapped columns exist (e.g. for onshore case)
+    missing_cols = ['Wave1Elev_[m]', 'HydroFxi_[N]', 'HydroMyi_[N-m]', '-ReactMYss_[N*m]', '-ReactFXss_[N]']
+    for col in missing_cols:
+        if col not in df_ref.columns:
+            WARN('Missing column '+col)
+            df_ref[col] = 0.0
+
+    # --------------------------------------------------------------------------------}
+    # --- Kalman filter estimation 
+    # --------------------------------------------------------------------------------{
+    # --- Wind speed estimator (reads tabulated aerodynamic data)
+    wse = TabulatedWSEstimator(fstFile=fstFile, operFile=operFile, aeroMapFile=aeroMapFile)
+    KF = KalmanFilterMTNS(WSE=wse, hacks=hacks)
+    KF.setup_matrices(fstFile, 
+                      compFile=compFile, hydroShapeFile=hydroShapeFile, Tp=Tp,
+                      dfTime=df_ref['Time_[s]'].values, method=method, linFile=linFile,
+                      )
+
+    # --- Loading "Measurements"
+    # - Reference file is opened
+    # - Measurements are extracted from it
+    # - Other signals are extracted from the file, for comparison with estimates. These are referred as "clean" values
+    # - Estimate sigmas from measurements (overriden in next section)
+    KF.loadMeasurements(measFile=df_ref, tRange=[tmin,tmax], colMap=KF.colMap, timeCol='Time_[s]', raiseIfAbsent=True)
+
+    KF.X_clean['dq_h'] = np.gradient(KF.X_clean['q_h'], KF.dt)
+    # --- Storage for plot
+    KF.prepareTimeStepping()
+    # --- Process and measurement covariances
+    dt_ref = 0.02 # NOTE: Q change with dt
+    # NOTE: sigs will be squared for P, Q, R
+    sigs = {'x':{}, 'y':{}, 'Q':{}}
+    sigs['y']['PtfmIMUAx'] = np.sqrt(1e-3)    
+    sigs['y']['PtfmIncly'] = np.sqrt(2.7e-7)
+    sigs['y']['dpsi']      = np.sqrt(1e-5)
+    sigs['y']['NcIMUAx']  = np.sqrt(1e-2)    
+    sigs['y']['Qgen']      = np.sqrt(1e-5)
+#     sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
+#     sQa = ['q_h', 'dq_h', 'Qaero']                                         # Augmented states
+    sigs['Q']['x']      = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['phi_y']  = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['q_FA1']  = np.sqrt(KF.dt/dt_ref * 2e-5)
+    sigs['Q']['psi']    = np.sqrt(KF.dt/dt_ref * 2e-6)
+
+    sigs['Q']['dx']     = np.sqrt(KF.dt/dt_ref * 2e-3)
+    sigs['Q']['dphi_y'] = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['dq_FA1'] = np.sqrt(KF.dt/dt_ref * 2e-5)
+    sigs['Q']['dpsi']   = np.sqrt(KF.dt/dt_ref * 2e-5)
+
+    sigs['Q']['q_h']    = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['dq_h']   = np.sqrt(KF.dt/dt_ref * 1e-4) #KF.Sw
+    sigs['Q']['Qaero']  = np.sqrt(KF.dt/dt_ref * 1e10)
+    sigs['x'] = sigs['Q'].copy()
+
+    KF.setupCovariances(
+            sigs=sigs,
+            useDt=False, Pidentity=True, verbose=False)
+    # TODO use sigs above instead
+#     KF.R[:] = np.diag([1e-3, 2.7e-7, 1e-5, 1e-2, 1e4])
+#     KF.Q[:] = np.diag([1e-6, 1e-6, 1e-5, 1e-6, 1e-5, 1e-6, 1e-5, 1e-5,
+#                        1e-6, 0.0001, 1e10])
+
+    # --- Prepare measurements - Create noisy measurements
+    KF.setYFromClean(R=KF.R, NoiseRFactor=0)
+
+    print('>>>>>>>>>>>>>>>> KALMAN FILTER >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+    print(KF)
+    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+    # --------------------------------------------------------------------------------}
+    # --- Time Loop 
+    # --------------------------------------------------------------------------------{
+    with Timer('KF time loop'):
+        KF.timeLoop()
+    df_sl = KF.dfOut
+    file_sl = base + '_SectionLoads_KF_timeloop.outb'
+    df_sl.to_outb(file_sl)
+    print('Export:', file_sl)
+
+    statsDict = {}    
+    try:
+        fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
+        plt.savefig(base + '_KF_X.png')
+        KF.plot_Y(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
+        plt.savefig(base + '_KF_Y.png')
+        fig = KF.plot_S(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
+        plt.savefig(base + '_KF_S.png')
+#         KF.plot_U()
+    except Exception as e:
+        FAIL('Plotting using KF plot functions failed:'+str(e))
+    # KF.plot_P()
+    # KF.plot_K()
+    # KF.plot_innovation()
+    
+    if show:
+        plt.show()
+    return KF, df_ref, df_sl
+
+
+if __name__ == '__main__':
+    fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+#     linFile        = os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
+    linFile        = os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1.1.lin')
+    compFile       = os.path.join(scriptDir, 'examples/_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    aeroMapFile    = os.path.join(scriptDir, 'examples/_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+    operFile       = os.path.join(scriptDir, 'examples/_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+    hydroShapeFile = os.path.join(scriptDir, 'examples/_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
+    hacks = {}
+
+    # Super hack
+#     hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
+#              'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True}
+# 
+#     # Intermediate hack: States are exact - Hydro loads are exact
+#     hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} 
+
+    # Intermediate hack
+    #hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True} # <<<< EXAMPLE
+
+    method='YAMS'
+    method='OpenFAST'
+    show=True
+    tRange = [190, 200]
+    nUnderSamp=10
+    #tRange = [150, 270]
+
+    main(fstFile=fstFile, linFile=linFile, 
+         compFile=compFile,  hydroShapeFile=hydroShapeFile, Tp=12.7,
+         aeroMapFile=aeroMapFile, operFile=operFile,
+         hacks=hacks, show=show,
+         nUnderSamp=nUnderSamp,
+         tmin=tRange[0], tmax=tRange[1],
+         method=method
+         )
