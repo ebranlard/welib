@@ -106,7 +106,7 @@ def main(fstFile=None, hydroShapeFile=None, Tp=None, tRange=None, tRangeStats=No
     statsDict = {}
     fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
     fig = KF.plot_Y()
-    # KF.plot_U()
+    KF.plot_U()
     fig = KF.plot_S(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
     # KF.plot_P()
     # KF.plot_K()
@@ -169,13 +169,13 @@ def test_monopile_IEA(test=True):
 #     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F2T0_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
     hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
-    tRange = [0, 30]
+    tRange = [0, 15]
     stats = main(fstFile=fstFile, hydroShapeFile=hydroShapeFile, Tp=12.7, tRange=tRange)
 
 if __name__ == '__main__':
 
     # --- Monopile Jonswap Hs=8.1 Tp=12.7, Default
-#     test_monopile()
+    test_monopile()
     test_monopile_IEA(test=False)
 
     # --- Monopile Jonswap Hs=2.5 Tp=10

@@ -4,33 +4,28 @@ Kalman filter model for "Floater Tower Nacelle Shaft"
 """
 import os
 import numpy as np
-from welib.kalman.kalman import *
-from welib.kalman.kalmanfilter import KalmanFilter
-
+# Welib
 from welib.essentials import *
-from welib.kalman.filters import moving_average
-
-# --- External dependencies!
 import welib.fast.fastlib as fastlib
 import welib.weio as weio
+# Kalman
+from welib.kalman.kalman import *
+from welib.kalman.kalmanfilter import KalmanFilter
+from welib.kalman.filters import moving_average
 
+# YAMS
 from welib.yams.windturbine import FASTWindTurbine
 from welib.yams.models.simulator import SimulatorFromOF , hydroMatToSysMat
 from welib.fast.hydrodyn import HydroDyn
-
-# For YAMS
 from welib.yams.models.packman import IMUjacobian
 from welib.fast.extract import mainLinInputs
 
 # Open OpenFAST lin
 from welib.fast.linmodel import DEFAULT_COL_MAP_LIN
 from welib.fast.linmodel import FASTLinModelFTNSB
-
-# For both
 from welib.fast.tools.lin import subMat, matSimpleStateLabels, matToSIunits, renameList
 
-# Local
-from welib.kalman.kalman import EmptyStateMat, EmptyStateDF
+
 
 def _parse_name_list(s):
     """Accept a comma-separated string or a sequence of names."""
@@ -254,7 +249,7 @@ def get_physical_model(WT, modelName, fstFilename, qop=None, qdop=None, usePickl
 # The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
 class KalmanFilterFTNSLin(KalmanFilter):
 
-    def __init__(KF, sQ=None, sY=None, sU=None, sQa=None, sS=None, AE=None, debug=False, **opts):
+    def __init__(KF, sQ=None, sY=None, sU=None, sQa=None, sS=None, AE=None, debug=False, hacks=None, **opts):
         """
 
         """
@@ -288,6 +283,25 @@ class KalmanFilterFTNSLin(KalmanFilter):
         else:
             KF.wse = None
         KF.debug = debug
+        # Hacks
+        hacks_def = {'thrust':None, 'WSE':None, 'SL_cleanQ':False, 'SL_cleanFtop':False}
+        if hacks is None:
+            KF.hacks = hacks_def
+        else:
+            hacks_def.update(hacks)
+            KF.hacks = hacks_def
+        if KF.hacks['thrust']=='clean':
+            WARN('HACKING, using thrust from measurements for DEBUG ONLY!')
+        if KF.hacks['WSE']=='clean_inputs':
+            WARN('HACKING, using WSE inputs from measurements for DEBUG ONLY!')
+        if KF.hacks['SL_cleanQ']:
+            WARN('HACKING, using clean Q for section loads.')
+        if KF.hacks['SL_cleanFtop']:
+            WARN('HACKING, using clean F for section loads.')
+    def __repr__(self):
+        s = KalmanFilter.__repr__(self)
+        s+=' - hacks  : {} \n'.format(self.hacks)
+        return s
 
     def setup_matrices(KF, 
              modelName=None, fstLin=None, usePickle=True, fstFilename=None,
@@ -312,55 +326,59 @@ class KalmanFilterFTNSLin(KalmanFilter):
             tuning['fullColumns']    = True          # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< IMPORTANT
         fullColumns=tuning['fullColumns']
 
-
+        shapes_twr =[0]   # TODO detemine this based on sQ
 
         # --- Windturbine model
-        WT = FASTWindTurbine(fstFilename, twrShapes=[0], algo='OpenFAST').WT
+        WT = FASTWindTurbine(fstFilename, twrShapes=shapes_twr, 
+                             algo='OpenFAST').WT
         KF.WT = WT
 
-		# --- ColMap
+        #nGear = WT.ED['GBRatio']
+        
+        # --- ColMap
         # Col MAP for OpenFAST OutFile "Measurements" used for "clean" values
         KF.colMap={
-          ' x      ' : ' PtfmSurge_[m]                   '              ,
-          ' y      ' : ' PtfmSway_[m]                   '               ,
-          ' z      ' : ' {PtfmHeave_[m]}                '              ,
-          ' phi_x  ' : ' {PtfmRoll_[deg]}   * np.pi/180               ' , # SI [deg] -> [rad]
-          ' phi_y  ' : ' {PtfmPitch_[deg]}  * np.pi/180                ', # SI [deg] -> [rad]
-          ' phi_z  ' : ' {PtfmYaw_[deg]}    * np.pi/180              '  , # SI [deg] -> [rad]
-          #' q_FA1  ' : ' TTDspFA_[m]                   '                ,
-          ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   '                , # SI [deg] -> [rad]
-          ' q_FA1  ' : ' Q_TFA1_[m]                   '                ,
-          ' q_SS1  ' : ' Q_TSS1_[m]                   '                ,
-          ' dpsi  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 '                , # SI [rpm] -> [rad/s]
-          ' dq_FA1 ' : ' QD_TFA1_[m/s]               '                ,
-          ' dq_SS1 ' : ' QD_TSS1_[m/s]               '                ,
-          ' dx     ' : ' QD_Sg_[m/s]               '              ,
-          ' dy     ' : ' QD_Sw_[m/s]                '               ,
-          ' dz     ' : ' QD_Hv_[m/s]               '              ,
-          ' dphi_x ' : ' QD_R_[rad/s]                             ' ,
-          ' dphi_y ' : ' QD_P_[rad/s]                             ',
-          ' dphi_z ' : ' QD_Y_[rad/s]                             '  ,
-          ' ddpsi  ' : 'QD2_GeAz_[rad/s^2]'  ,
-          ' ddq_FA1' : 'QD2_TFA1_[m/s^2]               '                ,
-          ' ddq_SS1' : 'QD2_TSS1_[m/s^2]               '                ,
-          ' ddx    ' : 'QD2_Sg_[m/s^2]               '              ,
-          ' ddy    ' : 'QD2_Sw_[m/s^2]                '               ,
-          ' ddz    ' : 'QD2_Hv_[m/s^2]               '              ,
-          ' ddphi_x' : 'QD2_R_[rad/s^2]                             ' ,
-          ' ddphi_y' : 'QD2_P_[rad/s^2]                             ',
-          ' ddphi_z' : 'QD2_Y_[rad/s^2]                             '  ,
-          ' Thrust ' : ' RtFldFxh_[N]                 '                ,
-          ' Qaero  ' : ' RtFldMxh_[N-m]               '                ,
-#           ' Qgen   ' : ' {GenTq_[kN-m]}  *1000         '             , # [kNm] -> [Nm]
-          ' Qgen   ' : ' {GenTq_[kN-m]}  *1000 '+'*{}'.format(nGear)             , # [kNm] -> [Nm]
-          ' WS     ' : ' RtVAvgxh_[m/s]                '                ,
-          ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 '                , # SI [deg]->[rad]
-          ' NcIMUAx ' : ' NcIMUTAxs_[m/s^2]             ',
-          ' NcIMUAy ' : ' NcIMUTAys_[m/s^2]             ',
-          ' NcIMUAz ' : ' NcIMUTAzs_[m/s^2]             ',
-          ' NcIMUVx ' : ' NcIMUTVxs_[m/s]             ',
-          ' NcIMUVy ' : ' NcIMUTVys_[m/s]             ',
-          ' NcIMUVz ' : ' NcIMUTVzs_[m/s]             ',
+                'x'      : ' PtfmSurge_[m]                   '              ,
+                'y'      : ' PtfmSway_[m]                   '               ,
+                'z'      : ' {PtfmHeave_[m]}                '              ,
+                'phi_x'  : ' {PtfmRoll_[deg]}   * np.pi/180               ' , # SI [deg] -> [rad]
+                'phi_y'  : ' {PtfmPitch_[deg]}  * np.pi/180                ', # SI [deg] -> [rad]
+                'phi_z'  : ' {PtfmYaw_[deg]}    * np.pi/180              '  , # SI [deg] -> [rad]
+                'q_FA1'  : 'Q_TFA1_[m]',
+                'q_SS1'  : 'Q_TSS1_[m]',
+                'psi'    : '{Azimuth_[deg]} * np.pi/180', # SI [deg] -> [rad]
+                'dx     ': ' QD_Sg_[m/s]               '              ,
+                'dy     ': ' QD_Sw_[m/s]                '               ,
+                'dz     ': ' QD_Hv_[m/s]               '              ,
+                'dphi_x ': ' QD_R_[rad/s]                             ' ,
+                'dphi_y' : 'QD_P_[rad/s]',
+                'dphi_z ': ' QD_Y_[rad/s]                             '  ,
+                'dq_FA1' : 'QD_TFA1_[m/s]',
+                'dq_SS1 ': ' QD_TSS1_[m/s]               '                ,                
+                'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60', # SI [rpm] -> [rad/s]
+
+                'ddx'    : 'QD2_Sg_[m/s^2]',
+                'ddy    ': 'QD2_Sw_[m/s^2]                '               ,
+                'ddz    ': 'QD2_Hv_[m/s^2]               '              ,
+                'ddphi_x': 'QD2_R_[rad/s^2]                             ' ,
+                'ddphi_y': 'QD2_P_[rad/s^2]',
+                'ddphi_z': 'QD2_Y_[rad/s^2]                             '  ,
+                'ddq_FA1': 'QD2_TFA1_[m/s^2]',
+                'ddq_SS1' : 'QD2_TSS1_[m/s^2]',
+                'ddpsi'  : 'QD2_GeAz_[rad/s^2]',
+                'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
+                'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
+                'NcIMUAy': 'NcIMUTAys_[m/s^2]',
+                'NcIMUAz': 'NcIMUTAzs_[m/s^2]',
+                'NcIMUVx': 'NcIMUTVxs_[m/s]',
+                'NcIMUVy': 'NcIMUTVys_[m/s]',
+                'NcIMUVz': 'NcIMUTVzs_[m/s]',
+                'pitch'  : '{BldPitch1_[deg]} * np.pi/180', # SI [deg]->[rad]
+                'Thrust' : 'RtFldFxh_[N]',
+                'Qaero'  : 'RtFldMxh_[N-m]',
+                'WS'     : 'RtVAvgxh_[m/s]',
+
+
           # Extrapolations
         }
         sIMU=['NcIMUAx','NcIMUAy','NcIMUAz']
@@ -397,6 +415,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
             Kacc2, Cacc2, acc02 = IMUjacobian(sim.pkg, q0=qop, qd0=qdop, p=sim.p, u=u, uop=uop, method='finiteDifferences', sDOFs=sX0, dq=qop*0+0.01, dqd=qdop*0+0.01)
             CIMU_YAMS = pd.concat((Kacc,Cacc),axis=1)
             CIMU_YAMS.index=sIMU
+            raise Exception('YAMS broken')
 
         if 'OpenFAST' in frameworks:
             # --- OpenFAST
@@ -406,20 +425,20 @@ class KalmanFilterFTNSLin(KalmanFilter):
             linmodel.rename(verbose=False)
             #print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> lin model')
             #print(linmodel)
-            A_OF, B, C, D = linmodel.toDataFrames()
+            A_OF, B_base, C_base, D_base = linmodel.toDataFrames()
             #linmodel.extract(sX=sX, sU=sU, sY=sY, check=False)
+            B_base[abs(B_base)<tuning['zero_threshold']]=0
+            C_base[abs(C_base)<tuning['zero_threshold']]=0
+            D_base[abs(D_base)<tuning['zero_threshold']]=0
 
         # Chose between OF or YAMS
         if frameworks[0]=='OpenFAST':
-            A=A_OF
+            A_base = A_OF
         else:
-            A=A_YAMS
+            A_base = A_YAMS
 
         # --- 
-        A[abs(A)<tuning['zero_threshold']]=0
-        B[abs(B)<tuning['zero_threshold']]=0
-        C[abs(C)<tuning['zero_threshold']]=0
-        D[abs(D)<tuning['zero_threshold']]=0
+        A_base[abs(A_base)<tuning['zero_threshold']]=0
 
 
         Xx, Xu, Yx, Yu = KF.Xx, KF.Xu, KF.Yx, KF.Yu
@@ -431,10 +450,10 @@ class KalmanFilterFTNSLin(KalmanFilter):
         # basic A matrix
         sQd = ['d' + s for s in KF.sX0]
         for sqd in sQd:
-            if sqd not in A.index:
-                raise Exception('{} not present in Xx ({})'.format(sqd, A.index))
+            if sqd not in A_base.index:
+                raise Exception('{} not present in Xx ({})'.format(sqd, A_base.index))
             for sq in KF.sX0:
-                Xx.loc[sqd,sq] = A.loc[sqd,sq]
+                Xx.loc[sqd,sq] = A_base.loc[sqd,sq]
 
         # --- Hard Coding
         def setter(MM, sM, srow, scol, value, verbose=True):
@@ -467,36 +486,36 @@ class KalmanFilterFTNSLin(KalmanFilter):
 
         # --- Main B matrix
         # Thrust fay faz Qaero may maz
-        B = subMat(B, rows=None, cols=colAugForce2, check=True)
+        B_base = subMat(B_base, rows=None, cols=colAugForce2, check=True)
 
         # --- Rotor Inertia
-        if 'ddpsi' in A.index:
+        if 'ddpsi' in A_base.index:
             J_LSS_YAMS = linmodel.WT.rot.inertia[0,0] 
-            J_LSS_OF_Qgen   = -1/B.loc['ddpsi','Qgen']
-            J_LSS_OF_Qaero  =  1/B.loc['ddpsi','Qaero']
+            J_LSS_OF_Qgen   = -1/B_base.loc['ddpsi','Qgen']
+            J_LSS_OF_Qaero  =  1/B_base.loc['ddpsi','Qaero']
             J_LSS = J_LSS_OF_Qgen # Selection
             print('[INFO] KalmanModel: Rotor Inertia seleted: {}'.format(J_LSS))
 
             if 'Qaero' in KF.sXa:
                 if fullColumns:
-                    Xx.loc[sQd, 'Qaero'] = B.loc[sQd, 'Qaero'] # <<<<<
+                    Xx.loc[sQd, 'Qaero'] = B_base.loc[sQd, 'Qaero'] # <<<<<
                 setter(Xx, 'Xx', 'ddpsi', 'Qaero', 1/J_LSS)
 
             if 'Qgen' in KF.sXa:
                 if fullColumns:
-                    Xx.loc[sQd, 'Qgen'] = B.loc[sQd, 'Qgen'] # <<<<<
+                    Xx.loc[sQd, 'Qgen'] = B_base.loc[sQd, 'Qgen'] # <<<<<
                 setter(Xx, 'Xx', 'ddpsi', 'Qgen' , -1/J_LSS)
             if 'Qgen' in KF.sU:
                 if fullColumns:
-                    Xu.loc[sQd, 'Qgen'] = B.loc[sQd, 'Qgen'] # <<<<<
+                    Xu.loc[sQd, 'Qgen'] = B_base.loc[sQd, 'Qgen'] # <<<<<
                 setter(Xu, 'Xu', 'ddpsi', 'Qgen' ,-1/J_LSS)
 
         # --- Thrust
         sThrust = tuning['sThrust']
         if 'Thrust' in KF.sXa or 'Thrust' in KF.sU:
-            BFHx = B.loc[sQd, 'Thrust'] # Hub x force
-            BFNx = B.loc[sQd, 'NacFxN1_[N]'] # Nacelle x force
-            BFx_selected = B.loc[sQd, sThrust]*tuning['kThrustA']
+            BFHx = B_base.loc[sQd, 'Thrust'] # Hub x force
+            BFNx = B_base.loc[sQd, 'NacFxN1_[N]'] # Nacelle x force
+            BFx_selected = B_base.loc[sQd, sThrust]*tuning['kThrustA']
             print('[INFO] KalmanModel: Thrust ddq relation: {}'.format(BFx_selected.loc['ddq_FA1']))
             if 'Thrust' in KF.sXa:
                 if fullColumns:
@@ -602,7 +621,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
     # setupCovariances
         
     # --- Methods Common between TN and TNLin
-    # prepareMeasurements   
+    # prepareMeasurements
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, bFilterOm=False, nFilt=15, bFilterPhi=False):
         # --- Creating noise measuremnts
@@ -632,7 +651,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
         
         # --- Initial conditions
         x = KF.initFromClean(var='x,y,u')
-
+        
         # --- WSE
         if KF.wse:
             WS_last     = KF.S_clean['WS'].values[0].copy()
@@ -646,19 +665,20 @@ class KalmanFilterFTNSLin(KalmanFilter):
             iThrust = list(KF.sU).index('Thrust')
 
         # --- Time loop
-        for it in range(0,KF.nt-1):    
-            t = it*KF.dt
+        for it in range(0, KF.nt-1):
+            t = KF.time[it]
             # --- "Measurements"
-            y  = KF.Y.iloc[it,:].values
+            y = KF.Y.iloc[it,:].values
             # --- Inputs
-            u=KF.U_clean.iloc[it,:].values.copy()
+            u = KF.U_clean.iloc[it,:].values.copy()
             if 'Thrust' in KF.sU:
                 u[iThrust] = Thrust_last # We use previous estimated thrust as input.
                 
-            # --- KF predictions
+            # --- Predictions of next time step based on current time step
+            t = KF.time[it+1]
             x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P, KF.Q, KF.R)
 
-            # --- Estimate thrust and WS - Non generic code
+            # --- Estimate Wind Speed
             if KF.wse:
                 if 'WS' in KF.iX:
                     WS_last=x[KF.iX['WS']]
@@ -694,7 +714,7 @@ class KalmanFilterFTNSLin(KalmanFilter):
                 pitch  = 0
                 Thrust = 0
 
-            # --- Store
+           # --- Store extra info
             # TODO TODO WHY U IS NOT STORED?
             if 'Thrust' in KF.iX:
                 x[KF.iX['Thrust']] = GF
@@ -732,9 +752,9 @@ class KalmanFilterFTNSLin(KalmanFilter):
             WS_last     = WS_hat
             #WSavg[1:] = WSavg[0:-1]
             #WSavg[0]  = WS_hat
-# 
+            # --- Print status to screen
             if np.mod(it,500) == 0:
-                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it,KF.time[it],WS_hat,Thrust))
+                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it, KF.time[it], WS_hat, Thrust))
 
     # --------------------------------------------------------------------------------}
     # --- Extrapolation (calculation of moments  

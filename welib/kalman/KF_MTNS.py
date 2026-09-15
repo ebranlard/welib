@@ -31,7 +31,10 @@ from welib.yams.section_loads import beamSectionLoadsFromShapeFunctions
 class KalmanFilterMTNS(KalmanFilter):
 
     def __init__(KF, WSE=None, debug=False, hacks=None):
-        # 11 States
+        """
+
+        """    
+        # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
         sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
         sQa = ['q_h', 'dq_h', 'Qaero']                                         # Augmented states
         sU  = ['Qgen', 'pitch', 'Thrust', 'Fx_i', 'My_i', 'w']
@@ -83,19 +86,21 @@ class KalmanFilterMTNS(KalmanFilter):
         WT = FASTmodel2MTNSB(fstFile, shapes_sub=shapes_sub, shapes_twr=shapes_twr, shapes_bld=[],
                              DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=False,
                              algo='OpenFAST').WT
+        KF.WT = WT
 
         nGear = WT.ED['GBRatio']
-
-		# --- ColMap
+        
+        # --- ColMap
+        # Col MAP for OpenFAST OutFile "Measurements" used for "clean" values
         KF.colMap={
                 'x'      : 'Q_Sg_[m]' ,
                 'phi_y'  : 'Q_P_[rad]' ,
                 'q_FA1'  : 'Q_TFA1_[m]',
-                'psi'    : '{Azimuth_[deg]} * np.pi/180',
+                'psi'    : '{Azimuth_[deg]} * np.pi/180', # SI [deg] -> [rad]
                 'dx'     : 'QD_Sg_[m/s]',
                 'dphi_y' : 'QD_P_[rad/s]',
                 'dq_FA1' : 'QD_TFA1_[m/s]',
-                'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60',
+                'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60', # SI [rpm] -> [rad/s]
                 'q_h'    : '{Wave1Elev_[m]}',  # Hack to avoid deletion
                 'ddx'    : 'QD2_Sg_[m/s^2]',
                 'ddphi_y': 'QD2_P_[rad/s^2]',
@@ -107,7 +112,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 #'NcIMUAy': 'NcIMUTAys_[m/s^2]',
                 #'NcIMUAz': 'NcIMUTAzs_[m/s^2]',
                 'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
-                'pitch'  : '{BldPitch1_[deg]} * np.pi/180',
+                'pitch'  : '{BldPitch1_[deg]} * np.pi/180', # SI [deg]->[rad]
                 'Thrust' : 'RtAeroFxh_[N]',
                 'Qaero'  : 'RtAeroMxh_[N-m]',
                 'WS'     : 'RtVAvgxh_[m/s]',
@@ -115,7 +120,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 'Fx_sb'  : '-ReactFXss_[N]',
                 'My_sb'  : '-ReactMYss_[N*m]',
 
-            }
+        }
         if WT.fnd is not None:
             KF.colMap.update({
                 'Fx_i'   : 'IntfFXss_[N]',   
@@ -298,7 +303,7 @@ class KalmanFilterMTNS(KalmanFilter):
     # setupCovariances
         
     # --- Methods Common between TN and TNLin
-    # prepareMeasurements   
+    # prepareMeasurements
 
 
     def get_OF_DOFs(KF, x, x_dot=None):
@@ -360,39 +365,40 @@ class KalmanFilterMTNS(KalmanFilter):
         # --- Initial conditions
         x = KF.initFromClean(var='x,y,u')
         
-        thrust = KF.U_clean['Thrust'].iloc[0]
+        Thrust = KF.U_clean['Thrust'].iloc[0]
         # --- WSE
-        ws_last = KF.S_clean['WS'].iloc[0]
+        WS_last = KF.S_clean['WS'].iloc[0]
 
         # --- Time loop
-        for it in range(0, KF.nt-1):    
+        for it in range(0, KF.nt-1):
             t = KF.time[it]
             # --- "Measurements"
-            y  = KF.Y.iloc[it,:].values
+            y = KF.Y.iloc[it,:].values
             # --- Inputs
             u = KF.U_clean.iloc[it,:].values.copy()
-            u[KF.iU['Thrust']] = thrust # We use previous estimated thrust as input.
+            u[KF.iU['Thrust']] = Thrust # We use previous estimated thrust as input.
             
             # --- Predictions of next time step based on current time step
             t = KF.time[it+1]
             x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P)
 
-            # --- WSE hack
+            # --- Estimate Wind Speed
             if KF.hacks['WSE'] == 'clean_inputs':
-                qaero_val = KF.X_clean['Qaero'].iloc[it]
-                dpsi_val = KF.X_clean['dpsi'].iloc[it]
+                Qaero_hat = KF.X_clean['Qaero'].iloc[it]
+                omega = KF.X_clean['dpsi'].iloc[it]
             else:
-                qaero_val = x[KF.iX['Qaero']]
-                dpsi_val = x[KF.iX['dpsi']]
-
-            ws, _ = KF.wse.estimate(qaero_val, pitch=u[KF.iU['pitch']] * 180 / np.pi, omega=dpsi_val, WS0=ws_last, relaxation=0, method='oper-crossing', t=KF.time[it])
-            ws_last = float(ws)
-
-            # --- Thrust hack
+                Qaero_hat = x[KF.iX['Qaero']]
+                omega     = x[KF.iX['dpsi']]
+            pitch = u[KF.iU['pitch']] * 180 / np.pi # deg
+            WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch=pitch, omega=omega, WS0=WS_last, relaxation=0, method='oper-crossing', t=KF.time[it])
+            Qaero_hat = np.max(Qaero_hat,0)
+            WS_last = float(WS_hat)
+            
+            # --- Estimate Thrust
             if KF.hacks['thrust'] == 'clean':
-                thrust = KF.U_clean['Thrust'].iloc[it]
+                Thrust = KF.U_clean['Thrust'].iloc[it]
             else:
-                thrust = float(np.asarray(KF.wse.Thrust(ws_last, pitch=u[KF.iU['pitch']] * 180 / np.pi, omega=dpsi_val)))
+                Thrust = KF.wse.Thrust(WS_hat, pitch=pitch, omega=omega)
 
             # --- Estimate Generalized hydro force and bending moment (calc output)
             q_h     = x[KF.iX['q_h']]  # eta
@@ -417,7 +423,6 @@ class KalmanFilterMTNS(KalmanFilter):
             M_top = np.array((0.,0.,0.))
             a_ext = np.array((0.,0.,-WT.gravity)) # external acceleration (gravity/earthquake)
 
-            Thrust = thrust
             Qaero = 0
             ser_Loads = pd.Series({'Fadd_R_xs':Thrust, 'Fadd_R_ys':0, 'Fadd_R_zs':0, 'Madd_R_xs':Qaero, 'Madd_R_ys':0, 'Madd_R_zs':0})
             # TEMPORARY for backward compatibility
@@ -466,17 +471,18 @@ class KalmanFilterMTNS(KalmanFilter):
             
             # --- Store extra info
             # Environment
-            KF.S_hat.at[it+1, 'WS']     = ws_last
+            KF.S_hat.at[it+1, 'WS']     = WS_hat
             KF.S_hat.at[it+1, 'eta']    = q_h
             # Loads
             KF.S_hat.at[it+1, 'My_sb']  = M_sec[1,0]
             KF.S_hat.at[it+1, 'Fx_sb']  = F_sec[0,0]
             KF.S_hat.at[it+1, 'Fx_h']   = Fx_h_est
-            KF.S_hat.at[it+1, 'Thrust'] = thrust
+            KF.S_hat.at[it+1, 'Thrust'] = Thrust
 
             # --- Propagation to next time step
+            # --- Print status to screen
             if np.mod(it,500) == 0:
-                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it,KF.time[it], ws, thrust))
+                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it, KF.time[it], WS_hat, Thrust))
 
         # TODO evaluate at t=0, for now we just replicate the value
         index = KF.dfOut.index

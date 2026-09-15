@@ -115,6 +115,8 @@ def main(fstFile, tmin=0, tmax=20, show=False,
     # --- Prepare measurements - Create noisy measurements
     KF.setYFromClean(R=KF.R, NoiseRFactor=0)
 
+    print(KF)
+
 
     # --------------------------------------------------------------------------------}
     # --- Section loads "ideal", everything prescribed
@@ -140,11 +142,11 @@ def main(fstFile, tmin=0, tmax=20, show=False,
     # --------------------------------------------------------------------------------}
     # --- Section Loads as Postpro --- Method 1 "Kalman Filter"
     # --------------------------------------------------------------------------------{
-    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS From KF')
-    df_sl = KF.calc_sectionLoads(clean=True)
-    file_sl = base + '_SectionLoads_KF.outb'
-    df_sl.to_outb(file_sl)
-    print('Export:', file_sl)
+#     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS From KF')
+#     df_sl = KF.calc_sectionLoads(clean=True)
+#     file_sl = base + '_SectionLoads_KF.outb'
+#     df_sl.to_outb(file_sl)
+#     print('Export:', file_sl)
 
     # --------------------------------------------------------------------------------}
     # --- Section Loads as Postpro --- Method 2 "YSL"
@@ -214,6 +216,9 @@ def main(fstFile, tmin=0, tmax=20, show=False,
         plt.savefig(base + '_KF_Y.png')
         fig = KF.plot_S(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
         plt.savefig(base + '_KF_S.png')
+
+        KF.plot_U()
+
     except Exception as e:
         FAIL('Plotting using KF plot functions failed:'+str(e))
     # KF.plot_P()
@@ -236,9 +241,17 @@ def test_monopile_tower(test=True):
     operFile       = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
     hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
 
-    #hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':False} # Super hack
+    # Super hack
     hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
-             'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} # Super hack
+             'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True}
+
+    # Intermediate hack: States are exact - Hydro loads are exact
+    hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} 
+
+    # Intermediate hack
+    hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True}
+
+
     #hacks['WSE'] = 'clean_inputs'
     #hacks['thrust'] = 'clean'
     show=True
@@ -246,7 +259,7 @@ def test_monopile_tower(test=True):
         tRange = [150, 170]
         show=False
     else:
-        tRange = [150, 170]
+        tRange = [150, 270]
     main(fstFile=fstFile, linFile=linFile, 
          compFile=compFile,  hydroShapeFile=hydroShapeFile, Tp=12.7,
          aeroMapFile=aeroMapFile, operFile=operFile,

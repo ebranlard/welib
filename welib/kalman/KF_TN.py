@@ -67,7 +67,7 @@ class KalmanFilterTN(KalmanFilter):
         return s
 
     def setup_matrices(KF, 
-                      fstFile
+                       fstFile
                        ):
         shapes_twr =[0]   # TODO detemine this based on sQ
         # --- Windturbine model
@@ -76,22 +76,22 @@ class KalmanFilterTN(KalmanFilter):
                             ).WT
 
         nGear = WT.ED['GBRatio']
-
-	# --- ColMap
+        
+        # --- ColMap
         KF.colMap={
                 'q_FA1'  : 'Q_TFA1_[m]',
-                'psi'    : '{Azimuth_[deg]} * np.pi/180',
+                'psi'    : '{Azimuth_[deg]} * np.pi/180',   # [deg] -> [rad]
                 'dq_FA1' : ' NcIMUTVxs_[m/s]               ' ,
-                'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60',
-                'NcIMUAx': ' NcIMUTAxs_[m/s^2]',
-                'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
-                'pitch'  : '{BldPitch1_[deg]} * np.pi/180',
+                'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60', # [rpm] -> [rad/s]
+                'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
+                'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}*1000', # [kNm] -> [Nm]  # NOTE: nGear
+                'pitch'  : '{BldPitch1_[deg]} * np.pi/180',   # [deg] -> [rad]
                 'Thrust' : 'RtAeroFxh_[N]',
                 'Qaero'  : 'RtAeroMxh_[N-m]',
                 'WS'     : 'RtVAvgxh_[m/s]',
-
-
         }
+
+
 
 
         M,C,K,Ya,Yv,Yq,Yp,Yu,Fp,Fu,Pp,Pq,Pv = EmptySystemMat (len(KF.sX0)//2, len(KF.sY), len(KF.sXa), len(KF.sU))
@@ -130,7 +130,7 @@ class KalmanFilterTN(KalmanFilter):
     # setupCovariances
         
     # --- Methods Common between TN and TNLin
-    # prepareMeasurements    
+    # prepareMeasurements
 
     def prepareMeasurements(KF, NoiseRFactor=0, bFilterAcc=False, nFilt=15):
         if KF.R_c is None:
@@ -141,44 +141,65 @@ class KalmanFilterTN(KalmanFilter):
             KF.set_vY('NcIMUAx',  moving_average(KF.get_vY('NcIMUAx'),n=nFilt) )
 
     def timeLoop(KF):
+        # --- Aliases to shorten notations
         # --- Initial conditions
-        x = KF.initFromClean()
-        P = KF.P
+        x = KF.initFromClean(var='x,y,u')
+        # --- WSE
+        WS_last = KF.S_clean['WS'].iloc[0]
+        KF.S_hat.loc[0,'WS']= WS_last
 
-
-        for it in range(0,KF.nt-1):    
-            t = it*KF.dt
+        # --- Time loop
+        for it in range(0, KF.nt-1):
+            t = KF.time[it]
             # --- "Measurements"
-            y  = KF.Y.iloc[it,:].values
+            y = KF.Y.iloc[it,:].values
+            # --- Inputs
+            u = KF.U_clean.iloc[it,:].values.copy()
+            # --- Predictions of next time step based on current time step
+            t = KF.time[it+1]
+            x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P, KF.Q, KF.R)
 
-            # --- KF predictions
-            u=KF.U_clean.iloc[it,:].values.copy()
-            x,P,_ = KF.estimateTimeStep(u,y,x,P,KF.Q,KF.R)
+            # --- Estimate Wind Speed
+            if KF.hacks['WSE'] == 'clean_inputs':
+                Qaero_hat = KF.X_clean['Qaero'].iloc[it]
+                omega = KF.X_clean['dpsi'].iloc[it]
+            else:
+                Qaero_hat = x[KF.iX['Qaero']]
+                omega     = x[KF.iX['dpsi']]
+            pitch = y[KF.iY['pitch']] * 180 / np.pi # deg
 
-            # --- Estimate thrust and WS - Non generic code
-            WS_last   = x[KF.iX['WS']]
-            pitch     = y[KF.iY['pitch']]*180/np.pi # deg
-            Qaero_hat = x[KF.iX['Qaero']]
-            omega     = x[KF.iX['dpsi']]
-            WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch, omega, WS_last, relaxation = 0)
+            #WS_last   = x[KF.iX['WS']]
+
+            WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch=pitch, omega=omega, WS0=WS_last, relaxation = 0)
             Qaero_hat = np.max(Qaero_hat,0)
-            Thrust = KF.wse.Thrust(WS_hat, pitch, omega)
+            WS_last = float(WS_hat)
+            
+            # --- Estimate Thrust
+            if KF.hacks['thrust'] == 'clean':
+                Thrust = KF.U_clean['Thrust'].iloc[it]
+            else:
+                Thrust = KF.wse.Thrust(WS_hat, pitch=pitch, omega=omega)
             #GF = Thrust
             GF = KF.WT.GF_lin(Thrust,x,bFull=True)
 
-            x[KF.iX['Thrust']] = GF
-            x[KF.iX['WS']]     = WS_hat
+            # --- Store state (partially done by KF.estimateTimeStep)
+            if 'Thrust' in KF.sX:
+                x[KF.iX['Thrust']] = GF
+            if 'WS' in KF.sX:
+                x[KF.iX['WS']] = WS_hat
             x[KF.iX['psi']]    = np.mod(x[KF.iX['psi']], 2*np.pi)
-
-            # --- Store
+            # --- Store extra info
             KF.X_hat.iloc[it+1,:] = x
             KF.Y_hat.iloc[it+1,:] = np.dot(KF.Yx,x) + np.dot(KF.Yu,u)
+            # Environment
+            KF.S_hat.at[it+1, 'WS']     = WS_hat
+            # Loads
+            KF.S_hat.at[it+1, 'Thrust'] = Thrust
+
             # --- Propagation to next time step
-
+            # --- Print status to screen
             if np.mod(it,500) == 0:
-                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it,KF.time[it],x[7],x[4]))
-
-        KF.P = P
+                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it, KF.time[it], WS_hat, Thrust))
 
     # --- Methods Common between TN and TNLin
     # moments, export, plot_summary, plot_moments
