@@ -50,7 +50,6 @@ class ServoDyn:
                 else:
                     discon_in_path = discon_in_file
                 if os.path.exists(discon_in_path):
-                    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', discon_in_path)
                     self.DISCON = ROSCODISCONFile(discon_in_path)
 
 

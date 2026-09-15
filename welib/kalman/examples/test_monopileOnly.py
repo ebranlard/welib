@@ -25,7 +25,7 @@ import pytest
 
 scriptDir = os.path.dirname(__file__)
 
-def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
+def main(fstFile=None, hydroShapeFile=None, Tp=None, tRange=None, tRangeStats=None):
 
     # --- Main parameters
     export = False
@@ -37,8 +37,8 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
         tRange      = [0,12] # Time range for simulation [s]
         tRangeStats = [0,12] # Time range for stats [s]
         Tp = 12.7
-        fstFile    = os.path.join(scriptDir, '../../../data/Monopile/Main_MT100_JONSWAP_UserDef.fst')
-        hydro_shape_file = os.path.join(scriptDir, '../../../data/Monopile/MT100_HydroShapeFunction_Hs=8.1_Tp=12.7_h=50.csv')
+        fstFile        = os.path.join(scriptDir, '../../../data/Monopile/Main_MT100_JONSWAP_UserDef.fst')
+        hydroShapeFile = os.path.join(scriptDir, '../../../data/Monopile/MT100_HydroShapeFunction_Hs=8.1_Tp=12.7_h=50.csv')
 
     # --- Script derived parameters
     simFile = fstFile.replace('.fst','.outb')              # Measurements
@@ -47,7 +47,7 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # --- Kalman filter estimation 
     # --------------------------------------------------------------------------------{
     KF = KalmanFilterMonopile()
-    KF.setup_matrices(fstFilename=fstFile, hydro_shape_file=hydro_shape_file, Tp=Tp)
+    KF.setup_matrices(fstFile=fstFile, hydroShapeFile=hydroShapeFile, Tp=Tp)
 
     # --- Loading "Measurements"
     # - Reference file is opened
@@ -65,15 +65,15 @@ def main(fstFile=None, hydroShape=None, Tp=None, tRange=None, tRangeStats=None):
     # Based on influence in $C$.
     # Since $phi_y$ is so sensitive, it needs a smaller $Q$ than $x$ to prevent it from dominating the filter's attention.
     # --- Process and measurement covariances
-    dt_ref = 0.01 # NOTE: Q change with dt
+    dt_ref = 0.02 # NOTE: Q change with dt
     sigs = {'x':{}, 'y':{}, 'Q':{}}
-    sigs['y']['TTacc'] = np.sqrt(1e-3)
-    sigs['Q']['x']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['phi_y']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['dx']  = np.sqrt(KF.dt/dt_ref * 1e-3)
-    sigs['Q']['dphi_y']  = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['q_h']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    sigs['Q']['dq_h']  = np.sqrt(KF.dt/dt_ref * KF.Sw)
+    sigs['y']['PtfmIMUAx'] = np.sqrt(1e-3)
+    sigs['Q']['x']         = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['phi_y']     = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['dx']        = np.sqrt(KF.dt/dt_ref * 2e-3)
+    sigs['Q']['dphi_y']    = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['q_h']       = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['dq_h']      = np.sqrt(KF.dt/dt_ref * 2*KF.Sw)
     KF.setupCovariances(
             sigs=sigs,
             useDt=False, Pidentity=True, verbose=True)
@@ -160,10 +160,23 @@ def test_monopile():
 # Fhx      σ_est/σ_ref = 1.132 - ε=5.4% - R²=0.832
 # -------------------------------------------------------
 
+
+
+def test_monopile_IEA(test=True):
+    if test:
+        pytest.skip("Skipping test")
+        return
+#     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F2T0_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
+    hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
+    tRange = [0, 30]
+    stats = main(fstFile=fstFile, hydroShapeFile=hydroShapeFile, Tp=12.7, tRange=tRange)
+
 if __name__ == '__main__':
 
     # --- Monopile Jonswap Hs=8.1 Tp=12.7, Default
-    test_monopile()
+#     test_monopile()
+    test_monopile_IEA(test=False)
 
     # --- Monopile Jonswap Hs=2.5 Tp=10
 #     tRange=[0,600]; 

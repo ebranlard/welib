@@ -28,7 +28,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
         if StateModel=='nt1_nx8':
             sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust','Qaero','Qgen','WS'])
-            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
+            sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
             sS  = np.array(['WS'])
             KF.bWSInStates     = True
@@ -36,7 +36,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
         elif StateModel=='nt1_nx7':
             sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust','Qaero','Qgen'])
-            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
+            sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
             sS  = np.array(['WS'])
             KF.bWSInStates     = False
@@ -44,7 +44,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
         elif StateModel=='nt1_nx6':
             sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust','Qaero'])
-            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
+            sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['Qgen','pitch'])
             sS  = np.array(['WS'])
             KF.bWSInStates     = False
@@ -52,7 +52,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
         elif StateModel=='nt1_nx5':
             sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Qaero'])
-            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
+            sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['Thrust','Qgen','pitch'])
             sS  = np.array(['Thrust','WS'])
             KF.bWSInStates     = False
@@ -64,11 +64,11 @@ class KalmanFilterTNLin(KalmanFilterTN):
         KF.wse = WSE
         KF.debug = debug
 
-    def setup_matrices(KF, FstFile, StateFile, Qgen_LSS=True, ThrustHack=False):
+    def setup_matrices(KF, fstFile, StateFile, Qgen_LSS=True, ThrustHack=False):
         KF.Qgen_LSS = Qgen_LSS
         KF.ThrustHack = ThrustHack
 
-        WT2= FASTmodel2TNSB(FstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
+        WT2= FASTmodel2TNSB(fstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
         #WT2.DD      = WT2.DD*3.5 # increased damping to account for aero damping
         KF.WT2 = WT2
         KF.WT  = WT2
@@ -86,7 +86,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
               ' Qgen   ' : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]
               ' WS     ' : ' RtVAvgxh_[m/s]                ' ,
               ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 ' , # [deg]->[rad]
-              ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
+              ' NcIMUAx' : ' NcIMUTAxs_[m/s^2]             ' 
             }
         else:
             KF.colMap={
@@ -99,7 +99,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
               ' Qgen   ' : ' {GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]
               ' WS     ' : ' RtVAvgxh_[m/s]                ' ,
               ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 ' , # [deg]->[rad]
-              ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
+              ' NcIMUAx' : ' NcIMUTAxs_[m/s^2]             ' 
             }
 
         iX = KF.iX
@@ -107,7 +107,7 @@ class KalmanFilterTNLin(KalmanFilterTN):
         iU = KF.iU
 
         # --- Mechanical system and turbine data
-        WT  = FASTLinModelTNSB(FstFile, StateFile=StateFile, DEBUG=False)
+        WT  = FASTLinModelTNSB(fstFile, StateFile=StateFile, DEBUG=False)
         KF.linWT = WT
         A,B,C,D,M = WT.A, WT.B, WT.C, WT.D, WT.M # To Shorten notations
 
@@ -266,12 +266,16 @@ class KalmanFilterTNLin(KalmanFilterTN):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNLinSim(FstFile, MeasFile, OutputFile, aeroMapFile, StateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False, StateModel='nt1_nx7', Qgen_LSS=True, ThrustHack=False):
+def KalmanFilterTNLinSim(fstFile, MeasFile, OutputFile, aeroMapFile, StateFile, 
+                         nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False, 
+                         StateModel='nt1_nx7', Qgen_LSS=True, ThrustHack=False,
+                         operFile=None
+                         ):
 
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)    
-    wse = TabulatedWSEstimator(fstFile=FstFile, aeroMapFile=aeroMapFile)
+    wse = TabulatedWSEstimator(fstFile=fstFile, aeroMapFile=aeroMapFile, operFile=operFile)
     KF = KalmanFilterTNLin(StateModel=StateModel, WSE=wse, debug=debug)
-    KF.setup_matrices(FstFile, StateFile, Qgen_LSS=Qgen_LSS, ThrustHack=ThrustHack)
+    KF.setup_matrices(fstFile, StateFile, Qgen_LSS=Qgen_LSS, ThrustHack=ThrustHack)
     if debug:
         print(KF.wse)
         print(KF.WT)

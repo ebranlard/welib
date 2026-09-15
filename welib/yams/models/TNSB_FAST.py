@@ -1,5 +1,6 @@
 #
 import numpy as np
+from welib.essentials import *
 from welib.yams.windturbine import FASTWindTurbine
 from welib.yams.models.TNSB import TNSBStructure
 
@@ -58,7 +59,8 @@ class FASTmodel2TNSB(FASTWindTurbine):
         self.loadFST(FST_file, readlist=readlist)
         self.setGravity(gravity)
         if self.FST['CompSub']>0:
-            raise Exception('Do not use TNSB_FAST when CompSub>0 (SubDyn), use MTNSB or MNSB')
+            #raise Exception('Do not use TNSB_FAST when CompSub>0 (SubDyn), use MTNSB or MNSB')
+            WARN('Do not use TNSB_FAST when CompSub>0 (SubDyn), use MTNSB or MNSB')
 
         # --- Default arguments (needs ED loaded)
         # TODO in the future remove me

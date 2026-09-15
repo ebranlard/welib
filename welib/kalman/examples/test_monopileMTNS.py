@@ -20,30 +20,31 @@ import pytest
 
 scriptDir = os.path.dirname(__file__)
 
-def main(fst_file, tmin=0, tmax=20, show=False,
-    comp_file=None, hydro_shape_file=None, aero_map_file=None,
-    oper_file=None, lin_file=None, method='YAMS', hacks=None,
-    Tp=None,
-    tRangeStats=None):
+def main(fstFile, tmin=0, tmax=20, show=False,
+         compFile=None, hydroShapeFile=None, 
+         aeroMapFile=None, operFile=None,
+         linFile=None, 
+         method='YAMS', 
+         hacks=None,
+         Tp=None,
+         tRangeStats=None):
     
-    # --- Main parameters
-
     # --- Default arguments:
-    comp_file        = comp_file               or os.path.join(scriptDir, '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
-    aero_map_file    = aero_map_file                or os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
-    oper_file        = oper_file                    or os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
-    hydro_shape_file = hydro_shape_file or os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv')
+    compFile       = compFile       or os.path.join(scriptDir, '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    aeroMapFile    = aeroMapFile    or os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+    operFile       = operFile       or os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+    hydroShapeFile = hydroShapeFile or os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv')
 
     if tRangeStats is None:
          tRangeStats = [tmin, tmax]
 
-    base = os.path.splitext(fst_file)[0] + '_DigitalTwin'
+    base = os.path.splitext(fstFile)[0] + '_DigitalTwin'
 
     # --- Read reference output DataFrame 
-    out_file = fst_file.replace('.fst', '.outb')
-    if not os.path.exists(out_file):
-        raise FileNotFoundError(out_file)
-    df_ref = weio.read(out_file).toDataFrame()
+    outFile = fstFile.replace('.fst', '.outb')
+    if not os.path.exists(outFile):
+        raise FileNotFoundError(outFile)
+    df_ref = weio.read(outFile).toDataFrame()
     df_ref = df_ref[(df_ref['Time_[s]'] >= tmin) & (df_ref['Time_[s]'] <= tmax)]
 
     nUnderSamp=10
@@ -61,11 +62,11 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --- Kalman filter estimation 
     # --------------------------------------------------------------------------------{
     # --- Wind speed estimator (reads tabulated aerodynamic data)
-    wse = TabulatedWSEstimator(fstFile=fst_file, operFile=oper_file, aeroMapFile=aero_map_file)
+    wse = TabulatedWSEstimator(fstFile=fstFile, operFile=operFile, aeroMapFile=aeroMapFile)
     KF = KalmanFilterMTNS(WSE=wse, hacks=hacks)
-    KF.setup_matrices(fst_file, 
-                      comp_file=comp_file, hydro_shape_file=hydro_shape_file, Tp=Tp,
-                      dfTime=df_ref['Time_[s]'].values, method=method, lin_file=lin_file)
+    KF.setup_matrices(fstFile, 
+                      compFile=compFile, hydroShapeFile=hydroShapeFile, Tp=Tp,
+                      dfTime=df_ref['Time_[s]'].values, method=method, linFile=linFile)
 
     # --- Loading "Measurements"
     # - Reference file is opened
@@ -78,22 +79,38 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --- Storage for plot
     KF.prepareTimeStepping()
     # --- Process and measurement covariances
-    dt_ref = 0.01 # NOTE: Q change with dt
+    dt_ref = 0.02 # NOTE: Q change with dt
+    # NOTE: sigs will be squared for P, Q, R
     sigs = {'x':{}, 'y':{}, 'Q':{}}
-    #sigs['y']['TTacc'] = np.sqrt(1e-3)
-    #sigs['Q']['q_s']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    #sigs['Q']['q_p']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    #sigs['Q']['qd_s']  = np.sqrt(KF.dt/dt_ref * 1e-3)
-    #sigs['Q']['qd_p']  = np.sqrt(KF.dt/dt_ref * 1e-6)
-    #sigs['Q']['q_h']   = np.sqrt(KF.dt/dt_ref * 1e-6)
-    #sigs['Q']['qd_h']  = np.sqrt(KF.dt/dt_ref * KF.Sw)
+    sigs['y']['PtfmIMUAx'] = np.sqrt(1e-3)    
+    sigs['y']['PtfmIncly'] = np.sqrt(2.7e-7)
+    sigs['y']['dpsi']      = np.sqrt(1e-5)
+    sigs['y']['NcIMUAx']  = np.sqrt(1e-2)    
+    sigs['y']['Qgen']      = np.sqrt(1e-5)
+#     sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
+#     sQa = ['q_h', 'dq_h', 'Qaero']                                         # Augmented states
+    sigs['Q']['x']      = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['phi_y']  = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['q_FA1']  = np.sqrt(KF.dt/dt_ref * 2e-5)
+    sigs['Q']['psi']    = np.sqrt(KF.dt/dt_ref * 2e-6)
+
+    sigs['Q']['dx']     = np.sqrt(KF.dt/dt_ref * 2e-3)
+    sigs['Q']['dphi_y'] = np.sqrt(KF.dt/dt_ref * 2e-6)
+    sigs['Q']['dq_FA1'] = np.sqrt(KF.dt/dt_ref * 2e-5)
+    sigs['Q']['dpsi']   = np.sqrt(KF.dt/dt_ref * 2e-5)
+
+    sigs['Q']['q_h']    = np.sqrt(KF.dt/dt_ref * 1e-6)
+    sigs['Q']['dq_h']   = np.sqrt(KF.dt/dt_ref * 1e-4) #KF.Sw
+    sigs['Q']['Qaero']  = np.sqrt(KF.dt/dt_ref * 1e10)
+    sigs['x'] = sigs['Q'].copy()
+
     KF.setupCovariances(
             sigs=sigs,
             useDt=False, Pidentity=True, verbose=False)
     # TODO use sigs above instead
-    KF.R[:] = np.diag([1e-3, 2.7e-7, 1e-5, 1e-2, 1e-2, 1e-3, 1e4])
-    KF.Q[:] = np.diag([1e-6, 1e-6, 1e-5, 1e-6, 1e-5, 1e-6, 1e-5, 1e-5,
-                       1e-6, 0.0001, 1e10])
+#     KF.R[:] = np.diag([1e-3, 2.7e-7, 1e-5, 1e-2, 1e4])
+#     KF.Q[:] = np.diag([1e-6, 1e-6, 1e-5, 1e-6, 1e-5, 1e-6, 1e-5, 1e-5,
+#                        1e-6, 0.0001, 1e10])
 
     # --- Prepare measurements - Create noisy measurements
     KF.setYFromClean(R=KF.R, NoiseRFactor=0)
@@ -103,7 +120,7 @@ def main(fst_file, tmin=0, tmax=20, show=False,
     # --- Section loads "ideal", everything prescribed
     # --------------------------------------------------------------------------------{
 #     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS USING DF_REF')
-#     YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+#     YSL = YAMSSectionLoadCalculator(fstFile=fstFile, WT=KF.WT)
 #     with Timer('Section Loads ref'):
 #         # NOTE: we cannot use KF.df as the columns have been renamed
 #         # NOTE: this will trigger a calculation of the wave elevation
@@ -135,7 +152,7 @@ def main(fst_file, tmin=0, tmax=20, show=False,
 #     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SECTION LOADS USING CLEAN')
 #     clean = True
 #     # Section loads post-processing using the pre-configured WT directly
-#     YSL = YAMSSectionLoadCalculator(fstFile=fst_file, WT=KF.WT)
+#     YSL = YAMSSectionLoadCalculator(fstFile=fstFile, WT=KF.WT)
 #     df_in2 = YSL.emptyInputDF(len(KF.time), inputFrame='R_xs', units=True)
 #     df_in = pd.DataFrame({'Time_[s]': KF.time})
 #     units = {'Sg':   ('[m]', '[m/s]', '[m/s^2]'),
@@ -212,12 +229,12 @@ def test_monopile_tower(test=True):
     if os.getenv('GITHUB_ACTIONS') == 'true':
         NOTE('test Offshore FTNS not ready yet')
         pytest.skip("Skipping local-only test on GitHub Actions")
-    fst_file         = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
-    lin_file         = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
-    comp_file        = os.path.join(scriptDir, '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
-    aero_map_file    = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
-    oper_file        = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
-    hydro_shape_file = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=2.5_Tp=10.csv')
+    fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    linFile        = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
+    compFile       = os.path.join(scriptDir, '_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    aeroMapFile    = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+    operFile       = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+    hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
 
     #hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':False} # Super hack
     hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
@@ -230,9 +247,9 @@ def test_monopile_tower(test=True):
         show=False
     else:
         tRange = [150, 170]
-    main(fst_file=fst_file, lin_file=lin_file, 
-         comp_file=comp_file,  hydro_shape_file=hydro_shape_file, Tp=12.7,
-         aero_map_file=aero_map_file, oper_file=oper_file,
+    main(fstFile=fstFile, linFile=linFile, 
+         compFile=compFile,  hydroShapeFile=hydroShapeFile, Tp=12.7,
+         aeroMapFile=aeroMapFile, operFile=operFile,
          hacks=hacks, show=show,
          tmin=tRange[0], tmax=tRange[1]
          )
@@ -245,7 +262,7 @@ if __name__ == '__main__':
         raise
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('fst_file', nargs='?', default='_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    parser.add_argument('fstFile', nargs='?', default='_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
     parser.add_argument('--lin-file', type=str, default='_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
     parser.add_argument('--tmin', type=float, default=150)
     parser.add_argument('--tmax', type=float, default=170)
@@ -260,7 +277,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print('Arguments:',args)
-    main(args.fst_file, tmin=args.tmin, tmax=args.tmax, show=args.show, method=args.method, lin_file=args.lin_file, hacks=hacks)
+    main(args.fstFile, tmin=args.tmin, tmax=args.tmax, show=args.show, method=args.method, linFile=args.linFile, hacks=hacks)
 
 
 

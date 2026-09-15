@@ -2,57 +2,95 @@
 Kalman filter model for "Tower Nacelle Shaft" (based on yams TNSB)"
 
 """
-
 import os
 import numpy as np
-from .kalman import *
-from .kalmanfilter import KalmanFilter
-from .filters import moving_average
-from welib.ws_estimator.tabulated import TabulatedWSEstimator
-from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
+# Welib
+from welib.essentials import *
 from welib.tools.stats import comparison_stats
+from welib.ws_estimator.tabulated import TabulatedWSEstimator
 import welib.fast.fastlib as fastlib
 import welib.weio as weio
+# Kalman
+from welib.kalman.kalman import *
+from welib.kalman.kalmanfilter import KalmanFilter
+from .filters import moving_average
+
+# YAMS
+from welib.yams.models.TNSB_FAST import FASTmodel2TNSB
+
+
 
 # --------------------------------------------------------------------------------}
-# -- Kalman Filter 
+# --- Kalman Filter 
 # --------------------------------------------------------------------------------{
-# The parts that change from model to model are the time loop, potentially the measurement preps and postprocessing
+# The parts that changes from model to model are the time loop, potentially the measurement preps and postprocessing
 
 class KalmanFilterTN(KalmanFilter):
 
-    def __init__(KF, bThrustInStates=True, WSE=None, debug=False):
+    def __init__(KF, bThrustInStates=True, WSE=None, debug=False, hacks=None):
         KF.bThrustInStates = bThrustInStates
         if bThrustInStates:
             sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
             sQa = np.array(['Thrust' ,'Qaero'  ,'Qgen','WS'] )
-            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
+            sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
         else:
             sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi','Qaero','Qgen'] )
             sQa = np.array(['Qaero','Qgen','WS'] )
-            sY  = np.array(['TTacc','dpsi','Qgen','pitch'])
+            sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['Thrust','pitch'])
-        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY)
+        sS = ['WS', 'Thrust']
+        # --- Parent init
+        KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
+        # --- Storing wind speed estimator (based on tabulated aerodynamic data)
         KF.wse = WSE # wind speed estimator
         KF.debug = debug
+        # Hacks
+        hacks_def = {'thrust':None, 'WSE':None, 'SL_cleanQ':False, 'SL_cleanFtop':False}
+        if hacks is None:
+            KF.hacks = hacks_def
+        else:
+            hacks_def.update(hacks)
+            KF.hacks = hacks_def
+        if KF.hacks['thrust']=='clean':
+            WARN('HACKING, using thrust from measurements for DEBUG ONLY!')
+        if KF.hacks['WSE']=='clean_inputs':
+            WARN('HACKING, using WSE inputs from measurements for DEBUG ONLY!')
+        if KF.hacks['SL_cleanQ']:
+            WARN('HACKING, using clean Q for section loads.')
+        if KF.hacks['SL_cleanFtop']:
+            WARN('HACKING, using clean F for section loads.')
 
-    def setup_matrices(KF, FstFile):
-        WT = FASTmodel2TNSB(FstFile , shapes_twr=[0],shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
+    def __repr__(self):
+        s = KalmanFilter.__repr__(self)
+        s+=' - hacks  : {} \n'.format(self.hacks)
+        return s
+
+    def setup_matrices(KF, 
+                      fstFile
+                       ):
+        shapes_twr =[0]   # TODO detemine this based on sQ
+        # --- Windturbine model
+        WT = FASTmodel2TNSB(fstFile, shapes_twr=shapes_twr, shapes_bld=[], 
+                            DEBUG=False, bStiffening=True, main_axis='z'
+                            ).WT
 
         nGear = WT.ED['GBRatio']
 
+	# --- ColMap
         KF.colMap={
-          ' q_FA1    ' : ' TTDspFA_[m]                   ' ,
-          ' psi    ' : ' {Azimuth_[deg]} * np.pi/180   ' , # [deg] -> [rad]
-          ' dq_FA1 ' : ' NcIMUTVxs_[m/s]               ' ,
-          ' dpsi  ' : ' {RotSpeed_[rpm]} * 2*np.pi/60 ' , # [rpm] -> [rad/s]
-          ' Thrust ' : ' RtAeroFxh_[N]                 ' ,
-          ' Qaero  ' : ' RtAeroMxh_[N-m]               ' ,
-          ' Qgen   ' : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
-          ' WS     ' : ' RtVAvgxh_[m/s]                ' ,
-          ' pitch  ' : ' {BldPitch1_[deg]} * np.pi/180 ' , # [deg]->[rad]
-          ' TTacc  ' : ' NcIMUTAxs_[m/s^2]             ' 
+                'q_FA1'  : 'Q_TFA1_[m]',
+                'psi'    : '{Azimuth_[deg]} * np.pi/180',
+                'dq_FA1' : ' NcIMUTVxs_[m/s]               ' ,
+                'dpsi'   : '{RotSpeed_[rpm]} * 2*np.pi/60',
+                'NcIMUAx': ' NcIMUTAxs_[m/s^2]',
+                'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
+                'pitch'  : '{BldPitch1_[deg]} * np.pi/180',
+                'Thrust' : 'RtAeroFxh_[N]',
+                'Qaero'  : 'RtAeroMxh_[N-m]',
+                'WS'     : 'RtVAvgxh_[m/s]',
+
+
         }
 
 
@@ -100,7 +138,7 @@ class KalmanFilterTN(KalmanFilter):
         # --- Creating noise measuremnts
         KF.setYFromClean(R=KF.R_c, NoiseRFactor=NoiseRFactor)
         if bFilterAcc:
-            KF.set_vY('TTacc',  moving_average(KF.get_vY('TTacc'),n=nFilt) )
+            KF.set_vY('NcIMUAx',  moving_average(KF.get_vY('NcIMUAx'),n=nFilt) )
 
     def timeLoop(KF):
         # --- Initial conditions
@@ -306,12 +344,15 @@ class KalmanFilterTN(KalmanFilter):
 # --------------------------------------------------------------------------------}
 # --- Wrapper For Simulation 
 # --------------------------------------------------------------------------------{
-def KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=None, bExport=False, colMap=None, debug=False):
+def KalmanFilterTNSim(fstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, 
+                      sigs=None, bExport=False, colMap=None, debug=False,
+                      operFile=None
+                      ):
     # --- Creating a wind speed estimator (reads tabulated aerodynamic data)
-    wse = TabulatedWSEstimator(fstFile=FstFile, aeroMapFile=aeroMapFile)
+    wse = TabulatedWSEstimator(fstFile=fstFile, aeroMapFile=aeroMapFile, operFile=operFile)
 
     KF = KalmanFilterTN(bThrustInStates=bThrustInStates, WSE=wse, debug=debug)
-    KF.setup_matrices(FstFile)
+    KF.setup_matrices(fstFile)
     if debug:
         print(KF.wse)    
         print(KF)

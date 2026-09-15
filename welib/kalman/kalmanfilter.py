@@ -472,27 +472,27 @@ class KalmanFilter(object):
         if sigX is not None:
             for k,v in sigX.items():
                 if k in KF.sigX:
-                    print(f'[INFO] Sig[x][{k:10s}]: {prettyNum(KF.sigX[k])} > {prettyNum(v)}')
+                    print(f'[INFO] Sig[x][{k:10s}]^2: {prettyNum(KF.sigX[k]**2)} > {prettyNum(v**2)}')
                     KF.sigX[k] = v
                 else:
-                    WARN(f'sigX key {k} is not in sX: ({KF.sX})')
+                    raise Exception(f'sigX key {k} is not in sX: ({KF.sX})')
         sigY = sigs.get('y', None)
         if sigY is not None:
             for k,v in sigY.items():
                 if k in KF.sigY:
-                    print(f'[INFO] Sig[y][{k:10s}]: {prettyNum(KF.sigY[k])} > {prettyNum(v)}')
+                    print(f'[INFO] Sig[y][{k:10s}]^2: {prettyNum(KF.sigY[k]**2)} > {prettyNum(v**2)}')
                     KF.sigY[k] = v
                 else:
-                    WARN(f'sigY key {k} is not in sY: ({KF.sY})')
+                    raise Exception(f'sigY key {k} is not in sY: ({KF.sY})')
         sigQ = sigs.get('Q', None)
         if sigQ is not None:
             for k,v in sigQ.items():
                 if k in KF.sigQ:
                     new_Val = v * KF.dt/dt_for_sigQ
-                    print(f'[INFO] Sig[Q][{k:10s}]: {prettyNum(new_Val)} > {prettyNum(v)}')
+                    print(f'[INFO] Sig[Q][{k:10s}]:^2 {prettyNum(new_Val**2)} > {prettyNum(v**2)}')
                     KF.sigQ[k] = new_Val
                 else:
-                    WARN(f'sigQ key {k} is not in sX: ({KF.sX})')
+                    raise Exception(f'sigQ key {k} is not in sX: ({KF.sX})')
 
         # --- Tuning sigmas
 #         # Tuning physical state tracking vs disturbance rate externally

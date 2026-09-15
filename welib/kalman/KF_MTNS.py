@@ -4,20 +4,24 @@ Kalman filter model for "Monopile Tower Nacelle Shaft" (based on yams MTNSB)
 """
 import os
 import numpy as np
+import pandas as pd
+
+# Welib
 from welib.essentials import *
-from welib.kalman.kalman import *
-from welib.kalman.kalmanfilter import KalmanFilter
-from welib.ws_estimator.tabulated import TabulatedWSEstimator
-from welib.yams.models.MTNSB import FASTmodel2MTNSB
-
 from welib.weio.fast_linearization_file import FASTLinearizationFile
-from welib.yams.section_loads import beamSectionLoadsFromShapeFunctions
-
+from welib.fast.FASTLin import FASTLin
+from welib.ws_estimator.tabulated import TabulatedWSEstimator
 import welib.fast.fastlib as fastlib
 import welib.weio as weio
-from welib.kalman.kalman import BuildSystem_Linear_MechOnly
-from welib.fast.FASTLin import FASTLin
-from welib.tools.strings import FAIL
+# Kalman
+from welib.kalman.kalman import *
+from welib.kalman.kalmanfilter import KalmanFilter
+
+# YAMS
+from welib.yams.models.MTNSB import FASTmodel2MTNSB
+from welib.yams.section_loads import beamSectionLoadsFromShapeFunctions
+
+
 
 # --------------------------------------------------------------------------------}
 # --- Kalman Filter 
@@ -31,7 +35,7 @@ class KalmanFilterMTNS(KalmanFilter):
         sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
         sQa = ['q_h', 'dq_h', 'Qaero']                                         # Augmented states
         sU  = ['Qgen', 'pitch', 'Thrust', 'Fx_i', 'My_i', 'w']
-        sY  = ['ddx', 'phi_y', 'dpsi', 'NcIMUAx', 'NcIMUAy', 'NcIMUAz', 'Qgen']
+        sY  = ['PtfmIMUAx', 'PtfmIncly', 'dpsi',  'NcIMUAx', 'Qgen']
         sS  = ['My_sb', 'Fx_sb', 'eta', 'Fx_h', 'WS', 'Thrust']
         # --- Parent init
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
@@ -66,19 +70,21 @@ class KalmanFilterMTNS(KalmanFilter):
         return s
 
     def setup_matrices(KF, 
-                       fstFilename, dfTime=None,
-                       hydro_shape_file=None, comp_file=None, Tp=None, zeta =0.12, qdhScale=1, # Hydro params
-                       method='YAMS', 
-                       lin_file=None, # For method=='OpenFAST
+                       fstFile, dfTime=None,
+                       hydroShapeFile=None, compFile=None, Tp=None, zeta =0.12, qdhScale=1, # Hydro params
+                       method='YAMS',
+                       linFile=None, # For method=='OpenFAST
                        ):
         """ Build WT model (sea state, hydro) and state matrices A,B,C,D """
         # --- Default arguments
         shapes_sub =[0,4] # TODO detemine this based on sQ
         shapes_twr =[0]   # TODO detemine this based on sQ
         # --- Windturbine model
-        WT = FASTmodel2MTNSB(fstFilename, shapes_sub=shapes_sub, shapes_twr=shapes_twr, shapes_bld=[],
+        WT = FASTmodel2MTNSB(fstFile, shapes_sub=shapes_sub, shapes_twr=shapes_twr, shapes_bld=[],
                              DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=False,
                              algo='OpenFAST').WT
+
+        nGear = WT.ED['GBRatio']
 
 		# --- ColMap
         KF.colMap={
@@ -95,12 +101,15 @@ class KalmanFilterMTNS(KalmanFilter):
                 'ddphi_y': 'QD2_P_[rad/s^2]',
                 'ddq_FA1': 'QD2_TFA1_[m/s^2]',
                 'ddpsi'  : 'QD2_GeAz_[rad/s^2]',
+                'PtfmIMUAx': '{QD2_Sg_[m/s^2]}',
+                'PtfmIncly': '{Q_P_[rad]}',
                 'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
-                'NcIMUAy': 'NcIMUTAys_[m/s^2]',
-                'NcIMUAz': 'NcIMUTAzs_[m/s^2]',
-                'Qgen'   : '{GenTq_[kN-m]} * 1000',
+                #'NcIMUAy': 'NcIMUTAys_[m/s^2]',
+                #'NcIMUAz': 'NcIMUTAzs_[m/s^2]',
+                'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
                 'pitch'  : '{BldPitch1_[deg]} * np.pi/180',
                 'Thrust' : 'RtAeroFxh_[N]',
+                'Qaero'  : 'RtAeroMxh_[N-m]',
                 'WS'     : 'RtVAvgxh_[m/s]',
                 'Fx_h'   : '{HydroFxi_[N]}',   # We use a trick  
                 'Fx_sb'  : '-ReactFXss_[N]',
@@ -124,12 +133,12 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Configure Sea State components and wave elevation
         if WT.pSS is not None:
-            print('[INFO] Setting Components', comp_file)
-            WT.SS_setComponents(comp_file)
+            print('[INFO] Setting Components', compFile)
+            WT.SS_setComponents(compFile)
             print('[INFO] Setting Compute Eta')
             WT.SS_computeEta(dfTime)
-            if hydro_shape_file is not None:
-                WT.HD_setShapeFunction(hydro_shape_file)
+            if hydroShapeFile is not None:
+                WT.HD_setShapeFunction(hydroShapeFile)
         # Ensure WT.MM contains the hydrodynamic mass if not already added
         pHD = WT.pHD
         if not getattr(WT, '_GM_hydro_added', False) and 'GM_hydro' in pHD:
@@ -169,9 +178,9 @@ class KalmanFilterMTNS(KalmanFilter):
             #A[KF.iX['dq_FA1'], KF.iX['dq_FA1']] = -2 * 0.03 * omega_t
 
         elif method=='OpenFAST':
-            if lin_file is None or not os.path.exists(lin_file):
+            if linFile is None or not os.path.exists(linFile):
                 raise FileNotFoundError('An OpenFAST .lin file is required for method=OpenFAST')
-            KF._set_openfast_submatrix(A, B, C, lin_file)
+            KF._set_openfast_submatrix(A, B, C, linFile)
 
         # --------------------------------------------------------------------------------}
         # ---  Code common to OpenFAST and YAMS
@@ -204,17 +213,21 @@ class KalmanFilterMTNS(KalmanFilter):
         B[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / inertia
 
         # --- Generalized hydro force 
+        IQD   =[KF.iX['dx'], KF.iX['dphi_y']]
         if 'k_h' in pHD:
             A[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
             A[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
         else:
             FAIL('k_h not present')
 
-        # --- Output equation for monopile top acceleration
-        C[KF.iY['ddx'], :] = A[KF.iX['dx'], :]
-        D[KF.iY['ddx'], :] = B[KF.iX['dx'], :]
-        C[KF.iY['phi_y'],  KF.iX['phi_y']] = 1   # We measure inclination
-        C[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed 
+        # --- Outputs 
+        # Monopile top acceleration
+        C[KF.iY['PtfmIMUAx'], :] = A[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
+        D[KF.iY['PtfmIMUAx'], :] = B[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
+        # Inclination
+        C[KF.iY['PtfmIncly'], KF.iX['phi_y']] = 1   # We measure inclination        
+        # Rotational speed
+        C[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed
 
         # Nacelle acceleration in x direction (including pitch coupling)
         h_nac = r_TN[2]
@@ -222,7 +235,7 @@ class KalmanFilterMTNS(KalmanFilter):
             C[KF.iY['NcIMUAx'], :] = A[KF.iX['dx'], :] + h_nac * A[KF.iX['dphi_y'], :] + A[KF.iX['dq_FA1'], :]
             D[KF.iY['NcIMUAx'], :] = B[KF.iX['dx'], :] + h_nac * B[KF.iX['dphi_y'], :] + B[KF.iX['dq_FA1'], :]
 
-        C[KF.iY['NcIMUAz'], KF.iX['phi_y']] = -9.81
+        #C[KF.iY['NcIMUAz'], KF.iX['phi_y']] = -9.81
         D[KF.iY['Qgen'], KF.iU['Qgen']] = 1
 
         # --- Shaping filter, Hydro state equation
@@ -243,10 +256,10 @@ class KalmanFilterMTNS(KalmanFilter):
         # --- Finally, we set the matrices
         KF.setMat(A, B, C, D)
 
-    def _set_openfast_submatrix(KF, A, B, C, lin_file):
+    def _set_openfast_submatrix(KF, A, B, C, linFile):
         """Insert measured OpenFAST state and IMU couplings when available."""
         from welib.fast.FASTLin import FASTLin
-        FL = FASTLin(linfiles=[lin_file], prefix='', verbose=False)
+        FL = FASTLin(linfiles=[linFile], prefix='', verbose=False)
         data = FL.OP_Data[0].Data[0]
         state_labels = [str(label) for label in FL.xdescr]
         state_map = {
@@ -259,9 +272,11 @@ class KalmanFilterMTNS(KalmanFilter):
         for row_name, row in indices.items():
             for col_name, col in indices.items():
                 A[KF.iX[row_name], KF.iX[col_name]] = data.A.values[row, col]
-        output_map = {'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
-                      'NcIMUAy': 'NcIMUTAys_[m/s^2]',
-                      'NcIMUAz': 'NcIMUTAzs_[m/s^2]'}
+        output_map = {
+                'PtfmIMUAx': 'QD2_Sg_[m/s^2]',
+                'PtfmIncly': 'Q_P_[rad]',
+                'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
+                      }
         for output_name, label in output_map.items():
             if label in FL.ydescr:
                 row = list(FL.ydescr).index(label)
@@ -295,7 +310,7 @@ class KalmanFilterMTNS(KalmanFilter):
         #sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
         fnd_x_q   = np.array([x[0],x[1]])
         fnd_xd_q  = np.array([x_dot[0], x_dot[1]])
-        fnd_xdd_q = np.array([x_dot[2], x_dot[3]])
+        fnd_xdd_q = np.array([x_dot[4], x_dot[5]])
 
         q  ['Sg']   = x[0]
         q  ['P']    = x[1]
@@ -429,7 +444,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 eta_dot_true = WT.pSS['eta_dot'][it+1]
                 p_hydro = KF.pHD['phi'] * eta_dot_true # p_h = k_h(z) q_h(t)
                 p_ext[0,:] = p_hydro
-                #p_ext = None 
+                #p_ext = None
             p_ext_for_h = p_ext
             if KF.hacks['SL_cleanP']:
                 p_ext = None  # if p_ext is None, WT will compute the p_ext based on the sea state, it's cheating
@@ -450,10 +465,10 @@ class KalmanFilterMTNS(KalmanFilter):
             
             
             # --- Store extra info
-            # Environment            
+            # Environment
             KF.S_hat.at[it+1, 'WS']     = ws_last
             KF.S_hat.at[it+1, 'eta']    = q_h
-            # Loads            
+            # Loads
             KF.S_hat.at[it+1, 'My_sb']  = M_sec[1,0]
             KF.S_hat.at[it+1, 'Fx_sb']  = F_sec[0,0]
             KF.S_hat.at[it+1, 'Fx_h']   = Fx_h_est

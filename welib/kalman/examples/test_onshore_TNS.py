@@ -28,7 +28,13 @@ import pytest
 
 scriptDir = os.path.dirname(__file__)
 
-def main(bYAMS=True, StateModel='nt1_nx5', test=False):
+def main(method='YAMS', StateModel='nt1_nx5', test=False,
+         fstFile=None,
+         aeroMapFile=None, operFile=None, 
+         linFile=None, linStateFile=None,
+         Tp=None,
+         tRangeStats=None
+         ):
     # Options for 7 states
     if test:
         tRange=[200,300]
@@ -59,15 +65,15 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
         sPref+='_FilterAcc'+str(nFilt)
 
     OutDir       = os.path.join(scriptDir, './../../data/NREL5MW/onshore/_kalman/')
-    FstFile      = os.path.join(scriptDir, '../../../data/NREL5MW/onshore/Hat.fst')
-    linFile      = os.path.join(scriptDir, '../../../data/NREL5MW/onshore/ws_5_lin.1.lin')
-    linStateFile = os.path.join(scriptDir, '../../../data/NREL5MW/onshore/ws_5_lin_FASTLin_2DOF.pkl') # Will be generated from linFile if not existing
-    aeroMapFile  = os.path.join(scriptDir, '../../../data/NREL5MW/NREL5MW_CPCTCQ.txt')
+    fstFile      = fstFile      or os.path.join(scriptDir, '../../../data/NREL5MW/onshore/Hat.fst')
+    linFile      = linFile      or os.path.join(scriptDir, '../../../data/NREL5MW/onshore/ws_5_lin.1.lin')
+    linStateFile = linStateFile or os.path.join(scriptDir, '../../../data/NREL5MW/onshore/ws_5_lin_FASTLin_2DOF.pkl') # Will be generated from linFile if not existing
+    aeroMapFile  = aeroMapFile  or os.path.join(scriptDir, '../../../data/NREL5MW/NREL5MW_CPCTCQ.txt')
 
 
-    MeasFile   = FstFile.replace('.fst','.outb')
-    Case       = os.path.basename(FstFile.replace('.fst',''))
-    if bYAMS:
+    MeasFile   = fstFile.replace('.fst','.outb')
+    Case       = os.path.basename(fstFile.replace('.fst',''))
+    if method=='YAMS':
         OutputFile = OutDir+Case+'_NREL5MW_{:s}'.format('YAMS')+sPref+'.csv'
     else:
         OutputFile = OutDir+Case+'_NREL5MW_{:s}'.format(StateModel)+sPref+'.csv'
@@ -83,13 +89,13 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
         sigs['x']['psi']    = 0.1
         sigs['x']['dq_FA1'] = 0.1
         sigs['x']['dpsi']  = 0.1
-        sigs['x']['Thrust'] = 1000000
+#         sigs['x']['Thrust'] = 1000000
         sigs['x']['Qaero']  = 8*10**6*1.0
-        sigs['x']['Qgen']   = 1.0*10**6
-        sigs['x']['WS']     = 1.0
+#         sigs['x']['Qgen']   = 1.0*10**6
+#         sigs['x']['WS']     = 1.0
         sigs['Q'] = sigs['x'].copy()
         # Measurements - more or less half the std
-        sigs['y']['TTacc'] = 0.08  # m/s^2
+        sigs['y']['NcIMUAx'] = 0.08  # m/s^2
         sigs['y']['dpsi'] = 0.05 # rad/s
         sigs['y']['Qgen']  = 1*10**6
         sigs['y']['pitch'] = 2.00
@@ -98,9 +104,12 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     # --- Kalman filter estimation 
     # --------------------------------------------------------------------------------{
     with Timer('Simulation Loop'):
-        if bYAMS:
+        if method=='YAMS':
             bThrustInStates=True
-            KF= KalmanFilterTNSim(FstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport)
+            KF= KalmanFilterTNSim(fstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, 
+                                  nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport,
+                                  operFile=operFile
+                                  )
         else:
 
             if not os.path.exists(linStateFile):
@@ -116,7 +125,11 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
                 print('M:\n',Mr)
 
 
-            KF= KalmanFilterTNLinSim(FstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport, StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True)
+            KF= KalmanFilterTNLinSim(fstFile, MeasFile, OutputFile, aeroMapFile, linStateFile, 
+                                     nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport, 
+                                     StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True,
+                                     operFile=operFile
+                                     )
     # --------------------------------------------------------------------------------}
     # --- PostPro  
     # --------------------------------------------------------------------------------{
@@ -145,8 +158,8 @@ def main(bYAMS=True, StateModel='nt1_nx5', test=False):
     #                                                  
     return stats
 
-def test_onshore_TNS_YAMS(test=True):
-    stats = main(bYAMS=False, StateModel='nt1_nx5', test=test)
+def test_onshore_TNS_OFLin(test=True):
+    stats = main(method='Lin', StateModel='nt1_nx5', test=test)
     np.testing.assert_array_less(stats['Qaero']['eps'] , 3.85)
     np.testing.assert_array_less(stats['WS']['eps']    , 3.65)
     np.testing.assert_array_less(stats['Thrust']['eps'], 3.15)
@@ -154,8 +167,8 @@ def test_onshore_TNS_YAMS(test=True):
     np.testing.assert_array_less(stats['M6']['eps']    , 2.75)
     np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
 
-def test_onshore_TNS_OFLin(test=True):
-    stats = main(bYAMS=True, StateModel='nt1_nx5' , test=test)
+def test_onshore_TNS_YAMS(test=True):
+    stats = main(method='YAMS', StateModel='nt1_nx5' , test=test)
     np.testing.assert_array_less(stats['Qaero']['eps'] , 3.85)
     np.testing.assert_array_less(stats['WS']['eps']    , 3.65)
     np.testing.assert_array_less(stats['Thrust']['eps'], 3.15)
@@ -163,8 +176,30 @@ def test_onshore_TNS_OFLin(test=True):
     np.testing.assert_array_less(stats['M6']['eps']    , 2.65)
     np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
 
+def test_onshore_TNS_YAMS_IEA(test=True):
+    if test:
+        pytest.skip("Skipping test")
+    fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    linFile      = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
+    linStateFile = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.pkl') 
+    aeroMapFile  = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+    operFile     = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+
+    stats = main(method='YAMS', StateModel='nt1_nx5', test=test,
+                 fstFile=fstFile,
+                 aeroMapFile=aeroMapFile, operFile=operFile,
+                 linFile=linFile, linStateFile=linStateFile
+                 )
+    np.testing.assert_array_less(1-stats['Qaero']['R2'] , 0.05)
+    np.testing.assert_array_less(1-stats['WS']['R2']    , 0.02)
+#     np.testing.assert_array_less(stats['Thrust']['eps'], 3.15) # TODO
+#     np.testing.assert_array_less(stats['M1']['eps']    , 5.05)
+#     np.testing.assert_array_less(stats['M6']['eps']    , 2.75)
+#     np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
+
 if __name__ == '__main__':
     test_onshore_TNS_YAMS (test=True)
     test_onshore_TNS_OFLin(test=True)
+    #test_onshore_TNS_YAMS_IEA(test=False)
 
     plt.show()
