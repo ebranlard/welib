@@ -231,6 +231,7 @@ def main(fstFile, tmin=0, tmax=20, show=False,
 
 
 def test_monopile_tower(test=True):
+    hacks={}
     if os.getenv('GITHUB_ACTIONS') == 'true':
         NOTE('test Offshore FTNS not ready yet')
         pytest.skip("Skipping local-only test on GitHub Actions")
@@ -242,18 +243,19 @@ def test_monopile_tower(test=True):
     hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
 
     # Super hack
-    hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
-             'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True}
-
-    # Intermediate hack: States are exact - Hydro loads are exact
-    hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} 
-
-    # Intermediate hack
-    hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True}
+#     hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
+#              'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True}
+# 
+#     # Intermediate hack: States are exact - Hydro loads are exact
+#     hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} 
+# 
+#     # Intermediate hack
+#     hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True}
 
 
     #hacks['WSE'] = 'clean_inputs'
     #hacks['thrust'] = 'clean'
+    method='YAMS'
     show=True
     if test:
         tRange = [150, 170]
@@ -264,7 +266,8 @@ def test_monopile_tower(test=True):
          compFile=compFile,  hydroShapeFile=hydroShapeFile, Tp=12.7,
          aeroMapFile=aeroMapFile, operFile=operFile,
          hacks=hacks, show=show,
-         tmin=tRange[0], tmax=tRange[1]
+         tmin=tRange[0], tmax=tRange[1],
+         method=method,
          )
 
 if __name__ == '__main__':

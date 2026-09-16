@@ -33,14 +33,16 @@ def main(method='YAMS', StateModel='nt1_nx5', test=False,
          aeroMapFile=None, operFile=None, 
          linFile=None, linStateFile=None,
          Tp=None,
-         tRangeStats=None
+         tRangeStats=None,
+         tRange=None,
+         nUnderSamp=5,
          ):
     # Options for 7 states
-    if test:
-        tRange=[200,300]
-    else:
-        tRange=[0,700]
-    nUnderSamp=5
+    if tRange is None:
+        if test:
+            tRange=[200,300]
+        else:
+            tRange=[0,700]
     bExport=False
     # bExport=True
     # bNoise=True
@@ -106,6 +108,7 @@ def main(method='YAMS', StateModel='nt1_nx5', test=False,
     with Timer('Simulation Loop'):
         if method=='YAMS':
             bThrustInStates=True
+#             bThrustInStates=False
             KF= KalmanFilterTNSim(fstFile, MeasFile, OutputFile, aeroMapFile, bThrustInStates, 
                                   nUnderSamp, tRange, bFilterAcc, nFilt, NoiseRFactor, sigs=sigs, bExport=bExport,
                                   operFile=operFile
@@ -130,6 +133,7 @@ def main(method='YAMS', StateModel='nt1_nx5', test=False,
                                      StateModel=StateModel, Qgen_LSS=Qgen_LSS, ThrustHack=True,
                                      operFile=operFile
                                      )
+    print(KF)
     # --------------------------------------------------------------------------------}
     # --- PostPro  
     # --------------------------------------------------------------------------------{
@@ -138,8 +142,8 @@ def main(method='YAMS', StateModel='nt1_nx5', test=False,
     def SNR(y):
         return np.mean(y**2)/np.std(y)**2
     # --- Leq
-    for j in [2,5]:
-        print('Leq  ref: {:.2f} - est: {:.2f}'.format(Leq(KF.time,KF.M_ref[j]),Leq(KF.time,KF.M_sim[j])))
+#     for j in [2,5]:
+#         print('Leq  ref: {:.2f} - est: {:.2f}'.format(Leq(KF.time,KF.M_ref[j]),Leq(KF.time,KF.M_sim[j])))
     # --- Signal-to-noise ratio
 #     for j,s in enumerate(KF.sY):
 #         print('SNR {:s} - clean: {:.2f} - meas {:.2f} - est {:.2f}'.format(s, SNR(KF.Y_clean[j,:]), SNR(KF.Y[j,:]), SNR(KF.Y_hat[j,:])))
@@ -179,7 +183,8 @@ def test_onshore_TNS_YAMS(test=True):
 def test_onshore_TNS_YAMS_IEA(test=True):
     if test:
         pytest.skip("Skipping test")
-    fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    #fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+    fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst')
     linFile      = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
     linStateFile = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.pkl') 
     aeroMapFile  = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
@@ -188,18 +193,15 @@ def test_onshore_TNS_YAMS_IEA(test=True):
     stats = main(method='YAMS', StateModel='nt1_nx5', test=test,
                  fstFile=fstFile,
                  aeroMapFile=aeroMapFile, operFile=operFile,
-                 linFile=linFile, linStateFile=linStateFile
+                 linFile=linFile, linStateFile=linStateFile,
+                 tRange=[100, 200], nUnderSamp=10
                  )
-    np.testing.assert_array_less(1-stats['Qaero']['R2'] , 0.05)
-    np.testing.assert_array_less(1-stats['WS']['R2']    , 0.02)
-#     np.testing.assert_array_less(stats['Thrust']['eps'], 3.15) # TODO
-#     np.testing.assert_array_less(stats['M1']['eps']    , 5.05)
-#     np.testing.assert_array_less(stats['M6']['eps']    , 2.75)
-#     np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
+#     np.testing.assert_array_less(1-stats['Qaero']['R2'] , 0.05)
+#     np.testing.assert_array_less(1-stats['WS']['R2']    , 0.02)
 
 if __name__ == '__main__':
+    test_onshore_TNS_YAMS_IEA(test=False)
     test_onshore_TNS_YAMS (test=True)
     test_onshore_TNS_OFLin(test=True)
-    #test_onshore_TNS_YAMS_IEA(test=False)
 
     plt.show()

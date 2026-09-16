@@ -318,9 +318,10 @@ class KalmanFilter(object):
         self.Kt     = np.zeros((self.nt, self.nX, self.nY))  # K is nx * ny
     
 
-    def initFromClean(self, var='x,y,u'):
+    def initFromClean(self, var='x,y,u,s'):
         """ Set initial conditions based on clean data"""
         x = np.zeros(self.nX)
+        var = var.lower()
         if 'x' in var:
             x = self.X_clean.iloc[0,:]
             self.X_hat.iloc[0,:] = x
@@ -328,6 +329,8 @@ class KalmanFilter(object):
             self.Y_hat.iloc[0,:] = self.Y_clean.iloc[0,:]
         if 'u' in var:
             self.U_hat.iloc[0,:] = self.U_clean.iloc[0,:]
+#         if 's' in var:
+        self.S_hat.iloc[0,:] = self.S_clean.iloc[0,:]
         return x
 
     def initZero(self):

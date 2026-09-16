@@ -264,7 +264,8 @@ def monopileOutputs(t, x, fnd, pSS, pHD, WT, it=None, xd=None, Sys=None, reconHy
     F_sec, M_sec, outD =  beamSectionLoadsFromShapeFunctions(q, qd, qdd, p_ext, F_top, M_top, fnd.s_span, fnd.PhiU, fnd.PhiV, PhiK = fnd.PhiK, m=fnd.m,  a_ext=a_ext, debug=False,
                                                              m_hydro=m_hydro, M_lumped=M_lumped)
     F_sec = np.vstack((F_sec, M_sec))
-    outD.update(outF)
+    if outF is not None:
+        outD.update(outF)
 
     if not reconHydro:
         if p_ext_provided:
@@ -2609,6 +2610,18 @@ class FASTWindTurbine():
         if self.verbose:
             INFO('Setting up SeaState')
         pSS = None
+        # --- TODO get rid of these
+        try:
+            self.WT.WtrDens   = self.FST['WtrDens']
+            self.WT.WtrDpth   = self.FST['WtrDpth']
+        except:
+            try:
+                # Legacy
+                self.WT.WtrDens   = self.HDFile['WtrDens']
+                self.WT.WtrDpth   = self.HDFile['WtrDpth']
+            except:
+                self.WT.WtrDens=np.nan
+                self.WT.WtrDpth=np.nan
 
         # --- Return None if not active
         if 'CompSeaSt' not in self.FST:
@@ -2624,14 +2637,6 @@ class FASTWindTurbine():
         pSS = dict() # TODO might deserve an object
         self.WT.pSS = pSS # Store data in WT class
 
-        # --- TODO get rid of these
-        try:
-            self.WT.WtrDens   = self.FST['WtrDens']
-            self.WT.WtrDpth   = self.FST['WtrDpth']
-        except:
-            # Legacy
-            self.WT.WtrDens   = self.HDFile['WtrDens']
-            self.WT.WtrDpth   = self.HDFile['WtrDpth']
 
         pSS['rho']        = self.WT.WtrDens      # [kg/m3]
         pSS['WaterDepth'] = self.WT.WtrDpth      # [m]

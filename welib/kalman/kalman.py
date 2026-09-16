@@ -79,7 +79,7 @@ def KFDiscretize(Xx, Xu, dt, method='exponential', verbose=False):
 
     return Xxd,Xud
 
-def BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=None,Pp=None,Yp=None,Yu=None,Method='default'):
+def BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=None,Pp=None,Yp=None,Yu=None,Fu=None,Pu=None,Method='default'):
     """ Takes system matrices of a mechanical system, returns a state matrix.
     The state matrix may be an "augmented matrix", in which case Fp, Pp, should be provided
 
@@ -131,6 +131,15 @@ def BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=None,Pp=None,Yp=None,Yu=None,Method='de
         Xx = np.block( [ [Z, I ,Znnp] , [mM_K, mM_C, M_Fp], [Znpn, Znpn, Pp] ])
         Xu = np.zeros((2*nDOF+nP,nU))
         Yx = np.block( [Yq + np.dot(Ya,mM_K), Yv + np.dot(Ya,mM_C), Yp+np.dot(Ya,M_Fp) ])
+        if Fu is not None:
+            # TODO
+            MiFu = np.linalg.solve(M, Fu)
+            Xu[nDOF:2*nDOF,: ] = MiFu
+            Yu = Yu + Ya @ MiFu
+        if Pu is not None:
+            Xu[2*nDOF:, : ] = Pu
+
+
 #         print('Yq..:\n', Yq + np.dot(Ya,mM_K))
 #         print('Yv..:\n', Yv + np.dot(Ya,mM_C))
 #         print('Fp..:\n', Yp+np.dot(Ya,M_Fp) )

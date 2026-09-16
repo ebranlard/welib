@@ -35,10 +35,10 @@ class KalmanFilterTN(KalmanFilter):
             sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
             sU  = np.array(['pitch'])
         else:
-            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi','Qaero','Qgen'] )
-            sQa = np.array(['Qaero','Qgen','WS'] )
+            sQ  = np.array(['q_FA1'  ,'psi'  ,'dq_FA1','dpsi'] )
+            sQa = np.array(['Qaero']) 
             sY  = np.array(['NcIMUAx','dpsi','Qgen','pitch'])
-            sU  = np.array(['Thrust','pitch'])
+            sU  = np.array(['Thrust','Qgen', 'pitch'])
         sS = ['WS', 'Thrust']
         # --- Parent init
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
@@ -107,7 +107,13 @@ class KalmanFilterTN(KalmanFilter):
             Fp[1,2] = -1   # dQ                        = p[1] -p[2]
             Yu[3,0] = 1    # pitch direct feedthrough
         else:
-            raise NotImplementedError()
+            Ya[0,0] = 1    # uddot                     = qddot[0]
+            Yv[1,1] = 1    # psidot                    = qdot[1]
+            Yu[2,1] = 1    # Mg                        = u[1] = y[2]
+            Fu[0,0] = 1    # T                         = u[0]
+            Fp[1,0] = 1    # dQaero                    = p[0]
+            Fu[1,1] = -1   # dQgen                     = 
+            Yu[3,2] = 1    # pitch direct feedthrough
 
         # --- Mechanical system and turbine data
         if nShapes_twr==1:
@@ -120,7 +126,7 @@ class KalmanFilterTN(KalmanFilter):
 
         # --- Building continuous and discrete state matrices
         M,C,K = WT.MM, WT.DD, WT.KK
-        A,B,C,D = BuildSystem_Linear(M,C,K,Ya,Yv,Yq,Fp=Fp,Pp=Pp,Yp=Yp,Yu=Yu,Method='augmented_first_order')
+        A,B,C,D = BuildSystem_Linear(M,C,K,Ya,Yv,Yq, Fp=Fp, Pp=Pp, Yp=Yp, Yu=Yu, Fu=Fu, Method='augmented_first_order')
 
         KF.setMat(A, B, C, D)
 
@@ -332,7 +338,7 @@ class KalmanFilterTN(KalmanFilter):
         from welib.tools.colors import cmap_colors
 
         z_test = list(fastlib.ED_TwrGag(KF.WT.ED)[0] - KF.WT.ED['TowerBsHt'])
-        print('z test:',z_test)
+        #print('z test:',z_test)
         n=len(z_test)
 #         z_test.reverse()
         # --- Compare measurements

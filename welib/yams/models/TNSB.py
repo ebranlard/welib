@@ -197,10 +197,10 @@ class TNSBStructure(WindTurbineStructure):
 
         GF  =   T*np.cos(s.shaft_tilt) 
         if bFull:
-            GF += - T* vy1c * np.sin(s.shaft_tilt) * x[0]
-            GF += (vy1c**2 * s.M_RNA*g * rhoN_z) * x[0]
-            GF +=  T*vy1c*(rNR_x*np.sin(s.shaft_tilt) + rNR_z*np.cos(s.shaft_tilt) ) 
-            GF += vy1c * s.M_RNA*g * rhoN_x
+            GF += - T* vy1c * np.sin(s.shaft_tilt) * x[0]  # Geometrical softening/stiffening, should be in K
+            GF += (vy1c**2 * s.M_RNA*g * rhoN_z) * x[0]    # Geometrical softening/stiffening, should be in K
+            GF +=  T*vy1c*(rNR_x*np.sin(s.shaft_tilt) + rNR_z*np.cos(s.shaft_tilt) )  # Moment arm of thrust acting at r_NR relative to tower top
+            GF += vy1c * s.M_RNA*g * rhoN_x # Static overhang moment
         return GF
 
     def __repr__(self):
