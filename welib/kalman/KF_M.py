@@ -226,7 +226,10 @@ class KalmanFilterMonopile(KalmanFilter):
         qdd['Sg']   = KF.df['ddx'].iloc[it]
         qdd['P']    = KF.df['ddphi_y'].iloc[it]
         return q, qd, qdd
+
     def timeLoop(KF):
+        print(f'Time Loop, dt={KF.dt}, t=[{KF.time[0]} - {KF.time[-1]}]')
+
         # --- Aliases to shorten notations
         WT = KF.WT
         dInfo = KF.dInfo

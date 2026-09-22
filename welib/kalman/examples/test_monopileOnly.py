@@ -25,10 +25,9 @@ import pytest
 
 scriptDir = os.path.dirname(__file__)
 
-def main(fstFile=None, hydroShapeFile=None, Tp=None, tRange=None, tRangeStats=None):
+def main(fstFile=None, hydroShapeFile=None, Tp=None, tRange=None, tRangeStats=None, export=False):
 
     # --- Main parameters
-    export = False
     nUnderSamp   = 1                          # 1: use same time steps as measurements, >1: undersample
     NoiseRFactor = 0                          # Add noise to measurements. 0: no noise
 
@@ -113,7 +112,7 @@ def main(fstFile=None, hydroShapeFile=None, Tp=None, tRange=None, tRangeStats=No
     # KF.plot_innovation()
     print('-------------------------------------------------------')
 
-    KFpkl = fstFile.replace('.fst', '_KF302.pkl')
+    KFpkl = fstFile.replace('.fst', f'_KFM_tMax{tRange[1]}.pkl')
     if export:
         KF.save(KFpkl)
     # 
@@ -166,11 +165,28 @@ def test_monopile_IEA(test=True):
     if test:
         pytest.skip("Skipping test")
         return
+
+
+    # --- MT100 (works great)
+    #fstFile        = os.path.join(scriptDir, '../../../data/Monopile/Main_MT100_JONSWAP_UserDef.fst')
+    #hydroShapeFile = os.path.join(scriptDir, '../../../data/Monopile/MT100_HydroShapeFunction_Hs=8.1_Tp=12.7_h=50.csv')
+
+
+
+    # --- IEA
+    #hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
+    #fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
+#     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F2T0_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
+#     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T0_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
+
 #     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
-    fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F2T0_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
-    hydroShapeFile = os.path.join(scriptDir, '_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
+#     fstFile        = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S0_H1A0_Hs=8.1_Tp=12.7.fst'); 
+
+
     tRange = [0, 15]
-    stats = main(fstFile=fstFile, hydroShapeFile=hydroShapeFile, Tp=12.7, tRange=tRange)
+    #tRange = [5, 600]
+#     tRange=None
+    stats = main(fstFile=fstFile, hydroShapeFile=hydroShapeFile, Tp=12.7, tRange=tRange, export=True)
 
 if __name__ == '__main__':
 
