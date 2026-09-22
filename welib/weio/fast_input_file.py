@@ -3,11 +3,12 @@ import os
 import pandas as pd
 import re
 try:
-    from .file import File, WrongFormatError, BrokenFormatError
+    from .file import File, WrongFormatError, BrokenFormatError, EmptyFileError
 except:
     File = dict
     class WrongFormatError(Exception): pass
     class BrokenFormatError(Exception): pass
+    class EmptyFileError(Exception): pass
 
 __all__  = ['FASTInputFile']
 
@@ -1048,8 +1049,14 @@ class FASTInputFileBase(File):
                     s+='\n'.join(fil for fil in d['value'][1:])
             elif d['tabType']==TABTYPE_OUTLIST:
                 label = d['label']
-                s+='{:22s} {:11s} - {}\n'.format('', label, d['descr'])
-                s+='\n'.join(fil for fil in d['value'][1:])
+                s+='{:22s} {:11s} - {}'.format('', label, d['descr'])
+                if len(d['value'])==0:
+                    pass
+                elif len(d['value'])==1 and len(d['value'][0])==0:
+                    pass
+                else:
+                    s+='\n'
+                    s+='\n'.join(fil for fil in d['value'][1:])
             elif d['tabType']==TABTYPE_NUM_BEAMDYN:
                 # TODO use dedicated sub-class
                 data = d['value']
@@ -1366,7 +1373,12 @@ def _merge_value(splits):
 def parseFASTInputLine(line_raw,i,allowSpaceSeparatedList=False):
     d = getDict()
     line_low = line_raw.lower()
-    if line_low=='end' or line_low.startswith('end of') or line_low.startswith('end ('):
+    if i==1:
+        # WE hard code comment as second line for now
+        d['isComment'] = True
+        d['value'] = line_raw
+        return d
+    elif line_low=='end' or line_low.startswith('end of') or line_low.startswith('end ('):
         d['isComment'] = True
         d['value'] = line_raw
         d['label'] = 'END'

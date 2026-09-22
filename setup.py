@@ -38,6 +38,11 @@ Wind energy library: suite of python tools for aero-servo-hydro-elasticity (aero
 #         'scipy', 
 #         'sympy'
 #     ],
+    entry_points={
+        'console_scripts': [
+            'of-standardize=welib.weio.converters:fast_input_file_standardize_cli',
+        ],
+    },
     extras_require       = EXTRAS,
     include_package_date = True,
     zip_safe=False,
