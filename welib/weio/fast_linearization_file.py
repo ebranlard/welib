@@ -3,6 +3,7 @@ import numpy as np
 import re
 import pandas as pd
 import copy
+from welib.tools.strings import FAIL, WARN
 try:
     from .file import File, WrongFormatError, BrokenFormatError
 except:
@@ -61,7 +62,7 @@ class FASTLinearizationFile(File):
         if filename:
             self.read(**kwargs)
 
-    def read(self, filename=None, starSub=None, removeStatesPattern=None):
+    def read(self, filename=None, starSub=None, removeStatesPattern=None, raiseNaNError=False):
         """ Reads the file self.filename, or `filename` if provided
 
         - starSub: if None, raise an error if `****` are present
@@ -145,8 +146,37 @@ class FASTLinearizationFile(File):
         except SlowReaderNeededError:
             doRead(slowReader=True)
 
+        self.check_nan(raiseError=raiseNaNError)
+
+
         if removeStatesPattern is not None:
             self.removeStates(pattern=removeStatesPattern)
+
+
+    def check_nan(self, raiseError=True, verbose=True):
+        matrices = {'A': self.A, 'B': self.B, 'C': self.C, 'D': self.D}
+        nan_counts = {}
+
+        for name, df in matrices.items():
+            if df is None:
+                continue
+            
+            nan_count = 0
+            is_nan = df.isna()
+            if is_nan.any().any():
+                nan_indices = is_nan.stack()[lambda x: x].index
+                for row_key, col_key in nan_indices:
+                    if verbose:
+                        print(f"NaN for Matrix {name}: row '{row_key}', col '{col_key}'")
+                    nan_count += 1
+            nan_counts[name] = nan_count
+
+        total_nans = sum(nan_counts.values())
+        if total_nans > 0:
+            summary = ", ".join([f"{name}: {count}" for name, count in nan_counts.items() if count > 0])
+            FAIL(f"NaN values detected in matrices -> {summary}")
+            if raiseError:
+                raise ValueError(f"NaN values detected in matrices -> {summary}")
 
     def subset(self, sX_sel=None, sU_sel=None, sY_sel=None):
         """
@@ -761,17 +791,20 @@ def readMat(fid, n, m, name='', slowReader=False, filename='', starSubFn=None, s
             shape2 = (n,m)
             raise Exception('Shape of matrix `{}` has wrong dimension ({} instead of {})\n\tin linfile: {}'.format(name, shape1, shape2, name, filename))
 
-        nNaN = np.sum(np.isnan(vals.ravel()))
+#         nNaN = np.sum(np.isnan(vals.ravel()))
         nInf = np.sum(np.isinf(vals.ravel()))
         if nInf>0:
             sErr = 'Some ill-formated/infinite values (e.g. `*******`) were found in the matrix `{}`\n\tin linflile: {}'.format(name, filename)
-            if starSub is None:
-                raise Exception(sErr)
-            else:
-                print('[WARN] '+sErr)
-                vals[np.isinf(vals)] = starSub
-        if nNaN>0:
-            raise Exception('Some NaN values were found in the matrix `{}`\n\tin linfile: `{}`.'.format(name, filename))
+            print('[WARN] '+sErr)
+
+#             WARN
+#             if starSub is None:
+#                 raise Exception(sErr)
+#             else:
+#                 print('[WARN] '+sErr)
+            vals[np.isinf(vals)] = np.nan
+#         if nNaN>0:
+#             raise Exception('Some NaN values were found in the matrix `{}`\n\tin linfile: `{}`.'.format(name, filename))
         return vals
 
 if __name__ == '__main__':

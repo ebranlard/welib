@@ -25,6 +25,7 @@ class FASTLinPeriodicOP(object):
     """
     def __init__(self, prefix=None, nLin=None, linFiles=None, verbose=False,
                 sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, # Subset
+                 raiseNaNError=True
                  ):
 
         # --- Init data
@@ -71,7 +72,7 @@ class FASTLinPeriodicOP(object):
                 FAIL('Linearization file missing: ',linFilename)
                 continue
             try:
-                linfile = FASTLinearizationFile(linFilename)
+                linfile = FASTLinearizationFile(linFilename, raiseNaNError=raiseNaNError)
             except LinHasNAError:
                 FAIL('Linearization file has NaN: ',linFilename)
                 continue
@@ -160,6 +161,7 @@ class FASTLin(object):
     """
     def __init__(self, linfiles=None, folder='./', prefix='', nLin=None, verbose=False,
                  sX_sel=None, sU_sel=None, sY_sel=None, sE_sel=None, # Subset
+                 raiseNaNError=True
                  ):
         """ 
         Init with a list of linfiles, or a folder and prefix
@@ -195,7 +197,7 @@ class FASTLin(object):
         # --- Read period operating points
         print('Reading linearizations for {} operating points'.format(nSim))
         for iOP, _prefix in enumerate(_simPrefixes):
-            pOP = FASTLinPeriodicOP(_prefix, nLin=nLin, sX_sel=sX_sel, sU_sel=sU_sel, sY_sel=sY_sel )
+            pOP = FASTLinPeriodicOP(_prefix, nLin=nLin, sX_sel=sX_sel, sU_sel=sU_sel, sY_sel=sY_sel, raiseNaNError=raiseNaNError )
             if len(pOP.Data)==0:
                 FAIL(f'FASTLin: No Data present, skipping: {_prefix}')
                 continue
