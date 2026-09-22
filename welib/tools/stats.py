@@ -7,6 +7,7 @@ Set of tools for statistics
 """
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 try:
     from numpy import trapezoid
 except:
@@ -17,6 +18,17 @@ from scipy.stats import spearmanr
 # --------------------------------------------------------------------------------}
 # --- Stats measures 
 # --------------------------------------------------------------------------------{
+STAT_PRINT_CONFIG = { 
+                 # Pretty name      # Latex fmt                                             # Plan format
+    'sigratio' : (r'sigRatio'                    , r'$\sigma_\mathrm{{est}}/\sigma_\mathrm{{ref}} = {:.3f}$' , 'std ratio (est/ref)={:.3f}') , 
+    'eps'      : (r'Rel. Err. $\epsilon$'        , r'$\epsilon={:.1f}\%$'                                , 'eps={:.1f}%')                , 
+    'r2'       : (r'$R^2$'                       , r'$R^2={:.3f}$'                                       , 'R^2={:.3f}')                 , 
+    'epsleq'   : (r'epsLeq'                      , r'$\epsilon L_{{eq}}={:.1f}\%$'                         , 'eps L_{eq}={:.1f}%')         , 
+    'pearsonr' : (r'Pearson $\rho_{xy}(0)$'      , r'$\rho_{{xy}}(0)={:.3f}$'                                   , 'rho(0)={:.3f}')                   , 
+    'spearmanr': (r'Spearman $\rho_S$'           , r'$\rho_S={:.3f}$'                                    , 'rho_S={:.3f}')                 , 
+    'xcorr_max': (r'Max. Xcorr, $\rho_{xy,max}$' , r'$\rho_m={:.3f}$'                                    , 'xcorr={:.3f}')               , 
+}
+
 def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', absVal=True, latex=True):
     """
     y1: ref
@@ -26,7 +38,7 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', abs
     from welib.tools.fatigue import equivalent_load
 
     sp=stats.split(',')
-    stats = {}
+    statsD = {}
     sStats=[]
 
     t1=np.asarray(t1).astype(float)
@@ -35,8 +47,8 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', abs
     y2=np.asarray(y2).astype(float)
 
     # Loop on statistics requested
-    for s in sp:
-        s= s.strip().lower()
+    for stat_lab in sp:
+        s= stat_lab.strip().lower()
         if s=='sigratio':
             # Ratio of standard deviation:
             sig_ref = float(np.nanstd(y1))
@@ -45,62 +57,40 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', abs
                 r_sig = sig_est/sig_ref
             except:
                 r_sig = np.nan
-            stats = {'sigRatio':r_sig}
-            if latex:
-                sStats+= [r'$\sigma_\mathrm{est}/\sigma_\mathrm{ref} = $'+r'{:.3f}'.format(r_sig)]
-            else:
-                sStats+= ['std ratio (est/ref)={:.3f}'.format(r_sig)]
+            statsD[stat_lab] = r_sig
 
         elif s=='eps':
             # Mean relative error
             eps     = float(mean_rel_err(t1, y1, t2, y2, method=method, absVal=absVal))
-            stats['eps'] = eps
-            if latex:
-                sStats+=[r'$\epsilon=$'+r'{:.1f}%'.format(eps)]
-            else:
-                sStats+=['eps={:.1f}%'.format(eps)]
+            statsD[stat_lab] = eps
 
         elif s=='r2':
             # Rsquare
-            R2 = float(rsquare(y2, y1)[0])
-            stats['R2'] = R2
-            if latex:
-                sStats+=[r'$R^2=$'+r'{:.3f}'.format(R2)]
-            else:
-                sStats+=['R^2={:.3f}'.format(R2)]
+            R2 = float(rsquare(y_ref=y1, y_sim=y2)[0])
+            statsD[stat_lab] = R2
 
         elif s=='epsleq':
             Leq1 = equivalent_load(t1, y1, m=5, bins=100, method='fatpack')
             Leq2 = equivalent_load(t2, y2, m=5, bins=100, method='fatpack')
             epsLeq = (Leq2-Leq1)/Leq1*100
-            stats['epsLeq'] = epsLeq
-            if latex:
-                sStats+=[r'$\epsilon L_{eq}=$'+r'{:.1f}%'.format(epsLeq)]
-            else:
-                sStats+=[r'eps L_{eq}={:.1f}%'.format(epsLeq)]
-        elif s in ['pearson']:
+            statsD[stat_lab] = epsLeq
+
+        elif s in ['pearsonr', 'rho_xy(0)']:
+            # Pearson is nothing more than the corss-correlation coefficient at zero lag
             try:
                 r_val = float(pearsonr(y1, y2)[0])
             except Exception:
                 r_val = np.nan
-            stats['pearsonr'] = r_val # "r"
-            if latex:
-                sStats += [r'$r=$' + r'{:.3f}'.format(r_val)]
-            else:
-                sStats += ['r={:.3f}'.format(r_val)]
+            statsD[stat_lab] = r_val # "r"
 
-        elif s in ['spearman']:
+        elif s in ['spearmanr']:
             try:
                 rho_val = float(spearmanr(y1, y2)[0])
             except Exception:
                 rho_val = np.nan
-            stats['sparman'] = rho_val # "rho"
-            if latex:
-                sStats += [r'$\rho=$' + r'{:.3f}'.format(rho_val)]
-            else:
-                sStats += ['rho={:.3f}'.format(rho_val)]
+            statsD[stat_lab] = rho_val # "rho"
 
-        elif s in ['xcorr', 'max_xcorr']:
+        elif s in ['xcorr_max']:
             y1_norm = y1 - np.nanmean(y1)
             y2_norm = y2 - np.nanmean(y2)
             denom = np.nanstd(y1) * np.nanstd(y2) * len(y1)
@@ -109,16 +99,74 @@ def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', abs
                 xcorr_max = float(np.nanmax(corr))
             else:
                 xcorr_max = np.nan
-            stats['xcorr'] = xcorr_max
-            if latex:
-                sStats += [r'$\rho_{\mathrm{max}}=$' + r'{:.3f}'.format(xcorr_max)]
-            else:
-                sStats += ['xcorr={:.3f}'.format(xcorr_max)]
+            statsD[stat_lab] = xcorr_max
 
         else:
-            raise NotImplementedError(s)
+            raise NotImplementedError()
+        # --- 
+        val = statsD[stat_lab]
+        ss, latex_fmt, plain_fmt = STAT_PRINT_CONFIG[s]
+        fmt = latex_fmt if latex else plain_fmt
+        sStats += [fmt.format(val)]
+
     sStats=' - '.join(sStats)
-    return stats, sStats
+    return statsD, sStats
+
+def comparison_stats_grouped(sample_ID, y_ref, y_sim, mean_var=None, stats='sigRatio,eps,R2', method='mean', absVal=True, latex=True):
+    """ Split samples based on sample_ID then computes average stats """
+    sample_ID = np.asarray(sample_ID)
+    y_ref = np.asarray(y_ref).astype(float)
+    y_sim = np.asarray(y_sim).astype(float)
+
+    unique_ids = np.unique(sample_ID)
+    all_stats_dicts = []
+    if mean_var is None:
+        sample_ID
+
+    # --- Split signal based on sample ID, and compute stats 
+    mean_val =[]
+    for uid in unique_ids:
+        mask = (sample_ID == uid)
+        sub_ref = y_ref[mask]
+        sub_sim = y_sim[mask]
+        sub_mean = mean_var[mask]
+        sub_t = np.arange(len(sub_ref))
+        mean_val.append(np.mean(sub_mean))
+
+        s_dict, sStats = comparison_stats(sub_t, sub_ref, sub_t, sub_sim, stats=stats, method=method, absVal=absVal, latex=latex)
+#         print('sStats', sStats)
+        all_stats_dicts.append(s_dict)
+
+    # --- Assemble values into a nice dict with numpy arrays
+    dict_sample = {'ID': list(unique_ids)}
+    keys = all_stats_dicts[0].keys() if all_stats_dicts else []
+    for k in keys:
+        dict_sample[k] = [d.get(k, np.nan) for d in all_stats_dicts]
+    dict_sample['mean_val'] = mean_val
+
+    # --- Take the average 
+    mean_stats = {}
+    for k in keys:
+        vals = [d[k] for d in all_stats_dicts if k in d and not np.isnan(d[k])]
+        mean_stats[k] = float(np.mean(vals)) if vals else np.nan
+
+    # --- Write corredponding string
+    sp = stats.split(',')
+    sStats = []
+    for s in sp:
+        s = s.strip().lower()
+        if s in STAT_PRINT_CONFIG:
+            sss, latex_fmt, plain_fmt = STAT_PRINT_CONFIG[s]
+            val = mean_stats.get(s, np.nan)
+            fmt = latex_fmt if latex else plain_fmt
+            sStats.append(fmt.format(val))
+        else:
+            raise NotImplementedError(s)
+
+    sStats = ' - '.join(sStats)
+    return mean_stats, sStats, dict_sample
+
+
 
 def allclose_errors(actual, desired):
     actual = np.asarray(actual)
@@ -138,56 +186,56 @@ def allclose_errors(actual, desired):
     return max_abs_err, max_rel_err
 
 
-def rsquare(y, f, c = True): 
+def rsquare(y_ref, y_sim, c = True): 
     """ Compute coefficient of determination of data fit model and RMSE
-    [r2 rmse] = rsquare(y,f)
-    [r2 rmse] = rsquare(y,f,c)
+    [r2 rmse] = rsquare(y_ref,y_sim)
+    [r2 rmse] = rsquare(y_ref,y_sim,c)
     RSQUARE computes the coefficient of determination (R-square) value from
-    actual data Y and model data F. The code uses a general version of
+    actual data Y_REF and model data Y_SIM. The code uses a general version of
     R-square, based on comparing the variability of the estimation errors
     with the variability of the original values. RSQUARE also outputs the
     root mean squared error (RMSE) for the user's convenience.
     Note: RSQUARE ignores comparisons involving NaN values.
     INPUTS
-      Y       : Actual data
-      F       : Model fit
+      Y_REF     : Actual data
+      Y_SIM     : Model fit
     
     # OPTION
-      C       : Constant term in model
-                R-square may be a questionable measure of fit when no
-              constant term is included in the model.
+      C         : Constant term in model
+                    R-square may be a questionable measure of fit when no
+                  constant term is included in the model.
       [DEFAULT] TRUE : Use traditional R-square computation
-               FALSE : Uses alternate R-square computation for model
-                     without constant term [R2 = 1 - NORM(Y-F)/NORM(Y)]
+                FALSE : Uses alternate R-square computation for model
+                       without constant term [R2 = 1 - NORM(Y-F)/NORM(Y)]
     # OUTPUT
-      R2      : Coefficient of determination
-      RMSE    : Root mean squared error """
+      R2        : Coefficient of determination
+      RMSE      : Root mean squared error """
     # Sanity
-    if not np.all(y.shape == f.shape) :
-        raise Exception('Y and F must be the same size')
-    y = np.asarray(y).astype(float)
-    f = np.asarray(f).astype(float)
+    if not np.all(y_ref.shape == y_sim.shape) :
+        raise Exception('Y_REF and Y_SIM must be the same size')
+    y_ref = np.asarray(y_ref).astype(float)
+    y_sim = np.asarray(y_sim).astype(float)
     # Check for NaN
-    tmp = np.logical_not(np.logical_or(np.isnan(y),np.isnan(f))) 
-    y = y[tmp]
-    f = f[tmp]
+    tmp = np.logical_not(np.logical_or(np.isnan(y_ref),np.isnan(y_sim))) 
+    y_ref = y_ref[tmp]
+    y_sim = y_sim[tmp]
     if c:
-        denom = np.sum((y-np.mean(y))** 2)
+        denom = np.sum((y_ref-np.mean(y_ref))** 2)
         if abs(denom)>0:
-            r2 = max(0,1-np.sum((y-f)**2)/denom)
+            r2 = max(0,1-np.sum((y_ref-y_sim)**2)/denom)
         else:
             r2 = np.inf
     else:
-        denom = np.sum((y) ** 2)
+        denom = np.sum((y_ref) ** 2)
         if abs(denom)>0:
-            r2 = 1 - np.sum((y - f) ** 2) /denom
+            r2 = 1 - np.sum((y_ref - y_sim) ** 2) /denom
         else:
             r2 = np.inf
         if r2 < 0:
             import warnings
             warnings.warn('Consider adding a constant term to your model')
             r2 = 0
-    rmse = np.sqrt(np.mean((y - f) ** 2))
+    rmse = np.sqrt(np.mean((y_ref - y_sim) ** 2))
     return r2,rmse
 
 
@@ -513,3 +561,102 @@ def azimuthal_std_DF(df, psiBin=np.arange(0,360+1,10), colPsi='Azimuth_[deg]', t
 
 
 
+def plot_yy(y_sim, y_ref, ax=None, 
+            label = None, sc_label=None, bin_label=None, 
+            scatter=True, sc_color=None, sc_size=None,  # Scatter Options
+            sc_alpha=0.5, sc_marker='o'                 ,  # Scatter Options
+            nBins=20, bin_color=None, bin_ls='-', bin_marker='o', # Bin Options
+            bin_markeredgecolor='k', bin_markersize=None,                        # Bin Options
+            pdf_x = False,                                             # PDF options
+            lims=None,
+            lg=None, lg_fs=11, lg_statsInBox=True, lg_loc='left',
+            stats='eps,R2'):
+    """ Perform a y-y plot, with"""
+    
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+        
+    y_sim = np.asarray(y_sim)
+    y_ref = np.asarray(y_ref)
+
+
+    # --- y-y black reference
+    all_vals = np.concatenate([y_ref, y_sim])
+    valid_vals = all_vals[~np.isnan(all_vals)]
+    if len(valid_vals) > 0:
+        if lims is None:
+            lims = [np.min(valid_vals)*1.05, np.max(valid_vals)*1.05]
+            ax.set_xlim(lims)
+            ax.set_ylim(lims)
+        ax.plot(lims, lims, color='black', linestyle='--', alpha=0.7)
+    
+    # --- Compute stats 
+    sStats = ""
+    if stats:
+        t = np.arange(len(y_ref))
+        _, sStats = comparison_stats(t, y_ref, t, y_sim, stats=stats)
+
+    # --- Determine where to put stats (in labels or box)
+    if stats and (not lg_statsInBox):
+        if sc_label is None and bin_label is None:
+            sc_label = sStats if scatter else None
+            bin_label = sStats if (nBins and scatter is None) else None
+        elif sc_label is not None:
+            sc_label += ' - '+sStats 
+        elif bin_label is not None:
+            bin_label += ' - '+sStats 
+
+    # --- Scatter plot
+    if scatter:
+        ax.scatter(y_ref, y_sim, c=sc_color, s=sc_size, label=sc_label, alpha=sc_alpha, marker=sc_marker)
+        
+    # --- Bin plot
+    if nBins is not None:
+        xBinned, yBinned = bin_signal(y_ref, y_sim, nBins=nBins, stats=['avg'])
+        ax.plot(xBinned, yBinned, color=bin_color, linestyle=bin_ls, marker=bin_marker,
+                markeredgecolor=bin_markeredgecolor, markersize=bin_markersize,
+                label=bin_label)
+        
+        
+    # -- Esthetics
+    ax.tick_params(direction='in', top=True, right=True, labelright=False, labeltop=False, which='both')
+    if lg:
+        if bin_label or sc_label:
+            ax.legend(loc=lg_loc, fontsize=lg_fs)
+    if lg_statsInBox:
+        # Split the combined stats string and join each item with a newline character
+        if label is not None:
+            sStats = label + ' - ' + sStats
+
+        lines = sStats.split(' - ')
+        if lines:
+            if lines[0].startswith('$') and lines[0].endswith('$'):
+                inner = lines[0][1:-1]
+            else:
+                inner = lines[0]
+            lines[0] = f"$\\mathbf{{{inner}}}$"
+        stats_text = '\n'.join(lines)
+
+        # Place the text box inside your plot axes
+        ax.text(
+            0.05, 0.95, stats_text,
+            transform=ax.transAxes,
+            fontsize=lg_fs,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8, edgecolor='gray')
+        )
+        
+    return ax
+
+if __name__ == '__main__':
+    # Dummy test execution
+    np.random.seed(42)
+    y_ref = np.linspace(0, 10, 100)
+    y_sim = y_ref + np.random.normal(0, 1, 100)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    plot_yy(y_sim, y_ref, ax=ax, scatter=True, nBins=10)
+    plt.xlabel("Reference Values")
+    plt.ylabel("Simulation Values")
+    plt.title("Dummy Test Example")
+    plt.show()
