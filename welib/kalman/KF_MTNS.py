@@ -254,10 +254,6 @@ class KalmanFilterMTNS(KalmanFilter):
 #                 else:
 #                     WARN('Missing', row_name, col_name)
 
-        if method=='YAMS':
-            A, B, C, D = A_YS, B_YS, C_YS, D_YS
-        elif method=='OpenFAST':
-            A, B, C, D = A_OF, B_OF, C_OF, D_OF
 
         # --------------------------------------------------------------------------------}
         # ---  Code common to OpenFAST and YAMS
@@ -267,16 +263,19 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Rotor Inertia / Shaft equation
         if 'psi' in KF.iX:
-            A[KF.iX['psi'], KF.iX['dpsi']] = 1
+            A_YS[KF.iX['psi'], KF.iX['dpsi']] = 1
+            A_OF[KF.iX['psi'], KF.iX['dpsi']] = 1
+
             J_LSS_YAMS      = WT.rot.inertia[0,0]
             J_LSS_OF_Qgen   = -1/OF_lin['B'].loc['d_psi_rot_[rad/s]','Qgen_[Nm]']
             J_LSS = J_LSS_YAMS
             print('[INFO] KalmanModel: Rotor Inertia seleted: {:.1f} (YAMS: {:.1f} OF: {:.1f}'.format(J_LSS, J_LSS_YAMS, J_LSS_OF_Qgen))
             if 'Qaero' in KF.sXa:
-                A[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / J_LSS
+                A_YS[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / J_LSS
+                A_OF[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / J_LSS_OF_Qgen
             if 'Qgen' in KF.sU:
-                B[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / J_LSS
-
+                B_YS[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / J_LSS
+                B_OF[KF.iX['dpsi'], KF.iU['Qgen']] = 1 / J_LSS_OF_Qgen
 
         # --- Thrust influence (physical derivation)
         try:
@@ -303,64 +302,77 @@ class KalmanFilterMTNS(KalmanFilter):
 #             if fullColumns:
 #                 B.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
             #M_modal_OF = OF_lin['B'].loc['d_qt1FA_[m/s]', 'NacFxN1_[N]'] # Nacelle x force
-            if method=='OpenFAST':
-                B[KF.iX['dq_FA1'], KF.iU['Thrust']] = OF_lin['B'].loc['d_qt1FA_[m/s]', 'HubFxN1_[N]']
-            else:
-                B[KF.iX['dq_FA1'], KF.iU['Thrust']] = 1 / M_modal
+            B_YS[KF.iX['dq_FA1'], KF.iU['Thrust']] = 1 / M_modal
+            B_OF[KF.iX['dq_FA1'], KF.iU['Thrust']] = OF_lin['B'].loc['d_qt1FA_[m/s]', 'HubFxN1_[N]']
             #B[KF.iX['dq_FA1'], KF.iU['Thrust']] = BFx_selected.loc['ddq_FA1']
             # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
             if 'x' in KF.sX:
-                B[KF.iX['dx']    , KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-                B[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+                B_YS[KF.iX['dx']    , KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+                B_YS[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+                B_OF[KF.iX['dx']    , KF.iU['Thrust']] = OF_lin['B'].loc['d_PtfmSurge_[m/s]'  , 'HubFxN1_[N]']
+                B_OF[KF.iX['dphi_y'], KF.iU['Thrust']] = OF_lin['B'].loc['d_PtfmPitch_[rad/s]', 'HubFxN1_[N]']
         elif 'Thrust' in KF.sX:
-            A[KF.iX['dq_FA1'], KF.iX['Thrust']] = 1/ M_modal
+            A_YS[KF.iX['dq_FA1'], KF.iX['Thrust']] = 1/ M_modal
             if 'x' in KF.sX:
-                A[KF.iX['dx']    , KF.iX['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-                A[KF.iX['dphi_y'], KF.iX['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+                A_YS[KF.iX['dx']    , KF.iX['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+                A_YS[KF.iX['dphi_y'], KF.iX['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
 
         # --- Generalized hydro force 
         if 'q_h' in KF.sX:
             IQD   =[KF.iX['dx'], KF.iX['dphi_y']]
             if 'k_h' in pHD:
-                A[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
-                A[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
+                A_YS[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
+                A_YS[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
+                A_OF[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
+                A_OF[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
             else:
                 FAIL('k_h not present')
 
         # --- Outputs 
         if 'x' in KF.sX:
             # Monopile top acceleration
-            C[KF.iY['PtfmIMUAx'], :] = A[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
-            D[KF.iY['PtfmIMUAx'], :] = B[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
+            C_YS[KF.iY['PtfmIMUAx'], :] = A_YS[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
+            D_YS[KF.iY['PtfmIMUAx'], :] = B_YS[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
+            C_OF[KF.iY['PtfmIMUAx'], :] = A_OF[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s # TODO can probably do better
+            D_OF[KF.iY['PtfmIMUAx'], :] = B_OF[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s # TODO can probably do better
             # Inclination
-            C[KF.iY['PtfmIncly'], KF.iX['phi_y']] = 1   # We measure inclination        
+            C_YS[KF.iY['PtfmIncly'], KF.iX['phi_y']] = 1   # We measure inclination        
+            C_OF[KF.iY['PtfmIncly'], KF.iX['phi_y']] = 1   # We measure inclination        
         if 'psi' in KF.sX:
             # Rotational speed
-            C[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed
+            C_YS[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed
+            C_OF[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed
 
         # Couple wave velocity (dq_h) into NcIMUAx
         h_nac = KF.WT.r_TN_inT[2]
         if 'q_h' in KF.sX:
                 if 'NcIMUAx' in KF.iY:
-                    KF.C.loc['NcIMUAx', 'dq_h'] = KF.C.loc['PtfmIMUAx', 'dq_h'] + h_nac * KF.A.loc['dphi_y', 'dq_h']
+                    C_YS[KF.iY['NcIMUAx'], KF.iX['dq_h']] +=  h_nac * A_YS[KF.iX['dphi_y'], KF.iX['dq_h']]
+                    C_OF[KF.iY['NcIMUAx'], KF.iX['dq_h']] +=  h_nac * A_OF[KF.iX['dphi_y'], KF.iX['dq_h']] # TODO TODO TODO
 
         # Nacelle acceleration in x direction (including pitch coupling)
         h_nac = r_TN[2]
         if method == 'YAMS':
             if 'NcIMUAx' in KF.iY:
                 if 'x' in KF.sX:
-                    C[KF.iY['NcIMUAx'], :] = A[KF.iX['dx'], :] + h_nac * A[KF.iX['dphi_y'], :] 
-                    D[KF.iY['NcIMUAx'], :] = B[KF.iX['dx'], :] + h_nac * B[KF.iX['dphi_y'], :] 
+                    C_YS[KF.iY['NcIMUAx'], :] = A_YS[KF.iX['dx'], :] + h_nac * A_YS[KF.iX['dphi_y'], :] 
+                    D_YS[KF.iY['NcIMUAx'], :] = B_YS[KF.iX['dx'], :] + h_nac * B_YS[KF.iX['dphi_y'], :] 
+                    C_OF[KF.iY['NcIMUAx'], :] = A_OF[KF.iX['dx'], :] + h_nac * A_OF[KF.iX['dphi_y'], :]  # TODO TODO TODO
+                    D_OF[KF.iY['NcIMUAx'], :] = B_OF[KF.iX['dx'], :] + h_nac * B_OF[KF.iX['dphi_y'], :]  # TODO TODO TODO
                 if 'q_FA1' in KF.sX:
-                    C[KF.iY['NcIMUAx'], :] +=  A[KF.iX['dq_FA1'], :]
-                    D[KF.iY['NcIMUAx'], :] +=  B[KF.iX['dq_FA1'], :]
+                    C_YS[KF.iY['NcIMUAx'], :] +=  A_YS[KF.iX['dq_FA1'], :]
+                    D_YS[KF.iY['NcIMUAx'], :] +=  B_YS[KF.iX['dq_FA1'], :]
+                    C_OF[KF.iY['NcIMUAx'], :] +=  A_OF[KF.iX['dq_FA1'], :] # TODO TODO TODO
+                    D_OF[KF.iY['NcIMUAx'], :] +=  B_OF[KF.iX['dq_FA1'], :] # TODO TODO TODO
 
         #C[KF.iY['NcIMUAz'], KF.iX['phi_y']] = -9.81
         if 'Qgen' in KF.iY:
-            D[KF.iY['Qgen'], KF.iU['Qgen']] = 1
+            D_YS[KF.iY['Qgen'], KF.iU['Qgen']] = 1
+            D_OF[KF.iY['Qgen'], KF.iU['Qgen']] = 1
         # Thrust measreuments
         if 'Thrust' in KF.sY and 'Thrust' in KF.sX:
-            C[KF.iY['Thrust'], KF.iX['Thrust']] = 1
+            C_YS[KF.iY['Thrust'], KF.iX['Thrust']] = 1
+            C_OF[KF.iY['Thrust'], KF.iX['Thrust']] = 1
 
         # --- Shaping filter, Hydro state equation
         if 'q_h' in KF.sX:
@@ -373,18 +385,29 @@ class KalmanFilterMTNS(KalmanFilter):
             KF.omega_p = 2*np.pi/Tp
             KF.zeta = zeta
             print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
-            A[KF.iX['q_h'], KF.iX['dq_h']]  = 1
-            A[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
-            A[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
-            B[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
+            A_YS[KF.iX['q_h'],  KF.iX['dq_h']]  = 1
+            A_YS[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
+            A_YS[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
+            B_YS[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
+            A_OF[KF.iX['q_h'],  KF.iX['dq_h']]  = 1
+            A_OF[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
+            A_OF[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
+            B_OF[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
+
+
+        if method=='YAMS':
+            A, B, C, D = A_YS, B_YS, C_YS, D_YS
+        elif method=='OpenFAST':
+            A, B, C, D = A_OF, B_OF, C_OF, D_OF
+
 
         # --- Super Hack
-        if 'x' not in KF.sX:
+        if 'x' not in KF.sX and method=='YAMS':
             FAIL('Using a super hack where value are replaced')
             A[KF.iX['dq_FA1'], KF.iX['q_FA1'] ]     = -1.71 # From TN , instead of -55.16  # <<<<<<<<<<<<<<< TODO TODO TODO TODO
 #             A[KF.iX['dq_FA1'], KF.iX['dq_FA1'] ] = -0.01 # From TN, instead  of -0.1
 #             if 'Thrust' in KF.sU:
-#                 B[KF.iX['dq_FA1'], KF.iU['Thrust'] ] = 6.06e-07 # From TN
+#                 B_YS[KF.iX['dq_FA1'], KF.iU['Thrust'] ] = 6.06e-07 # From TN
 #             elif 'Thrust' in KF.sX:
 #                 A[KF.iX['dq_FA1'], KF.iX['Thrust'] ] = 6.06e-07 # From TN
             C[KF.iY['NcIMUAx'], : ]  = A[KF.iX['dq_FA1'], :]
@@ -1154,7 +1177,7 @@ if __name__ == '__main__':
 #     fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S0_H1A0_Hs=8.1_Tp=12.7.fst'); setup_opts['hydro_states']=True; setup_opts['monopile']=True; setup_opts['aero_est']=False; nUnderSamp=1
 
     #  5. Full Wave and Wind
-    # fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); setup_opts = {'hydro_states':True, 'monopile':True, 'aero_est':True, 'q_FA1':True}
+    fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); setup_opts = {'hydro_states':True, 'monopile':True, 'aero_est':True, 'q_FA1':True}; nUnderSamp=1
 #     linFile        = os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
 #     linFiles       = os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1.1.lin')
     linFiles=[]
