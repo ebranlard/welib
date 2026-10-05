@@ -38,7 +38,7 @@ class KalmanFilterMTNS(KalmanFilter):
 
         """    
         # --- Default arguments
-        setup_def = {'hydro_states':True, 'monopile':True}
+        setup_def = {'hydro_states':True, 'monopileDOFs':True}
         hacks_def = {'thrust':None, 'WSE':None, 'SL_cleanQ':False, 'SL_cleanFtop':False, 'SL_cleanEtaDot':False, 'SL_cleanP':False}
         if setup_opts is None:
             KF.setup_opts = setup_def
@@ -54,24 +54,22 @@ class KalmanFilterMTNS(KalmanFilter):
 
         # --- Initialize Kalman Filter, variables names (e.g. sX) and matrices (Xx=A)
         sQ  = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi'] # Mechanical states
-#         sQa = ['q_h', 'dq_h', 'Qaero', 'Thrust']              # Augmented states
         sQa = ['q_h', 'dq_h', 'Qaero']              # Augmented states
-        sU  = ['w', 'Qgen', 'pitch', 'Thrust'] #, 'Fx_i', 'My_i']
-#         sY  = ['PtfmIMUAx', 'PtfmIncly',  'NcIMUAx', 'dpsi',  'Qgen', 'Thrust']
+        sU  = ['w', 'Qgen', 'pitch', 'GenThrust'] #, 'Fx_i', 'My_i']
         sY  = ['PtfmIMUAx', 'PtfmIncly',  'NcIMUAx', 'dpsi',  'Qgen']
-        sS  = ['Fx_sb', 'My_sb', 'eta', 'Fx_h', 'Fx_i', 'My_i', 'WS', 'Thrust']
+        sS  = ['Fx_sb', 'My_sb', 'eta', 'Fx_h', 'Fx_i', 'My_i', 'WS', 'GenThrust', 'Thrust']
         if not KF.setup_opts['hydro_states']:
             sQa.remove('q_h'); sQa.remove('dq_h'); 
             sU.remove('w'); 
             sS.remove('eta'); sS.remove('Fx_h'); 
-        if not KF.setup_opts['monopile']:
+        if not KF.setup_opts['monopileDOFs']:
             sQ.remove('x'); sQ.remove('phi_y'); sQ.remove('dx'); sQ.remove('dphi_y'); 
             sY.remove('PtfmIMUAx'); sY.remove('PtfmIncly'); 
         if not KF.setup_opts['aero_est']:
             sQ.remove( 'psi'); sQ.remove( 'dpsi'); 
-            sU.remove( 'Qgen'); sU.remove( 'pitch'); sU.remove('Thrust')
+            sU.remove( 'Qgen'); sU.remove( 'pitch'); sU.remove('GenThrust'); 
             sY.remove( 'dpsi'); sY.remove( 'Qgen');
-            sS.remove( 'WS'); sS.remove( 'Thrust');
+            sS.remove( 'WS'); sS.remove( 'GenThrust'); sS.remove('Thrust')
             sQa.remove('Qaero');
         if not KF.setup_opts['q_FA1']:
             sQ.remove( 'q_FA1'); sQ.remove( 'dq_FA1'); 
@@ -166,9 +164,10 @@ class KalmanFilterMTNS(KalmanFilter):
                 'Qgen'   : f'{nGear}'+'*{GenTq_[kN-m]}  *1000         ' , # [kNm] -> [Nm]  # NOTE: nGear
                 'ddpsi'  : 'QD2_GeAz_[rad/s^2]',
                 })
-        if 'Thrust' in KF.sX or 'Thrust' in KF.sU:
+        if 'GenThrust' in KF.sX or 'GenThrust' in KF.sU:
             KF.colMap.update({
-                'Thrust' : 'RtAeroFxh_[N]',
+                'Thrust' : '{RtAeroFxh_[N]}',
+                'GenThrust':'{RtAeroFxh_[N]}', # TODO need a proper map
                 'Qaero'  : 'RtAeroMxh_[N-m]',
                 'WS'     : 'RtVAvgxh_[m/s]',
                 })
@@ -298,24 +297,24 @@ class KalmanFilterMTNS(KalmanFilter):
         GM_twr = KF.WT.twr.MM[6,6] # Generalized mass of tower
         m_rna = WT.RNA.mass
         M_modal = GM_twr + m_rna
-        if 'Thrust' in KF.sU:
+        if 'GenThrust' in KF.sU:
 #             if fullColumns:
 #                 B.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
             #M_modal_OF = OF_lin['B'].loc['d_qt1FA_[m/s]', 'NacFxN1_[N]'] # Nacelle x force
-            B_YS[KF.iX['dq_FA1'], KF.iU['Thrust']] = 1 / M_modal
-            B_OF[KF.iX['dq_FA1'], KF.iU['Thrust']] = OF_lin['B'].loc['d_qt1FA_[m/s]', 'HubFxN1_[N]']
+            B_YS[KF.iX['dq_FA1'], KF.iU['GenThrust']] = 1 / M_modal
+            B_OF[KF.iX['dq_FA1'], KF.iU['GenThrust']] = OF_lin['B'].loc['d_qt1FA_[m/s]', 'HubFxN1_[N]']
             #B[KF.iX['dq_FA1'], KF.iU['Thrust']] = BFx_selected.loc['ddq_FA1']
             # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
             if 'x' in KF.sX:
-                B_YS[KF.iX['dx']    , KF.iU['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-                B_YS[KF.iX['dphi_y'], KF.iU['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
-                B_OF[KF.iX['dx']    , KF.iU['Thrust']] = OF_lin['B'].loc['d_PtfmSurge_[m/s]'  , 'HubFxN1_[N]']
-                B_OF[KF.iX['dphi_y'], KF.iU['Thrust']] = OF_lin['B'].loc['d_PtfmPitch_[rad/s]', 'HubFxN1_[N]']
-        elif 'Thrust' in KF.sX:
-            A_YS[KF.iX['dq_FA1'], KF.iX['Thrust']] = 1/ M_modal
+                B_YS[KF.iX['dx']    , KF.iU['GenThrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+                B_YS[KF.iX['dphi_y'], KF.iU['GenThrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+                B_OF[KF.iX['dx']    , KF.iU['GenThrust']] = OF_lin['B'].loc['d_PtfmSurge_[m/s]'  , 'HubFxN1_[N]']
+                B_OF[KF.iX['dphi_y'], KF.iU['GenThrust']] = OF_lin['B'].loc['d_PtfmPitch_[rad/s]', 'HubFxN1_[N]']
+        elif 'GenThrust' in KF.sX:
+            A_YS[KF.iX['dq_FA1'], KF.iX['GenThrust']] = 1/ M_modal
             if 'x' in KF.sX:
-                A_YS[KF.iX['dx']    , KF.iX['Thrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-                A_YS[KF.iX['dphi_y'], KF.iX['Thrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
+                A_YS[KF.iX['dx']    , KF.iX['GenThrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
+                A_YS[KF.iX['dphi_y'], KF.iX['GenThrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
 
         # --- Generalized hydro force 
         if 'q_h' in KF.sX:
@@ -370,9 +369,9 @@ class KalmanFilterMTNS(KalmanFilter):
             D_YS[KF.iY['Qgen'], KF.iU['Qgen']] = 1
             D_OF[KF.iY['Qgen'], KF.iU['Qgen']] = 1
         # Thrust measreuments
-        if 'Thrust' in KF.sY and 'Thrust' in KF.sX:
-            C_YS[KF.iY['Thrust'], KF.iX['Thrust']] = 1
-            C_OF[KF.iY['Thrust'], KF.iX['Thrust']] = 1
+        if 'GenThrust' in KF.sY and 'GenThrust' in KF.sX:
+            C_YS[KF.iY['GenThrust'], KF.iX['GenThrust']] = 1
+            C_OF[KF.iY['GenThrust'], KF.iX['GenThrust']] = 1
 
         # --- Shaping filter, Hydro state equation
         if 'q_h' in KF.sX:
@@ -686,6 +685,10 @@ class KalmanFilterMTNS(KalmanFilter):
 
 
     def computeSectionLoads(KF, t, x, x_dot, p_hydro, Thrust, Qaero, it=None):
+        """ 
+        Inputs : Loads at rotor center (point R)
+
+        """
         WT = KF.WT
         dInfo = KF.dInfo
         # ---
@@ -754,14 +757,16 @@ class KalmanFilterMTNS(KalmanFilter):
         # --- Initial conditions
         x = KF.initFromClean(var='x,y,u,s')
         
-        if 'Thrust' in KF.sU:
-            Thrust = KF.U_clean['Thrust'].iloc[0]
-        elif 'Thrust' in KF.sY:
+        if 'Thrust' in KF.sS:
+            Thrust = KF.S_clean['Thrust'].iloc[0]
+        elif 'GenThrust' in KF.sU:
+            Thrust = KF.U_clean['GenThrust'].iloc[0]
+        elif 'GenThrust' in KF.sY:
             Thrust = KF.Y_clean['Thrust'].iloc[0]
         else:
             Thrust =0
 
-        GF =Thrust
+        GF = Thrust # Approximation at t=0
 
         if 'Fx_i' in KF.sU:
             Fx_i   = KF.U_clean['Fx_i'].iloc[0]
@@ -785,8 +790,10 @@ class KalmanFilterMTNS(KalmanFilter):
             y = KF.Y.iloc[it+1,:].values.copy()
             # --- Inputs at next step
             u = KF.U_clean.iloc[it+1,:].values.copy()
-            if 'Thrust' in KF.sU:
-                u[KF.iU['Thrust']] = GF # We use previous estimated thrust as input.
+            if 'GenThrust' in KF.sU:
+                u[KF.iU['GenThrust']] = GF # We use previous estimated generalized thrust as input.
+            if 'GenThrust' in KF.sY:
+                y[KF.iY['GenThrust']] = GF # We use previous estimated generalized thrust as measurement.
             if 'Thrust' in KF.sY:
                 y[KF.iY['Thrust']] = Thrust # We use previous estimated thrust as measurement.
 
@@ -819,6 +826,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 else:
                     Thrust = KF.wse.Thrust(WS_hat, pitch=pitch, omega=omega)
 
+            # Generalized Thrust Q_q_FA
             GF = KF.WTTN.GF_lin(Thrust,x,bFull=True)
 
 
@@ -846,8 +854,8 @@ class KalmanFilterMTNS(KalmanFilter):
             # --- Sotre "updated"/"hacked" states and inputs
             if 'psi' in KF.iX:
                 x[KF.iX['psi']] = np.mod(x[KF.iX['psi']], 2*np.pi)
-            if 'Thrust' in KF.sX:
-                x[KF.iX['Thrust']] = GF
+            if 'GenThrust' in KF.sX:
+                x[KF.iX['GenThrust']] = GF
             KF.Y_hat.iloc[it+1,:]   = y
             KF.U_hat.iloc[it+1,:]   = u
             KF.X_hat.iloc[it+1,:]   = x
@@ -869,6 +877,8 @@ class KalmanFilterMTNS(KalmanFilter):
                 KF.S_hat.at[it+1, 'Fx_h']   = Fx_h_est
             if 'Thrust' in KF.sS:
                 KF.S_hat.at[it+1, 'Thrust'] = Thrust
+            if 'GenThrust' in KF.sS:
+                KF.S_hat.at[it+1, 'GenThrust'] = GF
 
             # --- Propagation to next time step
             # --- Print status to screen
@@ -1027,8 +1037,8 @@ def main(fstFile, tmin=0, tmax=20,
     if 'x' in KF.sX:
         sigs['Q']['x']      = np.sqrt(1e-12)
         sigs['Q']['phi_y']  = np.sqrt(1e-12)
-    if 'Thrust' in KF.sX:
-        sigs['Q']['Thrust']  = np.sqrt(1e14)
+    if 'GenThrust' in KF.sX:
+        sigs['Q']['GenThrust']  = np.sqrt(1e14)
     if 'q_FA1' in KF.sX:
         sigs['Q']['q_FA1']  = np.sqrt(1e-12)
 
@@ -1048,7 +1058,7 @@ def main(fstFile, tmin=0, tmax=20,
     sigs['x'] = sigs['Q'].copy()
 
 
-    if not setup_opts['monopile']:
+    if not setup_opts['monopileDOFs']:
         NOTE('Using sig value from KF_TNS')
         sigs = {'x':{}, 'y':{}, 'Q':{}}
         if 'q_FA1' in KF.sX:
@@ -1071,6 +1081,8 @@ def main(fstFile, tmin=0, tmax=20,
             sigs['y']['Qgen']  = 1*10**6
         if 'Thrust' in KF.sY:
             sigs['y']['Thrust'] = 1e11 / 1000
+        if 'GenThrust' in KF.sY:
+            sigs['y']['GenThrust'] = 1e11 / 1000
     #     sigs['y']['pitch'] = 2.00
 
 
@@ -1121,7 +1133,7 @@ def main(fstFile, tmin=0, tmax=20,
 
     statsDict = {}    
 #     try:
-    if True:
+    if show:
         fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
         plt.savefig(base + '_KF_X.png')
         KF.plot_Y(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
@@ -1135,8 +1147,6 @@ def main(fstFile, tmin=0, tmax=20,
     # KF.plot_K()
     # KF.plot_innovation()
     
-    if show:
-        plt.show()
 
     KFpkl = fstFile.replace('.fst', f'_KFMTNS_nX={KF.nX}_nU={KF.nU}_nY={KF.nY}_TMax{tRange[1]}.pkl')
     if export:
@@ -1150,70 +1160,92 @@ def main(fstFile, tmin=0, tmax=20,
 
     NOTE('Couple of issues to resolve:')
     NOTE(' - Matrices without aero states are quite different from KF_M.')
-    NOTE(' - I might be mssing the topload contribution to x and phi_y')
+    NOTE(' - I might be missing the topload contribution to x and phi_y')
     NOTE(' - Time step dependency of the sigmas')
 
 
     return KF, df_ref, df_sl
 
 
-if __name__ == '__main__':
-    hacks = {}
-    setup_opts = {}
-    setup_opts = {'hydro_states':True, 'monopile':True, 'aero_est':True, 'q_FA1':True}
-
-
-    # --- Good for abstract:
-    # 1. Monopile Only:
-    #fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst'); setup_opts['hydro_states']=True; setup_opts['monopile']=True; setup_opts['aero_est']=False; setup_opts['q_FA1']=False; nUnderSamp=1 # GOOD
-    # 2. No Wave
-    #fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst');                setup_opts['hydro_states']=False; setup_opts['monopile']=False; nUnderSamp=1
-    # 
-    # 3. With Wave but SS estimator turned off
-    #fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); setup_opts['hydro_states']=False; setup_opts['monopile']=False; nUnderSamp=1 # Decent, but clearly missing waves
-
-
-
-#     fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S0_H1A0_Hs=8.1_Tp=12.7.fst'); setup_opts['hydro_states']=True; setup_opts['monopile']=True; setup_opts['aero_est']=False; nUnderSamp=1
-
-    #  5. Full Wave and Wind
-    fstFile        = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); setup_opts = {'hydro_states':True, 'monopile':True, 'aero_est':True, 'q_FA1':True}; nUnderSamp=1
-#     linFile        = os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
-#     linFiles       = os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1.1.lin')
+def mainWrapper(fstFile, setup_opts, hacks, method, show=False):
     linFiles=[]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1.1.lin')]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim4mps.1.lin')]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim7mps.1.lin')]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim10mps.1.lin')]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim12mps.1.lin')]
+
     compFile       = os.path.join(scriptDir, 'examples/_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
     aeroMapFile    = os.path.join(scriptDir, 'examples/_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
     operFile       = os.path.join(scriptDir, 'examples/_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
     hydroShapeFile = os.path.join(scriptDir, 'examples/_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
 
-    # Super hack
-#     hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
-#              'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True}
-# 
-#     # Intermediate hack: States are exact - Hydro loads are exact
-#     hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} 
 
-    # Intermediate hack
-#     hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True} # <<<< EXAMPLE
+    if hacks is None:
+        pass
+        # --- Super hack
+        # hacks = {'thrust':'clean', 'WSE':'clean_inputs', 'SL_cleanQ':True, 
+        #              'SL_cleanFtop':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True}
+        # --- Intermediate hack: States are exact - Hydro loads are exact
+        #     hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanP':True} 
 
-    method='OpenFAST'
-    method='YAMS'
-    show=True
-    tRange = [100, 150]
-#     tRange = [5, 600]; 
-    #tRange = [150, 270]
+        # --- Intermediate hack
+        #hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanFtop':True} # <<<< EXAMPLE
 
     main(fstFile=fstFile, linFiles=linFiles, 
          compFile=compFile,  hydroShapeFile=hydroShapeFile, Tp=12.7,
          aeroMapFile=aeroMapFile, operFile=operFile,
          hacks=hacks, show=show,
-         nUnderSamp=nUnderSamp,
+         nUnderSamp=1,
          tmin=tRange[0], tmax=tRange[1],
          method=method, setup_opts=setup_opts,
          export=True,
          )
+
+
+def MonopileOnly(method='YAMS', tRange=[0,600], hacks=None, show=False):
+    fstFile    = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst');
+    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':False, 'q_FA1':False}
+    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
+
+
+def FullStructure_NoWave_NoMonopileDOFs(method='YAMS', tRange=[0,600], hacks=None, show=False):
+    fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst');                
+    setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True}
+    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
+
+def FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(method='YAMS', tRange=[0,600], hacks=None, show=False):
+
+    fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); 
+    setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True}
+    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
+
+def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False):
+
+    fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); 
+    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':True, 'q_FA1':True}
+    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
+
+
+if __name__ == '__main__':
+
+    show=True
+
+
+#     tRange=[0,600]
+    tRange=[200,250]
+    
+    # --- Case 1 - Monopile under wave - Works well
+    MonopileOnly(tRange=tRange, show=show)
+
+    # --- Case 2 - Monopile and tower under wind: using only tower DOFs - Works well
+#     FullStructure_NoWave_NoMonopileDOFs(tRange=tRange, show=show)
+
+    # --- Case 3 - Monopile and tower under wind and wave: using only tower DOFs, with no wave estimator - works ok-ish as expected
+#     FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(tRange=tRange, show=show)
+
+    # --- Case 4 - Monopile and tower under wind and wave: using all DOFs and wave estimator'
+#     FullStructure_WithWave(tRange=tRange, show=show)
+
+
+    plt.show()
