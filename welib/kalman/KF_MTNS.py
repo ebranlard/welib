@@ -74,6 +74,11 @@ class KalmanFilterMTNS(KalmanFilter):
         if not KF.setup_opts['q_FA1']:
             sQ.remove( 'q_FA1'); sQ.remove( 'dq_FA1'); 
             sY.remove('NcIMUAx')
+        # Constant input (value 1) carrying the static generalized forces (gravity overhang) of the full structure
+        if KF.setup_opts['monopileDOFs'] and KF.setup_opts['aero_est'] and KF.setup_opts['q_FA1']:
+            sU.append('Static')
+            if KF.setup_opts.get('bias_states', True):
+                sQa += ['Bx', 'Bphi'] # Slowly varying generalized force biases (model static errors) on x and phi_y
 
         # --- Parent init
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
@@ -171,6 +176,11 @@ class KalmanFilterMTNS(KalmanFilter):
                 'Qaero'  : 'RtAeroMxh_[N-m]',
                 'WS'     : 'RtVAvgxh_[m/s]',
                 })
+        if 'Static' in KF.sU:
+            KF.colMap['Static'] = '{Time_[s]}*0 + 1'
+        for nm in ('Bx', 'Bphi'):
+            if nm in KF.sX:
+                KF.colMap[nm] = '{Time_[s]}*0'
         if 'q_FA1' in KF.sX:
             KF.colMap.update({
                 'q_FA1'  : 'Q_TFA1_[m]',
@@ -297,7 +307,27 @@ class KalmanFilterMTNS(KalmanFilter):
         GM_twr = KF.WT.twr.MM[6,6] # Generalized mass of tower
         m_rna = WT.RNA.mass
         M_modal = GM_twr + m_rna
-        if 'GenThrust' in KF.sU:
+        if 'GenThrust' in KF.sU and 'x' in KF.sX and 'q_FA1' in KF.sX:
+            # Full structure: input is the physical rotor thrust T along the shaft, applied at the rotor center R.
+            # Generalized forces: Q = J*T + b, with J the Jacobian of the point R w.r.t. [x, phi_y, q_FA1]
+            W = KF.WTTN
+            th = W.shaft_tilt; cs, sn = np.cos(th), np.sin(th)
+            rNR = np.asarray(W.r_NR_inN).flatten()
+            rNG = np.asarray(W.r_NGrna_inN).flatten()
+            vy1c = W.twr.Bhat_t_bc[1,0]
+            J = np.zeros(M_inv.shape[0])
+            J[0] = cs
+            J[1] = (r_TN[2] + rNR[2])*cs + rNR[0]*sn
+            J[2] = cs + vy1c*(rNR[0]*sn + rNR[2]*cs)
+            bs = np.zeros(M_inv.shape[0])
+            bs[1] = rNG[0]*W.M_RNA*W.gravity           # overhang moment of the RNA weight
+            bs[2] = vy1c*rNG[0]*W.M_RNA*W.gravity
+            bs[:len(KF.setup_opts.get('static_bias', [0,0,0]))] += np.asarray(KF.setup_opts.get('static_bias', [0,0,0]))
+            KF.J_thrust, KF.b_static = J, bs
+            for nm, i in (('dx',0), ('dphi_y',1), ('dq_FA1',2)):
+                B_YS[KF.iX[nm], KF.iU['GenThrust']] = M_inv[i,:] @ J
+                B_YS[KF.iX[nm], KF.iU['Static']]    = M_inv[i,:] @ bs
+        elif 'GenThrust' in KF.sU:
 #             if fullColumns:
 #                 B.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
             #M_modal_OF = OF_lin['B'].loc['d_qt1FA_[m/s]', 'NacFxN1_[N]'] # Nacelle x force
@@ -316,12 +346,20 @@ class KalmanFilterMTNS(KalmanFilter):
                 A_YS[KF.iX['dx']    , KF.iX['GenThrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
                 A_YS[KF.iX['dphi_y'], KF.iX['GenThrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
 
+        # --- Generalized force biases
+        for nmB, j in (('Bx',0), ('Bphi',1)):
+            if nmB in KF.sX:
+                for nm, i in (('dx',0), ('dphi_y',1), ('dq_FA1',2)):
+                    A_YS[KF.iX[nm], KF.iX[nmB]] = M_inv[i, j]
+
         # --- Generalized hydro force 
         if 'q_h' in KF.sX:
             IQD   =[KF.iX['dx'], KF.iX['dphi_y']]
             if 'k_h' in pHD:
-                A_YS[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
-                A_YS[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
+                k_h_eff = np.asarray(pHD['k_h']) * np.asarray(KF.setup_opts.get('kh_scale', [1.0, 1.0]))
+                for nm, i in (('dx',0), ('dphi_y',1), ('dq_FA1',2)):
+                    if nm in KF.iX:
+                        A_YS[KF.iX[nm], KF.iX['dq_h']] = M_inv[i, :2] @ k_h_eff
                 A_OF[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
                 A_OF[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
             else:
@@ -822,12 +860,15 @@ class KalmanFilterMTNS(KalmanFilter):
             
                 # --- Estimate Thrust
                 if KF.hacks['thrust'] == 'clean':
-                    Thrust = KF.U_clean['Thrust'].iloc[it+1]
+                    Thrust = KF.U_clean['GenThrust'].iloc[it+1]
                 else:
                     Thrust = KF.wse.Thrust(WS_hat, pitch=pitch, omega=omega)
 
             # Generalized Thrust Q_q_FA
-            GF = KF.WTTN.GF_lin(Thrust,x,bFull=True)
+            if 'x' in KF.sX:
+                GF = Thrust # Physical thrust, the generalized forces are built in B
+            else:
+                GF = KF.WTTN.GF_lin(Thrust,x,bFull=True)
 
 
             # --- Estimate Generalized hydro force and bending moment (calc output)
@@ -1055,6 +1096,17 @@ def main(fstFile, tmin=0, tmax=20,
         sigs['Q']['dq_h']   = np.sqrt(dt_ref * 1e-3)
     if 'Qaero' in KF.sX:
         sigs['Q']['Qaero']  = np.sqrt(dt_ref * 1e10)
+    if 'x' in KF.sX and 'q_FA1' in KF.sX: # Full structure with waves (Case 3), tuned variances
+        sigs['Q']['Qaero']  = np.sqrt(6.4e13)
+        sigs['Q']['dx']     = np.sqrt(5e-5)
+        sigs['Q']['dphi_y'] = np.sqrt(6e-8)
+        sigs['Q']['dq_FA1'] = np.sqrt(1e-3)
+        sigs['Q']['q_h']    = np.sqrt(2e-6)
+        sigs['Q']['dq_h']   = np.sqrt(0.02)
+        sigs['y']['NcIMUAx'] = np.sqrt(1e-2)
+        if 'Bx' in KF.sX:
+            sigs['Q']['Bx']   = np.sqrt(1e9)
+            sigs['Q']['Bphi'] = np.sqrt(1e11)
     sigs['x'] = sigs['Q'].copy()
 
 
@@ -1105,6 +1157,11 @@ def main(fstFile, tmin=0, tmax=20,
     KF.setupCovariances(
             sigs=sigs,
             useDt=False, Pidentity=True, verbose=False)
+
+    # Initial covariance of the (unknown, large) force biases and aero torque
+    if 'Bx' in KF.sX:
+        KF.P[KF.iX['Bx'], KF.iX['Bx']]     = KF.setup_opts.get('P0_Bx', 1.0)
+        KF.P[KF.iX['Bphi'], KF.iX['Bphi']] = KF.setup_opts.get('P0_Bphi', 1.0)
 
     if (not setup_opts['q_FA1'] and not setup_opts['aero_est']):
         FAIL('Somehow the Q will end up different from the KF_M, debug that.')
@@ -1214,11 +1271,6 @@ def FullStructure_NoWave_NoMonopileDOFs(method='YAMS', tRange=[0,600], hacks=Non
     setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True}
     mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
 
-def FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(method='YAMS', tRange=[0,600], hacks=None, show=False):
-
-    fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); 
-    setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True}
-    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
 
 def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False):
 
@@ -1233,19 +1285,30 @@ if __name__ == '__main__':
 
 
 #     tRange=[0,600]
-    tRange=[200,250]
+    tRange=[210,250]
+    tRange=[210,310]
+    tRange=[5,600]
     
     # --- Case 1 - Monopile under wave - Works well
-    MonopileOnly(tRange=tRange, show=show)
+#     MonopileOnly(tRange=tRange, show=show)
 
     # --- Case 2 - Monopile and tower under wind: using only tower DOFs - Works well
 #     FullStructure_NoWave_NoMonopileDOFs(tRange=tRange, show=show)
 
-    # --- Case 3 - Monopile and tower under wind and wave: using only tower DOFs, with no wave estimator - works ok-ish as expected
-#     FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(tRange=tRange, show=show)
+    # --- Case 3 - Monopile and tower under wind and wave: using all DOFs and wave estimator'
+    FullStructure_WithWave(tRange=tRange, show=show)
 
-    # --- Case 4 - Monopile and tower under wind and wave: using all DOFs and wave estimator'
-#     FullStructure_WithWave(tRange=tRange, show=show)
+
 
 
     plt.show()
+
+
+# def FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(method='YAMS', tRange=[0,600], hacks=None, show=False):
+# 
+#     fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); 
+#     setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True}
+#     mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show)
+
+    # --- Case 2b - Monopile and tower under wind and wave: using only tower DOFs, with no wave estimator - works ok-ish as expected
+#     FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(tRange=tRange, show=show)
