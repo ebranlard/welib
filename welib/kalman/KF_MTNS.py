@@ -294,7 +294,16 @@ class KalmanFilterMTNS(KalmanFilter):
             raise NotImplementedError()
         h_hub = r_TN[2] + r_NS[2]
 
-        sQd_OF = ['d_PtfmSurge_[m/s]', 'd_PtfmHeave_[m/s]', 'd_PtfmPitch_[rad/s]', 'd_qt1FA_[m/s]', 'd_psi_rot_[rad/s]']
+        sQd_OF = []
+        if 'x' in KF.iX:
+            sQd_OF += ['d_PtfmSurge_[m/s]']
+# , 'd_PtfmHeave_[m/s]',
+        if 'phi_y' in KF.iX:
+            sQd_OF += ['d_PtfmPitch_[rad/s]']
+        if 'q_FA1' in KF.iX:
+            sQd_OF += ['d_qt1FA_[m/s]']
+        if 'psi' in KF.iX:
+            sQd_OF += ['d_psi_rot_[rad/s]']
         if 'HubFxN1_[N]' in OF_lin['B']:
             BFHx = OF_lin['B'].loc[sQd_OF, 'HubFxN1_[N]'] # Hub x force
             BFNx = OF_lin['B'].loc[sQd_OF, 'NacFxN1_[N]'] # Nacelle x force
@@ -1406,16 +1415,16 @@ if __name__ == '__main__':
 #     tRange=[0,600]
     tRange=[210,250]
 #     tRange=[210,310]
-#     tRange=[5,600]
+    tRange=[5,600]
     
     # --- Case 1 - Monopile under wave - Works well
-#     MonopileOnly(tRange=tRange, show=show)
+    MonopileOnly(tRange=tRange, show=show)
 
     # --- Case 2 - Monopile and tower under wind: using only tower DOFs - Works well
-    FullStructure_NoWave_NoMonopileDOFs(tRange=tRange, show=show) #, method='OpenFAST')
+#     FullStructure_NoWave_NoMonopileDOFs(tRange=tRange, show=show) #, method='OpenFAST')
 
     # --- Case 3 - Monopile and tower under wind and wave: using all DOFs and wave estimator'
-    FullStructure_WithWave(tRange=tRange, show=show, method='OpenFAST')
+#     FullStructure_WithWave(tRange=tRange, show=show, method='OpenFAST')
 
 
 
