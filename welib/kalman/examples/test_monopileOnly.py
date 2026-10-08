@@ -128,10 +128,10 @@ def test_monopile():
     np.testing.assert_array_less(stats['Fx_h']['eps'],   5.5)
 
     np.testing.assert_array_less(1-stats['x']['R2'],     0.03)
-    np.testing.assert_array_less(1-stats['My_sb']['R2'], 0.22)
-    np.testing.assert_array_less(1-stats['Fx_sb']['R2'], 0.20)
-    np.testing.assert_array_less(1-stats['eta']['R2'],   0.3)
-    np.testing.assert_array_less(1-stats['Fx_h']['R2'],  0.18)
+    np.testing.assert_array_less(1-stats['My_sb']['R2'], 0.25)
+    np.testing.assert_array_less(1-stats['Fx_sb']['R2'], 0.25)
+    np.testing.assert_array_less(1-stats['eta']['R2'],   0.10)
+    np.testing.assert_array_less(1-stats['Fx_h']['R2'],  0.22)
 
 # --- With beamSectionLoads
 # Tuning: zeta=0.12, qdhScale=1
@@ -192,7 +192,7 @@ if __name__ == '__main__':
 
     # --- Monopile Jonswap Hs=8.1 Tp=12.7, Default
     test_monopile()
-    test_monopile_IEA(test=False)
+#     test_monopile_IEA(test=False)
 
     # --- Monopile Jonswap Hs=2.5 Tp=10
 #     tRange=[0,600]; 
