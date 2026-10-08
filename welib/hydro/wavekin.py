@@ -57,6 +57,64 @@ def elevation2d(a, f, k, eps, t, x=0):
 
     return eta     
 
+def wave_components( eta, time, water_depth=None, g=9.80665, account_for_t0=True, aThreshold=1e-4, cutAboveThreshold=True):
+  """Computes wave components, fp, kp, epsp from a wave elevation time series.
+
+  INPUTS:
+  - account_for_t0: if True, the wave phases are adjusted to account for the non zero time offset
+
+  OUPUTS:
+   - angular frequencies (fp), wave numbers (kp), and phases (epsp)
+
+  """
+  eta  = np.asarray(eta)
+  time = np.asarray(time)
+
+  n = len(eta)
+
+  dt = (time[-1]-time[0])/(n-1)
+  t0 = time[0]
+
+  # Compute one-sided Fast Fourier Transform and associated angular frequencies
+  fft_res = np.fft.rfft(eta)
+  fp = np.fft.rfftfreq(n, dt)
+  omp = 2 * np.pi *fp
+
+  # Calculate wave amplitudes ap matching OpenFAST single-sided scaling
+  ap = np.zeros_like(fp)
+  if n % 2 == 0:
+    ap[0] = np.abs(fft_res[0]) / n
+    ap[1:-1] = 2.0 * np.abs(fft_res[1:-1]) / n
+    ap[-1] = np.abs(fft_res[-1]) / n
+  else:
+    ap[0] = np.abs(fft_res[0]) / n
+    ap[1:] = 2.0 * np.abs(fft_res[1:]) / n
+
+  # Determine wave phases epsp matching OpenFAST sign conventions
+  epsp = np.angle(fft_res) 
+  if account_for_t0:
+      epsp += - omp * t0
+  epsp = np.mod(epsp, 2*np.pi)
+
+  b=np.abs(ap)>aThreshold
+  if np.any(b):
+      # Find the index of the very last amplitude above the threshold
+      last_i = np.where(b)[0][-1]
+      ap  [last_i + 1:] = 0.0
+      epsp[last_i + 1:] = 0.0
+      cutoff_freq = fp[last_i]
+      if cutAboveThreshold:
+          ap   = ap  [:last_i]
+          fp   = fp  [:last_i]
+          epsp = epsp[:last_i]
+
+  # Solve the linear dispersion relation omega^2 = g * k * tanh(k * h) for kp
+  if water_depth is not None:
+      kp = wavenumber(fp, water_depth, g=g) # Wave numbers
+  else:
+      kp = np.zeros_like(fp) * np.nan
+  pSS = {"ap": ap, "fp": fp, "epsp": epsp,  "kp": kp}
+  return pSS
 # 
 def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None): 
     """ 

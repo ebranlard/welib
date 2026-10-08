@@ -3,6 +3,8 @@ import numpy as np
 import os
 from welib.hydro.wavekin import *
 
+scriptDir = os.path.dirname(__file__)
+
 class Test(unittest.TestCase):
     def test_wavenumber(self):
         # Test for one period
@@ -84,6 +86,36 @@ class Test(unittest.TestCase):
         np.testing.assert_array_equal(acc.shape, np.concatenate((Z.shape,time.shape)))
         np.testing.assert_almost_equal(np.max(vel[-1,1,:]), 2*np.pi*f*a      * np.cosh(k*(vz[-1]+h)) / np.sinh(k*h), 4)
         np.testing.assert_almost_equal(np.max(acc[-1,1,:]), (2*np.pi*f)**2 *a* np.cosh(k*(vz[-1]+h)) / np.sinh(k*h), 4)
+
+
+    def test_wave_components(self):
+        from welib.tools.stats import rsquare, mean_rel_err
+        g = 9.81 # gravity [m/s^2]
+        h = 30.  # water depth [m]
+
+        # --- Test for multiple frequencies, multiple points, one time
+        compFile = os.path.join(scriptDir, '../../../data/Monopile/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=50.csv')
+        df = pd.read_csv(compFile)
+        fp  = df['Frequency_[Hz]']
+        ap  = df['Amplitude_[m]']
+        epsp= df['Phase_[rad]']
+        x    = 0
+        kp   = wavenumber(fp, h, g)
+        time = np.arange(0, 100, 0.10)
+        eta_ref = elevation2d(ap, fp, kp, epsp, time, x)
+        pSS = wave_components( eta_ref, time, water_depth=h, g=g, aThreshold=1e-4)
+        eta_sim = elevation2d(pSS['ap'], pSS['fp'], pSS['kp'], pSS['epsp'], time, x)
+        np.testing.assert_almost_equal(eta_sim, eta_ref, 4)
+
+
+        R2,_ = rsquare(y_ref=eta_ref, y_sim=eta_sim)
+        eps = mean_rel_err(y1=eta_ref, y2=eta_sim, method='meanabs')
+
+        np.testing.assert_almost_equal(eta_sim, eta_ref, 4)
+
+        np.testing.assert_array_less(1-R2,0.001)
+        np.testing.assert_array_less(eps, 0.009)
+
 
 if __name__ == '__main__':
     MyDir=os.path.dirname(__file__)
