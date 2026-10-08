@@ -75,10 +75,15 @@ class KalmanFilterMTNS(KalmanFilter):
             sQ.remove( 'q_FA1'); sQ.remove( 'dq_FA1'); 
             sY.remove('NcIMUAx')
         # Constant input (value 1) carrying the static generalized forces (gravity overhang) of the full structure
-        if KF.setup_opts['monopileDOFs'] and KF.setup_opts['aero_est'] and KF.setup_opts['q_FA1']:
+        if KF.setup_opts['aero_est'] and KF.setup_opts['q_FA1']:
             sU.append('Static')
+        if KF.setup_opts['monopileDOFs'] and KF.setup_opts['aero_est'] and KF.setup_opts['q_FA1']:
             if KF.setup_opts.get('bias_states', True):
                 sQa += ['Bx', 'Bphi'] # Slowly varying generalized force biases (model static errors) on x and phi_y
+        elif not KF.setup_opts['monopileDOFs'] and KF.setup_opts['q_FA1'] and KF.setup_opts['aero_est']:
+            # Tower-only case (Case 2): bias on q_FA1 (slowly-varying model error on tower mode)
+            if KF.setup_opts.get('bias_states', True):
+                sQa += ['Bq']  # Tower mode bias
 
         # --- Parent init
         KalmanFilter.__init__(KF, sX0=sQ, sXa=sQa, sU=sU, sY=sY, sS=sS)
@@ -106,32 +111,60 @@ class KalmanFilterMTNS(KalmanFilter):
         s+=' - hacks  : {} \n'.format(self.hacks)
         return s
 
-    def setup_matrices(KF, 
-                       fstFile, dfTime=None,
-                       hydroShapeFile=None, compFile=None, Tp=None, zeta =0.12, qdhScale=1, # Hydro params
-                       method='OpenFAST',
-                       linFiles=None, # For method=='OpenFAST
-                       fullColumns=False,
-                       ):
+    # --------------------------------------------------------------------------------}
+    # --- Setup of the models
+    # --------------------------------------------------------------------------------{
+    # Two models are always built, and stored in KF.mats:
+    #   - 'YS': YAMS model, physics from the structural matrices (M,D,K) and the geometry of the turbine
+    #   - 'OF': OpenFAST model, built from the (averaged) linearized OpenFAST model
+    # They share the same states/inputs/outputs and the same code for what is not method specific (_set_common_submatrix)
+    # `method` only selects which one is used by the filter. See compareMatrices to compare them element by element.
+    def setup_matrices(KF, fstFile, dfTime=None, hydroShapeFile=None, compFile=None, Tp=None, zeta=0.12,
+                       method='YAMS', linFiles=None):
         """ Build WT model (sea state, hydro) and state matrices A,B,C,D """
-        # --- Default arguments
-        shapes_sub =[0,4] # TODO detemine this based on sQ
-        shapes_twr =[0]   # TODO detemine this based on sQ
-        # --- Windturbine model
-        WT = FASTmodel2MTNSB(fstFile, shapes_sub=shapes_sub, shapes_twr=shapes_twr, shapes_bld=[],
+        if linFiles is None:
+            raise FileNotFoundError('An OpenFAST .lin file is required for now')
+        elif not isinstance(linFiles, list):
+            linFiles = [linFiles]
+        # --- Models, maps to measurements, hydro
+        KF._setup_WT(fstFile)
+        KF._setup_colMap()
+        KF._setup_hydro(dfTime, compFile, hydroShapeFile, Tp, zeta)
+        KF.M_inv = np.linalg.inv(KF.WT.MM)
+        OF_lin   = KF._load_openfast_lin(linFiles)
+        # --- Matrices
+        nX, nU, nY = KF.nX, KF.nU, KF.nY
+        YS = [np.zeros((nX, nX)), np.zeros((nX, nU)), np.zeros((nY, nX)), np.zeros((nY, nU))]
+        OF = [np.zeros((nX, nX)), np.zeros((nX, nU)), np.zeros((nY, nX)), np.zeros((nY, nU))]
+        # Rotor inertia: YAMS from the rotor model, OpenFAST from the Qgen column of the lin. model
+        J_LSS_YS = KF.WT.rot.inertia[0,0] if 'psi' in KF.iX else None
+        J_LSS_OF = -1/OF_lin['B'].loc['d_psi_rot_[rad/s]','Qgen_[Nm]'] if 'psi' in KF.iX else None
+        if 'psi' in KF.iX:
+            print('[INFO] KalmanModel: Rotor Inertia: YAMS: {:.1f} OF: {:.1f}'.format(J_LSS_YS, J_LSS_OF))
+        KF._set_common_submatrix(*YS, J_LSS_YS)
+        KF._set_common_submatrix(*OF, J_LSS_OF)
+        KF._set_yams_submatrix(*YS, method)
+        KF._set_openfast_submatrix(*OF, OF_lin)
+        HY = KF._set_hybrid_submatrix(YS, OF, OF_lin) # YAMS model where selected terms are replaced by OpenFAST terms
+        # --- Selection of the model used by the filter
+        KF.method = method
+        KF.mats   = dict(YS=tuple(YS), OF=tuple(OF), HY=tuple(HY), OF_lin=OF_lin, M_inv=KF.M_inv)
+        KF.setMat(*dict(YAMS=YS, OpenFAST=OF, Hybrid=HY)[method])
+
+    def _setup_WT(KF, fstFile):
+        """ Windturbine models: full structure (WT, monopile and tower) and tower only (WTTN)"""
+        # TODO shapes should be determined based on sQ
+        KF.WT = FASTmodel2MTNSB(fstFile, shapes_sub=[0,4], shapes_twr=[0], shapes_bld=[],
                              DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=False,
                              algo='OpenFAST').WT
+        KF.WTTN = FASTmodel2TNSB(fstFile, shapes_twr=[0], shapes_bld=[],
+                            DEBUG=False, bStiffening=True, main_axis='z').WT
+        KF.zDepth = KF.WT.fnd.s_span - KF.WT.WtrDpth
 
-        KF.WTTN = FASTmodel2TNSB(fstFile, shapes_twr=shapes_twr, shapes_bld=[], 
-                            DEBUG=False, bStiffening=True, main_axis='z'
-                            ).WT
-
-        KF.WT = WT
-
+    def _setup_colMap(KF):
+        """ Col MAP for OpenFAST OutFile "Measurements" used for "clean" values """
+        WT = KF.WT
         nGear = WT.ED['GBRatio']
-        
-        # --- ColMap
-        # Col MAP for OpenFAST OutFile "Measurements" used for "clean" values
         KF.colMap={
                 'x'      : 'Q_Sg_[m]' ,
                 'phi_y'  : 'Q_P_[rad]' ,
@@ -188,7 +221,11 @@ class KalmanFilterMTNS(KalmanFilter):
                 'ddq_FA1': 'QD2_TFA1_[m/s^2]',
                 })
 
-
+    def _setup_hydro(KF, dfTime, compFile, hydroShapeFile, Tp, zeta):
+        """ Sea state components, wave elevation, hydro shape function, and shaping filter of the waves"""
+        WT = KF.WT
+        if 'q_h' not in KF.sX:
+            return
         # --- Configure Sea State components and wave elevation
         if 'q_h' in KF.sX:
             if WT.pSS is not None:
@@ -205,364 +242,282 @@ class KalmanFilterMTNS(KalmanFilter):
                 for i in range(min(pHD['GM_hydro'].shape[0], WT.MM.shape[0])):
                     WT.MM[i, i] += pHD['GM_hydro'][i, i]
                 WT._GM_hydro_added = True
+        # Shaping filter parameters, state equation of the waves is in _set_common_submatrix
+        if Tp==12.7:
+            KF.Sw= 2.3835e-01
+        elif Tp==10.0:
+            KF.Sw= 2.3835e-01/2
+        else:
+            raise NotImplementedError(f'Tp={Tp}')
+        KF.omega_p = 2*np.pi/Tp
+        KF.zeta    = zeta
+        print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
 
-        # --- Store turbine and hydro data in Kalman filter object
-        KF.WT  = WT
-        KF.zDepth = WT.fnd.s_span - WT.WtrDpth
+    def _k_h(KF):
+        """ Generalized hydro force: k_h * dq_h, for x and phi_y (including user scaling)"""
+        if 'k_h' not in KF.pHD:
+            FAIL('k_h not present')
+        return np.asarray(KF.pHD['k_h']) * np.asarray(KF.setup_opts.get('kh_scale', [1.0, 1.0]))
 
-        # --- Setup state matrices, problem specific!
-        nX, nU, nY = len(KF.sX), len(KF.sU), len(KF.sY)
-        # Empty inputs/outputs B,C,D
-        MM_sub = WT.MM[:2,:2] # We only keep surge and pitch
-        M_inv     = np.linalg.inv(WT.MM)
-        M_inv_sub = np.linalg.inv(MM_sub)
+    def _set_nacelle_IMU(KF, A, B, C, D, w):
+        """ Nacelle IMU acceleration as a combination of the generalized accelerations (rows of A and B), weights w for (x, phi_y, q_FA1) """
+        if 'NcIMUAx' not in KF.iY: return
+        iy = KF.iY['NcIMUAx']; C[iy,:] = 0; D[iy,:] = 0
+        for wk, nm in zip(w, ['dx', 'dphi_y', 'dq_FA1']):
+            if nm in KF.iX:
+                C[iy,:] += wk * A[KF.iX[nm],:]
+                D[iy,:] += wk * B[KF.iX[nm],:]
 
+    # --------------------------------------------------------------------------------}
+    # --- Common to YAMS and OpenFAST
+    # --------------------------------------------------------------------------------{
+    def _set_common_submatrix(KF, A, B, C, D, J_LSS):
+        """ Augmented states equations and simple outputs, identical for both models. J_LSS: rotor inertia"""
+        iX, iU, iY = KF.iX, KF.iU, KF.iY
+        # --- Rotor Inertia / Shaft equation
+        if 'psi' in iX:
+            A[iX['psi'], iX['dpsi']] = 1
+            if 'Qaero' in KF.sXa: A[iX['dpsi'], iX['Qaero']] =  1 / J_LSS
+            if 'Qgen'  in iU    : B[iX['dpsi'], iU['Qgen']]  = -1 / J_LSS
+            C[iY['dpsi'], iX['dpsi']] = 1  # We measure rotational speed
+        # --- Outputs
+        if 'x' in iX:
+            C[iY['PtfmIncly'], iX['phi_y']] = 1   # We measure inclination
+        if 'Qgen' in iY:
+            D[iY['Qgen'], iU['Qgen']] = 1
+        # --- Shaping filter, Hydro state equation
+        if 'q_h' in iX:
+            A[iX['q_h'],  iX['dq_h']]  = 1
+            A[iX['dq_h'], iX['q_h']]   = -KF.omega_p**2
+            A[iX['dq_h'], iX['dq_h']]  = -2 * KF.zeta * KF.omega_p
+            B[iX['dq_h'], iU['w']]     = 1 # White noise
 
-        # --- Matrices from OpenFAST lin file
-        if linFiles is None: 
-            raise FileNotFoundError('An OpenFAST .lin file is required for now')
-        elif not isinstance(linFiles, list):
-            linFiles = [linFiles]
-
-        A_OF = np.zeros((nX, nX))
-        B_OF = np.zeros((nX, nU))
-        C_OF = np.zeros((nY, nX))
-        D_OF = np.zeros((nY, nU))
-        OF_lin = KF._set_openfast_submatrix(A_OF, B_OF, C_OF, linFiles)
-
-        # --- Matrices from YAMS (partial
-        A_YS = np.zeros((nX, nX))
-        B_YS = np.zeros((nX, nU))
-        C_YS = np.zeros((nY, nX))
-        D_YS = np.zeros((nY, nU))
-
-#         rhoN_x = s.r_NGrna_inN.flatten()[0]
-#         rhoN_z = s.r_NGrna_inN.flatten()[2]
-#         rNR_x  = s.r_NR_inN.flatten()[0]
-#         rNR_z  = s.r_NR_inN.flatten()[2]
-#         g      = s.gravity
-#         ux1c   = s.twr.Bhat_x_bc[1,0]
-#         vy1c   = s.twr.Bhat_t_bc[1,0]  # Bhat_t_bc[1,j]= self.PhiV[j][0,iNode]
-# 
-#         GF  =   T*np.cos(s.shaft_tilt) 
-#         if bFull:
-#             GF += - T* vy1c * np.sin(s.shaft_tilt) * x[0]  # Geometrical softening/stiffening, should be in K
-#             GF += (vy1c**2 * s.M_RNA*g * rhoN_z) * x[0]    # Geometrical softening/stiffening, should be in K
-#             GF +=  T*vy1c*(rNR_x*np.sin(s.shaft_tilt) + rNR_z*np.cos(s.shaft_tilt) )  # Moment arm of thrust acting at r_NR relative to tower top
-#             GF += vy1c * s.M_RNA*g * rhoN_x # Static overhang moment
-
-
-
-        As, Bs, Cs, Ds = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK)
-        # --- Structural DOFs
+    # --------------------------------------------------------------------------------}
+    # --- YAMS
+    # --------------------------------------------------------------------------------{
+    def _set_yams_submatrix(KF, A, B, C, D, method='YAMS'):
+        """ Rows of the generalized accelerations from YAMS: mechanical matrices, thrust, static force, biases, hydro, and IMU outputs"""
+        iX, iU, iY = KF.iX, KF.iU, KF.iY
+        WT, M_inv = KF.WT, KF.M_inv
+        dofs = [('dx',0), ('dphi_y',1), ('dq_FA1',2)] # Generalized accelerations and their index in M
+        # --- Mechanical system
+        As, _, _, _ = BuildSystem_Linear_MechOnly(WT.MM, WT.DD, WT.KK)
         names = ['x', 'phi_y', 'q_FA1', 'psi', 'dx', 'dphi_y', 'dq_FA1', 'dpsi']
         for row, row_name in enumerate(names):
             for col, col_name in enumerate(names):
-                if row_name in KF.sX and col_name in KF.sX:
-                    A_YS[KF.iX[row_name], KF.iX[col_name]] = As[row, col]
-#                 else:
-#                     WARN('Missing', row_name, col_name)
-
-
-        # --------------------------------------------------------------------------------}
-        # ---  Code common to OpenFAST and YAMS
-        # --------------------------------------------------------------------------------{
-        # After applying the "generic" A, we introduce the augmented states equations
-        # and some additional tweaks
-
-        # --- Rotor Inertia / Shaft equation
-        if 'psi' in KF.iX:
-            A_YS[KF.iX['psi'], KF.iX['dpsi']] = 1
-            A_OF[KF.iX['psi'], KF.iX['dpsi']] = 1
-
-            J_LSS_YAMS      = WT.rot.inertia[0,0]
-            J_LSS_OF_Qgen   = -1/OF_lin['B'].loc['d_psi_rot_[rad/s]','Qgen_[Nm]']
-            J_LSS = J_LSS_YAMS
-            print('[INFO] KalmanModel: Rotor Inertia seleted: {:.1f} (YAMS: {:.1f} OF: {:.1f}'.format(J_LSS, J_LSS_YAMS, J_LSS_OF_Qgen))
-            if 'Qaero' in KF.sXa:
-                A_YS[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / J_LSS
-                A_OF[KF.iX['dpsi'], KF.iX['Qaero']] = 1 / J_LSS_OF_Qgen
-            if 'Qgen' in KF.sU:
-                B_YS[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / J_LSS
-                B_OF[KF.iX['dpsi'], KF.iU['Qgen']] = -1 / J_LSS_OF_Qgen
-
-        # --- Thrust influence (physical derivation)
-        try:
-            r_TN = WT.r_TN_inT # if hasattr(WT, 'r_TN_inT') else [0,0,198.386]
-            r_NS = WT.r_NS_inN # if hasattr(WT, 'r_NS_inN') else [0,0,4.143]
-        except:
-            raise NotImplementedError()
-        h_hub = r_TN[2] + r_NS[2]
-
-        sQd_OF = []
-        if 'x' in KF.iX:
-            sQd_OF += ['d_PtfmSurge_[m/s]']
-# , 'd_PtfmHeave_[m/s]',
-        if 'phi_y' in KF.iX:
-            sQd_OF += ['d_PtfmPitch_[rad/s]']
-        if 'q_FA1' in KF.iX:
-            sQd_OF += ['d_qt1FA_[m/s]']
-        if 'psi' in KF.iX:
-            sQd_OF += ['d_psi_rot_[rad/s]']
-        if 'HubFxN1_[N]' in OF_lin['B']:
-            BFHx = OF_lin['B'].loc[sQd_OF, 'HubFxN1_[N]'] # Hub x force
-            BFNx = OF_lin['B'].loc[sQd_OF, 'NacFxN1_[N]'] # Nacelle x force
-        else:
-            WARN('OF lin file incomplete')
-        #BFx_selected = OF_lin['B'].loc[sQd, sThrust]*tuning['kThrustA']
-        #print('[INFO] KalmanModel: Thrust ddq relation: {}'.format(BFx_selected.loc['ddq_FA1']))
-        # For q_FA1
-        m_twr = WT.twr.mass
-        GM_twr = KF.WT.twr.MM[6,6] # Generalized mass of tower
-        m_rna = WT.RNA.mass
-        M_modal = GM_twr + m_rna
-        if 'GenThrust' in KF.sU and 'x' in KF.sX and 'q_FA1' in KF.sX:
-            # Full structure: input is the physical rotor thrust T along the shaft, applied at the rotor center R.
+                if row_name in iX and col_name in iX:
+                    A[iX[row_name], iX[col_name]] = As[row, col]
+        # --- Thrust and static force
+        if 'GenThrust' in iU and 'x' in iX:
+            # Input is the physical rotor thrust T along the shaft, applied at the rotor center R.
             # Generalized forces: Q = J*T + b, with J the Jacobian of the point R w.r.t. [x, phi_y, q_FA1]
             W = KF.WTTN
-            th = W.shaft_tilt; cs, sn = np.cos(th), np.sin(th)
-            rNR = np.asarray(W.r_NR_inN).flatten()
-            rNG = np.asarray(W.r_NGrna_inN).flatten()
+            r_TN = WT.r_TN_inT
+            cs, sn = np.cos(W.shaft_tilt), np.sin(W.shaft_tilt)
+            rNR  = np.asarray(W.r_NR_inN).flatten()
+            rNG  = np.asarray(W.r_NGrna_inN).flatten()
             vy1c = W.twr.Bhat_t_bc[1,0]
-            J = np.zeros(M_inv.shape[0])
+            J = np.zeros(M_inv.shape[0]); bs = np.zeros(M_inv.shape[0])
             J[0] = cs
             J[1] = (r_TN[2] + rNR[2])*cs + rNR[0]*sn
             J[2] = cs + vy1c*(rNR[0]*sn + rNR[2]*cs)
-            bs = np.zeros(M_inv.shape[0])
             bs[1] = rNG[0]*W.M_RNA*W.gravity           # overhang moment of the RNA weight
             bs[2] = vy1c*rNG[0]*W.M_RNA*W.gravity
-            bs[:len(KF.setup_opts.get('static_bias', [0,0,0]))] += np.asarray(KF.setup_opts.get('static_bias', [0,0,0]))
+            sb = np.asarray(KF.setup_opts.get('static_bias', [0,0,0])); bs[:len(sb)] += sb
             KF.J_thrust, KF.b_static = J, bs
-            for nm, i in (('dx',0), ('dphi_y',1), ('dq_FA1',2)):
-                B_YS[KF.iX[nm], KF.iU['GenThrust']] = M_inv[i,:] @ J
-                B_YS[KF.iX[nm], KF.iU['Static']]    = M_inv[i,:] @ bs
-        elif 'GenThrust' in KF.sU:
-#             if fullColumns:
-#                 B.loc[sQd, 'Thrust'] = BFx_selected.loc[sQd]
-            #M_modal_OF = OF_lin['B'].loc['d_qt1FA_[m/s]', 'NacFxN1_[N]'] # Nacelle x force
-            B_YS[KF.iX['dq_FA1'], KF.iU['GenThrust']] = 1 / M_modal
-            B_OF[KF.iX['dq_FA1'], KF.iU['GenThrust']] = OF_lin['B'].loc['d_qt1FA_[m/s]', 'HubFxN1_[N]']
-            #B[KF.iX['dq_FA1'], KF.iU['Thrust']] = BFx_selected.loc['ddq_FA1']
-            # B matrix columns for Thrust (applicable to both YAMS and OpenFAST)
-            if 'x' in KF.sX:
-                B_YS[KF.iX['dx']    , KF.iU['GenThrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-                B_YS[KF.iX['dphi_y'], KF.iU['GenThrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
-                B_OF[KF.iX['dx']    , KF.iU['GenThrust']] = OF_lin['B'].loc['d_PtfmSurge_[m/s]'  , 'HubFxN1_[N]']
-                B_OF[KF.iX['dphi_y'], KF.iU['GenThrust']] = OF_lin['B'].loc['d_PtfmPitch_[rad/s]', 'HubFxN1_[N]']
-        elif 'GenThrust' in KF.sX:
-            A_YS[KF.iX['dq_FA1'], KF.iX['GenThrust']] = 1/ M_modal
-            if 'x' in KF.sX:
-                A_YS[KF.iX['dx']    , KF.iX['GenThrust']] = M_inv[0, 0] * 1.0 + M_inv[0, 1] * h_hub
-                A_YS[KF.iX['dphi_y'], KF.iX['GenThrust']] = M_inv[1, 0] * 1.0 + M_inv[1, 1] * h_hub
-
+            for nm, i in dofs:
+                if nm in iX:
+                    B[iX[nm], iU['GenThrust']] = M_inv[i,:] @ J
+                    if 'Static' in iU: B[iX[nm], iU['Static']] = M_inv[i,:] @ bs
+        elif 'GenThrust' in iU:
+            # Tower only: thrust at the top of the tower, generalized mass of the tower+RNA
+            B[iX['dq_FA1'], iU['GenThrust']] = 1 / (WT.twr.MM[6,6] + WT.RNA.mass)
         # --- Generalized force biases
         for nmB, j in (('Bx',0), ('Bphi',1)):
-            if nmB in KF.sX:
-                for nm, i in (('dx',0), ('dphi_y',1), ('dq_FA1',2)):
-                    A_YS[KF.iX[nm], KF.iX[nmB]] = M_inv[i, j]
+            if nmB in iX:
+                for nm, i in dofs:
+                    if nm in iX: A[iX[nm], iX[nmB]] = M_inv[i, j]
+        if 'Bq' in iX:  # Tower-only bias (Case 2)
+            A[iX['dq_FA1'], iX['Bq']] = 1.0 / (WT.twr.MM[6,6] + WT.RNA.mass) if 'GenThrust' in iU else 1.0
+        # --- Generalized hydro force
+        if 'q_h' in iX:
+            k_h = KF._k_h()
+            for nm, i in dofs:
+                if nm in iX: A[iX[nm], iX['dq_h']] = M_inv[i, :2] @ k_h
+        # --- HACK for tower only: use the tower-only model (K/M) instead of the coupled model of the full structure
+        # TODO TODO TODO the full structure model is not valid when monopile DOFs are removed (condensation needed)
+        if 'q_FA1' in iX and 'x' not in iX:
+            if method=='YAMS': FAIL('Using a super hack: YAMS tower-only -K/M instead of coupled model')
+            A[iX['dq_FA1'], iX['q_FA1']] = -KF.WTTN.KK[0,0]/KF.WTTN.MM[0,0] # -1.71 instead of -55.16
+        # --- Outputs
+        if 'x' in iX:
+            C[iY['PtfmIMUAx'], :] = A[iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
+            D[iY['PtfmIMUAx'], :] = B[iX['dx'],:]
+        KF._set_nacelle_IMU(A, B, C, D, (1, WT.r_TN_inT[2], 1))
 
-        # --- Generalized hydro force 
-        if 'q_h' in KF.sX:
-            IQD   =[KF.iX['dx'], KF.iX['dphi_y']]
-            if 'k_h' in pHD:
-                k_h_eff = np.asarray(pHD['k_h']) * np.asarray(KF.setup_opts.get('kh_scale', [1.0, 1.0]))
-                for nm, i in (('dx',0), ('dphi_y',1), ('dq_FA1',2)):
-                    if nm in KF.iX:
-                        A_YS[KF.iX[nm], KF.iX['dq_h']] = M_inv[i, :2] @ k_h_eff
-                A_OF[KF.iX['dx'],     KF.iX['dq_h']] = M_inv_sub[0, :] @ pHD['k_h']
-                A_OF[KF.iX['dphi_y'], KF.iX['dq_h']] = M_inv_sub[1, :] @ pHD['k_h']
-            else:
-                FAIL('k_h not present')
+    # --------------------------------------------------------------------------------}
+    # --- OpenFAST
+    # --------------------------------------------------------------------------------{
+    def _of_inverse_mass(KF, Bm, dofs):
+        """ Inverse mass matrix of the DOFs `dofs` (x, phi_y, q_FA1), deduced from the input columns of the lin. model.
+        Generalized forces (x: PtfmFx, phi_y: PtfmMy) give the x and phi_y columns. The q_FA1 column comes from a nacelle force NacFx,
+        applied at height h with tower-top mode shape phi: Minv @ [1, h, phi]; (h, phi) are solved from the x and phi_y rows."""
+        if dofs != ['x', 'phi_y', 'q_FA1']: raise NotImplementedError('Inverse mass matrix for DOFs: '+str(dofs))
+        rows = ['d_PtfmSurge_[m/s]', 'd_PtfmPitch_[rad/s]', 'd_qt1FA_[m/s]']
+        Mi = np.zeros((3,3))
+        Mi[:,0] = Bm.loc[rows, 'PtfmFxN1_[N]'].values;  Mi[:,1] = Bm.loc[rows, 'PtfmMyN1_[Nm]'].values
+        Mi[:,2] = Mi[2,:]; Mi[2,2] = 0 # symmetry
+        b = Bm.loc[rows, 'NacFxN1_[N]'].values
+        # b[:2] = Mi[:2,0] + h Mi[:2,1] + phi Mi[:2,2]
+        h, phi = np.linalg.solve(np.column_stack([Mi[:2,1], Mi[:2,2]]), b[:2] - Mi[:2,0])
+        Mi[2,2] = (b[2] - Mi[2,0] - h*Mi[2,1]) / phi
+        print('[INFO] OpenFAST lin. inverse mass: nacelle height {:.2f}, tower-top mode shape {:.3f}, M_qq {:.4e}'.format(h, phi, np.linalg.inv(Mi)[2,2]))
+        return Mi
 
-        # --- Outputs 
-        if 'x' in KF.sX:
-            # Monopile top acceleration
-            C_YS[KF.iY['PtfmIMUAx'], :] = A_YS[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
-            D_YS[KF.iY['PtfmIMUAx'], :] = B_YS[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s
-            C_OF[KF.iY['PtfmIMUAx'], :] = A_OF[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s # TODO can probably do better
-            D_OF[KF.iY['PtfmIMUAx'], :] = B_OF[KF.iX['dx'],:] # PtfmIMUAx is assumed to be qdd_s # TODO can probably do better
-            # Inclination
-            C_YS[KF.iY['PtfmIncly'], KF.iX['phi_y']] = 1   # We measure inclination        
-            C_OF[KF.iY['PtfmIncly'], KF.iX['phi_y']] = 1   # We measure inclination        
-        if 'psi' in KF.sX:
-            # Rotational speed
-            C_YS[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed
-            C_OF[KF.iY['dpsi'], KF.iX['dpsi']] = 1  # We measure rotational speed
-
-        # Couple wave velocity (dq_h) into NcIMUAx
-        h_nac = KF.WT.r_TN_inT[2]
-        if 'q_h' in KF.sX:
-                if 'NcIMUAx' in KF.iY:
-                    C_YS[KF.iY['NcIMUAx'], KF.iX['dq_h']] +=  h_nac * A_YS[KF.iX['dphi_y'], KF.iX['dq_h']]
-                    C_OF[KF.iY['NcIMUAx'], KF.iX['dq_h']] +=  h_nac * A_OF[KF.iX['dphi_y'], KF.iX['dq_h']] # TODO TODO TODO
-
-        # Nacelle acceleration in x direction (including pitch coupling)
-        h_nac = r_TN[2]
-        if method == 'YAMS':
-            if 'NcIMUAx' in KF.iY:
-                if 'x' in KF.sX:
-                    C_YS[KF.iY['NcIMUAx'], :] = A_YS[KF.iX['dx'], :] + h_nac * A_YS[KF.iX['dphi_y'], :] 
-                    D_YS[KF.iY['NcIMUAx'], :] = B_YS[KF.iX['dx'], :] + h_nac * B_YS[KF.iX['dphi_y'], :] 
-                    C_OF[KF.iY['NcIMUAx'], :] = A_OF[KF.iX['dx'], :] + h_nac * A_OF[KF.iX['dphi_y'], :]  # TODO TODO TODO
-                    D_OF[KF.iY['NcIMUAx'], :] = B_OF[KF.iX['dx'], :] + h_nac * B_OF[KF.iX['dphi_y'], :]  # TODO TODO TODO
-                if 'q_FA1' in KF.sX:
-                    C_YS[KF.iY['NcIMUAx'], :] +=  A_YS[KF.iX['dq_FA1'], :]
-                    D_YS[KF.iY['NcIMUAx'], :] +=  B_YS[KF.iX['dq_FA1'], :]
-                    C_OF[KF.iY['NcIMUAx'], :] +=  A_OF[KF.iX['dq_FA1'], :] # TODO TODO TODO
-                    D_OF[KF.iY['NcIMUAx'], :] +=  B_OF[KF.iX['dq_FA1'], :] # TODO TODO TODO
-
-        #C[KF.iY['NcIMUAz'], KF.iX['phi_y']] = -9.81
-        if 'Qgen' in KF.iY:
-            D_YS[KF.iY['Qgen'], KF.iU['Qgen']] = 1
-            D_OF[KF.iY['Qgen'], KF.iU['Qgen']] = 1
-        # Thrust measreuments
-        if 'GenThrust' in KF.sY and 'GenThrust' in KF.sX:
-            C_YS[KF.iY['GenThrust'], KF.iX['GenThrust']] = 1
-            C_OF[KF.iY['GenThrust'], KF.iX['GenThrust']] = 1
-
-        # --- Shaping filter, Hydro state equation
-        if 'q_h' in KF.sX:
-            if Tp==12.7:
-                KF.Sw= 2.3835e-01
-            elif Tp==10.0:
-                KF.Sw= 2.3835e-01/2
-            else:
-                raise NotImplementedError(f'Tp={Tp}')
-            KF.omega_p = 2*np.pi/Tp
-            KF.zeta = zeta
-            print('omega_p^2', KF.omega_p**2, '2 zeta omega_p', 2*KF.zeta*KF.omega_p)
-            A_YS[KF.iX['q_h'],  KF.iX['dq_h']]  = 1
-            A_YS[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
-            A_YS[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
-            B_YS[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
-            A_OF[KF.iX['q_h'],  KF.iX['dq_h']]  = 1
-            A_OF[KF.iX['dq_h'], KF.iX['q_h']]  = -KF.omega_p**2
-            A_OF[KF.iX['dq_h'], KF.iX['dq_h']] = -2 * KF.zeta * KF.omega_p
-            B_OF[KF.iX['dq_h'], KF.iU['w']] = 1 # White noise
-
-
-        if 'x' in KF.sX and 'q_FA1' in KF.sX and 'GenThrust' in KF.sU:
-            KF._build_openfast_full(A_OF, B_OF, C_OF, D_OF, OF_lin, None if 'k_h' not in pHD else np.asarray(pHD['k_h']) * np.asarray(KF.setup_opts.get('kh_scale', [1.0, 1.0])), KF.WTTN.shaft_tilt)
-
-        if method=='YAMS':
-            A, B, C, D = A_YS, B_YS, C_YS, D_YS
-        elif method=='OpenFAST':
-            A, B, C, D = A_OF, B_OF, C_OF, D_OF
-
-
-        # --- Super Hack
-        if 'x' not in KF.sX and method=='YAMS':
-            FAIL('Using a super hack where value are replaced')
-            A[KF.iX['dq_FA1'], KF.iX['q_FA1'] ]     = -1.71 # From TN , instead of -55.16  # <<<<<<<<<<<<<<< TODO TODO TODO TODO
-#             A[KF.iX['dq_FA1'], KF.iX['dq_FA1'] ] = -0.01 # From TN, instead  of -0.1
-#             if 'Thrust' in KF.sU:
-#                 B_YS[KF.iX['dq_FA1'], KF.iU['Thrust'] ] = 6.06e-07 # From TN
-#             elif 'Thrust' in KF.sX:
-#                 A[KF.iX['dq_FA1'], KF.iX['Thrust'] ] = 6.06e-07 # From TN
-            C[KF.iY['NcIMUAx'], : ]  = A[KF.iX['dq_FA1'], :]
-            D[KF.iY['NcIMUAx'], : ]  = B[KF.iX['dq_FA1'], :]
-        KF.method = method
-        KF.mats = dict(YS=(A_YS, B_YS, C_YS, D_YS), OF=(A_OF, B_OF, C_OF, D_OF), OF_lin=OF_lin, M_inv=M_inv)
-        # --- Finally, we set the matrices
-        KF.setMat(A, B, C, D)
-
-    def _build_openfast_full(KF, A, B, C, D, OF_lin, k_h, tilt):
-        """ Builds structural rows of the augmented OpenFAST model (x, phi_y, q_FA1) from Am, Bm, Cm, Dm.
-        Everything is taken from the lin. model: structure (A), thrust (HubFx/HubFz columns),
-        generalized force biases and hydro force (PtfmFx/PtfmMy columns), IMU outputs (Cm/Dm rows),
-        and static offset (operating point).  Heave and rotor-azimuth couplings are dropped."""
+    def _set_openfast_submatrix(KF, A, B, C, D, OF_lin):
+        """ Rows of the generalized accelerations from the linearized OpenFAST model (Am, Bm, Cm, Dm) for the DOFs present in the filter.
+        Structure (A), thrust (HubFx/HubFz columns), generalized force biases and hydro force (PtfmFx/PtfmMy columns),
+        IMU outputs (Cm/Dm rows), and static offset (operating point).  Heave and rotor-azimuth couplings are dropped.
+        When the filter has fewer DOFs than the lin. model (e.g. tower only), the model is condensed: Mss^-1 (M a)_s """
+        iX, iU, iY = KF.iX, KF.iU, KF.iY
         Am, Bm, Cm, Dm, FL = OF_lin['A'], OF_lin['B'], OF_lin['C'], OF_lin['D'], OF_lin['FL']
         opts = KF.setup_opts.get('of_opts', {})
-        cs, sn = np.cos(tilt), np.sin(tilt)
-        sx = {'x':'PtfmSurge_[m]', 'phi_y':'PtfmPitch_[rad]', 'q_FA1':'qt1FA_[m]'}
-        sxd= {'dx':'d_PtfmSurge_[m/s]', 'dphi_y':'d_PtfmPitch_[rad/s]', 'dq_FA1':'d_qt1FA_[m/s]'}
-        allS = dict(sx); allS.update(sxd)
-        allS = {k: v for k, v in allS.items() if k in KF.sX}
-        rowsD = {k: v for k, v in sxd.items() if k in KF.sX}   # acceleration rows
+        cs, sn = np.cos(KF.WTTN.shaft_tilt), np.sin(KF.WTTN.shaft_tilt)
+        lq = {'x':'PtfmSurge_[m]', 'phi_y':'PtfmPitch_[rad]', 'q_FA1':'qt1FA_[m]'}
+        lv = {'x':'d_PtfmSurge_[m/s]', 'phi_y':'d_PtfmPitch_[rad/s]', 'q_FA1':'d_qt1FA_[m/s]'}
+        full = [k for k in lq if lq[k] in Am.columns]  # DOFs of the lin. model
+        sub  = [k for k in full if k in iX]            # DOFs of the filter
+        if len(sub)==0: return
+        idx  = [full.index(k) for k in sub]
+        sStates = [lq[k] for k in sub] + [lv[k] for k in sub]    # states of the filter (lin. labels)
+        iStates = [iX[k] for k in sub] + [iX['d'+k] for k in sub]
+        rowsF = [lv[k] for k in full]  # acceleration rows of the lin. model
+        # --- Condensation, project(col): column of accelerations of the lin. model -> accelerations of the filter DOFs
+        if sub == full:
+            project = lambda col: np.asarray(col)
+        else:
+            M = np.linalg.inv(KF._of_inverse_mass(Bm, full))
+            Mss_inv = np.linalg.inv(M[np.ix_(idx, idx)])
+            project = lambda col: Mss_inv @ (M @ np.asarray(col))[idx]
+        def colB(label):   # Input column of the lin. model, projected on the filter DOFs
+            return project(Bm.loc[rowsF, label].values)
+        def colT(M, rows): # thrust along shaft: [cos, 0, -sin] in global frame
+            return cs * M.loc[rows, 'HubFxN1_[N]'].values - sn * M.loc[rows, 'HubFzN1_[N]'].values
+        W = KF.WTTN; rNG = np.asarray(W.r_NGrna_inN).flatten(); Mg = W.M_RNA * W.gravity  # RNA weight, for static_mode 'gravity'
         # Operating point (mean over the OPs)
-        xdescr = [str(l) for l in FL.xdescr]
-        xop = np.asarray(FL.xop_mean).ravel()
-        xop_s = {k: xop[xdescr.index(v)] for k, v in allS.items()}
+        xdescr = [str(l) for l in FL.xdescr]; xop = np.asarray(FL.xop_mean).ravel()
+        xop_s = np.array([xop[xdescr.index(l)] for l in sStates])
         ydescr = [str(l) for l in FL.ydescr]
         yop_all = np.mean([np.asarray(OP.Data[0].y).ravel() for OP in FL.OP_Data], axis=0)
         yop = lambda lab: yop_all[ydescr.index(lab)]
-        T_op = yop(opts.get('T_op_label', 'ADRtAeroFxh_[N]')) * (1e3 if 'kN' in opts.get('T_op_label', '') else 1.0)  # aero thrust (no rotor weight/inertia)
-        # Input columns
-        def colT(M, r):   # thrust along shaft: [cos, 0, -sin] in global frame
-            return cs * M.loc[r, 'HubFxN1_[N]'] - sn * M.loc[r, 'HubFzN1_[N]']
-        # --- Clean owned rows
-        iRows = [KF.iX[k] for k in rowsD]
-        A[iRows, :] = 0; B[iRows, :] = 0
-        # Structural block (kinematic rows included)
-        for rn, rl in allS.items():
-            for cn, cl in allS.items():
-                A[KF.iX[rn], KF.iX[cn]] = Am.loc[rl, cl]
-        if 'dq_FA1' in KF.iX and opts.get('aero_dq_scale', 1.0) != 1.0:   # damping of 1st FA mode (contains aero damping of rotor)
-            A[KF.iX['dq_FA1'], KF.iX['dq_FA1']] *= opts['aero_dq_scale']
+        T_lab = opts.get('T_op_label', 'ADRtAeroFxh_[N]')
+        T_op = yop(T_lab) * (1e3 if 'kN' in T_lab else 1.0) if T_lab in ydescr else 0.0  # aero thrust (no rotor weight/inertia)
+        # --- Structural block: kinematic rows, and accelerations (columns of the filter states only)
+        for k in sub:
+            A[iX[k], iX['d'+k]] = 1
+        Aacc = np.column_stack([project(Am.loc[rowsF, l].values) for l in sStates])
+        for i, k in enumerate(sub):
+            A[iX['d'+k], iStates] = Aacc[i, :]
+        if 'q_FA1' in sub and opts.get('aero_dq_scale', 1.0) != 1.0:   # damping of 1st FA mode (contains aero damping of rotor)
+            A[iX['dq_FA1'], iX['dq_FA1']] *= opts['aero_dq_scale']
+        iRows = [iX['d'+k] for k in sub]
         # --- Thrust
-        for rn, rl in rowsD.items():
-            if 'GenThrust' in KF.sU:
-                B[KF.iX[rn], KF.iU['GenThrust']] = colT(Bm, rl)
+        if 'GenThrust' in iU:
+            B[iRows, iU['GenThrust']] = project(colT(Bm, rowsF))
+        bT = B[iRows, iU['GenThrust']] if 'GenThrust' in iU else 0
         # --- Static offset: f = A (x - xop) + B_T (T - T_op)
         static_mode = opts.get('static', 'op')
-        if 'Static' in KF.sU and static_mode == 'op':
-            for rn, rl in rowsD.items():
-                c = -sum(Am.loc[rl, allS[cn]] * xop_s[cn] for cn in allS) - colT(Bm, rl) * T_op
-                B[KF.iX[rn], KF.iU['Static']] = c
-        elif 'Static' in KF.sU and static_mode == 'gravity':
+        if 'Static' in iU and static_mode == 'op':
+            B[iRows, iU['Static']] = -A[np.ix_(iRows, iStates)] @ xop_s - bT * T_op
+        elif 'Static' in iU and static_mode == 'gravity':
             # RNA weight (-M g at the RNA CoM) applied through the nacelle Fz/My input columns of the lin model
-            W = KF.WTTN; rNG = np.asarray(W.r_NGrna_inN).flatten(); Mg = W.M_RNA * W.gravity
-            for rn, rl in rowsD.items():
-                B[KF.iX[rn], KF.iU['Static']] = -Mg * Bm.loc[rl, 'NacFzN1_[N]'] + rNG[0] * Mg * Bm.loc[rl, 'NacMyN1_[Nm]']
+            B[iRows, iU['Static']] = -Mg * colB('NacFzN1_[N]') + rNG[0] * Mg * colB('NacMyN1_[Nm]')
         # --- Generalized force biases (closed-loop inverse-mass columns)
         for nmB, lab in (('Bx','PtfmFxN1_[N]'), ('Bphi','PtfmMyN1_[Nm]')):
-            if nmB in KF.sX:
-                for rn, rl in rowsD.items():
-                    A[KF.iX[rn], KF.iX[nmB]] = Bm.loc[rl, lab]
+            if nmB in iX:
+                A[iRows, iX[nmB]] = colB(lab)
+        if 'Bq' in iX:  # Tower-only bias (Case 2): use constant factor
+            A[iX['dq_FA1'], iX['Bq']] = 1.0 / (KF.WTTN.twr.MM[6,6] + KF.WTTN.RNA.mass) if iX.get('dq_FA1') else 0
+
         # --- Hydro generalized force k_h * dq_h
-        if 'q_h' in KF.sX and k_h is not None:
-            for rn, rl in rowsD.items():
-                A[KF.iX[rn], KF.iX['dq_h']] = Bm.loc[rl, 'PtfmFxN1_[N]']*k_h[0] + Bm.loc[rl, 'PtfmMyN1_[Nm]']*k_h[1]
+        if 'q_h' in iX:
+            k_h = KF._k_h()
+            A[iRows, iX['dq_h']] = k_h[0]*colB('PtfmFxN1_[N]') + k_h[1]*colB('PtfmMyN1_[Nm]')
         # --- Outputs from Cm, Dm rows
-        output_map = {'PtfmIMUAx':'QD2_Sg_[m/s^2]', 'PtfmIncly':'Q_P_[rad]', 'NcIMUAx':'NcIMUTAxs_[m/s^2]'}
-        if opts.get('nc_from_acc', True) and 'NcIMUAx' in KF.iY:
+        output_map = {'PtfmIMUAx':'QD2_Sg_[m/s^2]', 'PtfmIncly':'Q_P_[rad]'}
+        if 'NcIMUAx' in iY:
             # Nacelle IMU acceleration written as combination of the generalized accelerations (QD2_Sg, QD2_P, QD2_TFA1):
-            # weights from least-squares fit of the NcIMUTAxs row of (Cm,Dm) on the QD2_* rows. 
+            # weights from least-squares fit of the NcIMUTAxs row of (Cm,Dm) on the QD2_* rows (all DOFs of the lin. model).
             # Outputs are then consistent with the state equations (rows of A, B), including offsets.
-            acc = ['QD2_Sg_[m/s^2]', 'QD2_P_[rad/s^2]', 'QD2_TFA1_[m/s^2]']
+            acc = {'x':'QD2_Sg_[m/s^2]', 'phi_y':'QD2_P_[rad/s^2]', 'q_FA1':'QD2_TFA1_[m/s^2]'}
+            sF  = [lq[k] for k in full] + [lv[k] for k in full]
             cB  = ['HubFxN1_[N]', 'HubFzN1_[N]', 'PtfmFxN1_[N]', 'PtfmMyN1_[Nm]']
-            lab = 'NcIMUTAxs_[m/s^2]'
-            def row(l): return np.concatenate([Cm.loc[l, list(allS.values())].values, Dm.loc[l, cB].values])
-            M = np.array([row(a) for a in acc]).T; y = row(lab); sc = np.abs(M).max(axis=1) + 1e-30
-            w = np.linalg.lstsq(M/sc[:, None], y/sc, rcond=None)[0]
-            OF_lin['w_nc'] = w
-            iy = KF.iY['NcIMUAx']; C[iy, :] = 0; D[iy, :] = 0
-            for wk, rn in zip(w, ['dx', 'dphi_y', 'dq_FA1']):
-                C[iy, :] += wk * A[KF.iX[rn], :]
-                D[iy, :] += wk * B[KF.iX[rn], :]
-            output_map.pop('NcIMUAx')
+            def row(l): return np.concatenate([Cm.loc[l, sF].values, Dm.loc[l, cB].values])
+            M_ = np.array([row(acc[k]) for k in full]).T; y = row('NcIMUTAxs_[m/s^2]'); sc = np.abs(M_).max(axis=1) + 1e-30
+            w = np.linalg.lstsq(M_/sc[:, None], y/sc, rcond=None)[0]
+            OF_lin['w_nc'] = w; OF_lin['full'] = full
+            KF._set_nacelle_IMU(A, B, C, D, [dict(zip(full, w)).get(k, 0) for k in ('x', 'phi_y', 'q_FA1')])
         for on, lab in output_map.items():
-            if on not in KF.iY: continue
-            iy = KF.iY[on]
+            if on not in iY or lab not in ydescr: continue
+            iy = iY[on]
             C[iy, :] = 0; D[iy, :] = 0
-            for cn, cl in allS.items():
-                C[iy, KF.iX[cn]] = Cm.loc[lab, cl]
-            if 'GenThrust' in KF.sU:
-                D[iy, KF.iU['GenThrust']] = colT(Dm, lab)
-            if 'Static' in KF.sU and static_mode == 'op':
-                D[iy, KF.iU['Static']] = yop(lab) - sum(Cm.loc[lab, allS[cn]] * xop_s[cn] for cn in allS) - colT(Dm, lab) * T_op
-            if 'Static' in KF.sU and static_mode == 'gravity':
-                D[iy, KF.iU['Static']] = -Mg * Dm.loc[lab, 'NacFzN1_[N]'] + rNG[0] * Mg * Dm.loc[lab, 'NacMyN1_[Nm]']
+            C[iy, iStates] = Cm.loc[lab, sStates].values
+            dT = colT(Dm, [lab])[0] if 'GenThrust' in iU else 0
+            if 'GenThrust' in iU:
+                D[iy, iU['GenThrust']] = dT
+            if 'Static' in iU and static_mode == 'op':
+                D[iy, iU['Static']] = yop(lab) - Cm.loc[lab, sStates].values @ xop_s - dT * T_op
+            if 'Static' in iU and static_mode == 'gravity':
+                D[iy, iU['Static']] = -Mg * Dm.loc[lab, 'NacFzN1_[N]'] + rNG[0] * Mg * Dm.loc[lab, 'NacMyN1_[Nm]']
             for nmB, labB in (('Bx','PtfmFxN1_[N]'), ('Bphi','PtfmMyN1_[Nm]')):
-                if nmB in KF.sX:
-                    C[iy, KF.iX[nmB]] = Dm.loc[lab, labB]
-            if 'q_h' in KF.sX and k_h is not None:
-                C[iy, KF.iX['dq_h']] = Dm.loc[lab, 'PtfmFxN1_[N]']*k_h[0] + Dm.loc[lab, 'PtfmMyN1_[Nm]']*k_h[1]
-        OF_lin['xop_s'] = xop_s; OF_lin['T_op'] = T_op
+                if nmB in iX:
+                    C[iy, iX[nmB]] = Dm.loc[lab, labB]
+            if 'q_h' in iX:
+                k_h = KF._k_h()
+                C[iy, iX['dq_h']] = Dm.loc[lab, 'PtfmFxN1_[N]']*k_h[0] + Dm.loc[lab, 'PtfmMyN1_[Nm]']*k_h[1]
+        OF_lin['xop_s'] = dict(zip(sStates, xop_s)); OF_lin['T_op'] = T_op
 
+    def _set_hybrid_submatrix(KF, YS, OF, OF_lin):
+        """ YAMS model in which the terms listed in setup_opts['hybrid'] are replaced by the OpenFAST ones. Terms (columns/blocks of the acceleration rows):
+        'KD': stiffness/damping (A, structural states), 'thrust': GenThrust column, 'static': Static column, 'bias': Bx,Bphi columns, 'hydro': dq_h column.
+        IMU outputs are recomputed from the hybrid rows (OpenFAST weights for the nacelle IMU if any term is replaced)."""
+        iX, iU, iY = KF.iX, KF.iU, KF.iY
+        HY = [m.copy() for m in YS]
+        terms = KF.setup_opts.get('hybrid', ['KD','static','hydro']) # default: best combination found for Case 3
+        acc = [iX[k] for k in ('dx','dphi_y','dq_FA1') if k in iX]
+        struct = [iX[k] for k in ('x','phi_y','q_FA1','dx','dphi_y','dq_FA1') if k in iX]
+        def rep(im, rows, cols):  # copy of OpenFAST block into HY[im]
+            if len(cols)>0: HY[im][np.ix_(rows, cols)] = OF[im][np.ix_(rows, cols)]
+        if 'KD'     in terms: rep(0, acc, struct)
+        if 'thrust' in terms and 'GenThrust' in iU: rep(1, acc, [iU['GenThrust']])
+        if 'static' in terms and 'Static'    in iU: rep(1, acc, [iU['Static']])
+        if 'bias'   in terms: rep(0, acc, [iX[k] for k in ('Bx','Bphi') if k in iX])
+        if 'hydro'  in terms and 'q_h' in iX: rep(0, acc, [iX['dq_h']])
+        if terms and 'w_nc' in OF_lin:
+            A, B, C, D = HY
+            if 'x' in iX:
+                C[iY['PtfmIMUAx'], :] = A[iX['dx'],:]; D[iY['PtfmIMUAx'], :] = B[iX['dx'],:]
+            wd = dict(zip(OF_lin['full'], OF_lin['w_nc']))
+            KF._set_nacelle_IMU(A, B, C, D, [wd.get(k, 0) for k in ('x','phi_y','q_FA1')])
+        return HY
 
-    def _set_openfast_submatrix(KF, A, B, C, linFiles):
-        """Insert measured OpenFAST state and IMU couplings when available."""
+    def compareMatrices(KF, tol=1e-12):
+        """ Prints the non-zero elements of the YAMS and OpenFAST matrices side by side (with state/input/output names).
+        Used for debugging with pdb or to see which YAMS terms differ from OpenFAST """
+        names = dict(A=(KF.sX, KF.sX), B=(KF.sX, KF.sU), C=(KF.sY, KF.sX), D=(KF.sY, KF.sU))
+        for im, nm in enumerate('ABCD'):
+            Y, O = KF.mats['YS'][im], KF.mats['OF'][im]
+            rows, cols = names[nm]
+            print('--- {:s} matrix:  {:>14s} {:>14s} {:>14s} {:>10s}'.format(nm, 'YAMS', 'OpenFAST', 'diff', 'ratio'))
+            for i in range(Y.shape[0]):
+                for j in range(Y.shape[1]):
+                    if abs(Y[i,j])>tol or abs(O[i,j])>tol:
+                        ratio = O[i,j]/Y[i,j] if abs(Y[i,j])>tol else np.nan
+                        print('{:>8s} {:>8s}: {:14.5e} {:14.5e} {:14.5e} {:10.3f}'.format(rows[i], cols[j], Y[i,j], O[i,j], O[i,j]-Y[i,j], ratio))
+
+    def _load_openfast_lin(KF, linFiles):
+        """ Reads the OpenFAST linear files (from pickle if available) and returns the averaged matrices """
+
         from welib.fast.FASTLin import FASTLin
         sX_sel  =['PtfmSurge_[m]', 'PtfmHeave_[m]', 'PtfmPitch_[rad]', 'qt1FA_[m]', 'psi_rot_[rad]']
         sX_sel +=['d_PtfmSurge_[m/s]', 'd_PtfmHeave_[m/s]', 'd_PtfmPitch_[rad/s]', 'd_qt1FA_[m/s]', 'd_psi_rot_[rad/s]']
@@ -661,87 +616,7 @@ class KalmanFilterMTNS(KalmanFilter):
         OF_lin['C'] = Cm
         OF_lin['D'] = Dm
         OF_lin['FL'] = FL
-        sX = [str(label) for label in FL.xdescr] # State names
-        sY = [str(label) for label in FL.ydescr] # Output names
-        sU = [str(label) for label in FL.udescr] # Input names
-        state_map = {
-            'x'      : 'PtfmSurge_[m]',
-            'phi_y'  : 'PtfmPitch_[rad]',
-            'q_FA1'  : 'qt1FA_[m]',
-            'psi'    : 'psi_rot_[rad]',
-            'dx'     : 'd_PtfmSurge_[m/s]',
-            'dphi_y' : 'd_PtfmPitch_[rad/s]',
-            'dq_FA1' : 'd_qt1FA_[m/s]',
-            'dpsi'   : 'd_psi_rot_[rad/s]'}
-        indices = {name: sX.index(label) for name, label in state_map.items() if label in sX}
-        # NOTE: psi/dpsi columns of Am come from one azimuth snapshot (not physical for the structure) -> excluded
-        indices_struct = {n: i for n, i in indices.items() if 'psi' not in n}
-        for row_name, row in indices_struct.items():
-            for col_name, col in indices_struct.items():
-                if row_name in KF.sX and col_name in KF.sX:
-                    A[KF.iX[row_name], KF.iX[col_name]] = Am.values[row, col]
-#                 else:
-#                     WARN('Missing:', row_name, col_name)
-
-        output_map = {
-                'PtfmIMUAx': 'QD2_Sg_[m/s^2]',
-                'PtfmIncly': 'Q_P_[rad]',
-                'NcIMUAx': 'NcIMUTAxs_[m/s^2]',
-                      }
-        for output_name, label in output_map.items():
-            if label in sY:
-                row = sY.index(label)
-                for state_name, col in indices.items():
-                    if output_name in KF.sY and state_name in KF.sX: 
-                        C[KF.iY[output_name], KF.iX[state_name]] = Cm.values[row, col]
-            else:
-                WARN('Label missing from sY in lin model: ', label)
-
-        input_map = {
-                'Qgen': 'Qgen_[Nm]',
-                # 'eta':  'HDWaveElevRefPoint_[m]'
-        }
-        for input_name, label in input_map.items():
-            if label in sU:
-                col = sU.index(label)
-                for state_name, row in indices.items():
-                    if input_name in KF.sU and state_name in KF.sX: 
-                        B[KF.iX[state_name], KF.iU[input_name]] = Bm.values[row, col]
-            else:
-                WARN('Label missing from sU in lin model: ', label)
-
         return OF_lin
-
-        # --- OUTPUTS that we could use
-#               1    0.00000000000E+00                                                 F               0         SEA Wave1Elev, (m)
-#               7    3.57159790039E+02                                                 F               0         ED RotThrust, (kN)
-#               8   -1.33902830157E-07                                                 F               0         ED RotTorq, (kN-m)
-#               9   -1.44830606878E-02                                                 F               0         ED NcIMUTAxs, (m/s^2)
-#              23    1.16558103561E+01                                                 F               0         ED TwrBsFxt, (kN)
-#              25   -2.74127949219E+04                                                 F               0         ED TwrBsFzt, (kN)
-#              27   -1.10646890625E+05                                                 F               0         ED TwrBsMyt, (kN-m)
-#              35    4.71238899231E+00                                                 F               0         ED Q_GeAz, (rad)
-#              36   -4.67881500721E-01                                                 F               0         ED Q_TFA1, (m)
-#              40   -2.05030087382E-02                                                 F               0         ED Q_Sg, (m)
-#              42   -8.86160356458E-04                                                 F               0         ED Q_P, (rad)
-#              51   -5.10188657790E-03                                                 F               0         ED QD2_Sg, (m/s^2)
-#              54    5.57291064453E+03                                                 F               0         HD HydroFxi, (N)
-#              58   -5.41483320312E+04                                                 F               0         HD HydroMyi, (N-m)
-#              66    3.59479296875E+04                                                 F               0         SD IntfFXss, (N)
-#              68   -1.10646888000E+08                                                 F               0         SD IntfMYss, (N*m)
-#              69   -2.05030087382E-02                                                 F               0         SD IntfTDXss, (m)
-#              71   -8.86160589289E-04                                                 F               0         SD IntfRDYss, (rad)
-#              72    4.39176328125E+04                                                 F               0         SD M1N1FKXe, (N)
-#              74   -1.09302344000E+08                                                 F               0         SD M1N1MKYe, (N*m)
-#             219    3.72363359375E+04                                                 F               0         SD M49N1FKXe, (N)
-#             220   -2.84774700000E+07                                                 F               0         SD M49N1FKZe, (N)
-#             221   -1.11201280000E+08                                                 F               0         SD M49N1MKYe, (N*m)
-#             222    3.72363359375E+04                                                 F               0         SD M49N2FKXe, (N)
-#             223   -2.84774700000E+07                                                 F               0         SD M49N2FKZe, (N)
-#             224   -1.11238520000E+08                                                 F               0         SD M49N2MKYe, (N*m)
-#             225    4.39180976562E+04                                                 F               0         SD -ReactFXss, (N)
-#             227   -3.67519840000E+07                                                 F               0         SD -ReactFZss, (N)
-#             229   -1.09302344000E+08                                                 F               0         SD -ReactMYss, (N*m)
 
     # --- Methods From Parent Class
     # loadMeasurements 
@@ -894,156 +769,188 @@ class KalmanFilterMTNS(KalmanFilter):
 
         return rowOut, twr_sec, mnp_sec, Fx_h_est
 
+    # --------------------------------------------------------------------------------}
+    # --- Time loop
+    # --------------------------------------------------------------------------------{
+    def precomputeGains(KF):
+        """ Kalman gains and covariances do not depend on the data (LTI model, constant Q and R): computed once,
+        and frozen as soon as they converge (steady state)"""
+        Ad, Bd, C, Q, R = KF.Xxd, KF.Xud, KF.Yx.values, KF.Q, KF.R
+        nt, nX, nY = KF.nt, KF.nX, KF.nY
+        Kt = np.zeros((nt, nX, nY)); Pt = np.zeros((nt, nX, nX))
+        P = KF.P; I = np.eye(nX)
+        Pt[0] = P
+        for it in range(1, nt):
+            P1m = Ad @ P @ Ad.T + Q
+            K   = P1m @ C.T @ np.linalg.inv(C @ P1m @ C.T + R)
+            Pn  = (I - K @ C) @ P1m
+            Kt[it], Pt[it] = K, Pn
+            if it>1 and np.max(np.abs(Pn-P)) <= 1e-12*np.max(np.abs(Pn)):  # steady state reached
+                Kt[it+1:], Pt[it+1:] = K, Pn
+                break
+            P = Pn
+        KF.Kt, KF.Pt, KF.P = Kt, Pt, Pt[-1]
+        return Kt
+
     def timeLoop(KF):
         print(f'Time Loop, dt={KF.dt}, t=[{KF.time[0]} - {KF.time[-1]}]')
-        # --- Aliases to shorten notations
-        WT = KF.WT
-        dInfo = KF.dInfo
-
-        # Prepare section output calculation
-        KF.dfOut = dInfo['dfOut']
-        
+        nt, nX = KF.nt, KF.nX
+        # --- Pre-computations (everything in the loop is numpy only, pandas is too slow)
+        Kt     = KF.precomputeGains()
+        Ad, Bd = KF.Xxd, KF.Xud
+        A, B, C, D = KF.A.values, KF.B.values, KF.C.values, KF.D.values
+        Ymeas  = KF.Y.values;       Uin = KF.U_clean.values
+        X_hat  = np.zeros((nt, nX)); XD_hat = np.zeros((nt, nX)); Y_hat = np.zeros((nt, KF.nY)); U_hat = np.zeros((nt, KF.nU))
+        S_hat  = KF.S_clean.values.copy()   # Row 0 = clean values (initial conditions)
+        iS     = {s:i for i,s in enumerate(KF.sS)}
+        Thrust_t = np.zeros(nt); Qaero_t = np.zeros(nt); GF_t = np.zeros(nt)
+        iU, iY, iX = KF.iU, KF.iY, KF.iX
+        hasWSE  = KF.wse is not None
+        bFull   = 'x' in KF.sX or KF.method=='OpenFAST' # physical thrust is the input (generalized forces are built in B)
+        bGenThrustU, bGenThrustY, bThrustY = 'GenThrust' in KF.sU, 'GenThrust' in KF.sY, 'Thrust' in KF.sY
+        bHydro  = 'q_h' in KF.sX
+        bPsi    = 'psi' in KF.iX
+        bGenThrustX = 'GenThrust' in KF.sX
         # --- Initial conditions
-        x = KF.initFromClean(var='x,y,u,s')
-        
+        x = KF.X_clean.values[0].copy()
+        X_hat[0] = x; Y_hat[0] = KF.Y_clean.values[0]; U_hat[0] = KF.U_clean.values[0]
         if 'Thrust' in KF.sS:
             Thrust = KF.S_clean['Thrust'].iloc[0]
-        elif 'GenThrust' in KF.sU:
+        elif bGenThrustU:
             Thrust = KF.U_clean['GenThrust'].iloc[0]
-        elif 'GenThrust' in KF.sY:
+        elif bGenThrustY:
             Thrust = KF.Y_clean['Thrust'].iloc[0]
         else:
-            Thrust =0
-
+            Thrust = 0
         GF = Thrust # Approximation at t=0
-
-        if 'Fx_i' in KF.sU:
-            Fx_i   = KF.U_clean['Fx_i'].iloc[0]
-            My_i   = KF.U_clean['My_i'].iloc[0]
-        # --- WSE
-        if 'WS' in KF.sS:
+        if 'WS' in iS:
             WS_last = KF.S_clean['WS'].iloc[0]
+        WS_t = np.zeros(nt)
 
-        # --- Section loads at t=0
-        #x= x.values
-        #x_dot = x*0
-        #p_hydro = KF.pHD['phi'] * 0
-        #print(x)
-        #print(x_dot)
-        #rowOut, twr_sec, mnp_sec, Fx_h_est = KF.computeSectionLoads(KF.time[0], x, x_dot, p_hydro, Thrust, Qaero=0, it=0)
-
-        # --- Time loop
-        for it in range(0, KF.nt-1):
-            t = KF.time[it+1]
-            # --- "Measurements" at next step
-            y = KF.Y.iloc[it+1,:].values.copy()
-            # --- Inputs at next step
-            u = KF.U_clean.iloc[it+1,:].values.copy()
-            if 'GenThrust' in KF.sU:
-                u[KF.iU['GenThrust']] = GF # We use previous estimated generalized thrust as input.
-            if 'GenThrust' in KF.sY:
-                y[KF.iY['GenThrust']] = GF # We use previous estimated generalized thrust as measurement.
-            if 'Thrust' in KF.sY:
-                y[KF.iY['Thrust']] = Thrust # We use previous estimated thrust as measurement.
-
-            if 'Fx_i' in KF.sU:
-                u[KF.iU['Fx_i']] = Fx_i # We use previous estimated interface loads
-                u[KF.iU['My_i']] = My_i # We use previous estimated interface loads
-            
-            # --- Predictions of next time step based on current time step
-            x, KF.P, _ = KF.estimateTimeStep(u, y, x, KF.P, it=it)
-
-            # --- Estimate Wind Speed
-            Thrust =0
-            Qaero_hat=0
-            WS_hat = 0
-            if KF.wse is not None:
+        # --- Time loop: Kalman filter + wind speed estimator (these are the only sequential parts)
+        for it in range(0, nt-1):
+            y = Ymeas[it+1].copy()
+            u = Uin[it+1].copy()
+            if bGenThrustU: u[iU['GenThrust']] = GF # We use previous estimated generalized thrust as input.
+            if bGenThrustY: y[iY['GenThrust']] = GF # We use previous estimated generalized thrust as measurement.
+            if bThrustY   : y[iY['Thrust']] = Thrust # We use previous estimated thrust as measurement.
+            # --- Kalman filter, predict and update
+            xm = Ad @ x + Bd @ u
+            x  = xm + Kt[it+1] @ (y - (C @ xm + D @ u))
+            x_dot = A @ x + B @ u
+            # --- Estimate Wind Speed and Thrust
+            Thrust = 0; Qaero_hat = 0; WS_hat = 0
+            if hasWSE:
                 if KF.hacks['WSE'] == 'clean_inputs':
                     Qaero_hat = KF.X_clean['Qaero'].iloc[it+1]
-                    omega = KF.X_clean['dpsi'].iloc[it+1]
+                    omega     = KF.X_clean['dpsi'].iloc[it+1]
                 else:
-                    Qaero_hat = x[KF.iX['Qaero']]
-                    omega     = x[KF.iX['dpsi']]
-                pitch = u[KF.iU['pitch']] * 180 / np.pi # deg
+                    Qaero_hat = x[iX['Qaero']]
+                    omega     = x[iX['dpsi']]
+                pitch = u[iU['pitch']] * 180 / np.pi # deg
                 WS_hat, _ = KF.wse.estimate(Qaero_hat, pitch=pitch, omega=omega, WS0=WS_last, relaxation=0, method='oper-crossing', t=KF.time[it+1])
-                Qaero_hat = np.max(Qaero_hat,0)
                 WS_last = float(WS_hat)
-            
-                # --- Estimate Thrust
                 if KF.hacks['thrust'] == 'clean':
                     Thrust = KF.U_clean['GenThrust'].iloc[it+1]
                 else:
                     Thrust = KF.wse.Thrust(WS_hat, pitch=pitch, omega=omega)
-
             # Generalized Thrust Q_q_FA
-            if 'x' in KF.sX:
-                GF = Thrust # Physical thrust, the generalized forces are built in B
-            else:
-                GF = KF.WTTN.GF_lin(Thrust,x,bFull=True)
-
-
-            # --- Estimate Generalized hydro force and bending moment (calc output)
-            if 'q_h' in KF.sX:
-                q_h     = x[KF.iX['q_h']]  # eta
-                dq_h    = x[KF.iX['dq_h']] # eta_dot
-                eta     = q_h
-                eta_dot = dq_h
-                p_hydro = KF.pHD['phi'] * eta_dot # p_h = k_h(z) q_h(t)
-                p_hydro[KF.zDepth>0] = 0 # safety, shoudn't be necessary
-            else:
-                p_hydro = None
-
-            # --- Acceleration
-            x_dot = np.dot(KF.A, x) + np.dot(KF.B, u)
-            
-            # --- Section Loads
-            rowOut, twr_sec, mnp_sec, Fx_h_est = KF.computeSectionLoads(KF.time[it+1], x, x_dot, p_hydro, Thrust, Qaero_hat, it=it)
-            KF.dfOut.loc[it+1] = rowOut
-            # Section loads at interface for next time step
-            Fx_i = twr_sec[0, 0]  # rowOut['TwrBsFxt_[kN]']
-            My_i = twr_sec[4, 0]  # rowOut['TwrBsMyt_[kN-m]']
-           
-            # --- Sotre "updated"/"hacked" states and inputs
-            if 'psi' in KF.iX:
-                x[KF.iX['psi']] = np.mod(x[KF.iX['psi']], 2*np.pi)
-            if 'GenThrust' in KF.sX:
-                x[KF.iX['GenThrust']] = GF
-            KF.Y_hat.iloc[it+1,:]   = y
-            KF.U_hat.iloc[it+1,:]   = u
-            KF.X_hat.iloc[it+1,:]   = x
-            KF.XD_hat.iloc[it+1,:]  = x_dot
-
-            # --- Store extra info
-            # Environment
-            if 'WS' in KF.sS:
-                KF.S_hat.at[it+1, 'WS']     = WS_hat
-            if 'q_h' in KF.sX:
-                KF.S_hat.at[it+1, 'eta']    = q_h
-            # Loads
-            KF.S_hat.at[it+1, 'Fx_sb']  = mnp_sec[0,0]
-            KF.S_hat.at[it+1, 'My_sb']  = mnp_sec[4,0]
-            if 'Fx_i' in KF.sS:
-                KF.S_hat.at[it+1, 'Fx_i'] = Fx_i
-                KF.S_hat.at[it+1, 'My_i'] = My_i
-            if 'q_h' in KF.sX:
-                KF.S_hat.at[it+1, 'Fx_h']   = Fx_h_est
-            if 'Thrust' in KF.sS:
-                KF.S_hat.at[it+1, 'Thrust'] = Thrust
-            if 'GenThrust' in KF.sS:
-                KF.S_hat.at[it+1, 'GenThrust'] = GF
-
-            # --- Propagation to next time step
-            # --- Print status to screen
+            GF = Thrust if bFull else KF.WTTN.GF_lin(Thrust, x, bFull=True) # Physical thrust (full, or OpenFAST), otherwise generalized force of YAMS tower-only model
+            # --- "Updated"/"hacked" states
+            if bPsi:
+                x[iX['psi']] = np.mod(x[iX['psi']], 2*np.pi)
+            if bGenThrustX:
+                x[iX['GenThrust']] = GF
+            # --- Store
+            X_hat[it+1] = x; XD_hat[it+1] = x_dot; U_hat[it+1] = u; Y_hat[it+1] = C @ x + D @ u
+            Thrust_t[it+1] = Thrust; Qaero_t[it+1] = Qaero_hat; GF_t[it+1] = GF; WS_t[it+1] = WS_hat
             if np.mod(it,500) == 0:
-                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f My_sb=%.1f' % (it, KF.time[it], WS_hat, Thrust, mnp_sec[4,0]/1e6))
+                print('Time step %8.0f t=%10.3f  WS=%4.1f Thrust=%.1f' % (it, KF.time[it], WS_hat, Thrust))
 
-        # TODO evaluate at t=0, for now we just replicate the value
-        index = KF.dfOut.index
-        cols = KF.dfOut.columns.difference(['Time_[s]'])
-        KF.dfOut.loc[0, cols] = KF.dfOut.loc[1, cols]
-        KF.dfOut.loc[index[-1], cols] = KF.dfOut.loc[index[-2], cols]
+        # --- Store results in dataframes
+        KF.X_hat.iloc[:,:] = X_hat; KF.XD_hat.iloc[:,:] = XD_hat; KF.Y_hat.iloc[:,:] = Y_hat; KF.U_hat.iloc[:,:] = U_hat
+        if 'WS' in iS       : S_hat[1:, iS['WS']]        = WS_t[1:]
+        if bHydro           : S_hat[1:, iS['eta']]       = X_hat[1:, iX['q_h']]
+        if 'Thrust' in iS   : S_hat[1:, iS['Thrust']]    = Thrust_t[1:]
+        if 'GenThrust' in iS: S_hat[1:, iS['GenThrust']] = GF_t[1:]
+        KF.S_hat.iloc[:,:] = S_hat
+        # --- Section loads (post-processing, estimates are not fed back into the filter)
+        KF.sectionLoads(X_hat, XD_hat, Thrust_t)
 
+    # --------------------------------------------------------------------------------}
+    # --- Section loads
+    # --------------------------------------------------------------------------------{
+    def _sl_eval(KF, x, x_dot, eta_dot, Thrust, it=None, full=False):
+        """ Section loads for given states, state derivatives, eta_dot, and thrust """
+        p_hydro = None
+        if 'q_h' in KF.sX:
+            p_hydro = KF.pHD['phi'] * eta_dot # p_h = k_h(z) q_h(t)
+            p_hydro[KF.zDepth>0] = 0 # safety, shouldn't be necessary
+        rowOut, twr_sec, mnp_sec, Fx_h_est = KF.computeSectionLoads(KF.time[1 if it is None else it+1], x, x_dot, p_hydro, Thrust, 0.0, it=it)
+        if full:
+            return rowOut, twr_sec, mnp_sec, Fx_h_est
+        return np.array([mnp_sec[0,0], mnp_sec[4,0], twr_sec[0,0], twr_sec[4,0], Fx_h_est])
 
+    def _sl_linear_map(KF, z0):
+        """ Section loads Fx_sb, My_sb, Fx_i, My_i, Fx_h are (very close to) affine functions of z=[x, x_dot, eta_dot, Thrust].
+        The affine map is obtained by central finite differences about the mean state z0, and then applied to the whole time series at once"""
+        nX = KF.nX; n = 2*nX+2
+        hs = np.r_[np.full(2*nX, 1e-1), 1e-1, 1e5]
+        def f(z):
+            return KF._sl_eval(z[:nX].copy(), z[nX:2*nX].copy(), z[2*nX], z[2*nX+1])
+        c = f(z0); L = np.zeros((len(c), n))
+        for j in range(n):
+            e = np.zeros(n); e[j] = hs[j]
+            L[:, j] = (f(z0+e) - f(z0-e)) / (2*hs[j])
+        return c - L @ z0, L
+
+    def sectionLoads(KF, X_hat, XD_hat, Thrust_t):
+        """ Section loads along the structure, and storage of the main ones in S_hat
+        mode (setup_opts['sl_mode']): 'linear' (default, fast: affine map), 'exact' (call to YAMS at each time step) """
+        nt = KF.nt; iS = {s:i for i,s in enumerate(KF.sS)}
+        mode = KF.setup_opts.get('sl_mode', 'linear')
+        if any(KF.hacks[k] for k in ('SL_cleanQ', 'SL_cleanFtop', 'SL_cleanEtaDot', 'SL_cleanP')):
+            mode = 'exact'
+        KF.dfOut = KF.dInfo['dfOut']
+        bHydro = 'q_h' in KF.sX
+        eta_dot = X_hat[:, KF.iX['dq_h']] if bHydro else np.zeros(nt)
+        S = np.zeros((nt, 5)) # Fx_sb, My_sb, Fx_i, My_i, Fx_h
+        if mode == 'linear':
+            Z = np.column_stack([X_hat, XD_hat, eta_dot, Thrust_t])[1:]
+            c, L = KF._sl_linear_map(Z.mean(axis=0))
+            S[1:] = c + Z @ L.T
+            S[0] = S[1]
+            # --- Quick verification against the exact calculation
+            it = nt//2; ex = KF._sl_eval(X_hat[it], XD_hat[it], eta_dot[it], Thrust_t[it], it=it-1)
+            err = np.max(np.abs(S[it]-ex)) / np.max(np.abs(ex))
+            if err>1e-3: WARN('Linear section loads differ from exact ones by {:.1e} (relative). Use setup_opts["sl_mode"]="exact"'.format(err))
+        else:
+            cols = list(KF.dfOut.columns); out = np.zeros((nt, len(cols))); perm=None
+            for it in range(0, nt-1):
+                rowOut, twr_sec, mnp_sec, Fx_h = KF._sl_eval(X_hat[it+1], XD_hat[it+1], eta_dot[it+1], Thrust_t[it+1], it=it, full=True)
+                if perm is None: perm = [rowOut.index.get_loc(c) for c in cols]
+                out[it+1] = rowOut.values[perm]
+                S[it+1] = [mnp_sec[0,0], mnp_sec[4,0], twr_sec[0,0], twr_sec[4,0], Fx_h]
+            out[0] = out[1]; S[0] = S[1]
+            KF.dfOut.iloc[:,:] = out
+            KF.dfOut['Time_[s]'] = KF.time # TODO evaluate at t=0, for now we just replicate the value
+        # --- Storage
+        for s, j in (('Fx_sb',0), ('My_sb',1), ('Fx_i',2), ('My_i',3), ('Fx_h',4)):
+            if s in iS:
+                KF.S_hat[s] = S[:, j]
+        KF.S_hat.iloc[0, :] = KF.S_clean.iloc[0, :]
+        KF.sl_mode = mode
+
+    def computeStats(KF, tRangeStats=None, stats='sigRatio,eps,R2'):
+        """ Statistics (sigRatio, eps, R2) between clean values and estimates, for X, Y, S. Returns {channel: {stat: value}} """
+        from welib.tools.stats import comparison_stats
+        time = np.asarray(KF.time)
+        IT = np.ones(len(time), dtype=bool) if tRangeStats is None else np.logical_and(time>tRangeStats[0], time<min(max(time), tRangeStats[1]))
+        D = {}
+        for clean, hat in ((KF.X_clean, KF.X_hat), (KF.Y_clean, KF.Y_hat), (KF.S_clean, KF.S_hat)):
+            for s in hat.columns:
+                D[s], _ = comparison_stats(time[IT], clean[s].values[IT], time[IT], hat[s].values[IT], stats=stats, method='1-2')
+        return D
 
     def calc_sectionLoads(KF, clean=True):
         # --- Aliases to shorten notations
@@ -1233,6 +1140,8 @@ def main(fstFile, tmin=0, tmax=20,
     #         sigs['x']['Thrust'] = 1000000
         if 'Qaero' in KF.sX:
             sigs['x']['Qaero']  = 8*10**6*1.0
+        if 'Bq' in KF.sX:
+            sigs['x']['Bq']     = 0.1  # Tower mode bias
     #         sigs['x']['Qgen']   = 1.0*10**6
     #         sigs['x']['WS']     = 1.0
         sigs['Q'] = sigs['x'].copy()
@@ -1273,6 +1182,8 @@ def main(fstFile, tmin=0, tmax=20,
     if 'Bx' in KF.sX:
         KF.P[KF.iX['Bx'], KF.iX['Bx']]     = KF.setup_opts.get('P0_Bx', 1.0)
         KF.P[KF.iX['Bphi'], KF.iX['Bphi']] = KF.setup_opts.get('P0_Bphi', 1.0)
+    if 'Bq' in KF.sX:
+        KF.P[KF.iX['Bq'], KF.iX['Bq']]     = KF.setup_opts.get('P0_Bq', 0.1)  # Tower mode bias
 
     if (not setup_opts['q_FA1'] and not setup_opts['aero_est']):
         FAIL('Somehow the Q will end up different from the KF_M, debug that.')
@@ -1295,19 +1206,22 @@ def main(fstFile, tmin=0, tmax=20,
     with Timer('KF time loop'):
         KF.timeLoop()
     df_sl = KF.dfOut
-    file_sl = base + '_SectionLoads_KF_timeloop.outb'
-    df_sl.to_outb(file_sl)
-    print('Export:', file_sl)
+    if KF.sl_mode == 'exact':
+        file_sl = base + '_SectionLoads_KF_timeloop.outb'
+        df_sl.to_outb(file_sl)
+        print('Export:', file_sl)
 
     statsDict = {}    
 #     try:
 
-    base = os.path.splitext(fstFile)[0] + f'_KFMTNS_nX={KF.nX}_nU={KF.nU}_nY={KF.nY}_TMax{tRange[1]}_method{method}'
+    base = os.path.splitext(fstFile)[0] + f'_KFMTNS_nX={KF.nX}_nU={KF.nU}_nY={KF.nY}_TMax{tmax}_method{method}'
+    KF.statsDict = KF.computeStats(tRangeStats)
+    statsDict    = KF.statsDict
     if show:
         fig = KF.plot_X( printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
         plt.savefig(base + '_X.png')
         KF.plot_Y(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
-        if (tRange[1]-tRange[0])>400:
+        if (tmax-tmin)>400:
             plt.savefig(base + '_Y.png')
         fig = KF.plot_S(printStats=True, tRangeStats=tRangeStats, statsDict=statsDict)
         plt.savefig(base + '_S.png')
@@ -1322,7 +1236,7 @@ def main(fstFile, tmin=0, tmax=20,
     #KFpkl = fstFile.replace('.fst', f'_KFMTNS_nX={KF.nX}_nU={KF.nU}_nY={KF.nY}_TMax{tRange[1]}.pkl')
     KFpkl = base + '.pkl'
     if export:
-        if (tRange[1]-tRange[0])<400:
+        if (tmax-tmin)<400:
             WARN('SKipping export')
         else:
             KF.wse=None # Safety
@@ -1339,7 +1253,7 @@ def main(fstFile, tmin=0, tmax=20,
     return KF, df_ref, df_sl
 
 
-def mainWrapper(fstFile, setup_opts, hacks, method, show=False, linFiles=None):
+def mainWrapper(fstFile, setup_opts, hacks, method, tRange=[0,600], show=False, linFiles=None):
     if linFiles is None:
         linFiles=[]
         linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1.1.lin')]
@@ -1365,7 +1279,7 @@ def mainWrapper(fstFile, setup_opts, hacks, method, show=False, linFiles=None):
         # --- Intermediate hack
         #hacks = {'SL_cleanQ':True, 'SL_cleanEtaDot':True, 'SL_cleanFtop':True} # <<<< EXAMPLE
 
-    main(fstFile=fstFile, linFiles=linFiles, 
+    KF, _, _ = main(fstFile=fstFile, linFiles=linFiles, 
          compFile=compFile,  hydroShapeFile=hydroShapeFile, Tp=12.7,
          aeroMapFile=aeroMapFile, operFile=operFile,
          hacks=hacks, show=show,
@@ -1374,6 +1288,7 @@ def mainWrapper(fstFile, setup_opts, hacks, method, show=False, linFiles=None):
          method=method, setup_opts=setup_opts,
          export=True,
          )
+    return KF, KF.statsDict
 
 
 def MonopileOnly(method='YAMS', tRange=[0,600], hacks=None, show=False):
@@ -1381,8 +1296,8 @@ def MonopileOnly(method='YAMS', tRange=[0,600], hacks=None, show=False):
     linFiles=[]
     linFiles += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3_NoRNA_H1A0.1.lin')]
     fstFile    = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst');
-    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':False, 'q_FA1':False}
-    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show, linFiles=linFiles)
+    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':False, 'q_FA1':False, 'sl_mode':'exact'}
+    return mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, tRange=tRange, show=show, linFiles=linFiles)
 
 
 def FullStructure_NoWave_NoMonopileDOFs(method='YAMS', tRange=[0,600], hacks=None, show=False):
@@ -1390,8 +1305,8 @@ def FullStructure_NoWave_NoMonopileDOFs(method='YAMS', tRange=[0,600], hacks=Non
     linFiles=[]
     linFiles+= [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H0A1.1.lin')]
     fstFile  =  os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst');                
-    setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True}
-    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show, linFiles=linFiles)
+    setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True, 'sl_mode':'exact'}
+    return mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, tRange=tRange, show=show, linFiles=linFiles)
 
 
 def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False):
@@ -1403,33 +1318,33 @@ def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim12mps.1.lin')]
 
     fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); 
-    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':True, 'q_FA1':True}
-    mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, show=show, linFiles=linFiles)
+    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':True, 'q_FA1':True, 'sl_mode':'exact'}
+    return mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, tRange=tRange, show=show, linFiles=linFiles)
 
 
 if __name__ == '__main__':
 
-    show=True
+    show=False
 
 
 #     tRange=[0,600]
     tRange=[210,250]
 #     tRange=[210,310]
-    tRange=[5,600]
+#     tRange=[5,600]
     
     # --- Case 1 - Monopile under wave - Works well
-    MonopileOnly(tRange=tRange, show=show)
+#     MonopileOnly(tRange=tRange, show=show)
 
     # --- Case 2 - Monopile and tower under wind: using only tower DOFs - Works well
 #     FullStructure_NoWave_NoMonopileDOFs(tRange=tRange, show=show) #, method='OpenFAST')
 
     # --- Case 3 - Monopile and tower under wind and wave: using all DOFs and wave estimator'
-#     FullStructure_WithWave(tRange=tRange, show=show, method='OpenFAST')
+    FullStructure_WithWave(tRange=tRange, show=show, method='OpenFAST')
 
 
 
-
-    plt.show()
+    if show:
+        plt.show()
 
 
 # def FullStructure_WithWave_NoMonopileDOFs_NoWaveEstimator(method='YAMS', tRange=[0,600], hacks=None, show=False):
