@@ -103,18 +103,15 @@ class Test(unittest.TestCase):
         kp   = wavenumber(fp, h, g)
         time = np.arange(0, 100, 0.10)
         eta_ref = elevation2d(ap, fp, kp, epsp, time, x)
-        pSS = wave_components( eta_ref, time, water_depth=h, g=g, aThreshold=1e-4)
+        pSS = wave_components( eta_ref, time, water_depth=h, g=g, aThreshold=1e-4, minimize_nComp=True, target_R2=0.001, target_eps=0.01, test=True, verbose=False)
         eta_sim = elevation2d(pSS['ap'], pSS['fp'], pSS['kp'], pSS['epsp'], time, x)
-        np.testing.assert_almost_equal(eta_sim, eta_ref, 4)
-
 
         R2,_ = rsquare(y_ref=eta_ref, y_sim=eta_sim)
         eps = mean_rel_err(y1=eta_ref, y2=eta_sim, method='meanabs')
 
-        np.testing.assert_almost_equal(eta_sim, eta_ref, 4)
-
+        #np.testing.assert_almost_equal(eta_sim, eta_ref, 4)
         np.testing.assert_array_less(1-R2,0.001)
-        np.testing.assert_array_less(eps, 0.009)
+        np.testing.assert_array_less(eps, 0.010)
 
 
 if __name__ == '__main__':

@@ -57,67 +57,165 @@ def elevation2d(a, f, k, eps, t, x=0):
 
     return eta     
 
-def wave_components( eta, time, water_depth=None, g=9.80665, account_for_t0=True, aThreshold=1e-4, cutAboveThreshold=True):
-  """Computes wave components, fp, kp, epsp from a wave elevation time series.
 
-  INPUTS:
-  - account_for_t0: if True, the wave phases are adjusted to account for the non zero time offset
 
-  OUPUTS:
-   - angular frequencies (fp), wave numbers (kp), and phases (epsp)
 
-  """
-  eta  = np.asarray(eta)
-  time = np.asarray(time)
 
-  n = len(eta)
+def wave_components(eta, time, water_depth=None, g=9.80665, account_for_t0=True, 
+                    cutAboveThreshold=True, aThreshold=1e-4, 
+                    minimize_nComp=True, target_R2=0.001, target_eps=0.02,
+                    eta_out = False,
+                    test=False,
+                    plot=False,
+                    verbose=False,
+                    ):
+    """Computes wave components, fp, kp, epsp from a wave elevation time series.
+  
+    INPUTS:
+    - account_for_t0: if True, the wave phases are adjusted to account for the non zero time offset
+  
+    OUPUTS:
+     - angular frequencies (fp), wave numbers (kp), and phases (epsp)
+  
+    """
+    eta  = np.asarray(eta)
+    time = np.asarray(time)
+  
+    n = len(eta)
+  
+    dt = (time[-1]-time[0])/(n-1)
+    t0 = time[0]
+  
+    # Compute one-sided Fast Fourier Transform and associated angular frequencies
+    fft_res = np.fft.rfft(eta)
+    fp = np.fft.rfftfreq(n, dt)
+    omp = 2 * np.pi *fp
+  
+    # Calculate wave amplitudes ap matching OpenFAST single-sided scaling
+    ap = np.zeros_like(fp)
+    if n % 2 == 0:
+      ap[0] = np.abs(fft_res[0]) / n
+      ap[1:-1] = 2.0 * np.abs(fft_res[1:-1]) / n
+      ap[-1] = np.abs(fft_res[-1]) / n
+    else:
+      ap[0] = np.abs(fft_res[0]) / n
+      ap[1:] = 2.0 * np.abs(fft_res[1:]) / n
+  
+    # Determine wave phases epsp matching OpenFAST sign conventions
+    epsp = np.angle(fft_res) 
+    if account_for_t0:
+        epsp += - omp * t0
+    epsp = np.mod(epsp, 2*np.pi)
+  
+    # --- Cut above a threshold
+    b=np.abs(ap)>aThreshold
+    if np.any(b):
+        # Find the index of the very last amplitude above the threshold
+        last_i = np.where(b)[0][-1]
+        ap  [last_i + 1:] = 0.0
+        epsp[last_i + 1:] = 0.0
+        cutoff_freq = fp[last_i]
+        if cutAboveThreshold:
+            ap   = ap  [:last_i]
+            fp   = fp  [:last_i]
+            epsp = epsp[:last_i]
+  
+    # Solve the linear dispersion relation omega^2 = g * k * tanh(k * h) for kp
+    if water_depth is not None:
+        kp = wavenumber(fp, water_depth, g=g) # Wave numbers
+    else:
+        kp = np.zeros_like(fp) * np.nan
 
-  dt = (time[-1]-time[0])/(n-1)
-  t0 = time[0]
+    # Reduce number of components 
+    if minimize_nComp:
+        if water_depth is None:
+            raise Exception('Provide water_depth for component minimization testing')
+        if verbose:
+            print('Reducing number of wave components')
+        ap, fp, epsp, kp = reduce_wave_components(ap, fp, epsp, kp, time, eta, target_R2=target_R2, target_eps=target_eps, verbose=verbose)
 
-  # Compute one-sided Fast Fourier Transform and associated angular frequencies
-  fft_res = np.fft.rfft(eta)
-  fp = np.fft.rfftfreq(n, dt)
-  omp = 2 * np.pi *fp
+    pSS = {"ap": ap, "fp": fp, "epsp": epsp,  "kp": kp}
 
-  # Calculate wave amplitudes ap matching OpenFAST single-sided scaling
-  ap = np.zeros_like(fp)
-  if n % 2 == 0:
-    ap[0] = np.abs(fft_res[0]) / n
-    ap[1:-1] = 2.0 * np.abs(fft_res[1:-1]) / n
-    ap[-1] = np.abs(fft_res[-1]) / n
-  else:
-    ap[0] = np.abs(fft_res[0]) / n
-    ap[1:] = 2.0 * np.abs(fft_res[1:]) / n
 
-  # Determine wave phases epsp matching OpenFAST sign conventions
-  epsp = np.angle(fft_res) 
-  if account_for_t0:
-      epsp += - omp * t0
-  epsp = np.mod(epsp, 2*np.pi)
+    # --- Testing reconstruction
+    if test or plot or eta_out:
+        if water_depth is None:
+            raise Exception('Provide water_depth')
+        eta_sim = elevation2d(pSS['ap'], pSS['fp'], pSS['kp'], pSS['epsp'], time, x=0)
+        pSS['time_sim'] = time
+        pSS['eta_sim'] = eta_sim
+    if plot:
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1, 1, sharey=False, figsize=(6.4,4.8))
+        fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
+        ax.plot(time, eta, label='Ref')
+        ax.plot(time, eta_sim, label='Sim')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Wave elevation [m]')
+        ax.legend()
+        pSS['ax'] = ax
+    if test:
+        from welib.tools.stats import rsquare, mean_rel_err
+        R2,_ = rsquare(y_ref=eta, y_sim=eta_sim)
+        eps  = mean_rel_err(y1=eta, y2=eta_sim, method='meanabs')
 
-  b=np.abs(ap)>aThreshold
-  if np.any(b):
-      # Find the index of the very last amplitude above the threshold
-      last_i = np.where(b)[0][-1]
-      ap  [last_i + 1:] = 0.0
-      epsp[last_i + 1:] = 0.0
-      cutoff_freq = fp[last_i]
-      if cutAboveThreshold:
-          ap   = ap  [:last_i]
-          fp   = fp  [:last_i]
-          epsp = epsp[:last_i]
+        #np.testing.assert_almost_equal(eta_sim, eta, test_decimal)
+        np.testing.assert_array_less(1-R2, target_R2)
+        np.testing.assert_array_less(eps , target_eps)
 
-  # Solve the linear dispersion relation omega^2 = g * k * tanh(k * h) for kp
-  if water_depth is not None:
-      kp = wavenumber(fp, water_depth, g=g) # Wave numbers
-  else:
-      kp = np.zeros_like(fp) * np.nan
-  pSS = {"ap": ap, "fp": fp, "epsp": epsp,  "kp": kp}
-  return pSS
-# 
+    return pSS
+
+def reduce_wave_components(ap, fp, epsp, kp, time, eta, target_R2, target_eps, verbose=False):
+    """Reduces wave components using binary search to minimize count while satisfying error tolerances."""
+    from welib.tools.stats import rsquare, mean_rel_err
+    if target_R2 is None and target_eps is None:
+        return ap, fp, epsp, kp
+
+    # Sort components by amplitude descending to prioritize high energy terms
+    idx_sort = np.argsort(ap)[::-1]
+    ap_s     = ap[idx_sort]
+    fp_s     = fp[idx_sort]
+    epsp_s   = epsp[idx_sort]
+    kp_s     = kp[idx_sort]
+
+
+    # Binary search to find the minimum number of components meeting tolerance
+    low = 1
+    high = len(ap_s)
+    best_M = high
+
+    while low <= high:
+        mid = (low + high) // 2
+        eta_test = elevation2d(ap_s[:mid], fp_s[:mid], kp_s[:mid], epsp_s[:mid], time, x=0)
+
+        r2_val, _ = rsquare(y_ref=eta, y_sim=eta_test)
+        err_val = mean_rel_err(y1=eta, y2=eta_test, method='meanabs')
+        if verbose:
+            print(f'ncomp: {mid:6d}  r2= {r2_val:7.5f}  eps={err_val:4.3f}%')
+
+        met_r2 = target_R2 is None or r2_val >= target_R2
+        met_err = target_eps is None or err_val <= target_eps
+
+        if met_r2 and met_err:
+            best_M = mid
+            high = mid - 1
+        else:
+            low = mid + 1
+
+    # Retain the optimal subset and resort chronologically by frequency
+    ap_out = ap_s[:best_M]
+    fp_out = fp_s[:best_M]
+    epsp_out = epsp_s[:best_M]
+    kp_out = kp_s[:best_M]
+
+    idx_freq = np.argsort(fp_out)
+    return ap_out[idx_freq], fp_out[idx_freq], epsp_out[idx_freq], kp_out[idx_freq]
+
+
+
+
 def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None): 
-    """ 
+    r""" 
     2D wave kinematics, longitudinal velocity and acceleration along x 
 
     z ^
@@ -138,6 +236,9 @@ def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None):
     OUTPUTS:
       vel: wave velocity at t,z,x
       acc: wave acceleartion at t,z,x
+
+    cosh(k z)/ \sinh(k h) = e^{-k(h - z)} + e^{-k(h + z)} + e^{-k(3h - z)} + ...
+
     """
     t   = np.atleast_1d(t)
     f   = np.atleast_1d(f)
@@ -149,6 +250,12 @@ def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None):
         x=z*0
     else:
         x = np.asarray(x)
+
+    if f[0]==0:
+        f   = f[1:]
+        a   = a[1:]
+        eps = eps[1:]
+        k   = k[1:]
     omega = 2 * np.pi * f  # angular frequency
 
     if Wheeler:
@@ -164,25 +271,35 @@ def kinematics2d(a, f, k, eps, h, t, z, x=None, Wheeler=False, eta=None):
     z = z+h # 0 at sea bed
         
     if len(t)==1:
+#         np.seterr(all='raise')
         vel = np.zeros(z.shape) 
         acc = np.zeros(z.shape)
         for ai,oi,ki,ei in zip(a,omega,k,eps):
-            vel += oi   *ai * np.cosh(ki*z) / np.sinh(ki*h) * np.cos(oi*t-ki*x + ei)
-            acc -= oi**2*ai * np.cosh(ki*z) / np.sinh(ki*h) * np.sin(oi*t-ki*x + ei)
+            #exponent = -ki* (h*z)
+            hyp_ratio = np.cosh(ki*z) / np.sinh(ki*h)
+            hyp_ratio[np.isnan(hyp_ratio)] = 0
+            #hyp_ratio = np.exp(-ki*(h-z))
+            #hyp_ratio = np.where(exponent < -500.0, 0.0, np.exp(exponent)) # BUGGY
+#             except:
+#                 import pdb; pdb.set_trace()
+            vel += oi   *ai * hyp_ratio * np.cos(oi*t-ki*x + ei)
+            acc -= oi**2*ai * hyp_ratio * np.sin(oi*t-ki*x + ei)
     elif len(z)==1:
         vel = np.zeros(t.shape) 
         acc = np.zeros(t.shape)
         for ai,oi,ki,ei in zip(a,omega,k,eps):
-            vel += oi   *ai * np.cosh(ki*z) / np.sinh(ki*h) * np.cos(oi*t-ki*x + ei)
-            acc -= oi**2*ai * np.cosh(ki*z) / np.sinh(ki*h) * np.sin(oi*t-ki*x + ei)
+            hyp_ratio = np.cosh(ki*z) / np.sinh(ki*h)
+            vel += oi   *ai * hyp_ratio * np.cos(oi*t-ki*x + ei)
+            acc -= oi**2*ai * hyp_ratio * np.sin(oi*t-ki*x + ei)
     else:
         # most likely we have more time than points, so we loop on points
         vel = np.zeros(np.concatenate((z.shape, t.shape)))
         acc = np.zeros(np.concatenate((z.shape, t.shape)))
         for j in np.ndindex(x.shape): # NOTE: j is a multi-dimension index
             for ai,oi,ki,ei in zip(a,omega,k,eps):
-                vel[j] += oi   *ai * np.cosh(ki*z[j]) / np.sinh(ki*h) * np.cos(oi*t-ki*x[j] + ei)
-                acc[j] -= oi**2*ai * np.cosh(ki*z[j]) / np.sinh(ki*h) * np.sin(oi*t-ki*x[j] + ei)
+                hyp_ratio = np.cosh(ki*z[j]) / np.sinh(ki*h)
+                vel[j] += oi   *ai * hyp_ratio * np.cos(oi*t-ki*x[j] + ei)
+                acc[j] -= oi**2*ai * hyp_ratio * np.sin(oi*t-ki*x[j] + ei)
     return vel, acc
 
 
