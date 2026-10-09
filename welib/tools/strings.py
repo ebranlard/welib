@@ -198,7 +198,8 @@ def print_yellow(msg, **kwargs):
 def FAIL(msg, *args, label='[FAIL] ', **kwargs):
     msg = " ".join([str(msg)] + [str(a) for a in args])
     msg = ('\n'+ ' ' * len(label)).join( (label+msg).split('\n') ) # Indending new lines
-    cprint(msg, color='red', attrs=['bold'], file=sys.stderr, **kwargs)
+    #cprint(msg, color='red', attrs=['bold'], file=sys.stderr, **kwargs)
+    cprint(msg, color='red', attrs=['bold'], **kwargs)
 
 def WARN(msg, *args, label='[WARN] ', **kwargs):
     msg = " ".join([str(msg)] + [str(a) for a in args])

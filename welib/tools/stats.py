@@ -29,7 +29,7 @@ STAT_PRINT_CONFIG = {
     'xcorr_max': (r'Max. Xcorr, $\rho_{xy,max}$' , r'$\rho_m={:.3f}$'                                    , 'xcorr={:.3f}')               , 
 }
 
-def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='mean', absVal=True, latex=True):
+def comparison_stats(t1, y1, t2, y2, stats='sigRatio,eps,R2', method='meanabs', absVal=True, latex=True):
     """
     y1: ref
     y2: other
