@@ -1079,19 +1079,28 @@ class WindTurbineStructure():
     # --- Sea state related (might need an object in the future)
     # --------------------------------------------------------------------------------{
     @require_attrs(['pSS', 'gravity'])
-    def SS_setComponents(self, compFile=None, ap=None, fp=None, epsp=None):
-        from welib.hydro.wavekin import wavenumber
+    def SS_setComponents(self, compFile=None, ap=None, fp=None, epsp=None, time=None, eta=None):
+        from welib.hydro.wavekin import wavenumber, wave_components
         pSS = self.pSS
         if compFile is not None:
             dfComp = weio.read(compFile).toDataFrame()
             pSS['ap']   = dfComp['Amplitude_[m]']
             pSS['fp']   = dfComp['Frequency_[Hz]']
             pSS['epsp'] = dfComp['Phase_[rad]']
+        elif time is not None and eta is not None:
+            pSS_Comp = wave_components( eta, time, water_depth=pSS['WaterDepth'], g=self.gravity, aThreshold=1e-4, verbose=True, target_eps=0.5)
+            pSS.update(pSS_Comp)
+
+        elif ap is not None and fp is not None and epsp is not None:
+            pSS['fp']   = fp
+            pSS['ap']   = ap
+            pSS['epsp'] = esps
         else:
-            print('>>> Using Wave of amplitude 3 and period 12 for now')
-            pSS['ap']   = np.array([3])     # Amplitudes
-            pSS['fp']   = np.array([1/12])  # frequencies [Hz]
-            pSS['epsp'] = np.array([np.pi]) # Deterministic phas
+            raise Exception('Provide comp file, or eta, or components directly.')
+#             print('>>> Using Wave of amplitude 3 and period 12 for now')
+#             pSS['ap']   = np.array([3])     # Amplitudes
+#             pSS['fp']   = np.array([1/12])  # frequencies [Hz]
+#             pSS['epsp'] = np.array([np.pi]) # Deterministic phas
         # --- Wave Kinematics
         pSS['kp'] = wavenumber(pSS['fp'], pSS['WaterDepth'], self.gravity) # Wave numbers
         pSS['compFile'] = compFile
@@ -1681,6 +1690,7 @@ class WindTurbineStructure():
             if WT.pSS is not None:
                 rowOut['Wave1Elev_[m]'] = outMnp['eta']
                 rowOut['HydroFxi_[N]']  = outMnp['F_hydro']
+                # TODO all the hydro loads...
 
         return rowOut, twr_F_sec_it, mnp_F_sec_it
 

@@ -119,7 +119,7 @@ class KalmanFilterMTNS(KalmanFilter):
     #   - 'OF': OpenFAST model, built from the (averaged) linearized OpenFAST model
     # They share the same states/inputs/outputs and the same code for what is not method specific (_set_common_submatrix)
     # `method` only selects which one is used by the filter. See compareMatrices to compare them element by element.
-    def setup_matrices(KF, fstFile, dfTime=None, hydroShapeFile=None, compFile=None, Tp=None, zeta=0.12,
+    def setup_matrices(KF, fstFile, time_ref=None, hydroShapeFile=None, compFile=None, eta_ref=None, Tp=None, zeta=0.12,
                        method='YAMS', linFiles=None):
         """ Build WT model (sea state, hydro) and state matrices A,B,C,D """
         if linFiles is None:
@@ -129,10 +129,11 @@ class KalmanFilterMTNS(KalmanFilter):
         # --- Models, maps to measurements, hydro
         KF._setup_WT(fstFile)
         KF._setup_colMap()
-        KF._setup_hydro(dfTime, compFile, hydroShapeFile, Tp, zeta)
+        KF._setup_hydro(time_ref, eta_ref, compFile, hydroShapeFile, Tp, zeta)
         KF.M_inv = np.linalg.inv(KF.WT.MM)
         OF_lin   = KF._load_openfast_lin(linFiles)
-        # --- Matrices
+        # --- Matrices: initialize zero matrices for YAMS (YS) and OpenFAST (OF) models
+        # Both models share the same states/inputs/outputs; only the physics differs
         nX, nU, nY = KF.nX, KF.nU, KF.nY
         YS = [np.zeros((nX, nX)), np.zeros((nX, nU)), np.zeros((nY, nX)), np.zeros((nY, nU))]
         OF = [np.zeros((nX, nX)), np.zeros((nX, nU)), np.zeros((nY, nX)), np.zeros((nY, nU))]
@@ -141,12 +142,21 @@ class KalmanFilterMTNS(KalmanFilter):
         J_LSS_OF = -1/OF_lin['B'].loc['d_psi_rot_[rad/s]','Qgen_[Nm]'] if 'psi' in KF.iX else None
         if 'psi' in KF.iX:
             print('[INFO] KalmanModel: Rotor Inertia: YAMS: {:.1f} OF: {:.1f}'.format(J_LSS_YS, J_LSS_OF))
+
+        # --- Fill matrix blocks: common terms (identical for both models)
+        # Sets: rotor equation (psi,dpsi), wave shaping filter (q_h,dq_h), simple outputs (PtfmIncly, dpsi, Qgen)
         KF._set_common_submatrix(*YS, J_LSS_YS)
         KF._set_common_submatrix(*OF, J_LSS_OF)
+
+        # --- Fill matrix blocks: model-specific terms
+        # YAMS uses mechanical matrices (M,D,K) from YAMS; OpenFAST uses lin. model from OpenFAST
         KF._set_yams_submatrix(*YS, method)
         KF._set_openfast_submatrix(*OF, OF_lin)
-        HY = KF._set_hybrid_submatrix(YS, OF, OF_lin) # YAMS model where selected terms are replaced by OpenFAST terms
-        # --- Selection of the model used by the filter
+
+        # --- Hybrid model: YAMS with selected blocks replaced by OpenFAST (if user wants it)
+        HY = KF._set_hybrid_submatrix(YS, OF, OF_lin)
+
+        # --- Selection of the model used by the filter: YAMS, OpenFAST, or Hybrid
         KF.method = method
         KF.mats   = dict(YS=tuple(YS), OF=tuple(OF), HY=tuple(HY), OF_lin=OF_lin, M_inv=KF.M_inv)
         KF.setMat(*dict(YAMS=YS, OpenFAST=OF, Hybrid=HY)[method])
@@ -154,11 +164,8 @@ class KalmanFilterMTNS(KalmanFilter):
     def _setup_WT(KF, fstFile):
         """ Windturbine models: full structure (WT, monopile and tower) and tower only (WTTN)"""
         # TODO shapes should be determined based on sQ
-        KF.WT = FASTmodel2MTNSB(fstFile, shapes_sub=[0,4], shapes_twr=[0], shapes_bld=[],
-                             DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=False,
-                             algo='OpenFAST').WT
-        KF.WTTN = FASTmodel2TNSB(fstFile, shapes_twr=[0], shapes_bld=[],
-                            DEBUG=False, bStiffening=True, main_axis='z').WT
+        KF.WT = FASTmodel2MTNSB(fstFile, shapes_sub=[0,4], shapes_twr=[0], shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z', fixedShaft=False, algo='OpenFAST').WT
+        KF.WTTN = FASTmodel2TNSB(fstFile, shapes_twr=[0], shapes_bld=[], DEBUG=False, bStiffening=True, main_axis='z').WT
         KF.zDepth = KF.WT.fnd.s_span - KF.WT.WtrDpth
 
     def _setup_colMap(KF):
@@ -221,7 +228,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 'ddq_FA1': 'QD2_TFA1_[m/s^2]',
                 })
 
-    def _setup_hydro(KF, dfTime, compFile, hydroShapeFile, Tp, zeta):
+    def _setup_hydro(KF, time_ref, eta_ref, compFile, hydroShapeFile, Tp, zeta):
         """ Sea state components, wave elevation, hydro shape function, and shaping filter of the waves"""
         WT = KF.WT
         if 'q_h' not in KF.sX:
@@ -229,10 +236,14 @@ class KalmanFilterMTNS(KalmanFilter):
         # --- Configure Sea State components and wave elevation
         if 'q_h' in KF.sX:
             if WT.pSS is not None:
-                print('[INFO] Setting Components', compFile)
-                WT.SS_setComponents(compFile)
-                print('[INFO] Setting Compute Eta')
-                WT.SS_computeEta(dfTime)
+                if compFile is not None:
+                    print('[INFO] Setting Components from file:', compFile)
+                    WT.SS_setComponents(compFile)
+                elif eta_ref is not None:
+                    NOTE('Setting Components from eta ref')
+                    WT.SS_setComponents(time=time_ref, eta=eta_ref)
+                print('[INFO] Compute Eta')
+                WT.SS_computeEta(time_ref)
                 if hydroShapeFile is not None:
                     WT.HD_setShapeFunction(hydroShapeFile)
             # Ensure WT.MM contains the hydrodynamic mass if not already added
@@ -242,6 +253,7 @@ class KalmanFilterMTNS(KalmanFilter):
                 for i in range(min(pHD['GM_hydro'].shape[0], WT.MM.shape[0])):
                     WT.MM[i, i] += pHD['GM_hydro'][i, i]
                 WT._GM_hydro_added = True
+
         # Shaping filter parameters, state equation of the waves is in _set_common_submatrix
         if Tp==12.7:
             KF.Sw= 2.3835e-01
@@ -478,16 +490,22 @@ class KalmanFilterMTNS(KalmanFilter):
         OF_lin['xop_s'] = dict(zip(sStates, xop_s)); OF_lin['T_op'] = T_op
 
     def _set_hybrid_submatrix(KF, YS, OF, OF_lin):
-        """ YAMS model in which the terms listed in setup_opts['hybrid'] are replaced by the OpenFAST ones. Terms (columns/blocks of the acceleration rows):
-        'KD': stiffness/damping (A, structural states), 'thrust': GenThrust column, 'static': Static column, 'bias': Bx,Bphi columns, 'hydro': dq_h column.
+        """ YAMS model in which the terms listed in setup_opts['hybrid'] are replaced by the OpenFAST ones.
+        Hybrid model: best performance on Case 3 (full structure). Terms (columns/blocks of the acceleration rows):
+        'KD': stiffness/damping (A, structural states), 'thrust': GenThrust column, 'static': Static column,
+        'bias': Bx,Bphi columns, 'hydro': dq_h column.
         IMU outputs are recomputed from the hybrid rows (OpenFAST weights for the nacelle IMU if any term is replaced)."""
         iX, iU, iY = KF.iX, KF.iU, KF.iY
         HY = [m.copy() for m in YS]
-        terms = KF.setup_opts.get('hybrid', ['KD','static','hydro']) # default: best combination found for Case 3
+        # Default hybrid terms: ['KD','static','hydro'] gives best performance on Case 3 across 16 cases
+        # User can override via setup_opts['hybrid'] with any subset of: ['KD','thrust','static','bias','hydro']
+        HYBRID_DEFAULTS = ['KD','static','hydro']
+        terms = KF.setup_opts.get('hybrid', HYBRID_DEFAULTS)
         acc = [iX[k] for k in ('dx','dphi_y','dq_FA1') if k in iX]
         struct = [iX[k] for k in ('x','phi_y','q_FA1','dx','dphi_y','dq_FA1') if k in iX]
-        def rep(im, rows, cols):  # copy of OpenFAST block into HY[im]
+        def rep(im, rows, cols):  # Helper: copy OF block into HY[im]
             if len(cols)>0: HY[im][np.ix_(rows, cols)] = OF[im][np.ix_(rows, cols)]
+        # Replace selected blocks with OpenFAST values
         if 'KD'     in terms: rep(0, acc, struct)
         if 'thrust' in terms and 'GenThrust' in iU: rep(1, acc, [iU['GenThrust']])
         if 'static' in terms and 'Static'    in iU: rep(1, acc, [iU['Static']])
@@ -1037,10 +1055,16 @@ def main(fstFile, tmin=0, tmax=20,
         wse = TabulatedWSEstimator(fstFile=fstFile, operFile=operFile, aeroMapFile=aeroMapFile)
     else:
         wse=None
+
+    eta_ref  = df_ref['Wave1Elev_[m]'].values
+    time_ref = df_ref['Time_[s]'].values
+
+
     KF = KalmanFilterMTNS(WSE=wse, hacks=hacks, setup_opts=setup_opts)
     KF.setup_matrices(fstFile, 
                       compFile=compFile, hydroShapeFile=hydroShapeFile, Tp=Tp,
-                      dfTime=df_ref['Time_[s]'].values, method=method, linFiles=linFiles,
+                      time_ref= time_ref, eta_ref = eta_ref,
+                      method=method, linFiles=linFiles,
                       )
 
     # --- Loading "Measurements"
@@ -1180,10 +1204,10 @@ def main(fstFile, tmin=0, tmax=20,
 
     # Initial covariance of the (unknown, large) force biases and aero torque
     if 'Bx' in KF.sX:
-        KF.P[KF.iX['Bx'], KF.iX['Bx']]     = KF.setup_opts.get('P0_Bx', 1.0)
-        KF.P[KF.iX['Bphi'], KF.iX['Bphi']] = KF.setup_opts.get('P0_Bphi', 1.0)
+        KF.P[KF.iX['Bx'], KF.iX['Bx']]     = KF.setup_opts['P0_Bx']
+        KF.P[KF.iX['Bphi'], KF.iX['Bphi']] = KF.setup_opts['P0_Bphi']
     if 'Bq' in KF.sX:
-        KF.P[KF.iX['Bq'], KF.iX['Bq']]     = KF.setup_opts.get('P0_Bq', 0.1)  # Tower mode bias
+        KF.P[KF.iX['Bq'], KF.iX['Bq']]     = KF.setup_opts['P0_Bq'] # Tower mode bias
 
     if (not setup_opts['q_FA1'] and not setup_opts['aero_est']):
         FAIL('Somehow the Q will end up different from the KF_M, debug that.')
@@ -1262,10 +1286,13 @@ def mainWrapper(fstFile, setup_opts, hacks, method, tRange=[0,600], show=False, 
         linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim10mps.1.lin')]
         linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim12mps.1.lin')]
 
-    compFile       = os.path.join(scriptDir, 'examples/_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
+    compFile=None
+
+    #compFile       = os.path.join(scriptDir, 'examples/_simulations/Waves/UserDefJonswap_Hs=8.1_Tp=12.7_h=34.csv')
     aeroMapFile    = os.path.join(scriptDir, 'examples/_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
     operFile       = os.path.join(scriptDir, 'examples/_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
-    hydroShapeFile = os.path.join(scriptDir, 'examples/_data/IEAMonoPile_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
+
+    hydroShapeFile = os.path.join(scriptDir, 'examples/_data/IEA22_HydroShapeFunction_Hs=8.1_Tp=12.7.csv')
 
 
     if hacks is None:
@@ -1291,25 +1318,56 @@ def mainWrapper(fstFile, setup_opts, hacks, method, tRange=[0,600], show=False, 
     return KF, KF.statsDict
 
 
-def MonopileOnly(method='YAMS', tRange=[0,600], hacks=None, show=False):
+def MonopileOnly(method='YAMS', tRange=[0,600], hacks=None, show=False, sl_mode='linear'):
 
     linFiles=[]
     linFiles += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3_NoRNA_H1A0.1.lin')]
-    fstFile    = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst');
-    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':False, 'q_FA1':False, 'sl_mode':'exact'}
+    fstFile    = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3_NoRNA_H1A0_Hs=8.1_Tp=12.7.fst')
+
+    # Explicit setup_opts for Case 1 (Monopile-only)
+    setup_opts = {
+        'hydro_states': True,           # Wave estimation enabled
+        'monopileDOFs': True,           # Use monopile DOFs
+        'aero_est': False,              # No aerodynamic estimation
+        'q_FA1': False,                 # No tower mode
+        'bias_states': True,            # Bias states for monopile (Bx, Bphi)
+        'sl_mode': sl_mode,             # Section loads mode
+        # Not used but documenting defaults:
+        'kh_scale': [1.0, 1.0],         # Wave hydro scale
+        'static_bias': [0, 0, 0],       # Static bias offset
+        'P0_Bx': 1.0,                   # Covariance for platform surge bias
+        'P0_Bphi': 1.0,                 # Covariance for platform pitch bias
+        'hybrid': ['KD', 'static', 'hydro'],  # Hybrid model config
+    }
     return mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, tRange=tRange, show=show, linFiles=linFiles)
 
 
-def FullStructure_NoWave_NoMonopileDOFs(method='YAMS', tRange=[0,600], hacks=None, show=False):
+def FullStructure_NoWave_NoMonopileDOFs(method='YAMS', tRange=[0,600], hacks=None, show=False, sl_mode='linear'):
 
     linFiles=[]
     linFiles+= [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H0A1.1.lin')]
-    fstFile  =  os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst');                
-    setup_opts = {'hydro_states':False, 'monopileDOFs':False, 'aero_est':True, 'q_FA1':True, 'sl_mode':'exact'}
+    fstFile  =  os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst')                
+
+    # Explicit setup_opts for Case 2 (Tower-only)
+    setup_opts = {
+        'hydro_states': False,          # NO wave estimation (no wave forcing)
+        'monopileDOFs': False,          # NO monopile DOFs (tower-only)
+        'aero_est': True,               # Aerodynamic force estimation
+        'q_FA1': True,                  # Tower first bending mode
+        'bias_states': True,            # Bias states: includes Bq for tower mode
+        'sl_mode': sl_mode,             # Section loads mode
+        # Explicit bias state covariances:
+        'P0_Bx': 1.0,                   # Not used (no monopile DOFs)
+        'P0_Bphi': 1.0,                 # Not used (no monopile DOFs)
+        'P0_Bq': 0.1,                   # Covariance for tower mode bias (Bq)
+        'hybrid': ['KD', 'static', 'hydro'],  # Hybrid model config
+        'kh_scale': [1.0, 1.0],         # Not used (no wave states)
+        'static_bias': [0, 0, 0],       # Static bias offset
+    }
     return mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, tRange=tRange, show=show, linFiles=linFiles)
 
 
-def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False):
+def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False, sl_mode='linear'):
     linFiles=[]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1.1.lin')]
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim4mps.1.lin')]
@@ -1318,7 +1376,23 @@ def FullStructure_WithWave(method='YAMS', tRange=[0,600], hacks=None, show=False
     linFiles      += [os.path.join(scriptDir, 'examples/_simulations/00_EVA/OF_F3T1S1_H1A1_Trim12mps.1.lin')]
 
     fstFile  = os.path.join(scriptDir, 'examples/_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst'); 
-    setup_opts = {'hydro_states':True, 'monopileDOFs':True, 'aero_est':True, 'q_FA1':True, 'sl_mode':'exact'}
+
+    # Explicit setup_opts for Case 3 (Full structure)
+    setup_opts = {
+        'hydro_states': True,           # Wave estimation enabled
+        'monopileDOFs': True,           # Use monopile DOFs (platform surge, pitch)
+        'aero_est': True,               # Aerodynamic force estimation
+        'q_FA1': True,                  # Tower first bending mode
+        'bias_states': True,            # Bias states: Bx, Bphi for monopile
+        'sl_mode': sl_mode,             # Section loads mode
+        # Explicit bias state covariances:
+        'P0_Bx': 1.0,                   # Covariance for platform surge bias (Bx)
+        'P0_Bphi': 1.0,                 # Covariance for platform pitch bias (Bphi)
+        'P0_Bq': 0.1,                   # Not used (q_FA1 coupled to platform)
+        'hybrid': ['KD', 'static', 'hydro'],  # Hybrid model config (blocks to replace from OpenFAST)
+        'kh_scale': [1.0, 1.0],         # Wave hydro scale (x2 by default, no scale)
+        'static_bias': [0, 0, 0],       # Static bias offset (platform forces)
+    }
     return mainWrapper(fstFile=fstFile, method=method, hacks=hacks, setup_opts=setup_opts, tRange=tRange, show=show, linFiles=linFiles)
 
 

@@ -180,22 +180,22 @@ def test_onshore_TNS_YAMS(test=True):
     np.testing.assert_array_less(stats['M6']['eps']    , 2.65)
     np.testing.assert_array_less(stats['M9']['eps']    ,21.55)
 
-def test_onshore_TNS_YAMS_IEA(test=True):
-    if test:
-        pytest.skip("Skipping test")
-    #fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
-    fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst')
-    linFile      = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
-    linStateFile = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.pkl') 
-    aeroMapFile  = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
-    operFile     = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
-
-    stats = main(method='YAMS', StateModel='nt1_nx5', test=test,
-                 fstFile=fstFile,
-                 aeroMapFile=aeroMapFile, operFile=operFile,
-                 linFile=linFile, linStateFile=linStateFile,
-                 tRange=[100, 200], nUnderSamp=10
-                 )
+# def test_onshore_TNS_YAMS_IEA(test=True):
+#     if test:
+#         pytest.skip("Skipping test")
+#     #fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H1A1_Hs=8.1_Tp=12.7.fst')
+#     fstFile      = os.path.join(scriptDir, '_simulations/06_Jonswap/OF_F3T1S1_H0A1.fst')
+#     linFile      = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.1.lin')
+#     linStateFile = os.path.join(scriptDir, '_simulations/00_EVA/OF_F3T1S1_H1A1_OnlyWriteOutputs.pkl') 
+#     aeroMapFile  = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_Cp_Ct_Cq.rpf')
+#     operFile     = os.path.join(scriptDir, '_simulations/IEA-22-280-RWT/IEA-22-280-RWT_OperOpenFAST.csv')
+# 
+#     stats = main(method='YAMS', StateModel='nt1_nx5', test=test,
+#                  fstFile=fstFile,
+#                  aeroMapFile=aeroMapFile, operFile=operFile,
+#                  linFile=linFile, linStateFile=linStateFile,
+#                  tRange=[100, 200], nUnderSamp=10
+#                  )
 #     np.testing.assert_array_less(1-stats['Qaero']['R2'] , 0.05)
 #     np.testing.assert_array_less(1-stats['WS']['R2']    , 0.02)
 

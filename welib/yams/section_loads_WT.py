@@ -107,12 +107,16 @@ class YAMSSectionLoadCalculator():
     # --------------------------------------------------------------------------------}
     # --- Plots 
     # --------------------------------------------------------------------------------{
-    def plot_tower_section_loads(self, IsecTwr=None, component='MLyt', figFilename=None, printStats=False):
+    def plot_tower_section_loads(self, IsecTwr=None, component='MLyt', figFilename=None, printStats=False, colors=None):
         dfRef = self.dfRef
         dfOut = self.dfOut
 
         if IsecTwr is None:
             IsecTwr = [0,4,8] # Section indices
+
+
+#         max_val = np.max(np.abs(p_true))
+#         p0 = max_val*1.5
 
         fig,ax = plt.subplots(1, 1, sharey=False, figsize=(12.4,12.8)) # (6.4,4.8)
         fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.11, hspace=0.20, wspace=0.20)
